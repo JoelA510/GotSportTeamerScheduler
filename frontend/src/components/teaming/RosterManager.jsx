@@ -16,7 +16,10 @@ import {
   useSortable,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { GripVertical, User } from 'lucide-react';
+import { GripVertical, User, ShieldAlert, Zap } from 'lucide-react';
+import { useConflicts } from '../../hooks/useConflicts.js';
+import { supabase } from '../../lib/supabaseClient.js';
+import { useOrganization } from '../../contexts/OrganizationContext.jsx';
 
 export function SortablePlayer({ player }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -94,6 +97,9 @@ export function TeamColumn({ team, players }) {
 export default function RosterManager({ initialTeams }) {
   const [teams, setTeams] = useState(initialTeams);
   const [activePlayer, setActivePlayer] = useState(null);
+  const [isDrafting, setIsDrafting] = useState(false);
+  const { conflicts, hasConflicts } = useConflicts(teams);
+  const { currentOrganization } = useOrganization();
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -185,8 +191,78 @@ export default function RosterManager({ initialTeams }) {
     }
   };
 
+  // Quick Draft: reuses existing scheduler_runs async job pattern
+  const handleQuickDraft = async () => {
+    setIsDrafting(true);
+    try {
+      const { data: settings } = await supabase
+        .from('season_settings')
+        .select('id')
+        .eq('organization_id', currentOrganization?.id)
+        .limit(1)
+        .single();
+
+      if (settings) {
+        await supabase.from('scheduler_runs').insert({
+          season_settings_id: settings.id,
+          run_type: 'team',
+          status: 'running',
+          parameters: { source: 'quick_draft' },
+          metrics: { progress: 0 },
+          started_at: new Date().toISOString(),
+        });
+      } else {
+        console.warn('No season settings found for Quick Draft.');
+      }
+    } catch (e) {
+      console.error('Quick Draft backend insert failed', e);
+    } finally {
+      setIsDrafting(false);
+    }
+  };
+
   return (
     <div className="w-full">
+      {/* Conflict Banner */}
+      {hasConflicts && (
+        <div className="bg-status-error-bg backdrop-blur-md text-white p-4 border border-status-error rounded-xl mb-6 flex flex-col gap-2 shadow-[0_0_30px_rgba(239,68,68,0.3)] animate-fadeIn">
+          <div className="flex items-center gap-2 font-bold uppercase tracking-widest text-status-error">
+            <ShieldAlert size={20} />
+            Conflict Detected
+          </div>
+          <div className="flex flex-col gap-2">
+            {conflicts.map((c, i) => (
+              <div
+                key={i}
+                className="font-mono text-sm bg-black/20 p-3 rounded-lg border border-status-error/30 flex items-center justify-between"
+              >
+                <span className="text-text-secondary">{c.message}</span>
+                <span
+                  className={`text-xs px-2 py-0.5 rounded-full font-semibold ${
+                    c.severity === 'error'
+                      ? 'bg-status-error/20 text-status-error'
+                      : 'bg-status-warning/20 text-status-warning'
+                  }`}
+                >
+                  {c.type}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Quick Draft Button */}
+      <div className="flex justify-end mb-4">
+        <button
+          onClick={handleQuickDraft}
+          disabled={isDrafting}
+          className="glass-button flex items-center gap-2 text-sm"
+        >
+          <Zap size={16} />
+          {isDrafting ? 'Drafting...' : 'Quick Draft'}
+        </button>
+      </div>
       <DndContext
         sensors={sensors}
         collisionDetection={closestCorners}
