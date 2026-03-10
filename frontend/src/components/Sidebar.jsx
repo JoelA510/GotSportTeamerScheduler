@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   LayoutDashboard,
   Upload,
@@ -8,8 +8,11 @@ import {
   Trophy,
   LogOut,
   Settings,
+  ChevronDown,
+  Building2,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { useOrganization } from '../contexts/OrganizationContext.jsx';
 import { NavLink } from 'react-router-dom';
 
 const navItems = [
@@ -29,6 +32,17 @@ const navItems = [
 
 export default function Sidebar({ isOpen, toggleSidebar }) {
   const { signOut, isAdmin, isCoach } = useAuth();
+  const {
+    organizations,
+    currentOrganization,
+    availableSeasons,
+    currentSeasonSetting,
+    switchOrganization,
+    switchSeason,
+  } = useOrganization();
+
+  const [isOrgMenuOpen, setIsOrgMenuOpen] = useState(false);
+  const [isSeasonMenuOpen, setIsSeasonMenuOpen] = useState(false);
 
   return (
     <>
@@ -62,21 +76,117 @@ export default function Sidebar({ isOpen, toggleSidebar }) {
           </div>
         </div>
 
+        {/* Context Selectors */}
+        <div className="px-4 py-4 border-b border-border-subtle space-y-3">
+          {/* Organization Selector */}
+          <div className="relative">
+            <div className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-1.5 px-2 flex items-center gap-1.5">
+              <Building2 size={12} />
+              Active Organization
+            </div>
+            <button
+              onClick={() => {
+                setIsOrgMenuOpen(!isOrgMenuOpen);
+                setIsSeasonMenuOpen(false);
+              }}
+              className={`w-full flex items-center justify-between bg-bg-surface hover:bg-bg-surface-hover border rounded-lg px-3 py-2 text-sm text-text-primary transition-colors ${
+                isOrgMenuOpen ? 'border-brand-400/50' : 'border-border-subtle'
+              }`}
+            >
+              <span className="font-medium truncate">
+                {currentOrganization?.name || 'Select Organization'}
+              </span>
+              <ChevronDown
+                size={16}
+                className={`text-text-muted transition-transform ${isOrgMenuOpen ? 'rotate-180' : ''}`}
+              />
+            </button>
+
+            {isOrgMenuOpen && organizations.length > 0 && (
+              <div className="absolute top-full left-0 right-0 mt-1 bg-bg-surface border border-border-subtle rounded-lg shadow-xl overflow-hidden z-50 backdrop-blur-xl">
+                {organizations.map((member) => {
+                  const org = member.organizations;
+                  const isSelected = currentOrganization?.id === org?.id;
+                  return (
+                    <button
+                      key={member.organization_id}
+                      onClick={() => {
+                        switchOrganization(member.organization_id);
+                        setIsOrgMenuOpen(false);
+                      }}
+                      className={`w-full text-left px-3 py-2 text-sm transition-colors ${
+                        isSelected
+                          ? 'bg-brand-glow text-brand-400'
+                          : 'text-text-secondary hover:bg-bg-surface-hover hover:text-text-primary'
+                      }`}
+                    >
+                      {org?.name || member.organization_id}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Season Selector */}
+          <div className="relative">
+            <div className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-1.5 px-2 flex items-center gap-1.5">
+              <Calendar size={12} />
+              Active Season
+            </div>
+            <button
+              onClick={() => {
+                setIsSeasonMenuOpen(!isSeasonMenuOpen);
+                setIsOrgMenuOpen(false);
+              }}
+              className={`w-full flex items-center justify-between bg-bg-surface hover:bg-bg-surface-hover border rounded-lg px-3 py-2 text-sm text-text-primary transition-colors ${
+                isSeasonMenuOpen ? 'border-brand-400/50' : 'border-border-subtle'
+              }`}
+            >
+              <span className="font-medium truncate">
+                {currentSeasonSetting?.name || 'No seasons'}
+              </span>
+              <ChevronDown
+                size={16}
+                className={`text-text-muted transition-transform ${isSeasonMenuOpen ? 'rotate-180' : ''}`}
+              />
+            </button>
+
+            {isSeasonMenuOpen && availableSeasons.length > 0 && (
+              <div className="absolute top-full left-0 right-0 mt-1 bg-bg-surface border border-border-subtle rounded-lg shadow-xl overflow-hidden z-50 backdrop-blur-xl">
+                {availableSeasons.map((season) => {
+                  const isSelected = currentSeasonSetting?.id === season.id;
+                  return (
+                    <button
+                      key={season.id}
+                      onClick={() => {
+                        switchSeason(season);
+                        setIsSeasonMenuOpen(false);
+                      }}
+                      className={`w-full text-left px-3 py-2 text-sm transition-colors ${
+                        isSelected
+                          ? 'bg-brand-glow text-brand-400'
+                          : 'text-text-secondary hover:bg-bg-surface-hover hover:text-text-primary'
+                      }`}
+                    >
+                      {season.name || season.id}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+
         {/* Navigation */}
         <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
           {navItems
             .filter((item) => {
-              // Admin sees everything
               if (isAdmin) return true;
-
-              // Coach restrictions
               if (isCoach) {
                 const allowed = ['dashboard', 'teams', 'schedule-practice', 'schedule-game'];
                 return allowed.includes(item.id);
               }
-
-              // Default / Fallback (e.g. unauthenticated or other roles?)
-              // Usually sidebar only shows if auth, but safe fallback:
               return ['dashboard'].includes(item.id);
             })
             .map((item) => (
@@ -128,3 +238,4 @@ export default function Sidebar({ isOpen, toggleSidebar }) {
     </>
   );
 }
+
