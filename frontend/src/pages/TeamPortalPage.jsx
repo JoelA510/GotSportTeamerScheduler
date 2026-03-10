@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
+import PropTypes from 'prop-types';
 import { useTeamPortal } from '../hooks/useTeamPortal.js';
 import { Calendar, Users, MessageSquare, Send, Check, X, Minus, MapPin, Clock } from 'lucide-react';
 import LoadingScreen from '../components/LoadingScreen.jsx';
@@ -226,3 +227,9 @@ function RsvpButton({ active, type, onClick }) {
     </button>
   );
 }
+
+RsvpButton.propTypes = {
+  active: PropTypes.bool.isRequired,
+  type: PropTypes.oneOf(['attending', 'declined', 'maybe']).isRequired,
+  onClick: PropTypes.func.isRequired
+};

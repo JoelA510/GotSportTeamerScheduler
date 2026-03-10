@@ -4,7 +4,7 @@ Feature: Team Communication and Portal
   So that I can view the schedule, RSVP for my children, and chat with the team
 
   Background:
-    Given I am logged into SquadLogic as a "parent"
+    Given I am logged into SquadLogic as an "parent"
     And I have an organization labeled "Test Org"
     And my child "Alex" is on the "Tigers" team
     And my child "Jamie" is also on the "Tigers" team
@@ -21,6 +21,6 @@ Feature: Team Communication and Portal
 
   Scenario: Sending and receiving real-time chat messages
     When I type "Will we have snacks?" into the chat input
-    And I click the "Send Message" button
+    And I send the messenger chat
     Then the message "Will we have snacks?" should appear in the team chat feed immediately
     And the message should be broadcasted via Supabase Realtime to other connected clients
