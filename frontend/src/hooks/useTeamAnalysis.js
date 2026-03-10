@@ -1,12 +1,22 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useImport } from '../contexts/ImportContext.jsx';
+import { useOrganization } from '../contexts/OrganizationContext.jsx';
 
 export function useTeamAnalysis() {
   const { importedPlayers } = useImport();
+  const { currentOrganization, currentSeasonSetting } = useOrganization();
   const [programs, setPrograms] = useState([]);
   const [validationErrors, setValidationErrors] = useState([]);
   const [configs, setConfigs] = useState({}); // { programId: { targetTeamSize: 10, ... } }
   const [selectedProgramId, setSelectedProgramId] = useState(null);
+
+  // Clear-and-refetch: reset state when org or season changes
+  useEffect(() => {
+    setPrograms([]);
+    setValidationErrors([]);
+    setConfigs({});
+    setSelectedProgramId(null);
+  }, [currentOrganization?.id, currentSeasonSetting?.id]);
 
   const processPrograms = (players) => {
     const programMap = {};

@@ -52,6 +52,16 @@ export function useTeamPortal(teamId) {
   const { session } = useAuth();
   const userId = session?.user?.id;
 
+  // Clear-and-refetch: reset state when org or team context changes
+  useEffect(() => {
+    setTeam(null);
+    setPlayers([]);
+    setEvents([]);
+    setRsvps([]);
+    setMessages([]);
+    setError(null);
+  }, [currentOrganization?.id, teamId]);
+
   const fetchTeamData = useCallback(async () => {
     if (!currentOrganization?.id || !teamId || !userId) return;
 
