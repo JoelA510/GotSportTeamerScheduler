@@ -1,6 +1,53 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+@theme {
+  /* Colors — mapped to CSS variables defined in :root / [data-theme] below */
+  --color-bg-app: var(--color-bg-app);
+  --color-bg-surface: var(--color-bg-surface);
+  --color-bg-surface-hover: var(--color-bg-surface-hover);
+  --color-bg-glass: var(--color-bg-glass);
+
+  --color-border-subtle: var(--color-border-subtle);
+  --color-border-highlight: var(--color-border-highlight);
+
+  --color-text-primary: var(--color-text-primary);
+  --color-text-secondary: var(--color-text-secondary);
+  --color-text-muted: var(--color-text-muted);
+  --color-text-accent: var(--color-text-accent);
+
+  --color-brand: var(--color-primary);
+  --color-brand-400: var(--color-primary-400);
+  --color-brand-600: var(--color-primary-600);
+  --color-brand-glow: var(--color-primary-glow);
+
+  --color-status-success: var(--color-status-success);
+  --color-status-warning: var(--color-status-warning);
+  --color-status-error: var(--color-status-error);
+
+  /* Font Family */
+  --font-display: 'Outfit', sans-serif;
+
+  /* Animations */
+  --animate-fadeIn: fadeIn 0.4s ease-out forwards;
+  --animate-slideUp: slideUp 0.5s ease-out forwards;
+  --animate-pulseGlow: pulseGlow 2s infinite;
+}
+
+@keyframes fadeIn {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+@keyframes slideUp {
+  0% { opacity: 0; transform: translateY(10px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulseGlow {
+  0% { box-shadow: 0 0 0 0 rgba(56, 189, 248, 0.4); }
+  70% { box-shadow: 0 0 0 10px rgba(56, 189, 248, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(56, 189, 248, 0); }
+}
 
 :root {
   /* Shared Spacing (4px grid) */
@@ -252,42 +299,6 @@ a {
 }
 
 /* --- ANIMATIONS --- */
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
-
-  to {
-    opacity: 1;
-  }
-}
-
-@keyframes slideUp {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes pulseGlow {
-  0% {
-    box-shadow: 0 0 0 0 rgba(56, 189, 248, 0.4);
-  }
-
-  70% {
-    box-shadow: 0 0 0 10px rgba(56, 189, 248, 0);
-  }
-
-  100% {
-    box-shadow: 0 0 0 0 rgba(56, 189, 248, 0);
-  }
-}
-
 @keyframes shimmer {
   0% {
     background-position: -200% 0;

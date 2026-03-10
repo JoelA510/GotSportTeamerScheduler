@@ -14,7 +14,7 @@
     "frontend:dev": "vite",
     "frontend:build": "node scripts/runViteWithPersistenceEndpoint.js build",
     "frontend:preview": "node scripts/runViteWithPersistenceEndpoint.js preview",
-    "typecheck": "tsc -p jsconfig.json"
+    "typecheck": "tsc --noEmit"
   },
   "directories": {
     "doc": "docs"
@@ -34,8 +34,8 @@
     "lucide-react": "^0.556.0",
     "papaparse": "^5.5.3",
     "prop-types": "^15.8.1",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
     "react-router-dom": "^7.10.1",
     "recharts": "^3.8.0"
   },
@@ -45,8 +45,10 @@
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.0",
     "@types/node": "^25.4.0",
-    "@vitejs/plugin-react": "^4.3.1",
-    "autoprefixer": "^10.4.22",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@tailwindcss/vite": "^4.1.14",
+    "@vitejs/plugin-react": "^5.0.4",
     "eslint": "^9.39.2",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-prettier": "^5.5.4",
@@ -56,9 +58,10 @@
     "playwright-bdd": "^8.4.2",
     "postcss": "^8.5.6",
     "prettier": "^3.7.4",
-    "tailwindcss": "^3.4.17",
+    "tailwindcss": "^4.1.14",
     "typescript": "^5.9.3",
-    "vite": "^5.4.0",
+    "typescript-eslint": "^8.24.1",
+    "vite": "^6.2.0",
     "vitest": "^4.0.15"
   },
   "private": true,

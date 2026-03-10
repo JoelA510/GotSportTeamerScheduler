@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import tailwindcss from '@tailwindcss/vite';
 import path from 'path';
 
 export default defineConfig({
@@ -12,7 +13,7 @@ export default defineConfig({
       '@squadlogic/core': path.resolve(__dirname, './packages/core/src'),
     },
   },
-  plugins: [react()],
+  plugins: [react(), tailwindcss()],
   build: {
     outDir: '../dist',
     emptyOutDir: true,

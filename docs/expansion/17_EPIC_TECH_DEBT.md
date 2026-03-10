@@ -8,12 +8,12 @@ These are **non-blocking** upgrades identified during the BUILDTWO integration a
 
 ## Items
 
-| Item | Current | Target | Effort | Notes |
-|---|---|---|---|---|
-| Vite | 5.x | 6.x | Low | Breaking changes are minimal; mainly config format |
-| React | 18.x | 19.x | Medium | Server components not relevant (SPA), but `use()` hook and compiler are beneficial |
-| Tailwind CSS | 3.x | 4.x (CSS-first) | High | Requires `@theme` migration, dropping `tailwind.config.js` |
-| TypeScript | None | Incremental | High | BUILDTWO used TS-first; adopt incrementally via `.ts` for new hooks/utils |
+| Item | Current | Target | Effort | Status | Notes |
+|---|---|---|---|---|---|
+| Vite | 5.x | 6.x | Low | [PROCESSED] | Upgrade verified by build |
+| React | 18.x | 19.x | Medium | [PROCESSED] | Types added, build verified |
+| Tailwind CSS | 3.x | 4.x (CSS-first) | High | [PROCESSED] | @theme migration, config deleted |
+| TypeScript | None | Incremental | High | [PROCESSED] | tsc --noEmit, tsconfig.json |
 
 ## Prerequisites
 
