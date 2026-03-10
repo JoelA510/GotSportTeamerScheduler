@@ -1,4 +1,4 @@
-import { validateSlot } from './utils/validation.js';
+import { SlotSchema, TeamSchema } from './schemas/index.js';
 
 /** @typedef {import('./types.js').Team} Team */
 /** @typedef {import('./types.js').PracticeSlot} PracticeSlot */
@@ -136,15 +136,7 @@ export function schedulePractices({
   const weights = sanitizeScoringWeights(scoringWeights);
 
   const sanitizedTeams = teams.map((team) => {
-    if (!team || typeof team !== 'object') {
-      throw new TypeError('each team must be an object');
-    }
-    if (!team.id) {
-      throw new TypeError('each team requires an id');
-    }
-    if (!team.division) {
-      throw new TypeError(`team ${team.id} is missing a division`);
-    }
+    TeamSchema.parse(team);
 
     return {
       id: team.id,
@@ -160,18 +152,7 @@ export function schedulePractices({
   const slotAssignmentsMap = new Map();
 
   const sanitizedSlots = effectiveSlots.map((slot) => {
-    if (!slot || typeof slot !== 'object') {
-      throw new TypeError('each slot must be an object');
-    }
-    if (!slot.id) {
-      throw new TypeError('each slot requires an id');
-    }
-    if (typeof slot.capacity !== 'number' || slot.capacity < 0) {
-      throw new TypeError(`slot ${slot.id} must define a non-negative capacity`);
-    }
-    if (!slot.start || !slot.end) {
-      throw new TypeError(`slot ${slot.id} must define start and end timestamps`);
-    }
+    SlotSchema.parse(slot);
 
     const slotRecord = {
       id: slot.id,
@@ -193,7 +174,7 @@ export function schedulePractices({
 
   const slotsById = new Map();
   for (const slot of sanitizedSlots) {
-    validateSlot(slot);
+    SlotSchema.parse(slot);
     if (slotsById.has(slot.id)) {
       throw new Error(`duplicate slot id detected: ${slot.id}`);
     }

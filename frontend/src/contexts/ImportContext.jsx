@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { supabase } from '../utils/supabaseClient.js';
+import { supabase } from '../lib/supabaseClient.js';
 import Papa from 'papaparse';
 
 const ImportContext = createContext();

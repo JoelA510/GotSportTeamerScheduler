@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useTheme } from '../contexts/ThemeContext.jsx';
-import { supabase } from '../utils/supabaseClient.js';
+import { supabase } from '../lib/supabaseClient.js';
 import TeamOverviewPanel from '../components/TeamOverviewPanel.jsx';
 import TeamPersistencePanel from '../components/TeamPersistencePanel.jsx';
 import Button from '../components/ui/Button.jsx';

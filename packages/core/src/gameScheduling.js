@@ -1,4 +1,4 @@
-import { validateSlot } from './utils/validation.js';
+import { SlotSchema, TeamSchema } from './schemas/index.js';
 
 /** @typedef {import('./types.js').Team} Team */
 /** @typedef {import('./types.js').GameSlot} GameSlot */
@@ -205,15 +205,7 @@ function indexTeams(teams) {
 
   const teamsById = new Map();
   for (const team of teams) {
-    if (!team || typeof team !== 'object') {
-      throw new TypeError('each team must be an object');
-    }
-    if (!team.id) {
-      throw new TypeError('each team requires an id');
-    }
-    if (!team.division) {
-      throw new TypeError(`team ${team.id} is missing a division`);
-    }
+    TeamSchema.parse(team);
 
     teamsById.set(team.id, {
       id: team.id,
@@ -235,7 +227,7 @@ function indexSlots(slots) {
   const slotRecords = new Map();
 
   for (const slot of slots) {
-    validateSlot(slot);
+    SlotSchema.parse(slot);
 
     if (
       typeof slot.weekIndex !== 'number' ||

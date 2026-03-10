@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../utils/supabaseClient.js';
+import { supabase } from '../lib/supabaseClient.js';
 import WorkflowStep from './WorkflowStep.jsx';
 import ImportPanel from './ImportPanel.jsx';
 import TeamOverviewPanel from './TeamOverviewPanel.jsx';

@@ -3,7 +3,7 @@ import PropTypes from 'prop-types';
 import { useAuth } from '../contexts/AuthContext';
 import { formatDateTime } from '../utils/formatters.js';
 import { getPersistenceEndpoint, triggerTeamPersistence } from '../utils/teamPersistenceClient.js';
-import { applyOverridesToSnapshot } from '../utils/applyOverridesToSnapshot.js';
+import { applyOverridesToSnapshot } from '../features/teaming/applyOverridesToSnapshot.js';
 import PersistencePanel from './PersistencePanel';
 import PersistenceOverridesList from './PersistenceOverridesList';
 import PersistenceHistoryList from './PersistenceHistoryList';

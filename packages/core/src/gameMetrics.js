@@ -37,12 +37,7 @@ export function evaluateGameSchedule({
 
   const teamsById = new Map();
   for (const team of teams) {
-    if (!team || typeof team !== 'object') {
-      throw new TypeError('each team must be an object');
-    }
-    if (!team.id) {
-      throw new TypeError('each team requires an id');
-    }
+    TeamSchema.parse(team);
     teamsById.set(team.id, {
       id: team.id,
       division: team.division ?? null,
@@ -70,7 +65,7 @@ export function evaluateGameSchedule({
   const teamGameLoad = new Map();
 
   for (const assignment of assignments) {
-    validateAssignment(assignment);
+    AssignmentSchema.parse(assignment);
 
     const start = new Date(assignment.start);
     const end = new Date(assignment.end);
@@ -326,7 +321,7 @@ function analyzeSharedSlotUsage(sharedSlotUsage) {
   return { sharedSlotSummaries, sharedFieldDistribution, imbalanceWarnings };
 }
 
-import { validateAssignment } from './utils/validation.js';
+import { AssignmentSchema, TeamSchema } from './schemas/index.js';
 
 function validateBye(bye) {
   if (!bye || typeof bye !== 'object') {

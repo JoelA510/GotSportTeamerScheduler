@@ -1,5 +1,5 @@
 import { serve } from 'https://deno.land/std@0.223.0/http/server.ts';
-import { z } from 'https://deno.land/x/zod@v3.22.4/mod.ts';
+import { z } from 'zod';
 import {
   createClient,
   type SupabaseClient,
@@ -10,65 +10,7 @@ import {
   DEFAULT_ALLOWED_ROLES,
   parseAllowedRolesEnv,
 } from '../../../packages/core/src/teamPersistenceEdgeConfig.js';
-
-type HttpHandler = (request: Request) => Response | Promise<Response>;
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
-
-function jsonResponse(payload: unknown, status: number = 200): Response {
-  return new Response(JSON.stringify(payload), {
-    status,
-    headers: {
-      'Content-Type': 'application/json',
-      ...corsHeaders,
-    },
-  });
-}
-
-async function getUserFromRequest(
-  request: Request,
-  supabaseClient: SupabaseClient
-): Promise<User | null> {
-  const authHeader = request.headers.get('authorization') ?? '';
-  const token = authHeader.toLowerCase().startsWith('bearer ')
-    ? authHeader.slice('bearer '.length)
-    : null;
-
-  if (!token) {
-    return null;
-  }
-
-  const { data, error } = await supabaseClient.auth.getUser(token);
-
-  if (error) {
-    console.error('Failed to retrieve user from access token', error.message ?? error);
-    return null;
-  }
-
-  return data?.user ?? null;
-}
-
-const supabaseUrl = Deno.env.get('SUPABASE_URL');
-const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-const allowedRoles = parseAllowedRolesEnv(Deno.env.get('TEAM_PERSISTENCE_ALLOWED_ROLES'), {
-  fallbackRoles: DEFAULT_ALLOWED_ROLES,
-});
-
-const PersistencePayloadSchema = z.object({
-  snapshot: z.object({
-    payload: z.object({
-      teamRows: z.array(z.object({ id: z.string() }).passthrough()),
-      teamPlayerRows: z.array(
-        z.object({ team_id: z.string(), player_id: z.string() }).passthrough()
-      ),
-    }),
-  }),
-  overrides: z.array(z.unknown()).optional(),
-  runMetadata: z.record(z.unknown()).optional(),
-});
+import { PersistencePayloadSchema } from '../../../packages/core/src/schemas/index.js';
 
 let handler: HttpHandler;
 

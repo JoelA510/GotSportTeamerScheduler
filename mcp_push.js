@@ -39,28 +39,68 @@ const requests = [
   {
     jsonrpc: '2.0',
     method: 'notifications/initialized',
-  },
-  {
-    jsonrpc: '2.0',
-    id: 2,
-    method: 'tools/call',
-    params: {
-      name: 'push_files',
-      arguments: {
-        owner: 'JoelA510',
-        repo: 'SquadLogic',
-        branch: 'main',
-        files: filesToPush,
-        message: 'Push current updates'
-      }
-    }
   }
 ];
 
 let stdoutBuf = '';
+
+async function runBatches() {
+  const BATCH_SIZE = 10; // Even smaller batch size to be safe
+  for (let i = 0; i < filesToPush.length; i += BATCH_SIZE) {
+    const batch = filesToPush.slice(i, i + BATCH_SIZE);
+    console.log(`Sending batch ${Math.floor(i / BATCH_SIZE) + 1} of ${Math.ceil(filesToPush.length / BATCH_SIZE)}...`);
+    
+    await new Promise((resolve, reject) => {
+      const requestId = 100 + i;
+      const pushRequest = {
+        jsonrpc: '2.0',
+        id: requestId,
+        method: 'tools/call',
+        params: {
+          name: 'push_files',
+          arguments: {
+            owner: 'JoelA510',
+            repo: 'SquadLogic',
+            branch: 'main',
+            files: batch,
+            message: `Phase 3 updates (batch ${Math.floor(i / BATCH_SIZE) + 1})`
+          }
+        }
+      };
+
+      const handleResponse = (msg) => {
+        try {
+          const parsed = JSON.parse(msg);
+          if (parsed.id === requestId) {
+            if (parsed.error) {
+              console.error(`Batch ${Math.floor(i / BATCH_SIZE) + 1} failed:`, JSON.stringify(parsed.error, null, 2));
+              // Continue anyway? Or stop? Let's just log and continue for now.
+              resolve();
+            } else {
+              console.log(`Batch ${Math.floor(i / BATCH_SIZE) + 1} succeeded.`);
+              resolve();
+            }
+          }
+        } catch (e) {}
+      };
+
+      const onData = (chunk) => {
+        let msgs = (stdoutBuf + chunk.toString()).split('\n');
+        stdoutBuf = msgs.pop();
+        for (const m of msgs) handleResponse(m);
+      };
+
+      serverProc.stdout.on('data', onData);
+      serverProc.stdin.write(JSON.stringify(pushRequest) + '\n');
+    });
+  }
+  console.log("All batches finished.");
+  process.exit(0);
+}
+
 serverProc.stdin.write(JSON.stringify(requests[0]) + '\n');
 
-serverProc.stdout.on('data', chunk => {
+serverProc.stdout.on('data', function initHandler(chunk) {
   stdoutBuf += chunk.toString();
   let msgs = stdoutBuf.split('\n');
   stdoutBuf = msgs.pop();
@@ -71,16 +111,13 @@ serverProc.stdout.on('data', chunk => {
       const parsed = JSON.parse(msg);
       if (parsed.id === 1) {
         serverProc.stdin.write(JSON.stringify(requests[1]) + '\n');
-        serverProc.stdin.write(JSON.stringify(requests[2]) + '\n');
-        console.log("Sent push request with", filesToPush.length, "files");
-      } else if (parsed.id === 2) {
-        console.log("TOOL RESPONSE:", JSON.stringify(parsed, null, 2));
-        process.exit(0);
+        serverProc.stdout.removeListener('data', initHandler);
+        runBatches();
       }
     } catch(e) {}
   }
 });
 
 serverProc.stderr.on('data', d => {
-  console.error('stderr:', d.toString());
+  // Silence noise
 });

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '../utils/supabaseClient';
+import { supabase } from '../lib/supabaseClient';
 
 export function useTeamPersistence() {
   const [persistenceSnapshot, setPersistenceSnapshot] = useState({

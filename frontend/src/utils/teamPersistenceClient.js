@@ -1,4 +1,4 @@
-import { ApiClient } from './apiClient.js';
+import { ApiClient } from '../lib/apiClient.js';
 import { API_BASE_URL } from '../config.js';
 
 function normalizeEndpoint(baseUrl) {

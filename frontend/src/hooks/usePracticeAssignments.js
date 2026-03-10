@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '../utils/supabaseClient.js';
+import { supabase } from '../lib/supabaseClient.js';
 import { mapKeysToCamelCase } from '../utils/caseConverters.js';
 
 export function usePracticeAssignments(runId) {
