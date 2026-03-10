@@ -1,13 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient.js';
 import { useOrganization } from '../contexts/OrganizationContext.jsx';
-import { useAuth } from '../contexts/AuthContext.jsx';
-import { PERMISSIONS } from '../constants/permissions.js';
+import { PERMISSIONS, hasPermission } from '../constants/permissions.js';
 import { Trophy, CheckCircle2 } from 'lucide-react';
 
 export default function LeagueStandings() {
-  const { currentOrganization, permissions } = useOrganization();
-  const { } = useAuth(); // or completely remove if useAuth is also unused
+  const { currentOrganization, orgMember } = useOrganization();
 
   const [standings, setStandings] = useState([]);
   const [games, setGames] = useState([]);
@@ -15,7 +13,7 @@ export default function LeagueStandings() {
   const [error, setError] = useState(null);
   const [updatingGameId, setUpdatingGameId] = useState(null);
 
-  const canEditScores = permissions.includes(PERMISSIONS.MANAGE_SCHEDULE) || true; // Currently allowing coaches/admins if they can see it
+  const canEditScores = hasPermission(orgMember?.role, PERMISSIONS.MANAGE_SCHEDULE);
 
   useEffect(() => {
     async function loadData() {

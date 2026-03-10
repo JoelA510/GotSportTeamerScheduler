@@ -100,52 +100,18 @@ export default function RegistrationFlow() {
     setSubmitting(true);
     setError(null);
     try {
-      let finalPlayerId = selectedPlayerId;
+      // Use the new atomic RPC for registration
+      const { data: regId, error: rpcErr } = await supabase.rpc('submit_registration', {
+        p_organization_id: form.organization_id,
+        p_form_id: form.id,
+        p_profile_id: userId,
+        p_responses: responses,
+        p_player_id: isCreatingNewPlayer ? null : selectedPlayerId,
+        p_first_name: isCreatingNewPlayer ? newPlayerName.first : null,
+        p_last_name: isCreatingNewPlayer ? newPlayerName.last : null,
+      });
 
-      // Ensure creation of new player and profile linker if applicable
-      if (isCreatingNewPlayer) {
-        const { data: newPlayer, error: pErr } = await supabase
-          .from('players')
-          .insert([
-            {
-              organization_id: form.organization_id,
-              first_name: newPlayerName.first,
-              last_name: newPlayerName.last,
-            },
-          ])
-          .select()
-          .single();
-        if (pErr) throw pErr;
-        finalPlayerId = newPlayer.id;
-
-        const { error: linkErr } = await supabase.from('profile_players').insert([
-          {
-            profile_id: userId,
-            player_id: finalPlayerId,
-            organization_id: form.organization_id,
-          },
-        ]);
-        if (linkErr) throw linkErr;
-      }
-
-      // Create Registration Record
-      const { error: regErr } = await supabase.from('registrations').insert([
-        {
-          organization_id: form.organization_id,
-          form_id: form.id,
-          player_id: finalPlayerId,
-          profile_id: userId,
-          responses,
-          waiver_signed: true,
-          waiver_signed_at: new Date().toISOString(),
-        },
-      ]);
-
-      if (regErr) {
-        if (regErr.code === '23505')
-          throw new Error('You have already registered this player for this form.');
-        throw regErr;
-      }
+      if (rpcErr) throw rpcErr;
 
       setSuccess(true);
     } catch (err) {

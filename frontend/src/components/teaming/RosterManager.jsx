@@ -46,8 +46,12 @@ export function SortablePlayer({ player }) {
           <GripVertical size={16} />
         </div>
         <div className="flex flex-col">
-          <span className="font-medium text-sm text-text-primary">{player.name}</span>
-          <span className="text-xs text-text-muted">Skill: {player.skill || 'Unrated'}</span>
+          <span className="font-medium text-sm text-text-primary">
+            {player.name || `${player.first_name || ''} ${player.last_name || ''}`.trim() || 'Unknown Player'}
+          </span>
+          <span className="text-xs text-text-muted">
+            Skill: {player.skill || player.skillRating || player.skill_tier || 'Unrated'}
+          </span>
         </div>
       </div>
       <div className="bg-bg-surface-hover p-1.5 rounded-full text-text-muted">

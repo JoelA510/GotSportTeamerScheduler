@@ -7,6 +7,7 @@
  */
 
 import { TEAM_GENERATION } from './constants.js';
+import { PlayerSchema, TeamSchema } from './schemas/index.js';
 
 /** @typedef {import('./types.js').Player} Player */
 /** @typedef {import('./types.js').Team} Team */
@@ -93,15 +94,7 @@ export function generateTeams({ players, divisionConfigs, random = Math.random, 
   const playersByDivision = new Map();
   const playerDivisions = new Map();
   for (const player of players) {
-    if (!player || typeof player !== 'object') {
-      throw new TypeError('each player must be an object');
-    }
-    if (!player.id) {
-      throw new TypeError('each player requires an id');
-    }
-    if (!player.division) {
-      throw new TypeError(`player ${player.id} is missing a division`);
-    }
+    PlayerSchema.parse(player);
 
     const previousDivision = playerDivisions.get(player.id);
     if (previousDivision) {
@@ -433,7 +426,7 @@ function buildTeamsForDivision({ division, players, maxRosterSize, divisionConfi
     if (!assigned) {
       overflow.push({
         players: unit,
-        reason: 'coach-capacity',
+        reason: TEAM_GENERATION.REASON_CoachCapacity,
         metadata: { coachId },
       });
     }
@@ -463,17 +456,7 @@ function buildTeamsForDivision({ division, players, maxRosterSize, divisionConfi
       unitSkillTotal: skillTotal,
       team,
       maxRosterSize,
-      reason: 'balancing assignment', // Keeping this as is for now or add to constants if needed?
-      // Wait, I should add REASON_Balancing to constants if I want to be thorough.
-      // But for now I'll just leave it or use REASON_Random if appropriate?
-      // 'balancing assignment' seems specific. I'll add it to constants in next step if I want to be perfect,
-      // or just assume the user task didn't ask for EVERYTHING.
-      // Let's stick to the ones I defined.
-      // Actually, let's execute the replacement for consistency if I can.
-      // I defined REASON_Random, REASON_Recovery etc.
-      // Let's restart this tool call to add REASON_Balancing to constants first?
-      // No, I'll just use the string for now to avoid context switch overhead,
-      // or better: I will add it to constants.js in minimal edit.
+      reason: TEAM_GENERATION.REASON_Balancing,
     });
   }
 
@@ -643,7 +626,7 @@ function summarizeOverflow(entries) {
     const playerCount = Array.isArray(entry.players) ? entry.players.length : 0;
     summary.totalPlayers += playerCount;
 
-    const reason = entry.reason ?? 'unknown';
+    const reason = entry.reason ?? TEAM_GENERATION.REASON_Unknown;
     if (!summary.byReason[reason]) {
       summary.byReason[reason] = { units: 0, players: 0 };
     }

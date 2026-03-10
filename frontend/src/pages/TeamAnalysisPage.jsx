@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useTheme } from '../contexts/ThemeContext.jsx';
 import { supabase } from '../lib/supabaseClient.js';
 import TeamOverviewPanel from '../components/TeamOverviewPanel.jsx';
@@ -74,46 +74,41 @@ export default function TeamAnalysisPage() {
     }
   };
 
-  // Mock teams for edit mode with players array for drag and drop
-  const [teams] = useState([
-    {
-      id: '1',
-      name: 'Team A',
-      division: 'U10 Boys',
-      headCoach: 'Mike Smith',
-      assistants: ['Sarah Jones'],
-      players: [
-        { id: 'p1', name: 'Alex Johnson', skill: 'novice' },
-        { id: 'p2', name: 'Brian Miller', skill: 'advanced' },
-        { id: 'p3', name: 'Charlie Davis', skill: 'developing' },
-      ],
-    },
-    {
-      id: '2',
-      name: 'Team B',
-      division: 'U10 Boys',
-      headCoach: 'John Doe',
-      assistants: [],
-      players: [
-        { id: 'p4', name: 'David Wilson', skill: 'novice' },
-        { id: 'p5', name: 'Ethan Moore', skill: 'developing' },
-      ],
-    },
-    {
-      id: '3',
-      name: 'Team C',
-      division: 'U12 Girls',
-      headCoach: 'Jane Doe',
-      assistants: ['Bill Gates', 'Steve Jobs'],
-      players: [
-        { id: 'p6', name: 'Fiona Taylor', skill: 'advanced' },
-        { id: 'p7', name: 'Grace Anderson', skill: 'advanced' },
-        { id: 'p8', name: 'Hannah Thomas', skill: 'novice' },
-      ],
-    },
-  ]);
-
   const selectedProgram = programs.find((p) => p.id === selectedProgramId);
+
+  // Map persistence snapshot to nested structure for RosterManager
+  const mappedTeams = useMemo(() => {
+    const { teamRows = [], teamPlayerRows = [] } = persistenceSnapshot.payload || {};
+    const rawPlayers = importedData?.data || [];
+
+    return teamRows.map((teamRow) => {
+      const players = teamPlayerRows
+        .filter((tp) => tp.team_id === teamRow.id)
+        .map((tp) => {
+          // Join with imported data to get name and skill
+          const playerDetails = rawPlayers.find(
+            (rp, idx) => rp.id === tp.player_id || String(idx) === String(tp.player_id)
+          );
+
+          return {
+            id: tp.player_id,
+            name: playerDetails
+              ? `${playerDetails['First Name'] || playerDetails['first_name']} ${playerDetails['Last Name'] || playerDetails['last_name']}`
+              : 'Unknown Player',
+            skill: playerDetails?.['Skill Level'] || playerDetails?.['skill_tier'] || 'developing',
+          };
+        });
+
+      return {
+        id: teamRow.id,
+        name: teamRow.name,
+        players,
+      };
+    });
+  }, [persistenceSnapshot.payload, importedData]);
+
+  // Use real data from the dashboard hook if available, otherwise empty array
+  const activeTeams = mappedTeams.length > 0 ? mappedTeams : (team?.teams || []);
 
   return (
     <div className="animate-fadeIn space-y-8">
@@ -204,7 +199,7 @@ export default function TeamAnalysisPage() {
                 Drag and drop players between teams to manually override automated assignments.
               </p>
             </div>
-            <RosterManager initialTeams={teams} />
+            <RosterManager initialTeams={activeTeams} />
           </div>
         </div>
       ) : (

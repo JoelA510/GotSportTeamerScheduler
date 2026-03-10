@@ -9,6 +9,7 @@ import { ThemeProvider } from './contexts/ThemeContext.jsx';
 import { OrganizationProvider } from './contexts/OrganizationContext.jsx';
 import LoadingScreen from './components/LoadingScreen.jsx';
 import ProtectedRoute from './components/ProtectedRoute.jsx';
+import ErrorBoundary from './components/ErrorBoundary.jsx';
 import { PERMISSIONS } from './constants/permissions.js';
 
 // Layouts
@@ -111,7 +112,9 @@ function App() {
         <OrganizationProvider>
           <ImportProvider>
             <ThemeProvider>
-              <AppContent />
+              <ErrorBoundary>
+                <AppContent />
+              </ErrorBoundary>
             </ThemeProvider>
           </ImportProvider>
         </OrganizationProvider>

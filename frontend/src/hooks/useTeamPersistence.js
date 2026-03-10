@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabaseClient';
+import { supabase } from '../lib/supabaseClient.js';
 
 export function useTeamPersistence() {
   const [persistenceSnapshot, setPersistenceSnapshot] = useState({
@@ -9,6 +9,10 @@ export function useTeamPersistence() {
     lastSyncedAt: null,
     preparedTeamRows: 0,
     preparedPlayerRows: 0,
+    payload: {
+      teamRows: [],
+      teamPlayerRows: []
+    }
   });
   const [loading, setLoading] = useState(true);
 
@@ -46,7 +50,11 @@ export function useTeamPersistence() {
           lastRunId: lastRun?.id || null,
           lastSyncedAt: lastRun?.completed_at || null,
           preparedTeamRows: lastRun?.results?.teams?.length || 0,
-          preparedPlayerRows: 0, // Placeholder
+          preparedPlayerRows: lastRun?.results?.team_players?.length || 0,
+          payload: {
+            teamRows: lastRun?.results?.teams || [],
+            teamPlayerRows: lastRun?.results?.team_players || []
+          }
         });
       } catch (err) {
         console.error('Failed to init persistence snapshot:', err);

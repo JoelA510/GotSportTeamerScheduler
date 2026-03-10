@@ -6,6 +6,16 @@ import { z } from 'zod';
 export const TeamSchema = z.object({
   id: z.any().refine(val => !!val, { message: "each team requires an id" }),
   division: z.any().refine(val => !!val, { message: "team division is required" }),
+  organization_id: z.string().uuid().optional(),
+}).passthrough();
+
+/**
+ * Schema for a Player entity.
+ */
+export const PlayerSchema = z.object({
+  id: z.any().refine(val => !!val, { message: "each player requires an id" }),
+  division: z.any().refine(val => !!val, { message: "each player requires a division" }),
+  organization_id: z.string().uuid().optional(),
 }).passthrough();
 
 /**
@@ -14,6 +24,7 @@ export const TeamSchema = z.object({
 export const SlotSchema = z.object({
   id: z.any().refine(val => !!val, { message: "each slot requires an id" }),
   capacity: z.number().min(0, { message: "slot capacity must define a non-negative capacity" }),
+  organization_id: z.string().uuid().optional(),
   start: z.coerce.date(),
   end: z.coerce.date(),
 }).refine(data => data.end > data.start, {

@@ -23,24 +23,30 @@
 
 /**
  * @typedef {Object} Team
- * @property {string} id - UUID
- * @property {string} name - Team name (e.g. "U10 Tigers")
- * @property {string} age_group - Age group classification
- * @property {string} organization_id - UUID
- * @property {string} [head_coach_id] - UUID of the assigned head coach
- * @property {string} created_at - ISO timestamp
+ * @property {string} id - UUID or generated ID
+ * @property {string} name - Team name
+ * @property {string} division - Division identifier
+ * @property {string} [age_group] - Age group classification
+ * @property {string} [organization_id] - UUID
+ * @property {string} [coachId] - UUID of the assigned head coach (engine terminology)
+ * @property {string} [head_coach_id] - UUID of the assigned head coach (DB terminology)
+ * @property {string[]} [assistantCoachIds] - Array of assistant coach IDs
+ * @property {number} [skillTotal] - Total skill rating of all players
+ * @property {Player[]} [players] - List of players on the team
+ * @property {string} [created_at] - ISO timestamp
  */
 
 /**
  * @typedef {Object} Player
  * @property {string} id - UUID
- * @property {string} firstName
- * @property {string} lastName
- * @property {string} division
- * @property {number} skillLevel
- * @property {string} [buddyId]
- * @property {string} [coachId]
- * @property {string} [assistantCoachId]
+ * @property {string} first_name - First name
+ * @property {string} last_name - Last name
+ * @property {string} division - Division identifier
+ * @property {number} [skillRating] - Numeric skill level
+ * @property {string} [skill_tier] - DB skill tier (novice, etc)
+ * @property {string} [buddyId] - Requested buddy
+ * @property {string} [coachId] - Voluntary coach link
+ * @property {string} [assistantCoachId] - Voluntary assistant link
  */
 
 /**

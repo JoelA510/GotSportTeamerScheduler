@@ -21,6 +21,9 @@ export const TEAM_GENERATION = {
   REASON_Random: 'random assignment',
   REASON_Recovery: 'recovery assignment',
   REASON_ExhaustedRetries: 'exhausted retries',
+  REASON_CoachCapacity: 'coach-capacity',
+  REASON_Balancing: 'balancing assignment',
+  REASON_Unknown: 'unknown',
 
   // Limits
   MAX_RETRIES: 100,
