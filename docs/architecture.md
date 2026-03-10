@@ -1,0 +1,49 @@
+# Architecture & Technology Selection
+
+## Modular Agentic Architecture
+
+- **Data Ingestion Agent**: Imports GotSport registration exports and field availability spreadsheets. Normalizes player, coach, and facility data, validates buddy pairs, and forwards clean records to storage.
+- **Team Formation Agent**: Generates balanced rosters per division using roster formulas, mutual buddy handling, and coach-child constraints. Surfaces adjustments back to the admin UI.
+- **Schedule Orchestration Agent**: Assigns weekly practices and Saturday games while evaluating conflicts, daylight adjustments, and fairness metrics. Integrates an evaluator loop to refine assignments.
+- **Evaluation & Export Agent**: Audits schedules, produces reports, and generates CSV/Excel exports for TeamSnap along with draft coach communications.
+- **Coordinator (UI/API Layer)**: Modern React front end (e.g., Vite + React Router) backed by Supabase auth and APIs, orchestrating user interactions, persisting state, and delegating tasks to agents.
+
+## Technology Stack Decisions
+
+- **Front End**: Vite-based React application deployed as a static bundle (e.g., Vercel or Netlify) with environment variables scoped as `REACT_APP_*`.
+- **State & Data Access**: React Query or SWR for client data fetching; Supabase JavaScript client for Auth + Postgres.
+- **Back End / APIs**: Supabase Edge Functions (TypeScript) or lightweight serverless handlers (e.g., Vercel/Netlify functions) for ingestion, scheduling jobs, and export preparation.
+- **Database**: Supabase Postgres with Row Level Security, Storage for file uploads, and Functions for complex SQL views if needed.
+- **Task Automation**: Background scheduling via the hosting provider's cron/scheduled functions (e.g., Vercel Cron or Netlify Scheduled Functions) or Supabase Edge Functions for periodic evaluations or notifications.
+
+### Proof-of-Concept Validation Plan
+
+1. **Supabase project dry run**
+   - Provision a sandbox Supabase project and enable Row Level Security on placeholder tables to ensure the default policy posture matches expectations.
+   - Deploy a minimal Edge Function (`hello-world`) with scheduled invocation to confirm cron support and cold start latency.
+   - Record resource consumption (invocations, bandwidth) after sample CSV uploads to validate free-tier headroom.
+2. **Hosting smoke test**
+   - Scaffold the Vite front end with a placeholder dashboard and connect it to the Supabase sandbox via environment variables.
+   - Deploy to both Netlify and Vercel trial projects to benchmark build times, bundle size limits, and environment variable management ergonomics.
+   - Capture build logs and deploy previews, noting any required configuration (e.g., `CI=false npm run build`).
+3. **Integration spike**
+   - Implement a prototype CSV upload flow that writes data to Supabase Storage and triggers the ingestion agent via webhook or direct Edge Function call.
+   - Generate a mock TeamSnap CSV export from the stored sample data to verify the round trip path and identify schema adjustments early.
+   - Document blockers or additional services (e.g., background job queue) uncovered during the spike.
+
+## Free-Tier Constraints & Mitigations
+
+- **Hosting Platform**: Deploy on a provider with a generous free plan (e.g., Vercel or Netlify). Evaluate their free-tier allowances for build minutes, serverless function hours, cron support, bandwidth, and analytics to confirm they cover early-season needs; cache heavy results and batch schedule generation to stay within limits.
+- **Supabase**: 500 MB Postgres, 50K monthly active users, and project pause after 1 week inactivity. Mitigation—archive historical seasons, prune uploads, and schedule heartbeat jobs or manual logins.
+- **Client Performance**: Optimize bundle size with code splitting, avoid unnecessary re-renders, and lean on incremental static regeneration for read-heavy pages.
+
+## Integration Points
+
+- **TeamSnap**: Export CSV/Excel templates aligned with TeamSnap import schema; manual upload flow in MVP, with future API exploration.
+- **Email Workflows**: Generate mailto links or integrate with a transactional email API (e.g., Resend) once auth is in place.
+- **Authentication**: Launch with Supabase Auth (admin email/password or magic link) and expand roles or MFA requirements as collaborator access grows.
+- **Observability**: Use Supabase logs and the hosting platform's analytics; consider Logflare for aggregated monitoring if limits permit.
+  - **Scheduler run dashboards**: Expose `scheduler_runs` and linked `evaluation_runs` in the admin UI with per-run timelines,
+    duration charts, conflict/warning counts, and retry buttons for failed runs. Surface the latest status per run type on the
+    landing page and add filters by `season_settings_id` and `run_type` so operators can quickly validate the consolidated run
+    history.

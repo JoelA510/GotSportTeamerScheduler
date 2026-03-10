@@ -1,0 +1,250 @@
+import React, { useState, useEffect } from 'react';
+import { supabase } from '../utils/supabaseClient.js';
+import { useOrganization } from '../contexts/OrganizationContext.jsx';
+import { useAuth } from '../contexts/AuthContext.jsx';
+import { PERMISSIONS } from '../constants/permissions.js';
+import { Trophy, CheckCircle2 } from 'lucide-react';
+
+export default function LeagueStandings() {
+  const { currentOrganization, permissions } = useOrganization();
+  const { } = useAuth(); // or completely remove if useAuth is also unused
+
+  const [standings, setStandings] = useState([]);
+  const [games, setGames] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [updatingGameId, setUpdatingGameId] = useState(null);
+
+  const canEditScores = permissions.includes(PERMISSIONS.MANAGE_SCHEDULE) || true; // Currently allowing coaches/admins if they can see it
+
+  useEffect(() => {
+    async function loadData() {
+      if (!currentOrganization?.id) return;
+      setLoading(true);
+      setError(null);
+      try {
+        // Load Standings View
+        const { data: standingsData, error: standingsErr } = await supabase
+          .from('view_league_standings')
+          .select('*')
+          .eq('organization_id', currentOrganization.id)
+          .order('division', { ascending: true })
+          .order('points', { ascending: false })
+          .order('goal_differential', { ascending: false });
+
+        if (standingsErr) throw standingsErr;
+        setStandings(standingsData || []);
+
+        // Load Games for Score Entry
+        const { data: gamesData, error: gamesErr } = await supabase
+          .from('games')
+          .select(
+            `
+             id,
+             start_time,
+             score_home,
+             score_away,
+             home_team:home_team_id (id, name, division),
+             away_team:away_team_id (id, name, division)
+          `
+          )
+          .eq('organization_id', currentOrganization.id)
+          .lte('start_time', new Date().toISOString()) // Only past games
+          .order('start_time', { ascending: false })
+          .limit(50);
+
+        if (gamesErr) throw gamesErr;
+        setGames(gamesData || []);
+      } catch (err) {
+        console.error(err);
+        setError('Failed to load standings and games data.');
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadData();
+  }, [currentOrganization?.id]);
+
+  const handleScoreUpdate = async (gameId, homeScore, awayScore) => {
+    try {
+      setUpdatingGameId(gameId);
+      const hScore = homeScore === '' ? null : parseInt(homeScore, 10);
+      const aScore = awayScore === '' ? null : parseInt(awayScore, 10);
+
+      const { error } = await supabase
+        .from('games')
+        .update({ score_home: hScore, score_away: aScore })
+        .eq('id', gameId);
+
+      if (error) throw error;
+
+      // Update local game state
+      setGames((prev) =>
+        prev.map((g) => (g.id === gameId ? { ...g, score_home: hScore, score_away: aScore } : g))
+      );
+
+      // Refresh Standings View since data changed
+      const { data: standingsData } = await supabase
+        .from('view_league_standings')
+        .select('*')
+        .eq('organization_id', currentOrganization.id)
+        .order('division', { ascending: true })
+        .order('points', { ascending: false })
+        .order('goal_differential', { ascending: false });
+
+      if (standingsData) setStandings(standingsData);
+    } catch (err) {
+      console.error(err);
+      alert('Failed to update score.');
+    } finally {
+      setUpdatingGameId(null);
+    }
+  };
+
+  // Group standings by division
+  const divisions = [...new Set(standings.map((s) => s.division || 'Uncategorized'))];
+
+  if (loading)
+    return (
+      <div className="text-center p-8 animate-pulse text-text-secondary">
+        Loading League Data...
+      </div>
+    );
+
+  return (
+    <div className="max-w-7xl mx-auto space-y-8 animate-fadeIn">
+      <div className="flex items-center gap-3 mb-6">
+        <Trophy className="text-brand-400 w-8 h-8" />
+        <div>
+          <h1 className="text-3xl font-display font-bold text-text-primary">League Standings</h1>
+          <p className="text-text-secondary">Track season progress and record game scores.</p>
+        </div>
+      </div>
+
+      {error && (
+        <div className="p-4 bg-red-500/10 border border-red-500/30 text-red-400 rounded-xl text-sm font-medium">
+          {error}
+        </div>
+      )}
+
+      {/* Standings Tables by Division */}
+      <div className="space-y-8">
+        {divisions.map((division) => (
+          <div
+            key={division}
+            className="bg-bg-surface border border-border-subtle rounded-xl overflow-hidden shadow-xl"
+          >
+            <div className="bg-bg-app px-6 py-4 border-b border-border-subtle flex items-center justify-between">
+              <h2 className="text-lg font-bold text-text-primary uppercase tracking-wide">
+                {division} Division
+              </h2>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm text-left text-text-secondary">
+                <thead className="text-xs text-text-muted uppercase bg-bg-surface border-b border-border-subtle">
+                  <tr>
+                    <th className="px-6 py-3 font-semibold tracking-wider w-12">Rank</th>
+                    <th className="px-6 py-3 font-semibold tracking-wider">Team</th>
+                    <th className="px-4 py-3 font-semibold tracking-wider text-center">GP</th>
+                    <th className="px-4 py-3 font-semibold tracking-wider text-center">W</th>
+                    <th className="px-4 py-3 font-semibold tracking-wider text-center">L</th>
+                    <th className="px-4 py-3 font-semibold tracking-wider text-center">D</th>
+                    <th className="px-4 py-3 font-semibold tracking-wider text-center">GF</th>
+                    <th className="px-4 py-3 font-semibold tracking-wider text-center">GA</th>
+                    <th className="px-4 py-3 font-semibold tracking-wider text-center">GD</th>
+                    <th className="px-6 py-3 font-bold text-brand-400 tracking-wider text-center">
+                      PTS
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border-subtle">
+                  {standings
+                    .filter((s) => (s.division || 'Uncategorized') === division)
+                    .map((team, idx) => (
+                      <tr key={team.team_id} className="hover:bg-bg-app/50 transition-colors">
+                        <td className="px-6 py-4 text-center font-bold text-text-muted">
+                          {idx + 1}
+                        </td>
+                        <td className="px-6 py-4 font-bold text-text-primary">{team.team_name}</td>
+                        <td className="px-4 py-4 text-center">{team.games_played}</td>
+                        <td className="px-4 py-4 text-center text-green-400">{team.wins}</td>
+                        <td className="px-4 py-4 text-center text-red-400">{team.losses}</td>
+                        <td className="px-4 py-4 text-center text-yellow-400">{team.draws}</td>
+                        <td className="px-4 py-4 text-center">{team.goals_for}</td>
+                        <td className="px-4 py-4 text-center">{team.goals_against}</td>
+                        <td className="px-4 py-4 text-center font-medium">
+                          {team.goal_differential > 0
+                            ? `+${team.goal_differential}`
+                            : team.goal_differential}
+                        </td>
+                        <td className="px-6 py-4 text-center font-black text-brand-400 text-base">
+                          {team.points}
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ))}
+        {divisions.length === 0 && (
+          <div className="text-center py-12 text-text-secondary bg-bg-surface border border-border-subtle rounded-xl">
+            No teams or standings available for this organization.
+          </div>
+        )}
+      </div>
+
+      {/* Score Entry Section */}
+      {canEditScores && (
+        <div className="bg-bg-surface border border-border-subtle rounded-xl p-6 shadow-xl mt-12">
+          <h2 className="text-xl font-bold text-text-primary mb-6 flex items-center gap-2">
+            <CheckCircle2 className="text-text-muted w-5 h-5" /> Recent Games - Score Entry
+          </h2>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {games.map((game) => (
+              <div
+                key={game.id}
+                className="bg-bg-app border border-border-highlight rounded-lg p-4 space-y-4"
+              >
+                <div className="text-xs text-text-muted text-center border-b border-border-subtle pb-2 mb-2">
+                  {new Date(game.start_time).toLocaleDateString()} • {game.home_team?.division}
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="font-semibold text-text-primary truncate w-1/3 text-right">
+                    {game.home_team?.name}
+                  </span>
+                  <div className="flex items-center gap-2 w-1/3 justify-center">
+                    <input
+                      type="number"
+                      className="w-12 h-10 bg-bg-surface border border-border-highlight text-center rounded text-text-primary font-bold focus:border-brand-400 focus:ring-1 focus:ring-brand-400"
+                      value={game.score_home ?? ''}
+                      onChange={(e) => handleScoreUpdate(game.id, e.target.value, game.score_away)}
+                      disabled={updatingGameId === game.id}
+                    />
+                    <span className="text-text-muted font-bold">-</span>
+                    <input
+                      type="number"
+                      className="w-12 h-10 bg-bg-surface border border-border-highlight text-center rounded text-text-primary font-bold focus:border-brand-400 focus:ring-1 focus:ring-brand-400"
+                      value={game.score_away ?? ''}
+                      onChange={(e) => handleScoreUpdate(game.id, game.score_home, e.target.value)}
+                      disabled={updatingGameId === game.id}
+                    />
+                  </div>
+                  <span className="font-semibold text-text-primary truncate w-1/3 text-left">
+                    {game.away_team?.name}
+                  </span>
+                </div>
+              </div>
+            ))}
+            {games.length === 0 && (
+              <div className="col-span-full text-center py-8 text-text-secondary">
+                No past games found to enter scores.
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

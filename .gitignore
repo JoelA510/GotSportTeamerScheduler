@@ -1,0 +1,31 @@
+node_modules/
+dist/
+.DS_Store
+npm-debug.log*
+frontend/.vite/
+.env.local
+frontend/.env.local
+mockups/
+*_test_output.txt
+.env
+logs/
+docs/git-documentation/
+docs/sql/real-samples/*
+
+# Editor directories
+.idea/
+.vscode/
+
+# Testing
+coverage/
+test-results/
+
+# Misc
+tmp/
+*.log
+
+# Playwright
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+/playwright/.auth/

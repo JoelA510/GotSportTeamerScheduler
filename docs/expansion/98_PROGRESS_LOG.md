@@ -1,0 +1,22 @@
+# Progress Log
+
+| Date       | Step/PR   | Status   | Notes                                                                                                                                                           |
+| :--------- | :-------- | :------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2025-12-14 | Docs Gen  | **DONE** | Generated Roadmap, Epics, Inventory, and Runbook.                                                                                                               |
+| 2025-12-14 | PR-01     | **DONE** | Tooling (Vitest, Eslint, Prettier) configured. Smoke test passed.                                                                                               |
+| 2025-12-14 | PR-02     | **DONE** | Core Domain JSDoc types defined.                                                                                                                                |
+| 2025-12-14 | PR-03     | **DONE** | Shared utilities (Logger, AppError) implemented and tested.                                                                                                     |
+| 2025-12-14 | PR-04     | **DONE** | Core Auth Schema (Profiles, OrgMembers) migration created.                                                                                                      |
+| 2025-12-14 | PR-05     | **DONE** | Frontend Contexts (Auth, Organization) implemented with Integration Test.                                                                                       |
+| 2025-12-15 | PR-06     | **DONE** | **[Core Engine]** Implemented `@squadlogic/core` package containing algorithmic team generation, practice scheduling, and game round-robin logic.               |
+| 2025-12-16 | PR-07     | **DONE** | **[Metrics & Eval]** Added `practiceMetrics.js`, `gameMetrics.js`, and `evaluationPipeline.js` to automatically score fairness and detect conflicts.            |
+| 2025-12-18 | PR-08     | **DONE** | **[Persistence Layer]** Created Supabase Edge Functions, RPCs, and snapshot handlers for saving Teams, Practices, and Games transactionally.                    |
+| 2025-12-20 | PR-09     | **DONE** | **[App Shell & Routing]** Scaffolded `App.jsx` with React Router v7. Implemented `DashboardLayout`, `Sidebar`, and multi-theme `Deep Space Glass` UI.           |
+| 2025-12-22 | PR-10     | **DONE** | **[Data Hooks]** Built `useDashboardData`, `useTeamSummary`, `usePracticeSummary`, and `useGameSummary` to aggregate Supabase `scheduler_runs` data for the UI. |
+| 2025-12-24 | PR-11     | **DONE** | **[Admin Panels]** Delivered `TeamPersistencePanel`, `PracticeReadinessPanel`, `GameReadinessPanel`, and `ImportPanel` for the core admin workflows.            |
+| 2025-12-26 | Docs Sync | **DONE** | Re-baselined Roadmap, README, and UI/UX Audit docs to reflect the massive amount of core engine and frontend work completed ahead of schedule.                  |
+| 2026-03-09 | M2.1      | **DONE** | **[RBAC / Multi-Tenancy]** Expanded usePermission enforcement, Route protection, and strictly bound Supabase RLS policies. |
+| 2026-03-09 | M2.2      | **DONE** | **[Ingestion Hardening]** Implemented strict CSV header validation, row-level error catch-and-stage logic, and UI display of malformed records via `DataValidationPanel`. |
+| 2026-03-09 | M2.3      | **DONE** | **[Admin Overrides]** Implemented DndKit `RosterManager` for drag and drop roster adjustments. Built `PracticeOverridePanel` for manual practice slot selection overriding the automated schedule. |
+| 2026-03-09 | M2.4      | **DONE** | **[Output Operationalization]** Implemented `usePracticeAssignments` hook. Linked CSV Generation with Supabase bucket uploads. Appended Step 6 to `DashboardWorkflow` and built a generator for Coach Welcome Emails. |
+| 2026-03-09 | M3.1      | **DONE** | **[Facility Management]** Wrote SQL migration `20251216000000_facility_multi_tenancy` adding `organization_id` to fields/locations, and a DB trigger for automatic `field_subunits` generation. Built `useFields` hook and refactored `FieldManagementPage` for full CRUD. Added `playwright-bdd` framework. |

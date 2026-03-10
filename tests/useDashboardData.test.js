@@ -1,0 +1,54 @@
+import { describe, it, expect, vi } from 'vitest';
+import { renderHook } from '@testing-library/react';
+import { useDashboardData } from '../frontend/src/hooks/useDashboardData.js';
+import { useTeamSummary } from '../frontend/src/hooks/useTeamSummary.js';
+import { usePracticeSummary } from '../frontend/src/hooks/usePracticeSummary.js';
+import { usePracticeAssignments } from '../frontend/src/hooks/usePracticeAssignments.js';
+import { useGameSummary } from '../frontend/src/hooks/useGameSummary.js';
+import { useGameAssignments } from '../frontend/src/hooks/useGameAssignments.js';
+
+// Mock all internal hooks
+vi.mock('../frontend/src/hooks/useTeamSummary.js');
+vi.mock('../frontend/src/hooks/usePracticeSummary.js');
+vi.mock('../frontend/src/hooks/usePracticeAssignments.js');
+vi.mock('../frontend/src/hooks/useGameSummary.js');
+vi.mock('../frontend/src/hooks/useGameAssignments.js');
+
+describe('useDashboardData', () => {
+  it('aggregates data from multiple hooks correctly', () => {
+    // Setup mocks
+    useTeamSummary.mockReturnValue({
+      summary: { totals: { teams: 10 } },
+      loading: false,
+      generatedAt: '2026-03-01',
+    });
+    usePracticeSummary.mockReturnValue({
+      practiceSummary: { count: 5 },
+      practiceReadinessSnapshot: 'ready',
+      generatedAt: '2026-03-02',
+      loading: false,
+      runId: 'practice-run-123',
+    });
+    usePracticeAssignments.mockReturnValue({ assignments: [{ id: 'pa1' }] });
+    useGameSummary.mockReturnValue({
+      gameSummary: { count: 8 },
+      gameReadinessSnapshot: 'partial',
+      generatedAt: '2026-03-03',
+      loading: true,
+      runId: 'game-run-456',
+    });
+    useGameAssignments.mockReturnValue({ assignments: [{ id: 'ga1' }] });
+
+    const { result } = renderHook(() => useDashboardData());
+
+    // Verify aggregation
+    expect(result.current.loading.team).toBe(false);
+    expect(result.current.loading.game).toBe(true);
+    expect(result.current.team.totals.teams).toBe(10);
+    expect(result.current.practice.runId).toBe('practice-run-123');
+    expect(result.current.practice.assignments).toEqual([{ id: 'pa1' }]);
+    expect(result.current.game.runId).toBe('game-run-456');
+    expect(result.current.game.snapshot).toBe('partial');
+    expect(result.current.roadmap.stats.completed).toBeDefined();
+  });
+});
