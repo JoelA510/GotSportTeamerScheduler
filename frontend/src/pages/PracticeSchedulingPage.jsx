@@ -1,13 +1,20 @@
 import React, { useState } from 'react';
 import PracticeReadinessPanel from '../components/PracticeReadinessPanel.jsx';
 import PracticeOverridePanel from '../components/PracticeOverridePanel.jsx';
+import PracticeAssignmentList from '../components/PracticeAssignmentList.jsx';
 import { useDashboardData } from '../hooks/useDashboardData.js';
+import { usePracticeAssignments } from '../hooks/usePracticeAssignments.js';
 import { useTheme } from '../contexts/ThemeContext.jsx';
 import Button from '../components/ui/Button.jsx';
 import { Edit2, Save } from 'lucide-react';
 
 export default function PracticeSchedulingPage() {
-  const { practice, team } = useDashboardData();
+  const { practice, team, loading: dashboardLoading } = useDashboardData();
+  const { 
+    assignments, 
+    loading: assignmentsLoading, 
+    updateAssignmentSource 
+  } = usePracticeAssignments(practice.runId);
   const { timezone } = useTheme();
   const [isEditMode, setIsEditMode] = useState(false);
 
@@ -30,18 +37,26 @@ export default function PracticeSchedulingPage() {
         </Button>
       </div>
 
-      {isEditMode ? (
-        <PracticeOverridePanel
-          teams={team?.teams || []}
-          baseSlots={practice.snapshot?.baseSlotDistribution || []}
-        />
-      ) : (
+      {!isEditMode && (
         <PracticeReadinessPanel
           practiceReadinessSnapshot={practice.snapshot}
           practiceSummary={practice.summary}
           generatedAt={practice.generatedAt}
           timezone={timezone}
           scheduleEvaluation={practice.scheduleEvaluation}
+        />
+      )}
+
+      {isEditMode ? (
+        <PracticeOverridePanel
+          teams={team?.teams || []}
+          baseSlots={practice.snapshot?.baseSlotDistribution || []}
+        />
+      ) : (
+        <PracticeAssignmentList
+          assignments={assignments}
+          loading={dashboardLoading.practice || assignmentsLoading}
+          onToggleLock={updateAssignmentSource}
         />
       )}
     </div>

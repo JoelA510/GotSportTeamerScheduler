@@ -162,9 +162,9 @@ export default function FieldManagementPage() {
             </div>
             <h2 className="text-xl font-bold text-text-primary mb-1">{field.name}</h2>
 
-            <div className="flex flex-wrap gap-2 text-sm text-text-secondary mt-2">
+            <div className="flex flex-wrap gap-2 text-sm text-text-secondary mt-2 mb-4">
               <span className="px-2 py-0.5 bg-bg-surface rounded-full border border-border-subtle">
-                {field.surface_type || 'Unknown'}
+                {field.surface_type || 'Grass'}
               </span>
               <span className="px-2 py-0.5 bg-blue-900/20 text-blue-300 rounded-full border border-blue-800/30">
                 Priority: {field.priority_rating || 1}
@@ -174,9 +174,47 @@ export default function FieldManagementPage() {
                   className="px-2 py-0.5 bg-green-900/20 text-green-400 rounded-full border border-green-800/30 font-semibold"
                   data-testid={`subunit-indicator-${field.id}`}
                 >
-                  A/B Halves Enabled
+                  Sub-units: {field.field_subunits.length}
                 </span>
               )}
+            </div>
+
+            {/* Visual 7-Day Grid */}
+            <div className="grid grid-cols-7 gap-1 mt-4 pt-4 border-t border-border-subtle">
+              {['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'].map((day) => {
+                const slots = field.practice_slots?.filter((s) => s.day_of_week === day) || [];
+                const isActive = slots.length > 0;
+
+                return (
+                  <div
+                    key={day}
+                    className={`flex flex-col items-center p-1.5 rounded border transition-all ${
+                      isActive
+                        ? 'bg-blue-500/10 border-blue-500/30'
+                        : 'bg-bg-app border-border-subtle opacity-40'
+                    }`}
+                  >
+                    <span className="text-[10px] uppercase font-bold text-text-muted mb-1">
+                      {day.substring(0, 3)}
+                    </span>
+                    {isActive ? (
+                      <div className="flex flex-col items-center">
+                        {slots.map((slot) => (
+                          <span
+                            key={slot.id}
+                            className="text-[9px] font-mono text-blue-300 whitespace-nowrap"
+                            title={`${slot.start_time.substring(0, 5)} - ${slot.end_time.substring(0, 5)}`}
+                          >
+                            {slot.start_time.substring(0, 5)}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="text-[10px] font-mono text-text-muted opacity-50">—</span>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
         ))}

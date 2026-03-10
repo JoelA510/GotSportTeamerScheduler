@@ -37,7 +37,8 @@ export function useFields() {
         .select(
           `
           *,
-          field_subunits ( id, label )
+          field_subunits ( id, label ),
+          practice_slots ( id, day_of_week, start_time, end_time, capacity )
         `
         )
         .eq('organization_id', currentOrganization.id)
@@ -95,7 +96,8 @@ export function useFields() {
       .select(
         `
         *,
-        field_subunits ( id, label )
+        field_subunits ( id, label ),
+        practice_slots ( id, day_of_week, start_time, end_time, capacity )
       `
       )
       .single();

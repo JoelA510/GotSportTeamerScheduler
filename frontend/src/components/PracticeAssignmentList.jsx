@@ -1,0 +1,83 @@
+import React from 'react';
+import { Lock, Unlock } from 'lucide-react';
+
+export default function PracticeAssignmentList({ assignments = [], onToggleLock, loading }) {
+  if (loading) {
+    return (
+      <div className="flex justify-center py-12">
+        <div className="text-text-secondary animate-pulse">Loading assignments...</div>
+      </div>
+    );
+  }
+
+  if (assignments.length === 0) {
+    return (
+      <div className="bg-bg-surface border border-dashed border-border-subtle rounded-xl p-12 text-center text-text-muted italic">
+        No practice assignments found for this run.
+      </div>
+    );
+  }
+
+  return (
+    <div className="glass-panel overflow-hidden mt-8">
+      <div className="overflow-x-auto">
+        <table className="w-full text-left border-collapse">
+          <thead>
+            <tr className="bg-bg-app/50 border-b border-border-subtle">
+              <th className="p-4 text-xs font-semibold text-text-muted uppercase tracking-wider">Team</th>
+              <th className="p-4 text-xs font-semibold text-text-muted uppercase tracking-wider">Field Slot</th>
+              <th className="p-4 text-xs font-semibold text-text-muted uppercase tracking-wider">Range</th>
+              <th className="p-4 text-xs font-semibold text-text-muted uppercase tracking-wider text-right">Lock Status</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border-subtle/30">
+            {assignments.map((assignment) => {
+              const isLocked = assignment.source === 'manual';
+              const team = assignment.teams || {};
+              const division = team.divisions || {};
+              const slot = assignment.practiceSlots || {};
+              const field = slot.fields || {};
+              
+              return (
+                <tr key={assignment.id} className="hover:bg-white/5 transition-colors group">
+                  <td className="p-4">
+                    <div className="font-bold text-text-primary">
+                      {team.name || 'Unknown Team'}
+                    </div>
+                    <div className="text-xs text-text-secondary">
+                      {division.name || 'Unknown Division'}
+                    </div>
+                  </td>
+                  <td className="p-4 font-mono text-sm capitalize">
+                    <span className="text-blue-400">
+                      {slot.dayOfWeek} @ {slot.startTime?.substring(0, 5)} - {slot.endTime?.substring(0, 5)}
+                    </span>
+                    <div className="text-[10px] text-text-muted mt-0.5 uppercase tracking-tighter">
+                      {field.name || 'Unknown Field'}
+                    </div>
+                  </td>
+                  <td className="p-4 text-text-secondary text-xs">
+                    {assignment.effectiveDateRange || 'Full Season'}
+                  </td>
+                  <td className="p-4 text-right">
+                    <button
+                      onClick={() => onToggleLock(assignment.id, isLocked ? 'auto' : 'manual')}
+                      className={`p-2 rounded-lg transition-all inline-flex border ${
+                        isLocked
+                          ? 'bg-amber-500/10 text-amber-500 border-amber-500/30 hover:bg-amber-500/20 shadow-[0_0_10px_rgba(245,158,11,0.1)]'
+                          : 'bg-bg-app text-text-muted border-border-subtle hover:text-brand-400 hover:border-brand-400/50'
+                      }`}
+                      title={isLocked ? 'Unlock slot (allow algorithm to change)' : 'Lock slot (preserve manual choice)'}
+                    >
+                      {isLocked ? <Lock size={16} /> : <Unlock size={16} />}
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
