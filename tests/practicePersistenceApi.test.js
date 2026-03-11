@@ -37,7 +37,7 @@ function buildTransactionStub() {
 }
 
 test('processPracticePersistenceRequest returns unauthorized when role is missing', async () => {
-  const result = await processPracticePersistenceRequest({ requestBody: {}, user: null });
+  const result = await processPracticePersistenceRequest({ supabaseClient: {}, requestBody: {}, user: null });
 
   assert.strictEqual(result.status, 'unauthorized');
   assert.match(result.message, /Authentication required/i);
@@ -45,6 +45,7 @@ test('processPracticePersistenceRequest returns unauthorized when role is missin
 
 test('processPracticePersistenceRequest blocks when overrides are pending', async () => {
   const result = await processPracticePersistenceRequest({
+    supabaseClient: {},
     requestBody: { snapshot: SAMPLE_SNAPSHOT, overrides: [{ status: 'pending' }] },
     user: { role: 'admin' },
   });

@@ -41,7 +41,7 @@ function buildTransactionStub() {
 }
 
 test('processTeamPersistenceRequest returns unauthorized when role is missing', async () => {
-  const result = await processTeamPersistenceRequest({ requestBody: {}, user: null });
+  const result = await processTeamPersistenceRequest({ supabaseClient: {}, requestBody: {}, user: null });
 
   assert.strictEqual(result.status, 'unauthorized');
   assert.match(result.message, /Authentication required/i);
@@ -49,6 +49,7 @@ test('processTeamPersistenceRequest returns unauthorized when role is missing', 
 
 test('processTeamPersistenceRequest returns validation error for null requestBody', async () => {
   const result = await processTeamPersistenceRequest({
+    supabaseClient: {},
     requestBody: null,
     user: { role: 'admin' },
   });
@@ -58,7 +59,9 @@ test('processTeamPersistenceRequest returns validation error for null requestBod
 });
 
 test('processTeamPersistenceRequest blocks when overrides are pending', async () => {
+  const { client } = buildTransactionStub();
   const result = await processTeamPersistenceRequest({
+    supabaseClient: client,
     requestBody: {
       snapshot: SAMPLE_SNAPSHOT,
       overrides: [{ status: 'pending' }],
@@ -106,6 +109,7 @@ test('processTeamPersistenceRequest persists snapshot after validation and auth'
 
 test('processTeamPersistenceRequest surfaces validation errors', async () => {
   const result = await processTeamPersistenceRequest({
+    supabaseClient: {},
     requestBody: { snapshot: null, runMetadata: { seasonSettingsId: 99 } },
     user: { role: 'admin' },
   });

@@ -20,7 +20,6 @@ test('blocks persistence when pending overrides remain', async () => {
     snapshot: { preparedTeamRows: 1, preparedPlayerRows: 1 },
     overrides: [{ id: 'pending-1', status: 'pending' }],
     fetchImpl,
-    simulateDelayMs: 0,
     endpoint: 'http://example.com',
   });
 
@@ -37,7 +36,6 @@ test('falls back to simulation when no endpoint is configured (mock mode)', asyn
       lastRunId: 'run-123',
     },
     overrides: [],
-    simulateDelayMs: 0,
     // No endpoint, no accessToken => Mock
   });
 
@@ -63,7 +61,7 @@ test('uses provided endpoint and forwards access token', async () => {
   });
 
   assert.equal(capturedUrl, 'https://project.supabase.co/functions/v1/team-persistence');
-  assert.equal(capturedHeaders.Authorization, 'Bearer token-123');
+  assert.equal(/** @type {any} */ (capturedHeaders).Authorization, 'Bearer token-123');
   assert.equal(result.status, 'success');
 });
 
@@ -104,7 +102,6 @@ test('falls back to simulation when using derived endpoint without auth token', 
     snapshot: { preparedTeamRows: 2, preparedPlayerRows: 22 },
     overrides: [],
     fetchImpl,
-    simulateDelayMs: 0,
     // No accessToken, No endpoint => Mock
   });
 
@@ -144,13 +141,13 @@ test('posts to a configured endpoint and returns payload data', async () => {
   });
 
   assert.equal(capturedUrl, 'https://api.example.com/team-persistence');
-  assert.deepEqual(capturedBody.snapshot, {
+  assert.deepEqual(/** @type {any} */ (capturedBody).snapshot, {
     preparedTeamRows: 4,
     preparedPlayerRows: 50,
     lastRunId: 'run-live-1',
     runMetadata: { seasonSettingsId: 'fall', runId: 'run-live-1' },
   });
-  assert.deepEqual(capturedBody.runMetadata, { seasonSettingsId: 'fall', runId: 'run-live-1' });
+  assert.deepEqual(/** @type {any} */ (capturedBody).runMetadata, { seasonSettingsId: 'fall', runId: 'run-live-1' });
   assert.equal(result.status, 'success');
   assert.equal(result.syncedAt, '2024-07-20T18:00:00Z');
 });

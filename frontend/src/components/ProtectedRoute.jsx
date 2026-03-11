@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
-import { usePermission } from '../hooks/usePermission';
-import LoadingScreen from './LoadingScreen';
+import { usePermission } from '../hooks/usePermission.js';
+import LoadingScreen from './LoadingScreen.jsx';
 
 const ProtectedRoute = ({ requiredPermission, children }) => {
   const { can, role } = usePermission();

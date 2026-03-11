@@ -103,7 +103,7 @@ export default function AdminComplianceDashboard() {
               Filter by Form
             </label>
             <select
-              className="w-full bg-bg-app border border-border-highlight text-text-primary text-sm rounded-lg focus:ring-brand-500 focus:border-brand-500 block p-2.5"
+              className="w-full bg-bg-app border border-border-highlight text-text-primary text-sm rounded-lg focus:ring-color-primary focus:border-color-primary block p-2.5"
               value={selectedFormId}
               onChange={(e) => setSelectedFormId(e.target.value)}
             >
@@ -123,7 +123,7 @@ export default function AdminComplianceDashboard() {
             <input
               type="text"
               placeholder="Search player/parent..."
-              className="w-full bg-bg-app border border-border-highlight rounded-lg py-2 pl-10 pr-4 text-sm text-text-primary focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-400"
+              className="w-full bg-bg-app border border-border-highlight rounded-lg py-2 pl-10 pr-4 text-sm text-text-primary focus:border-color-primary focus:outline-none focus:ring-1 focus:ring-color-primary"
             />
           </div>
         </div>
@@ -133,7 +133,7 @@ export default function AdminComplianceDashboard() {
             Loading compliance records...
           </div>
         ) : error ? (
-          <div className="text-center py-12 text-red-400">{error}</div>
+          <div className="text-center py-12 text-status-error">{error}</div>
         ) : registrations.length === 0 ? (
           <div className="text-center py-12 text-text-secondary flex flex-col items-center">
             <ClipboardCheck size={48} className="text-border-highlight mb-4" />
@@ -162,7 +162,7 @@ export default function AdminComplianceDashboard() {
                   <tr key={reg.id} className="bg-bg-surface hover:bg-bg-app/50 transition-colors">
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-brand-500/20 text-brand-400 flex items-center justify-center font-bold text-xs">
+                        <div className="w-8 h-8 rounded-full bg-brand-glow text-color-primary flex items-center justify-center font-bold text-xs">
                           {reg.players?.first_name?.[0]}
                           {reg.players?.last_name?.[0]}
                         </div>
@@ -179,11 +179,11 @@ export default function AdminComplianceDashboard() {
                     </td>
                     <td className="px-6 py-4 text-center">
                       {reg.waiver_signed ? (
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-green-500/10 text-green-400 border border-green-500/20">
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-status-success-bg text-status-success border border-status-success/20">
                           <CheckCircle2 size={12} /> Confirmed
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-yellow-500/10 text-yellow-500 border border-yellow-500/20">
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-status-warning-bg text-status-warning border border-status-warning/20">
                           <AlertCircle size={12} /> Pending
                         </span>
                       )}
@@ -191,7 +191,7 @@ export default function AdminComplianceDashboard() {
                     <td className="px-6 py-4 text-center">
                       <button
                         onClick={() => toggleMedicalStatus(reg.id, reg.medical_cleared)}
-                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border transition-all hover:opacity-80 ${reg.medical_cleared ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' : 'bg-bg-surface text-text-muted border-border-highlight hover:border-brand-500/50 hover:text-brand-400'}`}
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border transition-all hover:opacity-80 ${reg.medical_cleared ? 'bg-brand-glow text-color-primary border-border-highlight' : 'bg-bg-surface text-text-muted border-border-highlight hover:border-color-primary/50 hover:text-color-primary'}`}
                         title="Click to toggle medical clearance status"
                       >
                         {reg.medical_cleared ? <CheckCircle2 size={12} /> : <History size={12} />}

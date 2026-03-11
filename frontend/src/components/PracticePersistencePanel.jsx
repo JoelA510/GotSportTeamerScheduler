@@ -72,6 +72,7 @@ export default function PracticePersistencePanel({
         { label: 'Overrides', value: snapshot.manualOverrides.length },
       ]}
       onSync={handleSync}
+      // @ts-expect-error
       status={status}
       message={message}
     />

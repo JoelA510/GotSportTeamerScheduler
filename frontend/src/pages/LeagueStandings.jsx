@@ -112,7 +112,7 @@ export default function LeagueStandings() {
   return (
     <div className="max-w-7xl mx-auto space-y-8 animate-fadeIn">
       <div className="flex items-center gap-3 mb-6">
-        <Trophy className="text-brand-400 w-8 h-8" />
+        <Trophy className="text-color-primary w-8 h-8" />
         <div>
           <h1 className="text-3xl font-display font-bold text-text-primary">League Standings</h1>
           <p className="text-text-secondary">Track season progress and record game scores.</p>
@@ -120,7 +120,7 @@ export default function LeagueStandings() {
       </div>
 
       {error && (
-        <div className="p-4 bg-red-500/10 border border-red-500/30 text-red-400 rounded-xl text-sm font-medium">
+        <div className="p-4 bg-status-error-bg border border-status-error/30 text-status-error rounded-xl text-sm font-medium">
           {error}
         </div>
       )}
@@ -150,7 +150,7 @@ export default function LeagueStandings() {
                     <th className="px-4 py-3 font-semibold tracking-wider text-center">GF</th>
                     <th className="px-4 py-3 font-semibold tracking-wider text-center">GA</th>
                     <th className="px-4 py-3 font-semibold tracking-wider text-center">GD</th>
-                    <th className="px-6 py-3 font-bold text-brand-400 tracking-wider text-center">
+                    <th className="px-6 py-3 font-bold text-color-primary tracking-wider text-center">
                       PTS
                     </th>
                   </tr>
@@ -165,9 +165,9 @@ export default function LeagueStandings() {
                         </td>
                         <td className="px-6 py-4 font-bold text-text-primary">{team.team_name}</td>
                         <td className="px-4 py-4 text-center">{team.games_played}</td>
-                        <td className="px-4 py-4 text-center text-green-400">{team.wins}</td>
-                        <td className="px-4 py-4 text-center text-red-400">{team.losses}</td>
-                        <td className="px-4 py-4 text-center text-yellow-400">{team.draws}</td>
+                        <td className="px-4 py-4 text-center text-status-success">{team.wins}</td>
+                        <td className="px-4 py-4 text-center text-status-error">{team.losses}</td>
+                        <td className="px-4 py-4 text-center text-status-warning">{team.draws}</td>
                         <td className="px-4 py-4 text-center">{team.goals_for}</td>
                         <td className="px-4 py-4 text-center">{team.goals_against}</td>
                         <td className="px-4 py-4 text-center font-medium">
@@ -175,7 +175,7 @@ export default function LeagueStandings() {
                             ? `+${team.goal_differential}`
                             : team.goal_differential}
                         </td>
-                        <td className="px-6 py-4 text-center font-black text-brand-400 text-base">
+                        <td className="px-6 py-4 text-center font-black text-color-primary text-base">
                           {team.points}
                         </td>
                       </tr>
@@ -215,18 +215,20 @@ export default function LeagueStandings() {
                   <div className="flex items-center gap-2 w-1/3 justify-center">
                     <input
                       type="number"
-                      className="w-12 h-10 bg-bg-surface border border-border-highlight text-center rounded text-text-primary font-bold focus:border-brand-400 focus:ring-1 focus:ring-brand-400"
+                      className="w-12 h-10 bg-bg-surface border border-border-highlight text-center rounded text-text-primary font-bold focus:border-color-primary focus:ring-1 focus:ring-color-primary"
                       value={game.score_home ?? ''}
                       onChange={(e) => handleScoreUpdate(game.id, e.target.value, game.score_away)}
                       disabled={updatingGameId === game.id}
+                      aria-label="Home Score"
                     />
                     <span className="text-text-muted font-bold">-</span>
                     <input
                       type="number"
-                      className="w-12 h-10 bg-bg-surface border border-border-highlight text-center rounded text-text-primary font-bold focus:border-brand-400 focus:ring-1 focus:ring-brand-400"
+                      className="w-12 h-10 bg-bg-surface border border-border-highlight text-center rounded text-text-primary font-bold focus:border-color-primary focus:ring-1 focus:ring-color-primary"
                       value={game.score_away ?? ''}
                       onChange={(e) => handleScoreUpdate(game.id, game.score_home, e.target.value)}
                       disabled={updatingGameId === game.id}
+                      aria-label="Away Score"
                     />
                   </div>
                   <span className="font-semibold text-text-primary truncate w-1/3 text-left">

@@ -247,7 +247,7 @@ test('persistGameAssignments surfaces Supabase errors and validates client', asy
   );
 
   await assert.rejects(
-    () => persistGameAssignments({ assignments: [] }),
+    () => persistGameAssignments({ supabaseClient: { from: () => {} }, assignments: [] }),
     /supabaseClient with a from\(\) method is required/
   );
 });

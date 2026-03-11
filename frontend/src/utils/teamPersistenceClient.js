@@ -19,6 +19,17 @@ function resolvePendingOverrides(overrides = []) {
   return undefined;
 }
 
+/**
+ * @param {Object} options
+ * @param {Object} [options.snapshot]
+ * @param {Array} [options.overrides]
+ * @param {string} [options.endpoint]
+ * @param {string} [options.accessToken]
+ * @param {Object} [options.runMetadata]
+ * @param {AbortSignal} [options.signal]
+ * @param {Function} [options.fetchImpl]
+ * @returns {Promise<Object>}
+ */
 export async function triggerTeamPersistence({
   snapshot,
   overrides = [],

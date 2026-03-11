@@ -17,7 +17,9 @@
 
 SquadLogic is a comprehensive tool for youth sports administrators. It simplifies the complex logistics of organizing leagues by automating team generation, practice scheduling, and game scheduling. Built with a modern tech stack and a "Deep Space Glass" design system, it offers a premium, intuitive user experience.
 
-## ✨ Implemented vs. Planned Features
+## ✨ Implemented Features (v1.0 MVP Complete)
+
+SquadLogic v1.0 is feature-complete, providing a full-suite operational platform for youth sports management.
 
 ### ✅ Implemented Baseline
 
@@ -27,26 +29,21 @@ SquadLogic is a comprehensive tool for youth sports administrators. It simplifie
 - **Evaluation Pipeline**: Automated readiness scoring, fairness metrics, and conflict detection.
 - **Supabase Persistence**: Edge functions, RPCs, and transactional database schemas for saving schedules and overrides.
 - **Admin Dashboard Shell**: React/Vite frontend with routing, multi-theme support (Dark/Light/Party), and data ingestion panels.
-
-### 🚧 Partial / In-Progress
-
-- **Role-Based Access Control (RBAC)**: `usePermission` hooks exist, but broader enforcement across all UI flows is ongoing.
-- **Multi-Tenant Enforcement**: Organization context is wired, but strict RLS partitioning across all queries is being finalized.
-- **Admin Workflows**: UI panels for manual overrides, drag-and-drop roster adjustments, and conflict resolution.
-
-### 📅 Still Missing (Future)
-
-- **Facility Management**: Full CRUD UI for venues, fields, and blackout dates.
-- **Communication & Engagement**: RSVP tracking, trigger-based notifications (rainouts, schedule changes), and team chat.
-- **Registration & Compliance**: Custom form builder, waiver tracking, and standings/results calculations.
-- **Calendar Sync**: Public ICS feeds for parents and coaches.
+- **Role-Based Access Control (RBAC)**: Comprehensive permission enforcement across all UI flows and RLS policies.
+- **Multi-Tenant Enforcement**: Strict organization partitioning ensuring data isolation.
+- **Facility Management**: Full CRUD UI for Venues, Fields, and Blackout Dates.
+- **Communication (M3.2)**: RSVP tracking, trigger-based notifications (Rainouts, Schedule Changes), and Team Chat.
+- **Calendar Sync (M3.3)**: Public ICS feeds for parents and coaches.
+- **Registration & Compliance (M3.4)**: Custom form builder, waiver tracking, and boolean compliance dashboards.
+- **Reporting (M3.5)**: Game score entry, standings calculations, and tie-breaker logic.
 
 ## 🛠️ Tech Stack
 
-- **Frontend**: React 18, Vite 5, React Router v7
-- **Styling**: Vanilla CSS (Deep Space Glass Design System), Tailwind CSS
+- **Frontend**: React 19, Vite 6
+- **Styling**: Vanilla CSS (Deep Space Glass Design System), Tailwind CSS 4
 - **Backend**: Node.js, Supabase (PostgreSQL, Edge Functions, Storage, Auth)
-- **Testing**: Vitest (Unit/Integration), Playwright (E2E - Planned)
+- **Testing**: Vitest (Unit/Integration), Playwright-BDD (E2E)
+- **Analysis**: TypeScript (Strict Mode), ESLint, Prettier
 - **Linting**: ESLint, Prettier
 
 ## 🗺️ Current Routes

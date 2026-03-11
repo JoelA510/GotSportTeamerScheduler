@@ -13,7 +13,7 @@ import { SlotSchema, TeamSchema } from './schemas/index.js';
  *   Teams participating in the scheduling run. Each team must provide an `id` and `division`.
  * @param {Array<{ id: string, capacity: number, start: string | Date, end: string | Date, day?: string | null }>} params.slots -
  *   Slot catalogue with capacity and timing metadata.
- * @returns {
+ * @returns {{
  *   summary: {
  *     totalTeams: number,
  *     assignedTeams: number,
@@ -55,7 +55,7 @@ import { SlotSchema, TeamSchema } from './schemas/index.js';
  *     reason: string,
  *   }>,
  *   dataQualityWarnings: Array<string>,
- * }
+ * }}
  */
 const FAIRNESS_DOMINANCE_THRESHOLD = 0.7;
 const UNDERUTILIZATION_THRESHOLD = 0.25;

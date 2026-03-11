@@ -80,6 +80,8 @@ test('aggregates practice and game evaluations with issue rollups', () => {
         { reason: 'weather', matchup: 'team-1 vs team-2', weekIndex: 1, division: 'U10' },
       ],
     },
+    schoolDayEnd: '16:00',
+    timezone: 'UTC',
   });
 
   assert.equal(practiceResult.status, 'action-required');
@@ -153,6 +155,8 @@ test('reports ok status when no issues are detected', () => {
       teams,
       slots: practiceSlots,
     },
+    schoolDayEnd: '16:00',
+    timezone: 'UTC',
   });
 
   assert.equal(result.status, 'ok');
@@ -170,6 +174,8 @@ test('surface evaluator validation errors when required practice inputs are miss
           teams: [],
           slots: [],
         },
+        schoolDayEnd: '16:00',
+        timezone: 'UTC',
       }),
     /assignments must be an array/
   );
@@ -181,6 +187,8 @@ test('surface evaluator validation errors when required practice inputs are miss
           assignments: [],
           slots: [],
         },
+        schoolDayEnd: '16:00',
+        timezone: 'UTC',
       }),
     /teams must be an array/
   );
@@ -192,6 +200,8 @@ test('surface evaluator validation errors when required practice inputs are miss
           assignments: [],
           teams: [],
         },
+        schoolDayEnd: '16:00',
+        timezone: 'UTC',
       }),
     /slots must be an array/
   );
@@ -230,6 +240,8 @@ test('optional collections default safely when omitted', () => {
       assignments: [],
       teams: [],
     },
+    schoolDayEnd: '16:00',
+    timezone: 'UTC',
   });
 
   assert.equal(result.status, 'ok');

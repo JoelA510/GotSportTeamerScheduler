@@ -49,11 +49,16 @@ export function filterRedundantCapacityWarnings(dataQualityWarnings = [], overbo
  * @param {Array<Object>} [params.practice.unassigned]
  * @param {Array<Object>} [params.practice.teams]
  * @param {Array<Object>} [params.practice.slots]
+ * @param {string} [params.practice.schoolDayEnd]
+ * @param {string} [params.practice.timezone]
  * @param {Object} [params.games] - Game evaluation inputs.
  * @param {Array<Object>} [params.games.assignments]
  * @param {Array<Object>} [params.games.teams]
  * @param {Array<Object>} [params.games.byes]
  * @param {Array<Object>} [params.games.unscheduled]
+ * @param {Array<Object>} [params.games.sharedSlotUsage]
+ * @param {string} [params.schoolDayEnd] - e.g. '16:00'
+ * @param {string} [params.timezone]
  * @returns {{
  *   generatedAt: string,
  *   status: 'ok' | 'attention-needed' | 'action-required',
@@ -63,7 +68,7 @@ export function filterRedundantCapacityWarnings(dataQualityWarnings = [], overbo
  * }}
  * @throws {TypeError} When provided practice or game payloads omit required arrays expected by the evaluators.
  */
-export function runScheduleEvaluations({ practice, games } = {}) {
+export function runScheduleEvaluations({ practice, games, schoolDayEnd, timezone } = {}) {
   if (practice !== undefined && (practice === null || typeof practice !== 'object')) {
     throw new TypeError('practice must be an object when provided');
   }
@@ -71,15 +76,17 @@ export function runScheduleEvaluations({ practice, games } = {}) {
     throw new TypeError('games must be an object when provided');
   }
 
-  const practiceResult =
-    practice === undefined
-      ? null
-      : evaluatePracticeSchedule({
-          assignments: practice.assignments,
-          unassigned: practice.unassigned ?? [],
-          teams: practice.teams,
-          slots: practice.slots,
-        });
+    const practiceResult =
+      practice === undefined
+        ? null
+        : evaluatePracticeSchedule({
+            assignments: practice.assignments,
+            unassigned: practice.unassigned ?? [],
+            teams: practice.teams,
+            slots: practice.slots,
+            schoolDayEnd: practice.schoolDayEnd ?? schoolDayEnd,
+            timezone: practice.timezone ?? timezone,
+          });
 
   const gameResult =
     games === undefined
@@ -89,6 +96,7 @@ export function runScheduleEvaluations({ practice, games } = {}) {
           teams: games.teams,
           byes: games.byes ?? [],
           unscheduled: games.unscheduled ?? [],
+          // @ts-ignore - sharedSlotUsage is supported by evaluateGameSchedule
           sharedSlotUsage: games.sharedSlotUsage ?? [],
         });
 
@@ -245,7 +253,7 @@ export function runScheduleEvaluations({ practice, games } = {}) {
   return {
     generatedAt: new Date().toISOString(),
     status,
-    issues,
+    issues: /** @type {any} */ (issues),
     practice: practiceResult,
     games: gameResult,
   };

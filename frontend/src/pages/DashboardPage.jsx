@@ -1,11 +1,11 @@
 import React, { useState, useMemo } from 'react';
-import DashboardWorkflow from '../components/DashboardWorkflow';
-import { useDashboardData } from '../hooks/useDashboardData';
-import { useTeamPersistence } from '../hooks/useTeamPersistence';
-import { useImport } from '../contexts/ImportContext';
-import { useTheme } from '../contexts/ThemeContext';
+import DashboardWorkflow from '../components/DashboardWorkflow.jsx';
+import { useDashboardData } from '../hooks/useDashboardData.js';
+import { useTeamPersistence } from '../hooks/useTeamPersistence.js';
+import { useImport } from '../contexts/ImportContext.jsx';
+import { useTheme } from '../contexts/ThemeContext.jsx';
 import { useOrganization } from '../contexts/OrganizationContext.jsx';
-import LoadingScreen from '../components/LoadingScreen';
+import LoadingScreen from '../components/LoadingScreen.jsx';
 import { Building2, Calendar, Users, Trophy } from 'lucide-react';
 
 export default function DashboardPage() {

@@ -25,6 +25,7 @@ test('handleGamePersistence validates snapshot', () => {
   const result = handleGamePersistence({
     snapshot: { lastRunId: 'run-1', payload: { assignmentRows: [] } },
     overrides: [],
+    now: new Date(),
   });
   assert.equal(result.status, 'success');
 });

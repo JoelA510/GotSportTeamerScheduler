@@ -1,5 +1,5 @@
 import React from 'react';
-import Sidebar from '../components/Sidebar';
+import Sidebar from '../components/Sidebar.jsx';
 import { Menu } from 'lucide-react';
 import { useState } from 'react';
 import { Outlet } from 'react-router-dom';
@@ -12,7 +12,6 @@ export default function DashboardLayout({ activeSection }) {
       <Sidebar
         isOpen={isSidebarOpen}
         toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
-        activeSection={activeSection}
       />
 
       <div className="flex-1 flex flex-col min-w-0">

@@ -157,6 +157,7 @@ test('normalizeManualOverrides validates structure and status', () => {
     ]
   );
 
+  // @ts-ignore
   assert.throws(() => normalizeManualOverrides('bad'), /manualOverrides must be an array/);
   assert.throws(() => normalizeManualOverrides([{}]), /requires a teamId/);
   assert.throws(

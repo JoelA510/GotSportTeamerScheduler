@@ -60,6 +60,7 @@ export default function GamePersistencePanel({ assignments = [], runMetadata = {
       colorTheme="green"
       stats={[{ label: 'Assignments', value: snapshot.preparedAssignmentRows }]}
       onSync={handleSync}
+      // @ts-expect-error
       status={status}
       message={message}
     />

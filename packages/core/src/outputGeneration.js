@@ -23,13 +23,14 @@ const MASTER_HEADERS = Object.values(HEADERS);
  * @param {Array<Object>} params.teams
  * @param {Array<Object>} [params.practiceAssignments=[]]
  * @param {Array<Object>} [params.gameAssignments=[]]
+ * @param {string} [params.timezone]
  * @returns {{ master: { headers: Array<string>, rows: Array<Object>, csv: string }, perTeam: Array<{ teamId: string, headers: Array<string>, rows: Array<Object>, csv: string }> }}
  */
 export function generateScheduleExports({
   teams,
   practiceAssignments = [],
   gameAssignments = [],
-  timezone,
+  timezone = undefined,
 }) {
   if (!Array.isArray(teams)) {
     throw new TypeError('teams must be an array');

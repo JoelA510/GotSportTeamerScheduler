@@ -1,6 +1,6 @@
 import React from 'react';
-import ImportPanel from '../components/ImportPanel';
-import { useImport } from '../contexts/ImportContext';
+import ImportPanel from '../components/ImportPanel.jsx';
+import { useImport } from '../contexts/ImportContext.jsx';
 import { useNavigate } from 'react-router-dom';
 
 export default function ImportPage() {

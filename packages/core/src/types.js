@@ -39,13 +39,18 @@
 /**
  * @typedef {Object} Player
  * @property {string} id - UUID
- * @property {string} first_name - First name
- * @property {string} last_name - Last name
+ * @property {string} [first_name] - First name (DB)
+ * @property {string} [last_name] - Last name (DB)
+ * @property {string} [firstName] - First name (Engine)
+ * @property {string} [lastName] - Last name (Engine)
  * @property {string} division - Division identifier
- * @property {number} [skillRating] - Numeric skill level
+ * @property {number} [skillRating] - Numeric skill level (Engine)
+ * @property {number} [skillLevel] - Numeric skill level (Engine/Tests)
  * @property {string} [skill_tier] - DB skill tier (novice, etc)
- * @property {string} [buddyId] - Requested buddy
- * @property {string} [coachId] - Voluntary coach link
+ * @property {string} [buddyId] - Requested buddy (Engine)
+ * @property {string} [buddy_id] - Requested buddy (DB)
+ * @property {string} [coachId] - Voluntary coach link (Engine)
+ * @property {string} [coach_id] - Voluntary coach link (DB)
  * @property {string} [assistantCoachId] - Voluntary assistant link
  */
 
@@ -101,6 +106,59 @@
  * @property {string} [away_team_id] - UUID (if game)
  * @property {string} organization_id - UUID
  * @property {Object} [meta] - Additional JSON data (scores, notes)
+ */
+
+/**
+ * @typedef {Object} GameScheduleParams
+ * @property {Array<Object>} assignments
+ * @property {Team[]} teams
+ * @property {Array<{ weekIndex: number, division: string }>} [byes]
+ * @property {Array<Object>} [unscheduled]
+ * @property {Array<Object>} [sharedSlotUsage]
+ */
+
+/**
+ * @typedef {Object} PersistenceSnapshot
+ * @property {string} [lastRunId]
+ * @property {Object} [payload]
+ * @property {string} [runId]
+ */
+
+/**
+ * @typedef {Object} PracticePersistenceSnapshot
+ * @property {string} [runId]
+ * @property {Array<Object>} [assignments]
+ * @property {Array<Object>} [slots]
+ * @property {Array<Object>} [practiceOverrides]
+ * @property {Array<Object>} [runHistory]
+ * @property {Array<Object>} [schedulerRuns]
+ * @property {Date | null} [lastSyncedAt]
+ * @property {Object} [runMetadata]
+ * @property {string} [pendingManualOverrideGoal]
+ */
+
+/**
+ * @typedef {Object} GamePersistenceSnapshot
+ * @property {string} [runId]
+ * @property {Array<Object>} [assignments]
+ * @property {Array<Object>} [runHistory]
+ * @property {Array<Object>} [schedulerRuns]
+ * @property {Date | null} [lastSyncedAt]
+ * @property {Object} [runMetadata]
+ */
+
+/**
+ * @typedef {Object} TeamPersistenceSnapshot
+ * @property {string} [runId]
+ * @property {Array<Object>} [teamOverrides]
+ * @property {Array<Object>} [manualAssignments]
+ * @property {Array<Object>} [runHistory]
+ * @property {Array<Object>} [schedulerRuns]
+ * @property {Date | null} [lastSyncedAt]
+ * @property {Object} [runMetadata]
+ * @property {string} [pendingManualOverrideGoal]
+ * @property {Record<string, any[]>} [teamsByDivision]
+ * @property {Record<string, string>} [divisionIdMap]
  */
 
 export {};

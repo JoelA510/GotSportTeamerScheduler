@@ -10,15 +10,25 @@ const GRID_COLS = {
   4: 'grid-cols-4',
 };
 
+/**
+ * @param {Object} params
+ * @param {string} params.title
+ * @param {Array<{label: string, value: any}>} [params.stats]
+ * @param {() => void} params.onSync
+ * @param {'idle' | 'syncing' | 'success' | 'error'} params.status
+ * @param {string} [params.message]
+ * @param {'blue' | 'green'} [params.colorTheme]
+ * @param {React.ReactNode} [params.children]
+ */
 export default function PersistencePanel({
   title,
-  stats = [], // Array of { label, value }
+  stats = [],
   onSync,
-  status, // 'idle', 'syncing', 'success', 'error'
+  status,
   message,
 
-  colorTheme = 'blue', // 'blue' or 'green'
-  children,
+  colorTheme = 'blue',
+  children = null,
 }) {
   const theme = PERSISTENCE_THEMES[colorTheme] || PERSISTENCE_THEMES.blue;
   const gridClass = GRID_COLS[stats.length] || 'grid-cols-1';

@@ -1,0 +1,228 @@
+
+> squad-logic@1.0.0 typecheck
+> tsc --noEmit
+
+frontend/src/App.jsx(52,26): error TS2741: Property 'activeSection' is missing in type '{}' but required in type '{ activeSection: any; }'.
+frontend/src/components/DashboardWorkflow.jsx(73,44): error TS2304: Cannot find name 'totalSteps'.
+frontend/src/components/DashboardWorkflow.jsx(176,18): error TS2741: Property 'timezone' is missing in type '{ totals: any; divisions: any; generatedAt: any; }' but required in type '{ totals: any; divisions: any; generatedAt: any; timezone: any; }'.
+frontend/src/components/DashboardWorkflow.jsx(234,12): error TS2741: Property 'scheduleEvaluation' is missing in type '{ practiceReadinessSnapshot: any; practiceSummary: any; generatedAt: any; timezone: any; }' but required in type '{ practiceReadinessSnapshot: any; practiceSummary: any; generatedAt: any; scheduleEvaluation: any; timezone: any; }'.
+frontend/src/components/DashboardWorkflow.jsx(249,12): error TS2741: Property 'timezone' is missing in type '{ gameReadinessSnapshot: any; gameSummary: any; generatedAt: any; }' but required in type '{ gameReadinessSnapshot: any; gameSummary: any; generatedAt: any; timezone: any; }'.
+frontend/src/components/GamePersistencePanel.jsx(15,5): error TS2353: Object literal may only specify known properties, and 'runId' does not exist in type '{ assignments?: any[]; runHistory?: any[]; schedulerRuns?: any[]; lastSyncedAt?: any; runMetadata?: {}; }'.
+frontend/src/components/GamePersistencePanel.jsx(58,6): error TS2741: Property 'children' is missing in type '{ title: string; colorTheme: string; stats: { label: string; value: number; }[]; onSync: () => Promise<void>; status: string; message: string; }' but required in type '{ title: any; stats?: any[]; onSync: any; status: any; message: any; colorTheme?: string; children: any; }'.
+frontend/src/components/Login.jsx(4,18): error TS2307: Cannot find module '../assets/logo_draft_modern.png' or its corresponding type declarations.
+frontend/src/components/PracticePersistencePanel.jsx(23,5): error TS2353: Object literal may only specify known properties, and 'runId' does not exist in type '{ assignments?: any[]; slots?: any[]; practiceOverrides?: any[]; runHistory?: any[]; schedulerRuns?: any[]; lastSyncedAt?: any; runMetadata?: {}; pendingManualOverrideGoal?: string; }'.
+frontend/src/components/PracticePersistencePanel.jsx(67,6): error TS2741: Property 'children' is missing in type '{ title: string; colorTheme: string; stats: { label: string; value: number; }[]; onSync: () => Promise<void>; status: string; message: string; }' but required in type '{ title: any; stats?: any[]; onSync: any; status: any; message: any; colorTheme?: string; children: any; }'.
+frontend/src/components/teaming/ProgramOverview.jsx(44,21): error TS2322: Type 'string' is not assignable to type 'number'.
+frontend/src/config.js(7,57): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+frontend/src/config.js(7,76): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+frontend/src/config.js(8,24): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+frontend/src/contexts/ImportContext.jsx(5,23): error TS2554: Expected 1 arguments, but got 0.
+frontend/src/utils/formatters.js(31,38): error TS2769: No overload matches this call.
+  Overload 1 of 3, '(locales?: LocalesArgument, options?: DateTimeFormatOptions): string', gave the following error.
+    Argument of type '{ hour: string; minute: string; }' is not assignable to parameter of type 'DateTimeFormatOptions'.
+      Types of property 'hour' are incompatible.
+        Type 'string' is not assignable to type '"numeric" | "2-digit"'.
+  Overload 2 of 3, '(locales?: string | string[], options?: DateTimeFormatOptions): string', gave the following error.
+    Argument of type '{ hour: string; minute: string; }' is not assignable to parameter of type 'DateTimeFormatOptions'.
+      Types of property 'hour' are incompatible.
+        Type 'string' is not assignable to type '"numeric" | "2-digit"'.
+frontend/src/utils/formatters.js(46,45): error TS2769: No overload matches this call.
+  Overload 1 of 3, '(locales?: LocalesArgument, options?: DateTimeFormatOptions): string', gave the following error.
+    Argument of type '{ year: string; month: string; day: string; weekday: string; }' is not assignable to parameter of type 'DateTimeFormatOptions'.
+      Types of property 'weekday' are incompatible.
+        Type 'string' is not assignable to type '"long" | "short" | "narrow"'.
+  Overload 2 of 3, '(locales?: string | string[], options?: DateTimeFormatOptions): string', gave the following error.
+    Argument of type '{ year: string; month: string; day: string; weekday: string; }' is not assignable to parameter of type 'DateTimeFormatOptions'.
+      Types of property 'weekday' are incompatible.
+        Type 'string' is not assignable to type '"long" | "short" | "narrow"'.
+node_modules/@dnd-kit/core/dist/components/Accessibility/Accessibility.d.ts(9,129): error TS2503: Cannot find namespace 'JSX'.
+node_modules/@dnd-kit/core/dist/components/DragOverlay/components/AnimationManager/AnimationManager.d.ts(8,75): error TS2503: Cannot find namespace 'JSX'.
+node_modules/@dnd-kit/core/dist/components/DragOverlay/components/NullifiedContextProvider/NullifiedContextProvider.d.ts(5,72): error TS2503: Cannot find namespace 'JSX'.
+node_modules/@dnd-kit/core/dist/components/DragOverlay/components/PositionedOverlay/PositionedOverlay.d.ts(6,15): error TS2503: Cannot find namespace 'JSX'.
+node_modules/@dnd-kit/core/dist/components/DragOverlay/DragOverlay.d.ts(8,28): error TS2503: Cannot find namespace 'JSX'.
+node_modules/@dnd-kit/core/dist/components/DragOverlay/DragOverlay.d.ts(11,201): error TS2503: Cannot find namespace 'JSX'.
+node_modules/@dnd-kit/sortable/dist/components/SortableContext.d.ts(25,127): error TS2503: Cannot find namespace 'JSX'.
+node_modules/@testing-library/jest-dom/types/jest.d.ts(1,23): error TS2688: Cannot find type definition file for 'jest'.
+node_modules/@testing-library/jest-dom/types/jest.d.ts(9,27): error TS2304: Cannot find name 'expect'.
+packages/core/src/evaluationPersistence.js(51,26): error TS2304: Cannot find name 'findingsSeverity'.
+packages/core/src/gameMetrics.js(20,3): error TS2339: Property 'sharedSlotUsage' does not exist on type '{ assignments: any[]; teams: any[]; byes?: any[]; unscheduled?: any[]; }'.
+packages/core/src/gamePersistenceApi.js(23,53): error TS2741: Property 'supabaseClient' is missing in type '{}' but required in type '{ supabaseClient: any; requestBody?: any; user?: any; allowedRoles?: string[]; now?: Date; }'.
+packages/core/src/gamePersistenceEdgeHandler.js(26,3): error TS2339: Property 'supabaseClient' does not exist on type '{}'.
+packages/core/src/gamePersistenceEdgeHandler.js(27,3): error TS2339: Property 'allowedRoles' does not exist on type '{}'.
+packages/core/src/gamePersistenceEdgeHandler.js(28,3): error TS2339: Property 'now' does not exist on type '{}'.
+packages/core/src/gamePersistenceEdgeHandler.js(29,3): error TS2339: Property 'getUser' does not exist on type '{}'.
+packages/core/src/gamePersistenceSnapshot.js(19,3): error TS2339: Property 'runId' does not exist on type '{ assignments?: undefined[]; runHistory?: undefined[]; schedulerRuns?: undefined[]; lastSyncedAt?: null; runMetadata?: {}; }'.
+packages/core/src/gameSupabase.js(27,41): error TS2741: Property 'assignments' is missing in type '{}' but required in type '{ assignments: any[]; runId?: string; }'.
+packages/core/src/gameSupabase.js(73,46): error TS2739: Type '{}' is missing the following properties from type '{ supabaseClient: any; assignments: any[]; runId?: string; upsert?: boolean; }': supabaseClient, assignments
+packages/core/src/outputGeneration.js(32,3): error TS2339: Property 'timezone' does not exist on type '{ teams: any[]; practiceAssignments?: any[]; gameAssignments?: any[]; }'.
+packages/core/src/practicePersistenceApi.js(23,57): error TS2741: Property 'supabaseClient' is missing in type '{}' but required in type '{ supabaseClient: any; requestBody?: any; user?: any; allowedRoles?: string[]; now?: Date; }'.
+packages/core/src/practicePersistenceEdgeHandler.js(26,3): error TS2339: Property 'supabaseClient' does not exist on type '{}'.
+packages/core/src/practicePersistenceEdgeHandler.js(27,3): error TS2339: Property 'allowedRoles' does not exist on type '{}'.
+packages/core/src/practicePersistenceEdgeHandler.js(28,3): error TS2339: Property 'now' does not exist on type '{}'.
+packages/core/src/practicePersistenceEdgeHandler.js(29,3): error TS2339: Property 'getUser' does not exist on type '{}'.
+packages/core/src/practicePersistenceSnapshot.js(84,3): error TS2339: Property 'runId' does not exist on type '{ assignments?: undefined[]; slots?: undefined[]; practiceOverrides?: undefined[]; runHistory?: undefined[]; schedulerRuns?: undefined[]; lastSyncedAt?: null; runMetadata?: {}; pendingManualOverrideGoal?: string; }'.
+packages/core/src/practiceSlotExpansion.js(53,35): error TS2362: The left-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+packages/core/src/practiceSlotExpansion.js(53,49): error TS2363: The right-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+packages/core/src/practiceSupabase.js(214,45): error TS2739: Type '{}' is missing the following properties from type '{ assignments: { teamId: string; slotId: string; source?: string; }[]; slots: any[]; runId?: string; }': assignments, slots
+packages/core/src/practiceSupabase.js(289,3): error TS2339: Property 'supabaseClient' does not exist on type '{ upsert?: boolean; }'.
+packages/core/src/practiceSupabase.js(290,3): error TS2339: Property 'assignments' does not exist on type '{ upsert?: boolean; }'.
+packages/core/src/practiceSupabase.js(291,3): error TS2339: Property 'slots' does not exist on type '{ upsert?: boolean; }'.
+packages/core/src/practiceSupabase.js(292,3): error TS2339: Property 'runId' does not exist on type '{ upsert?: boolean; }'.
+packages/core/src/rosterSizing.js(123,3): error TS2322: Type '{}' is not assignable to type 'Record<string, { maxRosterSize: number; playableCount: number; source: string; }>'.
+  Index signature for type 'string' is missing in type '{}'.
+packages/core/src/rosterSizing.js(186,3): error TS2322: Type '{}' is not assignable to type 'Record<string, { maxRosterSize: number; playableCount: number; }>'.
+  Index signature for type 'string' is missing in type '{}'.
+packages/core/src/teamPersistenceSnapshot.js(86,3): error TS2339: Property 'teamsByDivision' does not exist on type '{ teamOverrides?: undefined[]; manualAssignments?: undefined[]; runHistory?: undefined[]; schedulerRuns?: undefined[]; lastSyncedAt?: null; runMetadata?: {}; pendingManualOverrideGoal?: string; }'.
+packages/core/src/teamPersistenceSnapshot.js(87,3): error TS2339: Property 'divisionIdMap' does not exist on type '{ teamOverrides?: undefined[]; manualAssignments?: undefined[]; runHistory?: undefined[]; schedulerRuns?: undefined[]; lastSyncedAt?: null; runMetadata?: {}; pendingManualOverrideGoal?: string; }'.
+packages/core/src/teamPersistenceSnapshot.js(93,3): error TS2339: Property 'runId' does not exist on type '{ teamOverrides?: undefined[]; manualAssignments?: undefined[]; runHistory?: undefined[]; schedulerRuns?: undefined[]; lastSyncedAt?: null; runMetadata?: {}; pendingManualOverrideGoal?: string; }'.
+packages/core/src/teamPersistenceSnapshot.js(101,5): error TS2339: Property 'teamNameByGeneratorId' does not exist on type '{ rows: any[]; teamIdMap: Map<string, string>; }'.
+packages/core/src/teamSupabase.js(67,31): error TS2741: Property 'teamsByDivision' is missing in type '{}' but required in type '{ teamsByDivision: Record<string, any[]>; divisionIdMap?: Record<string, string>; teamOverrides?: { teamId: string; name?: string; coachId?: string; }[]; runId?: string; }'.
+packages/core/src/teamSupabase.js(131,29): error TS2353: Object literal may only specify known properties, and 'teamNameByGeneratorId' does not exist in type '{ rows: any[]; teamIdMap: Map<string, string>; }'.
+packages/core/src/teamSupabase.js(145,37): error TS2741: Property 'teamsByDivision' is missing in type '{}' but required in type '{ teamsByDivision: Record<string, any[]>; manualAssignments?: { teamId: string; playerId: string; role?: string; source?: string; }[]; runId?: string; teamIdMap?: Map<string, string>; }'.
+packages/core/src/teamSupabase.js(275,36): error TS2739: Type '{}' is missing the following properties from type '{ supabaseClient: any; teamsByDivision: Record<string, any[]>; divisionIdMap?: Record<string, string>; teamOverrides?: any[]; runId?: string; upsert?: boolean; }': supabaseClient, teamsByDivision
+packages/core/src/teamSupabase.js(307,42): error TS2739: Type '{}' is missing the following properties from type '{ supabaseClient: any; teamsByDivision: Record<string, any[]>; manualAssignments?: any[]; runId?: string; upsert?: boolean; teamIdMap?: Map<string, string>; }': supabaseClient, teamsByDivision
+tests/authIntegration.test.jsx(9,26): error TS2307: Cannot find module '../frontend/src/utils/supabaseClient.js' or its corresponding type declarations.
+tests/gameMetrics.test.js(267,5): error TS2353: Object literal may only specify known properties, and 'sharedSlotUsage' does not exist in type '{ assignments: any[]; teams: any[]; byes?: any[]; unscheduled?: any[]; }'.
+tests/gamePersistenceApi.test.js(41,54): error TS2345: Argument of type '{ requestBody: {}; user: null; }' is not assignable to parameter of type '{ supabaseClient: any; requestBody?: any; user?: any; allowedRoles?: string[]; now?: Date; }'.
+  Property 'supabaseClient' is missing in type '{ requestBody: {}; user: null; }' but required in type '{ supabaseClient: any; requestBody?: any; user?: any; allowedRoles?: string[]; now?: Date; }'.
+tests/gamePersistenceApi.test.js(48,54): error TS2345: Argument of type '{ requestBody: { snapshot: { lastRunId: string; payload: { assignmentRows: { slot_id: string; home_team_id: string; away_team_id: string; week_index: number; }[]; }; }; overrides: { status: string; }[]; }; user: { ...; }; }' is not assignable to parameter of type '{ supabaseClient: any; requestBody?: any; user?: any; allowedRoles?: string[]; now?: Date; }'.
+  Property 'supabaseClient' is missing in type '{ requestBody: { snapshot: { lastRunId: string; payload: { assignmentRows: { slot_id: string; home_team_id: string; away_team_id: string; week_index: number; }[]; }; }; overrides: { status: string; }[]; }; user: { ...; }; }' but required in type '{ supabaseClient: any; requestBody?: any; user?: any; allowedRoles?: string[]; now?: Date; }'.
+tests/gamePersistenceHandler.test.js(25,40): error TS2345: Argument of type '{ snapshot: { lastRunId: string; payload: { assignmentRows: undefined[]; }; }; overrides: undefined[]; }' is not assignable to parameter of type '{ snapshot: any; overrides: any; now: any; }'.
+  Property 'now' is missing in type '{ snapshot: { lastRunId: string; payload: { assignmentRows: undefined[]; }; }; overrides: undefined[]; }' but required in type '{ snapshot: any; overrides: any; now: any; }'.
+tests/gameScheduling.test.js(109,5): error TS2322: Type '{ id: string; division: string; coachId: string; }[]' is not assignable to type 'Team[]'.
+  Property 'name' is missing in type '{ id: string; division: string; coachId: string; }' but required in type 'Team'.
+tests/gameScheduling.test.js(161,5): error TS2322: Type '{ id: string; division: string; coachId: string; }[]' is not assignable to type 'Team[]'.
+  Property 'name' is missing in type '{ id: string; division: string; coachId: string; }' but required in type 'Team'.
+tests/gameScheduling.test.js(202,5): error TS2322: Type '{ id: string; division: string; coachId: string; }[]' is not assignable to type 'Team[]'.
+  Property 'name' is missing in type '{ id: string; division: string; coachId: string; }' but required in type 'Team'.
+tests/gameScheduling.test.js(288,43): error TS2322: Type '{ id: string; division: string; coachId: string; }[]' is not assignable to type 'Team[]'.
+  Property 'name' is missing in type '{ id: string; division: string; coachId: string; }' but required in type 'Team'.
+tests/gameScheduling.test.js(377,5): error TS2322: Type '{ id: string; division: string; coachId: string; }[]' is not assignable to type 'Team[]'.
+  Property 'name' is missing in type '{ id: string; division: string; coachId: string; }' but required in type 'Team'.
+tests/gameScheduling.test.js(467,5): error TS2322: Type '{ id: string; division: string; coachId: string; }[]' is not assignable to type 'Team[]'.
+  Property 'name' is missing in type '{ id: string; division: string; coachId: string; }' but required in type 'Team'.
+tests/gameSupabase.test.js(250,34): error TS2345: Argument of type '{ assignments: undefined[]; }' is not assignable to parameter of type '{ supabaseClient: any; assignments: any[]; runId?: string; upsert?: boolean; }'.
+  Property 'supabaseClient' is missing in type '{ assignments: undefined[]; }' but required in type '{ supabaseClient: any; assignments: any[]; runId?: string; upsert?: boolean; }'.
+tests/outputGeneration.test.js(144,5): error TS2353: Object literal may only specify known properties, and 'timezone' does not exist in type '{ teams: any[]; practiceAssignments?: any[]; gameAssignments?: any[]; }'.
+tests/practicePersistenceApi.test.js(40,58): error TS2345: Argument of type '{ requestBody: {}; user: null; }' is not assignable to parameter of type '{ supabaseClient: any; requestBody?: any; user?: any; allowedRoles?: string[]; now?: Date; }'.
+  Property 'supabaseClient' is missing in type '{ requestBody: {}; user: null; }' but required in type '{ supabaseClient: any; requestBody?: any; user?: any; allowedRoles?: string[]; now?: Date; }'.
+tests/practicePersistenceApi.test.js(47,58): error TS2345: Argument of type '{ requestBody: { snapshot: { lastRunId: string; payload: { assignmentRows: { team_id: string; practice_slot_id: string; }[]; }; }; overrides: { status: string; }[]; }; user: { role: string; }; }' is not assignable to parameter of type '{ supabaseClient: any; requestBody?: any; user?: any; allowedRoles?: string[]; now?: Date; }'.
+  Property 'supabaseClient' is missing in type '{ requestBody: { snapshot: { lastRunId: string; payload: { assignmentRows: { team_id: string; practice_slot_id: string; }[]; }; }; overrides: { status: string; }[]; }; user: { role: string; }; }' but required in type '{ supabaseClient: any; requestBody?: any; user?: any; allowedRoles?: string[]; now?: Date; }'.
+tests/practicePersistenceHandler.test.js(25,44): error TS2345: Argument of type '{ snapshot: { lastRunId: string; payload: { assignmentRows: undefined[]; }; }; overrides: undefined[]; }' is not assignable to parameter of type '{ snapshot: any; overrides: any; now: any; }'.
+  Property 'now' is missing in type '{ snapshot: { lastRunId: string; payload: { assignmentRows: undefined[]; }; }; overrides: undefined[]; }' but required in type '{ snapshot: any; overrides: any; now: any; }'.
+tests/practiceSupabase.test.js(383,55): error TS2322: Type 'string' is not assignable to type '{ teamId: string; slotId: string; source?: string; }[]'.
+tests/practiceSupabase.test.js(457,7): error TS2353: Object literal may only specify known properties, and 'supabaseClient' does not exist in type '{ upsert?: boolean; }'.
+tests/practiceSupabase.test.js(512,7): error TS2353: Object literal may only specify known properties, and 'supabaseClient' does not exist in type '{ upsert?: boolean; }'.
+tests/practiceSupabase.test.js(546,7): error TS2353: Object literal may only specify known properties, and 'supabaseClient' does not exist in type '{ upsert?: boolean; }'.
+tests/practiceSupabase.test.js(569,11): error TS2353: Object literal may only specify known properties, and 'supabaseClient' does not exist in type '{ upsert?: boolean; }'.
+tests/practiceSupabase.test.js(581,11): error TS2353: Object literal may only specify known properties, and 'assignments' does not exist in type '{ upsert?: boolean; }'.
+tests/rosterSizing.test.js(145,56): error TS2345: Argument of type 'string' is not assignable to parameter of type 'any[]'.
+tests/teamDiagnostics.test.js(36,5): error TS2322: Type '{ U10: { maxRosterSize: number; }; U12: { maxRosterSize: number; }; }' is not assignable to type '{ [x: string]: DivisionConfig; }'.
+  Property 'U10' is incompatible with index signature.
+    Type '{ maxRosterSize: number; }' is missing the following properties from type 'DivisionConfig': id, teamsCount, slotsPerWeek
+tests/teamGeneration.test.js(24,5): error TS2322: Type '{ U10: { maxRosterSize: number; }; }' is not assignable to type '{ [x: string]: DivisionConfig; }'.
+  Property 'U10' is incompatible with index signature.
+    Type '{ maxRosterSize: number; }' is missing the following properties from type 'DivisionConfig': id, teamsCount, slotsPerWeek
+tests/teamGeneration.test.js(86,5): error TS2322: Type '{ U10: { maxRosterSize: number; }; }' is not assignable to type '{ [x: string]: DivisionConfig; }'.
+  Property 'U10' is incompatible with index signature.
+    Type '{ maxRosterSize: number; }' is missing the following properties from type 'DivisionConfig': id, teamsCount, slotsPerWeek
+tests/teamGeneration.test.js(118,5): error TS2322: Type '{ U10: { maxRosterSize: number; }; }' is not assignable to type '{ [x: string]: DivisionConfig; }'.
+  Property 'U10' is incompatible with index signature.
+    Type '{ maxRosterSize: number; }' is missing the following properties from type 'DivisionConfig': id, teamsCount, slotsPerWeek
+tests/teamGeneration.test.js(167,7): error TS2739: Type '{ maxRosterSize: number; teamNames: string[]; teamNamePrefix: string; }' is missing the following properties from type 'DivisionConfig': id, teamsCount, slotsPerWeek
+tests/teamGeneration.test.js(181,24): error TS2739: Type '{ maxRosterSize: number; }' is missing the following properties from type 'DivisionConfig': id, teamsCount, slotsPerWeek
+tests/teamGeneration.test.js(205,5): error TS2322: Type '{ U10: { maxRosterSize: number; }; }' is not assignable to type '{ [x: string]: DivisionConfig; }'.
+  Property 'U10' is incompatible with index signature.
+    Type '{ maxRosterSize: number; }' is missing the following properties from type 'DivisionConfig': id, teamsCount, slotsPerWeek
+tests/teamGeneration.test.js(233,36): error TS2322: Type '{ U10: { maxRosterSize: number; }; }' is not assignable to type '{ [x: string]: DivisionConfig; }'.
+  Property 'U10' is incompatible with index signature.
+    Type '{ maxRosterSize: number; }' is missing the following properties from type 'DivisionConfig': id, teamsCount, slotsPerWeek
+tests/teamGeneration.test.js(253,24): error TS2739: Type '{ maxRosterSize: number; }' is missing the following properties from type 'DivisionConfig': id, teamsCount, slotsPerWeek
+tests/teamGeneration.test.js(280,42): error TS2322: Type '{ U10: { maxRosterSize: number; }; }' is not assignable to type '{ [x: string]: DivisionConfig; }'.
+  Property 'U10' is incompatible with index signature.
+    Type '{ maxRosterSize: number; }' is missing the following properties from type 'DivisionConfig': id, teamsCount, slotsPerWeek
+tests/teamGeneration.test.js(288,40): error TS2322: Type '{ U10: { maxRosterSize: number; }; }' is not assignable to type '{ [x: string]: DivisionConfig; }'.
+  Property 'U10' is incompatible with index signature.
+    Type '{ maxRosterSize: number; }' is missing the following properties from type 'DivisionConfig': id, teamsCount, slotsPerWeek
+tests/teamGeneration.test.js(288,57): error TS2322: Type 'string' is not assignable to type '() => number'.
+tests/teamGeneration.test.js(294,27): error TS2322: Type '{ division: string; }[]' is not assignable to type 'Player[]'.
+  Property 'id' is missing in type '{ division: string; }' but required in type 'Player'.
+tests/teamGeneration.test.js(294,47): error TS2322: Type '{ U10: { maxRosterSize: number; }; }' is not assignable to type '{ [x: string]: DivisionConfig; }'.
+  Property 'U10' is incompatible with index signature.
+    Type '{ maxRosterSize: number; }' is missing the following properties from type 'DivisionConfig': id, teamsCount, slotsPerWeek
+tests/teamGeneration.test.js(300,27): error TS2322: Type '{ id: string; }[]' is not assignable to type 'Player[]'.
+  Property 'division' is missing in type '{ id: string; }' but required in type 'Player'.
+tests/teamGeneration.test.js(300,53): error TS2322: Type '{ U10: { maxRosterSize: number; }; }' is not assignable to type '{ [x: string]: DivisionConfig; }'.
+  Property 'U10' is incompatible with index signature.
+    Type '{ maxRosterSize: number; }' is missing the following properties from type 'DivisionConfig': id, teamsCount, slotsPerWeek
+tests/teamGeneration.test.js(306,36): error TS2322: Type '{ U10: { maxRosterSize: number; }; }' is not assignable to type '{ [x: string]: DivisionConfig; }'.
+  Property 'U10' is incompatible with index signature.
+    Type '{ maxRosterSize: number; }' is missing the following properties from type 'DivisionConfig': id, teamsCount, slotsPerWeek
+tests/teamGeneration.test.js(315,66): error TS2322: Type '{ U10: { maxRosterSize: number; }; }' is not assignable to type '{ [x: string]: DivisionConfig; }'.
+  Property 'U10' is incompatible with index signature.
+    Type '{ maxRosterSize: number; }' is missing the following properties from type 'DivisionConfig': id, teamsCount, slotsPerWeek
+tests/teamGeneration.test.js(329,9): error TS2322: Type '{ U12: { maxRosterSize: number; }; U10: { maxRosterSize: number; }; }' is not assignable to type '{ [x: string]: DivisionConfig; }'.
+  Property 'U12' is incompatible with index signature.
+    Type '{ maxRosterSize: number; }' is missing the following properties from type 'DivisionConfig': id, teamsCount, slotsPerWeek
+tests/teamGeneration.test.js(346,7): error TS2322: Type '{ U10: { maxRosterSize: number; }; }' is not assignable to type '{ [x: string]: DivisionConfig; }'.
+  Property 'U10' is incompatible with index signature.
+    Type '{ maxRosterSize: number; }' is missing the following properties from type 'DivisionConfig': id, teamsCount, slotsPerWeek
+tests/teamGeneration.test.js(384,7): error TS2322: Type '{ U10: { maxRosterSize: number; }; }' is not assignable to type '{ [x: string]: DivisionConfig; }'.
+  Property 'U10' is incompatible with index signature.
+    Type '{ maxRosterSize: number; }' is missing the following properties from type 'DivisionConfig': id, teamsCount, slotsPerWeek
+tests/teamGeneration.test.js(422,24): error TS2739: Type '{ maxRosterSize: number; }' is missing the following properties from type 'DivisionConfig': id, teamsCount, slotsPerWeek
+tests/teamGeneration.test.js(448,24): error TS2739: Type '{ maxRosterSize: number; }' is missing the following properties from type 'DivisionConfig': id, teamsCount, slotsPerWeek
+tests/teamGeneration.test.js(472,24): error TS2739: Type '{ maxRosterSize: number; }' is missing the following properties from type 'DivisionConfig': id, teamsCount, slotsPerWeek
+tests/teamGenerationSeed.test.js(25,5): error TS2322: Type '{ U10: { maxRosterSize: number; teamNames: string[]; }; }' is not assignable to type '{ [x: string]: DivisionConfig; }'.
+  Property 'U10' is incompatible with index signature.
+    Type '{ maxRosterSize: number; teamNames: string[]; }' is missing the following properties from type 'DivisionConfig': id, teamsCount, slotsPerWeek
+tests/teamGenerationSeed.test.js(32,5): error TS2322: Type '{ U10: { maxRosterSize: number; teamNames: string[]; }; }' is not assignable to type '{ [x: string]: DivisionConfig; }'.
+  Property 'U10' is incompatible with index signature.
+    Type '{ maxRosterSize: number; teamNames: string[]; }' is missing the following properties from type 'DivisionConfig': id, teamsCount, slotsPerWeek
+tests/teamGenerationSeed.test.js(52,5): error TS2322: Type '{ U10: { maxRosterSize: number; teamNames: string[]; }; }' is not assignable to type '{ [x: string]: DivisionConfig; }'.
+  Property 'U10' is incompatible with index signature.
+    Type '{ maxRosterSize: number; teamNames: string[]; }' is missing the following properties from type 'DivisionConfig': id, teamsCount, slotsPerWeek
+tests/teamGenerationSeed.test.js(58,5): error TS2322: Type '{ U10: { maxRosterSize: number; teamNames: string[]; }; }' is not assignable to type '{ [x: string]: DivisionConfig; }'.
+  Property 'U10' is incompatible with index signature.
+    Type '{ maxRosterSize: number; teamNames: string[]; }' is missing the following properties from type 'DivisionConfig': id, teamsCount, slotsPerWeek
+tests/teamGenerationSeed.test.js(83,53): error TS2322: Type '{ U10: { maxRosterSize: number; teamNames: string[]; }; }' is not assignable to type '{ [x: string]: DivisionConfig; }'.
+  Property 'U10' is incompatible with index signature.
+    Type '{ maxRosterSize: number; teamNames: string[]; }' is missing the following properties from type 'DivisionConfig': id, teamsCount, slotsPerWeek
+tests/teamGenerationSeed.test.js(84,53): error TS2322: Type '{ U10: { maxRosterSize: number; teamNames: string[]; }; }' is not assignable to type '{ [x: string]: DivisionConfig; }'.
+  Property 'U10' is incompatible with index signature.
+    Type '{ maxRosterSize: number; teamNames: string[]; }' is missing the following properties from type 'DivisionConfig': id, teamsCount, slotsPerWeek
+tests/teamPersistenceApi.test.js(44,54): error TS2345: Argument of type '{ requestBody: {}; user: null; }' is not assignable to parameter of type '{ supabaseClient: any; requestBody?: { snapshot?: PersistenceSnapshot; overrides?: any[]; runMetadata?: any; }; user?: User; allowedRoles?: string[]; now?: Date; }'.
+  Property 'supabaseClient' is missing in type '{ requestBody: {}; user: null; }' but required in type '{ supabaseClient: any; requestBody?: { snapshot?: PersistenceSnapshot; overrides?: any[]; runMetadata?: any; }; user?: User; allowedRoles?: string[]; now?: Date; }'.
+tests/teamPersistenceApi.test.js(51,54): error TS2345: Argument of type '{ requestBody: null; user: { role: string; }; }' is not assignable to parameter of type '{ supabaseClient: any; requestBody?: { snapshot?: PersistenceSnapshot; overrides?: any[]; runMetadata?: any; }; user?: User; allowedRoles?: string[]; now?: Date; }'.
+  Property 'supabaseClient' is missing in type '{ requestBody: null; user: { role: string; }; }' but required in type '{ supabaseClient: any; requestBody?: { snapshot?: PersistenceSnapshot; overrides?: any[]; runMetadata?: any; }; user?: User; allowedRoles?: string[]; now?: Date; }'.
+tests/teamPersistenceApi.test.js(61,54): error TS2345: Argument of type '{ requestBody: { snapshot: { lastRunId: string; payload: { teamRows: { id: string; division_id: string; name: string; coach_id: string; }[]; teamPlayerRows: { team_id: string; player_id: string; role: string; source: string; }[]; }; }; overrides: { ...; }[]; runMetadata: { ...; }; }; user: { ...; }; }' is not assignable to parameter of type '{ supabaseClient: any; requestBody?: { snapshot?: PersistenceSnapshot; overrides?: any[]; runMetadata?: any; }; user?: User; allowedRoles?: string[]; now?: Date; }'.
+  Property 'supabaseClient' is missing in type '{ requestBody: { snapshot: { lastRunId: string; payload: { teamRows: { id: string; division_id: string; name: string; coach_id: string; }[]; teamPlayerRows: { team_id: string; player_id: string; role: string; source: string; }[]; }; }; overrides: { ...; }[]; runMetadata: { ...; }; }; user: { ...; }; }' but required in type '{ supabaseClient: any; requestBody?: { snapshot?: PersistenceSnapshot; overrides?: any[]; runMetadata?: any; }; user?: User; allowedRoles?: string[]; now?: Date; }'.
+tests/teamPersistenceApi.test.js(108,54): error TS2345: Argument of type '{ requestBody: { snapshot: null; runMetadata: { seasonSettingsId: number; }; }; user: { role: string; }; }' is not assignable to parameter of type '{ supabaseClient: any; requestBody?: { snapshot?: PersistenceSnapshot; overrides?: any[]; runMetadata?: any; }; user?: User; allowedRoles?: string[]; now?: Date; }'.
+  Property 'supabaseClient' is missing in type '{ requestBody: { snapshot: null; runMetadata: { seasonSettingsId: number; }; }; user: { role: string; }; }' but required in type '{ supabaseClient: any; requestBody?: { snapshot?: PersistenceSnapshot; overrides?: any[]; runMetadata?: any; }; user?: User; allowedRoles?: string[]; now?: Date; }'.
+tests/teamPersistenceClient.test.js(23,5): error TS2353: Object literal may only specify known properties, and 'simulateDelayMs' does not exist in type '{ snapshot?: any; overrides?: any[]; endpoint?: string; accessToken?: string; runMetadata?: any; signal?: AbortSignal; fetchImpl?: Function; }'.
+tests/teamPersistenceClient.test.js(40,5): error TS2353: Object literal may only specify known properties, and 'simulateDelayMs' does not exist in type '{ snapshot?: any; overrides?: any[]; endpoint?: string; accessToken?: string; runMetadata?: any; signal?: AbortSignal; fetchImpl?: Function; }'.
+tests/teamPersistenceClient.test.js(66,16): error TS18048: 'capturedHeaders' is possibly 'undefined'.
+tests/teamPersistenceClient.test.js(107,5): error TS2353: Object literal may only specify known properties, and 'simulateDelayMs' does not exist in type '{ snapshot?: any; overrides?: any[]; endpoint?: string; accessToken?: string; runMetadata?: any; signal?: AbortSignal; fetchImpl?: Function; }'.
+tests/teamPersistenceClient.test.js(147,20): error TS18048: 'capturedBody' is possibly 'undefined'.
+tests/teamPersistenceClient.test.js(153,20): error TS18048: 'capturedBody' is possibly 'undefined'.
+tests/teamPersistenceHandler.test.js(21,41): error TS2345: Argument of type '{}' is not assignable to parameter of type 'PersistenceSnapshot'.
+  Property 'payload' is missing in type '{}' but required in type 'PersistenceSnapshot'.
+tests/teamPersistenceHandler.test.js(26,42): error TS2322: Type 'string' is not assignable to type 'any[]'.
+tests/teamPersistencePanel.test.js(4,42): error TS2307: Cannot find module '../frontend/src/utils/applyOverridesToSnapshot.js' or its corresponding type declarations.
+tests/teamPersistenceSnapshot.test.js(66,5): error TS2353: Object literal may only specify known properties, and 'teamsByDivision' does not exist in type '{ teamOverrides?: any[]; manualAssignments?: any[]; runHistory?: any[]; schedulerRuns?: any[]; lastSyncedAt?: any; runMetadata?: {}; pendingManualOverrideGoal?: string; }'.
+tests/teamPersistenceSnapshot.test.js(160,48): error TS2345: Argument of type 'string' is not assignable to parameter of type 'any[]'.
+tests/teamPersistenceSnapshot.test.js(182,5): error TS2353: Object literal may only specify known properties, and 'teamsByDivision' does not exist in type '{ teamOverrides?: any[]; manualAssignments?: any[]; runHistory?: any[]; schedulerRuns?: any[]; lastSyncedAt?: any; runMetadata?: {}; pendingManualOverrideGoal?: string; }'.
+tests/teamPersistenceSnapshot.test.js(196,9): error TS2353: Object literal may only specify known properties, and 'teamsByDivision' does not exist in type '{ teamOverrides?: any[]; manualAssignments?: any[]; runHistory?: any[]; schedulerRuns?: any[]; lastSyncedAt?: any; runMetadata?: {}; pendingManualOverrideGoal?: string; }'.
+tests/teamPersistenceSnapshot.test.js(234,5): error TS2353: Object literal may only specify known properties, and 'teamsByDivision' does not exist in type '{ teamOverrides?: any[]; manualAssignments?: any[]; runHistory?: any[]; schedulerRuns?: any[]; lastSyncedAt?: any; runMetadata?: {}; pendingManualOverrideGoal?: string; }'.
+tests/teamPersistenceSnapshot.test.js(263,5): error TS2353: Object literal may only specify known properties, and 'teamsByDivision' does not exist in type '{ teamOverrides?: any[]; manualAssignments?: any[]; runHistory?: any[]; schedulerRuns?: any[]; lastSyncedAt?: any; runMetadata?: {}; pendingManualOverrideGoal?: string; }'.
+tests/teamSupabase.test.js(21,5): error TS2339: Property 'teamNameByGeneratorId' does not exist on type '{ rows: any[]; teamIdMap: Map<string, string>; }'.
+tests/useDashboardData.test.js(20,20): error TS2339: Property 'mockReturnValue' does not exist on type '() => { summary: any; loading: boolean; error: any; status: string; progress: number; generatedAt: any; }'.
+tests/useDashboardData.test.js(25,24): error TS2339: Property 'mockReturnValue' does not exist on type '() => { practiceSummary: any; practiceReadinessSnapshot: any; generatedAt: any; scheduleEvaluation: any; runId: any; loading: any; error: any; }'.
+tests/useDashboardData.test.js(32,28): error TS2339: Property 'mockReturnValue' does not exist on type '(runId: any) => { assignments: any[]; loading: boolean; error: any; updateAssignmentSource: (assignmentId: any, newSource: any) => Promise<void>; }'.
+tests/useDashboardData.test.js(33,20): error TS2339: Property 'mockReturnValue' does not exist on type '() => { gameSummary: any; gameReadinessSnapshot: any; generatedAt: any; runId: any; loading: any; error: any; }'.
+tests/useDashboardData.test.js(40,24): error TS2339: Property 'mockReturnValue' does not exist on type '(runId: any) => { assignments: any[]; loading: boolean; error: any; }'.
+tests/usePermission.test.js(14,32): error TS2339: Property 'mockReturnValue' does not exist on type '() => OrganizationContextValue'.
+tests/usePermission.test.js(20,32): error TS2339: Property 'mockReturnValue' does not exist on type '() => OrganizationContextValue'.
+tests/usePermission.test.js(26,32): error TS2339: Property 'mockReturnValue' does not exist on type '() => OrganizationContextValue'.
+tests/usePermission.test.js(32,32): error TS2339: Property 'mockReturnValue' does not exist on type '() => OrganizationContextValue'.
+tests/usePracticeAssignments.test.js(4,26): error TS2307: Cannot find module '../frontend/src/utils/supabaseClient.js' or its corresponding type declarations.

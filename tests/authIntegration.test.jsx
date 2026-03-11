@@ -6,10 +6,10 @@ import {
   OrganizationProvider,
   useOrganization,
 } from '../frontend/src/contexts/OrganizationContext.jsx';
-import { supabase } from '../frontend/src/utils/supabaseClient.js';
+import { supabase } from '../frontend/src/lib/supabaseClient.js';
 
 // Mock Supabase
-vi.mock('../frontend/src/utils/supabaseClient', () => ({
+vi.mock('../frontend/src/lib/supabaseClient', () => ({
   supabase: {
     auth: {
       onAuthStateChange: vi.fn(),
@@ -40,7 +40,14 @@ describe('Auth & Organization Integration', () => {
 
   it('should load user and fetch organizations', async () => {
     // Setup Mock Data
-    const mockUser = { id: 'user-123', email: 'test@example.com' };
+    const mockUser = {
+      id: 'user-123',
+      email: 'test@example.com',
+      app_metadata: {},
+      user_metadata: {},
+      aud: 'authenticated',
+      created_at: new Date().toISOString(),
+    };
     const mockProfile = { id: 'user-123', full_name: 'Test Users' };
     const mockOrgMember = {
       organization_id: 'org-1',
@@ -49,10 +56,18 @@ describe('Auth & Organization Integration', () => {
     };
 
     // 1. Mock Auth State Change
-    supabase.auth.onAuthStateChange.mockImplementation((callback) => {
+    vi.mocked(supabase.auth.onAuthStateChange).mockImplementation((callback) => {
       // Evaluate immediately
-      callback('SIGNED_IN', { user: mockUser });
-      return { data: { subscription: { unsubscribe: vi.fn() } } };
+      /** @type {any} */
+      const mockSession = { 
+        user: mockUser,
+        access_token: 'abc',
+        refresh_token: 'def',
+        expires_in: 3600,
+        token_type: 'bearer'
+      };
+      callback('SIGNED_IN', mockSession);
+      return { data: { subscription: { id: 'sub-123', callback: () => {}, unsubscribe: vi.fn() } } };
     });
 
     // 2. Mock Profile Fetch (AuthContext)
@@ -69,7 +84,8 @@ describe('Auth & Organization Integration', () => {
     });
 
     // Handle separate .from() calls
-    supabase.from.mockImplementation((table) => {
+    // @ts-ignore
+    vi.mocked(supabase.from).mockImplementation((table) => {
       if (table === 'profiles') return { select: profileSelect };
       if (table === 'organization_members') return { select: orgSelect };
       return { select: vi.fn() };

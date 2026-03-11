@@ -23,10 +23,10 @@ import {
 export async function processPracticePersistenceRequest({
   supabaseClient,
   requestBody = {},
-  user,
-  allowedRoles,
+  user = undefined,
+  allowedRoles = undefined,
   now = new Date(),
-} = {}) {
+} = { supabaseClient: undefined }) {
   const authResult = authorizePracticePersistenceRequest({ user, allowedRoles });
   if (authResult.status !== 'authorized') {
     return authResult;

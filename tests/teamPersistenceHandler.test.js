@@ -18,12 +18,14 @@ test('normalizeSnapshot validates structure', () => {
 });
 
 test('normalizeSnapshot throws on missing payload', () => {
+  // @ts-ignore
   assert.throws(() => normalizeSnapshot({}), /snapshot.payload must be an object/);
 });
 
 test('normalizeSnapshot throws on invalid teamRows', () => {
+  // @ts-ignore
   assert.throws(
-    () => normalizeSnapshot({ payload: { teamRows: 'not-array' } }),
+    () => normalizeSnapshot(/** @type {any} */ ({ payload: { teamRows: 'not-array' } })),
     /teamRows must be an array/
   );
 });

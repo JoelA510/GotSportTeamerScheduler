@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
-import { runScheduleEvaluations } from '../../../src/evaluationPipeline';
-import { persistEvaluation } from '../../../src/evaluationPersistence';
+import { runScheduleEvaluations } from '@squadlogic/core/evaluationPipeline.js';
+import { persistEvaluation } from '@squadlogic/core/evaluationPersistence.js';
 
 export default function EvaluationPanel({ practiceData, gameData, supabaseClient }) {
   const [persisting, setPersisting] = useState(false);

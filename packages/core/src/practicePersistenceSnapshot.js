@@ -81,10 +81,10 @@ export function preparePracticePersistenceSnapshot({
   runHistory = [],
   schedulerRuns = [],
   lastSyncedAt = null,
-  runId,
+  runId = undefined,
   runMetadata = {},
   pendingManualOverrideGoal = 'Resolve pending overrides before the next Supabase sync.',
-} = {}) {
+} = { assignments: [], slots: [], practiceOverrides: [], runHistory: [], schedulerRuns: [], lastSyncedAt: null, runId: undefined, runMetadata: {}, pendingManualOverrideGoal: '' }) {
   // 1. Merge overrides into assignments if needed, or just pass them through
   // For now, we assume 'assignments' already includes applied overrides if the scheduler respected them.
   // If not, we might need to merge here. We'll assume the caller (UI/Scheduler) handles the merge

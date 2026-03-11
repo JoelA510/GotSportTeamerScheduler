@@ -16,9 +16,9 @@ export function prepareGamePersistenceSnapshot({
   runHistory = [],
   schedulerRuns = [],
   lastSyncedAt = null,
-  runId,
+  runId = undefined,
   runMetadata = {},
-} = {}) {
+} = { assignments: [], runHistory: [], schedulerRuns: [], lastSyncedAt: null, runId: undefined, runMetadata: {} }) {
   // 1. Build Supabase rows
   const assignmentRows = buildGameAssignmentRows({
     assignments,

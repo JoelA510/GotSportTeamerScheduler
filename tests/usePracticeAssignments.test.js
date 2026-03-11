@@ -1,9 +1,9 @@
 import { describe, it, expect, vi } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 import { usePracticeAssignments } from '../frontend/src/hooks/usePracticeAssignments.js';
-import { supabase } from '../frontend/src/utils/supabaseClient.js';
+import { supabase } from '../frontend/src/lib/supabaseClient.js';
 
-vi.mock('../frontend/src/utils/supabaseClient.js', () => ({
+vi.mock('../frontend/src/lib/supabaseClient.js', () => ({
   supabase: {
     from: vi.fn(() => ({
       select: vi.fn(() => ({
@@ -29,6 +29,7 @@ describe('usePracticeAssignments', () => {
     const mockEq = vi.fn().mockResolvedValue({ data: mockData, error: null });
     const mockSelect = vi.fn(() => ({ eq: mockEq }));
     const mockFrom = vi.fn(() => ({ select: mockSelect }));
+    // @ts-ignore
     supabase.from = mockFrom;
 
     const { result } = renderHook(() => usePracticeAssignments('run-123'));
@@ -48,6 +49,7 @@ describe('usePracticeAssignments', () => {
     const mockError = { message: 'Database error' };
     const mockEq = vi.fn().mockResolvedValue({ data: null, error: mockError });
     const mockSelect = vi.fn(() => ({ eq: mockEq }));
+    // @ts-ignore
     supabase.from = vi.fn(() => ({ select: mockSelect }));
 
     const { result } = renderHook(() => usePracticeAssignments('run-err'));

@@ -1,0 +1,26 @@
+
+> squad-logic@1.0.0 typecheck
+> tsc --noEmit
+
+node_modules/@dnd-kit/core/dist/components/Accessibility/Accessibility.d.ts(9,129): error TS2503: Cannot find namespace 'JSX'.
+node_modules/@dnd-kit/core/dist/components/DragOverlay/components/AnimationManager/AnimationManager.d.ts(8,75): error TS2503: Cannot find namespace 'JSX'.
+node_modules/@dnd-kit/core/dist/components/DragOverlay/components/NullifiedContextProvider/NullifiedContextProvider.d.ts(5,72): error TS2503: Cannot find namespace 'JSX'.
+node_modules/@dnd-kit/core/dist/components/DragOverlay/components/PositionedOverlay/PositionedOverlay.d.ts(6,15): error TS2503: Cannot find namespace 'JSX'.
+node_modules/@dnd-kit/core/dist/components/DragOverlay/DragOverlay.d.ts(8,28): error TS2503: Cannot find namespace 'JSX'.
+node_modules/@dnd-kit/core/dist/components/DragOverlay/DragOverlay.d.ts(11,201): error TS2503: Cannot find namespace 'JSX'.
+node_modules/@dnd-kit/sortable/dist/components/SortableContext.d.ts(25,127): error TS2503: Cannot find namespace 'JSX'.
+node_modules/@testing-library/jest-dom/types/jest.d.ts(1,23): error TS2688: Cannot find type definition file for 'jest'.
+node_modules/@testing-library/jest-dom/types/jest.d.ts(9,27): error TS2304: Cannot find name 'expect'.
+tests/rosterSizing.test.js(145,56): error TS2345: Argument of type 'string' is not assignable to parameter of type 'any[]'.
+tests/teamGeneration.test.js(291,57): error TS2322: Type 'string' is not assignable to type '() => number'.
+tests/teamPersistenceClient.test.js(64,16): error TS18048: 'capturedHeaders' is possibly 'undefined'.
+tests/teamPersistenceClient.test.js(144,20): error TS18048: 'capturedBody' is possibly 'undefined'.
+tests/teamPersistenceClient.test.js(150,20): error TS18048: 'capturedBody' is possibly 'undefined'.
+tests/teamPersistenceHandler.test.js(21,41): error TS2345: Argument of type '{}' is not assignable to parameter of type 'PersistenceSnapshot'.
+  Property 'payload' is missing in type '{}' but required in type 'PersistenceSnapshot'.
+tests/teamPersistenceHandler.test.js(26,42): error TS2322: Type 'string' is not assignable to type 'any[]'.
+tests/teamPersistenceSnapshot.test.js(160,48): error TS2345: Argument of type 'string' is not assignable to parameter of type 'any[]'.
+tests/useTeamAnalysis.test.js(21,42): error TS2345: Argument of type '{ importedPlayers: { data: { 'First Name': string; 'Last Name': string; Birthdate: string; Gender: string; }[]; }; }' is not assignable to parameter of type '{ isImporting: boolean; progress: number; importStatus: string; importLogs: any[]; notifyOnComplete: boolean; setNotifyOnComplete: (val: any) => void; startImport: (file: any, type: any) => Promise<...>; ... 8 more ...; setImportedFields: (data: any) => void; }'.
+  Type '{ importedPlayers: { data: { 'First Name': string; 'Last Name': string; Birthdate: string; Gender: string; }[]; }; }' is missing the following properties from type '{ isImporting: boolean; progress: number; importStatus: string; importLogs: any[]; notifyOnComplete: boolean; setNotifyOnComplete: (val: any) => void; startImport: (file: any, type: any) => Promise<...>; ... 8 more ...; setImportedFields: (data: any) => void; }': isImporting, progress, importStatus, importLogs, and 11 more.
+tests/useTeamAnalysis.test.js(43,42): error TS2345: Argument of type '{ importedPlayers: { data: { 'First Name': string; 'Last Name': string; }[]; }; }' is not assignable to parameter of type '{ isImporting: boolean; progress: number; importStatus: string; importLogs: any[]; notifyOnComplete: boolean; setNotifyOnComplete: (val: any) => void; startImport: (file: any, type: any) => Promise<...>; ... 8 more ...; setImportedFields: (data: any) => void; }'.
+  Type '{ importedPlayers: { data: { 'First Name': string; 'Last Name': string; }[]; }; }' is missing the following properties from type '{ isImporting: boolean; progress: number; importStatus: string; importLogs: any[]; notifyOnComplete: boolean; setNotifyOnComplete: (val: any) => void; startImport: (file: any, type: any) => Promise<...>; ... 8 more ...; setImportedFields: (data: any) => void; }': isImporting, progress, importStatus, importLogs, and 11 more.

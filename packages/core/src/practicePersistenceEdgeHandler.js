@@ -24,10 +24,10 @@ function mapStatusToHttpCode(status) {
 
 export function createPracticePersistenceHttpHandler({
   supabaseClient,
-  allowedRoles,
-  now,
-  getUser,
-} = {}) {
+  allowedRoles = undefined,
+  now = undefined,
+  getUser = undefined,
+} = { supabaseClient: undefined }) {
   if (!supabaseClient) {
     throw new TypeError('supabaseClient is required');
   }

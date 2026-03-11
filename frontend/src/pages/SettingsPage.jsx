@@ -1,10 +1,10 @@
 import React, { useState, useRef } from 'react';
 import { Save, User, Shield, Palette, Globe, Upload, Calendar, Moon, Sun } from 'lucide-react';
-import Button from '../components/ui/Button';
-import { useAuth } from '../contexts/AuthContext';
-import { useTheme } from '../contexts/ThemeContext';
-import { PERSISTENCE_THEMES } from '../utils/themes';
-import { extractColorsFromImage } from '../utils/colorUtils';
+import Button from '../components/ui/Button.jsx';
+import { useAuth } from '../contexts/AuthContext.jsx';
+import { useTheme } from '../contexts/ThemeContext.jsx';
+import { PERSISTENCE_THEMES } from '../utils/themes.js';
+import { extractColorsFromImage } from '../utils/colorUtils.js';
 
 export default function SettingsPage() {
   const { user } = useAuth();
@@ -61,6 +61,7 @@ export default function SettingsPage() {
     const reader = new FileReader();
     reader.onload = async (event) => {
       const dataUrl = event.target.result;
+      if (typeof dataUrl !== 'string') return;
       updateClubLogo(dataUrl);
 
       try {

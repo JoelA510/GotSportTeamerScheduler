@@ -50,7 +50,7 @@ export function expandPracticeSlotsForSeason({ slots, seasonPhases }) {
   }
 
   const normalizedPhases = seasonPhases.map((phase, index) => normalizePhase(phase, index));
-  normalizedPhases.sort((a, b) => a.startDate - b.startDate);
+  normalizedPhases.sort((a, b) => a.startDate.getTime() - b.startDate.getTime());
 
   const seasonStart = normalizedPhases[0].startDate;
   const seasonEnd = normalizedPhases.reduce(

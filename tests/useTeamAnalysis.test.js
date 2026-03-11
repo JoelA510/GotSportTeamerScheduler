@@ -18,9 +18,9 @@ describe('useTeamAnalysis', () => {
       { 'First Name': 'Bob', 'Last Name': 'Brown', 'Birthdate': '2018-06-15', 'Gender': 'm' },   // Age 7 -> U8 Boys
     ];
 
-    vi.mocked(useImport).mockReturnValue({
+    vi.mocked(useImport).mockReturnValue(/** @type {any} */ ({
       importedPlayers: { data: mockPlayers },
-    });
+    }));
 
     const { result } = renderHook(() => useTeamAnalysis());
 
@@ -40,9 +40,9 @@ describe('useTeamAnalysis', () => {
       { 'First Name': 'Missing', 'Last Name': 'Data' }, // No Birthdate/Gender
     ];
 
-    vi.mocked(useImport).mockReturnValue({
+    vi.mocked(useImport).mockReturnValue(/** @type {any} */ ({
       importedPlayers: { data: mockPlayers },
-    });
+    }));
 
     const { result } = renderHook(() => useTeamAnalysis());
     

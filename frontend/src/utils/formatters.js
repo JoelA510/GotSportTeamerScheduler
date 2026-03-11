@@ -24,6 +24,7 @@ export const formatTime = (value, timezone) => {
   if (Number.isNaN(date.getTime())) {
     return 'unspecified time';
   }
+  /** @type {Intl.DateTimeFormatOptions} */
   const options = { hour: 'numeric', minute: '2-digit' };
   if (timezone) {
     options.timeZone = timezone;
@@ -39,6 +40,7 @@ export const formatDate = (value, timezone) => {
   if (Number.isNaN(date.getTime())) {
     return 'unspecified date';
   }
+  /** @type {Intl.DateTimeFormatOptions} */
   const options = { year: 'numeric', month: 'numeric', day: 'numeric', weekday: 'short' };
   if (timezone) {
     options.timeZone = timezone;

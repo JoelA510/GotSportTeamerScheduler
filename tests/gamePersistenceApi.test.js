@@ -38,7 +38,7 @@ function buildTransactionStub() {
 }
 
 test('processGamePersistenceRequest returns unauthorized when role is missing', async () => {
-  const result = await processGamePersistenceRequest({ requestBody: {}, user: null });
+  const result = await processGamePersistenceRequest({ supabaseClient: {}, requestBody: {}, user: null });
 
   assert.strictEqual(result.status, 'unauthorized');
   assert.match(result.message, /Authentication required/i);
@@ -46,6 +46,7 @@ test('processGamePersistenceRequest returns unauthorized when role is missing', 
 
 test('processGamePersistenceRequest blocks when overrides are pending', async () => {
   const result = await processGamePersistenceRequest({
+    supabaseClient: {},
     requestBody: { snapshot: SAMPLE_SNAPSHOT, overrides: [{ status: 'pending' }] },
     user: { role: 'admin' },
   });

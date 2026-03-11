@@ -80,9 +80,9 @@ export function schedulePractices({
   coachPreferences = {},
   divisionPreferences = {},
   lockedAssignments = [],
-  scoringWeights,
-  schoolDayEnd, // e.g. '16:00'
-  timezone, // e.g. 'America/Los_Angeles' (unused for now, assuming slots are already localized or schoolDayEnd is UTC if slots are UTC)
+  scoringWeights = {},
+  schoolDayEnd = undefined,
+  timezone = undefined,
 }) {
   if (!Array.isArray(teams)) {
     throw new TypeError('teams must be an array');
@@ -413,7 +413,9 @@ export function schedulePractices({
  *   base slot and division used to discourage stacking the same division on a single field/time.
  * @param {Map<string, number>} params.divisionLoadByDay - Counts of assigned teams per day and
  *   division used to discourage stacking a division on the same practice day.
- * @returns {{ slotScores: Array<{ slotId: string, score: number }>, viableSlots: Array<{ slot: Object, score: number }> }}
+ * @param {ScoringWeights} params.weights - Scoring weights for evaluation.
+ * @param {Map<string, number>} params.slotCapacityMap - Remaining capacity per slot.
+ * @returns {{ slotScores: Array<{ slotId: string, score: number }>, viableSlots: Array<{ slot: Object, score: number, isFull: boolean }>, blockedSlots: Array<{ slotId: string, reason: string }> }}
  */
 function evaluateSlotsForTeam(
   {
@@ -562,6 +564,7 @@ function attemptResolveUnassignedTeams({
   coachPreferences,
   divisionPreferences,
   coachAssignments,
+  assignmentByTeamId,
   assignmentSources,
   divisionLoadByBaseSlot,
   divisionLoadByDay,

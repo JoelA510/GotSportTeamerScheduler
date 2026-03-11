@@ -6,7 +6,7 @@ import { supabase } from '../lib/supabaseClient.js';
  * @property {any} session
  * @property {any} user
  * @property {boolean} loading
- * @property {function} signOut
+ * @property {() => Promise<any>} signOut
  * @property {boolean} isConfigured
  * @property {boolean} isAdmin
  * @property {boolean} isCoach

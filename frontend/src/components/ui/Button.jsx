@@ -1,6 +1,17 @@
 import React from 'react';
 import PropTypes from 'prop-types';
 
+/**
+ * @param {Object} props
+ * @param {React.ReactNode} props.children
+ * @param {'primary' | 'secondary' | 'danger' | 'ghost'} [props.variant]
+ * @param {'sm' | 'md' | 'lg'} [props.size]
+ * @param {string} [props.className]
+ * @param {boolean} [props.disabled]
+ * @param {React.MouseEventHandler<HTMLButtonElement>} [props.onClick]
+ * @param {'button' | 'submit' | 'reset'} [props.type]
+ * @param {React.ElementType} [props.icon]
+ */
 const Button = ({
   children,
   variant = 'primary',
@@ -9,6 +20,7 @@ const Button = ({
   disabled = false,
   onClick,
   type = 'button',
+  icon: Icon,
   ...props
 }) => {
   const baseStyles =
@@ -38,6 +50,7 @@ const Button = ({
       onClick={onClick}
       {...props}
     >
+      {Icon && <Icon size={size === 'sm' ? 16 : 20} />}
       {children}
     </button>
   );
@@ -51,6 +64,7 @@ Button.propTypes = {
   disabled: PropTypes.bool,
   onClick: PropTypes.func,
   type: PropTypes.oneOf(['button', 'submit', 'reset']),
+  icon: PropTypes.elementType,
 };
 
 export default Button;

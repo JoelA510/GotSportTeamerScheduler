@@ -49,6 +49,8 @@ test('evaluatePracticeSchedule summarises utilization and division distribution'
     unassigned: [{ teamId: 'team-4', reason: 'no capacity' }],
     teams: SAMPLE_TEAMS,
     slots: SAMPLE_SLOTS,
+    schoolDayEnd: '16:00',
+    timezone: 'UTC',
   });
 
   assert.deepEqual(report.summary, {
@@ -188,6 +190,8 @@ test('manual follow-up reasons aggregate unknown teams and default reasons', () 
       { teamId: 'team-known', reason: '' },
       { teamId: 'team-unknown', reason: 'no coach availability' },
     ],
+    schoolDayEnd: '16:00',
+    timezone: 'UTC',
   });
 
   assert.equal(report.summary.unassignedTeams, 1);
@@ -255,6 +259,8 @@ test('identifies divisions stacked on a single practice day', () => {
     ],
     teams,
     slots,
+    schoolDayEnd: '16:00',
+    timezone: 'UTC',
   });
 
   assert.deepEqual(report.dayConcentrationAlerts, [
@@ -287,7 +293,13 @@ test('base slot metadata day matches earliest representative even when null', ()
     },
   ];
 
-  const report = evaluatePracticeSchedule({ assignments: [], teams: [], slots });
+  const report = evaluatePracticeSchedule({
+    assignments: [],
+    teams: [],
+    slots,
+    schoolDayEnd: '16:00',
+    timezone: 'UTC',
+  });
 
   assert.equal(report.baseSlotDistribution.length, 1);
   assert.deepEqual(report.baseSlotDistribution[0], {
@@ -321,7 +333,13 @@ test('base slot metadata day follows earliest slot when defined', () => {
     },
   ];
 
-  const report = evaluatePracticeSchedule({ assignments: [], teams: [], slots });
+  const report = evaluatePracticeSchedule({
+    assignments: [],
+    teams: [],
+    slots,
+    schoolDayEnd: '16:00',
+    timezone: 'UTC',
+  });
 
   assert.equal(report.baseSlotDistribution.length, 1);
   assert.deepEqual(report.baseSlotDistribution[0], {
@@ -344,6 +362,8 @@ test('evaluatePracticeSchedule flags coach conflicts', () => {
     ],
     teams: SAMPLE_TEAMS,
     slots: SAMPLE_SLOTS,
+    schoolDayEnd: '16:00',
+    timezone: 'UTC',
   });
 
   assert.equal(report.coachConflicts.length, 1);
@@ -385,6 +405,8 @@ test('manual follow-up alert messaging is handled in the evaluation pipeline', (
     unassigned: [{ teamId: teams[19].id, reason: 'no capacity' }],
     teams,
     slots,
+    schoolDayEnd: '16:00',
+    timezone: 'UTC',
   });
 
   assert.equal(atThreshold.summary.manualFollowUpRate, 0.05);
@@ -401,6 +423,8 @@ test('manual follow-up alert messaging is handled in the evaluation pipeline', (
     })),
     teams,
     slots,
+    schoolDayEnd: '16:00',
+    timezone: 'UTC',
   });
 
   assert.equal(aboveThreshold.summary.manualFollowUpRate, 0.1);
@@ -425,6 +449,8 @@ test('evaluatePracticeSchedule emits warnings for inconsistent data', () => {
     ],
     teams: SAMPLE_TEAMS,
     slots: SAMPLE_SLOTS,
+    schoolDayEnd: '16:00',
+    timezone: 'UTC',
   });
 
   assert.equal(report.summary.assignedTeams, 1);
@@ -442,6 +468,8 @@ test('evaluatePracticeSchedule correctly counts teams assigned to multiple slots
     ],
     teams: SAMPLE_TEAMS,
     slots: SAMPLE_SLOTS,
+    schoolDayEnd: '16:00',
+    timezone: 'UTC',
   });
 
   assert.deepEqual(report.summary, {
@@ -500,6 +528,8 @@ test('flags fairness concerns when a base slot is dominated by one division', ()
     ],
     teams,
     slots,
+    schoolDayEnd: '16:00',
+    timezone: 'UTC',
   });
 
   assert.equal(report.fairnessConcerns.length, 1);
@@ -547,6 +577,8 @@ test('flags underutilized base slots for follow-up', () => {
     ],
     teams,
     slots,
+    schoolDayEnd: '16:00',
+    timezone: 'UTC',
   });
 
   assert.equal(report.underutilizedBaseSlots.length, 1);
@@ -587,6 +619,8 @@ test('categorizes manual follow-ups by capacity, coach availability, and exclusi
     ],
     teams,
     slots,
+    schoolDayEnd: '16:00',
+    timezone: 'UTC',
   });
 
   assert.deepEqual(report.manualFollowUpBreakdown, [
@@ -637,6 +671,8 @@ test('handles non-string manual follow-up reasons without throwing', () => {
     ],
     teams,
     slots,
+    schoolDayEnd: '16:00',
+    timezone: 'UTC',
   });
 
   assert.deepEqual(report.manualFollowUpBreakdown, [

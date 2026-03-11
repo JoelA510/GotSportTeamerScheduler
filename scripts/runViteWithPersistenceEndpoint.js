@@ -19,6 +19,7 @@ const viteProcess = spawn(npmCommand, ['exec', 'vite', ...viteArgs], {
   cwd: repoRoot,
   stdio: 'inherit',
   env: process.env,
+  shell: process.platform === 'win32',
 });
 
 viteProcess.on('exit', (code, signal) => {

@@ -2,7 +2,24 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient.js';
 import Papa from 'papaparse';
 
-const ImportContext = createContext();
+const ImportContext = createContext({
+  isImporting: false,
+  progress: 0,
+  importStatus: 'idle',
+  importLogs: [],
+  notifyOnComplete: false,
+  setNotifyOnComplete: (val) => {},
+  startImport: async (file, type) => {},
+  resetImport: async (type) => {},
+  importedData: null,
+  setImportedData: (data) => {},
+  importedPlayers: null,
+  setImportedPlayers: (data) => {},
+  importedCoaches: null,
+  setImportedCoaches: (data) => {},
+  importedFields: null,
+  setImportedFields: (data) => {},
+});
 
 export function useImport() {
   return useContext(ImportContext);

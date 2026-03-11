@@ -1,5 +1,5 @@
 import React from 'react';
-import { useTheme } from '../contexts/ThemeContext';
+import { useTheme } from '../contexts/ThemeContext.jsx';
 
 const THEMES = [
   { id: 'dark', label: 'Dark', icon: '🌙' },

@@ -3,10 +3,10 @@ import assert from 'node:assert/strict';
 import { generateRoundRobinWeeks, scheduleGames } from '../packages/core/src/gameScheduling.js';
 
 const SAMPLE_TEAMS = [
-  { id: 'team-1', division: 'U10', coachId: 'coach-a' },
-  { id: 'team-2', division: 'U10', coachId: 'coach-b' },
-  { id: 'team-3', division: 'U10', coachId: 'coach-c' },
-  { id: 'team-4', division: 'U10', coachId: 'coach-d' },
+  { id: 'team-1', name: 'Team 1', division: 'U10', coachId: 'coach-a' },
+  { id: 'team-2', name: 'Team 2', division: 'U10', coachId: 'coach-b' },
+  { id: 'team-3', name: 'Team 3', division: 'U10', coachId: 'coach-c' },
+  { id: 'team-4', name: 'Team 4', division: 'U10', coachId: 'coach-d' },
 ];
 
 const SHARED_SLOTS = [
@@ -124,9 +124,9 @@ test('scheduleGames assigns matchups to earliest compatible slots', () => {
 
 test('scheduleGames marks matchups where a coach leads both teams', () => {
   const conflictTeams = [
-    { id: 'team-a', division: 'U12', coachId: 'coach-shared' },
-    { id: 'team-b', division: 'U12', coachId: 'coach-shared' },
-    { id: 'team-c', division: 'U12', coachId: 'coach-other' },
+    { id: 'team-a', name: 'Team A', division: 'U12', coachId: 'coach-shared' },
+    { id: 'team-b', name: 'Team B', division: 'U12', coachId: 'coach-shared' },
+    { id: 'team-c', name: 'Team C', division: 'U12', coachId: 'coach-other' },
   ];
   const roundRobin = generateRoundRobinWeeks({ teamIds: conflictTeams.map((team) => team.id) });
 
@@ -168,10 +168,10 @@ test('scheduleGames marks matchups where a coach leads both teams', () => {
 
 test('scheduleGames surfaces scheduling conflicts for coaches with multiple teams', () => {
   const teams = [
-    { id: 'team-a', division: 'U12', coachId: 'coach-shared' },
-    { id: 'team-b', division: 'U12', coachId: 'coach-unique-1' },
-    { id: 'team-c', division: 'U14', coachId: 'coach-shared' },
-    { id: 'team-d', division: 'U14', coachId: 'coach-unique-2' },
+    { id: 'team-a', name: 'Team A', division: 'U12', coachId: 'coach-shared' },
+    { id: 'team-b', name: 'Team B', division: 'U12', coachId: 'coach-unique-1' },
+    { id: 'team-c', name: 'Team C', division: 'U14', coachId: 'coach-shared' },
+    { id: 'team-d', name: 'Team D', division: 'U14', coachId: 'coach-unique-2' },
   ];
 
   const roundRobin = {
@@ -307,14 +307,14 @@ test('scheduleGames prefers start times previously assigned to teams when slots 
 
 test('scheduleGames balances shared slots across divisions when capacity allows rotation', () => {
   const u10Teams = [
-    { id: 'u10-team-1', division: 'U10', coachId: 'coach-u10-1' },
-    { id: 'u10-team-2', division: 'U10', coachId: 'coach-u10-2' },
-    { id: 'u10-team-3', division: 'U10', coachId: 'coach-u10-3' },
+    { id: 'u10-team-1', name: 'U10 Team 1', division: 'U10', coachId: 'coach-u10-1' },
+    { id: 'u10-team-2', name: 'U10 Team 2', division: 'U10', coachId: 'coach-u10-2' },
+    { id: 'u10-team-3', name: 'U10 Team 3', division: 'U10', coachId: 'coach-u10-3' },
   ];
   const u12Teams = [
-    { id: 'u12-team-1', division: 'U12', coachId: 'coach-u12-1' },
-    { id: 'u12-team-2', division: 'U12', coachId: 'coach-u12-2' },
-    { id: 'u12-team-3', division: 'U12', coachId: 'coach-u12-3' },
+    { id: 'u12-team-1', name: 'U12 Team 1', division: 'U12', coachId: 'coach-u12-1' },
+    { id: 'u12-team-2', name: 'U12 Team 2', division: 'U12', coachId: 'coach-u12-2' },
+    { id: 'u12-team-3', name: 'U12 Team 3', division: 'U12', coachId: 'coach-u12-3' },
   ];
 
   const roundRobinByDivision = {
@@ -436,8 +436,8 @@ test('scheduleGames balances shared slots across divisions when capacity allows 
 
 test('scheduleGames prioritizes slots with higher field priority', () => {
   const teams = [
-    { id: 'team-a', division: 'U10', coachId: 'coach-1' },
-    { id: 'team-b', division: 'U10', coachId: 'coach-2' },
+    { id: 'team-a', name: 'Team A', division: 'U10', coachId: 'coach-1' },
+    { id: 'team-b', name: 'Team B', division: 'U10', coachId: 'coach-2' },
   ];
 
   const roundRobin = generateRoundRobinWeeks({ teamIds: ['team-a', 'team-b'] }); // 1 matchup

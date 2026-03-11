@@ -27,8 +27,8 @@ test('summarizeTeamGeneration aggregates per-division diagnostics', () => {
   ];
 
   const divisionConfigs = {
-    U10: { maxRosterSize: 3 },
-    U12: { maxRosterSize: 4 },
+    U10: { id: 'U10', teamsCount: 2, slotsPerWeek: 3, maxRosterSize: 3 },
+    U12: { id: 'U12', teamsCount: 2, slotsPerWeek: 4, maxRosterSize: 4 },
   };
 
   const teamResult = generateTeams({

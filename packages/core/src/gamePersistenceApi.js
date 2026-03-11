@@ -23,10 +23,10 @@ import {
 export async function processGamePersistenceRequest({
   supabaseClient,
   requestBody = {},
-  user,
-  allowedRoles,
+  user = undefined,
+  allowedRoles = undefined,
   now = new Date(),
-} = {}) {
+} = { supabaseClient: undefined }) {
   const authResult = authorizeGamePersistenceRequest({ user, allowedRoles });
   if (authResult.status !== 'authorized') {
     return authResult;

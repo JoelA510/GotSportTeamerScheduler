@@ -3,7 +3,7 @@ import { test } from 'node:test';
 
 import { schedulePractices } from '../packages/core/src/practiceScheduling.js';
 
-function createSlot({ id, day, startHour, endHour, capacity = 1, baseSlotId }) {
+function createSlot({ id, day, startHour, endHour, capacity = 1, baseSlotId = undefined }) {
   const start = new Date(`2024-08-05T${String(startHour).padStart(2, '0')}:00:00.000Z`);
   const end = new Date(`2024-08-05T${String(endHour).padStart(2, '0')}:00:00.000Z`);
   return { id, day, start, end, capacity, baseSlotId };
@@ -21,7 +21,7 @@ test('assigns teams to available slots without exceeding capacity', () => {
     createSlot({ id: 's2', day: 'Tue', startHour: 22, endHour: 23, capacity: 1 }),
   ];
 
-  const result = schedulePractices({ teams, slots });
+  const result = schedulePractices({ teams, slots, schoolDayEnd: '16:00', timezone: 'UTC' });
 
   assert.equal(result.assignments.length, 3);
   for (const assignment of result.assignments) {
@@ -69,7 +69,7 @@ test('division load summary preserves composite keys with embedded separators', 
     }),
   ];
 
-  const result = schedulePractices({ teams, slots });
+  const result = schedulePractices({ teams, slots, schoolDayEnd: '16:00', timezone: 'UTC' });
 
   assert.deepEqual(result.assignments, [
     { teamId: 'T1', slotId: 'slot-1', source: 'auto' },
@@ -100,7 +100,7 @@ test('discourages stacking the same division onto a single base slot when altern
     createSlot({ id: 'alt-slot', day: 'Tue', startHour: 20, endHour: 21, capacity: 1 }),
   ];
 
-  const result = schedulePractices({ teams, slots });
+  const result = schedulePractices({ teams, slots, schoolDayEnd: '16:00', timezone: 'UTC' });
 
   const assignmentMap = new Map(result.assignments.map((entry) => [entry.teamId, entry.slotId]));
   assert.equal(assignmentMap.get('T1'), 'shared-slot');
@@ -120,7 +120,7 @@ test('discourages stacking the same division on one practice day', () => {
     createSlot({ id: 'tue-early', day: 'Tue', startHour: 18, endHour: 19, capacity: 1 }),
   ];
 
-  const result = schedulePractices({ teams, slots });
+  const result = schedulePractices({ teams, slots, schoolDayEnd: '16:00', timezone: 'UTC' });
 
   const assignmentMap = new Map(result.assignments.map((entry) => [entry.teamId, entry.slotId]));
   assert.equal(assignmentMap.get('T1'), 'mon-early');
@@ -143,6 +143,8 @@ test('supports tuning scoring weights for fairness penalties', () => {
     teams,
     slots,
     scoringWeights: { divisionSaturationPenalty: 0, divisionDaySaturationPenalty: 0 },
+    schoolDayEnd: '16:00',
+    timezone: 'UTC',
   });
 
   const assignmentMap = new Map(result.assignments.map((entry) => [entry.teamId, entry.slotId]));
@@ -204,7 +206,7 @@ test('swap resolution updates division load tracking when teams move between bas
     'coach-5': { unavailableSlotIds: ['field-c-one', 'field-d-one'] },
   };
 
-  const result = schedulePractices({ teams, slots, coachPreferences });
+  const result = schedulePractices({ teams, slots, coachPreferences, schoolDayEnd: '16:00', timezone: 'UTC' });
 
   assert.equal(result.unassigned.length, 0);
 
@@ -229,7 +231,7 @@ test('avoids overlapping slots for the same coach', () => {
     createSlot({ id: 'late', day: 'Mon', startHour: 22, endHour: 23, capacity: 1 }),
   ];
 
-  const result = schedulePractices({ teams, slots });
+  const result = schedulePractices({ teams, slots, schoolDayEnd: '16:00', timezone: 'UTC' });
 
   assert.equal(result.assignments.length, 2);
   const assignedSlotIds = new Set(result.assignments.map((a) => a.slotId));
@@ -259,6 +261,8 @@ test('prioritises preferred slots for coaches and divisions', () => {
     divisionPreferences: {
       U12: { preferredDays: ['Wed'] },
     },
+    schoolDayEnd: '16:00',
+    timezone: 'UTC',
   });
 
   const assignmentMap = Object.fromEntries(result.assignments.map((a) => [a.teamId, a.slotId]));
@@ -279,6 +283,8 @@ test('flags teams when no slots satisfy constraints', () => {
     coachPreferences: {
       'coach-a': { unavailableSlotIds: ['s1'] },
     },
+    schoolDayEnd: '16:00',
+    timezone: 'UTC',
   });
 
   assert.equal(result.assignments.length, 0);
@@ -297,7 +303,7 @@ test('labels unassigned teams with coach conflict reasons when all slots overlap
     createSlot({ id: 's2', day: 'Tue', startHour: 18, endHour: 19, capacity: 1 }),
   ];
 
-  const result = schedulePractices({ teams, slots });
+  const result = schedulePractices({ teams, slots, schoolDayEnd: '16:00', timezone: 'UTC' });
 
   assert.equal(result.assignments.length, 1);
   assert.equal(result.unassigned.length, 1);
@@ -313,7 +319,7 @@ test('breaks ties by earliest start time then slot id', () => {
     createSlot({ id: 'slot-early', day: 'Mon', startHour: 19, endHour: 20, capacity: 1 }),
   ];
 
-  const result = schedulePractices({ teams, slots });
+  const result = schedulePractices({ teams, slots, schoolDayEnd: '16:00', timezone: 'UTC' });
 
   assert.equal(result.assignments.length, 1);
   assert.equal(result.assignments[0].slotId, 'slot-early');
@@ -334,6 +340,8 @@ test('breaks ties by earliest start time then slot id', () => {
       createSlot({ id: 'slot-b', day: 'Mon', startHour: 20, endHour: 21, capacity: 1 }),
       createSlot({ id: 'slot-a', day: 'Mon', startHour: 20, endHour: 21, capacity: 1 }),
     ],
+    schoolDayEnd: '16:00',
+    timezone: 'UTC',
   });
 
   assert.equal(tieResult.assignments[0].slotId, 'slot-a');
@@ -375,6 +383,8 @@ test('respects locked assignments and prevents conflicting reassignments', () =>
     teams,
     slots,
     lockedAssignments: [{ teamId: 'T1', slotId: 'mon-early' }],
+    schoolDayEnd: '16:00',
+    timezone: 'UTC',
   });
 
   const assignmentMap = new Map(result.assignments.map((entry) => [entry.teamId, entry]));
@@ -408,6 +418,8 @@ test('attempts swaps to free unique slots for unassigned teams', () => {
       'coach-b': { preferredSlotIds: ['wed'] },
       'coach-c': { unavailableSlotIds: ['mon', 'tue'] },
     },
+    schoolDayEnd: '16:00',
+    timezone: 'UTC',
   });
 
   assert.equal(result.unassigned.length, 0);
@@ -435,6 +447,8 @@ test('does not relocate locked teams when resolving unassigned entries', () => {
       'coach-b': { unavailableSlotIds: ['mon'] },
     },
     lockedAssignments: [{ teamId: 'T1', slotId: 'wed' }],
+    schoolDayEnd: '16:00',
+    timezone: 'UTC',
   });
 
   assert.equal(result.unassigned.length, 1);

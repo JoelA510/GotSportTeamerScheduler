@@ -11,6 +11,9 @@ const PLAYERS = Array.from({ length: 20 }, (_, i) => ({
 
 const CONFIG = {
   U10: {
+    id: 'U10',
+    teamsCount: 2,
+    slotsPerWeek: 2,
     maxRosterSize: 10,
     teamNames: ['Team A', 'Team B'],
   },

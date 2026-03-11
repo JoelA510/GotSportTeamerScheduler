@@ -211,7 +211,7 @@ export default function AdminReportingDashboard() {
           <button
             onClick={handleExportRosters}
             disabled={exporting}
-            className="px-6 py-2.5 bg-brand-500 hover:bg-brand-600 active:bg-brand-700 text-bg-surface font-semibold rounded-lg shadow-lg shadow-brand-500/30 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="glass-button px-6 py-2.5 shadow-lg flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Download size={18} /> {exporting ? 'Generating CSV...' : 'Export Rosters CSV'}
           </button>
@@ -219,7 +219,7 @@ export default function AdminReportingDashboard() {
       </div>
 
       {error && (
-        <div className="p-4 bg-red-500/10 border border-red-500/30 text-red-400 rounded-xl text-sm font-medium">
+        <div className="p-4 bg-status-error-bg border border-status-error/30 text-status-error rounded-xl text-sm font-medium">
           {error}
         </div>
       )}
@@ -227,33 +227,33 @@ export default function AdminReportingDashboard() {
       {/* Metric Cards Top Row */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="bg-bg-surface border border-border-highlight rounded-xl p-6 shadow-xl relative overflow-hidden group">
-          <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/10 rounded-full blur-3xl -mr-10 -mt-10 transition-transform group-hover:scale-110" />
+          <div className="absolute top-0 right-0 w-32 h-32 bg-brand-glow rounded-full blur-3xl -mr-10 -mt-10 transition-transform group-hover:scale-110" />
           <div className="flex flex-col">
             <span className="text-text-muted text-sm font-bold uppercase tracking-wider mb-2 flex items-center gap-2">
               <Users size={16} /> Total Players
             </span>
             <span className="text-4xl font-black text-text-primary">{metrics.players}</span>
-            <span className="text-xs text-brand-400 mt-2">Active in Organization</span>
+            <span className="text-xs text-color-primary mt-2">Active in Organization</span>
           </div>
         </div>
         <div className="bg-bg-surface border border-border-highlight rounded-xl p-6 shadow-xl relative overflow-hidden group">
-          <div className="absolute top-0 right-0 w-32 h-32 bg-green-500/10 rounded-full blur-3xl -mr-10 -mt-10 transition-transform group-hover:scale-110" />
+          <div className="absolute top-0 right-0 w-32 h-32 bg-status-success-bg rounded-full blur-3xl -mr-10 -mt-10 transition-transform group-hover:scale-110" />
           <div className="flex flex-col">
             <span className="text-text-muted text-sm font-bold uppercase tracking-wider mb-2 flex items-center gap-2">
               <ShieldCheck size={16} /> Active Teams
             </span>
             <span className="text-4xl font-black text-text-primary">{metrics.teams}</span>
-            <span className="text-xs text-green-400 mt-2">Current Season</span>
+            <span className="text-xs text-status-success mt-2">Current Season</span>
           </div>
         </div>
         <div className="bg-bg-surface border border-border-highlight rounded-xl p-6 shadow-xl relative overflow-hidden group">
-          <div className="absolute top-0 right-0 w-32 h-32 bg-purple-500/10 rounded-full blur-3xl -mr-10 -mt-10 transition-transform group-hover:scale-110" />
+          <div className="absolute top-0 right-0 w-32 h-32 bg-brand-glow rounded-full blur-3xl -mr-10 -mt-10 transition-transform group-hover:scale-110" />
           <div className="flex flex-col">
             <span className="text-text-muted text-sm font-bold uppercase tracking-wider mb-2 flex items-center gap-2">
               <Activity size={16} /> Staff & Admins
             </span>
             <span className="text-4xl font-black text-text-primary">{metrics.users}</span>
-            <span className="text-xs text-purple-400 mt-2">Registered Profiles</span>
+            <span className="text-xs text-text-accent mt-2">Registered Profiles</span>
           </div>
         </div>
       </div>
@@ -267,27 +267,27 @@ export default function AdminReportingDashboard() {
             {compliance.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={compliance} margin={{ top: 20, right: 30, left: 0, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
-                  <XAxis dataKey="form_title" stroke="#94a3b8" tick={{ fill: '#94a3b8' }} />
-                  <YAxis stroke="#94a3b8" tick={{ fill: '#94a3b8' }} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border-subtle)" vertical={false} />
+                  <XAxis dataKey="form_title" stroke="var(--color-text-muted)" tick={{ fill: 'var(--color-text-muted)' }} />
+                  <YAxis stroke="var(--color-text-muted)" tick={{ fill: 'var(--color-text-muted)' }} />
                   <Tooltip
                     contentStyle={{
-                      backgroundColor: '#0f172a',
-                      borderColor: '#334155',
+                      backgroundColor: 'var(--color-bg-app)',
+                      borderColor: 'var(--color-border-subtle)',
                       borderRadius: '8px',
                     }}
-                    itemStyle={{ color: '#f8fafc' }}
+                    itemStyle={{ color: 'var(--color-text-primary)' }}
                   />
                   <Bar
                     dataKey="total_registrations"
                     name="Total Submissions"
-                    fill="#3b82f6"
+                    fill="var(--color-primary)"
                     radius={[4, 4, 0, 0]}
                   />
                   <Bar
                     dataKey="medical_cleared"
                     name="Medical Cleared"
-                    fill="#10b981"
+                    fill="var(--color-status-success)"
                     radius={[4, 4, 0, 0]}
                   />
                 </BarChart>
@@ -323,11 +323,11 @@ export default function AdminReportingDashboard() {
                   </Pie>
                   <Tooltip
                     contentStyle={{
-                      backgroundColor: '#0f172a',
-                      borderColor: '#334155',
+                      backgroundColor: 'var(--color-bg-app)',
+                      borderColor: 'var(--color-border-subtle)',
                       borderRadius: '8px',
                     }}
-                    itemStyle={{ color: '#f8fafc' }}
+                    itemStyle={{ color: 'var(--color-text-primary)' }}
                   />
                 </PieChart>
               </ResponsiveContainer>
@@ -352,19 +352,19 @@ export default function AdminReportingDashboard() {
                   layout="vertical"
                   margin={{ top: 5, right: 30, left: 40, bottom: 5 }}
                 >
-                  <CartesianGrid strokeDasharray="3 3" stroke="#334155" horizontal={false} />
-                  <XAxis type="number" stroke="#94a3b8" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border-subtle)" horizontal={false} />
+                  <XAxis type="number" stroke="var(--color-text-muted)" />
                   <YAxis
                     dataKey="field_name"
                     type="category"
-                    stroke="#94a3b8"
-                    tick={{ fill: '#94a3b8' }}
+                    stroke="var(--color-text-muted)"
+                    tick={{ fill: 'var(--color-text-muted)' }}
                     width={100}
                   />
                   <Tooltip
                     contentStyle={{
-                      backgroundColor: '#0f172a',
-                      borderColor: '#334155',
+                      backgroundColor: 'var(--color-bg-app)',
+                      borderColor: 'var(--color-border-subtle)',
                       borderRadius: '8px',
                     }}
                   />

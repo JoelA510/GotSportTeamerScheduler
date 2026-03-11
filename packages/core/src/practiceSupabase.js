@@ -211,7 +211,7 @@ export function expandSupabasePracticeSlots({ rows, seasonPhases }) {
  * @param {string} [params.runId] - Optional scheduler run identifier to persist alongside assignments.
  * @returns {Array<Object>} Supabase row payloads with snake_case keys.
  */
-export function buildPracticeAssignmentRows({ assignments, slots, runId } = {}) {
+export function buildPracticeAssignmentRows({ assignments, slots, runId } = { assignments: [], slots: [] }) {
   if (!Array.isArray(assignments)) {
     throw new TypeError('assignments must be an array');
   }
@@ -289,9 +289,9 @@ export async function persistPracticeAssignments({
   supabaseClient,
   assignments,
   slots,
-  runId,
+  runId = undefined,
   upsert = false,
-} = {}) {
+} = { supabaseClient: undefined, assignments: [], slots: [] }) {
   if (!supabaseClient || typeof supabaseClient.from !== 'function') {
     throw new TypeError('supabaseClient with a from() method is required');
   }

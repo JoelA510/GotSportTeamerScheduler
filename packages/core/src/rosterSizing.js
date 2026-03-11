@@ -78,7 +78,7 @@ export function deriveDivisionRosterConfigs(divisions, { overrides = {} } = {}) 
     throw new TypeError('overrides must be an object');
   }
 
-  const configs = {};
+  const configs = /** @type {Record<string, { maxRosterSize: number, playableCount: number | null, source: string }>} */ ({});
 
   for (const division of divisions) {
     if (!division || typeof division !== 'object') {
@@ -141,7 +141,7 @@ export function buildOverridesFromSupabaseRows(rows, { seasonId } = {}) {
     throw new TypeError('rows must be an array');
   }
 
-  const normalized = {};
+  const normalized = /** @type {Record<string, any>} */ ({});
 
   rows.forEach((row, index) => {
     if (!row || typeof row !== 'object') {
@@ -177,7 +177,7 @@ export function buildOverridesFromSupabaseRows(rows, { seasonId } = {}) {
     }
   });
 
-  const result = {};
+  const result = /** @type {Record<string, { maxRosterSize: number, playableCount: number | null }>} */ ({});
   for (const divisionId in normalized) {
     const { seasonId: _seasonId, ...override } = normalized[divisionId];
     result[divisionId] = override;

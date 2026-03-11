@@ -22,7 +22,9 @@ const DashboardWorkflow = ({
   controlledActiveStep,
   onStepChange,
   timezone,
+  scheduleEvaluation = undefined,
 }) => {
+  const totalSteps = 6;
   const [internalActiveStep, setInternalActiveStep] = useState(() => {
     const saved = localStorage.getItem('dashboardActiveStep');
     return saved ? parseInt(saved, 10) : 1;
@@ -177,6 +179,7 @@ const DashboardWorkflow = ({
                   totals={teamData.totals}
                   divisions={teamData.divisions}
                   generatedAt={teamData.generatedAt}
+                  timezone={timezone}
                 />
                 <TeamPersistencePanel teamPersistenceSnapshot={persistenceSnapshot} />
                 <div className="flex justify-end pt-4 border-t border-border-subtle">
@@ -236,6 +239,7 @@ const DashboardWorkflow = ({
             practiceSummary={practiceData.summary}
             generatedAt={practiceData.generatedAt}
             timezone={timezone}
+            scheduleEvaluation={scheduleEvaluation}
           />
         </WorkflowStep>
 
@@ -250,6 +254,7 @@ const DashboardWorkflow = ({
             gameReadinessSnapshot={gameData.snapshot}
             gameSummary={gameData.summary}
             generatedAt={gameData.generatedAt}
+            timezone={timezone}
           />
           <div className="flex justify-end pt-4 mt-6 border-t border-border-subtle">
             <Button variant="primary" size="lg" onClick={() => handleStepChange(6)}>

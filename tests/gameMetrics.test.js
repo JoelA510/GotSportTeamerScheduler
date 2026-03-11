@@ -5,10 +5,10 @@ import { evaluateGameSchedule } from '../packages/core/src/gameMetrics.js';
 
 test('evaluateGameSchedule summarises assignments and byes without warnings', () => {
   const teams = [
-    { id: 'u12-a', division: 'U12', coachId: 'coach-a' },
-    { id: 'u12-b', division: 'U12', coachId: 'coach-b' },
-    { id: 'u14-a', division: 'U14', coachId: 'coach-c' },
-    { id: 'u14-b', division: 'U14', coachId: 'coach-d' },
+    { id: 'u12-a', name: 'U12 Team A', division: 'U12', coachId: 'coach-a' },
+    { id: 'u12-b', name: 'U12 Team B', division: 'U12', coachId: 'coach-b' },
+    { id: 'u14-a', name: 'U14 Team A', division: 'U14', coachId: 'coach-c' },
+    { id: 'u14-b', name: 'U14 Team B', division: 'U14', coachId: 'coach-d' },
   ];
 
   const assignments = [
@@ -76,10 +76,10 @@ test('evaluateGameSchedule summarises assignments and byes without warnings', ()
 
 test('evaluateGameSchedule surfaces team, coach, and field conflicts', () => {
   const teams = [
-    { id: 'team-a', division: 'U12', coachId: 'coach-shared' },
-    { id: 'team-b', division: 'U12', coachId: 'coach-unique' },
-    { id: 'team-c', division: 'U12', coachId: 'coach-shared' },
-    { id: 'team-d', division: 'U12', coachId: 'coach-other' },
+    { id: 'team-a', name: 'Team A', division: 'U12', coachId: 'coach-shared' },
+    { id: 'team-b', name: 'Team B', division: 'U12', coachId: 'coach-unique' },
+    { id: 'team-c', name: 'Team C', division: 'U12', coachId: 'coach-shared' },
+    { id: 'team-d', name: 'Team D', division: 'U12', coachId: 'coach-other' },
   ];
 
   const assignments = [
@@ -129,8 +129,8 @@ test('evaluateGameSchedule surfaces team, coach, and field conflicts', () => {
 
 test('evaluateGameSchedule ignores unassigned fields when checking overlaps', () => {
   const teams = [
-    { id: 'team-a', division: 'U12', coachId: 'coach-a' },
-    { id: 'team-b', division: 'U12', coachId: 'coach-b' },
+    { id: 'team-a', name: 'Team A', division: 'U12', coachId: 'coach-a' },
+    { id: 'team-b', name: 'Team B', division: 'U12', coachId: 'coach-b' },
   ];
 
   const assignments = [
@@ -186,7 +186,7 @@ test('evaluateGameSchedule ignores unassigned fields when checking overlaps', ()
 });
 
 test('evaluateGameSchedule aggregates unscheduled matchups and unknown teams', () => {
-  const teams = [{ id: 'team-known', division: 'U12', coachId: null }];
+  const teams = [{ id: 'team-known', name: 'Known Team', division: 'U12', coachId: null }];
 
   const assignments = [
     {
@@ -238,8 +238,8 @@ test('evaluateGameSchedule aggregates unscheduled matchups and unknown teams', (
 
 test('evaluateGameSchedule flags shared slot imbalances across divisions', () => {
   const teams = [
-    { id: 'team-a', division: 'U10', coachId: null },
-    { id: 'team-b', division: 'U12', coachId: null },
+    { id: 'team-a', name: 'Team A', division: 'U10', coachId: null },
+    { id: 'team-b', name: 'Team B', division: 'U12', coachId: null },
   ];
 
   const sharedSlotUsage = [

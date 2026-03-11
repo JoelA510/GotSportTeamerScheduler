@@ -17,27 +17,27 @@ vi.mock('../frontend/src/hooks/useGameAssignments.js');
 describe('useDashboardData', () => {
   it('aggregates data from multiple hooks correctly', () => {
     // Setup mocks
-    useTeamSummary.mockReturnValue({
+    /** @type {any} */ (useTeamSummary).mockReturnValue({
       summary: { totals: { teams: 10 } },
       loading: false,
       generatedAt: '2026-03-01',
     });
-    usePracticeSummary.mockReturnValue({
+    /** @type {any} */ (usePracticeSummary).mockReturnValue({
       practiceSummary: { count: 5 },
       practiceReadinessSnapshot: 'ready',
       generatedAt: '2026-03-02',
       loading: false,
       runId: 'practice-run-123',
     });
-    usePracticeAssignments.mockReturnValue({ assignments: [{ id: 'pa1' }] });
-    useGameSummary.mockReturnValue({
+    /** @type {any} */ (usePracticeAssignments).mockReturnValue({ assignments: [{ id: 'pa1' }] });
+    /** @type {any} */ (useGameSummary).mockReturnValue({
       gameSummary: { count: 8 },
       gameReadinessSnapshot: 'partial',
       generatedAt: '2026-03-03',
       loading: true,
       runId: 'game-run-456',
     });
-    useGameAssignments.mockReturnValue({ assignments: [{ id: 'ga1' }] });
+    /** @type {any} */ (useGameAssignments).mockReturnValue({ assignments: [{ id: 'ga1' }] });
 
     const { result } = renderHook(() => useDashboardData());
 

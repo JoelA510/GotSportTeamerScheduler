@@ -49,7 +49,7 @@ function AppContent() {
   return (
     <Suspense fallback={<LoadingScreen />}>
       <Routes>
-        <Route element={<DashboardLayout />}>
+        <Route element={<DashboardLayout activeSection="dashboard" />}>
           <Route path="/" element={<DashboardPage />} />
           <Route path="/register/:formId" element={<RegistrationFlow />} />
           <Route

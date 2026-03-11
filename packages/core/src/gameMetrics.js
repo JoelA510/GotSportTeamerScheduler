@@ -3,13 +3,14 @@ function incrementKey(map, key) {
 }
 
 /**
+ * @typedef {import('./types.js').Team} Team
+ * @typedef {import('./types.js').GameScheduleParams} GameScheduleParams
+ */
+
+/**
  * Evaluate a set of scheduled games for quality, resource utilization, and potential conflicts.
  *
- * @param {Object} params
- * @param {Array<Object>} params.assignments - Scheduled matchups returned from the game scheduler.
- * @param {Array<Object>} params.teams - Team definitions used to map coach assignments.
- * @param {Array<Object>} [params.byes=[]] - Bye records keyed by week and division.
- * @param {Array<Object>} [params.unscheduled=[]] - Unscheduled matchup descriptors with reasons.
+ * @param {GameScheduleParams} params
  * @returns {{ summary: Object, warnings: Array<Object> }}
  */
 export function evaluateGameSchedule({

@@ -128,14 +128,14 @@ export default function RegistrationFlow() {
         Loading Registration...
       </div>
     );
-  if (!form) return <div className="text-center text-red-400 p-8">{error || 'Form not found'}</div>;
+  if (!form) return <div className="text-center text-status-error p-8">{error || 'Form not found'}</div>;
 
   if (success) {
     return (
-      <div className="max-w-2xl mx-auto mt-12 bg-bg-surface border border-brand-500/30 rounded-2xl p-8 text-center shadow-2xl relative overflow-hidden">
-        <div className="absolute inset-0 bg-brand-500/10 backdrop-blur-3xl z-0 pointer-events-none" />
+      <div className="max-w-2xl mx-auto mt-12 bg-bg-surface border border-border-highlight rounded-2xl p-8 text-center shadow-2xl relative overflow-hidden">
+        <div className="absolute inset-0 bg-brand-glow backdrop-blur-3xl z-0 pointer-events-none" />
         <div className="relative z-10 flex flex-col items-center">
-          <CheckCircle2 size={64} className="text-green-400 mb-6" />
+          <CheckCircle2 size={64} className="text-status-success mb-6" />
           <h2 className="text-3xl font-display font-bold text-text-primary mb-4">
             Registration Complete
           </h2>
@@ -153,7 +153,7 @@ export default function RegistrationFlow() {
     <div className="max-w-3xl mx-auto space-y-8 animate-fadeIn">
       {/* Header */}
       <div className="bg-bg-surface/80 backdrop-blur-md border border-border-subtle rounded-2xl p-8 shadow-xl relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-64 h-64 bg-brand-500/10 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none" />
+        <div className="absolute top-0 right-0 w-64 h-64 bg-brand-glow rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none" />
         <div className="relative z-10">
           <h1 className="text-3xl lg:text-4xl font-display font-bold text-text-primary mb-2 tracking-tight">
             {form.title}
@@ -166,19 +166,19 @@ export default function RegistrationFlow() {
       <div className="flex justify-center mb-8">
         <div className="flex items-center gap-4 text-sm font-semibold">
           <span
-            className={`flex items-center gap-2 ${step >= 1 ? 'text-brand-400' : 'text-text-muted'}`}
+            className={`flex items-center gap-2 ${step >= 1 ? 'text-color-primary' : 'text-text-muted'}`}
           >
             <UserPlus size={16} /> Select Player
           </span>
           <div className="w-8 h-[2px] bg-border-subtle" />
           <span
-            className={`flex items-center gap-2 ${step >= 2 ? 'text-brand-400' : 'text-text-muted'}`}
+            className={`flex items-center gap-2 ${step >= 2 ? 'text-color-primary' : 'text-text-muted'}`}
           >
             <ClipboardList size={16} /> Custom Form
           </span>
           <div className="w-8 h-[2px] bg-border-subtle" />
           <span
-            className={`flex items-center gap-2 ${step >= 3 ? 'text-brand-400' : 'text-text-muted'}`}
+            className={`flex items-center gap-2 ${step >= 3 ? 'text-color-primary' : 'text-text-muted'}`}
           >
             <PenTool size={16} /> Waiver
           </span>
@@ -187,7 +187,7 @@ export default function RegistrationFlow() {
 
       <div className="bg-bg-surface border border-border-subtle rounded-2xl p-6 lg:p-10 shadow-xl">
         {error && (
-          <div className="mb-6 p-4 bg-red-500/10 border border-red-500/30 text-red-400 rounded-xl text-sm font-medium text-center">
+          <div className="mb-6 p-4 bg-status-error-bg border border-status-error/30 text-status-error rounded-xl text-sm font-medium text-center">
             {error}
           </div>
         )}
@@ -204,13 +204,13 @@ export default function RegistrationFlow() {
                     setSelectedPlayerId(child.id);
                     setIsCreatingNewPlayer(false);
                   }}
-                  className={`cursor-pointer p-4 rounded-xl border-2 transition-all ${selectedPlayerId === child.id && !isCreatingNewPlayer ? 'border-brand-500 bg-brand-500/10' : 'border-border-highlight bg-bg-app hover:border-brand-500/50'}`}
+                  className={`cursor-pointer p-4 rounded-xl border-2 transition-all ${selectedPlayerId === child.id && !isCreatingNewPlayer ? 'border-color-primary bg-brand-glow' : 'border-border-highlight bg-bg-app hover:border-color-primary/50'}`}
                 >
                   <UserPlus
                     size={24}
                     className={
                       selectedPlayerId === child.id && !isCreatingNewPlayer
-                        ? 'text-brand-400 mb-2'
+                        ? 'text-color-primary mb-2'
                         : 'text-text-muted mb-2'
                     }
                   />
@@ -225,11 +225,11 @@ export default function RegistrationFlow() {
                   setIsCreatingNewPlayer(true);
                   setSelectedPlayerId(null);
                 }}
-                className={`cursor-pointer p-4 rounded-xl border-2 transition-all ${isCreatingNewPlayer ? 'border-brand-500 bg-brand-500/10' : 'border-border-highlight bg-bg-app hover:border-brand-500/50'}`}
+                className={`cursor-pointer p-4 rounded-xl border-2 transition-all ${isCreatingNewPlayer ? 'border-color-primary bg-brand-glow' : 'border-border-highlight bg-bg-app hover:border-color-primary/50'}`}
               >
                 <UserPlus
                   size={24}
-                  className={isCreatingNewPlayer ? 'text-brand-400 mb-2' : 'text-text-muted mb-2'}
+                  className={isCreatingNewPlayer ? 'text-color-primary mb-2' : 'text-text-muted mb-2'}
                 />
                 <h4 className="font-bold text-text-primary">New Player</h4>
                 <p className="text-xs text-text-secondary">Register a new child</p>
@@ -250,7 +250,7 @@ export default function RegistrationFlow() {
                       onChange={(e) =>
                         setNewPlayerName({ ...newPlayerName, first: e.target.value })
                       }
-                      className="w-full bg-bg-surface border border-border-subtle rounded-lg p-3 text-text-primary focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-400"
+                      className="w-full bg-bg-surface border border-border-subtle rounded-lg p-3 text-text-primary focus:border-color-primary focus:outline-none focus:ring-1 focus:ring-color-primary"
                     />
                   </div>
                   <div>
@@ -261,11 +261,11 @@ export default function RegistrationFlow() {
                       type="text"
                       value={newPlayerName.last}
                       onChange={(e) => setNewPlayerName({ ...newPlayerName, last: e.target.value })}
-                      className="w-full bg-bg-surface border border-border-subtle rounded-lg p-3 text-text-primary focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-400"
+                      className="w-full bg-bg-surface border border-border-subtle rounded-lg p-3 text-text-primary focus:border-color-primary focus:outline-none focus:ring-1 focus:ring-color-primary"
                     />
                   </div>
                 </div>
-                <p className="text-xs text-blue-400 mt-2">
+                <p className="text-xs text-color-primary mt-2">
                   Note: Creating a new player will automatically link them to your authorized
                   profile for future scheduling.
                 </p>
@@ -283,7 +283,7 @@ export default function RegistrationFlow() {
                 form.fields.map((field, idx) => (
                   <div key={idx}>
                     <label className="block text-sm font-medium text-text-primary mb-1">
-                      {field.label} {field.required && <span className="text-red-400">*</span>}
+                      {field.label} {field.required && <span className="text-status-error">*</span>}
                     </label>
                     {field.type === 'text' && (
                       <input
@@ -292,7 +292,7 @@ export default function RegistrationFlow() {
                         onChange={(e) =>
                           setResponses({ ...responses, [field.label]: e.target.value })
                         }
-                        className="w-full bg-bg-app border border-border-highlight rounded-lg p-3 text-text-primary focus:border-brand-400 focus:outline-none"
+                        className="w-full bg-bg-app border border-border-highlight rounded-lg p-3 text-text-primary focus:border-color-primary focus:outline-none"
                       />
                     )}
                     {/* More field types could be handled here (select, radio) */}
@@ -303,7 +303,7 @@ export default function RegistrationFlow() {
                         onChange={(e) =>
                           setResponses({ ...responses, [field.label]: e.target.value })
                         }
-                        className="w-full bg-bg-app border border-border-highlight rounded-lg p-3 text-text-primary focus:border-brand-400 focus:outline-none"
+                        className="w-full bg-bg-app border border-border-highlight rounded-lg p-3 text-text-primary focus:border-color-primary focus:outline-none"
                       />
                     )}
                   </div>
@@ -323,7 +323,7 @@ export default function RegistrationFlow() {
               Please read the following waiver carefully before agreeing.
             </p>
 
-            <div className="bg-bg-app border border-border-highlight border-l-4 border-l-brand-400 rounded-r-xl p-5 max-h-60 overflow-y-auto text-sm text-text-secondary">
+            <div className="bg-bg-app border border-border-highlight border-l-4 border-l-color-primary rounded-r-xl p-5 max-h-60 overflow-y-auto text-sm text-text-secondary">
               {form.waiver_text || 'Standard Liability Waiver: By signing this, I acknowledge...'}
             </div>
 
@@ -334,7 +334,7 @@ export default function RegistrationFlow() {
                   id="waiver"
                   checked={waiverAgreed}
                   onChange={(e) => setWaiverAgreed(e.target.checked)}
-                  className="w-5 h-5 rounded border-border-highlight bg-bg-surface text-brand-500 focus:ring-brand-500 focus:ring-offset-bg-surface"
+                  className="w-5 h-5 rounded border-border-highlight bg-bg-surface text-color-primary focus:ring-color-primary focus:ring-offset-bg-surface"
                 />
               </div>
               <label

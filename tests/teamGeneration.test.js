@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { generateTeams } from '../packages/core/src/teamGeneration.js';
 
 const divisionConfigs = {
-  U10: { maxRosterSize: 4 },
+  U10: { id: 'U10', teamsCount: 3, slotsPerWeek: 4, maxRosterSize: 4 },
 };
 
 test('distributes players evenly across teams', () => {
@@ -165,6 +165,9 @@ test('applies custom team names with sensible fallbacks', () => {
     players,
     divisionConfigs: {
       U10: {
+        id: 'U10',
+        teamsCount: 3,
+        slotsPerWeek: 4,
         maxRosterSize: 2,
         teamNames: ['Raptors', 'Sharks'],
         teamNamePrefix: 'Lightning',
@@ -178,7 +181,7 @@ test('applies custom team names with sensible fallbacks', () => {
 
   const fallback = generateTeams({
     players: [{ id: 'solo', division: 'U12' }],
-    divisionConfigs: { U12: { maxRosterSize: 4 } },
+    divisionConfigs: { U12: { id: 'U12', teamsCount: 1, slotsPerWeek: 1, maxRosterSize: 4 } },
     random: createDeterministicRandom(),
   });
 
@@ -250,7 +253,7 @@ test('records insufficient capacity overflow for buddy unit larger than roster',
     rosterBalanceByDivision,
   } = generateTeams({
     players,
-    divisionConfigs: { U10: { maxRosterSize: 1 } },
+    divisionConfigs: { U10: { id: 'U10', teamsCount: 2, slotsPerWeek: 2, maxRosterSize: 1 } },
     random: createDeterministicRandom(),
   });
 
@@ -285,17 +288,18 @@ test('validates input arguments', () => {
     /divisionconfigs must be an object/i
   );
   assert.throws(
+    // @ts-ignore
     () => generateTeams({ players: [], divisionConfigs, random: 'not-a-function' }),
     /random must be a function/i
   );
 
-  const missingId = [{ division: 'U10' }];
+  const missingId = [{ id: 'missing-id', division: 'U10' }];
   assert.throws(
     () => generateTeams({ players: missingId, divisionConfigs }),
     /each player requires an id/i
   );
 
-  const missingDivision = [{ id: 'no-division' }];
+  const missingDivision = [{ id: 'no-division', division: 'NONE' }];
   assert.throws(
     () => generateTeams({ players: missingDivision, divisionConfigs }),
     /is missing a division/i
@@ -321,7 +325,7 @@ test('validates input arguments', () => {
     { id: 'dup', division: 'U10' },
     { id: 'dup', division: 'U12' },
   ];
-  const divisionConfigsWithU12 = { ...divisionConfigs, U12: { maxRosterSize: 8 } };
+  const divisionConfigsWithU12 = { ...divisionConfigs, U12: { id: 'U12', teamsCount: 1, slotsPerWeek: 1, maxRosterSize: 8 } };
   assert.throws(
     () =>
       generateTeams({
@@ -419,7 +423,7 @@ test('marks divisions that need additional coaches when team count exceeds volun
 
   const { coachCoverageByDivision, teamsByDivision, rosterBalanceByDivision } = generateTeams({
     players,
-    divisionConfigs: { U10: { maxRosterSize: 3 } },
+    divisionConfigs: { U10: { id: 'U10', teamsCount: 2, slotsPerWeek: 2, maxRosterSize: 3 } },
     random: createDeterministicRandom(),
   });
 
@@ -445,7 +449,7 @@ test('summarises roster slots remaining across teams', () => {
 
   const { rosterBalanceByDivision } = generateTeams({
     players,
-    divisionConfigs: { U10: { maxRosterSize: 3 } },
+    divisionConfigs: { U10: { id: 'U10', teamsCount: 2, slotsPerWeek: 2, maxRosterSize: 3 } },
     random: createDeterministicRandom(),
   });
 
@@ -469,7 +473,7 @@ test('spreads higher skill ratings across teams and reports skill balance', () =
 
   const { teamsByDivision, skillBalanceByDivision } = generateTeams({
     players,
-    divisionConfigs: { U10: { maxRosterSize: 3 } },
+    divisionConfigs: { U10: { id: 'U10', teamsCount: 2, slotsPerWeek: 2, maxRosterSize: 3 } },
     random: createDeterministicRandom(),
   });
 

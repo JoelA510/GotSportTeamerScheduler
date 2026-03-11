@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { applyOverridesToSnapshot } from '../frontend/src/utils/applyOverridesToSnapshot.js';
+import { applyOverridesToSnapshot } from '../frontend/src/features/teaming/applyOverridesToSnapshot.js';
 
 test('applyOverridesToSnapshot resolves generator ids via teamIdMap and applies name/coach changes', () => {
   const snapshot = {

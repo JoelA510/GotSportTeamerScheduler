@@ -24,7 +24,7 @@ function normalizeFieldId(value) {
  * @param {string} [params.runId] - Optional scheduler run identifier.
  * @returns {Array<Object>} Supabase row payloads with snake_case keys.
  */
-export function buildGameAssignmentRows({ assignments, runId } = {}) {
+export function buildGameAssignmentRows({ assignments, runId } = { assignments: [] }) {
   if (!Array.isArray(assignments)) {
     throw new TypeError('assignments must be an array');
   }
@@ -73,9 +73,9 @@ export function buildGameAssignmentRows({ assignments, runId } = {}) {
 export async function persistGameAssignments({
   supabaseClient,
   assignments,
-  runId,
+  runId = undefined,
   upsert = false,
-} = {}) {
+} = { supabaseClient: undefined, assignments: [] }) {
   if (!supabaseClient || typeof supabaseClient.from !== 'function') {
     throw new TypeError('supabaseClient with a from() method is required');
   }

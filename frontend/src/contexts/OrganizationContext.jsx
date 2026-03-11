@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { supabase } from '../lib/supabaseClient.js';
 import { useAuth } from './AuthContext.jsx';
+import { ROLE_PERMISSIONS } from '../constants/permissions.js';
 
 /**
  * @typedef {Object} OrganizationContextValue
@@ -12,6 +13,7 @@ import { useAuth } from './AuthContext.jsx';
  * @property {boolean} loading
  * @property {function} switchOrganization
  * @property {function} switchSeason
+ * @property {string[]} [permissions]
  */
 
 /** @type {React.Context<OrganizationContextValue>} */
@@ -131,6 +133,7 @@ export const OrganizationProvider = ({ children }) => {
     loading,
     switchOrganization,
     switchSeason,
+    permissions: orgMember?.role ? (ROLE_PERMISSIONS[orgMember.role] || []) : [],
   };
 
   return <OrganizationContext.Provider value={value}>{children}</OrganizationContext.Provider>;

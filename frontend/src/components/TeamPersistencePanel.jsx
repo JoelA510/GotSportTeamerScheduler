@@ -1,12 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import PropTypes from 'prop-types';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../contexts/AuthContext.jsx';
 import { formatDateTime } from '../utils/formatters.js';
 import { getPersistenceEndpoint, triggerTeamPersistence } from '../utils/teamPersistenceClient.js';
 import { applyOverridesToSnapshot } from '../features/teaming/applyOverridesToSnapshot.js';
-import PersistencePanel from './PersistencePanel';
-import PersistenceOverridesList from './PersistenceOverridesList';
-import PersistenceHistoryList from './PersistenceHistoryList';
+import PersistencePanel from './PersistencePanel.jsx';
+import PersistenceOverridesList from './PersistenceOverridesList.jsx';
+import PersistenceHistoryList from './PersistenceHistoryList.jsx';
 
 const SUPABASE_SYNC_TIMEOUT_MS = 10000;
 
@@ -23,7 +23,7 @@ export default function TeamPersistencePanel({ teamPersistenceSnapshot }) {
   const [persistenceOverrides, setPersistenceOverrides] = useState(
     teamPersistenceSnapshot.manualOverrides ?? []
   );
-  const persistenceTimeoutRef = useRef();
+  const persistenceTimeoutRef = useRef(null);
 
   useEffect(() => {
     setPersistenceOverrides(teamPersistenceSnapshot.manualOverrides ?? []);
@@ -179,7 +179,7 @@ export default function TeamPersistencePanel({ teamPersistenceSnapshot }) {
         { label: 'Prepared', value: `${teamPersistenceSnapshot.preparedTeamRows || 0} teams` },
       ]}
       onSync={handlePersist}
-      status={panelStatus}
+      status={/** @type {'idle'|'syncing'|'success'|'error'} */ (panelStatus)}
       message={persistenceActionMessage}
     >
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

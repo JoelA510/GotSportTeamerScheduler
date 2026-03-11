@@ -380,6 +380,7 @@ describe('buildPracticeAssignmentRows', () => {
   });
 
   it('rejects non-array assignments', () => {
+    // @ts-ignore - testing intentional invalid input
     assert.throws(() => buildPracticeAssignmentRows({ assignments: 'bad', slots: [] }), {
       name: 'TypeError',
       message: /assignments must be an array/i,
@@ -578,6 +579,7 @@ describe('persistPracticeAssignments', () => {
     await assert.rejects(
       () =>
         persistPracticeAssignments({
+          supabaseClient: { from: () => {} },
           assignments: [{ teamId: 'team-1', slotId: 'slot-1::early' }],
           slots: sampleSlots,
         }),

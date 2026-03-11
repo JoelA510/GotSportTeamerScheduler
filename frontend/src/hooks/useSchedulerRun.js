@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabaseClient';
+import { supabase } from '../lib/supabaseClient.js';
 
 /**
  * Generic hook to fetch the latest completed scheduler run of a specific type.
@@ -29,6 +29,7 @@ export function useSchedulerRun(runType, mapper, emptyState) {
           .order('completed_at', { ascending: false })
           .limit(1)
           .single()
+          // @ts-ignore - abortSignal exists on the builder but may not be in the type definitions
           .abortSignal(controller.signal);
 
         if (queryError) {
