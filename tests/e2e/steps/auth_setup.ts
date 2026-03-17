@@ -3,7 +3,7 @@ import { expect } from '@playwright/test';
 import { randomUUID } from 'crypto';
 import { createClient } from '@supabase/supabase-js';
 
-const { Given } = createBdd();
+const { Given, After } = createBdd();
 
 // Initialize Supabase client for test data seeding
 const supabaseUrl = process.env.VITE_SUPABASE_URL || '';

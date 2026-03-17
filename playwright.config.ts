@@ -14,6 +14,8 @@ export default defineConfig({
   testDir,
   globalTeardown: './tests/e2e/global-teardown.ts',
   reporter: 'html',
+  fullyParallel: true,
+  workers: process.env.CI ? '100%' : '50%',
   use: {
     // CRITICAL: Allows step definitions to use relative paths like page.goto('/teams')
     baseURL: 'http://localhost:5173',
