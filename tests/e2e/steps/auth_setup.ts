@@ -90,3 +90,19 @@ Given('I am logged into SquadLogic', async ({ page }) => {
 
     await setupIsolatedTenant(page);
 });
+
+After(async ({ page }) => {
+    if (!supabaseUrl || !supabaseKey) return;
+
+    try {
+        // Retrieve the exact organization ID bound to this specific test runner
+        const activeOrgId = await page.evaluate(() => localStorage.getItem('squadlogic_active_org'));
+
+        if (activeOrgId) {
+            console.log(`[Teardown] Purging isolated tenant: ${activeOrgId}`);
+            await supabase.from('organizations').delete().eq('id', activeOrgId);
+        }
+    } catch (error) {
+        console.error('Failed to cleanup tenant in After hook:', error);
+    }
+});
