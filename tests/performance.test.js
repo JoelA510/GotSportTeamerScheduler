@@ -24,7 +24,16 @@ describe('Core Engine Performance Benchmarks', () => {
 
         const startTime = performance.now();
 
-        const result = generateTeams(massivePlayerPool, config);
+        const result = generateTeams({
+            players: massivePlayerPool.map(p => ({ ...p, division: 'U10' })),
+            divisionConfigs: {
+                U10: {
+                    maxRosterSize: config.maxRosterSize,
+                    minRosterSize: config.minRosterSize,
+                    teamCountOverride: config.targetTeams
+                }
+            }
+        });
 
         const endTime = performance.now();
         const executionTime = endTime - startTime;
@@ -33,6 +42,6 @@ describe('Core Engine Performance Benchmarks', () => {
 
         // Fail the CI build if the algorithm degrades in performance
         expect(executionTime).toBeLessThan(500);
-        expect(result.length).toBeGreaterThan(0);
+        expect(result.teamsByDivision['U10'].length).toBeGreaterThan(0);
     });
 });

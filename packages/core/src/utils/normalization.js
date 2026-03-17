@@ -54,3 +54,30 @@ export function normalizeJsonObject(value, label) {
 
   return value;
 }
+
+export function normalizePlayerData(data) {
+  const valid = [];
+  const errors = [];
+  const seenIds = new Set();
+
+  data.forEach((row, index) => {
+    if (row.gotSportId && seenIds.has(row.gotSportId)) {
+      errors.push({ type: 'DUPLICATE_ID', id: row.gotSportId, row: index });
+      return;
+    }
+    if (row.gotSportId) seenIds.add(row.gotSportId);
+
+    if (!row.dob) {
+      errors.push({
+        row: index,
+        column: 'dob',
+        message: 'Missing critical column: Date of Birth'
+      });
+      return;
+    }
+
+    valid.push(row);
+  });
+
+  return { valid, errors };
+}
