@@ -14,7 +14,10 @@
     "frontend:dev": "vite",
     "frontend:build": "node scripts/runViteWithPersistenceEndpoint.js build",
     "frontend:preview": "node scripts/runViteWithPersistenceEndpoint.js preview",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:e2e": "bddgen && playwright test",
+    "test:e2e:ui": "bddgen && playwright test --ui",
+    "test:e2e:codegen": "playwright codegen http://localhost:5173",
   },
   "directories": {
     "doc": "docs"
