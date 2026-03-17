@@ -29,3 +29,6 @@ tmp/
 /blob-report/
 /playwright/.cache/
 /playwright/.auth/
+
+# Playwright BDD Generated Files
+.features-gen/

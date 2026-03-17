@@ -103,3 +103,33 @@ Then('the sidebar overlay should automatically close', async ({ page }) => {
     const sidebar = page.locator('aside');
     await expect(sidebar).toHaveClass(/-translate-x-full/);
 });
+
+// --- Club Logo Upload ---
+Given('I am on the {string} tab in Settings', async ({ page }, tabName: string) => {
+    await page.goto('/settings');
+    await page.getByRole('button', { name: tabName }).click();
+});
+
+When('I upload a valid PNG file to the {string} dropzone', async ({ page }, dropzoneName: string) => {
+    // Mock file upload via Playwright
+    const fileChooserPromise = page.waitForEvent('filechooser');
+    await page.locator('.border-dashed').click();
+    const fileChooser = await fileChooserPromise;
+    await fileChooser.setFiles({
+        name: 'logo.png',
+        mimeType: 'image/png',
+        buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64')
+    });
+});
+
+Then('I should see a visual preview of the uploaded logo', async ({ page }) => {
+    await expect(page.locator('img[alt="Club Logo"]')).toBeVisible();
+});
+
+Then('a {string} panel should appear', async ({ page }, panelName: string) => {
+    await expect(page.getByText(panelName)).toBeVisible();
+});
+
+Then('I should see distinct color swatches extracted from the image', async ({ page }) => {
+    await expect(page.locator('.w-12.h-12.rounded-lg.shadow-sm.shrink-0').first()).toBeVisible();
+});

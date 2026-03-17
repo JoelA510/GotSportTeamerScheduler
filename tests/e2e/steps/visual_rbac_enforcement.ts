@@ -33,3 +33,7 @@ Then('the score input fields and {string} buttons should be completely hidden', 
     // Verify the save button is not rendered
     await expect(page.getByRole('button', { name: btnName })).toBeHidden();
 });
+
+When('I view the main navigation Sidebar', async ({ page }) => {
+    await expect(page.locator('aside')).toBeVisible();
+});

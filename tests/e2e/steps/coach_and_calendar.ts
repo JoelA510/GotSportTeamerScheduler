@@ -39,11 +39,6 @@ Then('the feed should only contain data for my authorized team \\(no data leakag
 
 Given('I need to announce a practice cancellation', async ({ page }) => { /* Mock state */ });
 
-When('I use the Team Communication tool', async ({ page }) => {
-    await page.getByPlaceholder('Type a message...').fill('Practice cancelled');
-    await page.locator('form button').click();
-});
-
 Then('a notification should be sent to all parents of players on my roster', async ({ page }) => { /* Verify DB/API */ });
 Then('I should be able to see a history of all sent messages', async ({ page }) => {
     await expect(page.getByText('Practice cancelled')).toBeVisible();

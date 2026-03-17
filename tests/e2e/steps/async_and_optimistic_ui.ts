@@ -78,3 +78,56 @@ Then('the database should be updated in the background without requiring a page 
     // Verified by the network intercept resolving successfully after the UI check
     expect(true).toBe(true);
 });
+
+// --- Data Validation Panel ---
+Given('I have uploaded a GotSport CSV with malformed row data', async ({ page }) => {
+    await page.goto('/import');
+});
+
+When('the import processing completes with warnings', async ({ page }) => {
+    await expect(page.getByText('Data Validation Issues')).toBeVisible({ timeout: 10000 });
+});
+
+Then('the Data Validation Panel should appear with an amber warning header', async ({ page }) => {
+    await expect(page.locator('.text-amber-500').first()).toBeVisible();
+});
+
+Then('I should see a scrollable table listing the specific row errors', async ({ page }) => {
+    await expect(page.locator('.max-h-64.overflow-y-auto')).toBeVisible();
+});
+
+Then('the table should have a sticky header for {string}, {string}, and {string}', async ({ page }, h1: string, h2: string, h3: string) => {
+    const thead = page.locator('thead.sticky');
+    await expect(thead).toBeVisible();
+    await expect(thead).toContainText(h1);
+    await expect(thead).toContainText(h2);
+    await expect(thead).toContainText(h3);
+});
+
+// --- Output Generation Async Pipeline ---
+Given('I am on the {string} workflow step', async ({ page }, stepName: string) => {
+    await page.goto('/');
+    await page.getByRole('heading', { name: stepName }).click();
+});
+
+Then('the button should disable and show {string}', async ({ page }, text: string) => {
+    const btn = page.getByRole('button', { name: text });
+    await expect(btn).toBeVisible();
+    await expect(btn).toBeDisabled();
+});
+
+When('the generation completes, I click {string}', async ({ page }, btnName: string) => {
+    const btn = page.getByRole('button', { name: btnName });
+    await expect(btn).toBeEnabled({ timeout: 10000 });
+    await btn.click();
+});
+
+Then('the status text should pulse orange saying {string}', async ({ page }, text: string) => {
+    const status = page.locator('.text-orange-400.animate-pulse');
+    await expect(status).toBeVisible();
+    await expect(status).toHaveText(text);
+});
+
+Then('eventually display a green success message confirming the number of files uploaded', async ({ page }) => {
+    await expect(page.locator('.text-emerald-400')).toBeVisible({ timeout: 10000 });
+});

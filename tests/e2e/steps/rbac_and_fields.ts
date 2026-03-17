@@ -5,7 +5,6 @@ const { Given, When, Then } = createBdd();
 
 Given('the following organizations exist: {string}, {string}', async ({ page }, org1: string, org2: string) => { /* Mock state */ });
 Given('{string} belongs to {string} with role {string}', async ({ page }, user: string, org: string, role: string) => { /* Mock state */ });
-Given('I am logged into the SquadLogic dashboard as {string}', async ({ page }, user: string) => { /* Mock auth */ });
 
 When('I request the list of teams, players, or schedules', async ({ page }) => {
     await page.goto('/teams');
