@@ -29,7 +29,6 @@ describe('Core Engine Performance Benchmarks', () => {
             divisionConfigs: {
                 U10: {
                     maxRosterSize: config.maxRosterSize,
-                    minRosterSize: config.minRosterSize,
                     teamCountOverride: config.targetTeams
                 }
             }
