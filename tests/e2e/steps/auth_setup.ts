@@ -1,7 +1,33 @@
 import { createBdd } from 'playwright-bdd';
 import { expect } from '@playwright/test';
+import { randomUUID } from 'crypto';
+import { createClient } from '@supabase/supabase-js';
 
 const { Given } = createBdd();
+
+// Initialize Supabase client for test data seeding
+const supabaseUrl = process.env.VITE_SUPABASE_URL || '';
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || '';
+const supabase = createClient(supabaseUrl, supabaseKey);
+
+async function setupIsolatedTenant(page: any) {
+    if (!supabaseUrl || !supabaseKey) {
+        console.warn('Skipping isolated tenant setup due to missing Supabase credentials.');
+        return;
+    }
+    const dynamicOrgId = randomUUID();
+
+    // Insert the isolated tenant
+    await supabase.from('organizations').insert({
+        id: dynamicOrgId,
+        name: `E2E-Isolation-${dynamicOrgId}`
+    });
+
+    // Bind local storage to the dynamic tenant instead of a hardcoded one
+    await page.evaluate((orgId: string) => {
+        localStorage.setItem('squadlogic_active_org', orgId);
+    }, dynamicOrgId);
+}
 
 // Centralized Auth Step for all scenarios
 Given('I am logged into SquadLogic as an {string}', async ({ page }, role: string) => {
@@ -26,6 +52,9 @@ Given('I am logged into SquadLogic as an {string}', async ({ page }, role: strin
 
     // Verify successful redirect to the dashboard
     await expect(page.getByRole('heading', { name: /League Management|Dashboard/i })).toBeVisible({ timeout: 10000 });
+
+    // Set up database isolation for concurrent testing
+    await setupIsolatedTenant(page);
 });
 
 // Alias for variations in Gherkin phrasing
@@ -35,6 +64,8 @@ Given('I am logged into SquadLogic as a {string}', async ({ page }, role: string
     await page.getByLabel('Password').fill('test-password-123');
     await page.getByRole('button', { name: 'Sign In' }).click();
     await expect(page.getByRole('heading', { name: /League Management|Dashboard/i })).toBeVisible({ timeout: 10000 });
+
+    await setupIsolatedTenant(page);
 });
 
 Given('I am logged into the SquadLogic dashboard as {string}', async ({ page }, userString: string) => {
@@ -45,6 +76,8 @@ Given('I am logged into the SquadLogic dashboard as {string}', async ({ page }, 
     await page.getByLabel('Password').fill('test-password-123');
     await page.getByRole('button', { name: 'Sign In' }).click();
     await expect(page.getByRole('heading', { name: /League Management|Dashboard/i })).toBeVisible({ timeout: 10000 });
+
+    await setupIsolatedTenant(page);
 });
 
 Given('I am logged into SquadLogic', async ({ page }) => {
@@ -54,4 +87,6 @@ Given('I am logged into SquadLogic', async ({ page }) => {
     await page.getByLabel('Password').fill('test-password-123');
     await page.getByRole('button', { name: 'Sign In' }).click();
     await expect(page.getByRole('heading', { name: /League Management|Dashboard/i })).toBeVisible({ timeout: 10000 });
+
+    await setupIsolatedTenant(page);
 });

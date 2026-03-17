@@ -133,3 +133,14 @@ Then('a {string} panel should appear', async ({ page }, panelName: string) => {
 Then('I should see distinct color swatches extracted from the image', async ({ page }) => {
     await expect(page.locator('.w-12.h-12.rounded-lg.shadow-sm.shrink-0').first()).toBeVisible();
 });
+
+// --- Visual Regression Testing (VRT) ---
+Then('the {string} view should match the visual baseline', async ({ page }, viewName: string) => {
+    // Wait for the DOM and network requests to completely settle
+    await page.waitForLoadState('networkidle');
+
+    // Perform pixel-to-pixel comparison (with 5% anti-aliasing tolerance)
+    expect(await page.screenshot({ fullPage: true })).toMatchSnapshot(`vrt-${viewName.replace(/\s+/g, '-').toLowerCase()}.png`, {
+        maxDiffPixelRatio: 0.05,
+    });
+});
