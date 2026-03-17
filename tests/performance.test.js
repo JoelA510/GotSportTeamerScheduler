@@ -28,6 +28,9 @@ describe('Core Engine Performance Benchmarks', () => {
             players: massivePlayerPool.map(p => ({ ...p, division: 'U10' })),
             divisionConfigs: {
                 U10: {
+                    id: 'U10',
+                    teamsCount: config.targetTeams,
+                    slotsPerWeek: config.targetTeams * 2,
                     maxRosterSize: config.maxRosterSize,
                     teamCountOverride: config.targetTeams
                 }
