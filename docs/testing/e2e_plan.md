@@ -1,54 +1,19 @@
-# E2E Test Plan: Timezone & Multi-Org Verification
+## 4. Vision-Agent Specific Edge Cases (Phase 2)
 
-## 1. Timezone & School Hours (R3)
+### Visual Micro-Interactions & Responsiveness
+- [ ] Verify visual affordances (opacity 40%, rotation, dashed drop-zones) during drag-and-drop roster allocations.
+- [ ] Verify global background gradients and text contrast changes when cycling through Theme Toggle options.
+- [ ] Verify image preview and dynamic color swatch generation upon Club Logo upload in Settings.
+- [ ] Verify Recharts `<BarChart>` and `<PieChart>` render correctly and display dark-themed tooltips on hover.
+- [ ] Verify the mobile sidebar hamburger menu opens and closes the navigation overlay correctly.
 
-### Scenario A: Local Time Display
+### Async, Timeouts, & Optimistic UI
+- [ ] Verify the pulsing animation and 10-second timeout error visuals on the Team Persistence Panel.
+-[ ] Verify the visual rendering of the global Error Boundary (ShieldAlert icon, "Return Home" button) on component crash.
+- [ ] Verify the visual layout of the Data Validation Panel (amber alerts, sticky table header) during failed CSV ingestion.
+- [ ] Verify clicking "Medical Clearance" instantly updates the UI to a blue "Cleared" state (optimistic update).
+- [ ] Verify the `OutputGenerationPanel` transitions through "Generating CSVs...", "Uploading to Storage...", and green "Success" states.
 
-- **Setup**:
-  - Set Season A Timezone to `America/New_York`.
-  - Set Season B Timezone to `America/Los_Angeles`.
-- **Action**: Create a practice slot for 5:00 PM in both seasons.
-- **Verification**:
-  - View Season A schedule. Slot should appear as 5:00 PM EST.
-  - View Season B schedule. Slot should appear as 5:00 PM PST.
-  - (Advanced) Change user machine timezone. The web app should ideally convert to _League Time_ or clearly indicate the offset. NOTE: Current implementation renders in browser local time or league time depending on frontend logic. Confirmed behavior: Frontend currently accepts input and saves. Display logic in `PracticeReadinessPanel` or `Calendar` needs to use `season_settings.timezone` for strict correctness.
-
-### Scenario B: School Hours Enforcement
-
-- **Setup**: Set `school_day_end` to `16:00` (4 PM).
-- **Action**:
-  - Create `Slot 1`: Monday 15:00 (3 PM).
-  - Create `Slot 2`: Monday 17:00 (5 PM).
-  - Run Scheduler.
-- **Verification**:
-  - `Slot 1` is **IGNORED** (assigned count 0).
-  - `Slot 2` is **USED**.
-
-## 2. Multi-Organization Data Isolation (R4)
-
-### Scenario C: Cross-Org Data Leakage
-
-- **Setup**:
-  - DB contains `Org A` (id=1) and `Org B` (id=2).
-  - User `Coach A` belongs to `Org A`.
-- **Action**: `Coach A` attempts to view Teams list.
-- **Verification**:
-  - Query returns only teams associated with `Org A`.
-  - Direct API call to fetch `Org B` team returns 403 Forbidden or empty set (RLS).
-
-## 3. Operations & Migration
-
-### Scenario D: Daylight Savings
-
-- **Action**: Simulate date change across DST boundary (e.g., Nov 3rd).
-- **Verification**:
-  - Practice slots remain at the same _local_ hour (e.g., 5 PM) even if UTC offset shifts.
-  - (Requires backend logic to generate recurrence rules based on local time, not fixed UTC).
-
-## Automated Test Matrix
-
-| Feature               | Type        | Status     | File                                          |
-| :-------------------- | :---------- | :--------- | :-------------------------------------------- |
-| School Hour Filtering | Unit        | ✅ Passed  | `tests/practiceSchedulingTimezone.test.js`    |
-| Timezone Display      | Visual      | ⚠️ Pending | Frontend UI inspection required               |
-| Multi-Org RLS         | Integration | ⏳ Pending | `organizations` table populated & RLS enabled |
+### Visual RBAC Enforcement
+- [ ] Verify the visual absence of Admin-only sidebar navigation items (Data Import, Settings, Compliance) for Coach and Parent roles.
+- [ ] Verify the visual absence of score entry input fields on the League Standings page for non-admin roles.
