@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { generateTeams } from '@squadlogic/core/teamGeneration';
+import { generateTeams } from '../packages/core/src/teamGeneration.js';
 
 describe('Core Engine Performance Benchmarks', () => {
     const createMockPlayers = (count) => {

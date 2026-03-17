@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { normalizePlayerData } from '@squadlogic/core/utils/normalization';
+import { normalizePlayerData } from '../packages/core/src/utils/normalization.js';
 
 describe('Data Ingestion Hardening: Malformed CSV Data', () => {
     it('merges or rejects duplicate GotSport ID numbers gracefully', () => {
