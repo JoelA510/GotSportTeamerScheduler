@@ -44,12 +44,6 @@ Then('I should be able to see a history of all sent messages', async ({ page }) 
     await expect(page.getByText('Practice cancelled')).toBeVisible();
 });
 
-// Calendar Sync specific steps
-When('I click the {string} button', async ({ page }, btnName: string) => {
-    // Assuming a button exists in the UI for this
-    // await page.getByRole('button', { name: btnName }).click();
-});
-
 Then('a modal should appear displaying a subscription link', async ({ page }) => {
     // await expect(page.locator('.modal')).toBeVisible();
 });
