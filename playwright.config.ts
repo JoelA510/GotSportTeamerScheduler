@@ -12,7 +12,7 @@ const testDir = defineBddConfig({
 
 export default defineConfig({
   testDir,
-  globalTeardown: require.resolve('./tests/e2e/global-teardown.ts'),
+  globalTeardown: './tests/e2e/global-teardown.ts',
   reporter: 'html',
   use: {
     // CRITICAL: Allows step definitions to use relative paths like page.goto('/teams')
