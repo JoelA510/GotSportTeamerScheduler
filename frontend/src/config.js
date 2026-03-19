@@ -25,4 +25,5 @@ export const API_BASE_URL =
 export const PRACTICE_PERSISTENCE_URL = `${API_BASE_URL}/practice-persistence`;
 export const GAME_PERSISTENCE_URL = `${API_BASE_URL}/game-persistence`;
 
-export const IS_MOCK_MODE = !SUPABASE_URL || !SUPABASE_ANON_KEY;
+export const USE_MOCK_SUPABASE = getEnvVar('VITE_USE_MOCK_SUPABASE') === 'true';
+export const IS_MOCK_MODE = !SUPABASE_URL || !SUPABASE_ANON_KEY || USE_MOCK_SUPABASE;

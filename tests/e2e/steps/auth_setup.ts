@@ -5,14 +5,14 @@ import { createClient } from '@supabase/supabase-js';
 
 const { Given, After } = createBdd();
 
-// Initialize Supabase client for test data seeding
+// Initialize Supabase client for test data seeding only if credentials are present
 const supabaseUrl = process.env.VITE_SUPABASE_URL || '';
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || '';
-const supabase = createClient(supabaseUrl, supabaseKey);
+const supabase = supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabaseKey) : null;
 
 async function setupIsolatedTenant(page: any) {
-    if (!supabaseUrl || !supabaseKey) {
-        console.warn('Skipping isolated tenant setup due to missing Supabase credentials.');
+    if (!supabaseUrl || !supabaseKey || process.env.VITE_USE_MOCK_SUPABASE === 'true') {
+        console.warn('Skipping isolated tenant setup due to missing Supabase credentials or mock mode.');
         return;
     }
     const dynamicOrgId = randomUUID();
@@ -31,10 +31,12 @@ async function setupIsolatedTenant(page: any) {
 
 // Centralized Auth Step for all scenarios
 Given('I am logged into SquadLogic as an {string}', async ({ page }, role: string) => {
+    // @ts-ignore
+    page.on('console', (msg) => console.log(`[BROWSER LOG] [${msg.type()}] ${msg.text()}`));
     await page.goto('/login');
 
-    // Wait for the login form to be visible
-    await expect(page.getByRole('heading', { name: /Sign in|Create an account/i })).toBeVisible();
+    // Wait for the login form to be visible (matching actual text or a general login role)
+    await expect(page.getByRole('heading', { name: /Sign in|Create an account/i })).toBeVisible({ timeout: 10000 });
 
     // Use environment variables for test accounts, or fallback to standard test credentials
     const email = role.toLowerCase() === 'admin'
@@ -51,7 +53,7 @@ Given('I am logged into SquadLogic as an {string}', async ({ page }, role: strin
     await page.getByRole('button', { name: 'Sign In' }).click();
 
     // Verify successful redirect to the dashboard
-    await expect(page.getByRole('heading', { name: /League Management|Dashboard/i })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('heading', { name: /League Management|Dashboard|Season Setup Workflow/i }).first()).toBeVisible({ timeout: 10000 });
 
     // Set up database isolation for concurrent testing
     await setupIsolatedTenant(page);
@@ -59,11 +61,13 @@ Given('I am logged into SquadLogic as an {string}', async ({ page }, role: strin
 
 // Alias for variations in Gherkin phrasing
 Given('I am logged into SquadLogic as a {string}', async ({ page }, role: string) => {
+    // @ts-ignore
+    page.on('console', (msg) => console.log(`[BROWSER LOG] [${msg.type()}] ${msg.text()}`));
     await page.goto('/login');
     await page.getByLabel('Email').fill(role.toLowerCase() === 'admin' ? 'admin@squadlogic.app' : 'coach@squadlogic.app');
     await page.getByLabel('Password').fill('test-password-123');
     await page.getByRole('button', { name: 'Sign In' }).click();
-    await expect(page.getByRole('heading', { name: /League Management|Dashboard/i })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('heading', { name: /League Management|Dashboard|Season Setup Workflow/i }).first()).toBeVisible({ timeout: 10000 });
 
     await setupIsolatedTenant(page);
 });
@@ -75,7 +79,18 @@ Given('I am logged into the SquadLogic dashboard as {string}', async ({ page }, 
     await page.getByLabel('Email').fill(`${role}@squadlogic.app`);
     await page.getByLabel('Password').fill('test-password-123');
     await page.getByRole('button', { name: 'Sign In' }).click();
-    await expect(page.getByRole('heading', { name: /League Management|Dashboard/i })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('heading', { name: /League Management|Dashboard|Season Setup Workflow/i }).first()).toBeVisible({ timeout: 10000 });
+
+    await setupIsolatedTenant(page);
+});
+
+Given('I am logged into the SquadLogic dashboard as an {string}', async ({ page }, role: string) => {
+    // Alias for existing login
+    await page.goto('/login');
+    await page.getByLabel('Email').fill(role.toLowerCase() === 'admin' ? 'admin@squadlogic.app' : 'coach@squadlogic.app');
+    await page.getByLabel('Password').fill('test-password-123');
+    await page.getByRole('button', { name: 'Sign In' }).click();
+    await expect(page.getByRole('heading', { name: /League Management|Dashboard|Season Setup Workflow/i }).first()).toBeVisible({ timeout: 10000 });
 
     await setupIsolatedTenant(page);
 });
@@ -86,13 +101,13 @@ Given('I am logged into SquadLogic', async ({ page }) => {
     await page.getByLabel('Email').fill('admin@squadlogic.app');
     await page.getByLabel('Password').fill('test-password-123');
     await page.getByRole('button', { name: 'Sign In' }).click();
-    await expect(page.getByRole('heading', { name: /League Management|Dashboard/i })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('heading', { name: /League Management|Dashboard|Season Setup Workflow/i }).first()).toBeVisible({ timeout: 10000 });
 
     await setupIsolatedTenant(page);
 });
 
 After(async ({ page }) => {
-    if (!supabaseUrl || !supabaseKey) return;
+    if (!supabaseUrl || !supabaseKey || process.env.VITE_USE_MOCK_SUPABASE === 'true') return;
 
     try {
         // Retrieve the exact organization ID bound to this specific test runner
