@@ -32,6 +32,8 @@ test.describe('Team Communication and Portal', () => {
 
 // == technical section ==
 
+test.afterEach('AfterEach Hooks', ({ $runScenarioHooks, page }) => $runScenarioHooks('after', { page }));
+
 test.use({
   $test: [({}, use) => use(test), { scope: 'test', box: true }],
   $uri: [({}, use) => use('tests\\e2e\\features\\team_communication.feature'), { scope: 'test', box: true }],

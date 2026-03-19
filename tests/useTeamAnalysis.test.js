@@ -1,13 +1,28 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 import { useTeamAnalysis } from '../frontend/src/hooks/useTeamAnalysis.js';
 import { useImport } from '../frontend/src/contexts/ImportContext.jsx';
+import { useOrganization } from '../frontend/src/contexts/OrganizationContext.jsx';
 
 vi.mock('../frontend/src/contexts/ImportContext.jsx', () => ({
   useImport: vi.fn(),
 }));
 
+vi.mock('../frontend/src/contexts/OrganizationContext.jsx', () => ({
+  useOrganization: vi.fn(),
+}));
+
 describe('useTeamAnalysis', () => {
+  const mockOrg = { id: 'org-1' };
+  const mockSeason = { id: 'season-1', season_year: 2025 };
+
+  beforeEach(() => {
+    vi.mocked(useOrganization).mockReturnValue({
+      currentOrganization: mockOrg,
+      currentSeasonSetting: mockSeason,
+    });
+  });
+
   it('processes imported players into program groups', async () => {
     // Fix system time for consistent U-group calculation
     vi.useFakeTimers();
@@ -18,9 +33,10 @@ describe('useTeamAnalysis', () => {
       { 'First Name': 'Bob', 'Last Name': 'Brown', 'Birthdate': '2018-06-15', 'Gender': 'm' },   // Age 7 -> U8 Boys
     ];
 
-    vi.mocked(useImport).mockReturnValue(/** @type {any} */ ({
-      importedPlayers: { data: mockPlayers },
-    }));
+    const mockImportData = { data: mockPlayers };
+    vi.mocked(useImport).mockReturnValue({
+      importedPlayers: mockImportData,
+    });
 
     const { result } = renderHook(() => useTeamAnalysis());
 
@@ -40,9 +56,10 @@ describe('useTeamAnalysis', () => {
       { 'First Name': 'Missing', 'Last Name': 'Data' }, // No Birthdate/Gender
     ];
 
-    vi.mocked(useImport).mockReturnValue(/** @type {any} */ ({
-      importedPlayers: { data: mockPlayers },
-    }));
+    const mockImportData = { data: mockPlayers };
+    vi.mocked(useImport).mockReturnValue({
+      importedPlayers: mockImportData,
+    });
 
     const { result } = renderHook(() => useTeamAnalysis());
     

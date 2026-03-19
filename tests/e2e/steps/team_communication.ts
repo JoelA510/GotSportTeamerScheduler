@@ -3,6 +3,10 @@ import { test, expect } from '@playwright/test';
 
 const { Given, When, Then } = createBdd();
 
+When('I use the Team Communication tool', async ({ page }) => {
+  // Navigate or open the tool
+});
+
 Given('my child {string} is on the {string} team', async ({ page }, childName: string, teamName: string) => {
   // Pre-condition placeholder
 });

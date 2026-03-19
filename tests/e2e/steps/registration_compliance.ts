@@ -49,22 +49,6 @@ Then('I should see a success message', async ({ page }) => {
   // Assert "Registration Complete"
 });
 
-// Admin checks dashboard
-Given('I navigate to the {string} page', async ({ page }, destination: string) => {
-  if (destination === 'Compliance Dashboard') {
-    await page.goto('/admin/compliance');
-  } else if (destination === 'Registration Forms') {
-    await page.goto('/admin/forms');
-  }
-});
-
-Given('I navigate to the {string}', async ({ page }, destination: string) => {
-  if (destination === 'Compliance Dashboard') {
-    await page.goto('/admin/compliance');
-  } else if (destination === 'Registration Forms') {
-    await page.goto('/admin/forms');
-  }
-});
 
 When('I filter for {string}', async ({ page }, formTitle: string) => {
   // Select form from dropdown

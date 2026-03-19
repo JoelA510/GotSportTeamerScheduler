@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { after, describe, it } from 'node:test';
+import { afterAll as after, describe, it } from 'vitest';
 import { configurePersistenceEndpoint } from '../scripts/configurePersistenceEndpoint.js';
 
 function createTempFile(initialContents = '') {

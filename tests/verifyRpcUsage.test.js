@@ -1,4 +1,4 @@
-import test from 'node:test';
+import { test, expect } from 'vitest';
 import assert from 'node:assert/strict';
 import { persistTeamSnapshotTransactional } from '../packages/core/src/teamPersistenceHandler.js';
 import { persistPracticeSnapshotTransactional } from '../packages/core/src/practicePersistenceHandler.js';

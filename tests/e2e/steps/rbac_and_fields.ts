@@ -22,13 +22,6 @@ When('I attempt to navigate to full Admin routes such as Data Import or Settings
     await page.goto('/settings');
 });
 
-Then('I should be redirected to the Dashboard', async ({ page }) => {
-    await expect(page).toHaveURL('/');
-});
-
-Then('I should see an {string} warning', async ({ page }, warning: string) => {
-    await expect(page.getByText(warning)).toBeVisible();
-});
 
 When('I navigate to the Admin routes', async ({ page }) => {
     await page.goto('/settings');

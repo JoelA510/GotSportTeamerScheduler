@@ -19,6 +19,7 @@ export function useTeamAnalysis() {
   }, [currentOrganization?.id, currentSeasonSetting?.id]);
 
   const processPrograms = (players) => {
+    console.log('processPrograms called with', players.length, 'players');
     const programMap = {};
     const errors = [];
 

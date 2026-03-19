@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import { test, expect } from 'vitest';
 
 import { applyOverridesToSnapshot } from '../frontend/src/features/teaming/applyOverridesToSnapshot.js';
 

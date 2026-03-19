@@ -7,10 +7,6 @@ Given('an organization and season are active', async ({ page }) => {
     // Setup mock or DB state for active org/season
 });
 
-When('I navigate to the Dashboard page', async ({ page }) => {
-    await page.goto('/');
-});
-
 Then('I should see a {int}-step workflow on the left side', async ({ page }, steps: number) => {
     await expect(page.locator('.group.relative.overflow-hidden')).toHaveCount(steps);
 });
@@ -27,10 +23,55 @@ Then('the League Status panel should show the active season name', async ({ page
     await expect(page.getByText('Active Season').locator('..').locator('span').last()).toBeVisible();
 });
 
-Given('I have imported player data', async ({ page }) => { /* Mock state */ });
-Given('I have not generated teams', async ({ page }) => { /* Mock state */ });
-Given('I have not generated a practice schedule', async ({ page }) => { /* Mock state */ });
-Given('I have not generated a game schedule', async ({ page }) => { /* Mock state */ });
+Given('I have imported player data', async ({ page }) => {
+    await page.evaluate(() => {
+        window.__MOCK_DB__.imports = [{
+            id: 'import-1',
+            user_id: 'mock-user-id',
+            import_type: 'players',
+            data: { totalRows: 150, validRows: 150 }
+        }];
+    });
+});
+
+Given('I have not generated teams', async ({ page }) => {
+    await page.evaluate(() => {
+        window.__MOCK_DB__.scheduler_runs = window.__MOCK_DB__.scheduler_runs.filter(r => r.run_type !== 'team');
+    });
+});
+
+Given('I have not generated a practice schedule', async ({ page }) => {
+    await page.evaluate(() => {
+        window.__MOCK_DB__.scheduler_runs = window.__MOCK_DB__.scheduler_runs.filter(r => r.run_type !== 'practice');
+    });
+});
+
+Given('I have not generated a game schedule', async ({ page }) => {
+    await page.evaluate(() => {
+        window.__MOCK_DB__.scheduler_runs = window.__MOCK_DB__.scheduler_runs.filter(r => r.run_type !== 'game');
+    });
+});
+
+Given('I have generated teams', async ({ page }) => {
+    // The default mock state already includes a completed team run, so we just ensure it's there
+    await page.evaluate(() => {
+        if (!window.__MOCK_DB__.scheduler_runs.find(r => r.run_type === 'team')) {
+            window.__MOCK_DB__.scheduler_runs.push({ id: 'run-t', run_type: 'team', status: 'completed', created_at: new Date().toISOString() });
+        }
+    });
+});
+
+Given('I have generated a practice schedule', async ({ page }) => {
+    await page.evaluate(() => {
+        window.__MOCK_DB__.scheduler_runs.push({ id: 'run-p', run_type: 'practice', status: 'completed', created_at: new Date().toISOString() });
+    });
+});
+
+Given('I have generated a game schedule', async ({ page }) => {
+    await page.evaluate(() => {
+        window.__MOCK_DB__.scheduler_runs.push({ id: 'run-g', run_type: 'game', status: 'completed', created_at: new Date().toISOString() });
+    });
+});
 
 When('I view the Dashboard page', async ({ page }) => {
     await page.goto('/');
@@ -44,10 +85,6 @@ Then('the {string} step should show as completed', async ({ page }, stepName: st
     const step = page.locator('.group').filter({ hasText: stepName });
     await expect(step.getByText('Completed')).toBeVisible();
 });
-
-Given('I have generated teams', async ({ page }) => { /* Mock state */ });
-Given('I have generated a practice schedule', async ({ page }) => { /* Mock state */ });
-Given('I have generated a game schedule', async ({ page }) => { /* Mock state */ });
 
 When('I click on the {string} workflow step', async ({ page }, stepName: string) => {
     await page.getByRole('heading', { name: stepName }).click();

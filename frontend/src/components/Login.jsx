@@ -87,7 +87,7 @@ export default function Login() {
             }}
           />
           <div>
-            <p
+            <h2
               style={{
                 color: 'var(--text-primary)',
                 fontSize: '1.25rem',
@@ -96,7 +96,7 @@ export default function Login() {
               }}
             >
               {isSignUp ? 'Create an account' : 'Sign in to manage schedules'}
-            </p>
+            </h2>
           </div>
         </header>
 

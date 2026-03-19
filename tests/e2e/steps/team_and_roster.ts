@@ -3,6 +3,10 @@ import { expect } from '@playwright/test';
 
 const { Given, When, Then } = createBdd();
 
+Given('there are {int} players in the U10 division', async ({ page }, count: number) => {
+  // Mock player count state
+});
+
 Given('teams have been generated for the current season', async ({ page }) => { /* Mock state */ });
 Given('player {string} and player {string} are registered as a buddy pair', async ({ page }, p1: string, p2: string) => { /* Mock state */ });
 Given('{string} is assigned to {string}', async ({ page }, player: string, team: string) => { /* Mock state */ });

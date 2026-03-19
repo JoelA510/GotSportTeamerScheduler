@@ -1,4 +1,4 @@
-import { describe, it } from 'node:test';
+import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { authorizePersistenceRequest } from '../packages/core/src/persistenceHandler.js';
 import { PERSISTENCE_STATUS } from '../packages/core/src/constants.js';
