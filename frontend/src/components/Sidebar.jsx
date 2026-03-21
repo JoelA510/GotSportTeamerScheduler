@@ -10,6 +10,8 @@ import {
   Settings,
   ChevronDown,
   Building2,
+  ClipboardCheck,
+  ClipboardList,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext.jsx';
 import { useOrganization } from '../contexts/OrganizationContext.jsx';
@@ -26,7 +28,10 @@ const navItems = [
     icon: Calendar,
     path: '/schedule/practice',
   },
-  { id: 'schedule-game', label: 'Game Schedule', icon: Trophy, path: '/schedule/game' },
+  { id: 'standings', label: 'League Standings', icon: Trophy, path: '/standings' },
+  { id: 'reports', label: 'Reporting Dashboard', icon: LayoutDashboard, path: '/admin/reports' },
+  { id: 'compliance', label: 'Compliance Dashboard', icon: ClipboardCheck, path: '/admin/compliance' },
+  { id: 'forms', label: 'Registration Forms', icon: ClipboardList, path: '/admin/forms' },
   { id: 'settings', label: 'Settings', icon: Settings, path: '/settings' },
 ];
 
@@ -184,10 +189,11 @@ export default function Sidebar({ isOpen, toggleSidebar }) {
             .filter((item) => {
               if (isAdmin) return true;
               if (isCoach) {
-                const allowed = ['dashboard', 'teams', 'schedule-practice', 'schedule-game'];
+                const allowed = ['dashboard', 'teams', 'schedule-practice', 'standings'];
                 return allowed.includes(item.id);
               }
-              return ['dashboard'].includes(item.id);
+              // Parent / Player view
+              return ['dashboard', 'schedule-game'].includes(item.id);
             })
             .map((item) => (
               <NavLink

@@ -138,5 +138,6 @@ export function mapSchedulerRunToSummary(run) {
     totals,
     divisions,
     teams: allTeams,
+    team_players,
   };
 }

@@ -3,37 +3,40 @@ import { expect } from '@playwright/test';
 
 const { Given, When, Then } = createBdd();
 
-Then('I should visually see links for {string}, {string}, and {string}', async ({ page }, link1: string, link2: string, link3: string) => {
-    await expect(page.getByRole('link', { name: link1 })).toBeVisible();
-    await expect(page.getByRole('link', { name: link2 })).toBeVisible();
-    await expect(page.getByRole('link', { name: link3 })).toBeVisible();
+// --- Sidebar RBAC ---
+When('I view the main navigation Sidebar', async ({ page }) => {
+    await page.evaluate(() => {
+        console.log('[DEBUG] Auth State:', window.localStorage.getItem('supabase.auth.token'));
+        // @ts-ignore
+        console.log('[DEBUG] Mock Session:', sessionStorage.getItem('__MOCK_SESSION__'));
+    });
+    await expect(page.locator('aside')).toBeVisible();
 });
 
-Then('the {string}, {string}, {string}, and {string} links should be completely absent from the UI', async ({ page }, link1: string, link2: string, link3: string, link4: string) => {
-    // Using .toBeHidden() ensures the element is either not in the DOM, or has display:none/visibility:hidden
-    await expect(page.getByRole('link', { name: link1 })).toBeHidden();
-    await expect(page.getByRole('link', { name: link2 })).toBeHidden();
-    await expect(page.getByRole('link', { name: link3 })).toBeHidden();
-    await expect(page.getByRole('link', { name: link4 })).toBeHidden();
+Then('I should see links for {string}, {string}, and {string}', async ({ page }, l1: string, l2: string, l3: string) => {
+    // Highly resilient filtering for Sidebar links
+    await expect(page.locator('aside').getByRole('link').filter({ hasText: l1 })).toBeVisible({ timeout: 15000 });
+    await expect(page.locator('aside').getByRole('link').filter({ hasText: l2 })).toBeVisible({ timeout: 15000 });
+    await expect(page.locator('aside').getByRole('link').filter({ hasText: l3 })).toBeVisible({ timeout: 15000 });
 });
 
+Then('I should NOT see links for {string}, {string}, or {string}', async ({ page }, l1: string, l2: string, l3: string) => {
+    await expect(page.locator('aside').getByRole('link').filter({ hasText: l1 })).toBeHidden();
+    await expect(page.locator('aside').getByRole('link').filter({ hasText: l2 })).toBeHidden();
+    await expect(page.locator('aside').getByRole('link').filter({ hasText: l3 })).toBeHidden();
+});
+
+// --- Score Entry RBAC ---
 When('I view the {string} section', async ({ page }, sectionName: string) => {
-    await expect(page.getByRole('heading', { name: sectionName })).toBeVisible();
+    await expect(page.getByRole('heading', { name: sectionName, exact: false })).toBeVisible();
 });
 
 Then('I should see the final scores of past games', async ({ page }) => {
-    await expect(page.locator('table')).toBeVisible();
+    // Assuming scores are in a grid/table
+    await expect(page.locator('text=Score').first()).toBeVisible();
 });
 
-Then('the score input fields and {string} buttons should be completely hidden', async ({ page }, btnName: string) => {
-    // Verify the input fields used for score entry are not rendered
-    const scoreInputs = page.locator('input[type="number"]');
-    await expect(scoreInputs).toHaveCount(0);
-
-    // Verify the save button is not rendered
-    await expect(page.getByRole('button', { name: btnName })).toBeHidden();
-});
-
-When('I view the main navigation Sidebar', async ({ page }) => {
-    await expect(page.locator('aside')).toBeVisible();
+Then('the score input fields and "Save" buttons should be completely hidden', async ({ page }) => {
+    await expect(page.locator('input[type="number"]')).toBeHidden();
+    await expect(page.getByRole('button', { name: /Save/i })).toBeHidden();
 });

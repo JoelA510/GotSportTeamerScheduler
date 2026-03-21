@@ -50,7 +50,10 @@ export default function RegistrationFlow() {
           .eq('profile_id', userId);
 
         if (childErr) throw childErr;
-        setMyChildren(childrenData.map((c) => c.players));
+        console.log('[DEBUG] [RegistrationFlow] childrenData:', childrenData);
+        const playerObjects = childrenData.map((c) => c.players).filter(Boolean);
+        console.log('[DEBUG] [RegistrationFlow] mapped players:', playerObjects);
+        setMyChildren(playerObjects);
 
         // Initialize response object based on form fields
         const initialResponses = {};
@@ -198,13 +201,14 @@ export default function RegistrationFlow() {
             <h3 className="text-2xl font-bold text-text-primary mb-4">Who are you registering?</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {myChildren.map((child) => (
-                <div
+                <button
                   key={child.id}
+                  type="button"
                   onClick={() => {
                     setSelectedPlayerId(child.id);
                     setIsCreatingNewPlayer(false);
                   }}
-                  className={`cursor-pointer p-4 rounded-xl border-2 transition-all ${selectedPlayerId === child.id && !isCreatingNewPlayer ? 'border-color-primary bg-brand-glow' : 'border-border-highlight bg-bg-app hover:border-color-primary/50'}`}
+                  className={`w-full text-left p-4 rounded-xl border-2 transition-all ${selectedPlayerId === child.id && !isCreatingNewPlayer ? 'border-color-primary bg-brand-glow' : 'border-border-highlight bg-bg-app hover:border-color-primary/50'}`}
                 >
                   <UserPlus
                     size={24}
@@ -218,14 +222,15 @@ export default function RegistrationFlow() {
                     {child.first_name} {child.last_name}
                   </h4>
                   <p className="text-xs text-text-secondary">Existing Profile</p>
-                </div>
+                </button>
               ))}
-              <div
+              <button
+                type="button"
                 onClick={() => {
                   setIsCreatingNewPlayer(true);
                   setSelectedPlayerId(null);
                 }}
-                className={`cursor-pointer p-4 rounded-xl border-2 transition-all ${isCreatingNewPlayer ? 'border-color-primary bg-brand-glow' : 'border-border-highlight bg-bg-app hover:border-color-primary/50'}`}
+                className={`w-full text-left p-4 rounded-xl border-2 transition-all ${isCreatingNewPlayer ? 'border-color-primary bg-brand-glow' : 'border-border-highlight bg-bg-app hover:border-color-primary/50'}`}
               >
                 <UserPlus
                   size={24}
@@ -233,7 +238,7 @@ export default function RegistrationFlow() {
                 />
                 <h4 className="font-bold text-text-primary">New Player</h4>
                 <p className="text-xs text-text-secondary">Register a new child</p>
-              </div>
+              </button>
             </div>
 
             {isCreatingNewPlayer && (
@@ -282,11 +287,15 @@ export default function RegistrationFlow() {
               {form.fields &&
                 form.fields.map((field, idx) => (
                   <div key={idx}>
-                    <label className="block text-sm font-medium text-text-primary mb-1">
+                    <label 
+                      htmlFor={`custom-field-${idx}`}
+                      className="block text-sm font-medium text-text-primary mb-1"
+                    >
                       {field.label} {field.required && <span className="text-status-error">*</span>}
                     </label>
                     {field.type === 'text' && (
                       <input
+                        id={`custom-field-${idx}`}
                         type="text"
                         value={responses[field.label] || ''}
                         onChange={(e) =>
@@ -298,6 +307,7 @@ export default function RegistrationFlow() {
                     {/* More field types could be handled here (select, radio) */}
                     {field.type !== 'text' && (
                       <input
+                        id={`custom-field-${idx}`}
                         type="text"
                         value={responses[field.label] || ''}
                         onChange={(e) =>

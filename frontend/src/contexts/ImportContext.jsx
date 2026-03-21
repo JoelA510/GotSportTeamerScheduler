@@ -47,8 +47,12 @@ export function ImportProvider({ children }) {
         const {
           data: { user },
         } = await supabase.auth.getUser();
-        if (!user) return;
+        if (!user) {
+          console.log('[ImportContext] No user found, skipping load');
+          return;
+        }
 
+        console.log('[ImportContext] Loading imports for user:', user.id);
         const { data, error } = await supabase
           .from('imports')
           .select('*')
@@ -58,7 +62,6 @@ export function ImportProvider({ children }) {
         if (error) throw error;
 
         if (data) {
-          // Map latest imports to state
           const latestPlayers = data.find((i) => i.import_type === 'players');
           const latestCoaches = data.find((i) => i.import_type === 'coaches');
           const latestFields = data.find((i) => i.import_type === 'fields');
@@ -66,8 +69,6 @@ export function ImportProvider({ children }) {
           if (latestPlayers) setImportedPlayers(latestPlayers.data);
           if (latestCoaches) setImportedCoaches(latestCoaches.data);
           if (latestFields) setImportedFields(latestFields.data);
-
-          // Legacy support: set importedData to players if available
           if (latestPlayers) setImportedData(latestPlayers.data);
         }
       } catch (e) {
@@ -76,6 +77,19 @@ export function ImportProvider({ children }) {
     };
 
     loadFromSupabase();
+
+    // Listen for auth changes to reload data
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
+        loadFromSupabase();
+      } else if (event === 'SIGNED_OUT') {
+        resetImport('all');
+      }
+    });
+
+    return () => {
+      subscription?.unsubscribe();
+    };
   }, []);
 
   // Helper for safe storage

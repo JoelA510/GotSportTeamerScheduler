@@ -108,7 +108,32 @@ export default function TeamAnalysisPage() {
   }, [persistenceSnapshot.payload, importedData]);
 
   // Use real data from the dashboard hook if available, otherwise empty array
-  const activeTeams = mappedTeams.length > 0 ? mappedTeams : (team?.teams || []);
+  // Map automated results if persistence is empty
+  const activeTeams = useMemo(() => {
+    if (mappedTeams.length > 0) return mappedTeams;
+    if (!team?.teams) return [];
+
+    const rawPlayers = importedData?.data || [];
+    const teamPlayers = team?.team_players || [];
+
+    return team.teams.map((t) => ({
+      ...t,
+      players: teamPlayers
+        .filter((tp) => tp.team_id === t.id)
+        .map((tp) => {
+          const playerDetails = rawPlayers.find(
+            (rp, idx) => rp.id === tp.player_id || String(idx) === String(tp.player_id)
+          );
+          return {
+            id: tp.player_id,
+            name: playerDetails
+              ? `${playerDetails['First Name'] || playerDetails['first_name'] || ''} ${playerDetails['Last Name'] || playerDetails['last_name'] || ''}`.trim() || 'Unnamed Player'
+              : 'Unknown Player',
+            skill: playerDetails?.['Skill Level'] || playerDetails?.['skill_tier'] || 'developing',
+          };
+        }),
+    }));
+  }, [mappedTeams, team, importedData]);
 
   return (
     <div className="animate-fadeIn space-y-8">

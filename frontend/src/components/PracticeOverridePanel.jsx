@@ -62,6 +62,7 @@ export default function PracticeOverridePanel({ teams = [], baseSlots = [] }) {
             Select Team
           </label>
           <select
+            data-testid="team-select"
             className="w-full bg-bg-input border border-border-default rounded-md px-3 py-2 text-text-primary focus:border-blue-500 focus:outline-none transition-colors appearance-none"
             value={selectedTeamId}
             onChange={(e) => setSelectedTeamId(e.target.value)}
@@ -80,6 +81,7 @@ export default function PracticeOverridePanel({ teams = [], baseSlots = [] }) {
             Select Practice Slot
           </label>
           <select
+            data-testid="slot-select"
             className="w-full bg-bg-input border border-border-default rounded-md px-3 py-2 text-text-primary focus:border-blue-500 focus:outline-none transition-colors appearance-none"
             value={selectedSlotId}
             onChange={(e) => setSelectedSlotId(e.target.value)}
@@ -95,6 +97,7 @@ export default function PracticeOverridePanel({ teams = [], baseSlots = [] }) {
         </div>
 
         <Button
+          data-testid="assign-slot-button"
           variant="primary"
           onClick={handleAssign}
           disabled={!selectedTeamId || !selectedSlotId}

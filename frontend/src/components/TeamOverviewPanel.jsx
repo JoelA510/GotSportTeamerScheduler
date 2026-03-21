@@ -9,7 +9,7 @@ function TeamOverviewPanel({ totals, divisions, generatedAt, timezone }) {
     >
       <header className="section-header">
         <div>
-          <h2 id="team-overview-heading">Team formation snapshot</h2>
+          <h2 id="team-overview-heading">Drafting Summary</h2>
           <p>
             Roster fill rates, coach coverage, and overflow diagnostics. Sourced from dry-run on{' '}
             {formatDate(generatedAt, timezone)}.

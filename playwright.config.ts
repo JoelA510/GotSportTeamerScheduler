@@ -26,8 +26,11 @@ export default defineConfig({
   webServer: {
     command: 'npm run frontend:dev',
     url: 'http://localhost:5173',
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: false,
     timeout: 120 * 1000,
+    env: {
+      VITE_USE_MOCK_SUPABASE: 'true'
+    }
   },
   projects: [
     {

@@ -9,7 +9,7 @@ Feature: Dashboard Workflow and Readiness Score
 
   Scenario: Viewing the workflow dashboard layout
     When I navigate to the Dashboard page
-    Then I should see a 5-step workflow on the left side
+    Then I should see a 6-step workflow on the left side
     And I should see a "League Status" panel on the right side
     And the League Status panel should show the active organization name
     And the League Status panel should show the active season name
@@ -21,7 +21,7 @@ Feature: Dashboard Workflow and Readiness Score
     And I have not generated a game schedule
     When I view the Dashboard page
     Then the Readiness Score should display "25%"
-    And the "Data Import" step should show as completed
+    And the "1. Data Import" step should show as completed
 
   Scenario: Readiness score reflects all steps completed
     Given I have imported player data
@@ -33,6 +33,6 @@ Feature: Dashboard Workflow and Readiness Score
 
   Scenario: Clicking a workflow step expands its content
     When I navigate to the Dashboard page
-    And I click on the "Team Generation" workflow step
-    Then the "Team Generation" step should expand to show its content
+    And I click on the "2. Teaming & Analysis" workflow step
+    Then the "2. Teaming & Analysis" step should expand to show its content
     And the previously active step should collapse

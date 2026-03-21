@@ -24,7 +24,8 @@ Then('I should be flagged if any player is currently non-compliant', async ({ pa
 });
 
 Given('my team has practices on Tuesdays and games on Saturdays', async ({ page }) => {
-    await page.evaluate(() => {
+    await page.addInitScript(() => {
+        window.__MOCK_DB__ = window.__MOCK_DB__ || {};
         window.__MOCK_DB__.practice_assignments = [{
             id: 'pa-1',
             team_id: 't1',

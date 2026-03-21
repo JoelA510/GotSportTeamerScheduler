@@ -67,19 +67,24 @@ export default function AdminComplianceDashboard() {
   }, [currentOrganization?.id, selectedFormId]);
 
   const toggleMedicalStatus = async (regId, currentStatus) => {
+    const newStatus = !currentStatus;
+    // Optimistic Update
+    setRegistrations((prev) =>
+      prev.map((r) => (r.id === regId ? { ...r, medical_cleared: newStatus } : r))
+    );
+
     try {
-      const newStatus = !currentStatus;
       const { error } = await supabase
         .from('registrations')
         .update({ medical_cleared: newStatus })
         .eq('id', regId);
       if (error) throw error;
-
-      setRegistrations((prev) =>
-        prev.map((r) => (r.id === regId ? { ...r, medical_cleared: newStatus } : r))
-      );
     } catch (err) {
       console.error(err);
+      // Rollback
+      setRegistrations((prev) =>
+        prev.map((r) => (r.id === regId ? { ...r, medical_cleared: currentStatus } : r))
+      );
       alert('Failed to update medical status.');
     }
   };
@@ -99,10 +104,11 @@ export default function AdminComplianceDashboard() {
       <div className="bg-bg-surface border border-border-subtle rounded-xl p-6 shadow-md">
         <div className="flex flex-col md:flex-row justify-between items-center gap-4 mb-6">
           <div className="w-full md:w-1/3">
-            <label className="block text-xs font-bold text-text-muted uppercase tracking-wider mb-2">
+            <label htmlFor="form-filter" className="block text-xs font-bold text-text-muted uppercase tracking-wider mb-2">
               Filter by Form
             </label>
             <select
+              id="form-filter"
               className="w-full bg-bg-app border border-border-highlight text-text-primary text-sm rounded-lg focus:ring-color-primary focus:border-color-primary block p-2.5"
               value={selectedFormId}
               onChange={(e) => setSelectedFormId(e.target.value)}
@@ -110,7 +116,7 @@ export default function AdminComplianceDashboard() {
               {forms.length === 0 && <option value="">No forms available...</option>}
               {forms.map((f) => (
                 <option key={f.id} value={f.id}>
-                  {f.title} ({f.status})
+                  {f.title}
                 </option>
               ))}
             </select>
@@ -191,7 +197,7 @@ export default function AdminComplianceDashboard() {
                     <td className="px-6 py-4 text-center">
                       <button
                         onClick={() => toggleMedicalStatus(reg.id, reg.medical_cleared)}
-                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border transition-all hover:opacity-80 ${reg.medical_cleared ? 'bg-brand-glow text-color-primary border-border-highlight' : 'bg-bg-surface text-text-muted border-border-highlight hover:border-color-primary/50 hover:text-color-primary'}`}
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border transition-all hover:opacity-80 ${reg.medical_cleared ? 'bg-brand-glow bg-brand-600 text-white border-brand-400 shadow-lg shadow-brand-glow/20' : 'bg-bg-surface text-text-muted border-border-highlight hover:border-color-primary/50 hover:text-color-primary'}`}
                         title="Click to toggle medical clearance status"
                       >
                         {reg.medical_cleared ? <CheckCircle2 size={12} /> : <History size={12} />}

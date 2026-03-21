@@ -4,7 +4,10 @@ async function globalTeardown() {
     const supabaseUrl = process.env.VITE_SUPABASE_URL;
     const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-    if (!supabaseUrl || !supabaseKey) return;
+    if (!supabaseUrl || !supabaseKey || process.env.VITE_USE_MOCK_SUPABASE === 'true') {
+        console.log('Skipping global teardown in mock mode.');
+        return;
+    }
 
     const supabase = createClient(supabaseUrl, supabaseKey);
 

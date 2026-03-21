@@ -45,6 +45,7 @@ export function useDashboardData() {
     totals: teamSummary?.totals,
     divisions: teamSummary?.divisions,
     teams: teamSummary?.teams,
+    team_players: teamSummary?.team_players,
   };
 
   const resolvedPractice = {

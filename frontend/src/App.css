@@ -38,8 +38,7 @@
 
 /* --- THEME TOGGLE --- */
 .theme-toggle {
-  position: fixed;
-  bottom: var(--space-6);
+  top: var(--space-6);
   right: var(--space-6);
   width: 3.5rem;
   height: 3.5rem;

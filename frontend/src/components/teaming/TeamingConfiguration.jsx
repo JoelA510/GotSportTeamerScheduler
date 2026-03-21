@@ -21,10 +21,11 @@ export default function TeamingConfiguration({ program, config, onUpdate }) {
 
       <div className="space-y-6">
         <div>
-          <label className="block text-sm font-medium text-text-secondary mb-2">
+          <label htmlFor="target-team-size" className="block text-sm font-medium text-text-secondary mb-2">
             Target Team Size
           </label>
           <input
+            id="target-team-size"
             type="number"
             className="w-full bg-bg-base border border-border-subtle rounded-lg px-3 py-2 text-text-primary focus:ring-2 focus:ring-blue-500 outline-none transition-all"
             value={config?.targetTeamSize || 12}
@@ -35,8 +36,9 @@ export default function TeamingConfiguration({ program, config, onUpdate }) {
 
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-text-secondary mb-2">Min Roster</label>
+            <label htmlFor="min-roster" className="block text-sm font-medium text-text-secondary mb-2">Min Roster</label>
             <input
+              id="min-roster"
               type="number"
               className="w-full bg-bg-base border border-border-subtle rounded-lg px-3 py-2 text-text-primary focus:ring-2 focus:ring-blue-500 outline-none transition-all"
               value={config?.minRosterSize || 10}
@@ -44,8 +46,9 @@ export default function TeamingConfiguration({ program, config, onUpdate }) {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-text-secondary mb-2">Max Roster</label>
+            <label htmlFor="max-roster" className="block text-sm font-medium text-text-secondary mb-2">Max Roster</label>
             <input
+              id="max-roster"
               type="number"
               className="w-full bg-bg-base border border-border-subtle rounded-lg px-3 py-2 text-text-primary focus:ring-2 focus:ring-blue-500 outline-none transition-all"
               value={config?.maxRosterSize || 14}
@@ -55,11 +58,12 @@ export default function TeamingConfiguration({ program, config, onUpdate }) {
         </div>
 
         <div className="pt-4 border-t border-border-subtle">
-          <label className="block text-sm font-medium text-text-secondary mb-2">
+          <label htmlFor="team-count-override" className="block text-sm font-medium text-text-secondary mb-2">
             Override Team Count
           </label>
           <div className="flex gap-2">
             <input
+              id="team-count-override"
               type="number"
               placeholder="Auto"
               className="flex-1 bg-bg-base border border-border-subtle rounded-lg px-3 py-2 text-text-primary focus:ring-2 focus:ring-blue-500 outline-none transition-all"
@@ -80,11 +84,12 @@ export default function TeamingConfiguration({ program, config, onUpdate }) {
         </div>
 
         <div className="pt-4 border-t border-border-subtle">
-          <label className="block text-sm font-medium text-text-secondary mb-2">
-            Random Seed (Optional)
+          <label htmlFor="random-seed" className="block text-sm font-medium text-text-secondary mb-2">
+            Random Seed
           </label>
           <div className="flex gap-2">
             <input
+              id="random-seed"
               type="text"
               placeholder="e.g. 12345"
               className="w-full bg-bg-base border border-border-subtle rounded-lg px-3 py-2 text-text-primary focus:ring-2 focus:ring-blue-500 outline-none transition-all"

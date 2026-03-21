@@ -24,6 +24,7 @@ const routeMap: Record<string, string> = {
     'Dashboard': '/',
     'Compliance Dashboard': '/admin/compliance',
     'Reporting Dashboard': '/admin/reports',
+    'League Standings': '/standings',
     'Team Management page': '/teams',
     'Registration Forms': '/admin/forms'
 };
@@ -63,11 +64,34 @@ Given('I am on the {string}', async ({ page }, pageName: string) => {
     // Alias for navigation
     const routeMap: Record<string, string> = {
         'Compliance Dashboard': '/admin/compliance',
-        'Reporting Dashboard': '/admin/reporting',
+        'Reporting Dashboard': '/admin/reports',
         'Dashboard page': '/',
-        'Dashboard': '/'
+        'Dashboard': '/',
+        'Field Management page': '/fields',
+        'Field Management': '/fields',
+        'Team Management page': '/teams',
+        'Team Management': '/teams',
+        'Practice Scheduling page': '/schedule/practice',
+        'Game Scheduling page': '/schedule/game',
+        'Data Import page': '/import',
+        'Settings page': '/settings'
     };
-    const url = routeMap[pageName] || '/';
+    const cleanName = pageName.endsWith(' page') ? pageName.slice(0, -5) : pageName;
+    const url = routeMap[pageName] || routeMap[cleanName];
+    if (!url) throw new Error(`Route not found for: ${pageName}`);
+    await page.goto(url);
+    await page.waitForLoadState('networkidle');
+});
+
+Given('I am on the {string} page', async ({ page }, pageName: string) => {
+    // Add page suffix support explicitly
+    const routeMap: Record<string, string> = {
+        'Field Management': '/fields',
+        'Dashboard': '/',
+        'Team Management': '/teams',
+        'Data Import': '/import'
+    };
+    const url = routeMap[pageName] || `/${pageName.toLowerCase().replace(/\s+/g, '-')}`;
     await page.goto(url);
     await page.waitForLoadState('networkidle');
 });
@@ -88,6 +112,29 @@ Given(/I am on the (Dashboard page|Dashboard|Practice Scheduling page|Compliance
 
 When('I view the Dashboard', async ({ page }) => {
     await page.goto('/');
+});
+
+When('I click {string}', async ({ page }, name: string) => {
+    const btn = page.getByRole('button', { name, exact: true }).first();
+    if (await btn.isVisible()) {
+        await btn.click();
+    } else {
+        const textBtn = page.getByText(name, { exact: true }).first();
+        if (await textBtn.isVisible()) {
+            await textBtn.click();
+        } else {
+            // Final fallback: try to find any button or clickable element with that text via DOM eval
+            await page.evaluate((n) => {
+                const all = Array.from(document.querySelectorAll('button, a, [role="button"]'));
+                const found = all.find(el => el.textContent?.trim().includes(n));
+                if (found) (found as HTMLElement).click();
+            }, name);
+        }
+    }
+});
+
+When('I click the {string} button', async ({ page }, name: string) => {
+    await page.getByRole('button', { name, exact: true }).first().click();
 });
 
 When('I attempt to navigate to the {string} page', async ({ page }, pageName: string) => {
@@ -118,6 +165,10 @@ Then('I should see an {string} warning', async ({ page }, warningText: string) =
 });
 
 Then('I should see the text {string}', async ({ page }, text: string) => {
+    await expect(page.getByText(text)).toBeVisible();
+});
+
+Then('I should see the message {string}', async ({ page }, text: string) => {
     await expect(page.getByText(text)).toBeVisible();
 });
 

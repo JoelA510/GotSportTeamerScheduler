@@ -1,0 +1,246 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e2]:
+  - generic [ref=e3]:
+    - complementary [ref=e4]:
+      - generic [ref=e5]:
+        - generic [ref=e7]: S
+        - generic [ref=e8]:
+          - heading "SquadLogic" [level=1] [ref=e9]
+          - paragraph [ref=e10]: League Management
+      - generic [ref=e11]:
+        - generic [ref=e12]:
+          - generic [ref=e13]:
+            - img [ref=e14]
+            - text: Active Organization
+          - button "SquadLogic FC" [ref=e18]:
+            - generic [ref=e19]: SquadLogic FC
+            - img [ref=e20]
+        - generic [ref=e22]:
+          - generic [ref=e23]:
+            - img [ref=e24]
+            - text: Active Season
+          - button "Fall 2024" [ref=e26]:
+            - generic [ref=e27]: Fall 2024
+            - img [ref=e28]
+      - navigation [ref=e30]:
+        - link "Dashboard" [ref=e31] [cursor=pointer]:
+          - /url: /
+          - img [ref=e32]
+          - generic [ref=e37]: Dashboard
+      - button "Sign Out" [ref=e40]:
+        - img [ref=e41]
+        - generic [ref=e44]: Sign Out
+    - main [ref=e46]:
+      - generic [ref=e48]:
+        - generic [ref=e49]:
+          - heading "Season Setup Workflow" [level=1] [ref=e50]
+          - paragraph [ref=e51]: Follow these steps to configure and generate your league schedule.
+        - generic [ref=e52]:
+          - generic [ref=e54]:
+            - generic [ref=e55]:
+              - heading "League Management" [level=1] [ref=e56]
+              - paragraph [ref=e57]: Follow the steps below to set up your season.
+            - generic [ref=e60]:
+              - generic [ref=e61] [cursor=pointer]:
+                - generic [ref=e62]:
+                  - img [ref=e64]
+                  - generic [ref=e66]:
+                    - generic [ref=e67]:
+                      - heading "1. Data Import" [level=2] [ref=e68]
+                      - generic [ref=e69]: In Progress
+                    - paragraph [ref=e70]: Upload player and coach data from GotSport CSVs to initialize the season.
+                - generic [ref=e75]:
+                  - generic [ref=e76]:
+                    - generic [ref=e77]:
+                      - heading "Data Ingestion" [level=2] [ref=e78]: Data Ingestion
+                      - paragraph [ref=e80]: Import GotSport registration data to populate teams and players.
+                    - button "Notify when complete" [ref=e82]:
+                      - img [ref=e83]
+                  - generic [ref=e86]:
+                    - button "players 150 Upload player registration data" [ref=e87]:
+                      - generic [ref=e88]:
+                        - generic [ref=e89]:
+                          - generic [ref=e90]: players
+                          - generic [ref=e91]:
+                            - img [ref=e92]
+                            - text: "150"
+                        - paragraph [ref=e95]: Upload player registration data
+                    - button "coaches Upload coach assignments" [ref=e96]:
+                      - generic [ref=e97]:
+                        - generic [ref=e99]: coaches
+                        - paragraph [ref=e100]: Upload coach assignments
+                    - button "fields Upload field configurations" [ref=e101]:
+                      - generic [ref=e102]:
+                        - generic [ref=e104]: fields
+                        - paragraph [ref=e105]: Upload field configurations
+                  - generic [ref=e107]:
+                    - img [ref=e109]
+                    - generic [ref=e112]:
+                      - paragraph [ref=e113]: Drag and drop your CSV file here
+                      - paragraph [ref=e114]:
+                        - text: or
+                        - generic [ref=e115]: browse files
+                    - generic [ref=e116]:
+                      - img [ref=e117]
+                      - generic [ref=e119]: "Warning: players data already exists. Uploading a new file will overwrite existing data and any manual overrides."
+              - generic [ref=e120] [cursor=pointer]:
+                - generic [ref=e121]:
+                  - img [ref=e123]
+                  - generic [ref=e126]:
+                    - generic [ref=e127]:
+                      - heading "2. Teaming & Analysis" [level=2] [ref=e128]
+                      - generic [ref=e129]: Next Step
+                    - paragraph [ref=e130]: Review team generation, division capacity, and roster assignments.
+                - generic [ref=e133]:
+                  - img [ref=e135]
+                  - heading "Ready to Generate Teams" [level=3] [ref=e137]
+                  - paragraph [ref=e138]: 150 records imported and ready for processing. Click below to generate team structures based on the imported data.
+                  - button "Generate Teams" [ref=e139]
+              - generic [ref=e140]:
+                - generic [ref=e141]:
+                  - img [ref=e143]
+                  - generic [ref=e146]:
+                    - generic [ref=e147]:
+                      - heading "3. Field Management" [level=2] [ref=e148]
+                      - generic [ref=e149]: Locked
+                    - paragraph [ref=e150]: Configure fields, priorities, and practice slots.
+                - generic [ref=e152]:
+                  - img [ref=e154]
+                  - heading "Field Configuration" [level=3] [ref=e156]
+                  - paragraph [ref=e157]:
+                    - text: Field configuration is currently handled via the
+                    - code [ref=e158]: generate_practice_slots.js
+                    - text: script. Ensure you have run the generator before proceeding.
+                  - button "Mark as Configured" [ref=e159]
+              - generic [ref=e160]:
+                - generic [ref=e161]:
+                  - img [ref=e163]
+                  - generic [ref=e166]:
+                    - generic [ref=e167]:
+                      - heading "4. Practice Scheduling" [level=2] [ref=e168]
+                      - generic [ref=e169]: Locked
+                    - paragraph [ref=e170]: Generate and review practice schedules based on field availability.
+                - region "Practice readiness" [ref=e172]:
+                  - generic [ref=e173]:
+                    - generic [ref=e174]:
+                      - heading "Practice readiness" [level=2] [ref=e175]
+                      - paragraph [ref=e176]: Evaluator output from 12/31/1969. Assignment progress and fairness alerts.
+                    - generic [ref=e177]:
+                      - generic [ref=e178]:
+                        - term [ref=e179]: Assigned
+                        - definition [ref=e180]: 0%
+                      - generic [ref=e181]:
+                        - term [ref=e182]: Manual Fix
+                        - definition [ref=e183]: 0%
+                      - generic [ref=e184]:
+                        - term [ref=e185]: Unassigned
+                        - definition [ref=e186]: "0"
+                  - article [ref=e188]:
+                    - heading "Manual follow-up reasons" [level=3] [ref=e189]
+                    - paragraph [ref=e190]: All teams assigned automatically.
+                  - generic [ref=e191]:
+                    - article "Manual follow-up categories" [ref=e192]:
+                      - heading "Manual follow-up categories" [level=3] [ref=e193]
+                      - paragraph [ref=e194]: No category breakdown.
+                    - article "Fairness watchlist" [ref=e195]:
+                      - heading "Fairness watchlist" [level=3] [ref=e196]
+                      - paragraph [ref=e197]: No fairness concerns.
+                    - article "Base slot utilization" [ref=e198]:
+                      - heading "Base slot utilization" [level=3] [ref=e199]
+                      - paragraph [ref=e200]: No base slot data.
+                    - article "Day concentration" [ref=e201]:
+                      - heading "Day concentration" [level=3] [ref=e202]
+                      - paragraph [ref=e203]: No day distribution data.
+                    - article "Underutilized base slots" [ref=e204]:
+                      - heading "Underutilized base slots" [level=3] [ref=e205]
+                      - paragraph [ref=e206]: No underutilized base slots.
+                    - article "Day concentration alerts" [ref=e207]:
+                      - heading "Day concentration alerts" [level=3] [ref=e208]
+                      - paragraph [ref=e209]: No concentration alerts.
+              - generic [ref=e210]:
+                - generic [ref=e211]:
+                  - img [ref=e213]
+                  - generic [ref=e216]:
+                    - generic [ref=e217]:
+                      - heading "5. Game Scheduling" [level=2] [ref=e218]
+                      - generic [ref=e219]: Locked
+                    - paragraph [ref=e220]: Generate and review game schedules.
+                - generic [ref=e221]:
+                  - region "Game readiness" [ref=e222]:
+                    - generic [ref=e223]:
+                      - generic [ref=e224]:
+                        - heading "Game readiness" [level=2] [ref=e225]
+                        - paragraph [ref=e226]: Schedule completion and conflict alerts from unspecified date.
+                      - generic [ref=e227]:
+                        - generic [ref=e228]:
+                          - term [ref=e229]: Scheduled
+                          - definition [ref=e230]: 0%
+                        - generic [ref=e231]:
+                          - term [ref=e232]: Unscheduled
+                          - definition [ref=e233]: "0"
+                        - generic [ref=e234]:
+                          - term [ref=e235]: Byes
+                          - definition
+                    - generic [ref=e236]:
+                      - article "Unscheduled matchups" [ref=e237]:
+                        - heading "Unscheduled matchups" [level=3] [ref=e238]
+                        - paragraph [ref=e239]: All matchups assigned.
+                      - article "Conflicts" [ref=e240]:
+                        - heading "Conflicts" [level=3] [ref=e241]
+                        - paragraph [ref=e242]: No conflicts.
+                  - button "Proceed to Output" [ref=e244]
+              - generic [ref=e245]:
+                - generic [ref=e246]:
+                  - img [ref=e248]
+                  - generic [ref=e251]:
+                    - generic [ref=e252]:
+                      - heading "6. Output & Communication" [level=2] [ref=e253]
+                      - generic [ref=e254]: Locked
+                    - paragraph [ref=e255]: Export schedules to CSV and generate coach welcome emails.
+                - generic [ref=e258]:
+                  - heading "Output Generation" [level=2] [ref=e259]: Output Generation
+                  - generic [ref=e261]:
+                    - button "Generate CSVs" [ref=e263]
+                    - generic [ref=e264]:
+                      - heading "Coach Communications" [level=3] [ref=e265]
+                      - button "Generate Draft Welcome Emails" [ref=e266]
+          - generic [ref=e269]:
+            - heading "League Status" [level=3] [ref=e270]
+            - generic [ref=e271]:
+              - generic [ref=e272]:
+                - generic [ref=e273]:
+                  - img [ref=e274]
+                  - text: Active Club
+                - generic [ref=e278]: SquadLogic FC
+              - generic [ref=e279]:
+                - generic [ref=e280]:
+                  - img [ref=e281]
+                  - text: Active Season
+                - generic [ref=e283]: Fall 2024
+              - generic [ref=e284]:
+                - generic [ref=e285]:
+                  - img [ref=e286]
+                  - text: Total Players
+                - generic [ref=e291]: "150"
+              - generic [ref=e292]:
+                - generic [ref=e293]:
+                  - img [ref=e294]
+                  - text: Total Teams
+                - generic [ref=e300]: "0"
+              - generic [ref=e301]:
+                - generic [ref=e302]:
+                  - generic [ref=e303]: Readiness Score
+                  - generic [ref=e304]: 25%
+                - generic [ref=e307]:
+                  - generic [ref=e310]: Data Import
+                  - generic [ref=e313]: Team Generation
+                  - generic [ref=e316]: Practice Schedule
+                  - generic [ref=e319]: Game Schedule
+              - generic [ref=e320]:
+                - heading "Recent Activity" [level=4] [ref=e321]
+                - paragraph [ref=e323]: No activity yet for this season.
+  - 'button "Current theme: dark. Click to switch." [ref=e324] [cursor=pointer]':
+    - generic [ref=e325]: 🌙
+```

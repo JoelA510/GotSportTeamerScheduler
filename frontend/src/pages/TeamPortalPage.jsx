@@ -113,9 +113,10 @@ export default function TeamPortalPage() {
                               r.occurrence_date === event.date
                             );
                             
+                            
                             return (
                               <div key={player.id} className="flex flex-col gap-1.5 p-2 rounded bg-bg-surface/30 border border-border-subtle">
-                                <span className="text-xs font-semibold text-text-primary px-1">{player.first_name}</span>
+                                <span className="text-xs font-semibold text-text-primary px-1">{player.first_name} {player.last_name}</span>
                                 <div className="flex gap-2">
                                   <RsvpButton 
                                     active={rsvp?.status === 'attending'} 

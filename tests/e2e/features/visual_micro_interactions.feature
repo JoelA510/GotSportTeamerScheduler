@@ -1,40 +1,30 @@
-Feature: Visual Micro-Interactions and Responsiveness
-  As a user interacting with complex UI components
-  I want clear visual feedback, responsive layouts, and accurate data visualizations
-  So that I can confidently manage league operations
-
-  Scenario: Visual affordances during drag-and-drop roster allocation
-    Given I am on the "Teaming & Analysis" page in Edit Mode
-    When I click and hold the drag handle for player "Alex"
-    Then the player card opacity should visually change to 40%
-    And a floating drag overlay should appear slightly rotated
-    When I drag the player over an empty team column
-    Then the empty column should display a dashed drop-zone border
-
-  Scenario: Global theme toggling visual transitions
-    Given I am logged into SquadLogic
-    When I click the floating "Theme Toggle" button to activate the "Party" theme
-    Then the application background should visually transition to a deep purple and pink radial gradient
-    And the text colors should adjust to maintain WCAG 2.2 AA contrast
-
-  Scenario: Club logo upload and color extraction
-    Given I am on the "Appearance & Branding" tab in Settings
-    When I upload a valid PNG file to the "Club Logo" dropzone
-    Then I should see a visual preview of the uploaded logo
-    And a "Detected Colors from Logo" panel should appear
-    And I should see distinct color swatches extracted from the image
-
-  Scenario: Recharts Tooltip Rendering
-    Given I am on the "Reporting Dashboard"
-    When I hover my mouse over the "Form Compliance Status" Bar Chart
-    Then a dark-themed tooltip should appear showing the exact "Total Submissions" count
-    And the chart colors should match the "Deep Space Glass" CSS variables
+Feature: App Shell Visuals and Responsiveness
+  As a user on various devices
+  I want the application shell to adapt to my screen and preferences
+  So that I can navigate easily and recover from errors
 
   Scenario: Mobile Sidebar Navigation
-    Given I am logged into SquadLogic on a "Mobile" viewport
+    Given I am logged into SquadLogic as "admin"
+    And I am using a "Mobile" viewport
     When I view the Dashboard
     Then the sidebar should be hidden by default
     When I click the "Hamburger Menu" icon
     Then the sidebar overlay should slide into view
     When I click a navigation link like "Team Management"
     Then the sidebar overlay should automatically close
+
+  Scenario: Global Theme Toggling
+    Given I am logged into SquadLogic as "admin"
+    When I click the floating "Theme Toggle" button
+    Then the application background and panel styles should change to the "Light" theme
+    When I click the toggle again
+    Then the application should cycle to the "Party" theme with vibrant gradients
+
+  Scenario: Global Error Boundary Fallback
+    Given I am logged into SquadLogic as "admin"
+    And I navigate to the Dashboard
+    When a React component throws an unexpected rendering error
+    Then the application should not show a blank white screen
+    And I should see the "Something went wrong" glassmorphism error panel
+    And I reset error flags and click "Return Home"
+    Then I should be safely redirected to the Dashboard

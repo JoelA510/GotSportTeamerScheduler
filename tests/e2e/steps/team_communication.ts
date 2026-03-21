@@ -22,13 +22,13 @@ Given('I am on the {string} page for the {string}', async ({ page }, pageName: s
 
 Given('there is an upcoming practice on {string}', async ({ page }, day: string) => {
   // Wait for the schedule to load and check for the day
-  await expect(page.getByText(day, { exact: false })).toBeVisible({ timeout: 10000 });
+  await expect(page.getByText(day, { exact: false }).first()).toBeVisible({ timeout: 10000 });
 });
 
 When('I click {string} for {string} on the {string} practice', async ({ page }, action: string, child: string, day: string) => {
   // Find the practice card containing the day, then the player section for the child, then the button.
-  const practiceCard = page.locator('.glass-panel').filter({ hasText: day }).filter({ hasText: 'practice' });
-  const playerSection = practiceCard.locator('div').filter({ hasText: child }).last();
+  const practiceCard = page.locator('.glass-panel').filter({ hasText: day }).filter({ hasText: 'practice' }).first();
+  const playerRsvpRow = practiceCard.locator('div.bg-bg-surface\\/30').filter({ hasText: child }).first();
   
   // Mapping feature labels to button titles
   const titleMap: Record<string, string> = {
@@ -37,13 +37,13 @@ When('I click {string} for {string} on the {string} practice', async ({ page }, 
     'Maybe': 'Maybe'
   };
   
-  await playerSection.getByTitle(titleMap[action] || action, { exact: true }).click();
+  await playerRsvpRow.getByTitle(titleMap[action] || action, { exact: true }).click();
 });
 
-Then('I should see {string} marked as {string}', async ({ page }, child: string, action: string) => {
-  const practiceCard = page.locator('.glass-panel').filter({ hasText: 'practice' }).first(); // Assuming first for test
-  const playerSection = practiceCard.locator('div').filter({ hasText: child }).last();
-  const button = playerSection.getByTitle(action, { exact: true });
+Then('I should see {string} marked as {string} on the {string} practice', async ({ page }, child: string, action: string, day: string) => {
+  const practiceCard = page.locator('.glass-panel').filter({ hasText: day }).filter({ hasText: 'practice' }).first();
+  const playerRsvpRow = practiceCard.locator('div.bg-bg-surface\\/30').filter({ hasText: child }).first();
+  const button = playerRsvpRow.getByTitle(action, { exact: true });
   
   // Active buttons have shadow-glow class in our implementation
   await expect(button).toHaveClass(/shadow-glow/);

@@ -29,21 +29,40 @@ async function setupIsolatedTenant(page: any) {
     }, dynamicOrgId);
 }
 
-// Centralized Auth Step for all scenarios
-Given('I am logged into SquadLogic as an {string}', async ({ page }, role: string) => {
+// Unified Auth Step for all scenarios
+// Handles: "as an admin", "as a coach", "as a parent", "as admin", "as parent", etc.
+Given(/I am logged into (?:the )?SquadLogic(?: dashboard)? as (?:an? )?"?([^"]*)"?/, async ({ page }, role: string) => {
     // @ts-ignore
-    page.on('console', (msg) => console.log(`[BROWSER LOG] [${msg.type()}] ${msg.text()}`));
+    page.on('console', (msg) => {
+        if (msg.type() === 'error' || msg.text().includes('[DEBUG]')) {
+           console.log(`[BROWSER LOG] [${msg.type()}] ${msg.text()}`);
+        }
+    });
+    
     await page.goto('/login');
+    // Force clear any stale session
+    await page.evaluate(() => {
+        sessionStorage.clear();
+        localStorage.clear();
+    });
+    await page.reload();
 
-    // Wait for the login form to be visible (matching actual text or a general login role)
-    await expect(page.getByRole('heading', { name: /Sign in|Create an account/i })).toBeVisible({ timeout: 10000 });
+    // Wait for the login form to be visible
+    await expect(page.getByRole('heading', { name: /Sign in|Create an account/i })).toBeVisible({ timeout: 15000 });
 
-    // Use environment variables for test accounts, or fallback to standard test credentials
-    const email = role.toLowerCase() === 'admin'
-        ? (process.env.TEST_ADMIN_EMAIL || 'admin@squadlogic.app')
-        : (process.env.TEST_COACH_EMAIL || 'coach@squadlogic.app');
+    // Mapping role to email
+    const roleMap: Record<string, string> = {
+        admin: process.env.TEST_ADMIN_EMAIL || 'admin@squadlogic.app',
+        coach: process.env.TEST_COACH_EMAIL || 'coach@squadlogic.app',
+        parent: process.env.TEST_PARENT_EMAIL || 'parent@squadlogic.app',
+        player: process.env.TEST_PLAYER_EMAIL || 'player@squadlogic.app'
+    };
 
+    const cleanRole = role.toLowerCase().replace(/^an? /, '').trim();
+    const email = roleMap[cleanRole] || roleMap.admin;
     const password = process.env.TEST_PASSWORD || 'test-password-123';
+
+    console.log(`[DEBUG] [auth_setup] role="${role}", cleanRole="${cleanRole}", email="${email}"`);
 
     // Fill out the Supabase Auth form
     await page.getByLabel('Email').fill(email);
@@ -53,45 +72,9 @@ Given('I am logged into SquadLogic as an {string}', async ({ page }, role: strin
     await page.getByRole('button', { name: 'Sign In' }).click();
 
     // Verify successful redirect to the dashboard
-    await expect(page.getByRole('heading', { name: /League Management|Dashboard|Season Setup Workflow/i }).first()).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('heading', { name: /League Management|Dashboard|Season Setup Workflow/i }).first()).toBeVisible({ timeout: 30000 });
 
     // Set up database isolation for concurrent testing
-    await setupIsolatedTenant(page);
-});
-
-// Alias for variations in Gherkin phrasing
-Given('I am logged into SquadLogic as a {string}', async ({ page }, role: string) => {
-    // @ts-ignore
-    page.on('console', (msg) => console.log(`[BROWSER LOG] [${msg.type()}] ${msg.text()}`));
-    await page.goto('/login');
-    await page.getByLabel('Email').fill(role.toLowerCase() === 'admin' ? 'admin@squadlogic.app' : 'coach@squadlogic.app');
-    await page.getByLabel('Password').fill('test-password-123');
-    await page.getByRole('button', { name: 'Sign In' }).click();
-    await expect(page.getByRole('heading', { name: /League Management|Dashboard|Season Setup Workflow/i }).first()).toBeVisible({ timeout: 10000 });
-
-    await setupIsolatedTenant(page);
-});
-
-Given('I am logged into the SquadLogic dashboard as {string}', async ({ page }, userString: string) => {
-    // Extract role from string like "Coach Alice" or "Admin Bob"
-    const role = userString.toLowerCase().includes('admin') ? 'admin' : 'coach';
-    await page.goto('/login');
-    await page.getByLabel('Email').fill(`${role}@squadlogic.app`);
-    await page.getByLabel('Password').fill('test-password-123');
-    await page.getByRole('button', { name: 'Sign In' }).click();
-    await expect(page.getByRole('heading', { name: /League Management|Dashboard|Season Setup Workflow/i }).first()).toBeVisible({ timeout: 10000 });
-
-    await setupIsolatedTenant(page);
-});
-
-Given('I am logged into the SquadLogic dashboard as an {string}', async ({ page }, role: string) => {
-    // Alias for existing login
-    await page.goto('/login');
-    await page.getByLabel('Email').fill(role.toLowerCase() === 'admin' ? 'admin@squadlogic.app' : 'coach@squadlogic.app');
-    await page.getByLabel('Password').fill('test-password-123');
-    await page.getByRole('button', { name: 'Sign In' }).click();
-    await expect(page.getByRole('heading', { name: /League Management|Dashboard|Season Setup Workflow/i }).first()).toBeVisible({ timeout: 10000 });
-
     await setupIsolatedTenant(page);
 });
 
@@ -101,7 +84,7 @@ Given('I am logged into SquadLogic', async ({ page }) => {
     await page.getByLabel('Email').fill('admin@squadlogic.app');
     await page.getByLabel('Password').fill('test-password-123');
     await page.getByRole('button', { name: 'Sign In' }).click();
-    await expect(page.getByRole('heading', { name: /League Management|Dashboard|Season Setup Workflow/i }).first()).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('heading', { name: /League Management|Dashboard|Season Setup Workflow/i }).first()).toBeVisible({ timeout: 20000 });
 
     await setupIsolatedTenant(page);
 });

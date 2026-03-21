@@ -17,6 +17,7 @@ export default function FieldManagementPage() {
     location_id: '',
     name: '',
     surface_type: 'Grass',
+    size: '11v11',
     supports_halves: false,
     priority_rating: 1,
     active: true,
@@ -28,6 +29,7 @@ export default function FieldManagementPage() {
       location_id: field.location_id,
       name: field.name,
       surface_type: field.surface_type || 'Grass',
+      size: field.size || '11v11',
       supports_halves: field.supports_halves || false,
       priority_rating: field.priority_rating || 1,
       active: field.active !== false,
@@ -42,6 +44,7 @@ export default function FieldManagementPage() {
       location_id: locations.length > 0 ? locations[0].id : '',
       name: '',
       surface_type: 'Grass',
+      size: '11v11',
       supports_halves: false,
       priority_rating: 1,
       active: true,
@@ -52,6 +55,7 @@ export default function FieldManagementPage() {
   };
 
   const handleSave = async () => {
+    console.log('[DEBUG] [FieldManagementPage] handleSave formData:', formData);
     try {
       let finalLocationId = formData.location_id;
 
@@ -76,6 +80,7 @@ export default function FieldManagementPage() {
         await addField(fieldPayload);
       }
       setIsModalOpen(false);
+      console.log('[DEBUG] [FieldManagementPage] Save complete');
     } catch (err) {
       console.error('Save failed', err);
       alert('Failed to save field: ' + err.message);
@@ -165,6 +170,9 @@ export default function FieldManagementPage() {
             <div className="flex flex-wrap gap-2 text-sm text-text-secondary mt-2 mb-4">
               <span className="px-2 py-0.5 bg-bg-surface rounded-full border border-border-subtle">
                 {field.surface_type || 'Grass'}
+              </span>
+              <span className="px-2 py-0.5 bg-bg-surface rounded-full border border-border-subtle">
+                {field.size || '11v11'}
               </span>
               <span className="px-2 py-0.5 bg-blue-900/20 text-blue-300 rounded-full border border-blue-800/30">
                 Priority: {field.priority_rating || 1}
@@ -297,10 +305,11 @@ export default function FieldManagementPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-text-secondary mb-1">
+                <label htmlFor="field-name" className="block text-sm font-medium text-text-secondary mb-1">
                   Field Name
                 </label>
                 <input
+                  id="field-name"
                   type="text"
                   placeholder="e.g. Field 1"
                   value={formData.name}
@@ -309,15 +318,16 @@ export default function FieldManagementPage() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-text-secondary mb-1">
+                  <label htmlFor="surface-type" className="block text-sm font-medium text-text-secondary mb-1">
                     Surface Type
                   </label>
                   <select
+                    id="surface-type"
                     value={formData.surface_type}
                     onChange={(e) => setFormData({ ...formData, surface_type: e.target.value })}
-                    className="w-full bg-bg-surface border border-border-subtle rounded-lg px-4 py-2 focus:border-brand-400 focus:outline-none text-text-primary"
+                    className="w-full bg-bg-surface border border-border-subtle rounded-lg px-4 py-2 focus:border-brand-400 focus:outline-none text-text-primary text-sm"
                   >
                     <option>Grass</option>
                     <option>Turf</option>
@@ -325,20 +335,39 @@ export default function FieldManagementPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-text-secondary mb-1">
-                    Priority (1-10)
+                  <label htmlFor="field-size" className="block text-sm font-medium text-text-secondary mb-1">
+                    Size
                   </label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="10"
-                    value={formData.priority_rating}
-                    onChange={(e) =>
-                      setFormData({ ...formData, priority_rating: parseInt(e.target.value) || 1 })
-                    }
-                    className="w-full bg-bg-surface border border-border-subtle rounded-lg px-4 py-2 focus:border-brand-400 focus:outline-none text-text-primary"
-                  />
+                  <select
+                    id="field-size"
+                    value={formData.size}
+                    onChange={(e) => setFormData({ ...formData, size: e.target.value })}
+                    className="w-full bg-bg-surface border border-border-subtle rounded-lg px-4 py-2 focus:border-brand-400 focus:outline-none text-text-primary text-sm"
+                  >
+                    <option>11v11</option>
+                    <option>9v9</option>
+                    <option>7v7</option>
+                    <option>5v5</option>
+                    <option>Clinic</option>
+                  </select>
                 </div>
+              </div>
+
+              <div>
+                <label htmlFor="field-priority" className="block text-sm font-medium text-text-secondary mb-1">
+                  Priority (1-10)
+                </label>
+                <input
+                  id="field-priority"
+                  type="number"
+                  min="1"
+                  max="10"
+                  value={formData.priority_rating}
+                  onChange={(e) =>
+                    setFormData({ ...formData, priority_rating: parseInt(e.target.value) || 1 })
+                  }
+                  className="w-full bg-bg-surface border border-border-subtle rounded-lg px-4 py-2 focus:border-brand-400 focus:outline-none text-text-primary"
+                />
               </div>
 
               <div className="grid grid-cols-2 gap-4 mt-2 p-3 bg-bg-surface border border-border-subtle rounded-lg">

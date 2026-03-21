@@ -144,14 +144,18 @@ export function useTeamPortal(teamId) {
         if (myPlayerData) {
           const myIds = myPlayerData.map(mp => mp.player_id);
           const matchedPlayers = [];
-          rosterData.forEach(r => {
+          rosterData?.forEach(r => {
             const p = Array.isArray(r.player) ? r.player[0] : r.player;
+            if (p) {
+            }
             if (p && myIds.includes(p.id)) {
               matchedPlayers.push(p);
             }
           });
           setMyPlayers(matchedPlayers);
         }
+      } else {
+        console.warn('[DEBUG] [useTeamPortal] No authenticated user found for RSVP section');
       }
 
       // 8. Fetch Messages
@@ -287,6 +291,15 @@ export function useTeamPortal(teamId) {
         .single();
 
       if (!profileData) throw new Error('No organization found for profile');
+
+      // Optimistic UI Update
+      const optimisticMsg = {
+        id: Date.now(),
+        author: { full_name: authData.user.user_metadata?.full_name || 'You' },
+        content,
+        created_at: new Date().toISOString()
+      };
+      setMessages(prev => [...prev, optimisticMsg]);
 
       const { error: sendError } = await supabase
         .from('team_messages')

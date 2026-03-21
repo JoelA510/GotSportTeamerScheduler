@@ -4,7 +4,7 @@ Feature: Team Communication and Portal
   So that I can view the schedule, RSVP for my children, and chat with the team
 
   Background:
-    Given I am logged into SquadLogic as an "parent"
+    Given I am logged into SquadLogic as a "parent"
     And I have an organization labeled "Test Org"
     And my child "Alex" is on the "Tigers" team
     And my child "Jamie" is also on the "Tigers" team
@@ -14,8 +14,8 @@ Feature: Team Communication and Portal
     Given there is an upcoming practice on "Tuesday"
     When I click "Going" for "Alex" on the "Tuesday" practice
     And I click "Not Going" for "Jamie" on the "Tuesday" practice
-    Then I should see "Alex" marked as "Going"
-    And I should see "Jamie" marked as "Not Going"
+    Then I should see "Alex" marked as "Going" on the "Tuesday" practice
+    And I should see "Jamie" marked as "Not Going" on the "Tuesday" practice
     And the database should have two distinct RSVP records for this practice occurrence
     And the RSVP timestamps should align with the league's official timezone
 

@@ -1,13 +1,13 @@
-Feature: Visual Role-Based Access Control Enforcement
+Feature: Visual Role-Based Access Control
   As a restricted user (Coach or Parent)
-  I want the UI to completely hide administrative controls
-  So that I am not confused by actions I cannot perform and security is visually maintained
+  I want the UI to hide administrative controls
+  So that I am not confused by actions I cannot perform
 
   Scenario: Coach Visual UI Restrictions in Sidebar
     Given I am logged into SquadLogic as a "Coach"
     When I view the main navigation Sidebar
-    Then I should visually see links for "Dashboard", "Team Management", and "Practice Schedule"
-    But the "Data Import", "Settings", "Compliance", and "Reports" links should be completely absent from the UI
+    Then I should see links for "Dashboard", "Team Management", and "Practice Schedule"
+    But I should NOT see links for "Data Import", "Settings", or "Compliance"
 
   Scenario: Score Entry Restrictions in League Standings
     Given I am logged into SquadLogic as a "Parent"

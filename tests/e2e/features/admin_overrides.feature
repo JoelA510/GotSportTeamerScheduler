@@ -4,7 +4,7 @@ Feature: Admin Overrides
   So that I can accommodate special requests and resolve scheduling conflicts
 
   Background:
-    Given I am configured as an Admin in the SquadLogic platform
+    Given I am logged into SquadLogic as "admin"
 
   Scenario: Drag-and-drop roster adjustments
     Given I am viewing the Team Roster page

@@ -86,13 +86,21 @@ export const OrganizationProvider = ({ children }) => {
 
         if (error) throw error;
 
-        if (data) {
+        if (data && data.length > 0) {
           setOrganizations(data);
-          if (data.length > 0 && !currentOrganization) {
+          
+          const storedOrgId = localStorage.getItem('squadlogic_active_org');
+          const matchedMember = data.find(m => m.organization_id === storedOrgId);
+          
+          if (matchedMember) {
+            setCurrentOrganization(matchedMember.organizations);
+            setOrgMember({ role: matchedMember.role, ...matchedMember });
+            await fetchSeasonsForOrg(matchedMember.organization_id);
+          } else {
             const first = data[0];
             setCurrentOrganization(first.organizations);
             setOrgMember({ role: first.role, ...first });
-            // Fetch seasons for the initial org
+            localStorage.setItem('squadlogic_active_org', first.organization_id);
             await fetchSeasonsForOrg(first.organization_id);
           }
         }
@@ -104,13 +112,14 @@ export const OrganizationProvider = ({ children }) => {
     };
 
     fetchOrgs();
-  }, [user]);
+  }, [user, fetchSeasonsForOrg]);
 
   const switchOrganization = useCallback(async (orgId) => {
     const match = organizations.find((m) => m.organization_id === orgId);
     if (match) {
       setCurrentOrganization(match.organizations);
       setOrgMember({ role: match.role, ...match });
+      localStorage.setItem('squadlogic_active_org', orgId);
       // Re-fetch seasons for the new org and validate currentSeason
       await fetchSeasonsForOrg(orgId);
     }

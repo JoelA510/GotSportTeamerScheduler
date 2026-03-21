@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import DashboardWorkflow from '../components/DashboardWorkflow.jsx';
 import { useDashboardData } from '../hooks/useDashboardData.js';
 import { useTeamPersistence } from '../hooks/useTeamPersistence.js';
@@ -9,17 +9,45 @@ import LoadingScreen from '../components/LoadingScreen.jsx';
 import { Building2, Calendar, Users, Trophy } from 'lucide-react';
 
 export default function DashboardPage() {
+  // E2E Testing Error Trigger
+  if (typeof window !== 'undefined' && 
+      (window.__FORCE_ERROR__ || localStorage.getItem('__FORCE_ERROR__'))) {
+    throw new Error('E2E Testing Error Triggered');
+  }
+
+  const [showError, setShowError] = useState(false);
+
+  useEffect(() => {
+    const handleTriggerError = () => {
+      localStorage.setItem('__FORCE_ERROR__', 'true');
+      setShowError(true);
+    };
+    window.addEventListener('trigger-error', handleTriggerError);
+    return () => window.removeEventListener('trigger-error', handleTriggerError);
+  }, []);
+
+  if (showError) {
+    throw new Error('E2E Testing Error Triggered');
+  }
   const { loading, roadmap, team, practice, game } = useDashboardData();
   const { persistenceSnapshot } = useTeamPersistence();
   const { importedData, setImportedData } = useImport();
   const { timezone } = useTheme();
   const { currentOrganization, currentSeasonSetting } = useOrganization();
-  const [activeStep, setActiveStep] = useState(1);
+  const [activeStep, setActiveStep] = useState(() => {
+    const saved = localStorage.getItem('dashboardActiveStep');
+    return saved ? parseInt(saved, 10) : 1;
+  });
 
   // Readiness Score: 4×25% binary components
   const readinessScore = useMemo(() => {
     let score = 0;
-    if (importedData && importedData.totalRows > 0) score += 25;
+    // Check if data is imported (either via state or derived from summaries)
+    const hasData = (importedData && importedData.totalRows > 0) || 
+                   (team?.summary?.totals?.playersAssigned > 0) || 
+                   (team?.summary?.totals?.teams > 0);
+    
+    if (hasData) score += 25;
     if (team?.generatedAt) score += 25;
     if (practice?.generatedAt) score += 25;
     if (game?.generatedAt) score += 25;

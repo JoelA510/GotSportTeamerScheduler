@@ -37,6 +37,7 @@ export function SortablePlayer({ player }) {
     <div
       ref={setNodeRef}
       style={style}
+      data-testid={`player-card-${player.id}`}
       className={`p-3 bg-bg-surface border border-border-subtle rounded-md mb-2 flex items-center justify-between shadow-sm cursor-grab active:cursor-grabbing ${isDragging ? 'shadow-lg border-blue-500/50' : 'hover:border-border-highlight'}`}
       {...attributes}
       {...listeners}
@@ -49,8 +50,13 @@ export function SortablePlayer({ player }) {
           <span className="font-medium text-sm text-text-primary">
             {player.name || `${player.first_name || ''} ${player.last_name || ''}`.trim() || 'Unknown Player'}
           </span>
-          <span className="text-xs text-text-muted">
+          <span className="text-xs text-text-muted flex items-center gap-2">
             Skill: {player.skill || player.skillRating || player.skill_tier || 'Unrated'}
+            {player.assignment_source === 'manual' && (
+              <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full font-bold bg-amber-500/20 text-amber-500 border border-amber-500/30">
+                manual
+              </span>
+            )}
           </span>
         </div>
       </div>
@@ -68,7 +74,10 @@ export function TeamColumn({ team, players }) {
   });
 
   return (
-    <div className="bg-bg-surface/50 border border-border-subtle rounded-xl flex flex-col h-[650px]">
+    <div 
+      className="bg-bg-surface/50 border border-border-subtle rounded-xl flex flex-col h-[650px]"
+      data-testid={`team-column-${team.id}`}
+    >
       <div className="p-4 border-b border-border-subtle bg-bg-surface rounded-t-xl shrink-0">
         <div className="flex justify-between items-center mb-1">
           <h3 className="font-bold text-text-primary">{team.name}</h3>
@@ -163,13 +172,15 @@ export default function RosterManager({ initialTeams }) {
       let dIndex = dTeam.players.findIndex((p) => p.id === overId);
       if (dIndex < 0) dIndex = dTeam.players.length;
 
-      dTeam.players.splice(dIndex, 0, player);
+      // Update source to manual
+      const updatedPlayer = { ...player, assignment_source: 'manual' };
+      dTeam.players.splice(dIndex, 0, updatedPlayer);
 
       return newTeams;
     });
   };
 
-  const handleDragEnd = (event) => {
+  const handleDragEnd = async (event) => {
     const { active, over } = event;
     setActivePlayer(null);
 
@@ -179,9 +190,12 @@ export default function RosterManager({ initialTeams }) {
     const overId = over.id;
 
     const sourceTeam = findTeamOfPlayer(activeId);
-    const destTeam = findTeamOfPlayer(overId);
+    let destTeam = findTeamOfPlayer(overId);
+    if (!destTeam) destTeam = teams.find((t) => t.id === overId);
 
-    if (sourceTeam && destTeam && sourceTeam.id === destTeam.id) {
+    if (!sourceTeam || !destTeam) return;
+
+    if (sourceTeam.id === destTeam.id) {
       // Reordering within the same list
       setTeams((prevTeams) => {
         const newTeams = [...prevTeams];
@@ -192,6 +206,23 @@ export default function RosterManager({ initialTeams }) {
         newTeams[tIdx].players = arrayMove(newTeams[tIdx].players, oldIndex, newIndex);
         return newTeams;
       });
+    } else {
+      // Cross-team move - Persist to DB
+      try {
+        const { error } = await supabase
+          .from('players')
+          .update({ 
+            team_id: destTeam.id,
+            assignment_source: 'manual'
+          })
+          .eq('id', activeId);
+        
+        if (error) throw error;
+        console.log(`[RosterManager] Persisted manual override for player ${activeId}`);
+      } catch (e) {
+        console.error('Failed to persist player assignment override', e);
+        // Optional: rollback teams state if we want strict consistency
+      }
     }
   };
 

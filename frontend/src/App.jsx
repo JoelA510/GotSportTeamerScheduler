@@ -27,6 +27,7 @@ const SettingsPage = lazy(() => import('./pages/SettingsPage.jsx'));
 const TeamPortalPage = lazy(() => import('./pages/TeamPortalPage.jsx'));
 const RegistrationFlow = lazy(() => import('./pages/RegistrationFlow.jsx'));
 const AdminComplianceDashboard = lazy(() => import('./pages/AdminComplianceDashboard.jsx'));
+const RegistrationForms = lazy(() => import('./pages/RegistrationForms.jsx'));
 const AdminReportingDashboard = lazy(() => import('./pages/AdminReportingDashboard.jsx'));
 const LeagueStandings = lazy(() => import('./pages/LeagueStandings.jsx'));
 const ThemeToggle = lazy(() => import('./components/ThemeToggle.jsx'));
@@ -74,6 +75,14 @@ function AppContent() {
             element={
               <ProtectedRoute requiredPermission={PERMISSIONS.MANAGE_ORGANIZATION}>
                 <AdminComplianceDashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/forms"
+            element={
+              <ProtectedRoute requiredPermission={PERMISSIONS.MANAGE_ORGANIZATION}>
+                <RegistrationForms />
               </ProtectedRoute>
             }
           />

@@ -75,6 +75,11 @@ export function useTeamAnalysis() {
     setPrograms(processed.programs);
     setValidationErrors(processed.errors);
 
+    // Auto-select first program if none selected
+    if (processed.programs.length > 0) {
+      setSelectedProgramId(processed.programs[0].id);
+    }
+
     // Initialize configs
     const initialConfigs = {};
     processed.programs.forEach((p) => {
