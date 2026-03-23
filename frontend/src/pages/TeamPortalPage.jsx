@@ -22,10 +22,9 @@ export default function TeamPortalPage() {
   } = useTeamPortal(teamId);
 
   const [chatInput, setChatInput] = useState('');
-  const[calendarModalOpen, setCalendarModalOpen] = useState(false);
+  const [calendarModalOpen, setCalendarModalOpen] = useState(false);
   const chatEndRef = useRef(null);
 
-  // Auto-scroll chat to bottom
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
@@ -42,7 +41,6 @@ export default function TeamPortalPage() {
 
   return (
     <div className="animate-fadeIn space-y-8">
-      {/* Team Header */}
       <header className="glass-panel p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h1 className="text-3xl font-display font-bold text-text-primary tracking-tight">
@@ -55,7 +53,7 @@ export default function TeamPortalPage() {
         <div className="flex gap-4">
           <button
             onClick={() => setCalendarModalOpen(true)}
-            className="bg-bg-surface px-4 py-2 rounded-lg border border-border-subtle flex items-center gap-2 hover:bg-bg-surface-hover transition-colors"
+            className="relative z-10 bg-bg-surface px-4 py-2 rounded-lg border border-border-subtle flex items-center gap-2 hover:bg-bg-surface-hover transition-colors"
           >
             <Calendar size={18} className="text-color-primary" />
             <span className="font-semibold">Subscribe to Calendar</span>
@@ -68,7 +66,6 @@ export default function TeamPortalPage() {
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Main Schedule (2/3) */}
         <div className="lg:col-span-2 space-y-6">
           <h2 className="text-2xl font-display font-bold flex items-center gap-2">
             <Calendar className="text-color-primary" />
@@ -86,14 +83,13 @@ export default function TeamPortalPage() {
                   <div className="flex flex-col md:flex-row justify-between gap-4">
                     <div className="space-y-2">
                       <div className="flex items-center gap-2">
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
-                          event.type === 'game' ? 'bg-status-success-bg text-status-success' : 'bg-brand-glow text-color-primary'
-                        }`}>
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${event.type === 'game' ? 'bg-status-success-bg text-status-success' : 'bg-brand-glow text-color-primary'
+                          }`}>
                           {event.type}
                         </span>
                         <h3 className="font-bold text-lg">{event.description}</h3>
                       </div>
-                      
+
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-y-1 gap-x-4 text-sm text-text-secondary">
                         <div className="flex items-center gap-1.5">
                           <Calendar size={14} />
@@ -110,36 +106,35 @@ export default function TeamPortalPage() {
                       </div>
                     </div>
 
-                    {/* RSVP Section - Handles "The Twins Edge Case" */}
                     <div className="flex flex-col gap-3 min-w-[200px]">
                       {myPlayers.length > 0 ? (
                         <div className="space-y-3">
                           <p className="text-xs font-bold text-text-muted uppercase tracking-widest">Your RSVPs</p>
                           {myPlayers.map(player => {
-                            const rsvp = rsvps.find(r => 
-                              r.player_id === player.id && 
-                              r.reference_id === event.id && 
+                            const rsvp = rsvps.find(r =>
+                              r.player_id === player.id &&
+                              r.reference_id === event.id &&
                               r.occurrence_date === event.date
                             );
-                            
+
                             return (
                               <div key={player.id} className="flex flex-col gap-1.5 p-2 rounded bg-bg-surface/30 border border-border-subtle">
                                 <span className="text-xs font-semibold text-text-primary px-1">{player.first_name} {player.last_name}</span>
                                 <div className="flex gap-2">
-                                  <RsvpButton 
-                                    active={rsvp?.status === 'attending'} 
-                                    type="attending" 
-                                    onClick={() => updateRsvp(player.id, event.id, event.type, event.date, 'attending')} 
+                                  <RsvpButton
+                                    active={rsvp?.status === 'attending'}
+                                    type="attending"
+                                    onClick={() => updateRsvp(player.id, event.id, event.type, event.date, 'attending')}
                                   />
-                                  <RsvpButton 
-                                    active={rsvp?.status === 'declined'} 
-                                    type="declined" 
-                                    onClick={() => updateRsvp(player.id, event.id, event.type, event.date, 'declined')} 
+                                  <RsvpButton
+                                    active={rsvp?.status === 'declined'}
+                                    type="declined"
+                                    onClick={() => updateRsvp(player.id, event.id, event.type, event.date, 'declined')}
                                   />
-                                  <RsvpButton 
-                                    active={rsvp?.status === 'maybe'} 
-                                    type="maybe" 
-                                    onClick={() => updateRsvp(player.id, event.id, event.type, event.date, 'maybe')} 
+                                  <RsvpButton
+                                    active={rsvp?.status === 'maybe'}
+                                    type="maybe"
+                                    onClick={() => updateRsvp(player.id, event.id, event.type, event.date, 'maybe')}
                                   />
                                 </div>
                               </div>
@@ -158,7 +153,6 @@ export default function TeamPortalPage() {
             )}
           </div>
 
-          {/* Players Section */}
           <div className="glass-panel p-6 mt-8">
             <h2 className="text-2xl font-display font-bold flex items-center gap-2 mb-6">
               <Users className="text-color-primary" />
@@ -180,7 +174,6 @@ export default function TeamPortalPage() {
           </div>
         </div>
 
-        {/* Sidebar: Chat (1/3) */}
         <div className="lg:col-span-1 flex flex-col h-[700px]">
           <h2 className="text-2xl font-display font-bold flex items-center gap-2 mb-6">
             <MessageSquare className="text-color-primary" />
@@ -188,7 +181,6 @@ export default function TeamPortalPage() {
           </h2>
 
           <div className="glass-panel p-0 flex flex-col flex-grow overflow-hidden">
-            {/* Messages Area */}
             <div className="flex-grow overflow-y-auto p-4 space-y-4">
               {messages.length === 0 ? (
                 <div className="h-full flex items-center justify-center text-text-muted text-sm italic">
@@ -212,7 +204,6 @@ export default function TeamPortalPage() {
               <div ref={chatEndRef} />
             </div>
 
-            {/* Input Area */}
             <form onSubmit={handleSendMessage} className="p-4 bg-bg-surface/50 border-t border-border-subtle flex gap-2">
               <input
                 type="text"
@@ -221,7 +212,7 @@ export default function TeamPortalPage() {
                 placeholder="Type a message..."
                 className="glass-input flex-grow text-sm"
               />
-              <button type="submit" className="glass-button p-2 flex items-center justify-center">
+              <button type="submit" className="relative z-10 glass-button p-2 flex items-center justify-center">
                 <Send size={18} />
               </button>
             </form>
@@ -229,21 +220,20 @@ export default function TeamPortalPage() {
         </div>
       </div>
 
-      {/* Calendar Modal */}
       {calendarModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
           <div className="bg-bg-app border border-border-subtle rounded-xl p-6 w-full max-w-md shadow-2xl">
             <h3 className="text-xl font-bold text-text-primary mb-4">Calendar Subscription</h3>
             <p className="text-sm text-text-secondary mb-4">Copy this link to your calendar app:</p>
-            <input 
-              type="text" 
-              readOnly 
-              value={`${window.location.origin}/functions/v1/calendar-feed?token=${team?.calendar_token || 'mock-token'}`}
+            <input
+              type="text"
+              readOnly
+              value={`webcal://${window.location.host}/functions/v1/calendar-feed?token=${team?.calendar_token || 'mock-token'}`}
               className="w-full bg-bg-surface border border-border-subtle rounded-lg p-3 text-text-primary mb-4"
             />
             <div className="flex justify-end gap-3">
               <Button variant="secondary" onClick={() => setCalendarModalOpen(false)}>Close</Button>
-              <Button variant="primary" onClick={() => navigator.clipboard.writeText(`${window.location.origin}/functions/v1/calendar-feed?token=${team?.calendar_token || 'mock-token'}`)}>Copy Link</Button>
+              <Button variant="primary" onClick={() => navigator.clipboard.writeText(`webcal://${window.location.host}/functions/v1/calendar-feed?token=${team?.calendar_token || 'mock-token'}`)}>Copy Link</Button>
             </div>
           </div>
         </div>
@@ -265,11 +255,10 @@ function RsvpButton({ active, type, onClick }) {
   return (
     <button
       onClick={onClick}
-      className={`flex-1 flex flex-col items-center gap-1 p-2 rounded transition-all duration-200 ${
-        active 
-          ? `${config.bg} ${config.color} border-current shadow-glow scale-105` 
+      className={`relative z-10 flex-1 flex flex-col items-center gap-1 p-2 rounded transition-all duration-200 ${active
+          ? `${config.bg} ${config.color} border-current shadow-glow scale-105`
           : 'bg-bg-surface/20 text-text-muted border-transparent grayscale hover:grayscale-0 hover:bg-bg-surface/40'
-      } border`}
+        } border`}
       title={config.label}
     >
       <Icon size={16} />

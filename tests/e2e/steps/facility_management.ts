@@ -9,10 +9,10 @@ Given('I have an organization labeled {string}', async ({ page }, orgName: strin
     const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || JSON.stringify(window.__MOCK_DB__ || {}));
     const uniqueOrgId = localStorage.getItem('squadlogic_active_org') || 'org-1';
 
-    db.organizations = (db.organizations ||[]).filter(o => o.id !== uniqueOrgId);
+    db.organizations = (db.organizations || []).filter(o => o.id !== uniqueOrgId);
     db.organizations.push({ id: uniqueOrgId, name: name, status: 'active' });
 
-    db.organization_members = (db.organization_members ||[]).filter(m => m.organization_id !== uniqueOrgId);
+    db.organization_members = (db.organization_members || []).filter(m => m.organization_id !== uniqueOrgId);
     db.organization_members.unshift({
       id: `mem-${uniqueOrgId}`,
       organization_id: uniqueOrgId,
@@ -21,8 +21,8 @@ Given('I have an organization labeled {string}', async ({ page }, orgName: strin
       organizations: db.organizations.find(o => o.id === uniqueOrgId)
     });
 
-    db.locations = (db.locations ||[]).filter((l: any) => l.organization_id !== uniqueOrgId);
-    db.fields = (db.fields ||[]).filter((f: any) => f.organization_id !== uniqueOrgId);
+    db.locations = (db.locations || []).filter((l: any) => l.organization_id !== uniqueOrgId);
+    db.fields = (db.fields || []).filter((f: any) => f.organization_id !== uniqueOrgId);
 
     window.__MOCK_DB__ = db;
     sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
@@ -95,9 +95,9 @@ Given('a field {string} at {string} exists without subunits', async ({ page }, f
     const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || JSON.stringify(window.__MOCK_DB__ || {}));
     const uniqueOrgId = localStorage.getItem('squadlogic_active_org') || 'org-1';
     const fieldId = 'field-1-test';
-    db.fields = (db.fields ||[]).filter((f: any) => f.id !== fieldId);
+    db.fields = (db.fields || []).filter((f: any) => f.id !== fieldId);
     db.locations = db.locations || [];
-    db.fields = db.fields ||[];
+    db.fields = db.fields || [];
     let loc = db.locations.find((loc: any) => loc.name === lName && loc.organization_id === uniqueOrgId);
     if (!loc) {
       loc = { id: 'loc-1-test', name: lName, organization_id: uniqueOrgId };
@@ -143,7 +143,7 @@ When('I toggle {string} to ON', async ({ page }, label: string) => {
   const uiLabel = label.includes('Sub-fields') || label.includes('Supports Halves') ? 'Sub-fields' : (label === 'Active' ? 'Status' : label);
   const container = page.locator('label').filter({ hasText: uiLabel }).first();
   const checkbox = container.locator('input[type="checkbox"]').first();
-  
+
   const isChecked = await checkbox.evaluate((node: HTMLInputElement) => node.checked);
   if (!isChecked) {
     await page.getByText(uiLabel, { exact: true }).first().click({ force: true });
@@ -179,7 +179,7 @@ Then('{string} should display a subunit indicator like {string}', async ({ page 
 Then('the database should automatically contain field subunits {string} and {string} for {string}', async ({ page }, a: string, b: string, f: string) => {
   const subunits = await page.evaluate(() => {
     const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
-    return db.field_subunits ||[];
+    return db.field_subunits || [];
   });
   expect(subunits.length).toBeGreaterThanOrEqual(2);
   expect(subunits.some((s: any) => s.label === a)).toBeTruthy();
@@ -191,9 +191,9 @@ Given('a field {string} at {string} exists with subunits', async ({ page }, f: s
     const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || JSON.stringify(window.__MOCK_DB__ || {}));
     const uniqueOrgId = localStorage.getItem('squadlogic_active_org') || 'org-1';
     const fieldId = 'field-2-test';
-    db.fields = (db.fields ||[]).filter((f: any) => f.id !== fieldId);
+    db.fields = (db.fields || []).filter((f: any) => f.id !== fieldId);
     db.locations = db.locations || [];
-    db.fields = db.fields ||[];
+    db.fields = db.fields || [];
     let loc = db.locations.find((loc: any) => loc.name === lName && loc.organization_id === uniqueOrgId);
     if (!loc) {
       loc = { id: 'loc-2-test', name: lName, organization_id: uniqueOrgId };
@@ -210,7 +210,7 @@ Given('a field {string} at {string} exists with subunits', async ({ page }, f: s
       size: '11v11',
       priority_rating: 1
     });
-    db.field_subunits = db.field_subunits ||[];
+    db.field_subunits = db.field_subunits || [];
     db.field_subunits.push({ id: `sub-${fieldId}-a`, field_id: fieldId, label: 'A', organization_id: uniqueOrgId });
     db.field_subunits.push({ id: `sub-${fieldId}-b`, field_id: fieldId, label: 'B', organization_id: uniqueOrgId });
     window.__MOCK_DB__ = db;
@@ -223,7 +223,7 @@ Then('the database should automatically remove field subunits for {string}', asy
   await page.waitForTimeout(2000);
   const subunits = await page.evaluate(() => {
     const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
-    return db.field_subunits ||[];
+    return db.field_subunits || [];
   });
   const field2Subunits = subunits.filter((s: any) => s.field_id === 'field-2-test');
   expect(field2Subunits.length).toBe(0);
@@ -234,9 +234,9 @@ Given('a field {string} at {string} exists and is active', async ({ page }, f: s
     const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || JSON.stringify(window.__MOCK_DB__ || {}));
     const uniqueOrgId = localStorage.getItem('squadlogic_active_org') || 'org-1';
     const fieldId = 'field-3-test';
-    db.fields = (db.fields ||[]).filter((f: any) => f.id !== fieldId);
+    db.fields = (db.fields || []).filter((f: any) => f.id !== fieldId);
     db.locations = db.locations || [];
-    db.fields = db.fields ||[];
+    db.fields = db.fields || [];
     let loc = db.locations.find((loc: any) => loc.name === lName && loc.organization_id === uniqueOrgId);
     if (!loc) {
       loc = { id: 'loc-3-test', name: lName, organization_id: uniqueOrgId };
@@ -266,7 +266,7 @@ Then('{string} should display an {string} badge on the grid', async ({ page }, n
 Given('another organization {string} exists', async ({ page }, orgName: string) => {
   await page.evaluate((name) => {
     const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || JSON.stringify(window.__MOCK_DB__ || {}));
-    db.organizations = db.organizations ||[];
+    db.organizations = db.organizations || [];
     db.organizations.push({ id: 'org-rival', name: name, status: 'active' });
     window.__MOCK_DB__ = db;
     sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
@@ -280,7 +280,7 @@ Given('{string} has a location {string} with field {string}', async ({ page }, o
     const org = db.organizations.find((o: any) => o.name === oName);
     if (org) {
       db.locations = db.locations || [];
-      db.fields = db.fields ||[];
+      db.fields = db.fields || [];
       const locId = `loc-${org.id}`;
       let loc = db.locations.find((l: any) => l.name === lName && l.organization_id === org.id);
       if (!loc) {
@@ -303,10 +303,13 @@ Given('{string} has a location {string} with field {string}', async ({ page }, o
 });
 
 Then('I should not see {string} in the Location dropdown', async ({ page }, locName: string) => {
-    const dropdown = page.locator('select').first();
-    await expect(dropdown).not.toContainText(locName);
+  // CRITICAL FIX: Open the modal first so the dropdown is actually in the DOM
+  await page.getByRole('button', { name: /Add Field/i }).first().click({ force: true });
+  const dropdown = page.locator('select').last(); // Use last to avoid sidebar select
+  await expect(dropdown).not.toContainText(locName);
+  await page.getByRole('button', { name: /Cancel|Close/i }).first().click({ force: true });
 });
 
 Then('I should not see {string} on the grid', async ({ page }, fieldName: string) => {
-    await expect(page.locator('div.bg-bg-surface', { hasText: fieldName })).toBeHidden();
+  await expect(page.locator('div.bg-bg-surface', { hasText: fieldName })).toBeHidden();
 });

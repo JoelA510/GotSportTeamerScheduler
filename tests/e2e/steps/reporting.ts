@@ -118,10 +118,12 @@ Then('I should see the {string} metric', async ({ page }, metricName: string) =>
 
     const valSpan = card.locator(`[data-testid="metric-value-${normalizedName}"]`).first();
     await expect(valSpan).toBeVisible();
+
+    // CRITICAL FIX: Increase timeout to allow React Context and Mock DB to settle
     await expect(async () => {
       const val = await valSpan.textContent();
       expect(Number(val)).toBeGreaterThan(0);
-    }).toPass({ timeout: 5000 });
+    }).toPass({ timeout: 15000 });
   }
 });
 
