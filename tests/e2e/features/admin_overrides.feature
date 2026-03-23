@@ -14,8 +14,8 @@ Feature: Admin Overrides
     And instantly recalculate the skill balance and capacity metrics for both teams
 
   Scenario: Manual practice slot adjustments
-    Given I am on the Practice Scheduling page
-    And the automated schedule has been generated
+    Given the automated schedule has been generated
+    And I am on the Practice Scheduling page
     When I manually assign a team to an alternative practice slot
     Then the new practice assignment is saved with the "manual" source flag
     And any new coach or field capacity conflicts are immediately flagged in the UI

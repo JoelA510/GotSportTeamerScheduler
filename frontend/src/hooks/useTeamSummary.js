@@ -14,6 +14,8 @@ const EMPTY_SUMMARY = {
     divisionsWithOpenRosterSlots: 0,
   },
   divisions: [],
+  teams: [],
+  team_players: [],
   generatedAt: null,
 };
 

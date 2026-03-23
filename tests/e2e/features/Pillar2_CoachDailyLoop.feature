@@ -4,7 +4,7 @@ Feature: Pillar 2 - Coach Daily Loop
   So that I can focus on coaching rather than administration
 
   Background:
-    Given I am logged in as an assigned Head Coach
+    Given I am logged into SquadLogic as a "coach"
     And I have been assigned to the "U12 Tigers"
 
   Scenario: Viewing Team Roster and Compliance

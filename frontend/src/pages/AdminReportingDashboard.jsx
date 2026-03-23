@@ -226,27 +226,27 @@ export default function AdminReportingDashboard() {
 
       {/* Metric Cards Top Row */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-bg-surface border border-border-highlight rounded-xl p-6 shadow-xl relative overflow-hidden group">
+        <div className="bg-bg-surface border border-border-highlight rounded-xl p-6 shadow-xl relative overflow-hidden group bg-bg-card" data-testid="metric-card-total-players">
           <div className="absolute top-0 right-0 w-32 h-32 bg-brand-glow rounded-full blur-3xl -mr-10 -mt-10 transition-transform group-hover:scale-110" />
           <div className="flex flex-col">
             <span className="text-text-muted text-sm font-bold uppercase tracking-wider mb-2 flex items-center gap-2">
               <Users size={16} /> Total Players
             </span>
-            <span className="text-4xl font-black text-text-primary">{metrics.players}</span>
+            <span className="text-4xl font-black text-text-primary" data-testid="metric-value-total-players">{metrics.players}</span>
             <span className="text-xs text-color-primary mt-2">Active in Organization</span>
           </div>
         </div>
-        <div className="bg-bg-surface border border-border-highlight rounded-xl p-6 shadow-xl relative overflow-hidden group">
+        <div className="bg-bg-surface border border-border-highlight rounded-xl p-6 shadow-xl relative overflow-hidden group bg-bg-card" data-testid="metric-card-active-teams">
           <div className="absolute top-0 right-0 w-32 h-32 bg-status-success-bg rounded-full blur-3xl -mr-10 -mt-10 transition-transform group-hover:scale-110" />
           <div className="flex flex-col">
             <span className="text-text-muted text-sm font-bold uppercase tracking-wider mb-2 flex items-center gap-2">
               <ShieldCheck size={16} /> Active Teams
             </span>
-            <span className="text-4xl font-black text-text-primary">{metrics.teams}</span>
+            <span className="text-4xl font-black text-text-primary" data-testid="metric-value-active-teams">{metrics.teams}</span>
             <span className="text-xs text-status-success mt-2">Current Season</span>
           </div>
         </div>
-        <div className="bg-bg-surface border border-border-highlight rounded-xl p-6 shadow-xl relative overflow-hidden group">
+        <div className="bg-bg-surface border border-border-highlight rounded-xl p-6 shadow-xl relative overflow-hidden group bg-bg-card" data-testid="metric-card-staff-admins">
           <div className="absolute top-0 right-0 w-32 h-32 bg-brand-glow rounded-full blur-3xl -mr-10 -mt-10 transition-transform group-hover:scale-110" />
           <div className="flex flex-col">
             <span className="text-text-muted text-sm font-bold uppercase tracking-wider mb-2 flex items-center gap-2">

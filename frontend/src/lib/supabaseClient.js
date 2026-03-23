@@ -9,7 +9,7 @@ if (IS_MOCK_MODE) {
 }
 
 let mockSubscriptionCallback = null;
-const realtimeCallbacks = [];
+const realtimeCallbacks =[];
 
 const triggerRealtimeEvent = (table, event, payload) => {
   console.log(`[Mock Supabase] Triggering Realtime ${event} for ${table}`, payload);
@@ -21,7 +21,7 @@ const triggerRealtimeEvent = (table, event, payload) => {
     }
   });
 };
-let pendingAuthEvents = [];
+let pendingAuthEvents =[];
 
 const triggerAuthEvent = (event, session) => {
   console.log(`[Mock Supabase] Triggering ${event}`);
@@ -36,42 +36,42 @@ const triggerAuthEvent = (event, session) => {
 // Define the initial state outside the function
 const initialMockData = {
   organizations: [{ id: 'org-1', name: 'SquadLogic FC' }],
-  profiles: [
+  profiles:[
     { id: 'mock-admin-id', first_name: 'Mock', last_name: 'Admin', full_name: 'Mock Admin', email: 'admin@squadlogic.app', role: 'admin' },
     { id: 'mock-coach-id', first_name: 'Mock', last_name: 'Coach', full_name: 'Mock Coach', email: 'coach@squadlogic.app', role: 'coach' },
     { id: 'mock-parent-id', first_name: 'Mock', last_name: 'Parent', full_name: 'Mock Parent', email: 'parent@squadlogic.app', role: 'parent' }
   ],
-  organization_members: [
+  organization_members:[
     { organization_id: 'org-1', profile_id: 'mock-admin-id', role: 'admin' }
   ],
-  season_settings: [
+  season_settings:[
     { id: 'season-1', organization_id: 'org-1', name: 'Fall 2024', status: 'active', created_at: new Date().toISOString() }
   ],
-  divisions: [
+  divisions:[
     { id: 'u8-div-id', name: 'U8 Coed', organization_id: 'org-1', season_settings_id: 'season-1' },
     { id: 'u10-div-id', name: 'U10 Girls', organization_id: 'org-1', season_settings_id: 'season-1' }
   ],
-  teams: [
+  teams:[
     { id: 't1', name: 'Team A', division_id: 'u8-div-id', coach_id: 'mock-coach-id', organization_id: 'org-1' },
     { id: 't2', name: 'Team B', division_id: 'u8-div-id', coach_id: 'c2', organization_id: 'org-1' },
     { id: '00000000-0000-0000-0000-000000000001', name: 'Tigers', division_id: 'u8-div-id', organization_id: 'org-1' }
   ],
-  team_players: [
+  team_players:[
     { team_id: '00000000-0000-0000-0000-000000000001', player_id: 'player-1' },
     { team_id: '00000000-0000-0000-0000-000000000001', player_id: 'player-2' }
   ],
-  players: [
+  players:[
     { id: 'player-1', first_name: 'Alex', last_name: 'Smith', organization_id: 'org-1', team_id: '00000000-0000-0000-0000-000000000001', division_id: 'U8 Boys' },
     { id: 'player-2', first_name: 'Jamie', last_name: 'Jones', organization_id: 'org-1', team_id: '00000000-0000-0000-0000-000000000001', division_id: 'U8 Boys' }
   ],
-  profile_players: [
+  profile_players:[
     { profile_id: 'mock-parent-id', player_id: 'player-1' },
     { profile_id: 'mock-parent-id', player_id: 'player-2' }
   ],
-  practice_slots: [
+  practice_slots:[
     { id: 'ps-1', day_of_week: 'tue', start_time: '18:00', end_time: '19:30', field_id: 'v1', organization_id: 'org-1' }
   ],
-  practice_assignments: [
+  practice_assignments:[
     { 
       id: 'pa-1', 
       team_id: '00000000-0000-0000-0000-000000000001', 
@@ -83,32 +83,34 @@ const initialMockData = {
       effective_date_range: '[2025-01-01,2025-12-31)'
     }
   ],
-  event_rsvps: [
+  event_rsvps:[
     { id: 'rsvp-1', organization_id: 'org-1', team_id: '00000000-0000-0000-0000-000000000001', player_id: 'player-1', reference_id: 'pa-1', event_type: 'practice', occurrence_date: '2025-01-07', status: 'attending' }
   ],
-  locations: [{ id: 'loc-1', name: 'Central Park' }],
-  fields: [{ id: 'v1', name: 'Field 1', location_id: 'loc-1', organization_id: 'org-1', active: true, surface_type: 'Grass', size: '11v11' }],
-  games: [
+  locations:[{ id: 'loc-1', name: 'Central Park' }],
+  fields:[{ id: 'v1', name: 'Field 1', location_id: 'loc-1', organization_id: 'org-1', active: true, surface_type: 'Grass', size: '11v11' }],
+  games:[
     { 
       id: 'g1', 
       organization_id: 'org-1', 
       season_id: 'season-1', 
       home_team_id: 't1', 
       away_team_id: 't2', 
-      scheduled_at: new Date().toISOString(),
+      start_time: new Date(Date.now() - 86400000).toISOString(), // Yesterday
       venue_id: 'v1',
       has_conflict: true,
-      conflict_reason: 'Double-booked Field'
+      conflict_reason: 'Double-booked Field',
+      score_home: 2,
+      score_away: 1
     }
   ],
-  player_registrations: [
+  player_registrations:[
     { id: 'player-1', organization_id: 'org-1', season_id: 'season-1', first_name: 'Alex', last_name: 'Smith', status: 'Reviewing', gender: 'B', birth_year: 2015 },
     { id: 'player-2', organization_id: 'org-1', season_id: 'season-1', first_name: 'Sam', last_name: 'Jones', status: 'Approved', gender: 'G', birth_year: 2016 },
   ],
-  registration_forms: [
+  registration_forms:[
     { id: 'f1', title: 'Spring 2026 Registration', status: 'active', organization_id: 'org-1' }
   ],
-  scheduler_runs: [
+  scheduler_runs:[
     { 
       id: 'run-practice-1', 
       organization_id: 'org-1', 
@@ -119,7 +121,7 @@ const initialMockData = {
       completed_at: new Date().toISOString(),
       results: {
         summary: { assignmentRate: 1.0, manualFollowUpRate: 0, unassignedTeams: 0 },
-        baseSlotDistribution: [
+        baseSlotDistribution:[
           { baseSlotId: 'slot_mon_1800', day: 'Monday', totalCapacity: 10, totalAssigned: 1 },
           { baseSlotId: 'slot_wed_1800', day: 'Wednesday', totalCapacity: 10, totalAssigned: 0 }
         ]
@@ -145,7 +147,7 @@ const initialMockData = {
       status: 'completed',
       results: {
         teamsByDivision: {
-          'U8 Boys': [
+          'U8 Boys':[
             { id: 't1', name: 'Team A', division_id: 'U8 Boys', headCoach: 'Mock Admin' },
             { id: 't2', name: 'Team B', division_id: 'U8 Boys', headCoach: 'Mock Coach' }
           ]
@@ -153,7 +155,7 @@ const initialMockData = {
         rosterBalanceByDivision: {
           'U8 Boys': {
             summary: { totalPlayers: 24, totalCapacity: 30, averageFillRate: 0.8 },
-            teamStats: [
+            teamStats:[
               { teamId: 't1', slotsRemaining: 3 },
               { teamId: 't2', slotsRemaining: 3 }
             ]
@@ -167,7 +169,7 @@ const initialMockData = {
       completed_at: new Date().toISOString()
     }
   ],
-  registrations: [
+  registrations:[
     { 
       id: 'reg-1', 
       organization_id: 'org-1', 
@@ -179,7 +181,7 @@ const initialMockData = {
       created_at: new Date().toISOString() 
     }
   ],
-    team_summaries: [
+    team_summaries:[
       {
         id: 'summary-1',
         organization_id: 'org-1',
@@ -191,13 +193,13 @@ const initialMockData = {
         last_updated: new Date().toISOString()
       }
     ],
-    imports: [
+    imports:[
       {
         id: 'import-1',
         user_id: 'mock-admin-id',
         import_type: 'players',
         data: {
-          data: [
+          data:[
             { 'First Name': 'Alex', 'Last Name': 'Smith', 'Birthdate': '2015-05-15', 'Gender': 'm', 'Skill Level': 'advanced' },
             { 'First Name': 'Sam', 'Last Name': 'Jones', 'Birthdate': '2016-08-20', 'Gender': 'f', 'Skill Level': 'developing' }
           ],
@@ -205,6 +207,9 @@ const initialMockData = {
         },
         created_at: new Date().toISOString()
       }
+    ],
+    view_org_metrics:[
+      { organization_id: 'org-1', total_players: 0, total_teams: 0, total_users: 0 }
     ]
 };
 
@@ -217,9 +222,10 @@ const mergeSource = (db, source) => {
       source[key].forEach((record) => {
         const idx = db[key].findIndex((r) => {
           if (r.id && record.id) return String(r.id) === String(record.id);
-          if (key === 'organization_members') {
-            return String(r.organization_id) === String(record.organization_id) && String(r.profile_id) === String(record.profile_id);
-          }
+          if (key === 'organization_members') return String(r.organization_id) === String(record.organization_id) && String(r.profile_id) === String(record.profile_id);
+          if (key === 'view_org_metrics') return String(r.organization_id) === String(record.organization_id);
+          if (key === 'view_compliance_stats') return String(r.form_title) === String(record.form_title);
+          if (key === 'view_league_standings') return String(r.team_id) === String(record.team_id);
           return false;
         });
         if (idx >= 0) {
@@ -239,6 +245,8 @@ const mergeSource = (db, source) => {
 
 const getDB = () => {
   let db = JSON.parse(JSON.stringify(initialMockData));
+  
+  // Merge sessionStorage first (persisted state)
   if (typeof window !== 'undefined') {
     const storedDB = sessionStorage.getItem('__MOCK_DB__');
     if (storedDB) {
@@ -248,6 +256,11 @@ const getDB = () => {
       } catch (e) {
         console.error('[DEBUG] [Mock Supabase] SessionStorage parse error:', e);
       }
+    }
+    
+    // Then merge window.__MOCK_DB__ (init scripts)
+    if (window.__MOCK_DB__) {
+      db = mergeSource(db, window.__MOCK_DB__);
     }
   }
   return db;
@@ -268,7 +281,7 @@ if (typeof window !== 'undefined') {
 
 export const getMockData = (table, col, val) => {
   const db = getDB();
-  let results = db[table] || [];
+  let results = db[table] ||[];
   
   if (col && val) {
     results = results.filter((item) => {
@@ -339,14 +352,14 @@ const createMockQuery = (table, data = null) => {
               field_subunits: subunits.filter((s) => {
                 const match = String(s.field_id) === String(item.id);
                 return match;
-              }) || [],
+              }) ||[],
             }));
           }
           if (queryContent.includes('practice_slots')) {
             const slots = getMockData('practice_slots');
             results = results.map((item) => ({
               ...item,
-              practice_slots: slots.filter((s) => String(s.field_id) === String(item.id)) || [],
+              practice_slots: slots.filter((s) => String(s.field_id) === String(item.id)) ||[],
             }));
           }
         }
@@ -365,27 +378,41 @@ const createMockQuery = (table, data = null) => {
           const rsvps = getMockData('event_rsvps');
           results = results.map((item) => ({
             ...item,
-            event_rsvps: rsvps.filter((r) => String(r.team_id) === String(item.id)) || [],
+            event_rsvps: rsvps.filter((r) => String(r.team_id) === String(item.id)) ||[],
           }));
         }
-        if (table === 'practice_assignments' && queryContent.includes('slot')) {
+        if (table === 'games' && (queryContent.includes('home_team') || queryContent.includes('away_team'))) {
+          const teams = getMockData('teams');
+          results = results.map((item) => ({
+            ...item,
+            home_team: teams.find((t) => String(t.id) === String(item.home_team_id)) || null,
+            away_team: teams.find((t) => String(t.id) === String(item.away_team_id)) || null,
+          }));
+        }
+        if (table === 'practice_assignments' && (queryContent.includes('practice_slots') || queryContent.includes('teams'))) {
           const slots = getMockData('practice_slots');
           const fields = getMockData('fields');
-          const locations = getMockData('locations');
+          const teams = getMockData('teams');
+          const divisions = getMockData('divisions');
           
           results = results.map((item) => {
             const slot = slots.find(s => String(s.id) === String(item.slot_id));
-            if (!slot) return item;
+            const team = teams.find(t => String(t.id) === String(item.team_id));
             
-            const field = fields.find(f => String(f.id) === String(slot.field_id));
-            const location = field ? locations.find(l => String(l.id) === String(field.location_id)) : null;
+            let enrichedSlot = slot ? { ...slot } : null;
+            if (enrichedSlot) {
+              enrichedSlot.fields = fields.find(f => String(f.id) === String(slot.field_id)) || null;
+            }
+            
+            let enrichedTeam = team ? { ...team } : null;
+            if (enrichedTeam) {
+              enrichedTeam.divisions = divisions.find(d => String(d.id) === String(team.division_id) || String(d.name) === String(team.division)) || null;
+            }
             
             return {
               ...item,
-              slot: {
-                ...slot,
-                field: field ? { ...field, location } : null
-              }
+              practice_slots: enrichedSlot,
+              teams: enrichedTeam
             };
           });
         }
@@ -401,12 +428,20 @@ const createMockQuery = (table, data = null) => {
       });
       return proxy;
     },
+    lte: (col, val) => {
+      results = results.filter((item) => {
+        if (item[col] === undefined) return false;
+        // Simple string/date comparison for mock purposes
+        return item[col] <= val;
+      });
+      return proxy;
+    },
     neq: (col, val) => {
       results = results.filter((item) => String(item[col]) !== String(val));
       return proxy;
     },
     in: (col, vals) => {
-      const valStrings = Array.isArray(vals) ? vals.map(String) : [];
+      const valStrings = Array.isArray(vals) ? vals.map(String) :[];
       results = results.filter((item) => {
         const itemVal = String(item[col]);
         const isMatch = valStrings.includes(itemVal);
@@ -556,10 +591,10 @@ export const supabase = IS_MOCK_MODE
           ...query,
           insert: (records) => {
             const db = getDB();
-            const newRecords = (Array.isArray(records) ? records : [records]).map(r => {
+            const newRecords = (Array.isArray(records) ? records :[records]).map(r => {
               const id = r.id || Math.random().toString(36).substr(2, 9);
               if (table === 'fields' && r.supports_halves) {
-                db.field_subunits = db.field_subunits || [];
+                db.field_subunits = db.field_subunits ||[];
                 db.field_subunits.push({ id: `sub-${id}-a`, field_id: id, label: 'A', organization_id: r.organization_id || 'org-1' });
                 db.field_subunits.push({ id: `sub-${id}-b`, field_id: id, label: 'B', organization_id: r.organization_id || 'org-1' });
               }
@@ -569,7 +604,7 @@ export const supabase = IS_MOCK_MODE
                 ...r 
               };
             });
-            db[table] = [...(db[table] || []), ...newRecords];
+            db[table] = [...(db[table] ||[]), ...newRecords];
             saveDB(db);
             const res = { data: Array.isArray(records) ? newRecords : newRecords[0], error: null };
             const chainable = {
@@ -587,7 +622,7 @@ export const supabase = IS_MOCK_MODE
               created_at: r.created_at || new Date().toISOString(),
               ...r
             }));
-            const existing = db[table] || [];
+            const existing = db[table] ||[];
             
             newRecords.forEach(rec => {
               let idx = -1;
@@ -617,13 +652,13 @@ export const supabase = IS_MOCK_MODE
               // Side effect for subunits
               if (table === 'fields' && rec.supports_halves !== undefined) {
                 if (rec.supports_halves) {
-                  db.field_subunits = db.field_subunits || [];
+                  db.field_subunits = db.field_subunits ||[];
                   if (!db.field_subunits.some(s => String(s.field_id) === String(rec.id))) {
                     db.field_subunits.push({ id: `sub-${rec.id}-a`, field_id: rec.id, label: 'A', organization_id: rec.organization_id || 'org-1' });
                     db.field_subunits.push({ id: `sub-${rec.id}-b`, field_id: rec.id, label: 'B', organization_id: rec.organization_id || 'org-1' });
                   }
                 } else {
-                  db.field_subunits = (db.field_subunits || []).filter(s => String(s.field_id) !== String(rec.id));
+                  db.field_subunits = (db.field_subunits ||[]).filter(s => String(s.field_id) !== String(rec.id));
                 }
               }
             });
@@ -651,7 +686,7 @@ export const supabase = IS_MOCK_MODE
                       
                       // Standings view side effect
                       if (table === 'games' && updates.score_home !== undefined) {
-                        db.view_league_standings = db.view_league_standings || [];
+                        db.view_league_standings = db.view_league_standings ||[];
                         const home = db.view_league_standings.find(s => String(s.team_id) === String(item.home_team_id));
                         const away = db.view_league_standings.find(s => String(s.team_id) === String(item.away_team_id));
                         if (home && away) {
@@ -671,13 +706,22 @@ export const supabase = IS_MOCK_MODE
                       // Side effect for subunits
                       if (table === 'fields' && updates.supports_halves !== undefined) {
                         if (updates.supports_halves) {
-                          db.field_subunits = db.field_subunits || [];
+                          db.field_subunits = db.field_subunits ||[];
                           if (!db.field_subunits.some(s => String(s.field_id) === String(item.id))) {
-                            db.field_subunits.push({ id: `sub-${item.id}-a`, field_id: item.id, label: 'A', organization_id: item.organization_id || 'org-1' });
-                            db.field_subunits.push({ id: `sub-${item.id}-b`, field_id: item.id, label: 'B', organization_id: item.organization_id || 'org-1' });
+                            const subA = { id: `sub-${item.id}-a`, field_id: item.id, label: 'A', organization_id: item.organization_id || 'org-1' };
+                            const subB = { id: `sub-${item.id}-b`, field_id: item.id, label: 'B', organization_id: item.organization_id || 'org-1' };
+                            db.field_subunits.push(subA, subB);
+                            triggerRealtimeEvent('field_subunits', 'INSERT', { new: subA, old: null });
+                            triggerRealtimeEvent('field_subunits', 'INSERT', { new: subB, old: null });
                           }
                         } else {
-                          db.field_subunits = (db.field_subunits || []).filter(s => String(s.field_id) !== String(item.id));
+                          db.field_subunits = (db.field_subunits ||[]).filter(s => {
+                            if (String(s.field_id) === String(item.id)) {
+                              triggerRealtimeEvent('field_subunits', 'DELETE', { new: null, old: s });
+                              return false;
+                            }
+                            return true;
+                          });
                         }
                       }
                       return updatedItem;
@@ -705,7 +749,7 @@ export const supabase = IS_MOCK_MODE
                   db[table] = db[table].filter(item => String(item[col]) !== String(val));
                   saveDB(db);
                 }
-                return Promise.resolve({ data: [], error: null });
+                return Promise.resolve({ data:[], error: null });
               }
             };
           }
@@ -764,7 +808,7 @@ export const supabase = IS_MOCK_MODE
             created_at: new Date().toISOString()
           };
 
-          db.registrations = db.registrations || [];
+          db.registrations = db.registrations ||[];
           db.registrations.push(registration);
 
           saveDB(db);

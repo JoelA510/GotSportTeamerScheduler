@@ -35,7 +35,26 @@ Then('I should be able to view and manage data specifically for {string}', async
     // Verify UI
 });
 
-Given('I am logged in as an administrator', async ({ page }) => { /* Mock auth */ });
+Given('I am logged in as an administrator', async ({ page }) => {
+    // Navigate to ensure we have a browser context to set storage
+    await page.goto('/');
+    await page.evaluate(() => {
+        const session = {
+            user: { 
+              id: 'mock-admin-id', 
+              email: 'admin@squadlogic.app', 
+              user_metadata: { full_name: 'Mock Admin' },
+              app_metadata: { role: 'admin' }
+            },
+            access_token: 'mock-token',
+        };
+        sessionStorage.setItem('__MOCK_SESSION__', JSON.stringify(session));
+        localStorage.setItem('squadlogic_active_org', 'org-1');
+    });
+    await page.reload();
+    // Ensure we are "logged in" by checking a dashboard element
+    await expect(page.getByRole('button', { name: /Sign Out/i })).toBeVisible({ timeout: 15000 });
+});
 Given('an organization has multiple fields configured', async ({ page }) => { /* Mock state */ });
 
 When('I view the {string} page', async ({ page }, pageName: string) => {

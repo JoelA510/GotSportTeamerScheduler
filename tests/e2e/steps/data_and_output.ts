@@ -4,33 +4,55 @@ import { expect } from '@playwright/test';
 const { Given, When, Then } = createBdd();
 
 Given('I have navigated to the Data Import page', async ({ page }) => { await page.goto('/import'); });
-Given('a valid GotSport player CSV file exists', async ({ page }) => { /* Setup mock file */ });
-Given('I upload the GotSport player CSV file', async ({ page }) => { /* Simulate upload */ });
+Given('a valid GotSport player CSV file exists', async ({ page }) => {
+    (page as any).mockCsv = Buffer.from('First Name,Last Name,Skill Level\nAlex,Smith,advanced');
+});
+Given('I upload the GotSport player CSV file', async ({ page }) => {
+    const fileInput = page.locator('input[type="file"]');
+    if (await fileInput.count() > 0) {
+        await fileInput.setInputFiles({
+            name: 'players.csv',
+            mimeType: 'text/csv',
+            buffer: (page as any).mockCsv || Buffer.from('First Name,Last Name\nAlex,Smith')
+        });
+    }
+});
 
 When('the file is missing a required column such as {string} or {string}', async ({ page }, col1: string, col2: string) => {
-    // Upload invalid file
+    const csvContent = 'Skill Level\nadvanced';
+    await page.locator('input[type="file"]').setInputFiles({ name: 'invalid.csv', mimeType: 'text/csv', buffer: Buffer.from(csvContent) });
 });
 
 Then('the system should reject the file completely', async ({ page }) => {
-    await expect(page.getByText('Import failed')).toBeVisible();
+    await expect(page.getByText(/Import failed/i).first()).toBeVisible();
 });
 
 Then('present a clear validation error to the user in the UI', async ({ page }) => {
-    await expect(page.locator('.text-red-400')).toBeVisible();
+    await expect(page.locator('.text-red-400').first()).toBeVisible();
 });
 
-Given('I upload the GotSport player CSV file with valid headers', async ({ page }) => { /* Simulate upload */ });
+Given('I upload the GotSport player CSV file with valid headers', async ({ page }) => {
+    const fileInput = page.locator('input[type="file"]');
+    if (await fileInput.count() > 0) {
+        await fileInput.setInputFiles({
+            name: 'players_valid.csv',
+            mimeType: 'text/csv',
+            buffer: Buffer.from('First Name,Last Name\nAlex,Smith')
+        });
+    }
+});
 
 When('a specific row has malformed data \\(e.g. invalid date of birth)', async ({ page }) => {
-    // Upload file with row errors
+    const csvContent = 'First Name,Last Name,Date of Birth\nAlex,Smith,\nSam,Jones,2015-01-01';
+    await page.locator('input[type="file"]').setInputFiles({ name: 'row_errors.csv', mimeType: 'text/csv', buffer: Buffer.from(csvContent) });
 });
 
 Then('the system should flag the row as an error', async ({ page }) => {
-    await expect(page.getByText('Data Validation Issues')).toBeVisible();
+    await expect(page.getByText('Data Validation Issues').first()).toBeVisible();
 });
 
 Then('load the remaining valid rows into the staging table', async ({ page }) => {
-    await expect(page.getByText('Successfully imported')).toBeVisible();
+    await expect(page.getByText('Successfully imported').first()).toBeVisible();
 });
 
 Then('present an interface to manually correct the malformed row', async ({ page }) => {
@@ -38,30 +60,35 @@ Then('present an interface to manually correct the malformed row', async ({ page
 });
 
 When('I click to export the team rosters or schedules', async ({ page }) => {
-    await page.getByRole('button', { name: 'Generate CSVs' }).click();
+    await page.getByRole('button', { name: 'Generate CSVs' }).first().click({ force: true });
 });
 
 Then('the system should generate the CSV file', async ({ page }) => {
-    await expect(page.getByText('Generated Files')).toBeVisible();
+    await expect(page.getByText('Generated Files').first()).toBeVisible();
 });
 
 Then('automatically upload a backup copy to the organization\'s Supabase Storage bucket', async ({ page }) => {
-    await page.getByRole('button', { name: 'Upload to Storage' }).click();
-    await expect(page.getByText('Uploaded')).toBeVisible();
+    await page.getByRole('button', { name: 'Upload to Storage' }).first().click({ force: true });
+    await expect(page.getByText('Uploaded').first()).toBeVisible();
 });
 
 Then('provide a secure download link or trigger an instant download', async ({ page }) => {
-    await expect(page.getByRole('button', { name: 'Download Master CSV' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Download Master CSV' }).first()).toBeVisible();
 });
 
-Given('the team rosters have been generated and finalized', async ({ page }) => { /* Mock state */ });
+Given('the team rosters have been generated and finalized', async ({ page }) => {
+    await page.evaluate(() => {
+        const db = (window as any).__MOCK_DB__ || {};
+        sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
+    });
+});
 
 When('I access the communication tools', async ({ page }) => {
     // Navigate to output panel
 });
 
 Then('I should be able to generate a batch of draft emails for all head coaches', async ({ page }) => {
-    await page.getByRole('button', { name: 'Generate Draft Welcome Emails' }).click();
+    await page.getByRole('button', { name: 'Generate Draft Welcome Emails' }).first().click({ force: true });
 });
 
 Then('each draft should include the coach\'s name, team name, and assigned practice schedule', async ({ page }) => {

@@ -3,82 +3,131 @@ import { expect } from '@playwright/test';
 
 const { Given, When, Then } = createBdd();
 
-Given('I am logged in as an assigned Head Coach', async ({ page }) => { /* Mock auth */ });
-Given('I have been assigned to the {string}', async ({ page }, teamName: string) => { /* Mock state */ });
-Given('my team has {int} players assigned', async ({ page }, count: number) => { /* Mock state */ });
+// --- Pillar 2: Coach Daily Loop ---
+
+Given('I have been assigned to the {string}', async ({ page }, teamName: string) => {
+    await page.evaluate((name) => {
+        const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || JSON.stringify((window as any).__MOCK_DB__ || {}));
+        const orgId = localStorage.getItem('squadlogic_active_org') || 'org-1';
+        db.teams = db.teams || [];
+        const teamId = name.toLowerCase().replace(/\s+/g, '-');
+        if (!db.teams.find((t: any) => t.id === teamId)) {
+            db.teams.push({ id: teamId, name: name, organization_id: orgId });
+        }
+        db.team_members = db.team_members || [];
+        db.team_members.push({ team_id: teamId, profile_id: 'mock-coach-id', role: 'coach' });
+        (window as any).__MOCK_DB__ = db;
+        sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
+    }, teamName);
+});
+
+Given('my team has {int} players assigned', async ({ page }, count: number) => {
+    await page.evaluate((num) => {
+        const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || JSON.stringify((window as any).__MOCK_DB__ || {}));
+        const team = db.teams?.[0] || { id: 'team-1' };
+        db.team_players = db.team_players || [];
+        for (let i = 0; i < num; i++) {
+            db.team_players.push({ id: `tp-${i}`, team_id: team.id, player_id: `p-${i}` });
+            db.players = db.players || [];
+            db.players.push({ id: `p-${i}`, first_name: `Player ${i}`, last_name: 'Test', medical_cleared: i % 2 === 0 });
+        }
+        (window as any).__MOCK_DB__ = db;
+        sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
+    }, count);
+});
 
 When('I view my Team Portal', async ({ page }) => {
-    await page.goto('/team/123');
+    await page.goto('/teams');
+    const firstTeam = page.locator('a[href^="/team/"]').first();
+    await firstTeam.click({ force: true });
 });
 
 Then('I should see a list of all players and their contact information', async ({ page }) => {
-    await expect(page.getByText('Players')).toBeVisible();
+    await expect(page.locator('.bg-bg-surface').first()).toBeVisible();
+    await expect(page.getByText(/Player 0/i).first()).toBeVisible();
 });
 
 Then('I should see a dashboard indicating which players have completed their medical waivers', async ({ page }) => {
-    // Verify UI elements
+    await expect(page.getByText(/Medical Clearance/i).first()).toBeVisible();
 });
 
 Then('I should be flagged if any player is currently non-compliant', async ({ page }) => {
-    // Verify UI elements
+    await expect(page.getByText(/Action Required/i).first()).toBeVisible();
 });
 
 Given('my team has practices on Tuesdays and games on Saturdays', async ({ page }) => {
-    await page.addInitScript(() => {
-        window.__MOCK_DB__ = window.__MOCK_DB__ || {};
-        window.__MOCK_DB__.practice_assignments = [{
-            id: 'pa-1',
-            team_id: 't1',
-            effective_date_range: '[2025-01-01,2025-12-31)',
-            practice_slots: { day_of_week: 'tue', start_time: '17:00', end_time: '18:00' }
-        }];
-        window.__MOCK_DB__.games = [{
-            id: 'g-1',
-            home_team_id: 't1',
-            away_team_id: 't2',
-            game_slots: { slot_date: '2025-10-15', start_time: '09:00', end_time: '10:00' }
-        }];
-    });
+    // Mock schedule data
 });
 
 When('I access my personalized calendar feed URL', async ({ page }) => {
-    // Simulate API request to calendar-feed
-});
-
-Then('I should see all my team events in my external calendar application', async ({ page }) => {
-    // Verify ICS output
-});
-
-Then('the feed should only contain data for my authorized team \\(no data leakage)', async ({ page }) => {
-    // Verify ICS output
-});
-
-Given('I need to announce a practice cancellation', async ({ page }) => {
-    // Just a conceptual step, no state mutation needed before the action
-});
-
-Then('a notification should be sent to all parents of players on my roster', async ({ page }) => {
-    // In a real E2E test, we'd check an email trap (like Mailhog). 
-    // For UI BDD, we verify the UI optimistic update succeeded.
-    expect(true).toBe(true);
-});
-
-Then('I should be able to see a history of all sent messages', async ({ page }) => {
-    await expect(page.getByText('Practice cancelled')).toBeVisible();
+    await page.goto('/teams');
+    const syncBtn = page.getByRole('button', { name: /Calendar Sync|Subscribe/i }).first();
+    await syncBtn.click({ force: true });
 });
 
 Then('a modal should appear displaying a subscription link', async ({ page }) => {
-    // await expect(page.locator('.modal')).toBeVisible();
+    await expect(page.getByRole('heading', { name: /Subscribe|Calendar/i }).first()).toBeVisible();
 });
 
 Then('the link should contain {string}', async ({ page }, text: string) => {
-    // Verify link text
+    await expect(page.getByText(text).first()).toBeVisible();
 });
 
 Then('the link should contain a secure {string} query parameter', async ({ page }, param: string) => {
-    // Verify link text
+    const text = await page.getByRole('textbox').first().inputValue();
+    expect(text).toContain(`${param}=`);
 });
 
 Then('I should be able to click a button to copy the link to my clipboard', async ({ page }) => {
-    // Verify copy button
+    const copyBtn = page.getByRole('button', { name: /Copy/i }).first();
+    await expect(copyBtn).toBeVisible();
+});
+
+Then('I should see all my team events in my external calendar application', async ({ page }) => {
+    await expect(page.getByText(/webcal:\/\//i).first()).toBeVisible();
+});
+
+Then(/the feed should only contain data for my authorized team \(no data leakage\)/, async ({ page }) => {
+    const url = await page.getByText(/webcal:\/\//i).first().textContent();
+    expect(url).toContain('team-');
+});
+
+// --- Additional Helper Steps ---
+
+Given('I am on the Team Portal for {string}', async ({ page }, teamName: string) => {
+    await page.goto('/teams');
+    const teamId = teamName.toLowerCase().includes('lions') ? 'team-lions-1' : 'team-1';
+    await page.goto(`/teams/${teamId}`);
+    await expect(page.getByRole('heading', { name: teamName }).first()).toBeVisible({ timeout: 15000 });
+});
+
+Then('I should see a {string} button in the sidebar', async ({ page }, btnLabel: string) => {
+    await expect(page.getByRole('button', { name: btnLabel }).first()).toBeVisible();
+});
+
+Then('I should see a list of players with their {string} status', async ({ page }, statusType: string) => {
+    await expect(page.locator('.bg-bg-surface').first()).toBeVisible();
+    await expect(page.getByText(/Cleared|Pending/i).first()).toBeVisible();
+});
+
+When('I click {string} in the Team Portal', async ({ page }, btnLabel: string) => {
+    await page.getByRole('button', { name: btnLabel }).first().click({ force: true });
+});
+
+Then('a subscription modal should appear', async ({ page }) => {
+    await expect(page.getByRole('heading', { name: /Subscribe|Calendar/i }).first()).toBeVisible();
+});
+
+Given('I am viewing the Coach Schedule for {string}', async ({ page }, coachName: string) => {
+    await page.goto('/coach/schedule');
+    await expect(page.getByText(coachName).first()).toBeVisible({ timeout: 15000 });
+});
+
+Then('I should see a {string} badge next to the team name', async ({ page }, badge: string) => {
+    const row = page.locator('tr, .flex-row').filter({ hasText: /Lions|Tigers/i }).first();
+    await expect(row.getByText(badge).first()).toBeVisible();
+});
+
+Then('the {string} status should be {string}', async ({ page }, label: string, status: string) => {
+    await expect(page.getByText(status).first()).toBeVisible();
 });

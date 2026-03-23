@@ -24,5 +24,6 @@ export function mapSchedulerRunToPracticeSummary(run) {
     generatedAt,
     practiceSummary,
     practiceReadinessSnapshot: snapshot,
+    runId: run.id,
   };
 }

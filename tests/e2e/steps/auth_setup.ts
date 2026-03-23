@@ -13,6 +13,12 @@ const supabase = supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabase
 async function setupIsolatedTenant(page: any) {
     if (!supabaseUrl || !supabaseKey || process.env.VITE_USE_MOCK_SUPABASE === 'true') {
         console.warn('Skipping isolated tenant setup due to missing Supabase credentials or mock mode.');
+        // Ensure a default org is set in mock mode so data visibility works
+        await page.evaluate(() => {
+            if (!localStorage.getItem('squadlogic_active_org')) {
+                localStorage.setItem('squadlogic_active_org', 'org-1');
+            }
+        });
         return;
     }
     const dynamicOrgId = randomUUID();

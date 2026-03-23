@@ -4,6 +4,7 @@ import PropTypes from 'prop-types';
 import { useTeamPortal } from '../hooks/useTeamPortal.js';
 import { Calendar, Users, MessageSquare, Send, Check, X, Minus, MapPin, Clock } from 'lucide-react';
 import LoadingScreen from '../components/LoadingScreen.jsx';
+import Button from '../components/ui/Button.jsx';
 
 export default function TeamPortalPage() {
   const { teamId } = useParams();
@@ -21,6 +22,7 @@ export default function TeamPortalPage() {
   } = useTeamPortal(teamId);
 
   const [chatInput, setChatInput] = useState('');
+  const[calendarModalOpen, setCalendarModalOpen] = useState(false);
   const chatEndRef = useRef(null);
 
   // Auto-scroll chat to bottom
@@ -51,6 +53,13 @@ export default function TeamPortalPage() {
           </p>
         </div>
         <div className="flex gap-4">
+          <button
+            onClick={() => setCalendarModalOpen(true)}
+            className="bg-bg-surface px-4 py-2 rounded-lg border border-border-subtle flex items-center gap-2 hover:bg-bg-surface-hover transition-colors"
+          >
+            <Calendar size={18} className="text-color-primary" />
+            <span className="font-semibold">Subscribe to Calendar</span>
+          </button>
           <div className="bg-bg-surface px-4 py-2 rounded-lg border border-border-subtle flex items-center gap-2">
             <Users size={18} className="text-color-primary" />
             <span className="font-semibold">{roster.length} Players</span>
@@ -113,7 +122,6 @@ export default function TeamPortalPage() {
                               r.occurrence_date === event.date
                             );
                             
-                            
                             return (
                               <div key={player.id} className="flex flex-col gap-1.5 p-2 rounded bg-bg-surface/30 border border-border-subtle">
                                 <span className="text-xs font-semibold text-text-primary px-1">{player.first_name} {player.last_name}</span>
@@ -148,6 +156,27 @@ export default function TeamPortalPage() {
                 </div>
               ))
             )}
+          </div>
+
+          {/* Players Section */}
+          <div className="glass-panel p-6 mt-8">
+            <h2 className="text-2xl font-display font-bold flex items-center gap-2 mb-6">
+              <Users className="text-color-primary" />
+              Players
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {roster.map(player => (
+                <div key={player.id} className="bg-bg-surface p-4 rounded-lg border border-border-subtle flex justify-between items-center">
+                  <div>
+                    <div className="font-bold text-text-primary">{player.first_name} {player.last_name}</div>
+                    <div className="text-sm text-text-secondary">Player</div>
+                  </div>
+                  <div className={`text-xs font-bold px-2 py-1 rounded-full ${player.id === 'player-1' ? 'bg-status-warning-bg text-status-warning' : 'bg-status-success-bg text-status-success'}`}>
+                    Medical Clearance: {player.id === 'player-1' ? 'Pending' : 'Yes'}
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
 
@@ -199,6 +228,26 @@ export default function TeamPortalPage() {
           </div>
         </div>
       </div>
+
+      {/* Calendar Modal */}
+      {calendarModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-bg-app border border-border-subtle rounded-xl p-6 w-full max-w-md shadow-2xl">
+            <h3 className="text-xl font-bold text-text-primary mb-4">Calendar Subscription</h3>
+            <p className="text-sm text-text-secondary mb-4">Copy this link to your calendar app:</p>
+            <input 
+              type="text" 
+              readOnly 
+              value={`${window.location.origin}/functions/v1/calendar-feed?token=${team?.calendar_token || 'mock-token'}`}
+              className="w-full bg-bg-surface border border-border-subtle rounded-lg p-3 text-text-primary mb-4"
+            />
+            <div className="flex justify-end gap-3">
+              <Button variant="secondary" onClick={() => setCalendarModalOpen(false)}>Close</Button>
+              <Button variant="primary" onClick={() => navigator.clipboard.writeText(`${window.location.origin}/functions/v1/calendar-feed?token=${team?.calendar_token || 'mock-token'}`)}>Copy Link</Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

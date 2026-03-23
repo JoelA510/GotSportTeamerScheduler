@@ -3,6 +3,9 @@ Feature: Async States and Optimistic UI Updates
   I want clear indicators for background processes and immediate UI feedback
   So that I have a responsive and predictable experience
 
+  Background:
+    Given I am logged into SquadLogic as an "admin"
+
   Scenario: Teaming Configuration Rules
     Given I am on the "Team Management" page
     When I change the "Max Roster" input to "10"

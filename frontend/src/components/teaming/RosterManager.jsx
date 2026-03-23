@@ -16,7 +16,7 @@ import {
   useSortable,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { GripVertical, User, ShieldAlert, Zap } from 'lucide-react';
+import { GripVertical, User, ShieldAlert, Zap, ArrowRight } from 'lucide-react';
 import { useConflicts } from '../../hooks/useConflicts.js';
 import { supabase } from '../../lib/supabaseClient.js';
 import { useOrganization } from '../../contexts/OrganizationContext.jsx';
@@ -80,7 +80,15 @@ export function TeamColumn({ team, players }) {
     >
       <div className="p-4 border-b border-border-subtle bg-bg-surface rounded-t-xl shrink-0">
         <div className="flex justify-between items-center mb-1">
-          <h3 className="font-bold text-text-primary">{team.name}</h3>
+          <div className="flex flex-col">
+            <h3 className="font-bold text-text-primary">{team.name}</h3>
+            <a 
+              href={`/team/${team.id}`} 
+              className="text-[10px] text-blue-400 hover:text-blue-300 hover:underline uppercase tracking-widest font-bold flex items-center gap-1 mt-0.5"
+            >
+              View Team Portal <ArrowRight size={10} />
+            </a>
+          </div>
           <span
             className={`text-xs px-2 py-1 rounded-full font-bold ${players.length > 14 ? 'bg-amber-500/20 text-amber-500' : 'bg-blue-500/20 text-blue-400'}`}
           >

@@ -4,7 +4,8 @@ Feature: Pillar 1 - The Engine (Scheduling & Team Generation)
   So that I can minimize manual effort and ensure fair allocations
 
   Background:
-    Given a set of registered players and available field slots
+    Given I am logged into SquadLogic as an "admin"
+    And a set of registered players and available field slots
     And coach availability and preference constraints are defined
 
   Scenario: Automated Team Generation

@@ -11,7 +11,7 @@ import { Building2, Calendar, Users, Trophy } from 'lucide-react';
 export default function DashboardPage() {
   // E2E Testing Error Trigger
   if (typeof window !== 'undefined' && 
-      (window.__FORCE_ERROR__ || localStorage.getItem('__FORCE_ERROR__'))) {
+      (window.__FORCE_ERROR__ === true || localStorage.getItem('__FORCE_ERROR__') === 'true')) {
     throw new Error('E2E Testing Error Triggered');
   }
 
@@ -24,7 +24,7 @@ export default function DashboardPage() {
     };
     window.addEventListener('trigger-error', handleTriggerError);
     return () => window.removeEventListener('trigger-error', handleTriggerError);
-  }, []);
+  },[]);
 
   if (showError) {
     throw new Error('E2E Testing Error Triggered');
@@ -52,9 +52,9 @@ export default function DashboardPage() {
     if (practice?.generatedAt) score += 25;
     if (game?.generatedAt) score += 25;
     return score;
-  }, [importedData, team, practice, game]);
+  },[importedData, team, practice, game]);
 
-  if (loading.team && loading.practice && loading.game) {
+  if (loading.team || loading.practice || loading.game) {
     return <LoadingScreen />;
   }
 
@@ -148,6 +148,7 @@ export default function DashboardPage() {
                 <div className="flex justify-between items-center mb-2">
                   <span className="text-text-muted text-sm font-semibold">Readiness Score</span>
                   <span
+                    data-testid="readiness-score"
                     className={`font-mono text-sm font-bold ${
                       readinessScore === 100
                         ? 'text-status-success'
@@ -236,4 +237,3 @@ export default function DashboardPage() {
     </div>
   );
 }
-

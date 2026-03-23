@@ -32,8 +32,7 @@ When('I view the {string} section', async ({ page }, sectionName: string) => {
 });
 
 Then('I should see the final scores of past games', async ({ page }) => {
-    // Assuming scores are in a grid/table
-    await expect(page.locator('text=Score').first()).toBeVisible();
+    await expect(page.locator('.text-text-muted.mx-1').first()).toBeVisible();
 });
 
 Then('the score input fields and "Save" buttons should be completely hidden', async ({ page }) => {

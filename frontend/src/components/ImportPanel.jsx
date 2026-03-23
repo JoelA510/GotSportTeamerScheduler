@@ -18,6 +18,7 @@ export default function ImportPanel({ onImport }) {
     isImporting,
     progress,
     importStatus,
+    importLogs,
     startImport,
     resetImport,
     notifyOnComplete,
@@ -335,6 +336,21 @@ export default function ImportPanel({ onImport }) {
                 <div className="bg-red-500/10 border border-red-500/20 text-red-400 px-4 py-2 rounded-lg text-sm mt-2 animate-slideUp flex items-center gap-2">
                   <AlertCircle size={16} />
                   {error}
+                </div>
+              )}
+              {importStatus === 'error' && importLogs.length > 0 && (
+                <div className="bg-red-500/10 border border-red-500/20 text-red-400 px-4 py-3 rounded-xl text-sm mt-4 animate-slideUp flex flex-col items-start gap-1 w-full max-w-md" data-testid="import-error-banner">
+                  <div className="flex items-center gap-2 font-bold">
+                    <AlertCircle size={16} />
+                    Import Failed
+                  </div>
+                  <p className="text-xs opacity-80">{importLogs[importLogs.length - 1].message}</p>
+                  <button 
+                    onClick={() => resetImport('all')} 
+                    className="mt-2 text-xs underline hover:no-underline"
+                  >
+                    Try Again
+                  </button>
                 </div>
               )}
             </div>

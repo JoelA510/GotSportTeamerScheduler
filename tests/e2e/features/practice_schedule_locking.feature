@@ -9,13 +9,14 @@ Feature: Practice Schedule Locking
     And a practice schedule has been generated
 
   Scenario: Locking a practice slot
-    When I navigate to the "Practice Scheduling" page
-    And I click the "Lock" icon on for "U10 Lightning"
-    Then the assignment for "U10 Lightning" should show a "Locked" status
+    Given the automated schedule has been generated
+    And I am on the Practice Scheduling page
+    When I click the "Lock" icon on for "Team A"
+    Then the assignment for "Team A" should show a "Locked" status
     And the lock state should be persisted to the database
 
   Scenario: Re-running scheduler with locked slots
-    Given "U10 Lightning" has a locked practice assignment
+    Given "Team A" has a locked practice assignment
     When I click "Run Scheduler"
-    Then the assignment for "U10 Lightning" should remain unchanged
+    Then the assignment for "Team A" should remain unchanged
     And other unlocked assignments should be updated by the engine

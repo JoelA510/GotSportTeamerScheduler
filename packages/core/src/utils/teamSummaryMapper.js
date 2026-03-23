@@ -13,7 +13,6 @@ export function mapSchedulerRunToSummary(run) {
   const generatedAt = completed_at || created_at;
 
   // Extract high-level metrics from the results payload
-  // The structure matches src/teamGeneration.js output
   const {
     teamsByDivision,
     overflowByDivision,
@@ -21,6 +20,7 @@ export function mapSchedulerRunToSummary(run) {
     buddyDiagnosticsByDivision,
     coachCoverageByDivision,
     rosterBalanceByDivision,
+    team_players,
   } = results;
 
   // 1. Calculate Per-Division Statistics first
@@ -32,7 +32,6 @@ export function mapSchedulerRunToSummary(run) {
     const coachCoverage = coachCoverageByDivision?.[divisionId];
     const buddyDiagnostics = buddyDiagnosticsByDivision?.[divisionId];
     const overflowSummary = overflowSummaryByDivision?.[divisionId];
-    // overflowDetail was unused, removed.
 
     // Derive teams needing players
     const teamsNeedingPlayers = (rosterBalance?.teamStats || [])
@@ -48,7 +47,7 @@ export function mapSchedulerRunToSummary(run) {
 
     // Sum overflow reasons
     const overflowPlayersByReason = {};
-    const overflowByReason = {}; // units
+    const overflowByReason = {};
 
     if (overflowSummary?.byReason) {
       Object.entries(overflowSummary.byReason).forEach(([reason, stats]) => {
@@ -57,7 +56,6 @@ export function mapSchedulerRunToSummary(run) {
       });
     }
 
-    // Fallback for missing overflowSummary (fixes data contract mismatch)
     const overflowPlayersCount =
       overflowSummary?.totalPlayers ??
       (overflowByDivision?.[divisionId] || []).reduce(
@@ -93,7 +91,7 @@ export function mapSchedulerRunToSummary(run) {
     };
   });
 
-  // 2. Reduce divisions to get Grand Totals (Optimization)
+  // 2. Reduce divisions to get Grand Totals
   const totals = divisions.reduce(
     (acc, div) => {
       acc.divisions++;
@@ -119,25 +117,24 @@ export function mapSchedulerRunToSummary(run) {
     }
   );
 
-  // 3. Flatten teams for other components (Evaluation, Output)
+  // 3. Flatten teams for other components
   const allTeams = [];
   divisionKeys.forEach((division) => {
     const divisionTeams = teamsByDivision[division] || [];
     divisionTeams.forEach((t) => {
-      // Ensure properties match what components expect (id, name, coachId, etc.)
       allTeams.push({
-        courseId: t.id, // Some legacy components might use courseId or similar? standardizing on id.
         ...t,
-        divisionName: division, // Helpful for display
+        divisionName: division,
       });
     });
   });
 
   return {
     generatedAt,
+    runId: run.id,
     totals,
     divisions,
     teams: allTeams,
-    team_players,
+    team_players: team_players || [],
   };
 }

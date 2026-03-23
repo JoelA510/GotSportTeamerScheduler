@@ -5,7 +5,7 @@ Feature: Output Operationalization
   So that I can quickly operationalize the generated season data
 
   Background:
-    Given I am configured as an Admin in the SquadLogic platform
+    Given I am logged into SquadLogic as an "admin"
 
   Scenario: Saving CSV exports to Supabase Storage
     When I click to export the team rosters or schedules

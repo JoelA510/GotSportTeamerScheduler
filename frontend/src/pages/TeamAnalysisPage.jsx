@@ -93,15 +93,22 @@ export default function TeamAnalysisPage() {
           return {
             id: tp.player_id,
             name: playerDetails
-              ? `${playerDetails['First Name'] || playerDetails['first_name']} ${playerDetails['Last Name'] || playerDetails['last_name']}`
+              ? `${playerDetails['First Name'] || playerDetails['first_name'] || ''} ${playerDetails['Last Name'] || playerDetails['last_name'] || ''}`.trim() || 'Unnamed Player'
               : 'Unknown Player',
             skill: playerDetails?.['Skill Level'] || playerDetails?.['skill_tier'] || 'developing',
+            buddyId: playerDetails?.buddyId || playerDetails?.buddy_id,
+            gender: playerDetails?.gender || playerDetails?.Gender,
+            age: playerDetails?.age || playerDetails?.Age || 10,
           };
         });
 
       return {
         id: teamRow.id,
         name: teamRow.name,
+        division: teamRow.division || teamRow.division_id,
+        minAge: teamRow.min_age,
+        maxAge: teamRow.max_age,
+        gender: teamRow.gender,
         players,
       };
     });
@@ -130,6 +137,9 @@ export default function TeamAnalysisPage() {
               ? `${playerDetails['First Name'] || playerDetails['first_name'] || ''} ${playerDetails['Last Name'] || playerDetails['last_name'] || ''}`.trim() || 'Unnamed Player'
               : 'Unknown Player',
             skill: playerDetails?.['Skill Level'] || playerDetails?.['skill_tier'] || 'developing',
+            buddyId: playerDetails?.buddyId || playerDetails?.buddy_id,
+            gender: playerDetails?.gender || playerDetails?.Gender,
+            age: playerDetails?.age || playerDetails?.Age || 10,
           };
         }),
     }));

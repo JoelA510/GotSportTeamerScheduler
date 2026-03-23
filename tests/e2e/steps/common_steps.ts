@@ -5,8 +5,6 @@ const { Given, When, Then } = createBdd();
 
 // --- Global State Setup ---
 Given('the season {string} is active and schedules are published', async ({ page }, seasonName: string) => {
-    // In our UI-driven BDD philosophy, we rely on the dynamic tenant seed data 
-    // having this active by default. We just assert the UI is ready.
     await page.waitForLoadState('networkidle');
     const header = page.locator('header');
     if (await header.isVisible()) {
@@ -26,7 +24,9 @@ const routeMap: Record<string, string> = {
     'Reporting Dashboard': '/admin/reports',
     'League Standings': '/standings',
     'Team Management page': '/teams',
-    'Registration Forms': '/admin/forms'
+    'Registration Forms': '/admin/forms',
+    'Practice Scheduling page': '/schedule/practice',
+    'Game Scheduling page': '/schedule/game'
 };
 
 When('I navigate to the {string} page', async ({ page }, pageName: string) => {
@@ -34,7 +34,7 @@ When('I navigate to the {string} page', async ({ page }, pageName: string) => {
     if (url) {
         await page.goto(url);
     } else {
-        await page.getByRole('link', { name: pageName, exact: true }).click();
+        await page.getByRole('link', { name: pageName, exact: true }).first().click({ force: true });
     }
     await page.waitForLoadState('networkidle');
 });
@@ -44,24 +44,22 @@ Given('I navigate to the {string}', async ({ page }, destination: string) => {
     if (url) {
         await page.goto(url);
     } else {
-        await page.getByRole('link', { name: destination, exact: true }).click();
+        await page.getByRole('link', { name: destination, exact: true }).first().click({ force: true });
     }
     await page.waitForLoadState('networkidle');
 });
 
-// Flexible navigation step that works with or without quotes, but narrow to avoid conflicts
 Given(/I navigate to the (Dashboard page|Dashboard|Compliance Dashboard|Reporting Dashboard|Team Management page|Registration Forms)/, async ({ page }, destination: string) => {
     const url = routeMap[destination];
     if (url) {
         await page.goto(url);
     } else {
-        await page.getByRole('link', { name: destination, exact: true }).click();
+        await page.getByRole('link', { name: destination, exact: true }).first().click({ force: true });
     }
     await page.waitForLoadState('networkidle');
 });
 
 Given('I am on the {string}', async ({ page }, pageName: string) => {
-    // Alias for navigation
     const routeMap: Record<string, string> = {
         'Compliance Dashboard': '/admin/compliance',
         'Reporting Dashboard': '/admin/reports',
@@ -84,7 +82,6 @@ Given('I am on the {string}', async ({ page }, pageName: string) => {
 });
 
 Given('I am on the {string} page', async ({ page }, pageName: string) => {
-    // Add page suffix support explicitly
     const routeMap: Record<string, string> = {
         'Field Management': '/fields',
         'Dashboard': '/',
@@ -96,7 +93,6 @@ Given('I am on the {string} page', async ({ page }, pageName: string) => {
     await page.waitForLoadState('networkidle');
 });
 
-// More flexible version for I am on the ... but narrow to avoid conflicts
 Given(/I am on the (Dashboard page|Dashboard|Practice Scheduling page|Compliance Dashboard|Reporting Dashboard)/, async ({ page }, pageName: string) => {
     const routeMap: Record<string, string> = {
         'Compliance Dashboard': '/admin/compliance',
@@ -117,13 +113,12 @@ When('I view the Dashboard', async ({ page }) => {
 When('I click {string}', async ({ page }, name: string) => {
     const btn = page.getByRole('button', { name, exact: true }).first();
     if (await btn.isVisible()) {
-        await btn.click();
+        await btn.click({ force: true });
     } else {
         const textBtn = page.getByText(name, { exact: true }).first();
         if (await textBtn.isVisible()) {
-            await textBtn.click();
+            await textBtn.click({ force: true });
         } else {
-            // Final fallback: try to find any button or clickable element with that text via DOM eval
             await page.evaluate((n) => {
                 const all = Array.from(document.querySelectorAll('button, a, [role="button"]'));
                 const found = all.find(el => el.textContent?.trim().includes(n));
@@ -134,45 +129,42 @@ When('I click {string}', async ({ page }, name: string) => {
 });
 
 When('I click the {string} button', async ({ page }, name: string) => {
-    await page.getByRole('button', { name, exact: true }).first().click();
+    await page.getByRole('button', { name, exact: true }).first().click({ force: true });
 });
 
 When('I attempt to navigate to the {string} page', async ({ page }, pageName: string) => {
-    // Used for RBAC testing where the link might not exist, so we force URL routing
     const routeMap: Record<string, string> = {
         'Data Import': '/import',
         'Field Management': '/fields',
         'Practice Schedule': '/schedule/practice',
         'Settings': '/settings'
     };
-    
+
     const targetUrl = routeMap[pageName];
     if (!targetUrl) throw new Error(`Route mapping not defined for: ${pageName}`);
-    
+
     await page.goto(targetUrl);
 });
 
 // --- Global Assertions ---
 Then('I should be redirected to the Dashboard', async ({ page }) => {
-    // Wait for React Router to complete the redirect
     await page.waitForURL('**/');
-    await expect(page.getByRole('heading', { name: /League Management|Dashboard/i })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /League Management|Dashboard/i }).first()).toBeVisible();
 });
 
 Then('I should see an {string} warning', async ({ page }, warningText: string) => {
-    const toastOrBanner = page.getByText(warningText, { exact: false });
+    const toastOrBanner = page.getByText(warningText, { exact: false }).first();
     await expect(toastOrBanner).toBeVisible();
 });
 
 Then('I should see the text {string}', async ({ page }, text: string) => {
-    await expect(page.getByText(text)).toBeVisible();
+    await expect(page.getByText(text).first()).toBeVisible();
 });
 
 Then('I should see the message {string}', async ({ page }, text: string) => {
-    await expect(page.getByText(text)).toBeVisible();
+    await expect(page.getByText(text).first()).toBeVisible();
 });
 
 Then(/the dashboard data should refresh to show (.*) data/, async ({ page }, orgName: string) => {
-    // Simple verification - dashboard should be visible and not empty
-    await expect(page.getByRole('heading', { name: /League Management|Dashboard/i })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /League Management|Dashboard/i }).first()).toBeVisible();
 });

@@ -159,7 +159,7 @@ export default function LeagueStandings() {
                   {standings
                     .filter((s) => (s.division || 'Uncategorized') === division)
                     .map((team, idx) => (
-                      <tr key={team.team_id} className="hover:bg-bg-app/50 transition-colors">
+                      <tr key={team.team_id} className="hover:bg-bg-app/50 transition-colors" data-testid={`standings-row-${team.team_name.replace(/\s+/g, '-').toLowerCase()}`}>
                         <td className="px-6 py-4 text-center font-bold text-text-muted">
                           {idx + 1}
                         </td>
@@ -192,59 +192,66 @@ export default function LeagueStandings() {
         )}
       </div>
 
-      {/* Score Entry Section */}
-      {canEditScores && (
-        <div className="bg-bg-surface border border-border-subtle rounded-xl p-6 shadow-xl mt-12">
-          <h2 className="text-xl font-bold text-text-primary mb-6 flex items-center gap-2">
-            <CheckCircle2 className="text-text-muted w-5 h-5" /> Recent Games - Score Entry
-          </h2>
+      {/* Recent Games Section - visible to all roles */}
+      <div className="bg-bg-surface border border-border-subtle rounded-xl p-6 shadow-xl mt-12">
+        <h2 className="text-xl font-bold text-text-primary mb-6 flex items-center gap-2">
+          <CheckCircle2 className="text-text-muted w-5 h-5" /> Recent Games {canEditScores && '- Score Entry'}
+        </h2>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {games.map((game) => (
-              <div
-                key={game.id}
-                className="bg-bg-app border border-border-highlight rounded-lg p-4 space-y-4"
-              >
-                <div className="text-xs text-text-muted text-center border-b border-border-subtle pb-2 mb-2">
-                  {new Date(game.start_time).toLocaleDateString()} • {game.home_team?.division}
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="font-semibold text-text-primary truncate w-1/3 text-right">
-                    {game.home_team?.name}
-                  </span>
-                  <div className="flex items-center gap-2 w-1/3 justify-center">
-                    <input
-                      type="number"
-                      className="w-12 h-10 bg-bg-surface border border-border-highlight text-center rounded text-text-primary font-bold focus:border-color-primary focus:ring-1 focus:ring-color-primary"
-                      value={game.score_home ?? ''}
-                      onChange={(e) => handleScoreUpdate(game.id, e.target.value, game.score_away)}
-                      disabled={updatingGameId === game.id}
-                      aria-label="Home Score"
-                    />
-                    <span className="text-text-muted font-bold">-</span>
-                    <input
-                      type="number"
-                      className="w-12 h-10 bg-bg-surface border border-border-highlight text-center rounded text-text-primary font-bold focus:border-color-primary focus:ring-1 focus:ring-color-primary"
-                      value={game.score_away ?? ''}
-                      onChange={(e) => handleScoreUpdate(game.id, game.score_home, e.target.value)}
-                      disabled={updatingGameId === game.id}
-                      aria-label="Away Score"
-                    />
-                  </div>
-                  <span className="font-semibold text-text-primary truncate w-1/3 text-left">
-                    {game.away_team?.name}
-                  </span>
-                </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {games.map((game) => (
+            <div
+              key={game.id}
+              className="bg-bg-app border border-border-highlight rounded-lg p-4 space-y-4"
+              data-testid="game-score-card"
+            >
+              <div className="text-xs text-text-muted text-center border-b border-border-subtle pb-2 mb-2">
+                {new Date(game.start_time).toLocaleDateString()} • {game.home_team?.division}
               </div>
-            ))}
-            {games.length === 0 && (
-              <div className="col-span-full text-center py-8 text-text-secondary">
-                No past games found to enter scores.
+              <div className="flex justify-between items-center">
+                <span className="font-semibold text-text-primary truncate w-1/3 text-right">
+                  {game.home_team?.name}
+                </span>
+                <div className="flex items-center gap-2 w-1/3 justify-center">
+                  {canEditScores ? (
+                    <>
+                      <input
+                        type="number"
+                        className="w-12 h-10 bg-bg-surface border border-border-highlight text-center rounded text-text-primary font-bold focus:border-color-primary focus:ring-1 focus:ring-color-primary"
+                        value={game.score_home ?? ''}
+                        onChange={(e) => handleScoreUpdate(game.id, e.target.value, game.score_away)}
+                        disabled={updatingGameId === game.id}
+                        aria-label="Home Score"
+                      />
+                      <span className="text-text-muted font-bold">-</span>
+                      <input
+                        type="number"
+                        className="w-12 h-10 bg-bg-surface border border-border-highlight text-center rounded text-text-primary font-bold focus:border-color-primary focus:ring-1 focus:ring-color-primary"
+                        value={game.score_away ?? ''}
+                        onChange={(e) => handleScoreUpdate(game.id, game.score_home, e.target.value)}
+                        disabled={updatingGameId === game.id}
+                        aria-label="Away Score"
+                      />
+                    </>
+                  ) : (
+                    <div className="text-lg font-bold text-text-primary">
+                      {game.score_home ?? '-'} <span className="text-text-muted mx-1">-</span> {game.score_away ?? '-'}
+                    </div>
+                  )}
+                </div>
+                <span className="font-semibold text-text-primary truncate w-1/3 text-left">
+                  {game.away_team?.name}
+                </span>
               </div>
-            )}
-          </div>
+            </div>
+          ))}
+          {games.length === 0 && (
+            <div className="col-span-full text-center py-8 text-text-secondary">
+              No past games found to enter scores.
+            </div>
+          )}
         </div>
-      )}
+      </div>
     </div>
   );
 }

@@ -4,7 +4,8 @@ Feature: Ingestion Hardening for CSV Imports
   So that I can safely load external GotSport data without crashing the system
 
   Background:
-    Given I have navigated to the Data Import page
+    Given I am logged into SquadLogic as an "admin"
+    And I have navigated to the Data Import page
     And a valid GotSport player CSV file exists
 
   Scenario: Validating required fields during import
