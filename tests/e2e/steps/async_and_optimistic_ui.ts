@@ -5,7 +5,8 @@ const { Given, When, Then } = createBdd();
 
 // --- Teaming Rules ---
 When('I change the {string} input to {string}', async ({ page }, label: string, value: string) => {
-    // Clear scheduler runs so the configuration panel renders instead of the overview panel
+    // CRITICAL FIX: Go to root first to set origin, then clear scheduler runs
+    await page.goto('/');
     await page.evaluate(() => {
         const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
         db.scheduler_runs = (db.scheduler_runs || []).filter((r: any) => r.run_type !== 'team');
@@ -13,12 +14,7 @@ When('I change the {string} input to {string}', async ({ page }, label: string, 
         sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
     });
 
-    if (!page.url().includes('/teams')) {
-        await page.goto('/teams');
-    } else {
-        await page.reload();
-    }
-
+    await page.goto('/teams');
     await expect(page.getByRole('heading', { name: /Teaming & Analysis/i }).first()).toBeVisible({ timeout: 15000 });
 
     const input = label.toLowerCase().includes('max roster')
@@ -82,12 +78,13 @@ Then('the database should be updated in the background without a page refresh', 
 
 // --- Output Pipeline ---
 Given('I am on the {string} workflow step on Dashboard', async ({ page }, step: string) => {
-    // Force the active step in localStorage to bypass the "Locked" state
+    // CRITICAL FIX: Go to root first to set origin, then set localStorage, then reload
+    await page.goto('/');
     await page.evaluate((s) => {
         const map: any = { 'Outcome': '6', 'Teaming': '2' };
         localStorage.setItem('dashboardActiveStep', map[s] || '6');
     }, step);
-    await page.goto('/');
+    await page.reload();
     const label = step.includes('Outcome') ? 'output' : step.toLowerCase().replace(/\s+/g, '-');
     await page.locator(`[data-testid*="workflow-step-"][data-testid*="${label}"]`).first().click({ force: true });
 });

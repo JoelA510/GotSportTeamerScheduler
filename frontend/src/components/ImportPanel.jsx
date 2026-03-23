@@ -88,8 +88,8 @@ export default function ImportPanel({ onImport }) {
         const validationErrors = [];
 
         const REQUIRED_HEADERS = {
-          players: ['first_name', 'last_name', 'date_of_birth'],
-          coaches: ['full_name', 'email'],
+          players: ['first name', 'last name', 'date of birth'],
+          coaches: ['full name', 'email'],
           fields: ['name']
         };
 

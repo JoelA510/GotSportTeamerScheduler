@@ -69,9 +69,10 @@ Then('present an interface to manually correct the malformed row', async ({ page
 });
 
 When('I click to export the team rosters or schedules', async ({ page }) => {
-    // CRITICAL FIX: Bypass module lock
-    await page.evaluate(() => localStorage.setItem('dashboardActiveStep', '6'));
+    // CRITICAL FIX: Go to root first to set origin, then set localStorage, then reload
     await page.goto('/');
+    await page.evaluate(() => localStorage.setItem('dashboardActiveStep', '6'));
+    await page.reload();
     await page.locator('[data-testid*="workflow-step-output"]').first().click({ force: true });
     await page.getByTestId('generate-csvs-btn').first().click({ force: true });
 });
@@ -90,16 +91,18 @@ Then('provide a secure download link or trigger an instant download', async ({ p
 });
 
 Given('the team rosters have been generated and finalized', async ({ page }) => {
+    await page.goto('/');
     await page.evaluate(() => {
-        const db = (window as any).__MOCK_DB__ || {};
+        const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
         sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
     });
 });
 
 When('I access the communication tools', async ({ page }) => {
-    // CRITICAL FIX: Bypass module lock
-    await page.evaluate(() => localStorage.setItem('dashboardActiveStep', '6'));
+    // CRITICAL FIX: Go to root first to set origin, then set localStorage, then reload
     await page.goto('/');
+    await page.evaluate(() => localStorage.setItem('dashboardActiveStep', '6'));
+    await page.reload();
     await page.locator('[data-testid*="workflow-step-output"]').first().click({ force: true });
 });
 

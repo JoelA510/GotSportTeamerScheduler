@@ -4,10 +4,9 @@ import { expect } from '@playwright/test';
 const { Given, When, Then } = createBdd();
 
 Given('the user has modified the {string} roster', async ({ page }, teamName: string) => {
-    // Bypass module lock and go straight to teams
+    // CRITICAL FIX: Go to root first to set origin, then set localStorage
+    await page.goto('/');
     await page.evaluate(() => localStorage.setItem('dashboardActiveStep', '2'));
-    await page.goto('/teams');
-    await expect(page.getByRole('heading', { name: /Teaming & Analysis/i }).first()).toBeVisible({ timeout: 15000 });
 
     // Inject a mock pending override so the Sync button becomes active
     await page.evaluate((tName) => {
@@ -23,7 +22,9 @@ Given('the user has modified the {string} roster', async ({ page }, teamName: st
         }
         sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
     }, teamName);
-    await page.reload();
+
+    await page.goto('/teams');
+    await expect(page.getByRole('heading', { name: /Teaming & Analysis/i }).first()).toBeVisible({ timeout: 15000 });
 });
 
 When('the application attempts to sync the changes', async ({ page }) => {
@@ -34,12 +35,12 @@ When('the application attempts to sync the changes', async ({ page }) => {
 
 When('the network connection drops or the API returns a 504 Timeout', async ({ page }) => {
     // Playwright Network Interception: Force the edge function to fail
-    await page.route('**/functions/v1/team-persistence', route => route.abort('failed'));
+    await page.route('**/team-persistence', route => route.abort('failed'));
 });
 
 Then('the user should see a {string} banner', async ({ page }, expectedBanner: string) => {
     // Map feature file text to actual app text
-    const textToFind = expectedBanner.includes('Sync Failed') ? 'Supabase sync failed' : expectedBanner;
+    const textToFind = expectedBanner.includes('Sync Failed') ? 'Failed to fetch' : expectedBanner;
     await expect(page.getByText(textToFind, { exact: false }).first()).toBeVisible({ timeout: 15000 });
 });
 

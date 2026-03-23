@@ -4,8 +4,10 @@ import { expect } from '@playwright/test';
 const { Given, When, Then, Before } = createBdd();
 
 const seedDatabase = async (page: any) => {
-  await page.addInitScript(() => {
-    const db = (window as any).__MOCK_DB__ || {};
+  // CRITICAL FIX: Go to root first to set origin for sessionStorage
+  await page.goto('/');
+  await page.evaluate(() => {
+    const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
     const orgId = localStorage.getItem('squadlogic_active_org') || 'org-1';
 
     db.organizations = [{ id: orgId, name: 'Test Org' }];
@@ -93,16 +95,13 @@ const seedDatabase = async (page: any) => {
       { profile_id: 'mock-parent-id', player_id: 'player-1' }
     ];
 
-    (window as any).__MOCK_DB__ = db;
     sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
-    localStorage.setItem('squadlogic_active_org', orgId);
   });
 };
 
 Given('I navigate to the reporting dashboard', async ({ page }) => {
   await seedDatabase(page);
   await page.goto('/admin/reports');
-  await page.reload();
   await page.waitForLoadState('networkidle');
   await page.waitForSelector('.text-4xl', { timeout: 10000 });
 });
@@ -119,7 +118,6 @@ Then('I should see the {string} metric', async ({ page }, metricName: string) =>
     const valSpan = card.locator(`[data-testid="metric-value-${normalizedName}"]`).first();
     await expect(valSpan).toBeVisible();
 
-    // CRITICAL FIX: Increase timeout to allow React Context and Mock DB to settle
     await expect(async () => {
       const val = await valSpan.textContent();
       expect(Number(val)).toBeGreaterThan(0);
