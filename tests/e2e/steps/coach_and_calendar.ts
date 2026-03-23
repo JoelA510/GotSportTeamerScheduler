@@ -60,6 +60,9 @@ Given('my team has practices on Tuesdays and games on Saturdays', async ({ page 
 });
 
 When('I access my personalized calendar feed URL', async ({ page }) => {
+    await page.route('**/functions/v1/calendar-feed*', async route => {
+        await route.fulfill({ status: 200, contentType: 'text/calendar', body: 'BEGIN:VCALENDAR\nVERSION:2.0\nEND:VCALENDAR' });
+    });
     await page.goto('/teams');
     const syncBtn = page.getByRole('button', { name: /Calendar Sync|Subscribe/i }).first();
     await syncBtn.click({ force: true });

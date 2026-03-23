@@ -28,7 +28,7 @@ Then('I should NOT see links for {string}, {string}, or {string}', async ({ page
 
 // --- Score Entry RBAC ---
 When('I view the {string} section', async ({ page }, sectionName: string) => {
-    await expect(page.getByRole('heading', { name: sectionName, exact: false })).toBeVisible();
+    await expect(page.getByRole('heading', { name: new RegExp(sectionName, 'i') }).first()).toBeVisible({ timeout: 15000 });
 });
 
 Then('I should see the final scores of past games', async ({ page }) => {

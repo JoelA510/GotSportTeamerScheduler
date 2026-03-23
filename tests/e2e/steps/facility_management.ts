@@ -143,7 +143,9 @@ When('I toggle {string} to ON', async ({ page }, label: string) => {
   const uiLabel = label.includes('Sub-fields') || label.includes('Supports Halves') ? 'Sub-fields' : (label === 'Active' ? 'Status' : label);
   const container = page.locator('label').filter({ hasText: uiLabel }).first();
   const checkbox = container.locator('input[type="checkbox"]').first();
-  if (!(await checkbox.isChecked())) {
+  
+  const isChecked = await checkbox.evaluate((node: HTMLInputElement) => node.checked);
+  if (!isChecked) {
     await page.getByText(uiLabel, { exact: true }).first().click({ force: true });
   }
   await page.getByRole('button', { name: /Save Field/i }).first().click({ force: true });
@@ -159,7 +161,8 @@ When('I toggle {string} to OFF', async ({ page }, label: string) => {
   await expect(container).toBeVisible({ timeout: 10000 });
   await page.waitForTimeout(500);
 
-  if (await checkbox.isChecked()) {
+  const isChecked = await checkbox.evaluate((node: HTMLInputElement) => node.checked);
+  if (isChecked) {
     await container.click({ force: true });
   }
   await page.getByRole('button', { name: /Save Field/i }).first().click({ force: true });

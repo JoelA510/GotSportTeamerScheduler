@@ -199,17 +199,19 @@ const initialMockData = {
         user_id: 'mock-admin-id',
         import_type: 'players',
         data: {
+          totalRows: 2,
+          validRows: 2,
           data:[
             { 'First Name': 'Alex', 'Last Name': 'Smith', 'Birthdate': '2015-05-15', 'Gender': 'm', 'Skill Level': 'advanced' },
             { 'First Name': 'Sam', 'Last Name': 'Jones', 'Birthdate': '2016-08-20', 'Gender': 'f', 'Skill Level': 'developing' }
           ],
           fileName: 'mock_players.csv'
         },
-        created_at: new Date().toISOString()
+        created_at: new Date(Date.now() - 86400000).toISOString()
       }
     ],
     view_org_metrics:[
-      { organization_id: 'org-1', total_players: 0, total_teams: 0, total_users: 0 }
+      { organization_id: 'org-1', total_players: 150, total_teams: 12, total_users: 25 }
     ]
 };
 

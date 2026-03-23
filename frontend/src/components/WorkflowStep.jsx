@@ -47,6 +47,7 @@ const WorkflowStep = ({
 
   return (
     <div
+      data-testid={`workflow-step-${title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`}
       className={`${baseClasses} ${statusStyles[status]} ${!isLocked ? 'cursor-pointer transform hover:scale-[1.01]' : ''}`}
       onClick={!isLocked ? onClick : undefined}
     >

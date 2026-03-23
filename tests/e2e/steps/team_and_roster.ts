@@ -38,12 +38,19 @@ Given('teams have been generated for the current season', async ({ page }) => {
 
         db.imports = db.imports ||[];
         if (!db.imports.find((i: any) => i.import_type === 'players')) {
+            const mappedPlayers = db.players.map((p: any) => ({
+                ...p,
+                'First Name': p.first_name,
+                'Last Name': p.last_name,
+                'Birthdate': p.date_of_birth || '2015-01-01',
+                'Gender': p.gender || 'm'
+            }));
             db.imports.push({
                 id: 'imp-players',
                 user_id: 'mock-admin-id',
                 import_type: 'players',
                 status: 'completed',
-                data: { data: db.players }
+                data: { data: mappedPlayers }
             });
         }
 
@@ -186,6 +193,8 @@ Given('{string} has age range U8 \\(ages 6-8)', async ({ page }, team: string) =
         if (teamObj) {
             teamObj.minAge = 6;
             teamObj.maxAge = 8;
+            teamObj.min_age = 6;
+            teamObj.max_age = 8;
         }
         const run = db.scheduler_runs?.find((r: any) => r.run_type === 'team');
         if (run && run.results && run.results.teams) {
@@ -193,6 +202,8 @@ Given('{string} has age range U8 \\(ages 6-8)', async ({ page }, team: string) =
             if (rTeam) {
                 rTeam.minAge = 6;
                 rTeam.maxAge = 8;
+                rTeam.min_age = 6;
+                rTeam.max_age = 8;
             }
         }
         (window as any).__MOCK_DB__ = db;
