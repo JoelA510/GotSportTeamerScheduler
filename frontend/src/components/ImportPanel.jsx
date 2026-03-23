@@ -12,7 +12,7 @@ export default function ImportPanel({ onImport }) {
   const [file, setFile] = useState(null);
   const [error, setError] = useState(null);
   const [previewData, setPreviewData] = useState(null);
-  const [importType, setImportType] = useState('players'); // players, coaches, fields
+  const [importType, setImportType] = useState('players');
 
   const {
     isImporting,
@@ -28,9 +28,8 @@ export default function ImportPanel({ onImport }) {
     importedFields,
   } = useImport();
 
-  const theme = PERSISTENCE_THEMES.green; // Use green theme for ingestion
+  const theme = PERSISTENCE_THEMES.green;
 
-  // Reset local state when import completes or is reset
   useEffect(() => {
     if (importStatus === 'idle' && !isImporting) {
       setFile(null);
@@ -75,23 +74,78 @@ export default function ImportPanel({ onImport }) {
     Papa.parse(file, {
       header: true,
       skipEmptyLines: true,
-      complete: (results) => {
+      complete: async (results) => {
         const { data, meta } = results;
         if (!data || data.length === 0) {
           setError('CSV file appears to be empty or invalid.');
           return;
         }
 
-        // Headers are in meta.fields
         const headers = meta.fields || [];
-        // Preview the first 5 rows
         const previewRows = data.slice(0, 5);
+
+        const normalizedData = [];
+        const validationErrors = [];
+
+        const REQUIRED_HEADERS = {
+          players: ['first_name', 'last_name', 'date_of_birth'],
+          coaches: ['full_name', 'email'],
+          fields: ['name']
+        };
+
+        const requiredForType = REQUIRED_HEADERS[importType] || [];
+        const fileHeaders = headers.map(h => h.toLowerCase().trim());
+
+        const missingHeaders = requiredForType.filter(req => !fileHeaders.find(h => h.includes(req) || req.includes(h)));
+        if (missingHeaders.length > 0) {
+          setError(`Import failed: Missing required columns: ${missingHeaders.join(', ')}`);
+          return;
+        }
+
+        data.forEach((row, index) => {
+          const newRow = {};
+          let isRowValid = true;
+          let rowErrors = [];
+          let errorFields = [];
+
+          Object.keys(row).forEach((key) => {
+            const normalizedKey = key.toLowerCase().trim();
+            if (normalizedKey.includes('coach') && normalizedKey.includes('willing')) {
+              newRow['willing_to_coach'] = row[key];
+            } else if (normalizedKey.includes('buddy') || normalizedKey.includes('friend')) {
+              newRow['buddy_request'] = row[key];
+            } else if (normalizedKey.includes('medical') || normalizedKey.includes('allergy')) {
+              newRow['medical_info'] = row[key];
+            } else if (normalizedKey.includes('skill') || normalizedKey.includes('level')) {
+              newRow['skill_tier'] = row[key];
+            } else {
+              newRow[key] = row[key];
+            }
+          });
+
+          if (importType === 'players') {
+            const hasFirst = Object.keys(newRow).find(k => k.toLowerCase().includes('first_name') || k.toLowerCase().includes('first name'));
+            const hasLast = Object.keys(newRow).find(k => k.toLowerCase().includes('last_name') || k.toLowerCase().includes('last name'));
+            const hasDob = Object.keys(newRow).find(k => k.toLowerCase().includes('dob') || k.toLowerCase().includes('date of birth') || k.toLowerCase().includes('birthdate'));
+
+            if (!hasFirst || !newRow[hasFirst]) { isRowValid = false; rowErrors.push('Missing first name'); errorFields.push(hasFirst || 'First Name'); }
+            if (!hasLast || !newRow[hasLast]) { isRowValid = false; rowErrors.push('Missing last name'); errorFields.push(hasLast || 'Last Name'); }
+            if (!hasDob || !newRow[hasDob]) { isRowValid = false; rowErrors.push('Missing date of birth'); errorFields.push(hasDob || 'Date of Birth'); }
+          }
+
+          if (isRowValid) {
+            normalizedData.push(newRow);
+          } else {
+            validationErrors.push({ row: index + 2, data: newRow, errors: rowErrors, errorFields });
+          }
+        });
 
         setPreviewData({
           headers,
           rows: previewRows,
           totalRows: data.length,
           fullData: data,
+          validationErrors
         });
       },
       error: (err) => {
@@ -119,7 +173,6 @@ export default function ImportPanel({ onImport }) {
     }
   };
 
-  // If import is in progress or completed, show status view
   if (isImporting || importStatus === 'completed') {
     return (
       <section className="glass-panel p-8 rounded-xl border border-border-subtle relative overflow-hidden mb-10">
@@ -157,11 +210,11 @@ export default function ImportPanel({ onImport }) {
 
           {importStatus === 'completed' && previewData?.validationErrors?.length > 0 && (
             <div className="w-full max-w-2xl mb-8 text-left">
-                <DataValidationPanel 
-                    errors={previewData.validationErrors.flatMap(ve => 
-                        ve.errors.map(err => ({ type: 'row_validation', message: `Row ${ve.row}: ${err}` }))
-                    )} 
-                />
+              <DataValidationPanel
+                errors={previewData.validationErrors.flatMap(ve =>
+                  ve.errors.map(err => ({ type: 'row_validation', message: `Row ${ve.row}: ${err}` }))
+                )}
+              />
             </div>
           )}
 
@@ -174,7 +227,7 @@ export default function ImportPanel({ onImport }) {
                   if (onImport && previewData) {
                     onImport(previewData, importType);
                   }
-                  resetImport('all'); // Or just reset current type? For now reset UI state
+                  resetImport('all');
                   setFile(null);
                   setPreviewData(null);
                 }}
@@ -243,7 +296,6 @@ export default function ImportPanel({ onImport }) {
           </div>
         </div>
 
-        {/* Type Selector */}
         <div className="flex gap-4 mb-8">
           {['players', 'coaches', 'fields'].map((type) => (
             <button
@@ -256,11 +308,10 @@ export default function ImportPanel({ onImport }) {
               }}
               className={`
                                 flex-1 p-4 rounded-xl border transition-all duration-200 text-left relative overflow-hidden group
-                                ${
-                                  importType === type
-                                    ? 'bg-blue-500/10 border-blue-500/50 shadow-[0_0_20px_rgba(56,189,248,0.1)]'
-                                    : 'bg-bg-surface border-border-subtle hover:bg-bg-surface-hover hover:border-border-highlight'
-                                }
+                                ${importType === type
+                  ? 'bg-blue-500/10 border-blue-500/50 shadow-[0_0_20px_rgba(56,189,248,0.1)]'
+                  : 'bg-bg-surface border-border-subtle hover:bg-bg-surface-hover hover:border-border-highlight'
+                }
                             `}
             >
               <div className="relative z-10">
@@ -289,11 +340,10 @@ export default function ImportPanel({ onImport }) {
 
         {!previewData ? (
           <div
-            className={`border-2 border-dashed rounded-xl p-12 text-center transition-all duration-300 ${
-              isDragging
-                ? 'border-blue-400 bg-blue-500/10 scale-[1.02]'
-                : 'border-border-subtle hover:border-border-highlight bg-bg-surface hover:bg-bg-surface-hover'
-            }`}
+            className={`border-2 border-dashed rounded-xl p-12 text-center transition-all duration-300 ${isDragging
+              ? 'border-blue-400 bg-blue-500/10 scale-[1.02]'
+              : 'border-border-subtle hover:border-border-highlight bg-bg-surface hover:bg-bg-surface-hover'
+              }`}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
@@ -333,7 +383,7 @@ export default function ImportPanel({ onImport }) {
                 </div>
               )}
               {error && (
-                <div className="bg-red-500/10 border border-red-500/20 text-red-400 px-4 py-2 rounded-lg text-sm mt-2 animate-slideUp flex items-center gap-2">
+                <div data-testid="import-error-banner" className="bg-red-500/10 border border-red-500/20 text-red-400 px-4 py-2 rounded-lg text-sm mt-2 animate-slideUp flex items-center gap-2">
                   <AlertCircle size={16} />
                   {error}
                 </div>
@@ -345,8 +395,8 @@ export default function ImportPanel({ onImport }) {
                     Import Failed
                   </div>
                   <p className="text-xs opacity-80">{importLogs[importLogs.length - 1].message}</p>
-                  <button 
-                    onClick={() => resetImport('all')} 
+                  <button
+                    onClick={() => resetImport('all')}
                     className="mt-2 text-xs underline hover:no-underline"
                   >
                     Try Again
@@ -398,16 +448,22 @@ export default function ImportPanel({ onImport }) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border-subtle">
-                  {previewData.rows.map((row, i) => (
-                    <tr key={i} className="hover:bg-bg-surface-hover transition-colors">
-                      {previewData.headers.slice(0, 5).map((header, j) => (
-                        <td key={j} className="px-4 py-3 whitespace-nowrap">
-                          {row[header]}
-                        </td>
-                      ))}
-                      {previewData.headers.length > 5 && <td className="px-4 py-3">...</td>}
-                    </tr>
-                  ))}
+                  {previewData.rows.map((row, i) => {
+                    const rowError = previewData.validationErrors?.find(ve => ve.row === i + 2);
+                    return (
+                      <tr key={i} className="hover:bg-bg-surface-hover transition-colors">
+                        {previewData.headers.slice(0, 5).map((header, j) => {
+                          const isCellError = rowError?.errorFields?.includes(header);
+                          return (
+                            <td key={j} className={`px-4 py-3 whitespace-nowrap ${isCellError ? 'bg-status-error-bg text-status-error font-bold border border-status-error/50 cell-error' : ''}`}>
+                              {row[header]}
+                            </td>
+                          )
+                        })}
+                        {previewData.headers.length > 5 && <td className="px-4 py-3">...</td>}
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>

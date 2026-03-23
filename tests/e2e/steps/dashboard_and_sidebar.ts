@@ -7,14 +7,14 @@ Given('an organization and season are active', async ({ page }) => {
     await page.evaluate(() => {
         const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || JSON.stringify(window.__MOCK_DB__ || {}));
         const orgId = 'org-test-e2e';
-        db.organizations =[{ id: orgId, name: 'SquadLogic FC', status: 'active' }];
-        db.organization_members =[{
+        db.organizations = [{ id: orgId, name: 'SquadLogic FC', status: 'active' }];
+        db.organization_members = [{
             organization_id: orgId,
             profile_id: 'mock-admin-id',
             role: 'admin',
             organizations: { id: orgId, name: 'SquadLogic FC' }
         }];
-        db.season_settings =[{ id: 's1', name: 'Fall 2024', organization_id: orgId }];
+        db.season_settings = [{ id: 's1', name: 'Fall 2024', organization_id: orgId }];
         window.__MOCK_DB__ = db;
         sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
         localStorage.setItem('squadlogic_active_org', orgId);
@@ -43,7 +43,7 @@ Then('the League Status panel should show the active season name', async ({ page
 Given('I have imported player data', async ({ page }) => {
     await page.evaluate(() => {
         const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || JSON.stringify(window.__MOCK_DB__ || {}));
-        db.imports =[{
+        db.imports = [{
             id: 'imp-1',
             user_id: 'mock-admin-id',
             import_type: 'players',
@@ -61,7 +61,7 @@ Given('I have imported player data', async ({ page }) => {
 Given('I have not generated teams', async ({ page }) => {
     await page.evaluate(() => {
         const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || JSON.stringify(window.__MOCK_DB__ || {}));
-        db.scheduler_runs = (db.scheduler_runs ||[]).map((r: any) => r.run_type === 'team' ? { ...r, status: 'queued' } : r);
+        db.scheduler_runs = (db.scheduler_runs || []).map((r: any) => r.run_type === 'team' ? { ...r, status: 'queued' } : r);
         window.__MOCK_DB__ = db;
         sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
     });
@@ -71,7 +71,7 @@ Given('I have not generated teams', async ({ page }) => {
 Given('I have not generated a practice schedule', async ({ page }) => {
     await page.evaluate(() => {
         const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || JSON.stringify(window.__MOCK_DB__ || {}));
-        db.scheduler_runs = (db.scheduler_runs ||[]).map((r: any) => r.run_type === 'practice' ? { ...r, status: 'queued' } : r);
+        db.scheduler_runs = (db.scheduler_runs || []).map((r: any) => r.run_type === 'practice' ? { ...r, status: 'queued' } : r);
         window.__MOCK_DB__ = db;
         sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
     });
@@ -81,7 +81,7 @@ Given('I have not generated a practice schedule', async ({ page }) => {
 Given('I have not generated a game schedule', async ({ page }) => {
     await page.evaluate(() => {
         const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || JSON.stringify(window.__MOCK_DB__ || {}));
-        db.scheduler_runs = (db.scheduler_runs ||[]).map((r: any) => r.run_type === 'game' ? { ...r, status: 'queued' } : r);
+        db.scheduler_runs = (db.scheduler_runs || []).map((r: any) => r.run_type === 'game' ? { ...r, status: 'queued' } : r);
         window.__MOCK_DB__ = db;
         sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
     });
@@ -92,7 +92,7 @@ Given('all setup steps are complete', async ({ page }) => {
     await page.evaluate(() => {
         const now = new Date().toISOString();
         const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || JSON.stringify(window.__MOCK_DB__ || {}));
-        db.imports =[{
+        db.imports = [{
             id: 'imp-full',
             user_id: 'mock-admin-id',
             import_type: 'players',
@@ -100,7 +100,7 @@ Given('all setup steps are complete', async ({ page }) => {
             created_at: now,
             data: { totalRows: 150, validRows: 150 }
         }];
-        db.scheduler_runs =[
+        db.scheduler_runs = [
             {
                 id: 'run-t',
                 run_type: 'team',
@@ -108,7 +108,7 @@ Given('all setup steps are complete', async ({ page }) => {
                 completed_at: now,
                 metrics: { progress: 100 },
                 results: {
-                    teamsByDivision: { 'U10 Boys':[{ id: 't1', name: 'Tigers' }] },
+                    teamsByDivision: { 'U10 Boys': [{ id: 't1', name: 'Tigers' }] },
                     rosterBalanceByDivision: { 'U10 Boys': { summary: { totalPlayers: 15, totalCapacity: 20 } } }
                 },
                 created_at: now
@@ -148,7 +148,7 @@ Given('all setup steps are complete', async ({ page }) => {
 Given('I have generated teams', async ({ page }) => {
     await page.evaluate(() => {
         const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || JSON.stringify(window.__MOCK_DB__ || {}));
-        db.scheduler_runs = db.scheduler_runs ||[];
+        db.scheduler_runs = db.scheduler_runs || [];
         if (!db.scheduler_runs.find((r: any) => r.run_type === 'team')) {
             const now = new Date().toISOString();
             db.scheduler_runs.push({
@@ -157,7 +157,7 @@ Given('I have generated teams', async ({ page }) => {
                 status: 'completed',
                 completed_at: now,
                 results: {
-                    teamsByDivision: { 'U10 Boys':[{ id: 't1', name: 'Tigers' }] },
+                    teamsByDivision: { 'U10 Boys': [{ id: 't1', name: 'Tigers' }] },
                     rosterBalanceByDivision: { 'U10 Boys': { summary: { totalPlayers: 15, totalCapacity: 20 } } }
                 },
                 created_at: now
@@ -173,9 +173,8 @@ Given('I have generated teams', async ({ page }) => {
 Given('I have generated a practice schedule', async ({ page }) => {
     await page.evaluate(() => {
         const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || JSON.stringify(window.__MOCK_DB__ || {}));
-        db.scheduler_runs = db.scheduler_runs ||[];
-        const now = new Date().toISOString();
-        ['team', 'practice', 'game'].forEach(type => {
+        db.scheduler_runs = db.scheduler_runs || [];
+        const now = new Date().toISOString();['team', 'practice', 'game'].forEach(type => {
             if (!db.scheduler_runs.find((r: any) => r.run_type === type)) {
                 db.scheduler_runs.push({
                     id: `run-${type}`,
@@ -196,7 +195,7 @@ Given('I have generated a practice schedule', async ({ page }) => {
 Given('I have generated a game schedule', async ({ page }) => {
     await page.evaluate(() => {
         const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || JSON.stringify(window.__MOCK_DB__ || {}));
-        db.scheduler_runs = db.scheduler_runs ||[];
+        db.scheduler_runs = db.scheduler_runs || [];
         db.scheduler_runs.push({ id: 'run-g', run_type: 'game', status: 'completed', results: { totals: { games: 15 } }, created_at: new Date().toISOString() });
         window.__MOCK_DB__ = db;
         sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
@@ -238,16 +237,17 @@ Given('I belong to organizations {string} and {string}', async ({ page }, org1: 
         const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || JSON.stringify(window.__MOCK_DB__ || {}));
         const org1Id = 'org-test-e2e';
         const org2Id = 'org-2';
-        db.organizations =[
+        db.organizations = [
             { id: org1Id, name: o1, status: 'active' },
             { id: org2Id, name: o2, status: 'active' }
         ];
-        db.season_settings =[
+        // CRITICAL FIX: Make the seasons distinct so the test can verify the dropdown updated
+        db.season_settings = [
             { id: 's1', name: 'Fall 2024', organization_id: org1Id },
             { id: 's2', name: 'Spring 2024', organization_id: org1Id },
-            { id: 's3', name: 'Fall 2024', organization_id: org2Id }
+            { id: 's3', name: 'Winter 2024', organization_id: org2Id }
         ];
-        db.organization_members =[
+        db.organization_members = [
             { organization_id: org1Id, profile_id: 'mock-admin-id', role: 'admin', organizations: { id: org1Id, name: o1 } },
             { organization_id: org2Id, profile_id: 'mock-admin-id', role: 'admin', organizations: { id: org2Id, name: o2 } }
         ];
@@ -260,10 +260,10 @@ Given('I belong to organizations {string} and {string}', async ({ page }, org1: 
 Given('the sidebar shows {string} as the active organization', async ({ page }, orgName: string) => {
     await page.evaluate((name) => {
         const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || JSON.stringify(window.__MOCK_DB__ || {}));
-        const org = (db.organizations ||[]).find((o: any) => o.name === name);
+        const org = (db.organizations || []).find((o: any) => o.name === name);
         if (org) {
             localStorage.setItem('squadlogic_active_org', org.id);
-            const seasons = (db.season_settings ||[]).filter((s: any) => s.organization_id === org.id);
+            const seasons = (db.season_settings || []).filter((s: any) => s.organization_id === org.id);
             if (seasons.length > 0) {
                 localStorage.setItem('squadlogic-current-season', seasons[0].name);
             }
@@ -344,7 +344,7 @@ Then('localStorage should be updated with the valid season', async ({ page }) =>
 Given('I have selected {string} as the active organization', async ({ page }, orgName: string) => {
     await page.evaluate((name) => {
         const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || JSON.stringify(window.__MOCK_DB__ || {}));
-        const org = (db.organizations ||[]).find((o: any) => o.name === name);
+        const org = (db.organizations || []).find((o: any) => o.name === name);
         if (org) {
             localStorage.setItem('squadlogic_active_org', org.id);
         }
@@ -355,7 +355,7 @@ Given('I have selected {string} as the active organization', async ({ page }, or
 Given('a valid season is selected', async ({ page }) => {
     await page.evaluate(() => {
         const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || JSON.stringify(window.__MOCK_DB__ || {}));
-        const seasons = db.season_settings ||[];
+        const seasons = db.season_settings || [];
         if (seasons.length > 0) {
             localStorage.setItem('squadlogic-current-season', seasons[0].name || seasons[0].id);
         }

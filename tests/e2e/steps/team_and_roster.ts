@@ -120,11 +120,13 @@ Given('{string} is assigned to {string}', async ({ page }, player: string, team:
 
 When('I view the Roster Manager', async ({ page }) => {
     await page.goto('/teams');
-    // CRITICAL FIX: Wait for the data to load before clicking Edit Mode
     await expect(page.getByRole('heading', { name: /Teaming & Analysis/i }).first()).toBeVisible({ timeout: 15000 });
     const editButton = page.getByRole('button', { name: /Edit Mode/i }).first();
     await expect(editButton).toBeVisible({ timeout: 15000 });
     await editButton.click({ force: true });
+
+    // CRITICAL FIX: Wait for RosterManager to mount and process conflicts
+    await page.waitForTimeout(1000);
 });
 
 Then('I should see a conflict banner with message {string}', async ({ page }, msg: string) => {
@@ -257,5 +259,19 @@ When('I click the {string} button on the Roster Manager', async ({ page }, btnNa
     await page.getByRole('button', { name: btnName }).first().click({ force: true });
 });
 
-Then('a new row should be inserted into the {string} table', async ({ page }, tableName: string) => { /* Verify DB */ });
-Then('the run should have run_type {string} and status {string}', async ({ page }, type: string, status: string) => { /* Verify DB */ });
+Then('a new row should be inserted into the {string} table', async ({ page }, tableName: string) => {
+    const rows = await page.evaluate((table) => {
+        const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
+        return db[table] || [];
+    }, tableName);
+    expect(rows.length).toBeGreaterThan(0);
+});
+
+Then('the run should have run_type {string} and status {string}', async ({ page }, type: string, status: string) => {
+    const match = await page.evaluate(({ t, s }) => {
+        const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
+        const runs = db.scheduler_runs || [];
+        return runs.some((r: any) => r.run_type === t && r.status === s);
+    }, { t: type, s: status });
+    expect(match).toBe(true);
+});

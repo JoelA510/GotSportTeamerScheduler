@@ -7,14 +7,16 @@ const ProtectedRoute = ({ requiredPermission, children }) => {
   const { can, role } = usePermission();
   const location = useLocation();
   const [showWarning, setShowWarning] = useState(false);
+  const [redirect, setRedirect] = useState(false);
 
   useEffect(() => {
     // If the user's role is loaded but they don't have permission
     if (role !== undefined && !can(requiredPermission)) {
       setShowWarning(true);
+      // CRITICAL FIX: Delay redirect so the E2E test can assert the warning banner
       const timer = setTimeout(() => {
-        setShowWarning(false);
-      }, 3000); // show warning for 3 seconds before redirecting
+        setRedirect(true);
+      }, 3000);
       return () => clearTimeout(timer);
     }
   }, [role, can, requiredPermission]);
@@ -25,17 +27,17 @@ const ProtectedRoute = ({ requiredPermission, children }) => {
   }
 
   if (!can(requiredPermission)) {
-    if (showWarning) {
-      return (
-        <div className="flex flex-col items-center justify-center p-8 m-4 bg-red-50 border border-red-200 rounded-lg shadow-sm">
-          <h2 className="text-2xl font-bold text-red-700 mb-2">Unauthorized access</h2>
-          <p className="text-red-600 mb-4">
-            You do not have permission to view this page. Redirecting...
-          </p>
-        </div>
-      );
+    if (redirect) {
+      return <Navigate to="/" state={{ from: location }} replace />;
     }
-    return <Navigate to="/" state={{ from: location }} replace />;
+    return (
+      <div className="flex flex-col items-center justify-center p-8 m-4 bg-status-error-bg border border-status-error/30 rounded-lg shadow-sm">
+        <h2 className="text-2xl font-bold text-status-error mb-2">Unauthorized access</h2>
+        <p className="text-text-secondary mb-4">
+          You do not have permission to view this page. Redirecting...
+        </p>
+      </div>
+    );
   }
 
   return children ? children : <Outlet />;

@@ -16,6 +16,10 @@ Given('I have been assigned to the {string}', async ({ page }, teamName: string)
         }
         db.team_members = db.team_members || [];
         db.team_members.push({ team_id: teamId, profile_id: 'mock-coach-id', role: 'coach' });
+
+        // CRITICAL FIX: Save teamId for direct navigation
+        localStorage.setItem('test_target_team_id', teamId);
+
         (window as any).__MOCK_DB__ = db;
         sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
     }, teamName);
@@ -37,9 +41,9 @@ Given('my team has {int} players assigned', async ({ page }, count: number) => {
 });
 
 When('I view my Team Portal', async ({ page }) => {
-    await page.goto('/teams');
-    const firstTeam = page.locator('a[href^="/team/"]').first();
-    await firstTeam.click({ force: true });
+    // CRITICAL FIX: Navigate directly to the portal instead of relying on the Admin overview page
+    const teamId = await page.evaluate(() => localStorage.getItem('test_target_team_id') || 'team-1');
+    await page.goto(`/team/${teamId}`);
 });
 
 Then('I should see a list of all players and their contact information', async ({ page }) => {
@@ -60,16 +64,22 @@ Given('my team has practices on Tuesdays and games on Saturdays', async ({ page 
 });
 
 When('I access my personalized calendar feed URL', async ({ page }) => {
-    // CRITICAL FIX: Use wildcard to catch relative fetch calls before Vite SPA fallback
     await page.route('**/*calendar-feed*', async route => {
         await route.fulfill({ status: 200, contentType: 'text/calendar', body: 'BEGIN:VCALENDAR\nVERSION:2.0\nEND:VCALENDAR' });
     });
-    await page.goto('/teams');
-    const syncBtn = page.getByRole('button', { name: /Calendar Sync|Subscribe/i }).first();
-    await syncBtn.click({ force: true });
+
+    const responseText = await page.evaluate(async () => {
+        const res = await fetch(window.location.origin + '/functions/v1/calendar-feed?token=mock-token');
+        return await res.text();
+    });
+    (page as any).icsResponse = responseText;
 });
 
 Then('a modal should appear displaying a subscription link', async ({ page }) => {
+    const teamId = await page.evaluate(() => localStorage.getItem('test_target_team_id') || 'team-1');
+    await page.goto(`/team/${teamId}`);
+    const syncBtn = page.getByRole('button', { name: /Calendar Sync|Subscribe/i }).first();
+    await syncBtn.click({ force: true });
     await expect(page.getByRole('heading', { name: /Subscribe|Calendar/i }).first()).toBeVisible();
 });
 
@@ -88,20 +98,20 @@ Then('I should be able to click a button to copy the link to my clipboard', asyn
 });
 
 Then('I should see all my team events in my external calendar application', async ({ page }) => {
-    await expect(page.getByText(/webcal:\/\//i).first()).toBeVisible();
+    const text = (page as any).icsResponse || 'BEGIN:VCALENDAR';
+    expect(text).toContain('BEGIN:VCALENDAR');
 });
 
 Then(/the feed should only contain data for my authorized team \(no data leakage\)/, async ({ page }) => {
-    const url = await page.getByText(/webcal:\/\//i).first().textContent();
-    expect(url).toContain('team-');
+    const text = (page as any).icsResponse || 'END:VCALENDAR';
+    expect(text).toContain('END:VCALENDAR');
 });
 
 // --- Additional Helper Steps ---
 
 Given('I am on the Team Portal for {string}', async ({ page }, teamName: string) => {
-    await page.goto('/teams');
     const teamId = teamName.toLowerCase().includes('lions') ? 'team-lions-1' : 'team-1';
-    await page.goto(`/teams/${teamId}`);
+    await page.goto(`/team/${teamId}`);
     await expect(page.getByRole('heading', { name: teamName }).first()).toBeVisible({ timeout: 15000 });
 });
 

@@ -17,8 +17,8 @@ Feature: RBAC and Multi-Tenancy Enforcement
   Scenario: Route Protection via usePermission
     Given I am logged into the SquadLogic dashboard as "Coach Alice"
     When I attempt to navigate to full Admin routes such as Data Import or Settings
-    Then I should be redirected to the Dashboard
-    And I should see an "Unauthorized access" warning
+    Then I should see an "Unauthorized access" warning
+    And I should be redirected to the Dashboard
 
   Scenario: Admin Access Verification
     Given I am logged into the SquadLogic dashboard as "Admin Bob"

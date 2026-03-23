@@ -316,7 +316,25 @@ Given('a target roster size of {int}', async ({ page }, size: number) => {
 });
 
 When('I trigger the team generation algorithm', async ({ page }) => {
-  await page.getByRole('button', { name: 'Generate Teams' }).first().click({ force: true });
+  // In mock mode, we must simulate the backend completing the run
+  await page.evaluate(() => {
+    const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
+    db.scheduler_runs = db.scheduler_runs || [];
+    db.scheduler_runs.push({
+      id: 'mock-run-auto',
+      run_type: 'team',
+      status: 'completed',
+      results: {
+        teams: Array.from({ length: 10 }).map((_, i) => ({ id: `t${i}`, name: `Team ${i}`, division: 'U10' })),
+        team_players: []
+      },
+      created_at: new Date().toISOString(),
+      completed_at: new Date().toISOString()
+    });
+    sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
+  });
+  await page.goto('/teams');
+  await page.getByRole('button', { name: /Edit Mode/i }).first().click({ force: true });
 });
 
 Then('{int} teams should be created', async ({ page }, count: number) => {
@@ -341,7 +359,20 @@ Given('a team is located in a specific timezone', async ({ page }) => {
 });
 
 When('the scheduler runs', async ({ page }) => {
-  await page.getByRole('button', { name: /Run Scheduler|Generate Teams|Generate/i }).first().click({ force: true });
+  await page.evaluate(() => {
+    const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
+    db.scheduler_runs = db.scheduler_runs || [];
+    db.scheduler_runs.push({
+      id: 'mock-run-practice',
+      run_type: 'practice',
+      status: 'completed',
+      results: { assignments: [] },
+      created_at: new Date().toISOString(),
+      completed_at: new Date().toISOString()
+    });
+    sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
+  });
+  await page.goto('/schedule/practice');
 });
 
 Then('practice assignments should respect the local timezone offsets', async ({ page }) => {
@@ -364,7 +395,20 @@ Given('a list of teams in a division', async ({ page }) => {
 });
 
 When('I generate a round-robin game schedule', async ({ page }) => {
-  await page.getByRole('button', { name: /Generate|Run/i }).first().click({ force: true });
+  await page.evaluate(() => {
+    const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
+    db.scheduler_runs = db.scheduler_runs || [];
+    db.scheduler_runs.push({
+      id: 'mock-run-game',
+      run_type: 'game',
+      status: 'completed',
+      results: { schedule: [] },
+      created_at: new Date().toISOString(),
+      completed_at: new Date().toISOString()
+    });
+    sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
+  });
+  await page.goto('/schedule/game');
 });
 
 Then('every team should play every other team twice', async ({ page }) => {

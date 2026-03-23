@@ -51,7 +51,8 @@ Then('the resulting teams summary should reflect the new constraints', async ({ 
 });
 
 When('the network connection stalls', async ({ page }) => {
-    await page.route('**/rpc/update_team_players', route => route.abort('timedout'));
+    // CRITICAL FIX: Match the actual Edge Function endpoint used by the app
+    await page.route('**/team-persistence', route => route.abort('timedout'));
 });
 
 Then('the panel status should change to {string}', async ({ page }, status: string) => {

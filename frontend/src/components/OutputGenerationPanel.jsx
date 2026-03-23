@@ -183,6 +183,7 @@ export default function OutputGenerationPanel({
           <div className="pt-4 border-t border-white/10 mt-4">
             <h3 className="text-lg font-bold text-white mb-4">Coach Communications</h3>
             <button
+              data-testid="generate-emails-btn"
               onClick={generateEmails}
               className="relative z-20 bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/30 px-4 py-2 rounded-lg transition-colors mb-4"
             >

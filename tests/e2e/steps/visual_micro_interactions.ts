@@ -25,6 +25,7 @@ Then('the sidebar should be hidden by default', async ({ page }) => {
 When('I reset error flags and click {string}', async ({ page }, buttonName: string) => {
     await page.evaluate(() => {
         localStorage.removeItem('__FORCE_ERROR__');
+        window.__FORCE_ERROR__ = false;
     });
     await page.getByRole('button', { name: buttonName }).first().click({ force: true });
 });

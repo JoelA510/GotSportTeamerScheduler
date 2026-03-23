@@ -79,11 +79,10 @@ export default function PersistencePanel({
             onClick={onSync}
             disabled={status === 'syncing'}
             className={`
-              px-4 py-2 rounded-lg font-medium transition-all duration-200
-              ${
-                status === 'syncing'
-                  ? 'bg-white/10 text-white/50 cursor-not-allowed'
-                  : `${theme.btnBg} text-white shadow-lg ${theme.btnShadow}`
+              relative z-20 px-4 py-2 rounded-lg font-medium transition-all duration-200
+              ${status === 'syncing'
+                ? 'bg-white/10 text-white/50 cursor-not-allowed'
+                : `${theme.btnBg} text-white shadow-lg ${theme.btnShadow}`
               }
             `}
           >

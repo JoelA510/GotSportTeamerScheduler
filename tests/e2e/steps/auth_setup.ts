@@ -5,58 +5,68 @@ import { createClient } from '@supabase/supabase-js';
 
 const { Given, After } = createBdd();
 
-// Initialize Supabase client for test data seeding only if credentials are present
 const supabaseUrl = process.env.VITE_SUPABASE_URL || '';
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || '';
 const supabase = supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabaseKey) : null;
 
-async function setupIsolatedTenant(page: any) {
+async function setupIsolatedTenant(page: any, role: string = 'admin') {
+    const dynamicOrgId = randomUUID();
+    const email = role === 'coach' ? 'coach@squadlogic.app' : role === 'parent' ? 'parent@squadlogic.app' : 'admin@squadlogic.app';
+    const userId = `mock-${role}-id`;
+
     if (!supabaseUrl || !supabaseKey || process.env.VITE_USE_MOCK_SUPABASE === 'true') {
         console.warn('Skipping isolated tenant setup due to missing Supabase credentials or mock mode.');
-        // Ensure a default org is set in mock mode so data visibility works
-        await page.evaluate(() => {
-            if (!localStorage.getItem('squadlogic_active_org')) {
-                localStorage.setItem('squadlogic_active_org', 'org-1');
+
+        // CRITICAL FIX: Fully seed the mock DB so the app doesn't get stuck on "Loading League Data"
+        await page.evaluate(({ orgId, roleName, uId }) => {
+            localStorage.setItem('squadlogic_active_org', orgId);
+            localStorage.setItem('squadlogic-current-season', 'Fall 2026');
+
+            const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
+
+            db.organizations = db.organizations || [];
+            if (!db.organizations.find((o: any) => o.id === orgId)) {
+                db.organizations.push({ id: orgId, name: `E2E-Isolation-${orgId}`, status: 'active' });
             }
-        });
+
+            db.organization_members = db.organization_members || [];
+            if (!db.organization_members.find((m: any) => m.organization_id === orgId && m.profile_id === uId)) {
+                db.organization_members.push({
+                    organization_id: orgId,
+                    profile_id: uId,
+                    role: roleName,
+                    organizations: { id: orgId, name: `E2E-Isolation-${orgId}` }
+                });
+            }
+
+            db.season_settings = db.season_settings || [];
+            if (!db.season_settings.find((s: any) => s.organization_id === orgId)) {
+                db.season_settings.push({ id: 's1', organization_id: orgId, name: 'Fall 2026', status: 'active' });
+            }
+
+            sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
+        }, { orgId: dynamicOrgId, roleName: role === 'parent' ? 'parent' : role, uId: userId });
         return;
     }
-    const dynamicOrgId = randomUUID();
 
-    // Insert the isolated tenant
+    // Insert the isolated tenant for real DB
     await supabase.from('organizations').insert({
         id: dynamicOrgId,
         name: `E2E-Isolation-${dynamicOrgId}`
     });
 
-    // Bind local storage to the dynamic tenant instead of a hardcoded one
     await page.evaluate((orgId: string) => {
         localStorage.setItem('squadlogic_active_org', orgId);
     }, dynamicOrgId);
 }
 
-// Unified Auth Step for all scenarios
-// Handles: "as an admin", "as a coach", "as a parent", "as admin", "as parent", etc.
 Given(/I am logged into (?:the )?SquadLogic(?: dashboard)? as (?:an? )?"?([^"]*)"?/, async ({ page }, role: string) => {
-    // @ts-ignore
     page.on('console', (msg) => {
         if (msg.type() === 'error' || msg.text().includes('[DEBUG]')) {
-           console.log(`[BROWSER LOG] [${msg.type()}] ${msg.text()}`);
+            console.log(`[BROWSER LOG] [${msg.type()}] ${msg.text()}`);
         }
     });
-    
-    await page.goto('/login');
-    // Force clear any stale session
-    await page.evaluate(() => {
-        sessionStorage.clear();
-        localStorage.clear();
-    });
-    await page.reload();
 
-    // Wait for the login form to be visible
-    await expect(page.getByRole('heading', { name: /Sign in|Create an account/i })).toBeVisible({ timeout: 15000 });
-
-    // Mapping role to email
     const roleMap: Record<string, string> = {
         admin: process.env.TEST_ADMIN_EMAIL || 'admin@squadlogic.app',
         coach: process.env.TEST_COACH_EMAIL || 'coach@squadlogic.app',
@@ -64,42 +74,75 @@ Given(/I am logged into (?:the )?SquadLogic(?: dashboard)? as (?:an? )?"?([^"]*)
         player: process.env.TEST_PLAYER_EMAIL || 'player@squadlogic.app'
     };
 
-    const cleanRole = role.toLowerCase().replace(/^an? /, '').trim();
+    // CRITICAL FIX: Robust role parsing to handle names like "Coach Alice"
+    const rawRole = role.toLowerCase();
+    let cleanRole = 'admin';
+    if (rawRole.includes('coach')) cleanRole = 'coach';
+    else if (rawRole.includes('parent')) cleanRole = 'parent';
+    else if (rawRole.includes('player')) cleanRole = 'player';
+
     const email = roleMap[cleanRole] || roleMap.admin;
     const password = process.env.TEST_PASSWORD || 'test-password-123';
 
-    console.log(`[DEBUG] [auth_setup] role="${role}", cleanRole="${cleanRole}", email="${email}"`);
+    console.log(`[DEBUG][auth_setup] rawRole="${role}", cleanRole="${cleanRole}", email="${email}"`);
 
-    // Fill out the Supabase Auth form
+    // CRITICAL FIX: Bypass UI login in mock mode to prevent 30s timeouts
+    if (process.env.VITE_USE_MOCK_SUPABASE === 'true') {
+        await page.goto('/');
+        await page.evaluate(({ emailStr, roleName, uId }) => {
+            sessionStorage.clear();
+            localStorage.clear();
+            const session = {
+                user: {
+                    id: uId,
+                    email: emailStr,
+                    user_metadata: { full_name: `Mock ${roleName}` },
+                    app_metadata: { role: roleName }
+                },
+                access_token: 'mock-token',
+            };
+            sessionStorage.setItem('__MOCK_SESSION__', JSON.stringify(session));
+        }, { emailStr: email, roleName: cleanRole, uId: `mock-${cleanRole}-id` });
+
+        await setupIsolatedTenant(page, cleanRole);
+        await page.reload();
+        await expect(page.getByRole('heading', { name: /League Management|Dashboard|Season Setup Workflow|Team Portal|League Standings|Settings/i }).first()).toBeVisible({ timeout: 15000 });
+        return;
+    }
+
+    // Real DB Login Flow
+    await page.goto('/login');
+    await page.evaluate(() => {
+        sessionStorage.clear();
+        localStorage.clear();
+    });
+    await page.reload();
+
+    await expect(page.getByRole('heading', { name: /Sign in|Create an account/i })).toBeVisible({ timeout: 15000 });
     await page.getByLabel('Email').fill(email);
     await page.getByLabel('Password').fill(password);
-
-    // Click Sign In
     await page.getByRole('button', { name: 'Sign In' }).click();
 
-    // Verify successful redirect to the dashboard
     await expect(page.getByRole('heading', { name: /League Management|Dashboard|Season Setup Workflow/i }).first()).toBeVisible({ timeout: 30000 });
 
-    // Set up database isolation for concurrent testing
-    await setupIsolatedTenant(page);
+    await setupIsolatedTenant(page, cleanRole);
 });
 
 Given('I am logged into SquadLogic', async ({ page }) => {
-    // Default to admin if no role specified
+    // Fallback to admin
     await page.goto('/login');
     await page.getByLabel('Email').fill('admin@squadlogic.app');
     await page.getByLabel('Password').fill('test-password-123');
     await page.getByRole('button', { name: 'Sign In' }).click();
     await expect(page.getByRole('heading', { name: /League Management|Dashboard|Season Setup Workflow/i }).first()).toBeVisible({ timeout: 20000 });
 
-    await setupIsolatedTenant(page);
+    await setupIsolatedTenant(page, 'admin');
 });
 
 After(async ({ page }) => {
     if (!supabaseUrl || !supabaseKey || process.env.VITE_USE_MOCK_SUPABASE === 'true') return;
 
     try {
-        // Retrieve the exact organization ID bound to this specific test runner
         const activeOrgId = await page.evaluate(() => localStorage.getItem('squadlogic_active_org'));
 
         if (activeOrgId) {

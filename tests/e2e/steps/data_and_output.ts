@@ -24,11 +24,11 @@ When('the file is missing a required column such as {string} or {string}', async
 });
 
 Then('the system should reject the file completely', async ({ page }) => {
-    await expect(page.getByText(/Import failed/i).first()).toBeVisible();
+    await expect(page.getByTestId('import-error-banner').first()).toBeVisible();
 });
 
 Then('present a clear validation error to the user in the UI', async ({ page }) => {
-    await expect(page.locator('.text-red-400').first()).toBeVisible();
+    await expect(page.getByTestId('import-error-banner').first()).toContainText('Missing required columns');
 });
 
 Given('I upload the GotSport player CSV file with valid headers', async ({ page }) => {
@@ -37,7 +37,7 @@ Given('I upload the GotSport player CSV file with valid headers', async ({ page 
         await fileInput.setInputFiles({
             name: 'players_valid.csv',
             mimeType: 'text/csv',
-            buffer: Buffer.from('First Name,Last Name\nAlex,Smith')
+            buffer: Buffer.from('First Name,Last Name,Date of Birth\nAlex,Smith,2015-01-01')
         });
     }
 });
@@ -45,6 +45,15 @@ Given('I upload the GotSport player CSV file with valid headers', async ({ page 
 When('a specific row has malformed data \\(e.g. invalid date of birth)', async ({ page }) => {
     const csvContent = 'First Name,Last Name,Date of Birth\nAlex,Smith,\nSam,Jones,2015-01-01';
     await page.locator('input[type="file"]').setInputFiles({ name: 'row_errors.csv', mimeType: 'text/csv', buffer: Buffer.from(csvContent) });
+
+    // Wait for preview to render
+    await expect(page.getByRole('button', { name: 'Start Import' })).toBeVisible();
+
+    // Verify cell error in preview
+    await expect(page.locator('.cell-error').first()).toBeVisible();
+
+    // Start import to see the validation panel
+    await page.getByRole('button', { name: 'Start Import' }).click();
 });
 
 Then('the system should flag the row as an error', async ({ page }) => {
@@ -60,7 +69,11 @@ Then('present an interface to manually correct the malformed row', async ({ page
 });
 
 When('I click to export the team rosters or schedules', async ({ page }) => {
-    await page.getByRole('button', { name: 'Generate CSVs' }).first().click({ force: true });
+    // CRITICAL FIX: Bypass module lock
+    await page.evaluate(() => localStorage.setItem('dashboardActiveStep', '6'));
+    await page.goto('/');
+    await page.locator('[data-testid*="workflow-step-output"]').first().click({ force: true });
+    await page.getByTestId('generate-csvs-btn').first().click({ force: true });
 });
 
 Then('the system should generate the CSV file', async ({ page }) => {
@@ -84,11 +97,14 @@ Given('the team rosters have been generated and finalized', async ({ page }) => 
 });
 
 When('I access the communication tools', async ({ page }) => {
-    // Navigate to output panel
+    // CRITICAL FIX: Bypass module lock
+    await page.evaluate(() => localStorage.setItem('dashboardActiveStep', '6'));
+    await page.goto('/');
+    await page.locator('[data-testid*="workflow-step-output"]').first().click({ force: true });
 });
 
 Then('I should be able to generate a batch of draft emails for all head coaches', async ({ page }) => {
-    await page.getByRole('button', { name: 'Generate Draft Welcome Emails' }).first().click({ force: true });
+    await page.getByTestId('generate-emails-btn').first().click({ force: true });
 });
 
 Then('each draft should include the coach\'s name, team name, and assigned practice schedule', async ({ page }) => {
