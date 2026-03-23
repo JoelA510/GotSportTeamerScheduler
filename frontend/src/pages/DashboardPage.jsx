@@ -10,8 +10,8 @@ import { Building2, Calendar, Users, Trophy } from 'lucide-react';
 
 export default function DashboardPage() {
   // E2E Testing Error Trigger
-  if (typeof window !== 'undefined' && 
-      (window.__FORCE_ERROR__ === true || localStorage.getItem('__FORCE_ERROR__') === 'true')) {
+  if (typeof window !== 'undefined' &&
+    (window.__FORCE_ERROR__ === true || localStorage.getItem('__FORCE_ERROR__') === 'true')) {
     throw new Error('E2E Testing Error Triggered');
   }
 
@@ -24,7 +24,7 @@ export default function DashboardPage() {
     };
     window.addEventListener('trigger-error', handleTriggerError);
     return () => window.removeEventListener('trigger-error', handleTriggerError);
-  },[]);
+  }, []);
 
   if (showError) {
     throw new Error('E2E Testing Error Triggered');
@@ -43,16 +43,17 @@ export default function DashboardPage() {
   const readinessScore = useMemo(() => {
     let score = 0;
     // Check if data is imported (either via state or derived from summaries)
-    const hasData = (importedData && importedData.totalRows > 0) || 
-                   (team?.summary?.totals?.playersAssigned > 0) || 
-                   (team?.summary?.totals?.teams > 0);
-    
+    const hasData = (importedData && importedData.totalRows > 0) ||
+      (team?.summary?.totals?.playersAssigned > 0) ||
+      (team?.summary?.totals?.teams > 0) ||
+      (importedData && importedData.data && importedData.data.length > 0);
+
     if (hasData) score += 25;
     if (team?.generatedAt) score += 25;
     if (practice?.generatedAt) score += 25;
     if (game?.generatedAt) score += 25;
     return score;
-  },[importedData, team, practice, game]);
+  }, [importedData, team, practice, game]);
 
   if (loading.team || loading.practice || loading.game) {
     return <LoadingScreen />;
@@ -149,26 +150,24 @@ export default function DashboardPage() {
                   <span className="text-text-muted text-sm font-semibold">Readiness Score</span>
                   <span
                     data-testid="readiness-score"
-                    className={`font-mono text-sm font-bold ${
-                      readinessScore === 100
+                    className={`font-mono text-sm font-bold ${readinessScore === 100
                         ? 'text-status-success'
                         : readinessScore >= 50
                           ? 'text-status-warning'
                           : 'text-text-muted'
-                    }`}
+                      }`}
                   >
                     {readinessScore}%
                   </span>
                 </div>
                 <div className="w-full h-2.5 bg-bg-surface rounded-full overflow-hidden">
                   <div
-                    className={`h-full rounded-full transition-all duration-700 ease-out ${
-                      readinessScore === 100
+                    className={`h-full rounded-full transition-all duration-700 ease-out ${readinessScore === 100
                         ? 'bg-status-success shadow-[0_0_10px_var(--color-status-success-glow)]'
                         : readinessScore >= 50
                           ? 'bg-status-warning shadow-[0_0_10px_var(--color-status-warning-glow)]'
                           : 'bg-brand-400 shadow-[0_0_10px_var(--color-primary-glow)]'
-                    }`}
+                      }`}
                     style={{ width: `${readinessScore}%` }}
                   />
                 </div>
@@ -183,11 +182,10 @@ export default function DashboardPage() {
                   ].map((item) => (
                     <div key={item.label} className="flex items-center gap-2 text-xs">
                       <div
-                        className={`w-1.5 h-1.5 rounded-full ${
-                          item.done
+                        className={`w-1.5 h-1.5 rounded-full ${item.done
                             ? 'bg-status-success shadow-[0_0_5px_var(--color-status-success-glow)]'
                             : 'bg-text-muted opacity-40'
-                        }`}
+                          }`}
                       />
                       <span className={item.done ? 'text-text-secondary' : 'text-text-muted'}>
                         {item.label}

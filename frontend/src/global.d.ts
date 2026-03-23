@@ -6,5 +6,6 @@ export {};
 declare global {
   interface Window {
     __MOCK_DB__: any;
+    __FORCE_ERROR__: boolean | undefined;
   }
 }

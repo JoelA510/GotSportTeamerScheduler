@@ -143,9 +143,10 @@ export default function OutputGenerationPanel({
         <div className="flex flex-col gap-4">
           <div className="flex gap-4">
             <button
+              data-testid="generate-csvs-btn"
               onClick={handleGenerate}
               disabled={status === 'generating' || status === 'uploading'}
-              className="relative z-10 bg-white/10 hover:bg-white/20 text-white px-4 py-2 rounded-lg transition-colors"
+              className="relative z-20 bg-white/10 hover:bg-white/20 text-white px-4 py-2 rounded-lg transition-colors"
             >
               {status === 'generating' ? 'Generating...' : 'Generate CSVs'}
             </button>
@@ -154,7 +155,7 @@ export default function OutputGenerationPanel({
               <button
                 onClick={handleUpload}
                 disabled={status === 'uploading'}
-                className="relative z-10 bg-orange-500 hover:bg-orange-400 text-white px-4 py-2 rounded-lg shadow-lg shadow-orange-500/20 transition-all"
+                className="relative z-20 bg-orange-500 hover:bg-orange-400 text-white px-4 py-2 rounded-lg shadow-lg shadow-orange-500/20 transition-all"
               >
                 {status === 'uploading' ? 'Uploading...' : 'Upload to Storage'}
               </button>
@@ -167,7 +168,7 @@ export default function OutputGenerationPanel({
                 <h3 className="text-sm font-medium text-text-primary">Generated Files</h3>
                 <button
                   onClick={() => downloadCsv('master-schedule.csv', generated.master.csv)}
-                  className="relative z-10 text-xs text-blue-400 hover:text-blue-300"
+                  className="relative z-20 text-xs text-blue-400 hover:text-blue-300"
                 >
                   Download Master CSV
                 </button>
@@ -183,7 +184,7 @@ export default function OutputGenerationPanel({
             <h3 className="text-lg font-bold text-white mb-4">Coach Communications</h3>
             <button
               onClick={generateEmails}
-              className="relative z-10 bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/30 px-4 py-2 rounded-lg transition-colors mb-4"
+              className="relative z-20 bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/30 px-4 py-2 rounded-lg transition-colors mb-4"
             >
               Generate Draft Welcome Emails
             </button>
@@ -209,7 +210,7 @@ export default function OutputGenerationPanel({
                         </div>
                         <a
                           href={`mailto:${email.coachEmail}?subject=${encodeURIComponent(email.subject)}&body=${encodeURIComponent(email.body)}`}
-                          className="relative z-10 bg-blue-500/20 text-blue-400 px-3 py-1 text-xs rounded hover:bg-blue-500/30 transition-colors shrink-0"
+                          className="relative z-20 bg-blue-500/20 text-blue-400 px-3 py-1 text-xs rounded hover:bg-blue-500/30 transition-colors shrink-0"
                         >
                           Open in Mail App
                         </a>

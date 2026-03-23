@@ -14,16 +14,16 @@ Given('teams have been generated for the current season', async ({ page }) => {
     await page.evaluate(() => {
         const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || JSON.stringify((window as any).__MOCK_DB__ || {}));
         const orgId = localStorage.getItem('squadlogic_active_org') || 'org-1';
-        db.teams = db.teams ||[];
+        db.teams = db.teams || [];
         db.teams.push(
             { id: 'team-alpha', name: 'Team Alpha', division: 'U10', organization_id: orgId, gender_policy: null, age_range: null },
             { id: 'team-beta', name: 'Team Beta', division: 'U10', organization_id: orgId, gender_policy: null, age_range: null }
         );
         db.players = db.players || [];
-        db.team_players = db.team_players ||[];
-        db.player_buddies = db.player_buddies ||[];
+        db.team_players = db.team_players || [];
+        db.player_buddies = db.player_buddies || [];
 
-        db.scheduler_runs = db.scheduler_runs ||[];
+        db.scheduler_runs = db.scheduler_runs || [];
         db.scheduler_runs.push({
             id: 'mock-team-run',
             run_type: 'team',
@@ -36,7 +36,7 @@ Given('teams have been generated for the current season', async ({ page }) => {
             completed_at: new Date().toISOString()
         });
 
-        db.imports = db.imports ||[];
+        db.imports = db.imports || [];
         if (!db.imports.find((i: any) => i.import_type === 'players')) {
             const mappedPlayers = db.players.map((p: any) => ({
                 ...p,
@@ -62,7 +62,7 @@ Given('player {string} and player {string} are registered as a buddy pair', asyn
     await page.evaluate(({ p1Name, p2Name }) => {
         const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || JSON.stringify((window as any).__MOCK_DB__ || {}));
         const orgId = localStorage.getItem('squadlogic_active_org') || 'org-1';
-        db.players = db.players ||[];
+        db.players = db.players || [];
         const p1Id = p1Name.toLowerCase().replace(/\s+/g, '-');
         const p2Id = p2Name.toLowerCase().replace(/\s+/g, '-');
         if (!db.players.find((p: any) => p.id === p1Id)) {
@@ -79,9 +79,9 @@ Given('player {string} and player {string} are registered as a buddy pair', asyn
             existing.buddyId = p1Id;
             existing.buddy_id = p1Id;
         }
-        db.player_buddies = db.player_buddies ||[];
+        db.player_buddies = db.player_buddies || [];
         db.player_buddies.push({ id: `buddy-${p1Id}-${p2Id}`, player_id: p1Id, buddy_id: p2Id, organization_id: orgId });
-        
+
         if (db.imports && db.imports.length > 0) {
             const imp = db.imports.find((i: any) => i.import_type === 'players');
             if (imp && imp.data && imp.data.data) {
@@ -103,9 +103,9 @@ Given('{string} is assigned to {string}', async ({ page }, player: string, team:
     await page.evaluate(({ playerName, teamName }) => {
         const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || JSON.stringify((window as any).__MOCK_DB__ || {}));
         const playerId = playerName.toLowerCase().replace(/\s+/g, '-');
-        const teamObj = (db.teams ||[]).find((t: any) => t.name === teamName);
+        const teamObj = (db.teams || []).find((t: any) => t.name === teamName);
         const teamId = teamObj ? teamObj.id : teamName.toLowerCase().replace(/\s+/g, '-');
-        db.team_players = db.team_players ||[];
+        db.team_players = db.team_players || [];
         db.team_players.push({ id: `tp-${playerId}-${teamId}`, team_id: teamId, player_id: playerId });
 
         const run = db.scheduler_runs.find((r: any) => r.run_type === 'team');
@@ -120,8 +120,11 @@ Given('{string} is assigned to {string}', async ({ page }, player: string, team:
 
 When('I view the Roster Manager', async ({ page }) => {
     await page.goto('/teams');
-    const editButton = page.getByRole('button', { name: 'Edit Mode' }).first();
-    if (await editButton.isVisible()) await editButton.click({ force: true });
+    // CRITICAL FIX: Wait for the data to load before clicking Edit Mode
+    await expect(page.getByRole('heading', { name: /Teaming & Analysis/i }).first()).toBeVisible({ timeout: 15000 });
+    const editButton = page.getByRole('button', { name: /Edit Mode/i }).first();
+    await expect(editButton).toBeVisible({ timeout: 15000 });
+    await editButton.click({ force: true });
 });
 
 Then('I should see a conflict banner with message {string}', async ({ page }, msg: string) => {
@@ -132,7 +135,7 @@ Then('I should see a conflict banner with message {string}', async ({ page }, ms
 Given('{string} is a {string} team', async ({ page }, team: string, gender: string) => {
     await page.evaluate(({ teamName, genderPolicy }) => {
         const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || JSON.stringify((window as any).__MOCK_DB__ || {}));
-        const teamObj = (db.teams ||[]).find((t: any) => t.name === teamName);
+        const teamObj = (db.teams || []).find((t: any) => t.name === teamName);
         if (teamObj) {
             teamObj.gender_policy = genderPolicy;
             teamObj.gender = genderPolicy;
@@ -153,17 +156,17 @@ Given('player {string} has gender {string}', async ({ page }, player: string, ge
     await page.evaluate(({ playerName, playerGender }) => {
         const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || JSON.stringify((window as any).__MOCK_DB__ || {}));
         const playerId = playerName.toLowerCase().replace(/\s+/g, '-');
-        let playerObj = (db.players ||[]).find((p: any) => p.id === playerId);
+        let playerObj = (db.players || []).find((p: any) => p.id === playerId);
         if (playerObj) {
             playerObj.gender = playerGender;
             playerObj.Gender = playerGender;
         } else {
             const orgId = localStorage.getItem('squadlogic_active_org') || 'org-1';
-            db.players = db.players ||[];
+            db.players = db.players || [];
             playerObj = { id: playerId, first_name: playerName, last_name: '', name: playerName, gender: playerGender, Gender: playerGender, organization_id: orgId };
             db.players.push(playerObj);
         }
-        
+
         if (db.imports && db.imports.length > 0) {
             const imp = db.imports.find((i: any) => i.import_type === 'players');
             if (imp && imp.data && imp.data.data) {
@@ -189,7 +192,7 @@ Then('I should see a conflict banner with message containing {string}', async ({
 Given('{string} has age range U8 \\(ages 6-8)', async ({ page }, team: string) => {
     await page.evaluate(({ teamName }) => {
         const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || JSON.stringify((window as any).__MOCK_DB__ || {}));
-        const teamObj = (db.teams ||[]).find((t: any) => t.name === teamName);
+        const teamObj = (db.teams || []).find((t: any) => t.name === teamName);
         if (teamObj) {
             teamObj.minAge = 6;
             teamObj.maxAge = 8;
@@ -214,17 +217,17 @@ Given('player {string} is age {int}', async ({ page }, player: string, age: numb
     await page.evaluate(({ playerName, playerAge }) => {
         const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || JSON.stringify((window as any).__MOCK_DB__ || {}));
         const playerId = playerName.toLowerCase().replace(/\s+/g, '-');
-        let playerObj = (db.players ||[]).find((p: any) => p.id === playerId);
+        let playerObj = (db.players || []).find((p: any) => p.id === playerId);
         if (playerObj) {
             playerObj.age = playerAge;
             playerObj.Age = playerAge;
         } else {
             const orgId = localStorage.getItem('squadlogic_active_org') || 'org-1';
-            db.players = db.players ||[];
+            db.players = db.players || [];
             playerObj = { id: playerId, first_name: playerName, last_name: '', name: playerName, age: playerAge, Age: playerAge, organization_id: orgId };
             db.players.push(playerObj);
         }
-        
+
         if (db.imports && db.imports.length > 0) {
             const imp = db.imports.find((i: any) => i.import_type === 'players');
             if (imp && imp.data && imp.data.data) {

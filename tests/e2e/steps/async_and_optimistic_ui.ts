@@ -5,10 +5,21 @@ const { Given, When, Then } = createBdd();
 
 // --- Teaming Rules ---
 When('I change the {string} input to {string}', async ({ page }, label: string, value: string) => {
-    if (page.url().includes('dashboard')) {
+    // Clear scheduler runs so the configuration panel renders instead of the overview panel
+    await page.evaluate(() => {
+        const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
+        db.scheduler_runs = (db.scheduler_runs || []).filter((r: any) => r.run_type !== 'team');
+        db.imports = [{ id: 'imp-1', import_type: 'players', data: { data: [{ id: 'p1', 'First Name': 'A', 'Last Name': 'B', 'Birthdate': '2015-01-01', 'Gender': 'm' }] } }];
+        sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
+    });
+
+    if (!page.url().includes('/teams')) {
         await page.goto('/teams');
+    } else {
+        await page.reload();
     }
-    await expect(page.locator('text=Drafting Summary').first()).toBeVisible({ timeout: 15000 });
+
+    await expect(page.getByRole('heading', { name: /Teaming & Analysis/i }).first()).toBeVisible({ timeout: 15000 });
 
     const input = label.toLowerCase().includes('max roster')
         ? page.locator('#max-roster')
@@ -70,8 +81,13 @@ Then('the database should be updated in the background without a page refresh', 
 
 // --- Output Pipeline ---
 Given('I am on the {string} workflow step on Dashboard', async ({ page }, step: string) => {
+    // Force the active step in localStorage to bypass the "Locked" state
+    await page.evaluate((s) => {
+        const map: any = { 'Outcome': '6', 'Teaming': '2' };
+        localStorage.setItem('dashboardActiveStep', map[s] || '6');
+    }, step);
     await page.goto('/');
-    const label = step.includes('Outcome') ? 'output' : step.toLowerCase();
+    const label = step.includes('Outcome') ? 'output' : step.toLowerCase().replace(/\s+/g, '-');
     await page.locator(`[data-testid*="workflow-step-"][data-testid*="${label}"]`).first().click({ force: true });
 });
 

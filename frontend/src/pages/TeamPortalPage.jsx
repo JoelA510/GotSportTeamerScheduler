@@ -53,7 +53,7 @@ export default function TeamPortalPage() {
         <div className="flex gap-4">
           <button
             onClick={() => setCalendarModalOpen(true)}
-            className="relative z-10 bg-bg-surface px-4 py-2 rounded-lg border border-border-subtle flex items-center gap-2 hover:bg-bg-surface-hover transition-colors"
+            className="relative z-20 bg-bg-surface px-4 py-2 rounded-lg border border-border-subtle flex items-center gap-2 hover:bg-bg-surface-hover transition-colors"
           >
             <Calendar size={18} className="text-color-primary" />
             <span className="font-semibold">Subscribe to Calendar</span>
@@ -212,7 +212,7 @@ export default function TeamPortalPage() {
                 placeholder="Type a message..."
                 className="glass-input flex-grow text-sm"
               />
-              <button type="submit" className="relative z-10 glass-button p-2 flex items-center justify-center">
+              <button type="submit" className="relative z-20 glass-button p-2 flex items-center justify-center">
                 <Send size={18} />
               </button>
             </form>
@@ -255,9 +255,9 @@ function RsvpButton({ active, type, onClick }) {
   return (
     <button
       onClick={onClick}
-      className={`relative z-10 flex-1 flex flex-col items-center gap-1 p-2 rounded transition-all duration-200 ${active
-          ? `${config.bg} ${config.color} border-current shadow-glow scale-105`
-          : 'bg-bg-surface/20 text-text-muted border-transparent grayscale hover:grayscale-0 hover:bg-bg-surface/40'
+      className={`relative z-20 flex-1 flex flex-col items-center gap-1 p-2 rounded transition-all duration-200 ${active
+        ? `${config.bg} ${config.color} border-current shadow-glow scale-105`
+        : 'bg-bg-surface/20 text-text-muted border-transparent grayscale hover:grayscale-0 hover:bg-bg-surface/40'
         } border`}
       title={config.label}
     >

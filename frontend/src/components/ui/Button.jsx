@@ -4,13 +4,13 @@ import PropTypes from 'prop-types';
 /**
  * @param {Object} props
  * @param {React.ReactNode} props.children
- * @param {'primary' | 'secondary' | 'danger' | 'ghost'} [props.variant]
+ * @param {'primary' | 'secondary' | 'danger' | 'ghost'}[props.variant]
  * @param {'sm' | 'md' | 'lg'}[props.size]
  * @param {string} [props.className]
  * @param {boolean}[props.disabled]
  * @param {React.MouseEventHandler<HTMLButtonElement>} [props.onClick]
  * @param {'button' | 'submit' | 'reset'} [props.type]
- * @param {React.ElementType} [props.icon]
+ * @param {React.ElementType}[props.icon]
  */
 const Button = ({
   children,
@@ -23,9 +23,9 @@ const Button = ({
   icon: Icon,
   ...props
 }) => {
-  // Added relative z-10 to prevent glass panel pseudo-elements from intercepting clicks
+  // Elevated to z-20 to guarantee it sits above all glass panel pseudo-elements
   const baseStyles =
-    'relative z-10 font-display font-bold rounded-full transition-all transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2';
+    'relative z-20 font-display font-bold rounded-full transition-all transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2';
 
   const variants = {
     primary:

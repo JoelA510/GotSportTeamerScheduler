@@ -60,7 +60,8 @@ Given('my team has practices on Tuesdays and games on Saturdays', async ({ page 
 });
 
 When('I access my personalized calendar feed URL', async ({ page }) => {
-    await page.route('**/functions/v1/calendar-feed*', async route => {
+    // CRITICAL FIX: Use wildcard to catch relative fetch calls before Vite SPA fallback
+    await page.route('**/*calendar-feed*', async route => {
         await route.fulfill({ status: 200, contentType: 'text/calendar', body: 'BEGIN:VCALENDAR\nVERSION:2.0\nEND:VCALENDAR' });
     });
     await page.goto('/teams');
