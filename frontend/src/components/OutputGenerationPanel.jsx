@@ -3,21 +3,17 @@ import { generateScheduleExports } from '../../../packages/core/src/outputGenera
 import { uploadScheduleExport } from '../../../packages/core/src/storageSupabase.js';
 import { IS_MOCK_MODE } from '../config.js';
 
-// Placeholder for Supabase client injection or context
-// In a real app, use a hook like useSupabaseClient()
-// For now, we'll assume a prop or global client, or just simulate the upload if no client.
-// @ts-ignore
-const MOCK_UPLOAD = !import.meta.env.VITE_SUPABASE_URL;
+const MOCK_UPLOAD = IS_MOCK_MODE;
 
 export default function OutputGenerationPanel({
   teams = [],
   practiceAssignments = [],
   gameAssignments = [],
-  supabaseClient, // Pass this in from App or Context
+  supabaseClient,
 }) {
   const [generated, setGenerated] = useState(null);
   const [emails, setEmails] = useState(null);
-  const [status, setStatus] = useState('idle'); // idle, generating, uploading, success, error
+  const [status, setStatus] = useState('idle');
   const [message, setMessage] = useState('');
 
   const generateEmails = () => {
@@ -32,8 +28,8 @@ export default function OutputGenerationPanel({
         const scheduleStr =
           teamPractices.length > 0
             ? teamPractices
-                .map((p) => `${p.day} at ${p.slotId.split('_').pop().slice(0, 5)} on ${p.fieldId}`)
-                .join(' and ')
+              .map((p) => `${p.day} at ${p.slotId.split('_').pop().slice(0, 5)} on ${p.fieldId}`)
+              .join(' and ')
             : 'TBD';
 
         const subject = `Welcome to the season, Coach ${team.headCoach}!`;
@@ -56,9 +52,6 @@ export default function OutputGenerationPanel({
       setStatus('generating');
       setMessage('Generating CSVs...');
 
-      // Small timeout to allow UI to update before heavy sync work
-      // TODO: If schedule sizes grow significantly, move generateScheduleExports
-      // into a Web Worker to avoid blocking the main thread.
       setTimeout(() => {
         const exports = generateScheduleExports({
           teams,
@@ -91,13 +84,10 @@ export default function OutputGenerationPanel({
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
       const uploads = [];
 
-      // Upload Master
       uploads.push(
         uploadFile(supabaseClient, `master-schedule-${timestamp}.csv`, generated.master.csv)
       );
 
-      // Upload Per-Team (limit to first 5 for demo/speed if needed, or all)
-      // Uploading all might be slow in browser. Let's do all for correctness.
       for (const teamExport of generated.perTeam) {
         uploads.push(
           uploadFile(supabaseClient, `teams/${teamExport.teamId}-${timestamp}.csv`, teamExport.csv)
@@ -155,7 +145,7 @@ export default function OutputGenerationPanel({
             <button
               onClick={handleGenerate}
               disabled={status === 'generating' || status === 'uploading'}
-              className="bg-white/10 hover:bg-white/20 text-white px-4 py-2 rounded-lg transition-colors"
+              className="relative z-10 bg-white/10 hover:bg-white/20 text-white px-4 py-2 rounded-lg transition-colors"
             >
               {status === 'generating' ? 'Generating...' : 'Generate CSVs'}
             </button>
@@ -164,7 +154,7 @@ export default function OutputGenerationPanel({
               <button
                 onClick={handleUpload}
                 disabled={status === 'uploading'}
-                className="bg-orange-500 hover:bg-orange-400 text-white px-4 py-2 rounded-lg shadow-lg shadow-orange-500/20 transition-all"
+                className="relative z-10 bg-orange-500 hover:bg-orange-400 text-white px-4 py-2 rounded-lg shadow-lg shadow-orange-500/20 transition-all"
               >
                 {status === 'uploading' ? 'Uploading...' : 'Upload to Storage'}
               </button>
@@ -177,7 +167,7 @@ export default function OutputGenerationPanel({
                 <h3 className="text-sm font-medium text-text-primary">Generated Files</h3>
                 <button
                   onClick={() => downloadCsv('master-schedule.csv', generated.master.csv)}
-                  className="text-xs text-blue-400 hover:text-blue-300"
+                  className="relative z-10 text-xs text-blue-400 hover:text-blue-300"
                 >
                   Download Master CSV
                 </button>
@@ -193,7 +183,7 @@ export default function OutputGenerationPanel({
             <h3 className="text-lg font-bold text-white mb-4">Coach Communications</h3>
             <button
               onClick={generateEmails}
-              className="bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/30 px-4 py-2 rounded-lg transition-colors mb-4"
+              className="relative z-10 bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/30 px-4 py-2 rounded-lg transition-colors mb-4"
             >
               Generate Draft Welcome Emails
             </button>
@@ -219,7 +209,7 @@ export default function OutputGenerationPanel({
                         </div>
                         <a
                           href={`mailto:${email.coachEmail}?subject=${encodeURIComponent(email.subject)}&body=${encodeURIComponent(email.body)}`}
-                          className="bg-blue-500/20 text-blue-400 px-3 py-1 text-xs rounded hover:bg-blue-500/30 transition-colors shrink-0"
+                          className="relative z-10 bg-blue-500/20 text-blue-400 px-3 py-1 text-xs rounded hover:bg-blue-500/30 transition-colors shrink-0"
                         >
                           Open in Mail App
                         </a>

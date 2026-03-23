@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   DndContext,
   DragOverlay,
@@ -74,7 +74,7 @@ export function TeamColumn({ team, players }) {
   });
 
   return (
-    <div 
+    <div
       className="bg-bg-surface/50 border border-border-subtle rounded-xl flex flex-col h-[650px]"
       data-testid={`team-column-${team.id}`}
     >
@@ -82,8 +82,8 @@ export function TeamColumn({ team, players }) {
         <div className="flex justify-between items-center mb-1">
           <div className="flex flex-col">
             <h3 className="font-bold text-text-primary">{team.name}</h3>
-            <a 
-              href={`/team/${team.id}`} 
+            <a
+              href={`/team/${team.id}`}
               className="text-[10px] text-blue-400 hover:text-blue-300 hover:underline uppercase tracking-widest font-bold flex items-center gap-1 mt-0.5"
             >
               View Team Portal <ArrowRight size={10} />
@@ -122,6 +122,11 @@ export default function RosterManager({ initialTeams }) {
   const { conflicts, hasConflicts } = useConflicts(teams);
   const { currentOrganization } = useOrganization();
 
+  // CRITICAL FIX: Sync state when async mock data finishes loading
+  useEffect(() => {
+    setTeams(initialTeams);
+  }, [initialTeams]);
+
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
@@ -158,7 +163,6 @@ export default function RosterManager({ initialTeams }) {
     const sourceTeam = findTeamOfPlayer(activeId);
     let destTeam = findTeamOfPlayer(overId);
 
-    // If dragging over an empty column
     if (!destTeam) {
       destTeam = teams.find((t) => t.id === overId);
     }
@@ -173,14 +177,11 @@ export default function RosterManager({ initialTeams }) {
       const pIndex = sTeam.players.findIndex((p) => p.id === activeId);
       const player = sTeam.players[pIndex];
 
-      // Remove from source
       sTeam.players.splice(pIndex, 1);
 
-      // Add to dest
       let dIndex = dTeam.players.findIndex((p) => p.id === overId);
       if (dIndex < 0) dIndex = dTeam.players.length;
 
-      // Update source to manual
       const updatedPlayer = { ...player, assignment_source: 'manual' };
       dTeam.players.splice(dIndex, 0, updatedPlayer);
 
@@ -204,7 +205,6 @@ export default function RosterManager({ initialTeams }) {
     if (!sourceTeam || !destTeam) return;
 
     if (sourceTeam.id === destTeam.id) {
-      // Reordering within the same list
       setTeams((prevTeams) => {
         const newTeams = [...prevTeams];
         const tIdx = newTeams.findIndex((t) => t.id === sourceTeam.id);
@@ -215,35 +215,31 @@ export default function RosterManager({ initialTeams }) {
         return newTeams;
       });
     } else {
-      // Cross-team move - Persist to DB
       try {
-        const { error } = await supabase
+        const { error } = /** @type {any} */ (await supabase
           .from('players')
-          .update({ 
+          .update({
             team_id: destTeam.id,
             assignment_source: 'manual'
           })
-          .eq('id', activeId);
-        
+          .eq('id', activeId));
+
         if (error) throw error;
-        console.log(`[RosterManager] Persisted manual override for player ${activeId}`);
       } catch (e) {
         console.error('Failed to persist player assignment override', e);
-        // Optional: rollback teams state if we want strict consistency
       }
     }
   };
 
-  // Quick Draft: reuses existing scheduler_runs async job pattern
   const handleQuickDraft = async () => {
     setIsDrafting(true);
     try {
-      const { data: settings } = await supabase
+      const { data: settings } = /** @type {any} */ (await supabase
         .from('season_settings')
         .select('id')
         .eq('organization_id', currentOrganization?.id)
         .limit(1)
-        .single();
+        .single());
 
       if (settings) {
         await supabase.from('scheduler_runs').insert({
@@ -254,8 +250,6 @@ export default function RosterManager({ initialTeams }) {
           metrics: { progress: 0 },
           started_at: new Date().toISOString(),
         });
-      } else {
-        console.warn('No season settings found for Quick Draft.');
       }
     } catch (e) {
       console.error('Quick Draft backend insert failed', e);
@@ -266,7 +260,6 @@ export default function RosterManager({ initialTeams }) {
 
   return (
     <div className="w-full">
-      {/* Conflict Banner */}
       {hasConflicts && (
         <div className="bg-status-error-bg backdrop-blur-md text-white p-4 border border-status-error rounded-xl mb-6 flex flex-col gap-2 shadow-[0_0_30px_rgba(239,68,68,0.3)] animate-fadeIn">
           <div className="flex items-center gap-2 font-bold uppercase tracking-widest text-status-error">
@@ -281,11 +274,10 @@ export default function RosterManager({ initialTeams }) {
               >
                 <span className="text-text-secondary">{c.message}</span>
                 <span
-                  className={`text-xs px-2 py-0.5 rounded-full font-semibold ${
-                    c.severity === 'error'
-                      ? 'bg-status-error/20 text-status-error'
-                      : 'bg-status-warning/20 text-status-warning'
-                  }`}
+                  className={`text-xs px-2 py-0.5 rounded-full font-semibold ${c.severity === 'error'
+                    ? 'bg-status-error/20 text-status-error'
+                    : 'bg-status-warning/20 text-status-warning'
+                    }`}
                 >
                   {c.type}
                 </span>
@@ -295,12 +287,11 @@ export default function RosterManager({ initialTeams }) {
         </div>
       )}
 
-      {/* Quick Draft Button */}
       <div className="flex justify-end mb-4">
         <button
           onClick={handleQuickDraft}
           disabled={isDrafting}
-          className="glass-button flex items-center gap-2 text-sm"
+          className="relative z-10 glass-button flex items-center gap-2 text-sm"
         >
           <Zap size={16} />
           {isDrafting ? 'Drafting...' : 'Quick Draft'}
