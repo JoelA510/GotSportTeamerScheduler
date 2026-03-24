@@ -400,4 +400,32 @@ Fix available via: npm audit fix
 
 ---
 
-**STATUS: Awaiting authorization to begin Phase 1 remediation.**
+## Appendix C: Supabase Vault PII Encryption Evaluation (M-6)
+
+**Date evaluated:** March 24, 2026
+**Finding:** M-6 — `guardian_contacts` (JSONB) and `date_of_birth` (DATE) stored in plaintext.
+
+### Recommendation: Accept Risk for Now, Revisit at Scale
+
+**Supabase Vault** (`pgsodium`-based Transparent Column Encryption) would allow encrypting these columns at rest with key management handled by Supabase. However, after evaluation, the recommendation is to **document the accepted risk** rather than implement Vault encryption at this stage, for three reasons:
+
+1. **Free-tier constraints.** Vault (TCE) is available on all Supabase tiers, but encrypted columns cannot be indexed, which means any query filtering by `date_of_birth` (used for age-group division assignment) would require a full table scan after decryption. On the free tier with limited compute, this creates unacceptable latency for the scheduling pipeline.
+
+2. **JSONB incompatibility.** `guardian_contacts` is a JSONB column queried with JSON path operators (`->>`, `@>`). Vault encrypts the entire column value as a single blob — JSON operators cannot work on encrypted data. This would require restructuring the column into a normalized table with individual encrypted fields, which is a significant schema change.
+
+3. **Proportional threat model.** SquadLogic stores contact information (names, emails, phone numbers) — the same data found in any youth sports league spreadsheet shared via Google Sheets. It does NOT store SSNs, financial data, medical records, or government IDs (per project guardrails). The risk from a database breach exposing contact info is real but moderate, and is already mitigated by Supabase's infrastructure-level encryption at rest (AES-256) on all Postgres data.
+
+**Accepted risk:** Contact PII (names, emails, phones, DOB) is protected by AES-256 encryption at rest (infrastructure-level) and organization-scoped RLS in transit. Column-level encryption is deferred until the platform scales beyond free-tier constraints or regulatory requirements change.
+
+**Trigger to revisit:** If SquadLogic begins handling data subject to COPPA enforcement actions, expands to store medical information, or migrates to a paid Supabase tier where compute constraints are relaxed.
+
+---
+
+## Remediation Progress Tracker
+
+| Phase | Status | Commit | Findings Addressed |
+|-------|--------|--------|--------------------|
+| Phase 1 | **Complete** | `4c518df` | C-1, C-2, C-3, M-2, M-3 |
+| Phase 2 | **Complete** | `11119b6` | H-1, H-2, H-3, H-4 |
+| Phase 3 | **Complete** | *(pending push)* | M-1, M-3, M-4, M-5, M-6 |
+| Phase 4 | Planned | — | L-1, L-2, L-3, L-4 + hardening |

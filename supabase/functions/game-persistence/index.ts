@@ -21,6 +21,7 @@ import {
   corsHeaders,
   jsonResponse,
 } from '../_shared/auth.ts';
+import { checkRateLimit, rateLimitExceededResponse } from '../_shared/rateLimit.ts';
 
 type HttpHandler = (request: Request) => Response | Promise<Response>;
 
@@ -70,12 +71,18 @@ if (!supabaseUrl || !serviceRoleKey) {
       return jsonResponse({ status: 'error', message: 'Method not allowed' }, 405);
     }
 
-    // --- Phase 1 Security: Validate user + org membership BEFORE processing ---
+    // --- Security: Validate user, rate limit, org membership BEFORE processing ---
 
     // 1. Authenticate user
     const user = await getUserFromRequest(req, serviceClient);
     if (!user) {
       return jsonResponse({ status: 'error', message: 'Unauthorized' }, 401);
+    }
+
+    // 1b. Rate limit (Phase 3.2, M-4)
+    const rateCheck = checkRateLimit(user.id);
+    if (!rateCheck.allowed) {
+      return rateLimitExceededResponse(rateCheck);
     }
 
     // 2. Validate payload schema

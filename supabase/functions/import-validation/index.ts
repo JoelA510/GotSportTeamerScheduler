@@ -20,6 +20,7 @@ import {
   corsHeaders,
   jsonResponse,
 } from '../_shared/auth.ts';
+import { checkRateLimit, rateLimitExceededResponse } from '../_shared/rateLimit.ts';
 
 // --- Constants ---
 const MAX_ROWS = 5000;
@@ -184,6 +185,12 @@ serve(async (req: Request) => {
   const user = await getUserFromRequest(req, serviceClient);
   if (!user) {
     return jsonResponse({ status: 'error', message: 'Unauthorized' }, 401);
+  }
+
+  // 1b. Rate limit (Phase 3.2, M-4) — imports limited to 10/min (heavier operation)
+  const rateCheck = checkRateLimit(user.id, { maxRequests: 10, windowMs: 60_000 });
+  if (!rateCheck.allowed) {
+    return rateLimitExceededResponse(rateCheck);
   }
 
   // 2. Check Content-Length (DoS protection)

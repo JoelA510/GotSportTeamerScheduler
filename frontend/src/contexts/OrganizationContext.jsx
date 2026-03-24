@@ -88,15 +88,22 @@ export const OrganizationProvider = ({ children }) => {
 
         if (data && data.length > 0) {
           setOrganizations(data);
-          
+
+          // Phase 3.4 (M-1): Validate localStorage org against actual memberships.
+          // Defense-in-depth: even if someone edits localStorage, they can only
+          // switch to orgs they're actually a member of. RLS is the real gate.
           const storedOrgId = localStorage.getItem('squadlogic_active_org');
-          const matchedMember = data.find(m => m.organization_id === storedOrgId);
-          
+          const validOrgIds = data.map(m => m.organization_id);
+          const matchedMember = storedOrgId && validOrgIds.includes(storedOrgId)
+            ? data.find(m => m.organization_id === storedOrgId)
+            : null;
+
           if (matchedMember) {
             setCurrentOrganization(matchedMember.organizations);
             setOrgMember({ role: matchedMember.role, ...matchedMember });
             await fetchSeasonsForOrg(matchedMember.organization_id);
           } else {
+            // Stored org was invalid or absent — fall back to first membership
             const first = data[0];
             setCurrentOrganization(first.organizations);
             setOrgMember({ role: first.role, ...first });
