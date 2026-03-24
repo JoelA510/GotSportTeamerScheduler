@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabaseClient.js';
 import { useOrganization } from '../contexts/OrganizationContext.jsx';
+import { logger } from '../lib/logger.js';
 
 export function useFields() {
   const [locations, setLocations] = useState([]);
@@ -47,7 +48,7 @@ export function useFields() {
       if (fieldError) throw fieldError;
       setFields(fieldData || []);
     } catch (err) {
-      console.error('Error fetching field data:', err);
+      logger.error('Error fetching field data:', err);
       setError(err.message);
     } finally {
       setLoading(false);

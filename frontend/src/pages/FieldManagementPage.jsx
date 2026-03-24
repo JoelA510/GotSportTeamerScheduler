@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import Button from '../components/ui/Button.jsx';
 import { MapPin, Plus, Edit2, Trash2, X, Check } from 'lucide-react';
 import { useFields } from '../hooks/useFields.js';
+import { logger } from '../lib/logger.js';
 
 export default function FieldManagementPage() {
   const { locations, fields, loading, addLocation, addField, updateField, deleteField } =
@@ -55,7 +56,7 @@ export default function FieldManagementPage() {
   };
 
   const handleSave = async () => {
-    console.log('[DEBUG] [FieldManagementPage] handleSave formData:', formData);
+    logger.log('[DEBUG] [FieldManagementPage] handleSave formData:', formData);
     try {
       let finalLocationId = formData.location_id;
 
@@ -80,9 +81,9 @@ export default function FieldManagementPage() {
         await addField(fieldPayload);
       }
       setIsModalOpen(false);
-      console.log('[DEBUG] [FieldManagementPage] Save complete');
+      logger.log('[DEBUG] [FieldManagementPage] Save complete');
     } catch (err) {
-      console.error('Save failed', err);
+      logger.error('Save failed', err);
       alert('Failed to save field: ' + err.message);
     }
   };
@@ -92,7 +93,7 @@ export default function FieldManagementPage() {
       try {
         await deleteField(field.id);
       } catch (err) {
-        console.error('Delete failed', err);
+        logger.error('Delete failed', err);
         alert('Failed to delete field: ' + err.message);
       }
     }

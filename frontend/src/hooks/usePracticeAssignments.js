@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient.js';
 import { mapKeysToCamelCase } from '../utils/caseConverters.js';
+import { logger } from '../lib/logger.js';
 
 export function usePracticeAssignments(runId) {
   const [assignments, setAssignments] = useState([]);
@@ -48,7 +49,7 @@ export function usePracticeAssignments(runId) {
         const mapped = (data || []).map(mapKeysToCamelCase);
         setAssignments(mapped);
       } catch (err) {
-        console.error('Error fetching practice assignments:', err);
+        logger.error('Error fetching practice assignments:', err);
         setError(err);
       } finally {
         setLoading(false);
@@ -68,11 +69,11 @@ export function usePracticeAssignments(runId) {
       if (updateError) throw updateError;
       
       // Update local state
-      setAssignments(prev => prev.map(a => 
+      setAssignments(prev => prev.map(a =>
         a.id === assignmentId ? { ...a, source: newSource } : a
       ));
     } catch (err) {
-      console.error('Error updating assignment source:', err);
+      logger.error('Error updating assignment source:', err);
       setError(err);
       throw err;
     }

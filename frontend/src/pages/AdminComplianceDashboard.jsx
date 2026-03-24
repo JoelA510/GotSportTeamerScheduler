@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient.js';
 import { useOrganization } from '../contexts/OrganizationContext.jsx';
 import { Search, CheckCircle2, AlertCircle, ClipboardCheck, History } from 'lucide-react';
+import { logger } from '../lib/logger.js';
 
 export default function AdminComplianceDashboard() {
   const { currentOrganization } = useOrganization();
@@ -27,7 +28,7 @@ export default function AdminComplianceDashboard() {
           setSelectedFormId(data[0].id);
         }
       } catch (err) {
-        console.error(err);
+        logger.error(err);
       }
     }
     loadForms();
@@ -57,7 +58,7 @@ export default function AdminComplianceDashboard() {
         if (error) throw error;
         setRegistrations(data || []);
       } catch (err) {
-        console.error(err);
+        logger.error(err);
         setError('Failed to load compliance data.');
       } finally {
         setLoading(false);
@@ -80,7 +81,7 @@ export default function AdminComplianceDashboard() {
         .eq('id', regId);
       if (error) throw error;
     } catch (err) {
-      console.error(err);
+      logger.error(err);
       // Rollback
       setRegistrations((prev) =>
         prev.map((r) => (r.id === regId ? { ...r, medical_cleared: currentStatus } : r))

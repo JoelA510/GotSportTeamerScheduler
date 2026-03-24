@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient.js';
+import { logger } from '../lib/logger.js';
 
 export function useTeamPersistence() {
   const [persistenceSnapshot, setPersistenceSnapshot] = useState({
@@ -28,7 +29,7 @@ export function useTeamPersistence() {
           .limit(5);
 
         if (error) {
-          console.error('Error fetching persistence history:', error);
+          logger.error('Error fetching persistence history:', error);
           return;
         }
 
@@ -57,7 +58,7 @@ export function useTeamPersistence() {
           }
         });
       } catch (err) {
-        console.error('Failed to init persistence snapshot:', err);
+        logger.error('Failed to init persistence snapshot:', err);
       } finally {
         setLoading(false);
       }

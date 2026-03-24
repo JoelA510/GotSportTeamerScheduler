@@ -18,6 +18,7 @@ import {
   getUserFromRequest,
   getUserOrgIds,
   resolveOrgIdsFromTeamIds,
+  recordAudit,
   corsHeaders,
   jsonResponse,
 } from '../_shared/auth.ts';
@@ -134,6 +135,16 @@ if (!supabaseUrl || !serviceRoleKey) {
 
     // 4. Delegate to inner handler
     const response = await innerHandler(req);
+
+    // 4b. Audit log (fire-and-forget, Phase 4)
+    if (response.ok && userOrgIds.length > 0) {
+      recordAudit(serviceClient, {
+        organizationId: userOrgIds[0],
+        action: 'game.saved',
+        resourceType: 'game',
+        metadata: { game_count: gameRows.length },
+      });
+    }
 
     // Add CORS headers if missing
     const newHeaders = new Headers(response.headers);

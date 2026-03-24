@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext.jsx';
 import { prepareGamePersistenceSnapshot } from '@squadlogic/core/gamePersistenceSnapshot.js';
 import { GAME_PERSISTENCE_URL } from '../config.js';
 import PersistencePanel from './PersistencePanel.jsx';
+import { logger } from '../lib/logger.js';
 
 export default function GamePersistencePanel({ assignments = [], runMetadata = {}, runId }) {
   const { session } = useAuth();
@@ -48,7 +49,7 @@ export default function GamePersistencePanel({ assignments = [], runMetadata = {
       setStatus('success');
       setMessage(`Success! Persisted ${result.data?.assignmentsPersisted ?? 0} assignments.`);
     } catch (err) {
-      console.error('Persistence error:', err);
+      logger.error('Persistence error:', err);
       setStatus('error');
       setMessage(err.message);
     }

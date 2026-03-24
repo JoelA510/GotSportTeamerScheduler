@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { runScheduleEvaluations } from '@squadlogic/core/evaluationPipeline.js';
 import { persistEvaluation } from '@squadlogic/core/evaluationPersistence.js';
+import { logger } from '../lib/logger.js';
 
 export default function EvaluationPanel({ practiceData, gameData, supabaseClient }) {
   const [persisting, setPersisting] = useState(false);
@@ -14,7 +15,7 @@ export default function EvaluationPanel({ practiceData, gameData, supabaseClient
         games: gameData,
       });
     } catch (err) {
-      console.error('Evaluation failed:', err);
+      logger.error('Evaluation failed:', err);
       return null;
     }
   }, [practiceData, gameData]);
@@ -47,7 +48,7 @@ export default function EvaluationPanel({ practiceData, gameData, supabaseClient
       setMessage('Evaluation snapshot saved.');
       setTimeout(() => setMessage(''), 3000);
     } catch (err) {
-      console.error('Persistence error:', err);
+      logger.error('Persistence error:', err);
       setMessage(`Save failed: ${err.message}`);
     } finally {
       setPersisting(false);

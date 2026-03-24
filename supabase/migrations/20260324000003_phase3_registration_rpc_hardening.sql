@@ -96,6 +96,15 @@ begin
     )
     returning id into v_registration_id;
 
+    -- Phase 4 (4.6): Audit log
+    perform record_audit_event(
+        v_form_org_id,
+        'registration.submitted',
+        'registration',
+        v_registration_id,
+        json_build_object('form_id', p_form_id, 'player_id', v_player_id)::jsonb
+    );
+
     return v_registration_id;
 exception
     when unique_violation then

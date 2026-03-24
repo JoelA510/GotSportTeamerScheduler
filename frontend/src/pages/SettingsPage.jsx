@@ -5,6 +5,7 @@ import { useAuth } from '../contexts/AuthContext.jsx';
 import { useTheme } from '../contexts/ThemeContext.jsx';
 import { PERSISTENCE_THEMES } from '../utils/themes.js';
 import { extractColorsFromImage } from '../utils/colorUtils.js';
+import { logger } from '../lib/logger.js';
 
 export default function SettingsPage() {
   const { user } = useAuth();
@@ -68,7 +69,7 @@ export default function SettingsPage() {
         const colors = await extractColorsFromImage(dataUrl);
         updateExtractedColors(colors);
       } catch (error) {
-        console.error('Failed to extract colors', error);
+        logger.error('Failed to extract colors', error);
       }
     };
     reader.readAsDataURL(file);

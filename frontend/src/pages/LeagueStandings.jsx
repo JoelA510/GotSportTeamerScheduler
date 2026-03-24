@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabaseClient.js';
 import { useOrganization } from '../contexts/OrganizationContext.jsx';
 import { PERMISSIONS, hasPermission } from '../constants/permissions.js';
 import { Trophy, CheckCircle2 } from 'lucide-react';
+import { logger } from '../lib/logger.js';
 
 export default function LeagueStandings() {
   const { currentOrganization, orgMember } = useOrganization();
@@ -54,7 +55,7 @@ export default function LeagueStandings() {
         if (gamesErr) throw gamesErr;
         setGames(gamesData || []);
       } catch (err) {
-        console.error(err);
+        logger.error(err);
         setError('Failed to load standings and games data.');
       } finally {
         setLoading(false);
@@ -92,7 +93,7 @@ export default function LeagueStandings() {
 
       if (standingsData) setStandings(standingsData);
     } catch (err) {
-      console.error(err);
+      logger.error(err);
       alert('Failed to update score.');
     } finally {
       setUpdatingGameId(null);

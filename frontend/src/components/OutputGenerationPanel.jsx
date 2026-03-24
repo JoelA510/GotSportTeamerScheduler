@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { generateScheduleExports } from '../../../packages/core/src/outputGeneration.js';
 import { uploadScheduleExport } from '../../../packages/core/src/storageSupabase.js';
 import { IS_MOCK_MODE } from '../config.js';
+import { logger } from '../lib/logger.js';
 
 const MOCK_UPLOAD = IS_MOCK_MODE;
 
@@ -63,7 +64,7 @@ export default function OutputGenerationPanel({
         setMessage('CSVs generated successfully.');
       }, 50);
     } catch (err) {
-      console.error('Generation error:', err);
+      logger.error('Generation error:', err);
       setStatus('error');
       setMessage(`Generation failed: ${err.message}`);
     }
@@ -99,7 +100,7 @@ export default function OutputGenerationPanel({
       setStatus('success');
       setMessage(`Uploaded ${uploads.length} files to 'exports' bucket.`);
     } catch (err) {
-      console.error('Upload error:', err);
+      logger.error('Upload error:', err);
       setStatus('error');
       setMessage(`Upload failed: ${err.message}`);
     }
@@ -107,7 +108,7 @@ export default function OutputGenerationPanel({
 
   const uploadFile = async (client, path, content) => {
     if (MOCK_UPLOAD) {
-      console.log(`[Mock Upload] ${path} (${content.length} bytes)`);
+      logger.log(`[Mock Upload] ${path} (${content.length} bytes)`);
       return Promise.resolve({ path });
     }
     return uploadScheduleExport({

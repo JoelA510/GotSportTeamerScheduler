@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useImport } from '../contexts/ImportContext.jsx';
 import { useOrganization } from '../contexts/OrganizationContext.jsx';
+import { logger } from '../lib/logger.js';
 
 export function useTeamAnalysis() {
   const { importedPlayers } = useImport();
@@ -19,7 +20,7 @@ export function useTeamAnalysis() {
   }, [currentOrganization?.id, currentSeasonSetting?.id]);
 
   const processPrograms = (players) => {
-    console.log('processPrograms called with', players.length, 'players');
+    logger.log('processPrograms called with', players.length, 'players');
     const programMap = {};
     const errors = [];
 

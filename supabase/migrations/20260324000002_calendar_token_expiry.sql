@@ -42,6 +42,15 @@ begin
       updated_at = now()
   where id = p_team_id;
 
+  -- Phase 4 (4.6): Audit log
+  perform record_audit_event(
+    v_org_id,
+    'calendar.token_rotated',
+    'team',
+    p_team_id,
+    json_build_object('new_expires_at', (now() + interval '90 days')::text)::jsonb
+  );
+
   return json_build_object(
     'status', 'success',
     'calendar_token', v_new_token,

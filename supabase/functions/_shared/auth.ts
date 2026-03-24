@@ -107,6 +107,34 @@ export async function resolveOrgIdsFromTeamIds(
 }
 
 /**
+ * Fire-and-forget audit log entry via the record_audit_event RPC (Phase 4, 4.6).
+ * Failures are logged but never block the response to the client.
+ */
+export function recordAudit(
+  serviceClient: SupabaseClient,
+  params: {
+    organizationId: string;
+    action: string;
+    resourceType?: string;
+    resourceId?: string;
+    metadata?: Record<string, unknown>;
+  }
+): void {
+  serviceClient
+    .rpc('record_audit_event', {
+      p_organization_id: params.organizationId,
+      p_action: params.action,
+      p_resource_type: params.resourceType ?? null,
+      p_resource_id: params.resourceId ?? null,
+      p_metadata: params.metadata ?? {},
+    })
+    .then(({ error }) => {
+      if (error) console.error('Audit log write failed:', error.message);
+    })
+    .catch((err: Error) => console.error('Audit log write failed:', err.message));
+}
+
+/**
  * Standard CORS headers for Edge Functions.
  */
 export const corsHeaders: Record<string, string> = {

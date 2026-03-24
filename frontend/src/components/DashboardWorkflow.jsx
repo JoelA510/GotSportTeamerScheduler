@@ -10,6 +10,7 @@ import OutputGenerationPanel from './OutputGenerationPanel.jsx';
 
 import Button from './ui/Button.jsx';
 import ProgressBar from './ui/ProgressBar.jsx';
+import { logger } from '../lib/logger.js';
 
 const DashboardWorkflow = ({
   loading,
@@ -166,7 +167,7 @@ const DashboardWorkflow = ({
                         });
                       }
                     } catch (e) {
-                      console.error('Backend insert failed', e);
+                      logger.error('Backend insert failed', e);
                     }
                   }}
                 >

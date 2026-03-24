@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient.js';
 import Papa from 'papaparse';
+import { logger } from '../lib/logger.js';
 
 const ImportContext = createContext({
   isImporting: false,
@@ -48,11 +49,11 @@ export function ImportProvider({ children }) {
           data: { user },
         } = await supabase.auth.getUser();
         if (!user) {
-          console.log('[ImportContext] No user found, skipping load');
+          logger.log('[ImportContext] No user found, skipping load');
           return;
         }
 
-        console.log('[ImportContext] Loading imports for user:', user.id);
+        logger.log('[ImportContext] Loading imports for user:', user.id);
         const { data, error } = await supabase
           .from('imports')
           .select('*')
@@ -72,7 +73,7 @@ export function ImportProvider({ children }) {
           if (latestPlayers) setImportedData(latestPlayers.data);
         }
       } catch (e) {
-        console.error('Failed to load imports from Supabase:', e);
+        logger.error('Failed to load imports from Supabase:', e);
       }
     };
 
@@ -98,10 +99,10 @@ export function ImportProvider({ children }) {
       localStorage.setItem(key, JSON.stringify(value));
     } catch (e) {
       if (e.name === 'QuotaExceededError' || e.code === 22) {
-        console.warn(`Storage quota exceeded for ${key}. Persistence disabled for this item.`);
+        logger.warn(`Storage quota exceeded for ${key}. Persistence disabled for this item.`);
         addLog(`Warning: Data too large to save locally. It will be lost on refresh.`);
       } else {
-        console.error(`Failed to save ${key} to localStorage`, e);
+        logger.error(`Failed to save ${key} to localStorage`, e);
       }
     }
   };
@@ -123,9 +124,29 @@ export function ImportProvider({ children }) {
           const { data, meta } = results;
 
           // R3 Update: Normalize headers to match schema
+          // Phase 4 (L-3): Strict alias map replaces fuzzy .includes() matching.
+          // Mirrors the server-side HEADER_ALIASES in import-validation Edge Function.
+          const HEADER_ALIASES = {
+            'first name': 'first_name', 'first_name': 'first_name', 'firstname': 'first_name',
+            'last name': 'last_name', 'last_name': 'last_name', 'lastname': 'last_name',
+            'date of birth': 'date_of_birth', 'date_of_birth': 'date_of_birth',
+            'dob': 'date_of_birth', 'birthdate': 'date_of_birth',
+            'full name': 'full_name', 'full_name': 'full_name', 'coach name': 'full_name',
+            'email': 'email', 'email address': 'email',
+            'name': 'name', 'field name': 'name', 'field_name': 'name',
+            'coach willing': 'willing_to_coach', 'willing to coach': 'willing_to_coach',
+            'buddy': 'buddy_request', 'buddy request': 'buddy_request',
+            'friend': 'buddy_request', 'friend request': 'buddy_request',
+            'medical': 'medical_info', 'medical info': 'medical_info',
+            'allergy': 'medical_info', 'allergies': 'medical_info',
+            'skill': 'skill_tier', 'skill level': 'skill_tier',
+            'skill tier': 'skill_tier', 'level': 'skill_tier',
+          };
+          const normalizeHeader = (h) => HEADER_ALIASES[h.toLowerCase().trim()] ?? h.toLowerCase().trim();
+
           const normalizedData = [];
           const validationErrors = [];
-          
+
           const REQUIRED_HEADERS = {
             players: ['first_name', 'last_name', 'date_of_birth'],
             coaches: ['full_name', 'email'],
@@ -133,10 +154,10 @@ export function ImportProvider({ children }) {
           };
 
           const requiredForType = REQUIRED_HEADERS[type] || [];
-          const fileHeaders = meta.fields.map(h => h.toLowerCase().trim());
-          
-          // 1. Validate Headers
-          const missingHeaders = requiredForType.filter(req => !fileHeaders.find(h => h.includes(req) || req.includes(h)));
+          const normalizedFileHeaders = meta.fields.map(normalizeHeader);
+
+          // 1. Validate Headers (strict alias match)
+          const missingHeaders = requiredForType.filter(req => !normalizedFileHeaders.includes(req));
           if (missingHeaders.length > 0) {
               setImportStatus('error');
               setIsImporting(false);
@@ -151,27 +172,19 @@ export function ImportProvider({ children }) {
             let rowErrors = [];
 
             Object.keys(row).forEach((key) => {
-              const normalizedKey = key.toLowerCase().trim();
-              if (normalizedKey.includes('coach') && normalizedKey.includes('willing')) {
-                newRow['willing_to_coach'] = row[key];
-              } else if (normalizedKey.includes('buddy') || normalizedKey.includes('friend')) {
-                newRow['buddy_request'] = row[key];
-              } else if (normalizedKey.includes('medical') || normalizedKey.includes('allergy')) {
-                newRow['medical_info'] = row[key];
-              } else if (normalizedKey.includes('skill') || normalizedKey.includes('level')) {
-                newRow['skill_tier'] = row[key];
-              } else {
-                newRow[key] = row[key];
-              }
+              const mapped = normalizeHeader(key);
+              newRow[mapped] = row[key];
             });
 
-            // Basic row validation example
+            // Row validation
             if (type === 'players') {
-               const hasFirst = Object.keys(newRow).find(k => k.includes('first_name'));
-               const hasLast = Object.keys(newRow).find(k => k.includes('last_name'));
-               if (!newRow[hasFirst] || !newRow[hasLast]) {
+               if (!newRow['first_name']) {
                    isRowValid = false;
-                   rowErrors.push('Missing first or last name');
+                   rowErrors.push('Missing first name');
+               }
+               if (!newRow['last_name']) {
+                   isRowValid = false;
+                   rowErrors.push('Missing last name');
                }
             }
 
@@ -235,7 +248,7 @@ export function ImportProvider({ children }) {
         },
       });
     } catch (err) {
-      console.error('Import error:', err);
+      logger.error('Import error:', err);
       addLog(`Import failed: ${err.message}`);
       setImportStatus('error');
       setIsImporting(false);
@@ -250,7 +263,7 @@ export function ImportProvider({ children }) {
 
     if (notifyOnComplete) {
       // Simulate email notification
-      console.log('Sending email notification...');
+      logger.log('Sending email notification...');
       addLog('Email notification sent.');
     }
   };

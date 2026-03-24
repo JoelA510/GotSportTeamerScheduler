@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient.js';
+import { logger } from '../lib/logger.js';
 // Use absolute import via configured alias
 import { mapSchedulerRunToSummary } from '../../../packages/core/src/utils/teamSummaryMapper.js';
 
@@ -67,7 +68,7 @@ export function useTeamSummary() {
           setLoading(true);
         }
       } catch (err) {
-        console.error('Failed to fetch team summary:', JSON.stringify(err, null, 2));
+        logger.error('Failed to fetch team summary:', JSON.stringify(err, null, 2));
         // Don't set error state if we are just polling and failed once, unless it's critical
         // But for now, let's just log it and maybe keep old state
       }

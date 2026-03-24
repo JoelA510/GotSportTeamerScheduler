@@ -17,6 +17,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.3';
 import {
   getUserFromRequest,
   getUserOrgIds,
+  recordAudit,
   corsHeaders,
   jsonResponse,
 } from '../_shared/auth.ts';
@@ -250,7 +251,21 @@ serve(async (req: Request) => {
     }
   }
 
-  // 6. Return results
+  // 6. Audit log (fire-and-forget, Phase 4)
+  recordAudit(serviceClient, {
+    organizationId: body.organization_id,
+    action: allErrors.length > 0 && validatedRows.length === 0 ? 'import.failed' : 'import.started',
+    resourceType: 'import_job',
+    metadata: {
+      import_type: body.import_type,
+      file_name: body.file_name,
+      total_rows: body.rows.length,
+      valid_rows: validatedRows.length,
+      error_rows: allErrors.length,
+    },
+  });
+
+  // 7. Return results
   return jsonResponse({
     status: 'success',
     import_type: body.import_type,

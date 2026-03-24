@@ -427,5 +427,17 @@ Fix available via: npm audit fix
 |-------|--------|--------|--------------------|
 | Phase 1 | **Complete** | `4c518df` | C-1, C-2, C-3, M-2, M-3 |
 | Phase 2 | **Complete** | `11119b6` | H-1, H-2, H-3, H-4 |
-| Phase 3 | **Complete** | *(pending push)* | M-1, M-3, M-4, M-5, M-6 |
-| Phase 4 | Planned | — | L-1, L-2, L-3, L-4 + hardening |
+| Phase 3 | **Complete** | `54b514c` | M-1, M-3, M-4, M-5, M-6 |
+| Refinement | **Complete** | `c0fc38f` | Multi-org IDOR fix, redundant policy cleanup |
+| Phase 4 | **Complete** | *(pending push)* | L-1, L-2 (already compliant), L-3, L-4 + CSP headers + audit logging |
+
+### Phase 4 Details
+
+| Step | Finding | Action Taken |
+|------|---------|-------------|
+| 4.1 | L-1 | Created `frontend/src/lib/logger.js`; replaced 67 console.log/warn/error calls across 27 files with dev-gated logger |
+| 4.2 | L-2 | **Skipped** — migration `20260309` already sets `security_invoker = true` on `coach_team_map` |
+| 4.3 | L-3 | Replaced fuzzy `.includes()` header matching in `ImportContext.jsx` and `ImportPanel.jsx` with strict `HEADER_ALIASES` map matching server-side `import-validation` |
+| 4.4 | L-4 | Moved test credentials from `.env` to `.env.test` (gitignored); replaced hardcoded passwords in `supabaseClient.js` with `import.meta.env.VITE_TEST_*` vars |
+| 4.5 | New | Added `vercel.json` with `Content-Security-Policy-Report-Only`, `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy` headers |
+| 4.6 | New | Created `audit_log` table (append-only, admin-read-only RLS), `record_audit_event()` RPC, wired into all 4 Edge Functions + `rotate_calendar_token` + `submit_registration` RPCs |

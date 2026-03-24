@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { getContrastMode } from '../utils/colorUtils.js';
+import { logger } from '../lib/logger.js';
 
 const ThemeContext = createContext(null);
 
@@ -130,7 +131,7 @@ export const ThemeProvider = ({ children }) => {
 
     // CRITICAL FIX: Guard against null/undefined colors object to prevent crash
     if (!colors) {
-      console.warn('applyClubTheme called with null colors, falling back to defaults');
+      logger.warn('applyClubTheme called with null colors, falling back to defaults');
       // Create a safe default object
       colors = {
         primaryAccent: '#3b82f6',

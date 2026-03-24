@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext.jsx';
 import { preparePracticePersistenceSnapshot } from '@squadlogic/core/practicePersistenceSnapshot.js';
 import { PRACTICE_PERSISTENCE_URL } from '../config.js';
 import PersistencePanel from './PersistencePanel.jsx';
+import { logger } from '../lib/logger.js';
 
 export default function PracticePersistencePanel({
   assignments = [],
@@ -57,7 +58,7 @@ export default function PracticePersistencePanel({
       setStatus('success');
       setMessage(`Success! Persisted ${result.data?.assignmentsPersisted ?? 0} assignments.`);
     } catch (err) {
-      console.error('Persistence error:', err);
+      logger.error('Persistence error:', err);
       setStatus('error');
       setMessage(err.message);
     }

@@ -1,22 +1,23 @@
 import { createClient } from '@supabase/supabase-js';
 import { SUPABASE_URL, SUPABASE_ANON_KEY, IS_MOCK_MODE } from '../config.js';
+import { logger } from './logger.js';
 
 if (IS_MOCK_MODE) {
-  console.log('[Mock Supabase] Initializing MOCK client');
-  console.warn('Using mock Supabase client due to missing or placeholder environment variables.');
+  logger.log('[Mock Supabase] Initializing MOCK client');
+  logger.warn('Using mock Supabase client due to missing or placeholder environment variables.');
 } else {
-  console.log('[Mock Supabase] Initializing REAL client');
+  logger.log('[Mock Supabase] Initializing REAL client');
 }
 
 let mockSubscriptionCallback = null;
 const realtimeCallbacks =[];
 
 const triggerRealtimeEvent = (table, event, payload) => {
-  console.log(`[Mock Supabase] Triggering Realtime ${event} for ${table}`, payload);
+  logger.log(`[Mock Supabase] Triggering Realtime ${event} for ${table}`, payload);
   realtimeCallbacks.forEach(cb => {
-    console.log(`[Mock Supabase] Checking callback for table: ${cb.table}, event: ${cb.event}`);
+    logger.log(`[Mock Supabase] Checking callback for table: ${cb.table}, event: ${cb.event}`);
     if (cb.table === table && (cb.event === '*' || cb.event === event)) {
-      console.log(`[Mock Supabase] MATCH! Calling callback.`);
+      logger.log(`[Mock Supabase] MATCH! Calling callback.`);
       cb.callback(payload);
     }
   });
@@ -24,11 +25,11 @@ const triggerRealtimeEvent = (table, event, payload) => {
 let pendingAuthEvents =[];
 
 const triggerAuthEvent = (event, session) => {
-  console.log(`[Mock Supabase] Triggering ${event}`);
+  logger.log(`[Mock Supabase] Triggering ${event}`);
   if (mockSubscriptionCallback) {
     mockSubscriptionCallback(event, session);
   } else {
-    console.log(`[Mock Supabase] No listener yet, buffering ${event}`);
+    logger.log(`[Mock Supabase] No listener yet, buffering ${event}`);
     pendingAuthEvents.push({ event, session });
   }
 };
@@ -37,9 +38,9 @@ const triggerAuthEvent = (event, session) => {
 const initialMockData = {
   organizations: [{ id: 'org-1', name: 'SquadLogic FC' }],
   profiles:[
-    { id: 'mock-admin-id', first_name: 'Mock', last_name: 'Admin', full_name: 'Mock Admin', email: 'admin@squadlogic.app', role: 'admin' },
-    { id: 'mock-coach-id', first_name: 'Mock', last_name: 'Coach', full_name: 'Mock Coach', email: 'coach@squadlogic.app', role: 'coach' },
-    { id: 'mock-parent-id', first_name: 'Mock', last_name: 'Parent', full_name: 'Mock Parent', email: 'parent@squadlogic.app', role: 'parent' }
+    { id: 'mock-admin-id', first_name: 'Mock', last_name: 'Admin', full_name: 'Mock Admin', email: import.meta.env.VITE_TEST_ADMIN_EMAIL || 'admin@example.com', role: 'admin' },
+    { id: 'mock-coach-id', first_name: 'Mock', last_name: 'Coach', full_name: 'Mock Coach', email: import.meta.env.VITE_TEST_COACH_EMAIL || 'coach@example.com', role: 'coach' },
+    { id: 'mock-parent-id', first_name: 'Mock', last_name: 'Parent', full_name: 'Mock Parent', email: 'parent@example.com', role: 'parent' }
   ],
   organization_members:[
     { organization_id: 'org-1', profile_id: 'mock-admin-id', role: 'admin' }
@@ -256,7 +257,7 @@ const getDB = () => {
         const parsed = JSON.parse(storedDB);
         db = mergeSource(db, parsed);
       } catch (e) {
-        console.error('[DEBUG] [Mock Supabase] SessionStorage parse error:', e);
+        logger.error('[DEBUG] [Mock Supabase] SessionStorage parse error:', e);
       }
     }
     
@@ -278,7 +279,7 @@ const saveDB = (db) => {
 // Initial state load
 if (typeof window !== 'undefined') {
   window.__MOCK_DB__ = getDB();
-  console.log('[DEBUG] [Mock Supabase] DB Initialized. Tables:', Object.keys(window.__MOCK_DB__).map(k => `${k}(${window.__MOCK_DB__[k]?.length || 0})`).join(', '));
+  logger.log('[DEBUG] [Mock Supabase] DB Initialized. Tables:', Object.keys(window.__MOCK_DB__).map(k => `${k}(${window.__MOCK_DB__[k]?.length || 0})`).join(', '));
 }
 
 export const getMockData = (table, col, val) => {
@@ -499,8 +500,9 @@ export const supabase = IS_MOCK_MODE
   ? {
       auth: {
         signInWithPassword: async ({ email, password }) => {
-          console.log('[Mock Supabase] Login attempt:', email);
-          if (password === 'password123' || password === 'test-password-123') {
+          logger.log('[Mock Supabase] Login attempt:', email);
+          const testPassword = import.meta.env.VITE_TEST_PASSWORD || 'test-password-fallback';
+          if (password === testPassword) {
             const role = email.split('@')[0]; // Extract role from email prefix: admin, coach, parent
             const userId = `mock-${role}-id`;
             const session = {
@@ -552,7 +554,7 @@ export const supabase = IS_MOCK_MODE
           return { error: null };
         },
         onAuthStateChange: (callback) => {
-          console.log('[Mock Supabase] onAuthStateChange listener registered');
+          logger.log('[Mock Supabase] onAuthStateChange listener registered');
           mockSubscriptionCallback = callback;
           let session = null;
           if (typeof window !== 'undefined') {

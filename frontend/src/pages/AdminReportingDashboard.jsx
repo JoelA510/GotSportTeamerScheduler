@@ -14,6 +14,7 @@ import {
   Cell,
 } from 'recharts';
 import { Download, Users, ShieldCheck, MapPin, Activity } from 'lucide-react';
+import { logger } from '../lib/logger.js';
 
 export default function AdminReportingDashboard() {
   const { currentOrganization } = useOrganization();
@@ -87,7 +88,7 @@ export default function AdminReportingDashboard() {
           setStandings(Object.keys(counts).map((key) => ({ name: key, value: counts[key] })));
         }
       } catch (err) {
-        console.error(err);
+        logger.error(err);
         setError('Failed to load reporting metrics.');
       } finally {
         setLoading(false);
@@ -178,7 +179,7 @@ export default function AdminReportingDashboard() {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
     } catch (err) {
-      console.error(err);
+      logger.error(err);
       alert('Failed to generate export.');
     } finally {
       setExporting(false);

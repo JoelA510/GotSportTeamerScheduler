@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useState, useCallback } fr
 import { supabase } from '../lib/supabaseClient.js';
 import { useAuth } from './AuthContext.jsx';
 import { ROLE_PERMISSIONS } from '../constants/permissions.js';
+import { logger } from '../lib/logger.js';
 
 /**
  * @typedef {Object} OrganizationContextValue
@@ -60,7 +61,7 @@ export const OrganizationProvider = ({ children }) => {
         setCurrentSeasonSetting(null);
       }
     } catch (err) {
-      console.error('Error fetching season_settings:', err);
+      logger.error('Error fetching season_settings:', err);
       setAvailableSeasons([]);
       setCurrentSeasonSetting(null);
     }
@@ -112,7 +113,7 @@ export const OrganizationProvider = ({ children }) => {
           }
         }
       } catch (err) {
-        console.error('Error fetching organizations:', err);
+        logger.error('Error fetching organizations:', err);
       } finally {
         setLoading(false);
       }

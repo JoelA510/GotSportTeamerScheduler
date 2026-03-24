@@ -11,6 +11,7 @@ import { useImport } from '../contexts/ImportContext.jsx';
 import { useTeamAnalysis } from '../hooks/useTeamAnalysis.js';
 import { useNavigate } from 'react-router-dom';
 import { Edit2, Save, ArrowRight } from 'lucide-react';
+import { logger } from '../lib/logger.js';
 
 // New Components
 import ProgramOverview from '../components/teaming/ProgramOverview.jsx';
@@ -67,10 +68,10 @@ export default function TeamAnalysisPage() {
           started_at: new Date().toISOString(),
         });
       } else {
-        console.warn('No season settings found.');
+        logger.warn('No season settings found.');
       }
     } catch (e) {
-      console.error('Backend insert failed', e);
+      logger.error('Backend insert failed', e);
     }
   };
 

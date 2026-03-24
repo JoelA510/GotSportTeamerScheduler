@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabaseClient.js';
 import { useOrganization } from '../contexts/OrganizationContext.jsx';
 import Button from '../components/ui/Button.jsx';
 import { Plus, Save, Trash2, ClipboardList, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { logger } from '../lib/logger.js';
 
 export default function RegistrationForms() {
   const { currentOrganization, currentSeasonSetting } = useOrganization();
@@ -37,7 +38,7 @@ export default function RegistrationForms() {
       if (error) throw error;
       setForms(data || []);
     } catch (err) {
-      console.error(err);
+      logger.error(err);
     } finally {
       setLoading(false);
     }

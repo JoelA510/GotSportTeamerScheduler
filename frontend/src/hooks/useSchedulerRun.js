@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient.js';
+import { logger } from '../lib/logger.js';
 
 /**
  * Generic hook to fetch the latest completed scheduler run of a specific type.
@@ -57,7 +58,7 @@ export function useSchedulerRun(runType, mapper, emptyState) {
         setEvaluation(evalRecord);
       } catch (err) {
         if (err.name !== 'AbortError') {
-          console.error(`Failed to fetch ${runType} summary:`, JSON.stringify(err, null, 2));
+          logger.error(`Failed to fetch ${runType} summary:`, JSON.stringify(err, null, 2));
           setError(err);
           setData(emptyState);
           setEvaluation(null);

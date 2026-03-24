@@ -8,6 +8,7 @@ frontend/.env.local
 mockups/
 *_test_output.txt
 .env
+.env.test
 logs/
 docs/git-documentation/
 docs/sql/real-samples/*

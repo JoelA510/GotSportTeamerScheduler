@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient.js';
 
 import { mapKeysToCamelCase } from '../utils/caseConverters.js';
+import { logger } from '../lib/logger.js';
 
 export function useGameAssignments(runId) {
   const [assignments, setAssignments] = useState([]);
@@ -30,7 +31,7 @@ export function useGameAssignments(runId) {
 
         setAssignments(mapped);
       } catch (err) {
-        console.error('Error fetching game assignments:', err);
+        logger.error('Error fetching game assignments:', err);
         setError(err);
       } finally {
         setLoading(false);

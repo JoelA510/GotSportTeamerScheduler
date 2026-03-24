@@ -1,6 +1,7 @@
 import React from 'react';
 import { ShieldAlert, RotateCcw } from 'lucide-react';
 import Button from './ui/Button.jsx';
+import { logger } from '../lib/logger.js';
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -13,7 +14,7 @@ class ErrorBoundary extends React.Component {
   }
 
   componentDidCatch(error, errorInfo) {
-    console.error('ErrorBoundary caught an error', error, errorInfo);
+    logger.error('ErrorBoundary caught an error', error, errorInfo);
   }
 
   render() {

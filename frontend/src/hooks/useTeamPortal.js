@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabaseClient.js';
+import { logger } from '../lib/logger.js';
 
 /**
  * useTeamPortal
@@ -155,7 +156,7 @@ export function useTeamPortal(teamId) {
           setMyPlayers(matchedPlayers);
         }
       } else {
-        console.warn('[DEBUG] [useTeamPortal] No authenticated user found for RSVP section');
+        logger.warn('[DEBUG] [useTeamPortal] No authenticated user found for RSVP section');
       }
 
       // 8. Fetch Messages
@@ -174,7 +175,7 @@ export function useTeamPortal(teamId) {
       setMessages(msgData);
 
     } catch (err) {
-      console.error('Error fetching Team Portal data:', err);
+      logger.error('Error fetching Team Portal data:', err);
       setError(err.message);
     } finally {
       setLoading(false);
@@ -274,7 +275,7 @@ export function useTeamPortal(teamId) {
 
       if (upsertError) throw upsertError;
     } catch (err) {
-      console.error('Error updating RSVP:', err);
+      logger.error('Error updating RSVP:', err);
       // You could expose an error state for mutations if needed
     }
   };
@@ -312,7 +313,7 @@ export function useTeamPortal(teamId) {
 
       if (sendError) throw sendError;
     } catch (err) {
-      console.error('Error sending message:', err);
+      logger.error('Error sending message:', err);
     }
   };
 

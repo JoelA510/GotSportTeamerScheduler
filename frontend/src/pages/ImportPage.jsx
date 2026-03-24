@@ -2,13 +2,14 @@ import React from 'react';
 import ImportPanel from '../components/ImportPanel.jsx';
 import { useImport } from '../contexts/ImportContext.jsx';
 import { useNavigate } from 'react-router-dom';
+import { logger } from '../lib/logger.js';
 
 export default function ImportPage() {
   const { setImportedData } = useImport();
   const navigate = useNavigate();
 
   const handleImport = (data) => {
-    console.log('Imported data:', data);
+    logger.log('Imported data:', data);
     setImportedData(data);
     navigate('/teams');
   };

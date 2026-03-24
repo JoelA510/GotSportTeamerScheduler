@@ -2,6 +2,8 @@
  * Standardized API client for interacting with the backend (Supabase Edge Functions).
  * Automatically handles authorization headers and error resolution.
  */
+import { logger } from './logger.js';
+
 export class ApiClient {
   constructor(baseUrl, accessToken = null, fetchImpl = undefined) {
     this.baseUrl = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
@@ -62,7 +64,7 @@ export class ApiClient {
         ? data
         : { status: 'error', message: 'Invalid response: Unable to parse JSON' };
     } catch (error) {
-      console.error(`API request to ${endpoint} failed:`, error);
+      logger.error(`API request to ${endpoint} failed:`, error);
       return {
         status: 'error',
         message: error.message || 'Network request failed',

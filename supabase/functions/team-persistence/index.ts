@@ -17,6 +17,7 @@ import { PersistencePayloadSchema } from '../../../packages/core/src/schemas/ind
 import {
   getUserFromRequest,
   getUserOrgIds,
+  recordAudit,
   corsHeaders,
   jsonResponse,
 } from '../_shared/auth.ts';
@@ -125,6 +126,16 @@ if (!supabaseUrl || !serviceRoleKey) {
 
     // 4. Delegate to inner handler (user is authenticated + authorized)
     const response = await innerHandler(req);
+
+    // 4b. Audit log (fire-and-forget, Phase 4)
+    if (response.ok && userOrgIds.length > 0) {
+      recordAudit(serviceClient, {
+        organizationId: userOrgIds[0],
+        action: 'team.saved',
+        resourceType: 'team',
+        metadata: { team_count: teamRows.length },
+      });
+    }
 
     // Add CORS headers if missing
     const newHeaders = new Headers(response.headers);

@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabaseClient.js';
 import { useAuth } from '../contexts/AuthContext.jsx';
 import Button from '../components/ui/Button.jsx';
 import { CheckCircle2, UserPlus, ClipboardList, PenTool } from 'lucide-react';
+import { logger } from '../lib/logger.js';
 
 export default function RegistrationFlow() {
   const { formId } = useParams();
@@ -50,9 +51,9 @@ export default function RegistrationFlow() {
           .eq('profile_id', userId);
 
         if (childErr) throw childErr;
-        console.log('[DEBUG] [RegistrationFlow] childrenData:', childrenData);
+        logger.log('[DEBUG] [RegistrationFlow] childrenData:', childrenData);
         const playerObjects = childrenData.map((c) => c.players).filter(Boolean);
-        console.log('[DEBUG] [RegistrationFlow] mapped players:', playerObjects);
+        logger.log('[DEBUG] [RegistrationFlow] mapped players:', playerObjects);
         setMyChildren(playerObjects);
 
         // Initialize response object based on form fields
@@ -62,7 +63,7 @@ export default function RegistrationFlow() {
         });
         setResponses(initialResponses);
       } catch (err) {
-        console.error(err);
+        logger.error(err);
         setError('Failed to load registration form.');
       } finally {
         setLoading(false);
@@ -118,7 +119,7 @@ export default function RegistrationFlow() {
 
       setSuccess(true);
     } catch (err) {
-      console.error(err);
+      logger.error(err);
       setError(err.message || 'Failed to submit registration. Please try again.');
     } finally {
       setSubmitting(false);

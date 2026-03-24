@@ -20,6 +20,7 @@ import { GripVertical, User, ShieldAlert, Zap, ArrowRight } from 'lucide-react';
 import { useConflicts } from '../../hooks/useConflicts.js';
 import { supabase } from '../../lib/supabaseClient.js';
 import { useOrganization } from '../../contexts/OrganizationContext.jsx';
+import { logger } from '../../lib/logger.js';
 
 export function SortablePlayer({ player }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -226,7 +227,7 @@ export default function RosterManager({ initialTeams }) {
 
         if (error) throw error;
       } catch (e) {
-        console.error('Failed to persist player assignment override', e);
+        logger.error('Failed to persist player assignment override', e);
       }
     }
   };
@@ -252,7 +253,7 @@ export default function RosterManager({ initialTeams }) {
         });
       }
     } catch (e) {
-      console.error('Quick Draft backend insert failed', e);
+      logger.error('Quick Draft backend insert failed', e);
     } finally {
       setIsDrafting(false);
     }
