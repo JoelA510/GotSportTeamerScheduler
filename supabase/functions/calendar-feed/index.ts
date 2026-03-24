@@ -1,6 +1,11 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.87.1";
 
+// Phase 1 Security: Sanitize ICS field values to prevent header injection.
+// ICS fields must not contain newlines that could inject extra headers.
+const sanitizeIcsValue = (val: string): string =>
+  val.replace(/[\r\n]+/g, ' ').replace(/[\\;,]/g, '\\$&').trim();
+
 // Simple padded string helper
 const pad = (n: number) => n < 10 ? `0${n}` : `${n}`;
 
@@ -163,14 +168,14 @@ serve(async (req) => {
 
     expandedEvents.forEach(ev => {
        icsString += `BEGIN:VEVENT${CRLF}`;
-       icsString += `UID:${ev.uid}@squadlogic.app${CRLF}`;
+       icsString += `UID:${sanitizeIcsValue(String(ev.uid))}@squadlogic.app${CRLF}`;
        icsString += `DTSTAMP:${nowStamp}${CRLF}`;
        icsString += `DTSTART:${ev.dtstart}${CRLF}`;
        icsString += `DTEND:${ev.dtend}${CRLF}`;
-       icsString += `SUMMARY:${ev.title}${CRLF}`;
-       icsString += `DESCRIPTION:${ev.description}${CRLF}`;
+       icsString += `SUMMARY:${sanitizeIcsValue(ev.title)}${CRLF}`;
+       icsString += `DESCRIPTION:${sanitizeIcsValue(ev.description)}${CRLF}`;
        if(ev.location) {
-          icsString += `LOCATION:${ev.location}${CRLF}`;
+          icsString += `LOCATION:${sanitizeIcsValue(ev.location)}${CRLF}`;
        }
        icsString += `END:VEVENT${CRLF}`;
     });
@@ -181,7 +186,7 @@ serve(async (req) => {
     return new Response(icsString, {
       headers: {
         "Content-Type": "text/calendar; charset=utf-8",
-        "Content-Disposition": `attachment; filename="${team.name.replace(/\s+/g, '_')}_Schedule.ics"`
+        "Content-Disposition": `attachment; filename="${team.name.replace(/[^a-zA-Z0-9_\-]/g, '_')}_Schedule.ics"`
       },
       status: 200,
     });
