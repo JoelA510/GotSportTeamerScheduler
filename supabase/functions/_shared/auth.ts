@@ -83,28 +83,27 @@ export async function getUserOrgIds(
 }
 
 /**
- * For persistence endpoints: resolve the organization_id of entities being modified.
- * Looks up the org from the first entity in the batch via its team or division chain.
+ * For persistence endpoints: resolve ALL distinct organization_ids for the given teams.
+ * Returns every unique org_id so the caller can verify membership against each one.
+ * This prevents IDOR when a crafted payload references teams from different orgs.
  */
-export async function resolveOrgFromTeamIds(
+export async function resolveOrgIdsFromTeamIds(
   serviceClient: SupabaseClient,
   teamIds: string[]
-): Promise<string | null> {
-  if (teamIds.length === 0) return null;
+): Promise<string[]> {
+  if (teamIds.length === 0) return [];
 
   const { data, error } = await serviceClient
     .from('teams')
     .select('organization_id')
-    .in('id', teamIds)
-    .limit(1)
-    .maybeSingle();
+    .in('id', teamIds);
 
   if (error || !data) {
-    console.error('Failed to resolve org from team IDs:', error?.message);
-    return null;
+    console.error('Failed to resolve orgs from team IDs:', error?.message);
+    return [];
   }
 
-  return data.organization_id;
+  return [...new Set(data.map((row: { organization_id: string }) => row.organization_id))];
 }
 
 /**

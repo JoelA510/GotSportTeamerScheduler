@@ -17,7 +17,7 @@ import {
 import {
   getUserFromRequest,
   getUserOrgIds,
-  resolveOrgFromTeamIds,
+  resolveOrgIdsFromTeamIds,
   corsHeaders,
   jsonResponse,
 } from '../_shared/auth.ts';
@@ -121,8 +121,9 @@ if (!supabaseUrl || !serviceRoleKey) {
         ),
       ];
       if (teamIds.length > 0) {
-        const targetOrgId = await resolveOrgFromTeamIds(serviceClient, teamIds);
-        if (targetOrgId && !userOrgIds.includes(targetOrgId)) {
+        const targetOrgIds = await resolveOrgIdsFromTeamIds(serviceClient, teamIds);
+        const unauthorized = targetOrgIds.filter((oid) => !userOrgIds.includes(oid));
+        if (unauthorized.length > 0) {
           return jsonResponse(
             { status: 'error', message: 'Access denied: data belongs to a different organization' },
             403

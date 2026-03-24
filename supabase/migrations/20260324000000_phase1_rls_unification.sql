@@ -253,18 +253,10 @@ create policy "Unified org access on practice_assignments"
   using (is_org_member(organization_id))
   with check (is_org_member(organization_id));
 
--- Preserve coach view on practice_assignments, now scoped to org
-create policy "Coaches can view their team practices"
-  on practice_assignments for select to authenticated
-  using (
-    is_org_member(organization_id)
-    and exists (
-      select 1
-      from public.coach_team_map ctm
-      where ctm.team_id = practice_assignments.team_id
-        and ctm.coach_user_id = auth.uid()
-    )
-  );
+-- NOTE: The original "Coaches can view their team practices" policy was intentionally
+-- NOT recreated. The unified org access policy above already grants SELECT to all
+-- org members (which includes coaches). The coach-specific policy was fully subsumed
+-- and would only add RLS evaluation overhead without tightening access.
 
 -- games
 create policy "Unified org access on games"
