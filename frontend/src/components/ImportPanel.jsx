@@ -58,10 +58,17 @@ export default function ImportPanel({ onImport }) {
     validateAndReadFile(selectedFile);
   };
 
+  // Phase 2.2 (H-1): File size enforcement — 10 MB maximum
+  const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
+
   const validateAndReadFile = (file) => {
     if (!file) return;
     if (file.type !== 'text/csv' && !file.name.endsWith('.csv')) {
       setError('Please upload a valid CSV file.');
+      return;
+    }
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      setError(`File is too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Maximum size is 10 MB.`);
       return;
     }
 

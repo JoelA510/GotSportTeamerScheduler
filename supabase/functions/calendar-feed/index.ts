@@ -38,15 +38,26 @@ serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // 1. Validate Token and Fetch Team
+    // 1. Validate Token and Fetch Team (Phase 2.3: includes expiry check)
     const { data: team, error: teamErr } = await supabase
       .from('teams')
-      .select('id, name, division_id, organizations(name)')
+      .select('id, name, division_id, calendar_token_expires_at, organizations(name)')
       .eq('calendar_token', token)
       .single();
 
     if (teamErr || !team) {
       return new Response("Invalid calendar token or team not found.", { status: 404 });
+    }
+
+    // Phase 2.3 (H-2): Check token expiry
+    if (team.calendar_token_expires_at) {
+      const expiresAt = new Date(team.calendar_token_expires_at);
+      if (expiresAt < new Date()) {
+        return new Response(
+          "Calendar token has expired. Please ask your coach or admin to regenerate the calendar link.",
+          { status: 403 }
+        );
+      }
     }
 
     const teamId = team.id;

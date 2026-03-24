@@ -2,9 +2,10 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import PropTypes from 'prop-types';
 import { useTeamPortal } from '../hooks/useTeamPortal.js';
-import { Calendar, Users, MessageSquare, Send, Check, X, Minus, MapPin, Clock } from 'lucide-react';
+import { Calendar, Users, MessageSquare, Send, Check, X, Minus, MapPin, Clock, RefreshCw } from 'lucide-react';
 import LoadingScreen from '../components/LoadingScreen.jsx';
 import Button from '../components/ui/Button.jsx';
+import { supabase } from '../lib/supabaseClient.js';
 
 export default function TeamPortalPage() {
   const { teamId } = useParams();
@@ -221,23 +222,78 @@ export default function TeamPortalPage() {
       </div>
 
       {calendarModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-          <div className="bg-bg-app border border-border-subtle rounded-xl p-6 w-full max-w-md shadow-2xl">
-            <h3 className="text-xl font-bold text-text-primary mb-4">Calendar Subscription</h3>
-            <p className="text-sm text-text-secondary mb-4">Copy this link to your calendar app:</p>
-            <input
-              type="text"
-              readOnly
-              value={`webcal://${window.location.host}/functions/v1/calendar-feed?token=${team?.calendar_token || 'mock-token'}`}
-              className="w-full bg-bg-surface border border-border-subtle rounded-lg p-3 text-text-primary mb-4"
-            />
-            <div className="flex justify-end gap-3">
-              <Button variant="secondary" onClick={() => setCalendarModalOpen(false)}>Close</Button>
-              <Button variant="primary" onClick={() => navigator.clipboard.writeText(`webcal://${window.location.host}/functions/v1/calendar-feed?token=${team?.calendar_token || 'mock-token'}`)}>Copy Link</Button>
-            </div>
+        <CalendarModal
+          team={team}
+          onClose={() => setCalendarModalOpen(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * Phase 2.3 (H-2): Calendar modal with token rotation support.
+ * Coaches/admins can regenerate the calendar link if it's been compromised or expired.
+ */
+function CalendarModal({ team, onClose }) {
+  const [calendarToken, setCalendarToken] = useState(team?.calendar_token || 'mock-token');
+  const [isRotating, setIsRotating] = useState(false);
+  const [rotateMessage, setRotateMessage] = useState('');
+
+  const calendarUrl = `webcal://${window.location.host}/functions/v1/calendar-feed?token=${calendarToken}`;
+
+  const handleRotateToken = async () => {
+    if (!team?.id) return;
+    setIsRotating(true);
+    setRotateMessage('');
+    try {
+      const { data, error } = await supabase.rpc('rotate_calendar_token', {
+        p_team_id: team.id,
+      });
+      if (error) throw error;
+      if (data?.status === 'success') {
+        setCalendarToken(data.calendar_token);
+        setRotateMessage('New link generated. Update your calendar subscription.');
+      } else {
+        setRotateMessage(data?.message || 'Failed to regenerate link.');
+      }
+    } catch (err) {
+      setRotateMessage('Error: ' + (err.message || 'Could not regenerate link.'));
+    } finally {
+      setIsRotating(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+      <div className="bg-bg-app border border-border-subtle rounded-xl p-6 w-full max-w-md shadow-2xl">
+        <h3 className="text-xl font-bold text-text-primary mb-4">Calendar Subscription</h3>
+        <p className="text-sm text-text-secondary mb-4">Copy this link to your calendar app:</p>
+        <input
+          type="text"
+          readOnly
+          value={calendarUrl}
+          className="w-full bg-bg-surface border border-border-subtle rounded-lg p-3 text-text-primary mb-4 text-sm"
+        />
+        {rotateMessage && (
+          <p className="text-sm text-status-warning mb-3">{rotateMessage}</p>
+        )}
+        <div className="flex justify-between items-center">
+          <button
+            onClick={handleRotateToken}
+            disabled={isRotating}
+            className="flex items-center gap-2 text-sm text-text-secondary hover:text-text-primary transition-colors disabled:opacity-50"
+            title="Generate a new calendar link (invalidates the old one)"
+          >
+            <RefreshCw size={14} className={isRotating ? 'animate-spin' : ''} />
+            Regenerate Link
+          </button>
+          <div className="flex gap-3">
+            <Button variant="secondary" onClick={onClose}>Close</Button>
+            <Button variant="primary" onClick={() => navigator.clipboard.writeText(calendarUrl)}>Copy Link</Button>
           </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }
