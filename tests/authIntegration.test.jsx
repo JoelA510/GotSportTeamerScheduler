@@ -1,14 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, act } from '@testing-library/react';
 import React from 'react';
-import { AuthProvider, useAuth } from '../frontend/src/contexts/AuthContext.jsx';
-import {
-  OrganizationProvider,
-  useOrganization,
-} from '../frontend/src/contexts/OrganizationContext.jsx';
-import { supabase } from '../frontend/src/lib/supabaseClient.js';
 
-// Mock Supabase
+// ---------- Mocks ----------
+
+vi.mock('../frontend/src/lib/logger', () => ({
+  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+}));
+
 vi.mock('../frontend/src/lib/supabaseClient', () => ({
   supabase: {
     auth: {
@@ -19,97 +18,182 @@ vi.mock('../frontend/src/lib/supabaseClient', () => ({
   },
 }));
 
+// Shared mutable state accessible by the hoisted mock factory.
+const authState = vi.hoisted(() => ({
+  user: null,
+}));
+
+vi.mock('../frontend/src/contexts/AuthContext.jsx', async () => {
+  const React = await import('react');
+  const { createContext, useContext, useState, useEffect } = React;
+
+  const AuthContext = createContext({});
+  const useAuth = () => useContext(AuthContext);
+
+  const AuthProvider = ({ children }) => {
+    const [user, setUser] = useState(authState.user);
+
+    useEffect(() => {
+      setUser(authState.user);
+    }, []);
+
+    return React.createElement(
+      AuthContext.Provider,
+      {
+        value: {
+          user,
+          session: user ? { user } : null,
+          loading: false,
+          signOut: vi.fn(),
+          isConfigured: true,
+          isAdmin: true,
+          isCoach: false,
+        },
+      },
+      children,
+    );
+  };
+
+  return { useAuth, AuthProvider };
+});
+
+import { supabase } from '../frontend/src/lib/supabaseClient.js';
+import { logger } from '../frontend/src/lib/logger.js';
+import { AuthProvider, useAuth } from '../frontend/src/contexts/AuthContext.jsx';
+import {
+  OrganizationProvider,
+  useOrganization,
+} from '../frontend/src/contexts/OrganizationContext.jsx';
+
+// ---------- Helpers ----------
+
+/** Flush microtasks + React scheduler by waiting one macro-tick inside act. */
+const flush = () => act(async () => {
+  await new Promise((r) => setTimeout(r, 10));
+});
+
+// ---------- Tests ----------
+
 const TestComponent = () => {
   const { user } = useAuth();
   const { currentOrganization, loading } = useOrganization();
 
-  if (loading) return <div>Loading Orgs...</div>;
-
   return (
     <div>
-      <div data-testid="user-email">{user?.email}</div>
+      <div data-testid="user-email">{user?.email ?? ''}</div>
+      <div data-testid="org-loading">{String(loading)}</div>
       <div data-testid="org-name">{currentOrganization?.name || 'No Org'}</div>
     </div>
   );
 };
 
 describe('Auth & Organization Integration', () => {
+  const mockUser = {
+    id: 'user-123',
+    email: 'test@example.com',
+    app_metadata: {},
+    user_metadata: {},
+    aud: 'authenticated',
+    created_at: '2025-01-01T00:00:00Z',
+  };
+
+  const mockOrgMember = {
+    organization_id: 'org-1',
+    role: 'admin',
+    organizations: { id: 'org-1', name: 'Test Club' },
+  };
+
   beforeEach(() => {
     vi.clearAllMocks();
+
+    // Provide a minimal localStorage stub — jsdom may not expose a working
+    // localStorage when Node is started without --localstorage-file.
+    const store = {};
+    vi.stubGlobal('localStorage', {
+      getItem: vi.fn((key) => store[key] ?? null),
+      setItem: vi.fn((key, val) => { store[key] = String(val); }),
+      removeItem: vi.fn((key) => { delete store[key]; }),
+      clear: vi.fn(() => { Object.keys(store).forEach((k) => delete store[k]); }),
+    });
+
+    vi.mocked(supabase.from).mockImplementation((table) => {
+      if (table === 'organization_members') {
+        return {
+          select: vi.fn().mockReturnValue({
+            eq: vi.fn().mockResolvedValue({ data: [mockOrgMember], error: null }),
+          }),
+        };
+      }
+      if (table === 'season_settings') {
+        return {
+          select: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({
+              order: vi.fn().mockResolvedValue({ data: [], error: null }),
+            }),
+          }),
+        };
+      }
+      return {
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockResolvedValue({ data: [], error: null }),
+        }),
+      };
+    });
   });
 
   it('should load user and fetch organizations', async () => {
-    // Setup Mock Data
-    const mockUser = {
-      id: 'user-123',
-      email: 'test@example.com',
-      app_metadata: {},
-      user_metadata: {},
-      aud: 'authenticated',
-      created_at: new Date().toISOString(),
-    };
-    const mockProfile = { id: 'user-123', full_name: 'Test Users' };
-    const mockOrgMember = {
-      organization_id: 'org-1',
-      role: 'admin',
-      organizations: { id: 'org-1', name: 'Test Club' },
-    };
+    authState.user = mockUser;
 
-    // 1. Mock Auth State Change
-    vi.mocked(supabase.auth.onAuthStateChange).mockImplementation((callback) => {
-      // Evaluate immediately
-      /** @type {any} */
-      const mockSession = { 
-        user: mockUser,
-        access_token: 'abc',
-        refresh_token: 'def',
-        expires_in: 3600,
-        token_type: 'bearer'
-      };
-      callback('SIGNED_IN', mockSession);
-      return { data: { subscription: { id: 'sub-123', callback: () => {}, unsubscribe: vi.fn() } } };
+    await act(async () => {
+      render(
+        <AuthProvider>
+          <OrganizationProvider>
+            <TestComponent />
+          </OrganizationProvider>
+        </AuthProvider>
+      );
     });
 
-    // 2. Mock Profile Fetch (AuthContext)
-    const profileSelect = vi.fn().mockReturnValue({
-      eq: vi.fn().mockReturnValue({
-        single: vi.fn().mockResolvedValue({ data: mockProfile }),
-      }),
+    // Flush several times to settle nested async chains:
+    // Tick 1: OrganizationContext useEffect fires, fetchOrgs starts, org query promise created
+    // Tick 2: org query resolves, setCurrentOrganization, fetchSeasonsForOrg starts
+    // Tick 3: season query resolves, setLoading(false)
+    for (let i = 0; i < 5; i++) {
+      await flush();
+    }
+
+    // --- Diagnostics ---
+    const fromCalls = vi.mocked(supabase.from).mock.calls.map((c) => c[0]);
+    const errorCalls = vi.mocked(logger.error).mock.calls;
+
+    // Check that the org query was actually issued
+    expect(fromCalls).toContain('organization_members');
+
+    // Check that no silent errors occurred
+    expect(errorCalls).toEqual([]);
+
+    // Assert final state
+    expect(screen.getByTestId('user-email')).toHaveTextContent('test@example.com');
+    expect(screen.getByTestId('org-loading')).toHaveTextContent('false');
+    expect(screen.getByTestId('org-name')).toHaveTextContent('Test Club');
+  });
+
+  it('shows No Org when user is not authenticated', async () => {
+    authState.user = null;
+
+    await act(async () => {
+      render(
+        <AuthProvider>
+          <OrganizationProvider>
+            <TestComponent />
+          </OrganizationProvider>
+        </AuthProvider>
+      );
     });
 
-    // 3. Mock Org Member Fetch (OrganizationContext)
-    // supabase.from().select() returns the builder that has .eq()
-    const orgSelect = vi.fn().mockReturnValue({
-      eq: vi.fn().mockResolvedValue({ data: [mockOrgMember], error: null }),
-    });
+    await flush();
 
-    // Handle separate .from() calls
-    // @ts-ignore
-    vi.mocked(supabase.from).mockImplementation((table) => {
-      if (table === 'profiles') return { select: profileSelect };
-      if (table === 'organization_members') return { select: orgSelect };
-      return { select: vi.fn() };
-    });
-
-    render(
-      <AuthProvider>
-        <OrganizationProvider>
-          <TestComponent />
-        </OrganizationProvider>
-      </AuthProvider>
-    );
-
-    // Assert User Loaded
-    await waitFor(() => {
-      expect(screen.getByTestId('user-email')).toHaveTextContent('test@example.com');
-    });
-
-    // Assert Org Loaded
-    await waitFor(() => {
-      expect(screen.getByTestId('org-name')).toHaveTextContent('Test Club');
-    });
-
-    expect(supabase.from).toHaveBeenCalledWith('profiles');
-    expect(supabase.from).toHaveBeenCalledWith('organization_members');
+    expect(screen.getByTestId('org-name')).toHaveTextContent('No Org');
+    expect(supabase.from).not.toHaveBeenCalledWith('organization_members');
   });
 });

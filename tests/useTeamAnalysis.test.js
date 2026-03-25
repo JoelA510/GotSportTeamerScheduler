@@ -1,8 +1,12 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 import { useTeamAnalysis } from '../frontend/src/hooks/useTeamAnalysis.js';
 import { useImport } from '../frontend/src/contexts/ImportContext.jsx';
 import { useOrganization } from '../frontend/src/contexts/OrganizationContext.jsx';
+
+vi.mock('../frontend/src/lib/logger', () => ({
+  logger: { log: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+}));
 
 vi.mock('../frontend/src/contexts/ImportContext.jsx', () => ({
   useImport: vi.fn(),
@@ -13,29 +17,31 @@ vi.mock('../frontend/src/contexts/OrganizationContext.jsx', () => ({
 }));
 
 describe('useTeamAnalysis', () => {
+  // season_year controls U-group calculation — no need for fake timers
   const mockOrg = { id: 'org-1' };
   const mockSeason = { id: 'season-1', season_year: 2025 };
 
   beforeEach(() => {
+    vi.clearAllMocks();
     vi.mocked(useOrganization).mockReturnValue({
       currentOrganization: mockOrg,
       currentSeasonSetting: mockSeason,
     });
   });
 
-  it('processes imported players into program groups', async () => {
-    // Fix system time for consistent U-group calculation
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date('2025-01-01'));
+  afterEach(() => {
+    // Safety: ensure real timers are restored in case a test enables fake timers
+    vi.useRealTimers();
+  });
 
+  it('processes imported players into program groups', async () => {
     const mockPlayers = [
-      { 'First Name': 'Alice', 'Last Name': 'Smith', 'Birthdate': '2016-01-01', 'Gender': 'f' }, // Age 9 -> U10 Girls
-      { 'First Name': 'Bob', 'Last Name': 'Brown', 'Birthdate': '2018-06-15', 'Gender': 'm' },   // Age 7 -> U8 Boys
+      { 'First Name': 'Alice', 'Last Name': 'Smith', 'Birthdate': '2016-01-01', 'Gender': 'f' }, // Age 9 (2025-2016) -> U10 Girls
+      { 'First Name': 'Bob', 'Last Name': 'Brown', 'Birthdate': '2018-06-15', 'Gender': 'm' },   // Age 7 (2025-2018) -> U8 Boys
     ];
 
-    const mockImportData = { data: mockPlayers };
     vi.mocked(useImport).mockReturnValue({
-      importedPlayers: mockImportData,
+      importedPlayers: { data: mockPlayers },
     });
 
     const { result } = renderHook(() => useTeamAnalysis());
@@ -47,8 +53,6 @@ describe('useTeamAnalysis', () => {
     const programNames = result.current.programs.map(p => p.name);
     expect(programNames).toContain('U10 Girls');
     expect(programNames).toContain('U8 Boys');
-
-    vi.useRealTimers();
   });
 
   it('reports missing DOB/Gender as validation errors', async () => {
@@ -56,15 +60,14 @@ describe('useTeamAnalysis', () => {
       { 'First Name': 'Missing', 'Last Name': 'Data' }, // No Birthdate/Gender
     ];
 
-    const mockImportData = { data: mockPlayers };
     vi.mocked(useImport).mockReturnValue({
-      importedPlayers: mockImportData,
+      importedPlayers: { data: mockPlayers },
     });
 
     const { result } = renderHook(() => useTeamAnalysis());
-    
+
     await waitFor(() => {
-        expect(result.current.validationErrors.length).toBe(1);
+      expect(result.current.validationErrors.length).toBe(1);
     }, { timeout: 2000 });
     expect(result.current.validationErrors[0].type).toBe('missing_info');
   });

@@ -576,14 +576,26 @@ describe('persistPracticeAssignments', () => {
   });
 
   it('validates Supabase client presence', async () => {
+    // Null client should throw "from() method is required"
     await assert.rejects(
       () =>
         persistPracticeAssignments({
-          supabaseClient: { from: () => {} },
+          supabaseClient: null,
           assignments: [{ teamId: 'team-1', slotId: 'slot-1::early' }],
           slots: sampleSlots,
         }),
       /supabaseClient with a from\(\) method is required/
+    );
+
+    // Client whose from() returns a non-object should throw "query builder object"
+    await assert.rejects(
+      () =>
+        persistPracticeAssignments({
+          supabaseClient: { from: () => null },
+          assignments: [{ teamId: 'team-1', slotId: 'slot-1::early' }],
+          slots: sampleSlots,
+        }),
+      /supabaseClient\.from must return a query builder object/
     );
   });
 });

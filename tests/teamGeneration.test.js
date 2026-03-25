@@ -228,13 +228,18 @@ test('records overflow when no team can accommodate a unit', () => {
 
 test('throws when buddy unit has conflicting coach assignments', () => {
   const players = [
-    { id: 'a', division: 'U10', buddyId: 'b', coachId: 'coach-1' },
-    { id: 'b', division: 'U10', buddyId: 'a', coachId: 'coach-2' },
+    { id: 'a', division: 'U10', buddyId: 'b', coachId: 'coach-1', skill: 3 },
+    { id: 'b', division: 'U10', buddyId: 'a', coachId: 'coach-2', skill: 3 },
   ];
 
   assert.throws(
     () => generateTeams({ players, divisionConfigs, random: createDeterministicRandom() }),
-    /conflicting coach assignments/i
+    (err) => {
+      assert.ok(err instanceof Error, `Expected Error, got ${typeof err}: ${err}`);
+      assert.match(err.message, /conflicting coach assignments/i,
+        `Expected "Conflicting coach assignments" but got: "${err.message}"`);
+      return true;
+    }
   );
 });
 
@@ -293,16 +298,16 @@ test('validates input arguments', () => {
     /random must be a function/i
   );
 
-  const missingId = [{ id: 'missing-id', division: 'U10' }];
+  const missingId = [{ division: 'U10' }];
   assert.throws(
     () => generateTeams({ players: missingId, divisionConfigs }),
     /each player requires an id/i
   );
 
-  const missingDivision = [{ id: 'no-division', division: 'NONE' }];
+  const missingDivision = [{ id: 'no-division' }];
   assert.throws(
     () => generateTeams({ players: missingDivision, divisionConfigs }),
-    /is missing a division/i
+    /each player requires a division/i
   );
 
   const players = [{ id: 'a', division: 'U11' }];

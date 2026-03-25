@@ -246,8 +246,19 @@ test('persistGameAssignments surfaces Supabase errors and validates client', asy
     /Failed to persist game assignments: insert failed/
   );
 
+  const sampleAssignment = [
+    { division: 'U10', weekIndex: 1, slotId: 'slot-1', start: '2024-08-10T16:00:00Z', end: '2024-08-10T17:00:00Z', homeTeamId: 'team-1', awayTeamId: 'team-2' },
+  ];
+
+  // Null client should throw "from() method is required"
   await assert.rejects(
-    () => persistGameAssignments({ supabaseClient: { from: () => {} }, assignments: [] }),
+    () => persistGameAssignments({ supabaseClient: null, assignments: sampleAssignment }),
     /supabaseClient with a from\(\) method is required/
+  );
+
+  // Client whose from() returns a non-object should throw "query builder object"
+  await assert.rejects(
+    () => persistGameAssignments({ supabaseClient: { from: () => null }, assignments: sampleAssignment }),
+    /supabaseClient\.from must return a query builder object/
   );
 });
