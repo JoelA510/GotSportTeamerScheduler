@@ -9,16 +9,19 @@ import { useMemo } from 'react';
  */
 export function useConflicts(teams) {
   const conflicts = useMemo(() => {
-    if (!teams || teams.length === 0) return [];
+    if (!teams || !Array.isArray(teams) || teams.length === 0) return [];
 
     const detected = [];
     const checkedBuddies = new Set();
 
-    // Flatten all players with their team assignments
+    // Flatten all players with their team assignments safely
     const allPlayers = [];
     teams.forEach((team) => {
+      if (!team) return;
       (team.players || []).forEach((player) => {
-        allPlayers.push({ ...player, teamId: team.id, teamName: team.name });
+        if (!player) return;
+        const name = player.name || `${player.first_name || ''} ${player.last_name || ''}`.trim() || 'Unknown';
+        allPlayers.push({ ...player, name, teamId: team.id, teamName: team.name });
       });
     });
 
@@ -33,32 +36,33 @@ export function useConflicts(teams) {
           // Check if buddy pair shares eligible teams
           const p1Eligible = teams.filter(
             (t) =>
+              t &&
               (!t.minAge || p1.age >= t.minAge) &&
               (!t.maxAge || p1.age <= t.maxAge) &&
               (!t.gender || p1.gender === t.gender)
           );
+
           const p2Eligible = teams.filter(
             (t) =>
+              t &&
               (!t.minAge || p2.age >= t.minAge) &&
               (!t.maxAge || p2.age <= t.maxAge) &&
               (!t.gender || p2.gender === t.gender)
           );
-          const sharedTeams = p1Eligible.filter((t) =>
-            p2Eligible.some((bt) => bt.id === t.id)
+
+          const sharedTeams = p1Eligible.filter((t1) =>
+            p2Eligible.some((t2) => t1.id === t2.id)
           );
 
-          if (sharedTeams.length > 0) {
-            // They CAN be on same team, but are they separated?
-            if (p1.teamId && p2.teamId && p1.teamId !== p2.teamId) {
-              detected.push({
-                type: 'buddy',
-                message: `Buddy pair separated: ${p1.name} & ${p2.name}`,
-                severity: 'warning',
-                p1,
-                p2,
-              });
-            }
-          } else if (p1.teamId || p2.teamId) {
+          if (p1.teamId !== p2.teamId && sharedTeams.length > 0) {
+            detected.push({
+              type: 'buddy',
+              message: `Buddy pair separated: ${p1.name} & ${p2.name}`,
+              severity: 'warning',
+              p1,
+              p2,
+            });
+          } else if (sharedTeams.length === 0 && (p1.teamId || p2.teamId)) {
             // They cannot be on any shared team (age/gender mismatch)
             detected.push({
               type: 'invalid_buddy',
@@ -73,7 +77,7 @@ export function useConflicts(teams) {
 
       // --- Gender Mismatch Check ---
       if (p1.teamId && p1.gender) {
-        const team = teams.find((t) => t.id === p1.teamId);
+        const team = teams.find((t) => t && t.id === p1.teamId);
         if (team && team.gender && p1.gender !== team.gender) {
           detected.push({
             type: 'gender',
@@ -86,7 +90,7 @@ export function useConflicts(teams) {
 
       // --- Age Mismatch Check ---
       if (p1.teamId && p1.age != null) {
-        const team = teams.find((t) => t.id === p1.teamId);
+        const team = teams.find((t) => t && t.id === p1.teamId);
         if (team) {
           if (
             (team.minAge != null && p1.age < team.minAge) ||
@@ -94,7 +98,7 @@ export function useConflicts(teams) {
           ) {
             detected.push({
               type: 'age',
-              message: `Age mismatch: ${p1.name} (Age ${p1.age}) assigned to ${team.name} (U${team.maxAge || '?'})`,
+              message: `Age mismatch: ${p1.name} (Age ${p1.age}) assigned to ${team.name} (U${team.maxAge})`,
               severity: 'error',
               p1,
             });

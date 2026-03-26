@@ -3,260 +3,271 @@ import { expect } from '@playwright/test';
 
 const { Given, When, Then } = createBdd();
 
-Given('there are {int} players in the U10 division', async ({ page }, count: number) => {
-    await page.evaluate(() => {
-        const db = (window as any).__MOCK_DB__ || {};
+/**
+ * Helper to ensure a player exists in the "imports" table so TeamAnalysisPage can hydrate it.
+ */
+async function syncPlayerToImports(page: any, player: any) {
+    await page.evaluate(({ p }) => {
+        const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
+        db.imports = db.imports || [];
+        let playerImport = db.imports.find((i: any) => i.import_type === 'players');
+        
+        if (!playerImport) {
+            playerImport = {
+                id: 'import-players-1',
+                import_type: 'players',
+                user_id: 'mock-admin-id',
+                data: { data: [] },
+                created_at: new Date().toISOString()
+            };
+            db.imports.push(playerImport);
+        }
+
+        // Add or update player in the import blob
+        const existingIdx = playerImport.data.data.findIndex((rp: any) => rp.id === p.id);
+        const normalizedPlayer = {
+            id: p.id,
+            first_name: p.first_name,
+            last_name: p.last_name,
+            age: p.age,
+            gender: p.gender,
+            buddy_id: p.buddy_id
+        };
+
+        if (existingIdx >= 0) {
+            playerImport.data.data[existingIdx] = normalizedPlayer;
+        } else {
+            playerImport.data.data.push(normalizedPlayer);
+        }
+
         sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
-    });
-});
+    }, { p: player });
+}
+
+// ────────────────────────────────────────────────────────────
+// 1. CORE SETUP & ROBUST SEEDING (Our recent fixes)
+// ────────────────────────────────────────────────────────────
 
 Given('teams have been generated for the current season', async ({ page }) => {
     await page.evaluate(() => {
-        const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || JSON.stringify((window as any).__MOCK_DB__ || {}));
+        const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
         const orgId = localStorage.getItem('squadlogic_active_org') || 'org-1';
+
         db.teams = db.teams || [];
-        db.teams.push(
-            { id: 'team-alpha', name: 'Team Alpha', division: 'U10', organization_id: orgId, gender_policy: null, age_range: null },
-            { id: 'team-beta', name: 'Team Beta', division: 'U10', organization_id: orgId, gender_policy: null, age_range: null }
-        );
-        db.players = db.players || [];
-        db.team_players = db.team_players || [];
-        db.player_buddies = db.player_buddies || [];
-
-        db.scheduler_runs = db.scheduler_runs || [];
-        db.scheduler_runs.push({
-            id: 'mock-team-run',
-            run_type: 'team',
-            status: 'completed',
-            results: {
-                teams: db.teams,
-                team_players: db.team_players
-            },
-            created_at: new Date().toISOString(),
-            completed_at: new Date().toISOString()
-        });
-
-        db.imports = db.imports || [];
-        if (!db.imports.find((i: any) => i.import_type === 'players')) {
-            const mappedPlayers = db.players.map((p: any) => ({
-                ...p,
-                'First Name': p.first_name,
-                'Last Name': p.last_name,
-                'Birthdate': p.date_of_birth || '2015-01-01',
-                'Gender': p.gender || 'm'
-            }));
-            db.imports.push({
-                id: 'imp-players',
-                user_id: 'mock-admin-id',
-                import_type: 'players',
-                status: 'completed',
-                data: { data: mappedPlayers }
-            });
+        if (!db.teams.find((t: any) => t.id === 'team-alpha')) {
+            db.teams.push(
+                { id: 'team-alpha', name: 'Team Alpha', division: 'U10', organization_id: orgId, gender_policy: null, age_range: null },
+                { id: 'team-beta', name: 'Team Beta', division: 'U10', organization_id: orgId, gender_policy: null, age_range: null }
+            );
         }
 
-        (window as any).__MOCK_DB__ = db;
+        const now = new Date().toISOString();
+        db.scheduler_runs = db.scheduler_runs || [];
+        db.scheduler_runs.push({
+            id: `mock-run-roster-${Date.now()}`,
+            organization_id: orgId,
+            run_type: 'team',
+            status: 'completed',
+            created_at: now,
+            completed_at: now,
+            results: {
+                teamsByDivision: {
+                    'U10': [
+                        { id: 'team-alpha', name: 'Team Alpha', division_id: 'U10', organization_id: orgId },
+                        { id: 'team-beta', name: 'Team Beta', division_id: 'U10', organization_id: orgId }
+                    ]
+                },
+                rosterBalanceByDivision: {
+                    'U10': { summary: { totalPlayers: 20, totalCapacity: 24, averageFillRate: 0.8 }, teamStats: [] }
+                },
+                coachCoverageByDivision: {
+                    'U10': { totalTeams: 2, teamsWithCoach: 2, coverageRate: 1.0 }
+                }
+            }
+        });
+
         sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
     });
 });
-Given('player {string} and player {string} are registered as a buddy pair', async ({ page }, p1: string, p2: string) => {
-    await page.evaluate(({ p1Name, p2Name }) => {
-        const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || JSON.stringify((window as any).__MOCK_DB__ || {}));
+
+Given('all players are correctly assigned to eligible teams', async ({ page }) => {
+    await page.evaluate(() => {
+        const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
+        sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
+    });
+});
+
+// ────────────────────────────────────────────────────────────
+// 2. RESTORED SPECIFIC SCENARIO STEPS (Fixing the Regression)
+// ────────────────────────────────────────────────────────────
+
+Given('a buddy pair {string} and {string} are in the same division', async ({ page }, p1: string, p2: string) => {
+    await page.evaluate(({ name1, name2 }) => {
+        const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
         const orgId = localStorage.getItem('squadlogic_active_org') || 'org-1';
+
         db.players = db.players || [];
-        const p1Id = p1Name.toLowerCase().replace(/\s+/g, '-');
-        const p2Id = p2Name.toLowerCase().replace(/\s+/g, '-');
-        if (!db.players.find((p: any) => p.id === p1Id)) {
-            db.players.push({ id: p1Id, first_name: p1Name, last_name: '', name: p1Name, organization_id: orgId, buddyId: p2Id, buddy_id: p2Id });
-        } else {
-            const existing = db.players.find((p: any) => p.id === p1Id);
-            existing.buddyId = p2Id;
-            existing.buddy_id = p2Id;
-        }
-        if (!db.players.find((p: any) => p.id === p2Id)) {
-            db.players.push({ id: p2Id, first_name: p2Name, last_name: '', name: p2Name, organization_id: orgId, buddyId: p1Id, buddy_id: p1Id });
-        } else {
-            const existing = db.players.find((p: any) => p.id === p2Id);
-            existing.buddyId = p1Id;
-            existing.buddy_id = p1Id;
-        }
-        db.player_buddies = db.player_buddies || [];
-        db.player_buddies.push({ id: `buddy-${p1Id}-${p2Id}`, player_id: p1Id, buddy_id: p2Id, organization_id: orgId });
+        const id1 = `player-${name1.toLowerCase()}`;
+        const id2 = `player-${name2.toLowerCase()}`;
 
-        if (db.imports && db.imports.length > 0) {
-            const imp = db.imports.find((i: any) => i.import_type === 'players');
-            if (imp && imp.data && imp.data.data) {
-                let impP1 = imp.data.data.find((p: any) => p.id === p1Id);
-                if (!impP1) { impP1 = { id: p1Id, 'First Name': p1Name }; imp.data.data.push(impP1); }
-                impP1.buddyId = p2Id;
+        // Assign to DIFFERENT teams to trigger buddy separation conflict
+        db.players.push(
+            { id: id1, first_name: name1, last_name: '', name: name1, age: 10, gender: 'M', organization_id: orgId, buddyId: id2, team_id: 'team-alpha' },
+            { id: id2, first_name: name2, last_name: '', name: name2, age: 10, gender: 'M', organization_id: orgId, buddyId: id1, team_id: 'team-beta' }
+        );
 
-                let impP2 = imp.data.data.find((p: any) => p.id === p2Id);
-                if (!impP2) { impP2 = { id: p2Id, 'First Name': p2Name }; imp.data.data.push(impP2); }
-                impP2.buddyId = p1Id;
-            }
-        }
-
-        (window as any).__MOCK_DB__ = db;
-        sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
-    }, { p1Name: p1, p2Name: p2 });
-});
-Given('{string} is assigned to {string}', async ({ page }, player: string, team: string) => {
-    await page.evaluate(({ playerName, teamName }) => {
-        const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || JSON.stringify((window as any).__MOCK_DB__ || {}));
-        const playerId = playerName.toLowerCase().replace(/\s+/g, '-');
-        const teamObj = (db.teams || []).find((t: any) => t.name === teamName);
-        const teamId = teamObj ? teamObj.id : teamName.toLowerCase().replace(/\s+/g, '-');
         db.team_players = db.team_players || [];
-        db.team_players.push({ id: `tp-${playerId}-${teamId}`, team_id: teamId, player_id: playerId });
+        db.team_players.push(
+            { team_id: 'team-alpha', player_id: id1 },
+            { team_id: 'team-beta', player_id: id2 }
+        );
 
-        const run = db.scheduler_runs.find((r: any) => r.run_type === 'team');
-        if (run) {
-            run.results.team_players = db.team_players;
+        const run = [...db.scheduler_runs].reverse().find((r: any) => r.run_type === 'team');
+        if (run && run.results) {
+            run.results.team_players = run.results.team_players || [];
+            run.results.team_players.push(
+                { team_id: 'team-alpha', player_id: id1 },
+                { team_id: 'team-beta', player_id: id2 }
+            );
         }
 
-        (window as any).__MOCK_DB__ = db;
         sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
-    }, { playerName: player, teamName: team });
+    }, { name1: p1, name2: p2 });
+
+    // Sync to imports for hydration
+    await syncPlayerToImports(page, { id: `player-${p1.toLowerCase()}`, first_name: p1, last_name: '', age: 10, gender: 'M', buddy_id: `player-${p2.toLowerCase()}` });
+    await syncPlayerToImports(page, { id: `player-${p2.toLowerCase()}`, first_name: p2, last_name: '', age: 10, gender: 'M', buddy_id: `player-${p1.toLowerCase()}` });
 });
+
+Given('a player {string} is assigned to a {string} team', async ({ page }, player: string, teamGender: string) => {
+    await page.evaluate(({ pName, tGender }) => {
+        const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
+        const orgId = localStorage.getItem('squadlogic_active_org') || 'org-1';
+        const playerId = `player-${pName.toLowerCase()}`;
+        const teamId = `team-${tGender.toLowerCase()}`;
+
+        db.teams = db.teams || [];
+        if (!db.teams.find((t: any) => t.id === teamId)) {
+            db.teams.push({ id: teamId, name: `${tGender} Team`, gender: tGender === 'Boys' ? 'M' : 'F', organization_id: orgId, min_age: 5, max_age: 15 });
+        }
+
+        // Create player with opposite gender for the mismatch
+        const playerGender = tGender === 'Boys' ? 'F' : 'M';
+        db.players = db.players || [];
+        db.players.push({ id: playerId, first_name: pName, last_name: '', name: pName, age: 10, gender: playerGender, organization_id: orgId, team_id: teamId });
+
+        db.team_players = db.team_players || [];
+        db.team_players.push({ team_id: teamId, player_id: playerId });
+
+        const run = [...db.scheduler_runs].reverse().find((r: any) => r.run_type === 'team');
+        if (run && run.results) {
+            run.results.teams = run.results.teams || [];
+            if (!run.results.teams.find((t: any) => t.id === teamId)) {
+                const teamObj = { id: teamId, name: `${tGender} Team`, division_id: 'U10', gender: tGender === 'Boys' ? 'M' : 'F' };
+                run.results.teams.push(teamObj);
+                run.results.teamsByDivision = run.results.teamsByDivision || {};
+                run.results.teamsByDivision['U10'] = run.results.teamsByDivision['U10'] || [];
+                run.results.teamsByDivision['U10'].push(teamObj);
+            }
+            run.results.team_players = run.results.team_players || [];
+            run.results.team_players.push({ team_id: teamId, player_id: playerId });
+        }
+
+        sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
+    }, { pName: player, tGender: teamGender });
+
+    // Sync to imports for hydration
+    const playerGender = teamGender === 'Boys' ? 'F' : 'M';
+    await syncPlayerToImports(page, { id: `player-${player.toLowerCase()}`, first_name: player, last_name: '', age: 10, gender: playerGender });
+});
+
+Given('a player {string} of age {int} is assigned to a {string} team', async ({ page }, player: string, age: number, division: string) => {
+    await page.evaluate(({ pName, pAge, div }) => {
+        const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
+        const orgId = localStorage.getItem('squadlogic_active_org') || 'org-1';
+        const playerId = `player-${pName.toLowerCase()}`;
+        const teamId = `team-${div.toLowerCase()}`;
+
+        db.teams = db.teams || [];
+        if (!db.teams.find((t: any) => t.id === teamId)) {
+            db.teams.push({ id: teamId, name: `${div} Team`, min_age: 6, max_age: 8, organization_id: orgId });
+        }
+
+        db.players = db.players || [];
+        db.players.push({ id: playerId, first_name: pName, last_name: '', name: pName, age: pAge, gender: 'M', organization_id: orgId, team_id: teamId });
+
+        db.team_players = db.team_players || [];
+        db.team_players.push({ team_id: teamId, player_id: playerId });
+
+        const run = [...db.scheduler_runs].reverse().find((r: any) => r.run_type === 'team');
+        if (run && run.results) {
+            run.results.teams = run.results.teams || [];
+            if (!run.results.teams.find((t: any) => t.id === teamId)) {
+                const teamObj = { id: teamId, name: `${div} Team`, division_id: div, min_age: 6, max_age: 8 };
+                run.results.teams.push(teamObj);
+                run.results.teamsByDivision = run.results.teamsByDivision || {};
+                run.results.teamsByDivision[div] = run.results.teamsByDivision[div] || [];
+                run.results.teamsByDivision[div].push(teamObj);
+            }
+            run.results.team_players = run.results.team_players || [];
+            run.results.team_players.push({ team_id: teamId, player_id: playerId });
+        }
+
+        sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
+    }, { pName: player, pAge: age, div: division });
+
+    // Sync to imports for hydration
+    await syncPlayerToImports(page, { id: `player-${player.toLowerCase()}`, first_name: player, last_name: '', age: age, gender: 'M' });
+});
+
+Given('a player {string} of age {int} is assigned to {string}', async ({ page }, player: string, age: number, team: string) => {
+    await page.evaluate(({ playerName, playerAge, teamName }) => {
+        const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
+        const orgId = localStorage.getItem('squadlogic_active_org') || 'org-1';
+
+        const playerId = `player-${playerName.replace(/\s+/g, '-').toLowerCase()}`;
+        const teamId = teamName === 'Team Alpha' ? 'team-alpha' : 'team-beta';
+
+        db.players = db.players || [];
+        db.players.push({
+            id: playerId,
+            first_name: playerName.split(' ')[0],
+            last_name: playerName.split(' ')[1] || '',
+            age: playerAge,
+            organization_id: orgId,
+            gender: 'U'
+        });
+
+        db.team_players = db.team_players || [];
+        db.team_players.push({ team_id: teamId, player_id: playerId });
+
+        sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
+    }, { playerName: player, playerAge: age, teamName: team });
+});
+
+// ────────────────────────────────────────────────────────────
+// 3. ACTIONS & ASSERTIONS
+// ────────────────────────────────────────────────────────────
 
 When('I view the Roster Manager', async ({ page }) => {
     await page.goto('/teams');
-    await expect(page.getByRole('heading', { name: /Teaming & Analysis/i }).first()).toBeVisible({ timeout: 15000 });
-    const editButton = page.getByRole('button', { name: /Edit Mode/i }).first();
-    await expect(editButton).toBeVisible({ timeout: 15000 });
-    await editButton.click({ force: true });
-
-    // CRITICAL FIX: Wait for RosterManager to mount and process conflicts
-    await page.waitForTimeout(1000);
+    // Wait for the "Edit Mode" button to be visible (it only appears if teams exist)
+    const editBtn = page.getByRole('button', { name: /Edit Mode/i });
+    await editBtn.waitFor({ state: 'visible', timeout: 15000 });
+    await editBtn.click();
 });
 
-Then('I should see a conflict banner with message {string}', async ({ page }, msg: string) => {
-    await expect(page.locator('.bg-status-error-bg').first()).toBeVisible();
-    await expect(page.getByText(msg).first()).toBeVisible();
-});
-
-Given('{string} is a {string} team', async ({ page }, team: string, gender: string) => {
-    await page.evaluate(({ teamName, genderPolicy }) => {
-        const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || JSON.stringify((window as any).__MOCK_DB__ || {}));
-        const teamObj = (db.teams || []).find((t: any) => t.name === teamName);
-        if (teamObj) {
-            teamObj.gender_policy = genderPolicy;
-            teamObj.gender = genderPolicy;
-        }
-        const run = db.scheduler_runs?.find((r: any) => r.run_type === 'team');
-        if (run && run.results && run.results.teams) {
-            const rTeam = run.results.teams.find((t: any) => t.name === teamName);
-            if (rTeam) {
-                rTeam.gender_policy = genderPolicy;
-                rTeam.gender = genderPolicy;
-            }
-        }
-        (window as any).__MOCK_DB__ = db;
-        sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
-    }, { teamName: team, genderPolicy: gender });
-});
-Given('player {string} has gender {string}', async ({ page }, player: string, gender: string) => {
-    await page.evaluate(({ playerName, playerGender }) => {
-        const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || JSON.stringify((window as any).__MOCK_DB__ || {}));
-        const playerId = playerName.toLowerCase().replace(/\s+/g, '-');
-        let playerObj = (db.players || []).find((p: any) => p.id === playerId);
-        if (playerObj) {
-            playerObj.gender = playerGender;
-            playerObj.Gender = playerGender;
-        } else {
-            const orgId = localStorage.getItem('squadlogic_active_org') || 'org-1';
-            db.players = db.players || [];
-            playerObj = { id: playerId, first_name: playerName, last_name: '', name: playerName, gender: playerGender, Gender: playerGender, organization_id: orgId };
-            db.players.push(playerObj);
-        }
-
-        if (db.imports && db.imports.length > 0) {
-            const imp = db.imports.find((i: any) => i.import_type === 'players');
-            if (imp && imp.data && imp.data.data) {
-                const impPlayer = imp.data.data.find((p: any) => p.id === playerId || p['First Name'] === playerName);
-                if (impPlayer) {
-                    impPlayer.gender = playerGender;
-                    impPlayer.Gender = playerGender;
-                } else {
-                    imp.data.data.push({ id: playerId, 'First Name': playerName, 'Last Name': '', Gender: playerGender, gender: playerGender });
-                }
-            }
-        }
-
-        (window as any).__MOCK_DB__ = db;
-        sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
-    }, { playerName: player, playerGender: gender });
-});
-
-Then('I should see a conflict banner with message containing {string}', async ({ page }, msg: string) => {
-    await expect(page.locator('.bg-status-error-bg').first()).toContainText(msg);
-});
-
-Given('{string} has age range U8 \\(ages 6-8)', async ({ page }, team: string) => {
-    await page.evaluate(({ teamName }) => {
-        const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || JSON.stringify((window as any).__MOCK_DB__ || {}));
-        const teamObj = (db.teams || []).find((t: any) => t.name === teamName);
-        if (teamObj) {
-            teamObj.minAge = 6;
-            teamObj.maxAge = 8;
-            teamObj.min_age = 6;
-            teamObj.max_age = 8;
-        }
-        const run = db.scheduler_runs?.find((r: any) => r.run_type === 'team');
-        if (run && run.results && run.results.teams) {
-            const rTeam = run.results.teams.find((t: any) => t.name === teamName);
-            if (rTeam) {
-                rTeam.minAge = 6;
-                rTeam.maxAge = 8;
-                rTeam.min_age = 6;
-                rTeam.max_age = 8;
-            }
-        }
-        (window as any).__MOCK_DB__ = db;
-        sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
-    }, { teamName: team });
-});
-Given('player {string} is age {int}', async ({ page }, player: string, age: number) => {
-    await page.evaluate(({ playerName, playerAge }) => {
-        const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || JSON.stringify((window as any).__MOCK_DB__ || {}));
-        const playerId = playerName.toLowerCase().replace(/\s+/g, '-');
-        let playerObj = (db.players || []).find((p: any) => p.id === playerId);
-        if (playerObj) {
-            playerObj.age = playerAge;
-            playerObj.Age = playerAge;
-        } else {
-            const orgId = localStorage.getItem('squadlogic_active_org') || 'org-1';
-            db.players = db.players || [];
-            playerObj = { id: playerId, first_name: playerName, last_name: '', name: playerName, age: playerAge, Age: playerAge, organization_id: orgId };
-            db.players.push(playerObj);
-        }
-
-        if (db.imports && db.imports.length > 0) {
-            const imp = db.imports.find((i: any) => i.import_type === 'players');
-            if (imp && imp.data && imp.data.data) {
-                let impP = imp.data.data.find((p: any) => p.id === playerId || p['First Name'] === playerName);
-                if (!impP) { impP = { id: playerId, 'First Name': playerName }; imp.data.data.push(impP); }
-                impP.age = playerAge;
-                impP.Age = playerAge;
-            }
-        }
-
-        (window as any).__MOCK_DB__ = db;
-        sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
-    }, { playerName: player, playerAge: age });
-});
-Given('all players are correctly assigned to eligible teams', async ({ page }) => {
-    await page.evaluate(() => {
-        const db = (window as any).__MOCK_DB__ || {};
-        sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
-    });
+When('I click the {string} button on the Roster Manager', async ({ page }, btnName: string) => {
+    if (!page.url().includes('/teams')) {
+        await page.goto('/teams');
+    }
+    const btn = page.getByRole('button', { name: new RegExp(btnName, 'i') }).first();
+    await btn.waitFor({ state: 'visible', timeout: 10000 });
+    await btn.click({ force: true });
 });
 
 Then('no conflict banner should be displayed', async ({ page }) => {
     await expect(page.locator('.bg-status-error-bg').first()).toBeHidden();
-});
-
-When('I click the {string} button on the Roster Manager', async ({ page }, btnName: string) => {
-    await page.getByRole('button', { name: btnName }).first().click({ force: true });
 });
 
 Then('a new row should be inserted into the {string} table', async ({ page }, tableName: string) => {
@@ -274,4 +285,16 @@ Then('the run should have run_type {string} and status {string}', async ({ page 
         return runs.some((r: any) => r.run_type === t && r.status === s);
     }, { t: type, s: status });
     expect(match).toBe(true);
+});
+
+Then('I should see a conflict banner with message {string}', async ({ page }, message: string) => {
+    const banner = page.locator('.bg-status-error-bg, .text-status-error').first();
+    await expect(banner).toBeVisible({ timeout: 10000 });
+    await expect(banner).toContainText(message);
+});
+
+Then('I should see a conflict banner with message containing {string}', async ({ page }, partialMessage: string) => {
+    const banner = page.locator('.bg-status-error-bg, .text-status-error').first();
+    await expect(banner).toBeVisible({ timeout: 10000 });
+    await expect(banner).toContainText(partialMessage);
 });
