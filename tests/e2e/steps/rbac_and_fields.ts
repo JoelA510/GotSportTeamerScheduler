@@ -42,6 +42,76 @@ Given('the following organizations exist: {string}, {string}', async ({ page }, 
         db.season_settings.push({ id: 'season-a', organization_id: id1, name: 'Fall 2026', status: 'active' });
         db.season_settings.push({ id: 'season-b', organization_id: id2, name: 'Fall 2026', status: 'active' });
 
+        // Seed scheduler runs correctly formatted for the frontend data mapper
+        const now = new Date().toISOString();
+        db.scheduler_runs = db.scheduler_runs || [];
+        db.scheduler_runs.push(
+            {
+                id: 'run-orgA',
+                organization_id: id1,
+                run_type: 'team',
+                status: 'completed',
+                completed_at: now,
+                results: {
+                    teams: [
+                        { id: 'team-orgA-1', name: 'Org A Thunder', division_id: 'U10' },
+                        { id: 'team-orgA-2', name: 'Org A Lightning', division_id: 'U10' }
+                    ],
+                    teamsByDivision: {
+                        'U10': [
+                            { id: 'team-orgA-1', name: 'Org A Thunder', division_id: 'U10' },
+                            { id: 'team-orgA-2', name: 'Org A Lightning', division_id: 'U10' }
+                        ]
+                    },
+                    rosterBalanceByDivision: {
+                        'U10': {
+                            summary: { totalPlayers: 24, totalCapacity: 30, averageFillRate: 0.8 },
+                            teamStats: [
+                                { teamId: 'team-orgA-1', slotsRemaining: 3 },
+                                { teamId: 'team-orgA-2', slotsRemaining: 3 }
+                            ]
+                        }
+                    },
+                    coachCoverageByDivision: {
+                        'U10': { totalTeams: 2, teamsWithCoach: 2, coverageRate: 1.0 }
+                    }
+                },
+                created_at: now
+            },
+            {
+                id: 'run-orgB',
+                organization_id: id2,
+                run_type: 'team',
+                status: 'completed',
+                completed_at: now,
+                results: {
+                    teams: [
+                        { id: 'team-orgB-1', name: 'Org B Sharks', division_id: 'U10' },
+                        { id: 'team-orgB-2', name: 'Org B Dolphins', division_id: 'U10' }
+                    ],
+                    teamsByDivision: {
+                        'U10': [
+                            { id: 'team-orgB-1', name: 'Org B Sharks', division_id: 'U10' },
+                            { id: 'team-orgB-2', name: 'Org B Dolphins', division_id: 'U10' }
+                        ]
+                    },
+                    rosterBalanceByDivision: {
+                        'U10': {
+                            summary: { totalPlayers: 24, totalCapacity: 30, averageFillRate: 0.8 },
+                            teamStats: [
+                                { teamId: 'team-orgB-1', slotsRemaining: 3 },
+                                { teamId: 'team-orgB-2', slotsRemaining: 3 }
+                            ]
+                        }
+                    },
+                    coachCoverageByDivision: {
+                        'U10': { totalTeams: 2, teamsWithCoach: 2, coverageRate: 1.0 }
+                    }
+                },
+                created_at: now
+            }
+        );
+
         sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
     }, { o1: org1, id1: orgId1, o2: org2, id2: orgId2 });
 });
@@ -83,26 +153,36 @@ Given('{string} belongs to {string} with role {string}', async ({ page }, user: 
 
 When('I request the list of teams, players, or schedules', async ({ page }) => {
     await page.goto('/teams');
-    // Wait for the page to load and render team data
-    await page.waitForLoadState('networkidle');
+
+    // Explicitly click the "Edit" or "Expand" button if one exists to ensure 
+    // the internal team list is rendered into the DOM.
+    // We use a more robust wait than isVisible() to ensure the button is ready.
+    const editButton = page.getByRole('button', { name: /Edit/i });
+    try {
+        await editButton.waitFor({ state: 'visible', timeout: 5000 });
+        await editButton.click();
+        // Wait for the RosterManager to actually appear
+        await page.waitForSelector('h3', { state: 'visible', timeout: 5000 });
+    } catch (e) {
+        // Fallback: If no edit button or it fails, we continue and hope the data is there
+    }
 });
 
 Then('I should only receive records associated with {string}', async ({ page }, org: string) => {
     const orgId = rbacState.orgs[org];
     if (!orgId) throw new Error(`Organization "${org}" was not seeded`);
 
-    // The active org in localStorage should match the user's org
+    // Verify localStorage points to the expected org
     const activeOrg = await page.evaluate(() => localStorage.getItem('squadlogic_active_org'));
+    expect(activeOrg).toBe(orgId);
 
-    // Verify the page shows team data from the expected org
-    // In mock mode, the mock DB filters by organization_id matching localStorage active org
-    const pageContent = await page.textContent('body');
-
-    // Teams from the user's org should be visible
+    // Use robust Playwright locators to ensure the exact seeded data actually rendered
     if (org === 'Org A') {
-        // Coach Alice is in Org A — should see Org A teams
-        const hasOrgAContent = pageContent?.includes('Org A') || pageContent?.includes('Thunder') || pageContent?.includes('Lightning');
-        expect(hasOrgAContent, `Expected to see Org A team data on the page`).toBeTruthy();
+        await expect(page.getByText('Org A Thunder')).toBeVisible({ timeout: 10000 });
+        await expect(page.getByText('Org A Lightning')).toBeVisible();
+    } else if (org === 'Org B') {
+        await expect(page.getByText('Org B Sharks')).toBeVisible({ timeout: 10000 });
+        await expect(page.getByText('Org B Dolphins')).toBeVisible();
     }
 });
 
@@ -110,13 +190,13 @@ Then('any direct query for {string} records should return empty or unauthorized'
     const orgId = rbacState.orgs[org];
     if (!orgId) throw new Error(`Organization "${org}" was not seeded`);
 
-    // Verify that the OTHER org's teams are NOT visible on the page
-    const pageContent = await page.textContent('body');
-
+    // Explicitly assert that the OTHER org's teams are completely hidden from the DOM
     if (org === 'Org B') {
-        // Coach Alice should NOT see Org B team names
-        const hasOrgBContent = pageContent?.includes('Sharks') || pageContent?.includes('Dolphins');
-        expect(hasOrgBContent, `Expected Org B team data to be hidden, but found it on the page`).toBeFalsy();
+        await expect(page.getByText('Org B Sharks')).toBeHidden();
+        await expect(page.getByText('Org B Dolphins')).toBeHidden();
+    } else if (org === 'Org A') {
+        await expect(page.getByText('Org A Thunder')).toBeHidden();
+        await expect(page.getByText('Org A Lightning')).toBeHidden();
     }
 });
 

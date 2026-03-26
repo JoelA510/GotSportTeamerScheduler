@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useLocation } from 'react-router-dom';
 import DashboardWorkflow from '../components/DashboardWorkflow.jsx';
 import { useDashboardData } from '../hooks/useDashboardData.js';
 import { useTeamPersistence } from '../hooks/useTeamPersistence.js';
@@ -29,6 +30,17 @@ export default function DashboardPage() {
   if (showError) {
     throw new Error('E2E Testing Error Triggered');
   }
+
+  const location = useLocation();
+  const [error, setError] = useState(location.state?.error);
+
+  // Clear the error state from history so it doesn't persist on refresh
+  useEffect(() => {
+    if (location.state?.error) {
+      window.history.replaceState({}, document.title);
+    }
+  }, [location]);
+
   const { loading, roadmap, team, practice, game } = useDashboardData();
   const { persistenceSnapshot } = useTeamPersistence();
   const { importedData, setImportedData } = useImport();
@@ -65,6 +77,13 @@ export default function DashboardPage() {
 
   return (
     <div className="animate-fadeIn">
+      {error && (
+        <div className="bg-red-500/10 border border-red-500 text-red-500 p-4 rounded-md mb-4 flex justify-between items-center">
+          <span>{error}</span>
+          <button onClick={() => setError(null)} className="text-red-500 hover:text-red-700 font-bold">✕</button>
+        </div>
+      )}
+
       {/* Page Header */}
       <header className="mb-8">
         <h1 className="text-3xl font-display font-bold text-text-primary tracking-tight mb-1">
@@ -151,10 +170,10 @@ export default function DashboardPage() {
                   <span
                     data-testid="readiness-score"
                     className={`font-mono text-sm font-bold ${readinessScore === 100
-                        ? 'text-status-success'
-                        : readinessScore >= 50
-                          ? 'text-status-warning'
-                          : 'text-text-muted'
+                      ? 'text-status-success'
+                      : readinessScore >= 50
+                        ? 'text-status-warning'
+                        : 'text-text-muted'
                       }`}
                   >
                     {readinessScore}%
@@ -163,10 +182,10 @@ export default function DashboardPage() {
                 <div className="w-full h-2.5 bg-bg-surface rounded-full overflow-hidden">
                   <div
                     className={`h-full rounded-full transition-all duration-700 ease-out ${readinessScore === 100
-                        ? 'bg-status-success shadow-[0_0_10px_var(--color-status-success-glow)]'
-                        : readinessScore >= 50
-                          ? 'bg-status-warning shadow-[0_0_10px_var(--color-status-warning-glow)]'
-                          : 'bg-brand-400 shadow-[0_0_10px_var(--color-primary-glow)]'
+                      ? 'bg-status-success shadow-[0_0_10px_var(--color-status-success-glow)]'
+                      : readinessScore >= 50
+                        ? 'bg-status-warning shadow-[0_0_10px_var(--color-status-warning-glow)]'
+                        : 'bg-brand-400 shadow-[0_0_10px_var(--color-primary-glow)]'
                       }`}
                     style={{ width: `${readinessScore}%` }}
                   />
@@ -183,8 +202,8 @@ export default function DashboardPage() {
                     <div key={item.label} className="flex items-center gap-2 text-xs">
                       <div
                         className={`w-1.5 h-1.5 rounded-full ${item.done
-                            ? 'bg-status-success shadow-[0_0_5px_var(--color-status-success-glow)]'
-                            : 'bg-text-muted opacity-40'
+                          ? 'bg-status-success shadow-[0_0_5px_var(--color-status-success-glow)]'
+                          : 'bg-text-muted opacity-40'
                           }`}
                       />
                       <span className={item.done ? 'text-text-secondary' : 'text-text-muted'}>

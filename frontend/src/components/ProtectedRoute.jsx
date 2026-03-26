@@ -22,7 +22,7 @@ const ProtectedRoute = ({ requiredPermission, children }) => {
 
   // Immediate redirect — no delay, no warning, no race condition
   if (!can(requiredPermission)) {
-    return <Navigate to="/" state={{ from: location }} replace />;
+    return <Navigate to="/" state={{ from: location, error: 'Unauthorized access' }} replace />;
   }
 
   return children ? children : <Outlet />;

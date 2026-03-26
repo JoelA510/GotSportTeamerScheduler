@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabaseClient.js';
 import { logger } from '../lib/logger.js';
 // Use absolute import via configured alias
 import { mapSchedulerRunToSummary } from '../../../packages/core/src/utils/teamSummaryMapper.js';
+import { useOrganization } from '../contexts/OrganizationContext.jsx';
 
 // Fallback skeleton
 const EMPTY_SUMMARY = {
@@ -21,6 +22,7 @@ const EMPTY_SUMMARY = {
 };
 
 export function useTeamSummary() {
+  const { currentOrganization } = useOrganization();
   const [summary, setSummary] = useState(null); // null triggers loading state
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -30,13 +32,19 @@ export function useTeamSummary() {
   useEffect(() => {
     let pollInterval;
 
+    if (!currentOrganization?.id) {
+      setLoading(false);
+      return;
+    }
+
     async function fetchLatestRun() {
       try {
-        // Fetch the latest run, regardless of status (running or completed)
+        // Fetch the latest run for the CURRENT ORGANIZATION, regardless of status
         const { data, error: queryError } = await supabase
           .from('scheduler_runs')
           .select('*')
           .eq('run_type', 'team')
+          .eq('organization_id', currentOrganization.id)
           .in('status', ['completed', 'running'])
           .order('created_at', { ascending: false })
           .limit(1)
@@ -69,8 +77,6 @@ export function useTeamSummary() {
         }
       } catch (err) {
         logger.error('Failed to fetch team summary:', JSON.stringify(err, null, 2));
-        // Don't set error state if we are just polling and failed once, unless it's critical
-        // But for now, let's just log it and maybe keep old state
       }
     }
 
@@ -84,7 +90,7 @@ export function useTeamSummary() {
     return () => {
       if (pollInterval) clearInterval(pollInterval);
     };
-  }, []);
+  }, [currentOrganization?.id]);
 
   return { summary, loading, error, status, progress, generatedAt: summary?.generatedAt };
 }

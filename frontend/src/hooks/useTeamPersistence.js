@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient.js';
 import { logger } from '../lib/logger.js';
+import { useOrganization } from '../contexts/OrganizationContext.jsx';
 
 export function useTeamPersistence() {
+  const { currentOrganization } = useOrganization();
   const [persistenceSnapshot, setPersistenceSnapshot] = useState({
     manualOverrides: [],
     runHistory: [],
@@ -18,13 +20,19 @@ export function useTeamPersistence() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (!currentOrganization?.id) {
+      setLoading(false);
+      return;
+    }
+
     async function fetchPersistenceHistory() {
       try {
-        // Fetch recent team runs to populate history
+        // Fetch recent team runs scoped to the current organization
         const { data: runs, error } = await supabase
           .from('scheduler_runs')
           .select('*')
           .eq('run_type', 'team')
+          .eq('organization_id', currentOrganization.id)
           .order('created_at', { ascending: false })
           .limit(5);
 
@@ -65,7 +73,7 @@ export function useTeamPersistence() {
     }
 
     fetchPersistenceHistory();
-  }, []);
+  }, [currentOrganization?.id]);
 
   return { persistenceSnapshot, loading };
 }

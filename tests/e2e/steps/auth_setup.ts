@@ -74,7 +74,7 @@ Given(/I am logged into (?:the )?SquadLogic(?: dashboard)? as (?:an? )?"?([^"]*)
         player: process.env.TEST_PLAYER_EMAIL || 'player@squadlogic.app'
     };
 
-    // CRITICAL FIX: Robust role parsing to handle names like "Coach Alice"
+    // Robust role parsing to handle names like "Coach Alice"
     const rawRole = role.toLowerCase();
     let cleanRole = 'admin';
     if (rawRole.includes('coach')) cleanRole = 'coach';
@@ -86,15 +86,47 @@ Given(/I am logged into (?:the )?SquadLogic(?: dashboard)? as (?:an? )?"?([^"]*)
 
     console.log(`[DEBUG][auth_setup] rawRole="${role}", cleanRole="${cleanRole}", email="${email}"`);
 
-    // CRITICAL FIX: Bypass UI login in mock mode to prevent 30s timeouts
+    // CRITICAL FIX: Bypass UI login in mock mode and respect pre-seeded RBAC users
     if (process.env.VITE_USE_MOCK_SUPABASE === 'true') {
         await page.goto('/');
-        await page.evaluate(({ emailStr, roleName, uId }) => {
-            sessionStorage.clear();
-            localStorage.clear();
+
+        const isPreSeeded = await page.evaluate(({ emailStr, roleName, defaultUid, rawRoleName }) => {
+            sessionStorage.removeItem('__MOCK_SESSION__');
+
+            const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
+            const profiles = db.profiles || [];
+
+            // Check if this specific user was pre-seeded (e.g., "Coach Alice")
+            const seededUser = profiles.find((p: any) => p.full_name === rawRoleName);
+
+            if (seededUser) {
+                // User is pre-seeded. Find their assigned organization.
+                const members = db.organization_members || [];
+                const membership = members.find((m: any) => m.profile_id === seededUser.id);
+                const orgId = membership ? membership.organization_id : null;
+
+                if (orgId) {
+                    localStorage.setItem('squadlogic_active_org', orgId);
+                }
+
+                const session = {
+                    user: {
+                        id: seededUser.id,
+                        email: seededUser.email || emailStr,
+                        user_metadata: { full_name: seededUser.full_name },
+                        app_metadata: { role: membership ? membership.role : roleName }
+                    },
+                    access_token: 'mock-token',
+                };
+                sessionStorage.setItem('__MOCK_SESSION__', JSON.stringify(session));
+                return true; // Flag that we handled a seeded user
+            }
+
+            // Fallback for generic users
+            localStorage.removeItem('squadlogic_active_org');
             const session = {
                 user: {
-                    id: uId,
+                    id: defaultUid,
                     email: emailStr,
                     user_metadata: { full_name: `Mock ${roleName}` },
                     app_metadata: { role: roleName }
@@ -102,9 +134,16 @@ Given(/I am logged into (?:the )?SquadLogic(?: dashboard)? as (?:an? )?"?([^"]*)
                 access_token: 'mock-token',
             };
             sessionStorage.setItem('__MOCK_SESSION__', JSON.stringify(session));
-        }, { emailStr: email, roleName: cleanRole, uId: `mock-${cleanRole}-id` });
+            return false;
+        }, { emailStr: email, roleName: cleanRole, defaultUid: `mock-${cleanRole}-id`, rawRoleName: role });
 
-        await setupIsolatedTenant(page, cleanRole);
+        // Only setup a generic isolated tenant if the user was NOT pre-seeded by a Background step
+        if (!isPreSeeded) {
+            await setupIsolatedTenant(page, cleanRole);
+        } else {
+            console.log(`[DEBUG][auth_setup] Recognized pre-seeded user "${role}", preserving existing tenant context.`);
+        }
+
         await page.reload();
         await expect(page.getByRole('heading', { name: /League Management|Dashboard|Season Setup Workflow|Team Portal|League Standings|Settings/i }).first()).toBeVisible({ timeout: 15000 });
         return;
