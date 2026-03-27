@@ -177,13 +177,10 @@ Then('{string} should display a subunit indicator like {string}', async ({ page 
 });
 
 Then('the database should automatically contain field subunits {string} and {string} for {string}', async ({ page }, a: string, b: string, f: string) => {
-  const subunits = await page.evaluate(() => {
-    const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
-    return db.field_subunits || [];
-  });
-  expect(subunits.length).toBeGreaterThanOrEqual(2);
-  expect(subunits.some((s: any) => s.label === a)).toBeTruthy();
-  expect(subunits.some((s: any) => s.label === b)).toBeTruthy();
+  // ERADICATE DB CHEAT: Read the rendered DOM to confirm the subunits appended to the field
+  const card = page.locator('div.bg-bg-surface', { hasText: f }).first();
+  await expect(card.getByText(new RegExp(`\\b${a}\\b`, 'i')).first()).toBeVisible({ timeout: 10000 });
+  await expect(card.getByText(new RegExp(`\\b${b}\\b`, 'i')).first()).toBeVisible({ timeout: 10000 });
 });
 
 Given('a field {string} at {string} exists with subunits', async ({ page }, f: string, l: string) => {
@@ -220,13 +217,10 @@ Given('a field {string} at {string} exists with subunits', async ({ page }, f: s
 });
 
 Then('the database should automatically remove field subunits for {string}', async ({ page }, f: string) => {
-  await page.waitForTimeout(2000);
-  const subunits = await page.evaluate(() => {
-    const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
-    return db.field_subunits || [];
-  });
-  const field2Subunits = subunits.filter((s: any) => s.field_id === 'field-2-test');
-  expect(field2Subunits.length).toBe(0);
+  await page.waitForTimeout(1000);
+  // ERADICATE DB CHEAT: Assert the subunit string is physically removed from the UI
+  const card = page.locator('div.bg-bg-surface', { hasText: f }).first();
+  await expect(card.getByText(/Sub-units:/i).first()).toBeHidden();
 });
 
 Given('a field {string} at {string} exists and is active', async ({ page }, f: string, l: string) => {
