@@ -93,13 +93,12 @@ Given('I am on the {string} page', async ({ page }, pageName: string) => {
     await page.waitForLoadState('networkidle');
 });
 
-Given(/I am on the (Dashboard page|Dashboard|Practice Scheduling page|Compliance Dashboard|Reporting Dashboard)/, async ({ page }, pageName: string) => {
+Given(/I am on the (Dashboard page|Dashboard|Compliance Dashboard|Reporting Dashboard)/, async ({ page }, pageName: string) => {
     const routeMap: Record<string, string> = {
         'Compliance Dashboard': '/admin/compliance',
         'Reporting Dashboard': '/admin/reporting',
         'Dashboard page': '/',
-        'Dashboard': '/',
-        'Practice Scheduling page': '/schedule/practice'
+        'Dashboard': '/'
     };
     const url = routeMap[pageName] || '/';
     await page.goto(url);
