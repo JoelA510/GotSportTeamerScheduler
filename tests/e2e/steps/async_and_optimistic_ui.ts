@@ -79,13 +79,42 @@ Then('the resulting teams summary should reflect the new constraints', async ({ 
 });
 
 When('the network connection stalls', async ({ page }) => {
-    // CRITICAL FIX: Simulate a gateway timeout response so the UI renders the exact expected string
+    // CRITICAL FIX: Handle CORS preflight successfully, then simulate a gateway timeout
+    // on the POST request so the UI renders the exact expected string.
     await page.route('**/team-persistence', async route => {
-        await route.fulfill({
-            status: 408,
-            contentType: 'application/json',
-            body: JSON.stringify({ status: 'error', message: 'Supabase sync timed out. Please retry.' })
-        });
+        const request = route.request();
+
+        // 1. Handle the CORS Preflight
+        if (request.method() === 'OPTIONS') {
+            await route.fulfill({
+                status: 204,
+                headers: {
+                    'Access-Control-Allow-Origin': '*',
+                    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                    'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+                }
+            });
+            return;
+        }
+
+        // 2. Handle the Actual Request
+        if (request.method() === 'POST') {
+            await route.fulfill({
+                status: 408,
+                contentType: 'application/json',
+                headers: {
+                    'Access-Control-Allow-Origin': '*'
+                },
+                body: JSON.stringify({
+                    status: 'error',
+                    message: 'Supabase sync timed out. Please retry.'
+                })
+            });
+            return;
+        }
+
+        // 3. Fallback for any other methods
+        await route.continue();
     });
 });
 
