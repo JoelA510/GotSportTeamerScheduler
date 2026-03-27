@@ -384,17 +384,25 @@ Given('a practice schedule has been generated', async ({ page }) => {
   await page.evaluate(() => {
     const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
     
-    // Mock the practice_assignments with the nested structure expected by the frontend hook
-    db.practice_assignments = [
-      {
-          id: 'assign-team-a',
-          team_id: 'team-a',
-          practice_slot_id: 'slot-1',
-          source: 'auto',
-          teams: { name: 'Team A', divisions: { name: 'U10' } },
-          practiceSlots: { dayOfWeek: 'mon', startTime: '17:00', endTime: '18:30', fields: { name: 'Main Field' } }
-      }
-    ];
+    // 1. Seed base tables to prevent the mock Supabase client from wiping out joins with null
+    db.teams = db.teams || [];
+    db.teams.push({ id: 'team-a', name: 'Team A', division_id: 'div-1' });
+
+    db.practice_slots = db.practice_slots || [];
+    db.practice_slots.push({ id: 'slot-1', day_of_week: 'mon', start_time: '17:00', end_time: '18:30', field_id: 'field-1' });
+
+    // 2. Mock the practice_assignments with correct foreign keys and run_id
+    db.practice_assignments = db.practice_assignments || [];
+    db.practice_assignments.push({
+        id: 'assign-team-a',
+        run_id: 'manual-pre-run', // CRITICAL FIX: Link to the scheduler_run
+        team_id: 'team-a',
+        slot_id: 'slot-1',        // CRITICAL FIX: Use correct foreign key name
+        source: 'auto',
+        // Preserve pre-hydrated objects for direct frontend use
+        teams: { name: 'Team A', divisions: { name: 'U10' } },
+        practiceSlots: { dayOfWeek: 'mon', startTime: '17:00', endTime: '18:30', fields: { name: 'Main Field' } }
+    });
     
     db.scheduler_runs = db.scheduler_runs || [];
     db.scheduler_runs.push({
