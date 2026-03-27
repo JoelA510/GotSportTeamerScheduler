@@ -55,12 +55,29 @@ When('I click {string} on the Team Persistence Panel', async ({ page }, btnLabel
 });
 
 Then('the resulting teams summary should reflect the new constraints', async ({ page }) => {
-    await expect(page.locator('text=Drafting Summary').first()).toBeVisible();
+    // Simulate backend completing the run so the UI transitions out of "Generating Teams..."
+    await page.evaluate(() => {
+        const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
+        const run = db.scheduler_runs.find((r: any) => r.run_type === 'team' && r.status === 'running');
+        if (run) {
+            run.status = 'completed';
+            run.results = {
+                teamsByDivision: { 'U10 Boys': [{ id: 't1', name: 'Tigers' }] },
+                rosterBalanceByDivision: { 'U10 Boys': { summary: { totalPlayers: 10, totalCapacity: 10 } } }
+            };
+        }
+        sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
+    });
+    
+    await expect(page.locator('text=Drafting Summary').first()).toBeVisible({ timeout: 15000 });
 });
 
 When('the network connection stalls', async ({ page }) => {
-    // CRITICAL FIX: Match the actual Edge Function endpoint used by the app
-    await page.route('**/team-persistence', route => route.abort('timedout'));
+    // CRITICAL FIX: Delay the response indefinitely to trigger the app's internal 10-second timeout
+    await page.route('**/team-persistence', async route => {
+        await new Promise(resolve => setTimeout(resolve, 11000));
+        await route.abort('timedout');
+    });
 });
 
 Then('the panel status should change to {string}', async ({ page }, status: string) => {
@@ -126,9 +143,9 @@ Given('I am on the {string} workflow step on Dashboard', async ({ page }, step: 
         const now = new Date().toISOString();
         db.imports = [{ id: 'imp-1', status: 'completed', data: { totalRows: 10 } }];
         db.scheduler_runs = [
-            { id: 'run-t', run_type: 'team', status: 'completed', created_at: now, completed_at: now, results: { teamsByDivision: { 'U10': [] } } },
-            { id: 'run-p', run_type: 'practice', status: 'completed', created_at: now, completed_at: now, results: { summary: {} } },
-            { id: 'run-g', run_type: 'game', status: 'completed', created_at: now, completed_at: now, results: { summary: {} } }
+            { id: 'run-t', organization_id: orgId, run_type: 'team', status: 'completed', created_at: now, completed_at: now, results: { teamsByDivision: { 'U10': [] } } },
+            { id: 'run-p', organization_id: orgId, run_type: 'practice', status: 'completed', created_at: now, completed_at: now, results: { summary: {} } },
+            { id: 'run-g', organization_id: orgId, run_type: 'game', status: 'completed', created_at: now, completed_at: now, results: { summary: {} } }
         ];
         
         sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
@@ -174,6 +191,9 @@ When('I hover my mouse over the {string} chart', async ({ page }, chartName: str
     // Wait for the Recharts canvas/SVG to mount
     const chart = page.locator('.recharts-wrapper').first();
     await expect(chart).toBeVisible({ timeout: 15000 });
+    
+    // Wait for animation to settle before hovering
+    await page.waitForTimeout(2000);
     
     // Hover over the first bar in the chart to trigger the tooltip
     const firstBar = page.locator('.recharts-bar-rectangle').first();

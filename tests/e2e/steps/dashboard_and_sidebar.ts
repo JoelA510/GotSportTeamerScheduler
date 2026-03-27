@@ -259,8 +259,8 @@ Then('the Readiness Score should display {string}', async ({ page }, score: stri
     await expect(panel).toContainText(score, { timeout: 15000 });
     
     // Assert that the "Readiness Score" progress bar in the DOM actually visually updates its width
-    // Use a more flexible regex to handle potential whitespace or exact string matching
-    const progressBar = page.locator('.bg-bg-surface.rounded-full.overflow-hidden > div').first();
+    // CRITICAL FIX: Target the specific progress bar inside the Readiness Score section, not the global workflow one
+    const progressBar = page.getByText('Readiness Score').locator('..').locator('..').locator('.bg-bg-surface.rounded-full.overflow-hidden > div').first();
     await expect(progressBar).toHaveAttribute('style', new RegExp(`width:\\s*${score}`));
 });
 
