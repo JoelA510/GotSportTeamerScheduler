@@ -341,19 +341,7 @@ Then('instantly recalculate the skill balance and capacity metrics for both team
 });
 
 Given('the automated schedule has been generated', async ({ page }) => {
-  // Mock run initialization
-  await page.evaluate(() => {
-    const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
-    db.scheduler_runs = db.scheduler_runs || [];
-    db.scheduler_runs.push({
-      id: 'manual-pre-run',
-      run_type: 'practice',
-      status: 'completed',
-      results: { assignments: [] },
-      created_at: new Date().toISOString()
-    });
-    sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
-  });
+  // Already populated by the background step "a practice schedule has been generated"
 });
 
 When('I manually assign a team to an alternative practice slot', async ({ page }) => {
@@ -392,7 +380,33 @@ Then('updates the game schedule if the selected slot is valid', async ({ page })
 // ────────────────────────────────────────────────────────────
 
 Given('a practice schedule has been generated', async ({ page }) => {
-  // Handled by generic generators above
+  // Background mock data injection to ensure the Practice Scheduling table renders
+  await page.evaluate(() => {
+    const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
+    
+    // Mock the practice_assignments with the nested structure expected by the frontend hook
+    db.practice_assignments = [
+      {
+          id: 'assign-team-a',
+          team_id: 'team-a',
+          practice_slot_id: 'slot-1',
+          source: 'auto',
+          teams: { name: 'Team A', divisions: { name: 'U10' } },
+          practiceSlots: { dayOfWeek: 'mon', startTime: '17:00', endTime: '18:30', fields: { name: 'Main Field' } }
+      }
+    ];
+    
+    db.scheduler_runs = db.scheduler_runs || [];
+    db.scheduler_runs.push({
+      id: 'manual-pre-run',
+      run_type: 'practice',
+      status: 'completed',
+      results: { assignments: [{ team_id: 'team-a', slot_id: 'slot-1', source: 'auto' }] },
+      created_at: new Date().toISOString()
+    });
+
+    sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
+  });
 });
 
 Given('I am on the Practice Scheduling page', async ({ page }) => {
@@ -425,10 +439,21 @@ Then('the lock state should be persisted to the database', async ({ page }) => {
 });
 
 Given('{string} has a locked practice assignment', async ({ page }, teamName: string) => {
+  // Ensure we are on the page for the second scenario
+  if (!page.url().includes('/schedule/practice')) {
+      await page.goto('/schedule/practice');
+  }
+  
   const row = page.locator('tr').filter({ hasText: teamName }).first();
-  // Ensure we wait for the row to exist before checking for the locked state
   await row.waitFor({ state: 'visible', timeout: 10000 });
-  await expect(row.locator('button.text-amber-500').first()).toBeVisible();
+  
+  // If it's not locked yet (amber text), click the toggle to lock it
+  const lockBtn = row.locator('button').first();
+  const isLocked = await lockBtn.evaluate((el) => el.classList.contains('text-amber-500'));
+  if (!isLocked) {
+      await lockBtn.click({ force: true });
+      await expect(row.locator('button.text-amber-500').first()).toBeVisible();
+  }
 });
 
 Then('the assignment for {string} should remain unchanged', async ({ page }, teamName: string) => {
