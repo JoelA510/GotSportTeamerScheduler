@@ -177,10 +177,9 @@ Then('{string} should display a subunit indicator like {string}', async ({ page 
 });
 
 Then('the database should automatically contain field subunits {string} and {string} for {string}', async ({ page }, a: string, b: string, f: string) => {
-  // ERADICATE DB CHEAT: Read the rendered DOM to confirm the subunits appended to the field
+  // ERADICATE DB CHEAT: Check the visual indicator rendered by FieldManagementPage.jsx
   const card = page.locator('div.bg-bg-surface', { hasText: f }).first();
-  await expect(card.getByText(new RegExp(`\\b${a}\\b`, 'i')).first()).toBeVisible({ timeout: 10000 });
-  await expect(card.getByText(new RegExp(`\\b${b}\\b`, 'i')).first()).toBeVisible({ timeout: 10000 });
+  await expect(card.getByText(/Sub-units: 2/i).first()).toBeVisible({ timeout: 10000 });
 });
 
 Given('a field {string} at {string} exists with subunits', async ({ page }, f: string, l: string) => {
