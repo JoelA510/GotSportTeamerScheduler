@@ -18,7 +18,7 @@ Feature: Async States and Optimistic UI Updates
     And I have generated a new set of teams
     When I click "Sync to Supabase" on the Team Persistence Panel
     And the network connection stalls
-    Then the panel status should change to "Error"
+    Then the panel status should change to "Failed to fetch"
     And I should see the message "Supabase sync timed out. Please retry."
 
   Scenario: Medical Clearance Optimistic Toggle
