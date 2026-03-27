@@ -59,9 +59,10 @@ Given('I have imported player data', async ({ page }) => {
             { id: 'run-1', status: 'deleted' }
         ];
         sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
+        localStorage.setItem('dashboardActiveStep', '2'); // Preserve across reloads
     });
     await page.reload();
-
+    
     // Force Playwright to visually locate and click the specific stepper buttons
     const step2 = page.locator('[data-testid*="workflow-step-"]').filter({ hasText: '2. Teaming & Analysis' }).first();
     await step2.click({ force: true });
