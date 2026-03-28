@@ -56,7 +56,9 @@ Then('I should see a dashboard indicating which players have completed their med
 });
 
 Then('I should be flagged if any player is currently non-compliant', async ({ page }) => {
-    await expect(page.getByText(/Action Required/i).first()).toBeVisible();
+    // The UI renders "Medical Clearance: Pending" with a warning badge
+    await expect(page.getByText(/Pending/i).first()).toBeVisible();
+    await expect(page.locator('.bg-status-warning-bg').first()).toBeVisible();
 });
 
 Given('my team has practices on Tuesdays and games on Saturdays', async ({ page }) => {
@@ -65,7 +67,7 @@ Given('my team has practices on Tuesdays and games on Saturdays', async ({ page 
 
 When('I access my personalized calendar feed URL', async ({ page }) => {
     await page.route('**/*calendar-feed*', async route => {
-        await route.fulfill({ status: 200, contentType: 'text/calendar', body: 'BEGIN:VCALENDAR\nVERSION:2.0\nEND:VCALENDAR' });
+        await route.fulfill({ status: 200, contentType: 'text/calendar', body: 'BEGIN:VCALENDAR\nVERSION:2.0\nSUMMARY:Practice\nEND:VCALENDAR' });
     });
 
     const responseText = await page.evaluate(async () => {
@@ -76,25 +78,24 @@ When('I access my personalized calendar feed URL', async ({ page }) => {
 });
 
 Then('a modal should appear displaying a subscription link', async ({ page }) => {
-    const teamId = await page.evaluate(() => localStorage.getItem('test_target_team_id') || 'team-1');
-    await page.goto(`/team/${teamId}`);
-    const syncBtn = page.getByRole('button', { name: /Calendar Sync|Subscribe/i }).first();
-    await syncBtn.click({ force: true });
-    await expect(page.getByRole('heading', { name: /Subscribe|Calendar/i }).first()).toBeVisible();
+    await expect(page.getByRole('heading', { name: /Calendar Subscription/i }).first()).toBeVisible();
+    await expect(page.locator('input[readOnly]').first()).toBeVisible();
 });
 
 Then('the link should contain {string}', async ({ page }, text: string) => {
-    await expect(page.getByText(text).first()).toBeVisible();
+    const input = page.locator('input[readOnly]').first();
+    await expect(input).toHaveValue(new RegExp(text));
 });
 
 Then('the link should contain a secure {string} query parameter', async ({ page }, param: string) => {
-    const text = await page.getByRole('textbox').first().inputValue();
-    expect(text).toContain(`${param}=`);
+    const input = page.locator('input[readOnly]').first();
+    await expect(input).toHaveValue(new RegExp(`${param}=`));
 });
 
 Then('I should be able to click a button to copy the link to my clipboard', async ({ page }) => {
-    const copyBtn = page.getByRole('button', { name: /Copy/i }).first();
+    const copyBtn = page.getByRole('button', { name: /Copy Link/i }).first();
     await expect(copyBtn).toBeVisible();
+    await expect(copyBtn).toBeEnabled();
 });
 
 Then('I should see all my team events in my external calendar application', async ({ page }) => {
