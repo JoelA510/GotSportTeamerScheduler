@@ -53,6 +53,7 @@ Given('my child {string} is on the {string} team', async ({ page }, childName: s
         db.profile_players = db.profile_players.filter((pp: any) => pp.player_id !== playerId);
         db.profile_players.push({ profile_id: 'mock-parent-id', player_id: playerId });
 
+        localStorage.setItem('test_target_team_id', teamId);
         sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
     }, { child: childName, team: teamName });
 });
@@ -77,12 +78,13 @@ Given('my child {string} is also on the {string} team', async ({ page }, childNa
         db.profile_players = db.profile_players.filter((pp: any) => pp.player_id !== playerId);
         db.profile_players.push({ profile_id: 'mock-parent-id', player_id: playerId });
 
+        localStorage.setItem('test_target_team_id', teamId);
         sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
     }, { child: childName, team: teamName });
 });
 
 Given('I am on the {string} page for the {string}', async ({ page }, pageName: string, teamName: string) => {
-    const teamId = teamName.toLowerCase().replace(/\s+/g, '-');
+    const teamId = await page.evaluate(() => localStorage.getItem('test_target_team_id')) || teamName.toLowerCase().replace(/\s+/g, '-');
     await page.goto(`/team/${teamId}`);
     await expect(page.getByRole('heading', { name: teamName }).first()).toBeVisible({ timeout: 15000 });
 });
@@ -125,8 +127,8 @@ Given('there is an upcoming practice on {string}', async ({ page }, day: string)
 });
 
 When('I click {string} for {string} on the {string} practice', async ({ page }, action: string, child: string, day: string) => {
-  const practiceCard = page.locator('.glass-panel').filter({ hasText: day }).filter({ hasText: 'practice' }).first();
-  const playerRsvpRow = practiceCard.locator('div.bg-bg-surface\\/30').filter({ hasText: child }).first();
+  const practiceCard = page.locator('.glass-panel').filter({ hasText: new RegExp(day, 'i') }).filter({ hasText: /practice/i }).first();
+  const playerRsvpRow = practiceCard.locator('.bg-bg-surface\\/30').filter({ hasText: new RegExp(child, 'i') }).first();
 
   const titleMap: Record<string, string> = {
     'Going': 'Going',
@@ -134,15 +136,19 @@ When('I click {string} for {string} on the {string} practice', async ({ page }, 
     'Maybe': 'Maybe'
   };
 
-  await playerRsvpRow.getByTitle(titleMap[action] || action, { exact: true }).first().click({ force: true });
+  const btn = playerRsvpRow.getByTitle(titleMap[action] || action, { exact: true }).first();
+  await btn.waitFor({ state: 'visible', timeout: 10000 });
+  await btn.click({ force: true });
 });
 
 Then('I should see {string} marked as {string} on the {string} practice', async ({ page }, child: string, action: string, day: string) => {
-  const practiceCard = page.locator('.glass-panel').filter({ hasText: day }).filter({ hasText: 'practice' }).first();
-  const playerRsvpRow = practiceCard.locator('div.bg-bg-surface\\/30').filter({ hasText: child }).first();
+  const practiceCard = page.locator('.glass-panel').filter({ hasText: new RegExp(day, 'i') }).filter({ hasText: /practice/i }).first();
+  const playerRsvpRow = practiceCard.locator('.bg-bg-surface\\/30').filter({ hasText: new RegExp(child, 'i') }).first();
   const button = playerRsvpRow.getByTitle(action, { exact: true }).first();
 
-  await expect(button).toHaveClass(/shadow-glow/);
+  // Check that it does NOT have grayscale (meaning it is active)
+  await expect(button).not.toHaveClass(/grayscale/, { timeout: 10000 });
+  await expect(button).toHaveClass(/shadow-glow/, { timeout: 10000 });
 });
 
 Then('the database should have two distinct RSVP records for this practice occurrence', async ({ page }) => {

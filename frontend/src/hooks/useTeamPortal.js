@@ -60,7 +60,18 @@ export function useTeamPortal(teamId) {
         .eq('team_id', teamId);
 
       if (rosterError) throw rosterError;
-      setRoster(rosterData.map((r) => r.player));
+      
+      // Deduplicate roster by player ID to prevent React key collisions
+      const uniqueRoster = [];
+      const seenIds = new Set();
+      rosterData.forEach((r) => {
+        const p = Array.isArray(r.player) ? r.player[0] : r.player;
+        if (p && !seenIds.has(p.id)) {
+          seenIds.add(p.id);
+          uniqueRoster.push(p);
+        }
+      });
+      setRoster(uniqueRoster);
 
       // 3. Fetch Games
       const { data: gamesData, error: gamesError } = await supabase
@@ -145,11 +156,12 @@ export function useTeamPortal(teamId) {
         if (myPlayerData) {
           const myIds = myPlayerData.map(mp => mp.player_id);
           const matchedPlayers = [];
+          const seenMyIds = new Set();
+          
           rosterData?.forEach(r => {
             const p = Array.isArray(r.player) ? r.player[0] : r.player;
-            if (p) {
-            }
-            if (p && myIds.includes(p.id)) {
+            if (p && myIds.includes(p.id) && !seenMyIds.has(p.id)) {
+              seenMyIds.add(p.id);
               matchedPlayers.push(p);
             }
           });
