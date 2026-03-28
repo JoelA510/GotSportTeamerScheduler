@@ -633,6 +633,7 @@ export const supabase = IS_MOCK_MODE
             ...r
           }));
           const existing = db[table] || [];
+          const eventsToFire = [];
 
           newRecords.forEach(rec => {
             let idx = -1;
@@ -653,10 +654,11 @@ export const supabase = IS_MOCK_MODE
               existing.push(rec);
             }
 
-            // Trigger Realtime
-            triggerRealtimeEvent(table, idx >= 0 ? 'UPDATE' : 'INSERT', {
-              new: rec,
-              old: oldRecord
+            // Queue Realtime event
+            eventsToFire.push({
+              table,
+              event: idx >= 0 ? 'UPDATE' : 'INSERT',
+              payload: { new: rec, old: oldRecord }
             });
 
             // Side effect for subunits
@@ -675,6 +677,10 @@ export const supabase = IS_MOCK_MODE
 
           db[table] = existing;
           saveDB(db);
+          
+          // Fire events AFTER saving to prevent race conditions in mock environment
+          eventsToFire.forEach(e => triggerRealtimeEvent(e.table, e.event, e.payload));
+          
           const res = { data: newRecords, error: null };
           const chainable = {
             select: () => chainable,
