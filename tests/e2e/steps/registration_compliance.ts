@@ -163,11 +163,31 @@ Then('I should see a registration for {string}', async ({ page }, childName: str
 });
 
 Then('the waiver status should be {string}', async ({ page }, status: string) => {
-  await expect(page.getByText(new RegExp(status, 'i')).first()).toBeVisible();
+  const row = page.getByRole('row').filter({ hasText: 'Alex' }).first();
+  const expectedText = status.toLowerCase() === 'signed' ? 'Confirmed' : 'Pending';
+  
+  // CRITICAL FIX: Target the specific UI badge and verify its semantic color class
+  const badge = row.locator('span').filter({ hasText: new RegExp(expectedText, 'i') }).first();
+  await expect(badge).toBeVisible();
+  
+  if (expectedText === 'Confirmed') {
+    await expect(badge).toHaveClass(/text-status-success/);
+  } else {
+    await expect(badge).toHaveClass(/text-status-warning/);
+  }
 });
 
 Then('the medical status should be {string}', async ({ page }, status: string) => {
   const uiStatus = status === 'Pending' ? 'Reviewing' : status;
   const row = page.getByRole('row').filter({ hasText: 'Alex' }).first();
-  await expect(row).toContainText(uiStatus);
+  
+  // CRITICAL FIX: Target the specific interactive button and verify its state
+  const button = row.getByRole('button', { name: new RegExp(uiStatus, 'i') }).first();
+  await expect(button).toBeVisible();
+  
+  if (uiStatus === 'Reviewing') {
+    await expect(button).toHaveClass(/text-text-muted/);
+  } else {
+    await expect(button).toHaveClass(/text-white/);
+  }
 });

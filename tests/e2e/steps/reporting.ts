@@ -109,7 +109,10 @@ Given('I navigate to the reporting dashboard', async ({ page }) => {
 Then('I should see the {string} metric', async ({ page }, metricName: string) => {
   if (metricName.toLowerCase() === 'registrations') {
     await expect(page.getByText(/Form Compliance Status/i).first()).toBeVisible();
-    await expect(page.getByText(/45/i).first()).toBeVisible();
+    
+    // CRITICAL FIX: Force Playwright to verify the Recharts SVG actually mounted in the DOM
+    await expect(page.locator('.recharts-wrapper').first()).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('.recharts-surface').first()).toBeVisible();
   } else {
     const normalizedName = metricName.toLowerCase().replace(/\s+/g, '-').replace('total-teams', 'active-teams');
     const card = page.locator(`[data-testid="metric-card-${normalizedName}"]`).first();

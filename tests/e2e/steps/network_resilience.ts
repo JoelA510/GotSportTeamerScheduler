@@ -33,9 +33,9 @@ When('the application attempts to sync the changes', async ({ page }) => {
     await syncBtn.click({ force: true });
 });
 
-When('the network connection drops or the API returns a 504 Timeout', async ({ page }) => {
-    // Playwright Network Interception: Force the edge function to fail
-    await page.route('**/team-persistence', route => route.abort('failed'));
+When('the network connection drops or the API returns a 504 Timeout', async ({ page, context }) => {
+    // CRITICAL FIX: Use Playwright's native offline simulation to truly kill the browser's network
+    await context.setOffline(true);
 });
 
 Then('the user should see a {string} banner', async ({ page }, expectedBanner: string) => {
@@ -44,7 +44,10 @@ Then('the user should see a {string} banner', async ({ page }, expectedBanner: s
     await expect(page.getByText(textToFind, { exact: false }).first()).toBeVisible({ timeout: 15000 });
 });
 
-Then('the {string} card should remain in its newly modified state locally', async ({ page }, teamName: string) => {
+Then('the {string} card should remain in its newly modified state locally', async ({ page, context }, teamName: string) => {
     // Verify optimistic UI holds state despite API failure (the team is still rendered)
     await expect(page.getByText(teamName).first()).toBeVisible();
+    
+    // Restore network connection so subsequent tests in this worker don't fail
+    await context.setOffline(false);
 });
