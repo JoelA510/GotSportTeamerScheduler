@@ -380,39 +380,47 @@ Then('updates the game schedule if the selected slot is valid', async ({ page })
 // ────────────────────────────────────────────────────────────
 
 Given('a practice schedule has been generated', async ({ page }) => {
-  // Background mock data injection to ensure the Practice Scheduling table renders
+  // ERADICATE NOISE: Wipe the specific tables first to ensure no competing hardcoded runs exist
   await page.evaluate(() => {
     const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
     
-    // 1. Seed base tables to prevent the mock Supabase client from wiping out joins with null
-    db.teams = db.teams || [];
-    db.teams.push({ id: 'team-a', name: 'Team A', division_id: 'div-1' });
-
-    db.practice_slots = db.practice_slots || [];
-    db.practice_slots.push({ id: 'slot-1', day_of_week: 'mon', start_time: '17:00', end_time: '18:30', field_id: 'field-1' });
-
-    // 2. Mock the practice_assignments with correct foreign keys and run_id
-    db.practice_assignments = db.practice_assignments || [];
-    db.practice_assignments.push({
-        id: 'assign-team-a',
-        run_id: 'manual-pre-run', // CRITICAL FIX: Link to the scheduler_run
-        team_id: 'team-a',
-        slot_id: 'slot-1',        // CRITICAL FIX: Use correct foreign key name
-        source: 'auto',
-        // Preserve pre-hydrated objects for direct frontend use
-        teams: { name: 'Team A', divisions: { name: 'U10' } },
-        practiceSlots: { dayOfWeek: 'mon', startTime: '17:00', endTime: '18:30', fields: { name: 'Main Field' } }
-    });
+    // Clear out existing runs and assignments to ensure our injected one is the only "Latest"
+    db.scheduler_runs = [];
+    db.practice_assignments = [];
     
-    const now = new Date().toISOString();
-    db.scheduler_runs = db.scheduler_runs || [];
+    // 1. Seed base tables
+    db.teams = [{ id: 'team-a', name: 'Team A', division_id: 'div-1' }];
+    db.practice_slots = [{ id: 'slot-1', day_of_week: 'mon', start_time: '17:00', end_time: '18:30', field_id: 'field-1' }];
+
+    // 2. Inject the run with a massive future timestamp to guarantee it wins any sort
+    const futureDate = new Date();
+    futureDate.setFullYear(futureDate.getFullYear() + 1);
+    const timestamp = futureDate.toISOString();
+
     db.scheduler_runs.push({
-      id: 'manual-pre-run',
+      id: 'active-run-id',
       run_type: 'practice',
       status: 'completed',
       results: { assignments: [{ team_id: 'team-a', slot_id: 'slot-1', source: 'auto' }] },
-      created_at: now,
-      completed_at: now // CRITICAL FIX: Required for frontend sorting logic
+      created_at: timestamp,
+      completed_at: timestamp 
+    });
+
+    // 3. Link the assignment directly to that future-dated run
+    db.practice_assignments.push({
+        id: 'assign-team-a',
+        run_id: 'active-run-id',
+        team_id: 'team-a',
+        slot_id: 'slot-1',
+        source: 'auto',
+        // Hydrate objects to bypass any mock client join failures
+        teams: { name: 'Team A', divisions: { name: 'U10' } },
+        practiceSlots: { 
+            dayOfWeek: 'mon', 
+            startTime: '17:00', 
+            endTime: '18:30', 
+            fields: { name: 'Main Field' } 
+        }
     });
 
     sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
