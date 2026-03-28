@@ -11,13 +11,19 @@ Given('the user has modified the {string} roster', async ({ page }, teamName: st
     // Inject a mock pending override so the Sync button becomes active
     await page.evaluate((tName) => {
         const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
+        const orgId = localStorage.getItem('squadlogic_active_org') || 'org-1';
         db.scheduler_runs = db.scheduler_runs || [];
         if (db.scheduler_runs.length === 0) {
             db.scheduler_runs.push({
                 id: 'mock-run-1',
+                organization_id: orgId,
                 run_type: 'team',
                 status: 'completed',
-                results: { teams: [{ id: 't1', name: tName, division: 'U10' }] }
+                results: { 
+                    teams: [{ id: 't1', name: tName, division_id: 'U10' }],
+                    team_players: []
+                },
+                created_at: new Date().toISOString()
             });
         }
         sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));

@@ -10,90 +10,71 @@ const seedDatabase = async (page: any) => {
     const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
     const orgId = localStorage.getItem('squadlogic_active_org') || 'org-1';
 
-    db.organizations = [{ id: orgId, name: 'Test Org' }];
-
-    db.organization_members = [
-      { id: 'mem-admin', organization_id: orgId, profile_id: 'mock-admin-id', role: 'admin' },
-      { id: 'mem-coach', organization_id: orgId, profile_id: 'mock-coach-id', role: 'coach' }
-    ];
+    // Do not overwrite organizations or members, auth_setup.ts handles it.
+    // Just append the required reporting data.
 
     db.view_org_metrics = db.view_org_metrics || [];
-    const metricIdx = db.view_org_metrics.findIndex((m: any) => m.organization_id === orgId);
-    const metrics = {
-      organization_id: orgId,
-      total_players: 150,
-      total_teams: 12,
-      total_users: 25
-    };
-    if (metricIdx >= 0) db.view_org_metrics[metricIdx] = metrics;
-    else db.view_org_metrics.push(metrics);
+    if (!db.view_org_metrics.find((m: any) => m.organization_id === orgId)) {
+        db.view_org_metrics.push({
+          organization_id: orgId,
+          total_players: 150,
+          total_teams: 12,
+          total_users: 25
+        });
+    }
 
-    db.view_compliance_stats = [{
-      organization_id: orgId,
-      form_title: 'Fall Registration',
-      total_registrations: 45,
-      medical_cleared: 38
-    }];
+    db.view_compliance_stats = db.view_compliance_stats || [];
+    if (!db.view_compliance_stats.find((m: any) => m.organization_id === orgId)) {
+        db.view_compliance_stats.push({
+          organization_id: orgId,
+          form_title: 'Fall Registration',
+          total_registrations: 45,
+          medical_cleared: 38
+        });
+    }
 
-    db.view_league_standings = [
-      {
-        organization_id: orgId,
-        team_id: 'team-home',
-        team_name: 'Home Team',
-        division: 'U10',
-        wins: 1,
-        losses: 1,
-        draws: 0,
-        games_played: 2,
-        goals_for: 5,
-        goals_against: 4,
-        goal_differential: 1,
-        points: 3
-      },
-      {
-        organization_id: orgId,
-        team_id: 'team-away',
-        team_name: 'Away Team',
-        division: 'U10',
-        wins: 1,
-        losses: 1,
-        draws: 0,
-        games_played: 2,
-        goals_for: 4,
-        goals_against: 5,
-        goal_differential: -1,
-        points: 3
-      }
-    ];
+    db.view_league_standings = db.view_league_standings || [];
+    if (!db.view_league_standings.find((m: any) => m.team_id === 'team-home')) {
+        db.view_league_standings.push(
+          {
+            organization_id: orgId,
+            team_id: 'team-home',
+            team_name: 'Home Team',
+            division: 'U10',
+            wins: 1, losses: 1, draws: 0, games_played: 2,
+            goals_for: 5, goals_against: 4, goal_differential: 1, points: 3
+          },
+          {
+            organization_id: orgId,
+            team_id: 'team-away',
+            team_name: 'Away Team',
+            division: 'U10',
+            wins: 1, losses: 1, draws: 0, games_played: 2,
+            goals_for: 4, goals_against: 5, goal_differential: -1, points: 3
+          }
+        );
+    }
 
-    db.games = [
-      {
-        id: 'game-1',
-        organization_id: orgId,
-        home_team_id: 'team-home',
-        away_team_id: 'team-away',
-        start_time: new Date(Date.now() - 3600000).toISOString(),
-        score_home: null,
-        score_away: null
-      }
-    ];
+    db.teams = db.teams || [];
+    if (!db.teams.find((t: any) => t.id === 'team-home')) {
+        db.teams.push(
+          { id: 'team-home', name: 'Home Team', division_id: 'U10', organization_id: orgId, coach_id: 'mock-coach-id' },
+          { id: 'team-away', name: 'Away Team', division_id: 'U10', organization_id: orgId, coach_id: 'mock-coach-id' }
+        );
+    }
 
-    db.teams = [
-      { id: 't1', name: 'Eagles', division: 'U10', organization_id: orgId },
-      { id: 't2', name: 'Hawks', division: 'U10', organization_id: orgId },
-      { id: 'team-home', name: 'Home Team', division: 'U10', organization_id: orgId, coach_id: 'mock-coach-id' },
-      { id: 'team-away', name: 'Away Team', division: 'U10', organization_id: orgId, coach_id: 'mock-coach-id' }
-    ];
-
-    db.players = [
-      { id: 'p1', first_name: 'John', last_name: 'Doe', team_id: 't1', organization_id: orgId },
-      { id: 'p1', first_name: 'Bob', last_name: 'Builder', team_id: 'team-home', organization_id: orgId },
-      { id: 'p2', first_name: 'Alice', last_name: 'Wonder', team_id: 'team-away', organization_id: orgId }
-    ];
-
-    db.profile_players = [
-      { profile_id: 'mock-parent-id', player_id: 'player-1' }
-    ];
+    db.games = db.games || [];
+    if (!db.games.find((g: any) => g.id === 'game-1')) {
+        db.games.push({
+            id: 'game-1',
+            organization_id: orgId,
+            home_team_id: 'team-home',
+            away_team_id: 'team-away',
+            start_time: new Date(Date.now() - 3600000).toISOString(),
+            score_home: null,
+            score_away: null
+        });
+    }
 
     sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
   });
