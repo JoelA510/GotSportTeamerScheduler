@@ -139,6 +139,10 @@ When('I click {string} for {string} on the {string} practice', async ({ page }, 
   const btn = playerRsvpRow.getByTitle(titleMap[action] || action, { exact: true }).first();
   await btn.waitFor({ state: 'visible', timeout: 10000 });
   await btn.click({ force: true });
+  
+  // CRITICAL FIX: Allow the mock Supabase client and React state to settle 
+  // before proceeding to the next click, preventing read-modify-write race conditions.
+  await page.waitForTimeout(500);
 });
 
 Then('I should see {string} marked as {string} on the {string} practice', async ({ page }, child: string, action: string, day: string) => {
