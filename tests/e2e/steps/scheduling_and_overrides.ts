@@ -404,13 +404,15 @@ Given('a practice schedule has been generated', async ({ page }) => {
         practiceSlots: { dayOfWeek: 'mon', startTime: '17:00', endTime: '18:30', fields: { name: 'Main Field' } }
     });
     
+    const now = new Date().toISOString();
     db.scheduler_runs = db.scheduler_runs || [];
     db.scheduler_runs.push({
       id: 'manual-pre-run',
       run_type: 'practice',
       status: 'completed',
       results: { assignments: [{ team_id: 'team-a', slot_id: 'slot-1', source: 'auto' }] },
-      created_at: new Date().toISOString()
+      created_at: now,
+      completed_at: now // CRITICAL FIX: Required for frontend sorting logic
     });
 
     sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
