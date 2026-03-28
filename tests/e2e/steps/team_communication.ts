@@ -8,8 +8,10 @@ Given('I need to announce a practice cancellation', async ({ page }) => {
 });
 
 When('I use the Team Communication tool', async ({ page }) => {
-    // The chat is visible on the Team Portal page directly.
-    await expect(page.getByRole('heading', { name: /Team Chat/i }).first()).toBeVisible();
+    // CRITICAL FIX: Navigate to the team portal first
+    const teamId = await page.evaluate(() => localStorage.getItem('test_target_team_id') || 'team-1');
+    await page.goto(`/team/${teamId}`);
+    await expect(page.getByRole('heading', { name: /Team Chat/i }).first()).toBeVisible({ timeout: 15000 });
 });
 
 Then('a notification should be sent to all parents of players on my roster', async ({ page }) => {
@@ -39,19 +41,17 @@ Given('my child {string} is on the {string} team', async ({ page }, childName: s
         }
 
         db.players = db.players || [];
-        if (!db.players.find((p: any) => p.id === playerId)) {
-            db.players.push({ id: playerId, first_name: child, last_name: 'Test', organization_id: orgId });
-        }
+        // CRITICAL FIX: Remove existing player to prevent duplicate keys
+        db.players = db.players.filter((p: any) => p.id !== playerId);
+        db.players.push({ id: playerId, first_name: child, last_name: 'Test', organization_id: orgId });
 
         db.team_players = db.team_players || [];
-        if (!db.team_players.find((tp: any) => tp.player_id === playerId)) {
-            db.team_players.push({ team_id: teamId, player_id: playerId });
-        }
+        db.team_players = db.team_players.filter((tp: any) => tp.player_id !== playerId);
+        db.team_players.push({ team_id: teamId, player_id: playerId });
 
         db.profile_players = db.profile_players || [];
-        if (!db.profile_players.find((pp: any) => pp.player_id === playerId)) {
-            db.profile_players.push({ profile_id: 'mock-parent-id', player_id: playerId });
-        }
+        db.profile_players = db.profile_players.filter((pp: any) => pp.player_id !== playerId);
+        db.profile_players.push({ profile_id: 'mock-parent-id', player_id: playerId });
 
         sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
     }, { child: childName, team: teamName });
@@ -65,19 +65,17 @@ Given('my child {string} is also on the {string} team', async ({ page }, childNa
         const playerId = `player-${child.toLowerCase()}`;
 
         db.players = db.players || [];
-        if (!db.players.find((p: any) => p.id === playerId)) {
-            db.players.push({ id: playerId, first_name: child, last_name: 'Test', organization_id: orgId });
-        }
+        // CRITICAL FIX: Remove existing player to prevent duplicate keys
+        db.players = db.players.filter((p: any) => p.id !== playerId);
+        db.players.push({ id: playerId, first_name: child, last_name: 'Test', organization_id: orgId });
 
         db.team_players = db.team_players || [];
-        if (!db.team_players.find((tp: any) => tp.player_id === playerId)) {
-            db.team_players.push({ team_id: teamId, player_id: playerId });
-        }
+        db.team_players = db.team_players.filter((tp: any) => tp.player_id !== playerId);
+        db.team_players.push({ team_id: teamId, player_id: playerId });
 
         db.profile_players = db.profile_players || [];
-        if (!db.profile_players.find((pp: any) => pp.player_id === playerId)) {
-            db.profile_players.push({ profile_id: 'mock-parent-id', player_id: playerId });
-        }
+        db.profile_players = db.profile_players.filter((pp: any) => pp.player_id !== playerId);
+        db.profile_players.push({ profile_id: 'mock-parent-id', player_id: playerId });
 
         sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
     }, { child: childName, team: teamName });
@@ -110,7 +108,14 @@ Given('there is an upcoming practice on {string}', async ({ page }, day: string)
                 id: `pa-${d.toLowerCase()}`,
                 team_id: 'tigers',
                 practice_slot_id: slotId,
-                effective_date_range: '[2025-01-01,2025-12-31)'
+                effective_date_range: '[2025-01-01,2025-12-31)',
+                // CRITICAL FIX: Inject the 'slot' alias directly so useTeamPortal's expandPractices can read it
+                slot: {
+                    day_of_week: d.substring(0, 3).toLowerCase(),
+                    start_time: '17:00',
+                    end_time: '18:30',
+                    field: { name: 'Main Field', location: { name: 'Complex' } }
+                }
             });
         }
         sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));

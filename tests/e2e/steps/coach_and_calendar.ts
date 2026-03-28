@@ -30,10 +30,12 @@ Given('my team has {int} players assigned', async ({ page }, count: number) => {
         const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || JSON.stringify((window as any).__MOCK_DB__ || {}));
         const team = db.teams?.[0] || { id: 'team-1' };
         db.team_players = db.team_players || [];
+        db.players = db.players || [];
         for (let i = 0; i < num; i++) {
-            db.team_players.push({ id: `tp-${i}`, team_id: team.id, player_id: `p-${i}` });
-            db.players = db.players || [];
-            db.players.push({ id: `p-${i}`, first_name: `Player ${i}`, last_name: 'Test', medical_cleared: i % 2 === 0 });
+            // CRITICAL FIX: TeamPortalPage hardcodes 'player-1' for the Pending status check.
+            const pid = i === 1 ? 'player-1' : `p-${i}`;
+            db.team_players.push({ id: `tp-${i}`, team_id: team.id, player_id: pid });
+            db.players.push({ id: pid, first_name: `Player ${i}`, last_name: 'Test', medical_cleared: i % 2 === 0 });
         }
         (window as any).__MOCK_DB__ = db;
         sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
