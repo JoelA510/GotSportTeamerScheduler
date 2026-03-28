@@ -168,7 +168,11 @@ Then('the RSVP timestamps should align with the league\'s official timezone', as
         const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
         return db.event_rsvps || [];
     });
-    expect(rsvps[0].updated_at).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
+    
+    // Find the specific RSVP we just created for Jamie
+    const jamieRsvp = rsvps.find((r: any) => r.status === 'declined');
+    expect(jamieRsvp).toBeDefined();
+    expect(jamieRsvp.updated_at).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
 });
 
 When('I type {string} into the chat input', async ({ page }, msg: string) => {

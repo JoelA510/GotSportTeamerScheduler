@@ -7,8 +7,15 @@ const { Given, When, Then } = createBdd();
 
 Given('I have been assigned to the {string}', async ({ page }, teamName: string) => {
     await page.evaluate((name) => {
+        // CRITICAL FIX: Aggressively clear state to prevent parallel worker contamination
         const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || JSON.stringify((window as any).__MOCK_DB__ || {}));
         const orgId = localStorage.getItem('squadlogic_active_org') || 'org-1';
+        
+        // Wipe players to ensure clean slate for this test
+        db.players = [];
+        db.team_players = [];
+        db.profile_players = [];
+        
         db.teams = db.teams || [];
         const teamId = name.toLowerCase().replace(/\s+/g, '-');
         if (!db.teams.find((t: any) => t.id === teamId)) {

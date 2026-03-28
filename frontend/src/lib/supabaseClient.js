@@ -86,7 +86,7 @@ const initialMockData = {
     }
   ],
   event_rsvps: [
-    { id: 'rsvp-1', organization_id: 'org-1', team_id: '00000000-0000-0000-0000-000000000001', player_id: 'player-1', reference_id: 'pa-1', event_type: 'practice', occurrence_date: '2025-01-07', status: 'attending' }
+    { id: 'rsvp-1', organization_id: 'org-1', team_id: '00000000-0000-0000-0000-000000000001', player_id: 'player-1', reference_id: 'pa-1', event_type: 'practice', occurrence_date: '2025-01-07', status: 'attending', updated_at: new Date().toISOString() }
   ],
   locations: [{ id: 'loc-1', name: 'Central Park' }],
   fields: [{ id: 'v1', name: 'Field 1', location_id: 'loc-1', organization_id: 'org-1', active: true, surface_type: 'Grass', size: '11v11' }],
