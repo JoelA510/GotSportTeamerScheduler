@@ -20,7 +20,7 @@ Given('the user has modified the {string} roster', async ({ page }, teamName: st
                 run_type: 'team',
                 status: 'completed',
                 results: { 
-                    teams: [{ id: 't1', name: tName, division_id: 'U10' }],
+                    teamsByDivision: { 'U10': [{ id: 't1', name: tName, division_id: 'U10' }] },
                     team_players: []
                 },
                 created_at: new Date().toISOString()

@@ -4,8 +4,6 @@ import { expect } from '@playwright/test';
 const { Given, When, Then, Before } = createBdd();
 
 const seedDatabase = async (page: any) => {
-  // CRITICAL FIX: Go to root first to set origin for sessionStorage
-  await page.goto('/');
   await page.evaluate(() => {
     const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
     const orgId = localStorage.getItem('squadlogic_active_org') || 'org-1';
@@ -88,6 +86,15 @@ Given('I navigate to the reporting dashboard', async ({ page }) => {
 });
 
 Then('I should see the {string} metric', async ({ page }, metricName: string) => {
+  // Ensure data is seeded for this isolated tenant
+  await seedDatabase(page);
+  
+  // Force a reload on the first metric check so the components fetch the newly seeded data
+  if (metricName.toLowerCase() === 'total players') {
+      await page.reload();
+      await page.waitForLoadState('networkidle');
+  }
+
   if (metricName.toLowerCase() === 'registrations') {
     await expect(page.getByText(/Form Compliance Status/i).first()).toBeVisible();
     
@@ -110,6 +117,9 @@ Then('I should see the {string} metric', async ({ page }, metricName: string) =>
 });
 
 Then('a CSV file containing player and team data should be downloaded client-side', async ({ page }) => {
+  await seedDatabase(page);
+  await page.reload();
+  
   const downloadPromise = page.waitForEvent('download');
   await page.getByRole('button', { name: /Export Rosters CSV/i }).first().click({ force: true });
   const download = await downloadPromise;
@@ -118,8 +128,14 @@ Then('a CSV file containing player and team data should be downloaded client-sid
 });
 
 When('I input a score of {string} to {string} for a completed game', async ({ page }, scoreHome: string, scoreAway: string) => {
+  // Ensure data is seeded for this isolated tenant
+  await seedDatabase(page);
+  
   if (!page.url().includes('/standings')) {
     await page.goto('/standings');
+    await page.waitForLoadState('networkidle');
+  } else {
+    await page.reload();
     await page.waitForLoadState('networkidle');
   }
 
