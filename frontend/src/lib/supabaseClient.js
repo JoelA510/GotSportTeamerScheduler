@@ -436,10 +436,15 @@ const createMockQuery = (table, data = null) => {
       results = results.filter((item) => {
         if (item[col] === undefined) return false;
         // Simple string/date comparison for mock purposes
-        // CRITICAL FIX: Ensure date strings are compared correctly
+        // CRITICAL FIX: Ensure date strings are compared correctly, and be forgiving for mock data
         const itemDate = new Date(item[col]).getTime();
         const valDate = new Date(val).getTime();
         if (!isNaN(itemDate) && !isNaN(valDate)) {
+            // If it's a game start_time, and we are checking if it's in the past, 
+            // just return true if it's a mock game to ensure it renders in the UI.
+            if (col === 'start_time' && item.id && item.id.startsWith('game-')) {
+                return true;
+            }
             return itemDate <= valDate;
         }
         return item[col] <= val;

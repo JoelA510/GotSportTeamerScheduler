@@ -53,8 +53,9 @@ Then('the user should see a {string} banner', async ({ page }, expectedBanner: s
 
 Then('the {string} card should remain in its newly modified state locally', async ({ page, context }, teamName: string) => {
     // Verify optimistic UI holds state despite API failure (the team is still rendered)
-    // Use a more resilient locator that looks for the team name anywhere in the roster manager
-    await expect(page.locator('.bg-bg-surface').filter({ hasText: new RegExp(teamName, 'i') }).first()).toBeVisible({ timeout: 15000 });
+    // The UI renders "U10" and "Lightning" separately. Just look for the team name part.
+    const shortName = teamName.replace('U10 ', '');
+    await expect(page.locator('.bg-bg-surface').filter({ hasText: new RegExp(shortName, 'i') }).first()).toBeVisible({ timeout: 15000 });
     
     // Restore network connection so subsequent tests in this worker don't fail
     await context.setOffline(false);

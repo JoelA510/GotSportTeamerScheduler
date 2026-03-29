@@ -11,49 +11,44 @@ const seedDatabase = async (page: any) => {
     // Do not overwrite organizations or members, auth_setup.ts handles it.
     // Just append the required reporting data.
 
-    db.view_org_metrics = db.view_org_metrics || [];
-    if (!db.view_org_metrics.find((m: any) => m.organization_id === orgId)) {
-        db.view_org_metrics.push({
-          organization_id: orgId,
-          total_players: 150,
-          total_teams: 12,
-          total_users: 25
-        });
-    }
+    // CRITICAL FIX: Aggressively clear the views to prevent cross-tenant contamination
+    db.view_org_metrics = [];
+    db.view_org_metrics.push({
+      organization_id: orgId,
+      total_players: 150,
+      total_teams: 12,
+      total_users: 25
+    });
 
-    db.view_compliance_stats = db.view_compliance_stats || [];
-    if (!db.view_compliance_stats.find((m: any) => m.organization_id === orgId)) {
-        db.view_compliance_stats.push({
-          organization_id: orgId,
-          form_title: 'Fall Registration',
-          total_registrations: 45,
-          medical_cleared: 38
-        });
-    }
+    db.view_compliance_stats = [];
+    db.view_compliance_stats.push({
+      organization_id: orgId,
+      form_title: 'Fall Registration',
+      total_registrations: 45,
+      medical_cleared: 38
+    });
+
+    db.view_league_standings = [];
+    db.view_league_standings.push(
+      {
+        organization_id: orgId,
+        team_id: 'team-home',
+        team_name: 'Home Team',
+        division: 'U10',
+        wins: 1, losses: 1, draws: 0, games_played: 2,
+        goals_for: 5, goals_against: 4, goal_differential: 1, points: 3
+      },
+      {
+        organization_id: orgId,
+        team_id: 'team-away',
+        team_name: 'Away Team',
+        division: 'U10',
+        wins: 1, losses: 1, draws: 0, games_played: 2,
+        goals_for: 4, goals_against: 5, goal_differential: -1, points: 3
+      }
+    );
 
     const seasonId = localStorage.getItem('squadlogic-current-season') || 'season-1';
-
-    db.view_league_standings = db.view_league_standings || [];
-    if (!db.view_league_standings.find((m: any) => m.team_id === 'team-home')) {
-        db.view_league_standings.push(
-          {
-            organization_id: orgId,
-            team_id: 'team-home',
-            team_name: 'Home Team',
-            division: 'U10',
-            wins: 1, losses: 1, draws: 0, games_played: 2,
-            goals_for: 5, goals_against: 4, goal_differential: 1, points: 3
-          },
-          {
-            organization_id: orgId,
-            team_id: 'team-away',
-            team_name: 'Away Team',
-            division: 'U10',
-            wins: 1, losses: 1, draws: 0, games_played: 2,
-            goals_for: 4, goals_against: 5, goal_differential: -1, points: 3
-          }
-        );
-    }
 
     db.teams = db.teams || [];
     if (!db.teams.find((t: any) => t.id === 'team-home')) {
