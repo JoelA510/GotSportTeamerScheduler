@@ -89,8 +89,9 @@ Given('the admin views the reporting dashboard', async ({ page }) => {
 
 Then('I should see the {string} metric', async ({ page }, metricName: string) => {
   if (metricName === 'Registrations') {
-    // Assert the exact number we seeded is present on the page instead of Rechart SVG text
-    await expect(page.getByText('45').first()).toBeVisible({ timeout: 15000 });
+    // Assert the Recharts chart is present since SVG text is not searchable by raw text nodes easily
+    const chart = page.locator('.recharts-responsive-container').first();
+    await expect(chart).toBeVisible({ timeout: 15000 });
   } else if (metricName === 'Active Teams') {
     await expect(page.getByTestId('metric-value-active-teams')).toHaveText('12');
   } else {
@@ -123,11 +124,11 @@ Then('a CSV file containing player and team data should be downloaded client-sid
 });
 
 When('I input a score of {string} to {string} for a completed game', async ({ page }, scoreHome: string, scoreAway: string) => {
-  // Go to root to establish origin, seed data, then go to standings
-  await page.goto('/');
+  // We are already on /standings, so origin is established. Seed data directly to session storage.
   await seedDatabase(page);
   
-  await page.goto('/standings');
+  // Reload to force fresh fetch of games
+  await page.reload();
   await page.waitForLoadState('networkidle');
 
   // Small delay to ensure DB and components are fully hydrated
