@@ -1,26 +1,23 @@
 import { createBdd } from 'playwright-bdd';
 import { expect } from '@playwright/test';
 
-const { Given, When, Then, Before } = createBdd();
+const { Given, When, Then } = createBdd();
 
 const seedDatabase = async (page: any) => {
-  // CRITICAL FIX: Wait for the app to initialize the active org before seeding
-  await expect(page.getByRole('heading', { name: /Reporting Dashboard|League Standings/i }).first()).toBeVisible({ timeout: 15000 });
-  
+  // Wait for the DOM to settle to ensure React has initialized active org in localStorage
+  await page.waitForLoadState('networkidle');
+
   await page.evaluate(() => {
     const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
     const orgId = localStorage.getItem('squadlogic_active_org') || 'org-1';
 
-    // Do not overwrite organizations or members, auth_setup.ts handles it.
-    // Just append the required reporting data.
-
-    // CRITICAL FIX: Aggressively clear the views to prevent cross-tenant contamination
+    // Clear and push fresh metric records scoped to this org ID
     db.view_org_metrics = [];
     db.view_org_metrics.push({
       organization_id: orgId,
-      total_players: 150,
-      total_teams: 12,
-      total_users: 25
+      total_players: 7,
+      total_teams: 5,
+      total_users: 10
     });
 
     db.view_compliance_stats = [];
