@@ -33,8 +33,8 @@ Given('the user has modified the {string} roster', async ({ page }, teamName: st
             },
             created_at: new Date().toISOString()
         });
-        
         sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
+        window.__MOCK_DB__ = db;
     }, teamName);
 
     await page.goto('/teams');

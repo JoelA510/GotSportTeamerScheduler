@@ -51,29 +51,30 @@ const seedDatabase = async (page: any) => {
     const seasonId = localStorage.getItem('squadlogic-current-season') || 'season-1';
 
     db.teams = db.teams || [];
-    if (!db.teams.find((t: any) => t.id === 'team-home')) {
-        db.teams.push(
-          { id: 'team-home', name: 'Home Team', division: 'U10', organization_id: orgId, coach_id: 'mock-coach-id' },
-          { id: 'team-away', name: 'Away Team', division: 'U10', organization_id: orgId, coach_id: 'mock-coach-id' }
-        );
-    }
+        if (!db.teams.find((t: any) => t.id === 'team-home')) {
+            db.teams.push(
+              { id: 'team-home', name: 'Home Team', division: 'U10', organization_id: orgId, coach_id: 'mock-coach-id' },
+              { id: 'team-away', name: 'Away Team', division: 'U10', organization_id: orgId, coach_id: 'mock-coach-id' }
+            );
+        }
 
-    db.games = db.games || [];
-    if (!db.games.find((g: any) => g.id === 'game-1')) {
-        db.games.push({
-            id: 'game-1',
-            organization_id: orgId,
-            season_id: seasonId,
-            home_team_id: 'team-home',
-            away_team_id: 'team-away',
-            start_time: new Date(Date.now() - 3600000).toISOString(),
-            score_home: null,
-            score_away: null
-        });
-    }
+        db.games = db.games || [];
+        if (!db.games.find((g: any) => g.id === 'game-1')) {
+            db.games.push({
+                id: 'game-1',
+                organization_id: orgId,
+                season_id: seasonId,
+                home_team_id: 'team-home',
+                away_team_id: 'team-away',
+                start_time: new Date(Date.now() - 3600000).toISOString(),
+                score_home: null,
+                score_away: null
+            });
+        }
 
-    sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
-  });
+        sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
+        window.__MOCK_DB__ = db;
+    });
 };
 
 Given('the admin views the reporting dashboard', async ({ page }) => {
