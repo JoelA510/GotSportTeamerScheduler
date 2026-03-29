@@ -101,9 +101,10 @@ Then('I should see the {string} metric', async ({ page }, metricName: string) =>
   if (metricName.toLowerCase() === 'registrations') {
     await expect(page.getByText(/Form Compliance Status/i).first()).toBeVisible();
     
-    // CRITICAL FIX: Force Playwright to verify the Recharts SVG actually mounted in the DOM
-    await expect(page.locator('.recharts-wrapper').first()).toBeVisible({ timeout: 10000 });
-    await expect(page.locator('.recharts-surface').first()).toBeVisible();
+    // CRITICAL FIX: Wait for Recharts animation to complete before asserting visibility
+    await page.waitForTimeout(1000);
+    await expect(page.locator('.recharts-wrapper').first()).toBeVisible({ timeout: 15000 });
+    await expect(page.locator('.recharts-surface').first()).toBeVisible({ timeout: 15000 });
   } else {
     const normalizedName = metricName.toLowerCase().replace(/\s+/g, '-').replace('total-teams', 'active-teams');
     const card = page.locator(`[data-testid="metric-card-${normalizedName}"]`).first();

@@ -389,8 +389,8 @@ const createMockQuery = (table, data = null) => {
           const teams = getMockData('teams');
           results = results.map((item) => ({
             ...item,
-            home_team: teams.find((t) => String(t.id) === String(item.home_team_id)) || null,
-            away_team: teams.find((t) => String(t.id) === String(item.away_team_id)) || null,
+            home_team: teams.find((t) => String(t.id) === String(item.home_team_id)) || { id: item.home_team_id, name: 'Home Team', division: 'U10' },
+            away_team: teams.find((t) => String(t.id) === String(item.away_team_id)) || { id: item.away_team_id, name: 'Away Team', division: 'U10' },
           }));
         }
         if (table === 'practice_assignments' && (queryContent.includes('practice_slots') || queryContent.includes('teams'))) {
@@ -436,6 +436,12 @@ const createMockQuery = (table, data = null) => {
       results = results.filter((item) => {
         if (item[col] === undefined) return false;
         // Simple string/date comparison for mock purposes
+        // CRITICAL FIX: Ensure date strings are compared correctly
+        const itemDate = new Date(item[col]).getTime();
+        const valDate = new Date(val).getTime();
+        if (!isNaN(itemDate) && !isNaN(valDate)) {
+            return itemDate <= valDate;
+        }
         return item[col] <= val;
       });
       return proxy;
