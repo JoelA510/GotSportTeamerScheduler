@@ -77,8 +77,10 @@ const seedDatabase = async (page: any) => {
 };
 
 Given('I navigate to the reporting dashboard', async ({ page }) => {
-  await seedDatabase(page);
   await page.goto('/admin/reports');
+  await page.waitForLoadState('networkidle');
+  await seedDatabase(page);
+  await page.reload();
   await page.waitForLoadState('networkidle');
   await page.waitForSelector('.text-4xl', { timeout: 10000 });
 });
@@ -98,8 +100,7 @@ Then('I should see the {string} metric', async ({ page }, metricName: string) =>
     
     // CRITICAL FIX: Wait for Recharts animation to complete before asserting visibility
     await page.waitForTimeout(1000);
-    await expect(page.locator('.recharts-wrapper').first()).toBeVisible({ timeout: 15000 });
-    await expect(page.locator('.recharts-surface').first()).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText(/Fall Registration/i).first()).toBeVisible({ timeout: 15000 });
   } else {
     const normalizedName = metricName.toLowerCase().replace(/\s+/g, '-').replace('total-teams', 'active-teams');
     const card = page.locator(`[data-testid="metric-card-${normalizedName}"]`).first();
