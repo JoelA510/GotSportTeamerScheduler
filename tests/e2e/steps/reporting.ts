@@ -76,31 +76,22 @@ const seedDatabase = async (page: any) => {
   });
 };
 
-Given('I navigate to the reporting dashboard', async ({ page }) => {
+Given('the admin views the reporting dashboard', async ({ page }) => {
+  // Ensure context origin is set by going to root, seed, then navigate
+  await page.goto('/');
+  await seedDatabase(page);
+  
   await page.goto('/admin/reports');
   await page.waitForLoadState('networkidle');
-  await seedDatabase(page);
-  await page.reload();
-  await page.waitForLoadState('networkidle');
-  await page.waitForSelector('.text-4xl', { timeout: 10000 });
+  await expect(page.getByRole('heading', { name: /Reporting Dashboard/i }).first()).toBeVisible({ timeout: 15000 });
 });
 
 Then('I should see the {string} metric', async ({ page }, metricName: string) => {
-  // Ensure data is seeded for this isolated tenant (now safe to call because we are already on the page)
-  await seedDatabase(page);
-  
-  // Force a reload on the first metric check so the components fetch the newly seeded data
-  if (metricName.toLowerCase() === 'total players') {
-      await page.reload();
-      await page.waitForLoadState('networkidle');
-  }
-
-  if (metricName.toLowerCase() === 'registrations') {
-    await expect(page.getByText(/Form Compliance Status/i).first()).toBeVisible();
-    
-    // CRITICAL FIX: Wait for Recharts animation to complete before asserting visibility
-    await page.waitForTimeout(1000);
-    await expect(page.getByText(/Fall Registration/i).first()).toBeVisible({ timeout: 15000 });
+  if (metricName === 'Registrations') {
+    // Assert the exact number we seeded is present on the page instead of Rechart SVG text
+    await expect(page.getByText('45').first()).toBeVisible({ timeout: 15000 });
+  } else if (metricName === 'Active Teams') {
+    await expect(page.getByTestId('metric-value-active-teams')).toHaveText('12');
   } else {
     const normalizedName = metricName.toLowerCase().replace(/\s+/g, '-').replace('total-teams', 'active-teams');
     const card = page.locator(`[data-testid="metric-card-${normalizedName}"]`).first();
@@ -117,14 +108,11 @@ Then('I should see the {string} metric', async ({ page }, metricName: string) =>
 });
 
 Then('a CSV file containing player and team data should be downloaded client-side', async ({ page }) => {
-  // Ensure we are on the reporting page before seeding
-  if (!page.url().includes('/reports')) {
-    await page.goto('/admin/reports');
-    await page.waitForLoadState('networkidle');
-  }
-  
+  // Ensure origin is set, seed, then go to the page
+  await page.goto('/');
   await seedDatabase(page);
-  await page.reload();
+  await page.goto('/admin/reports');
+  await page.waitForLoadState('networkidle');
   
   const downloadPromise = page.waitForEvent('download');
   await page.getByRole('button', { name: /Export Rosters CSV/i }).first().click({ force: true });
@@ -134,16 +122,15 @@ Then('a CSV file containing player and team data should be downloaded client-sid
 });
 
 When('I input a score of {string} to {string} for a completed game', async ({ page }, scoreHome: string, scoreAway: string) => {
-  if (!page.url().includes('/standings')) {
-    await page.goto('/standings');
-    await page.waitForLoadState('networkidle');
-  }
-  
-  // Ensure data is seeded for this isolated tenant AFTER navigation
+  // Go to root to establish origin, seed data, then go to standings
+  await page.goto('/');
   await seedDatabase(page);
   
-  await page.reload();
+  await page.goto('/standings');
   await page.waitForLoadState('networkidle');
+
+  // Small delay to ensure DB and components are fully hydrated
+  await page.waitForTimeout(500);
 
   const gameCard = page.locator('[data-testid="game-score-card"]').filter({ hasText: /Home Team/i }).first();
   await expect(gameCard).toBeVisible({ timeout: 10000 });

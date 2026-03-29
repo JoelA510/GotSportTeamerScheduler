@@ -59,6 +59,9 @@ Then('the user should see a {string} banner', async ({ page }, expectedBanner: s
 });
 
 Then('the {string} card should remain in its newly modified state locally', async ({ page, context }, teamName: string) => {
+    // Reveal the team cards by entering Edit Mode since the new UI hides them behind a toggle
+    await page.getByRole('button', { name: /Edit Mode/i }).click();
+
     // Verify optimistic UI holds state despite API failure (the team is still rendered)
     // The UI renders "U10" and "Lightning" separately. Just look for the team name part.
     const shortName = teamName.replace('U10 ', '');
