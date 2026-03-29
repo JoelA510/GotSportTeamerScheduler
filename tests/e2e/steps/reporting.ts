@@ -31,6 +31,8 @@ const seedDatabase = async (page: any) => {
         });
     }
 
+    const seasonId = localStorage.getItem('squadlogic-current-season') || 'season-1';
+
     db.view_league_standings = db.view_league_standings || [];
     if (!db.view_league_standings.find((m: any) => m.team_id === 'team-home')) {
         db.view_league_standings.push(
@@ -56,8 +58,8 @@ const seedDatabase = async (page: any) => {
     db.teams = db.teams || [];
     if (!db.teams.find((t: any) => t.id === 'team-home')) {
         db.teams.push(
-          { id: 'team-home', name: 'Home Team', division_id: 'U10', organization_id: orgId, coach_id: 'mock-coach-id' },
-          { id: 'team-away', name: 'Away Team', division_id: 'U10', organization_id: orgId, coach_id: 'mock-coach-id' }
+          { id: 'team-home', name: 'Home Team', division: 'U10', organization_id: orgId, coach_id: 'mock-coach-id' },
+          { id: 'team-away', name: 'Away Team', division: 'U10', organization_id: orgId, coach_id: 'mock-coach-id' }
         );
     }
 
@@ -66,6 +68,7 @@ const seedDatabase = async (page: any) => {
         db.games.push({
             id: 'game-1',
             organization_id: orgId,
+            season_id: seasonId,
             home_team_id: 'team-home',
             away_team_id: 'team-away',
             start_time: new Date(Date.now() - 3600000).toISOString(),
