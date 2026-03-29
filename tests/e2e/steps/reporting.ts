@@ -4,6 +4,9 @@ import { expect } from '@playwright/test';
 const { Given, When, Then, Before } = createBdd();
 
 const seedDatabase = async (page: any) => {
+  // CRITICAL FIX: Wait for the app to initialize the active org before seeding
+  await expect(page.getByRole('heading', { name: /Reporting Dashboard|League Standings/i }).first()).toBeVisible({ timeout: 15000 });
+  
   await page.evaluate(() => {
     const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
     const orgId = localStorage.getItem('squadlogic_active_org') || 'org-1';
@@ -84,7 +87,7 @@ Given('I navigate to the reporting dashboard', async ({ page }) => {
 });
 
 Then('I should see the {string} metric', async ({ page }, metricName: string) => {
-  // Ensure data is seeded for this isolated tenant
+  // Ensure data is seeded for this isolated tenant (now safe to call because we are already on the page)
   await seedDatabase(page);
   
   // Force a reload on the first metric check so the components fetch the newly seeded data
@@ -116,6 +119,12 @@ Then('I should see the {string} metric', async ({ page }, metricName: string) =>
 });
 
 Then('a CSV file containing player and team data should be downloaded client-side', async ({ page }) => {
+  // Ensure we are on the reporting page before seeding
+  if (!page.url().includes('/reports')) {
+    await page.goto('/admin/reports');
+    await page.waitForLoadState('networkidle');
+  }
+  
   await seedDatabase(page);
   await page.reload();
   
@@ -127,16 +136,16 @@ Then('a CSV file containing player and team data should be downloaded client-sid
 });
 
 When('I input a score of {string} to {string} for a completed game', async ({ page }, scoreHome: string, scoreAway: string) => {
-  // Ensure data is seeded for this isolated tenant
-  await seedDatabase(page);
-  
   if (!page.url().includes('/standings')) {
     await page.goto('/standings');
     await page.waitForLoadState('networkidle');
-  } else {
-    await page.reload();
-    await page.waitForLoadState('networkidle');
   }
+  
+  // Ensure data is seeded for this isolated tenant AFTER navigation
+  await seedDatabase(page);
+  
+  await page.reload();
+  await page.waitForLoadState('networkidle');
 
   const gameCard = page.locator('[data-testid="game-score-card"]').filter({ hasText: /Home Team/i }).first();
   await expect(gameCard).toBeVisible({ timeout: 10000 });

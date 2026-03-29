@@ -6,6 +6,10 @@ const { Given, When, Then } = createBdd();
 Given('the user has modified the {string} roster', async ({ page }, teamName: string) => {
     // CRITICAL FIX: Go to root first to set origin, then set localStorage
     await page.goto('/');
+    
+    // Wait for the app to initialize and set the active org in localStorage
+    await expect(page.getByRole('heading', { name: /League Management|Dashboard/i }).first()).toBeVisible({ timeout: 15000 });
+    
     await page.evaluate(() => localStorage.setItem('dashboardActiveStep', '2'));
 
     // Inject a mock pending override so the Sync button becomes active
