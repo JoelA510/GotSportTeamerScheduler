@@ -411,8 +411,22 @@ Given('the automated schedule has been generated', async ({ page }) => {
     futureDate.setFullYear(futureDate.getFullYear() + 1);
     const timestamp = futureDate.toISOString();
 
+    // The Override Panel needs a TEAM run to populate the Team dropdown
     db.scheduler_runs.push({
-      id: 'active-run-id',
+      id: 'active-team-run-id',
+      organization_id: orgId,
+      run_type: 'team',
+      status: 'completed',
+      results: { 
+        teamsByDivision: { 'div-1': [{ id: 'team-a', name: 'Team A', division: 'div-1' }] }
+      },
+      created_at: timestamp,
+      completed_at: timestamp 
+    });
+
+    // The Override Panel needs a PRACTICE run to populate the Slot dropdown
+    db.scheduler_runs.push({
+      id: 'active-practice-run-id',
       organization_id: orgId,
       run_type: 'practice',
       status: 'completed',
@@ -427,7 +441,7 @@ Given('the automated schedule has been generated', async ({ page }) => {
 
     db.practice_assignments.push({
         id: 'assign-team-a',
-        run_id: 'active-run-id',
+        run_id: 'active-practice-run-id',
         team_id: 'team-a',
         slot_id: 'slot-1',
         source: 'auto',
