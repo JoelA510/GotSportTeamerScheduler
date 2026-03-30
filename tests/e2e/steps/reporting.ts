@@ -124,11 +124,13 @@ Then('a CSV file containing player and team data should be downloaded client-sid
 });
 
 When('I input a score of {string} to {string} for a completed game', async ({ page }, scoreHome: string, scoreAway: string) => {
-  // We are already on /standings, so origin is established. Seed data directly to session storage.
+  // We are already on /standings, so origin is established. Seed data directly to window.__MOCK_DB__.
   await seedDatabase(page);
   
-  // Reload to force fresh fetch of games
-  await page.reload();
+  // Instead of page.reload() which wipes window memory mapping, trigger client-side React remount
+  await page.getByRole('link', { name: 'Dashboard', exact: true }).first().click();
+  await page.waitForLoadState('networkidle');
+  await page.getByRole('link', { name: 'League Standings', exact: true }).first().click();
   await page.waitForLoadState('networkidle');
 
   // Small delay to ensure DB and components are fully hydrated

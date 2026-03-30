@@ -9,14 +9,14 @@ Feature: Admin Reporting Dashboard
 
   Scenario: Admin views the reporting dashboard key metrics
     Given I am logged into SquadLogic as an "admin"
-    And I navigate to the "Reporting Dashboard"
+    And the admin views the reporting dashboard
     Then I should see the "Total Players" metric
     And I should see the "Total Teams" metric
     And I should see the "Registrations" metric
 
   Scenario: Admin exports rosters to CSV
     Given I am logged into SquadLogic as an "admin"
-    And I navigate to the "Reporting Dashboard"
+    And the admin views the reporting dashboard
     When I click the "Export Rosters CSV" button
     Then a CSV file containing player and team data should be downloaded client-side
 
