@@ -23,6 +23,7 @@ describe('useTeamAnalysis', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    // @ts-ignore — partial mock for test isolation
     vi.mocked(useOrganization).mockReturnValue({
       currentOrganization: mockOrg,
       currentSeasonSetting: mockSeason,
@@ -40,6 +41,7 @@ describe('useTeamAnalysis', () => {
       { 'First Name': 'Bob', 'Last Name': 'Brown', 'Birthdate': '2018-06-15', 'Gender': 'm' },   // Age 7 (2025-2018) -> U8 Boys
     ];
 
+    // @ts-ignore — partial mock for test isolation
     vi.mocked(useImport).mockReturnValue({
       importedPlayers: { data: mockPlayers },
     });
@@ -60,6 +62,7 @@ describe('useTeamAnalysis', () => {
       { 'First Name': 'Missing', 'Last Name': 'Data' }, // No Birthdate/Gender
     ];
 
+    // @ts-ignore — partial mock for test isolation
     vi.mocked(useImport).mockReturnValue({
       importedPlayers: { data: mockPlayers },
     });

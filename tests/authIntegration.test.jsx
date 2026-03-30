@@ -116,6 +116,7 @@ describe('Auth & Organization Integration', () => {
       clear: vi.fn(() => { Object.keys(store).forEach((k) => delete store[k]); }),
     });
 
+    // @ts-ignore — partial mock for test isolation
     vi.mocked(supabase.from).mockImplementation((table) => {
       if (table === 'organization_members') {
         return {

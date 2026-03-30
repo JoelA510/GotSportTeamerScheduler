@@ -300,12 +300,14 @@ test('validates input arguments', () => {
 
   const missingId = [{ division: 'U10' }];
   assert.throws(
+    // @ts-ignore — intentionally invalid input to test validation
     () => generateTeams({ players: missingId, divisionConfigs }),
     /each player requires an id/i
   );
 
   const missingDivision = [{ id: 'no-division' }];
   assert.throws(
+    // @ts-ignore — intentionally invalid input to test validation
     () => generateTeams({ players: missingDivision, divisionConfigs }),
     /each player requires a division/i
   );
