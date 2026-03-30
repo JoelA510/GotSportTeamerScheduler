@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useTheme } from '../contexts/ThemeContext.jsx';
 import { supabase } from '../lib/supabaseClient.js';
 import TeamOverviewPanel from '../components/TeamOverviewPanel.jsx';
@@ -76,6 +76,13 @@ export default function TeamAnalysisPage() {
   };
 
   const selectedProgram = programs.find((p) => p.id === selectedProgramId);
+
+  // Clear generating state when the polling hook detects completion
+  useEffect(() => {
+    if (team?.status === 'completed' || team?.status === 'completed_with_warnings' || team?.status === 'error') {
+      setIsGenerating(false);
+    }
+  }, [team?.status]);
 
   // Map persistence snapshot to nested structure for RosterManager
   const mappedTeams = useMemo(() => {

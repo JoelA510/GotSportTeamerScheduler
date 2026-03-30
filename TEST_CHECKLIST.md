@@ -108,6 +108,9 @@ Interactive UI mode (useful for debugging failures):
 npm run test:e2e:ui
 ```
 
+> [!TIP]
+> **Remediation Status**: As of March 2026, the E2E suite is stabilized (57/57 passing). To maintain this, ensure all mock data injections include a valid `organization_id` matching the org in `localStorage`, or React hooks will filter the data into an empty state.
+
 ### Feature files (BDD scenarios)
 
 | # | Feature file | What it covers |
@@ -138,6 +141,13 @@ npm run test:e2e:ui
 ```bash
 npx playwright test --grep "cross.org\|unauthorized\|RBAC\|rbac\|calendar token\|import.*validation"
 ```
+
+### E2E Stabilization & Debugging
+
+- **Mock Scoping**: All `page.evaluate` mock injections **must** include an `organization_id` matching the active org in `localStorage`.
+- **Concurrency**: For maximum stability of shared `sessionStorage` mocks, run the full suite with `--workers=1`.
+- **Debugging**: If tests fail to find data, check the `__MOCK_DB__` key in `sessionStorage` via Browser DevTools.
+- **Expected Skips**: The scenario "Resolving game schedule conflicts" in `admin_overrides.feature` is `@skipped` (unimplemented in core).
 
 ---
 

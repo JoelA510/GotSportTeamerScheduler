@@ -61,9 +61,11 @@ Then('the resulting teams summary should reflect the new constraints', async ({ 
     // Simulate backend completing the run so the UI transitions out of "Generating Teams..."
     await page.evaluate(() => {
         const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
+        const orgId = localStorage.getItem('squadlogic_active_org') || 'org-1';
         const run = db.scheduler_runs.find((r: any) => r.run_type === 'team' && r.status === 'running');
         if (run) {
             run.status = 'completed';
+            run.organization_id = orgId; // CRITICAL FIX: Ensure the polling hook finds this run
             run.results = {
                 teamsByDivision: { 'U10 Boys': [{ id: 't1', name: 'Tigers' }] },
                 rosterBalanceByDivision: { 'U10 Boys': { summary: { totalPlayers: 10, totalCapacity: 10 } } }

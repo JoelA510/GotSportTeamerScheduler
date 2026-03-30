@@ -11,6 +11,8 @@ export function useDashboardData() {
     summary: teamSummary,
     loading: teamLoading,
     generatedAt: teamGeneratedAt,
+    status: teamStatus,
+    progress: teamProgress,
   } = useTeamSummary();
 
   const {
@@ -46,6 +48,8 @@ export function useDashboardData() {
     divisions: teamSummary?.divisions,
     teams: teamSummary?.teams,
     team_players: teamSummary?.team_players,
+    status: teamStatus,
+    progress: teamProgress,
   };
 
   const resolvedPractice = {
