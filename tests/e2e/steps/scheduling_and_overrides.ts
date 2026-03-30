@@ -398,12 +398,14 @@ Given('the automated schedule has been generated', async ({ page }) => {
   // ERADICATE NOISE: Wipe the specific tables first to ensure no competing hardcoded runs exist
   await page.evaluate(() => {
     const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
+    const orgId = localStorage.getItem('squadlogic_active_org') || 'org-1';
     
     db.scheduler_runs = [];
     db.practice_assignments = [];
     
-    db.teams = [{ id: 'team-a', name: 'Team A', division_id: 'div-1' }];
-    db.practice_slots = [{ id: 'slot-1', day_of_week: 'mon', start_time: '17:00', end_time: '18:30', field_id: 'field-1' }];
+    // CRITICAL FIX: Add organization_id so the hooks don't filter these out
+    db.teams = [{ id: 'team-a', name: 'Team A', division_id: 'div-1', organization_id: orgId }];
+    db.practice_slots = [{ id: 'slot-1', day_of_week: 'mon', start_time: '17:00', end_time: '18:30', field_id: 'field-1', organization_id: orgId }];
 
     const futureDate = new Date();
     futureDate.setFullYear(futureDate.getFullYear() + 1);
@@ -411,9 +413,14 @@ Given('the automated schedule has been generated', async ({ page }) => {
 
     db.scheduler_runs.push({
       id: 'active-run-id',
+      organization_id: orgId,
       run_type: 'practice',
       status: 'completed',
-      results: { assignments: [{ team_id: 'team-a', slot_id: 'slot-1', source: 'auto' }] },
+      results: { 
+        assignments: [{ team_id: 'team-a', slot_id: 'slot-1', source: 'auto' }],
+        // The override panel needs baseSlotDistribution to populate the slot dropdown
+        baseSlotDistribution: [{ baseSlotId: 'slot-1', day: 'Monday', totalCapacity: 10, totalAssigned: 1 }]
+      },
       created_at: timestamp,
       completed_at: timestamp 
     });
