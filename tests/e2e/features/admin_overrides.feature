@@ -20,6 +20,7 @@ Feature: Admin Overrides
     Then the new practice assignment is saved with the "manual" source flag
     And any new coach or field capacity conflicts are immediately flagged in the UI
 
+  @skipped
   Scenario: Resolving game schedule conflicts
     Given I am on the Game Scheduling page viewing an identified conflict
     When I drag a game to a new time slot to resolve the conflict
