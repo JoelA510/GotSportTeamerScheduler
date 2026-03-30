@@ -98,6 +98,23 @@ Given('the team rosters have been generated and finalized', async ({ page }) => 
     await page.goto('/');
     await page.evaluate(() => {
         const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
+        const orgId = localStorage.getItem('squadlogic_active_org') || 'org-1';
+        
+        // Seed a completed team run so the dashboard passes the teams to the Output panel
+        db.scheduler_runs = db.scheduler_runs || [];
+        db.scheduler_runs.push({
+            id: 'mock-run-output',
+            organization_id: orgId,
+            run_type: 'team',
+            status: 'completed',
+            results: {
+                teams: [
+                    { id: 't1', name: 'Tigers', division: 'U10', headCoach: 'Coach Smith', coachEmail: 'smith@example.com' }
+                ]
+            },
+            created_at: new Date().toISOString()
+        });
+        
         sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
     });
 });

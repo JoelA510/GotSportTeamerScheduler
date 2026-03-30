@@ -1,0 +1,80 @@
+[dotenv@17.2.3] injecting env (4) from .env -- tip: ΓÜÖ∩╕Å  write to custom object with { processEnv: myObject }
+
+Running 4 tests using 4 workers
+
+[WebServer] [baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[dotenv@17.2.3] injecting env (0) from .env -- tip: ΓÜÖ∩╕Å  specify custom .env file path with { path: '/custom/path/.env' }
+[dotenv@17.2.3] injecting env (0) from .env -- tip: ΓÜÖ∩╕Å  load multiple .env files with { path: ['.env.local', '.env'] }
+[dotenv@17.2.3] injecting env (0) from .env -- tip: ≡ƒæÑ sync secrets across teammates & machines: https://dotenvx.com/ops
+[dotenv@17.2.3] injecting env (0) from .env -- tip: ≡ƒùé∩╕Å backup and recover secrets: https://dotenvx.com/ops
+[DEBUG][auth_setup] rawRole="admin", cleanRole="admin", email="admin@squadlogic.app"
+[DEBUG][auth_setup] rawRole="admin", cleanRole="admin", email="admin@squadlogic.app"
+[DEBUG][auth_setup] rawRole="admin", cleanRole="admin", email="admin@squadlogic.app"
+[DEBUG][auth_setup] rawRole="admin", cleanRole="admin", email="admin@squadlogic.app"
+[BROWSER LOG] [log] [DEBUG] [Mock Supabase] DB Initialized. Tables: organizations(1), profiles(3), organization_members(2), season_settings(1), divisions(2), teams(3), team_players(2), players(2), profile_players(2), practice_slots(1), practice_assignments(1), event_rsvps(1), locations(1), fields(1), games(2), player_registrations(2), registration_forms(1), scheduler_runs(3), registrations(1), team_summaries(1), imports(1), view_league_standings(2), view_org_metrics(1), view_compliance_stats(1)
+[BROWSER LOG] [log] [DEBUG] [Mock Supabase] DB Initialized. Tables: organizations(1), profiles(3), organization_members(2), season_settings(1), divisions(2), teams(3), team_players(2), players(2), profile_players(2), practice_slots(1), practice_assignments(1), event_rsvps(1), locations(1), fields(1), games(2), player_registrations(2), registration_forms(1), scheduler_runs(3), registrations(1), team_summaries(1), imports(1), view_league_standings(2), view_org_metrics(1), view_compliance_stats(1)
+Skipping isolated tenant setup due to missing Supabase credentials or mock mode.
+[BROWSER LOG] [log] [DEBUG] [Mock Supabase] DB Initialized. Tables: organizations(1), profiles(3), organization_members(2), season_settings(1), divisions(2), teams(3), team_players(2), players(2), profile_players(2), practice_slots(1), practice_assignments(1), event_rsvps(1), locations(1), fields(1), games(2), player_registrations(2), registration_forms(1), scheduler_runs(3), registrations(1), team_summaries(1), imports(1), view_league_standings(2), view_org_metrics(1), view_compliance_stats(1)
+Skipping isolated tenant setup due to missing Supabase credentials or mock mode.
+[BROWSER LOG] [log] [DEBUG] [Mock Supabase] DB Initialized. Tables: organizations(1), profiles(3), organization_members(2), season_settings(1), divisions(2), teams(3), team_players(2), players(2), profile_players(2), practice_slots(1), practice_assignments(1), event_rsvps(1), locations(1), fields(1), games(2), player_registrations(2), registration_forms(1), scheduler_runs(3), registrations(1), team_summaries(1), imports(1), view_league_standings(2), view_org_metrics(1), view_compliance_stats(1)
+[BROWSER LOG] [log] [DEBUG] [Mock Supabase] DB Initialized. Tables: organizations(2), profiles(3), organization_members(3), season_settings(2), divisions(2), teams(3), team_players(2), players(2), profile_players(2), practice_slots(1), practice_assignments(1), event_rsvps(1), locations(1), fields(1), games(2), player_registrations(2), registration_forms(1), scheduler_runs(3), registrations(1), team_summaries(1), imports(1), view_league_standings(2), view_org_metrics(1), view_compliance_stats(1)
+Skipping isolated tenant setup due to missing Supabase credentials or mock mode.
+Skipping isolated tenant setup due to missing Supabase credentials or mock mode.
+[BROWSER LOG] [log] [DEBUG] [Mock Supabase] DB Initialized. Tables: organizations(2), profiles(3), organization_members(3), season_settings(2), divisions(2), teams(3), team_players(2), players(2), profile_players(2), practice_slots(1), practice_assignments(1), event_rsvps(1), locations(1), fields(1), games(2), player_registrations(2), registration_forms(1), scheduler_runs(3), registrations(1), team_summaries(1), imports(1), view_league_standings(2), view_org_metrics(1), view_compliance_stats(1)
+[BROWSER LOG] [log] [DEBUG] [Mock Supabase] DB Initialized. Tables: organizations(2), profiles(3), organization_members(3), season_settings(2), divisions(2), teams(3), team_players(2), players(2), profile_players(2), practice_slots(1), practice_assignments(1), event_rsvps(1), locations(1), fields(1), games(2), player_registrations(2), registration_forms(1), scheduler_runs(3), registrations(1), team_summaries(1), imports(1), view_league_standings(2), view_org_metrics(1), view_compliance_stats(1)
+[BROWSER LOG] [log] [DEBUG] [Mock Supabase] DB Initialized. Tables: organizations(2), profiles(3), organization_members(3), season_settings(2), divisions(2), teams(3), team_players(2), players(2), profile_players(2), practice_slots(1), practice_assignments(1), event_rsvps(1), locations(1), fields(1), games(2), player_registrations(2), registration_forms(1), scheduler_runs(3), registrations(1), team_summaries(1), imports(1), view_league_standings(2), view_org_metrics(1), view_compliance_stats(1)
+[BROWSER LOG] [log] [DEBUG] [Mock Supabase] DB Initialized. Tables: organizations(2), profiles(3), organization_members(3), season_settings(2), divisions(2), teams(3), team_players(2), players(2), profile_players(2), practice_slots(1), practice_assignments(1), event_rsvps(1), locations(1), fields(1), games(2), player_registrations(2), registration_forms(1), scheduler_runs(3), registrations(1), team_summaries(1), imports(1), view_league_standings(2), view_org_metrics(1), view_compliance_stats(1)
+[BROWSER LOG] [log] [DEBUG] [Mock Supabase] DB Initialized. Tables: organizations(2), profiles(3), organization_members(3), season_settings(2), divisions(2), teams(3), team_players(2), players(2), profile_players(2), practice_slots(1), practice_assignments(1), event_rsvps(1), locations(1), fields(1), games(2), player_registrations(2), registration_forms(1), scheduler_runs(3), registrations(1), team_summaries(1), imports(1), view_league_standings(2), view_org_metrics(1), view_compliance_stats(1)
+[BROWSER LOG] [log] [DEBUG] [Mock Supabase] DB Initialized. Tables: organizations(2), profiles(3), organization_members(3), season_settings(2), divisions(2), teams(3), team_players(2), players(2), profile_players(2), practice_slots(1), practice_assignments(1), event_rsvps(1), locations(1), fields(1), games(2), player_registrations(2), registration_forms(1), scheduler_runs(3), registrations(1), team_summaries(1), imports(1), view_league_standings(2), view_org_metrics(1), view_compliance_stats(1)
+[BROWSER LOG] [log] [DEBUG] [Mock Supabase] DB Initialized. Tables: organizations(2), profiles(3), organization_members(3), season_settings(2), divisions(2), teams(3), team_players(2), players(2), profile_players(2), practice_slots(1), practice_assignments(1), event_rsvps(1), locations(1), fields(1), games(2), player_registrations(2), registration_forms(1), scheduler_runs(3), registrations(1), team_summaries(1), imports(1), view_league_standings(2), view_org_metrics(1), view_compliance_stats(1)
+[BROWSER LOG] [log] [DEBUG] [Mock Supabase] DB Initialized. Tables: organizations(2), profiles(3), organization_members(3), season_settings(2), divisions(2), teams(3), team_players(2), players(2), profile_players(2), practice_slots(1), practice_assignments(1), event_rsvps(1), locations(1), fields(1), games(2), player_registrations(2), registration_forms(1), scheduler_runs(3), registrations(1), team_summaries(1), imports(1), view_league_standings(2), view_org_metrics(1), view_compliance_stats(1)
+[BROWSER LOG] [log] [DEBUG] [Mock Supabase] DB Initialized. Tables: organizations(2), profiles(3), organization_members(3), season_settings(2), divisions(2), teams(3), team_players(2), players(2), profile_players(2), practice_slots(1), practice_assignments(1), event_rsvps(1), locations(1), fields(1), games(2), player_registrations(2), registration_forms(1), scheduler_runs(3), registrations(1), team_summaries(1), imports(1), view_league_standings(2), view_org_metrics(1), view_compliance_stats(1)
+[BROWSER LOG] [log] [DEBUG] [Mock Supabase] DB Initialized. Tables: organizations(2), profiles(3), organization_members(3), season_settings(2), divisions(2), teams(3), team_players(2), players(2), profile_players(2), practice_slots(1), practice_assignments(1), event_rsvps(1), locations(1), fields(1), games(2), player_registrations(2), registration_forms(1), scheduler_runs(3), registrations(1), team_summaries(1), imports(1), view_league_standings(2), view_org_metrics(1), view_compliance_stats(1)
+  Γ£ô  2 [chromium] ΓÇ║ .features-gen\tests\e2e\features\ingestion_hardening.feature.spec.js:12:3 ΓÇ║ Ingestion Hardening for CSV Imports ΓÇ║ Validating required fields during import (3.4s)
+  Γ£ô  4 [chromium] ΓÇ║ .features-gen\tests\e2e\features\ingestion_hardening.feature.spec.js:19:3 ΓÇ║ Ingestion Hardening for CSV Imports ΓÇ║ Graceful error recovery for row-level issues (4.1s)
+  Γ£ô  1 [chromium] ΓÇ║ .features-gen\tests\e2e\features\output_operationalization.feature.spec.js:10:3 ΓÇ║ Output Operationalization ΓÇ║ Saving CSV exports to Supabase Storage (4.4s)
+  Γ£ÿ  3 [chromium] ΓÇ║ .features-gen\tests\e2e\features\output_operationalization.feature.spec.js:17:3 ΓÇ║ Output Operationalization ΓÇ║ Generating coach welcome emails (9.3s)
+Skipping global teardown in mock mode.
+
+
+  1) [chromium] ΓÇ║ .features-gen\tests\e2e\features\output_operationalization.feature.spec.js:17:3 ΓÇ║ Output Operationalization ΓÇ║ Generating coach welcome emails ΓÇ║ And each draft should include the coach's name, team name, and assigned practice schedule 
+
+    Error: [2mexpect([22m[31mlocator[39m[2m).[22mtoBeVisible[2m([22m[2m)[22m failed
+
+    Locator: getByText('Subject: Welcome to the season').first()
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+
+    Call log:
+    [2m  - Expect "toBeVisible" with timeout 5000ms[22m
+    [2m  - waiting for getByText('Subject: Welcome to the season').first()[22m
+
+
+       at ..\tests\e2e\steps\data_and_output.ts:121
+
+      119 |
+      120 | Then('each draft should include the coach\'s name, team name, and assigned practice schedule', async ({ page }) => {
+    > 121 |     await expect(page.getByText('Subject: Welcome to the season').first()).toBeVisible();
+          |                                                                            ^
+      122 | });
+        at Object.<anonymous> (C:\Users\joel.abraham\Downloads\SquadLogic\tests\e2e\steps\data_and_output.ts:121:76)
+        at C:\Users\joel.abraham\Downloads\SquadLogic\.features-gen\tests\e2e\features\output_operationalization.feature.spec.js:21:5
+
+    attachment #1: screenshot (image/png) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    test-results\tests-e2e-features-output_-98b5f-rating-coach-welcome-emails-chromium\test-failed-1.png
+    ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+
+    Error Context: test-results\tests-e2e-features-output_-98b5f-rating-coach-welcome-emails-chromium\error-context.md
+
+    attachment #3: trace (application/zip) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    test-results\tests-e2e-features-output_-98b5f-rating-coach-welcome-emails-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\tests-e2e-features-output_-98b5f-rating-coach-welcome-emails-chromium\trace.zip
+
+    ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+
+  1 failed
+    [chromium] ΓÇ║ .features-gen\tests\e2e\features\output_operationalization.feature.spec.js:17:3 ΓÇ║ Output Operationalization ΓÇ║ Generating coach welcome emails 
+  3 passed (14.0s)
