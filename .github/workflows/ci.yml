@@ -1,0 +1,50 @@
+name: SquadLogic CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    name: Build & Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm install
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit & Integration Tests
+        run: npm run test
+
+      - name: Build Frontend
+        run: npm run frontend:build
+
+      - name: Install Playwright Browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: End-to-End Tests
+        # Passing --workers=1 guarantees mock sessionStorage isolation per the Epic 19 plan
+        run: npm run test:e2e -- --workers=1
+        env:
+          VITE_USE_MOCK_SUPABASE: 'true'
+          TEST_ADMIN_EMAIL: 'admin@squadlogic.app'
+          TEST_COACH_EMAIL: 'coach@squadlogic.app'
+          TEST_PARENT_EMAIL: 'parent@squadlogic.app'
+          TEST_PASSWORD: 'test-password-123'
