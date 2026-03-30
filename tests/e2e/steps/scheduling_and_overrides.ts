@@ -283,6 +283,7 @@ When('I generate a round-robin game schedule', async ({ page }) => {
       status: 'completed',
       results: {
         schedule: schedule,
+        summary: { scheduledRate: 1.0, unscheduledMatchups: 0 },
         metrics: { consecutive_coach_games: 0, high_priority_field_usage: 1.0, teams_played_twice: true }
       },
       created_at: now,
@@ -295,7 +296,8 @@ When('I generate a round-robin game schedule', async ({ page }) => {
 Then('every team should play every other team twice', async ({ page }) => {
   // Verify via the DOM in the Game Readiness panel
   await page.goto('/schedule/game');
-  const scheduledMetric = page.locator('.metric-item').filter({ hasText: 'Scheduled' }).locator('dd');
+  // Use strict scoping to avoid matching practice metrics if they are on the same page
+  const scheduledMetric = page.locator('.game-readiness .metric-item').filter({ hasText: 'Scheduled' }).locator('dd');
   // The mock data sets scheduledRate to 1.0 (100%)
   await expect(scheduledMetric).toHaveText('100%', { timeout: 15000 });
 });
@@ -357,7 +359,13 @@ When('I move a player from {string} to {string} using drag-and-drop', async ({ p
   (page as any).playerMoved = playerName?.trim();
 
   const targetColumn = page.locator('.bg-bg-surface\\/50').filter({ hasText: teamB }).first();
-  await player.dragTo(targetColumn);
+  
+  // dnd-kit requires precise mouse movements to register the drag
+  await player.hover();
+  await page.mouse.down();
+  await page.mouse.move(10, 10); // Trigger drag start
+  await targetColumn.hover();
+  await page.mouse.up();
 });
 
 Then('the system should save the new player assignment', async ({ page }) => {
@@ -381,7 +389,46 @@ Then('instantly recalculate the skill balance and capacity metrics for both team
 });
 
 Given('the automated schedule has been generated', async ({ page }) => {
-  // Already populated by the background step "a practice schedule has been generated"
+  // ERADICATE NOISE: Wipe the specific tables first to ensure no competing hardcoded runs exist
+  await page.evaluate(() => {
+    const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
+    
+    db.scheduler_runs = [];
+    db.practice_assignments = [];
+    
+    db.teams = [{ id: 'team-a', name: 'Team A', division_id: 'div-1' }];
+    db.practice_slots = [{ id: 'slot-1', day_of_week: 'mon', start_time: '17:00', end_time: '18:30', field_id: 'field-1' }];
+
+    const futureDate = new Date();
+    futureDate.setFullYear(futureDate.getFullYear() + 1);
+    const timestamp = futureDate.toISOString();
+
+    db.scheduler_runs.push({
+      id: 'active-run-id',
+      run_type: 'practice',
+      status: 'completed',
+      results: { assignments: [{ team_id: 'team-a', slot_id: 'slot-1', source: 'auto' }] },
+      created_at: timestamp,
+      completed_at: timestamp 
+    });
+
+    db.practice_assignments.push({
+        id: 'assign-team-a',
+        run_id: 'active-run-id',
+        team_id: 'team-a',
+        slot_id: 'slot-1',
+        source: 'auto',
+        teams: { name: 'Team A', divisions: { name: 'U10' } },
+        practiceSlots: { 
+            dayOfWeek: 'mon', 
+            startTime: '17:00', 
+            endTime: '18:30', 
+            fields: { name: 'Main Field' } 
+        }
+    });
+
+    sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
+  });
 });
 
 When('I manually assign a team to an alternative practice slot', async ({ page }) => {
