@@ -108,9 +108,11 @@ Given('the team rosters have been generated and finalized', async ({ page }) => 
             run_type: 'team',
             status: 'completed',
             results: {
-                teams: [
-                    { id: 't1', name: 'Tigers', division: 'U10', headCoach: 'Coach Smith', coachEmail: 'smith@example.com' }
-                ]
+                teamsByDivision: {
+                    'U10': [
+                        { id: 't1', name: 'Tigers', division: 'U10', headCoach: 'Coach Smith', coachEmail: 'smith@example.com' }
+                    ]
+                }
             },
             created_at: new Date().toISOString()
         });
