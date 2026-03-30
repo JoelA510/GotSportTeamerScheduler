@@ -104,6 +104,17 @@ const initialMockData = {
       conflict_reason: 'Double-booked Field',
       score_home: 2,
       score_away: 1
+    },
+    {
+      id: 'game-2',
+      organization_id: 'org-1',
+      season_id: 'season-1',
+      home_team_id: 't1',
+      away_team_id: 't2',
+      start_time: new Date(Date.now() - 3600000).toISOString(), // 1 hour ago
+      venue_id: 'v1',
+      score_home: null,
+      score_away: null
     }
   ],
   player_registrations: [
@@ -211,6 +222,18 @@ const initialMockData = {
         fileName: 'mock_players.csv'
       },
       created_at: new Date(Date.now() - 86400000).toISOString()
+    }
+  ],
+  view_league_standings: [
+    {
+      organization_id: 'org-1', team_id: 't1', team_name: 'Team A',
+      division: 'U8 Coed', wins: 1, losses: 0, draws: 0, games_played: 1,
+      goals_for: 2, goals_against: 1, goal_differential: 1, points: 3
+    },
+    {
+      organization_id: 'org-1', team_id: 't2', team_name: 'Team B',
+      division: 'U8 Coed', wins: 0, losses: 1, draws: 0, games_played: 1,
+      goals_for: 1, goals_against: 2, goal_differential: -1, points: 0
     }
   ],
   view_org_metrics: [
@@ -723,6 +746,10 @@ export const supabase = IS_MOCK_MODE
                       if (home && away) {
                         const sh = Number(updates.score_home);
                         const sa = Number(updates.score_away);
+                        // Only update standings when BOTH scores are valid numbers
+                        if (isNaN(sh) || isNaN(sa) || updates.score_home === null || updates.score_away === null) {
+                          // Skip standings update for partial score entry
+                        } else {
                         if (sh > sa) { home.wins++; away.losses++; home.points += 3; }
                         else if (sa > sh) { away.wins++; home.losses++; away.points += 3; }
                         else { home.draws++; away.draws++; home.points += 1; away.points += 1; }
@@ -731,6 +758,7 @@ export const supabase = IS_MOCK_MODE
                         away.goals_for += sa; away.goals_against += sh;
                         home.goal_differential += (sh - sa);
                         away.goal_differential += (sa - sh);
+                        }
                       }
                     }
 
