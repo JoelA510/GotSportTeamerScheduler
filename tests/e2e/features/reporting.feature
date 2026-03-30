@@ -22,7 +22,7 @@ Feature: Admin Reporting Dashboard
 
   Scenario: Coach enters a game score and standings update
     Given I am logged into SquadLogic as a "coach"
-    And I navigate to the "League Standings"
+    And the coach views the league standings
     When I input a score of "3" to "1" for a completed game
     Then the "League Standings" table should reflect a win for the home team
     And the points and goal differential should update accordingly
