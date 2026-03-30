@@ -276,6 +276,11 @@ When('I generate a round-robin game schedule', async ({ page }) => {
     }
 
     db.scheduler_runs = db.scheduler_runs || [];
+    // CRITICAL FIX: Ensure this run is the absolute latest by future-dating it
+    const futureDate = new Date();
+    futureDate.setFullYear(futureDate.getFullYear() + 1);
+    const timestamp = futureDate.toISOString();
+
     db.scheduler_runs.push({
       id: `mock-run-game-${Date.now()}`,
       organization_id: orgId,
@@ -283,11 +288,12 @@ When('I generate a round-robin game schedule', async ({ page }) => {
       status: 'completed',
       results: {
         schedule: schedule,
-        summary: { scheduledRate: 1.0, unscheduledMatchups: 0 },
+        // Provide both camelCase and snake_case to satisfy any mapper layer
+        summary: { scheduledRate: 1.0, scheduled_rate: 1.0, unscheduledMatchups: 0 },
         metrics: { consecutive_coach_games: 0, high_priority_field_usage: 1.0, teams_played_twice: true }
       },
-      created_at: now,
-      completed_at: now
+      created_at: timestamp,
+      completed_at: timestamp
     });
     sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
   });
@@ -296,8 +302,8 @@ When('I generate a round-robin game schedule', async ({ page }) => {
 Then('every team should play every other team twice', async ({ page }) => {
   // Verify via the DOM in the Game Readiness panel
   await page.goto('/schedule/game');
-  // Use strict scoping to avoid matching practice metrics if they are on the same page
-  const scheduledMetric = page.locator('.game-readiness .metric-item').filter({ hasText: 'Scheduled' }).locator('dd');
+  // CRITICAL FIX: Use .first() to bypass strict mode violations from hidden skeletons
+  const scheduledMetric = page.locator('.game-readiness .metric-item').filter({ hasText: 'Scheduled' }).locator('dd').first();
   // The mock data sets scheduledRate to 1.0 (100%)
   await expect(scheduledMetric).toHaveText('100%', { timeout: 15000 });
 });
@@ -432,8 +438,20 @@ Given('the automated schedule has been generated', async ({ page }) => {
 });
 
 When('I manually assign a team to an alternative practice slot', async ({ page }) => {
-  await page.getByRole('combobox').first().selectOption({ index: 1 });
-  await page.getByRole('button', { name: /Assign/i }).first().click();
+  // CRITICAL FIX: Enter Edit Mode to reveal the manual override controls
+  const editBtn = page.getByRole('button', { name: /Manual Overrides/i }).first();
+  await editBtn.waitFor({ state: 'visible', timeout: 15000 });
+  await editBtn.click();
+
+  // Wait for the override panel to mount
+  await expect(page.getByRole('heading', { name: /Manual Practice Overrides/i }).first()).toBeVisible({ timeout: 10000 });
+
+  // Select the first team and the first available slot
+  await page.getByTestId('team-select').selectOption({ index: 1 });
+  await page.getByTestId('slot-select').selectOption({ index: 1 });
+  
+  // Click the Assign Slot button
+  await page.getByTestId('assign-slot-button').click();
 });
 
 Then('the new practice assignment is saved with the {string} source flag', async ({ page }, flag: string) => {
