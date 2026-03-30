@@ -44,7 +44,8 @@ const initialMockData = {
     { id: 'mock-parent-id', first_name: 'Mock', last_name: 'Parent', full_name: 'Mock Parent', email: 'parent@example.com', role: 'parent' }
   ],
   organization_members: [
-    { organization_id: 'org-1', profile_id: 'mock-admin-id', role: 'admin' }
+    { organization_id: 'org-1', profile_id: 'mock-admin-id', role: 'admin' },
+    { organization_id: 'org-1', profile_id: 'mock-coach-id', role: 'coach' }
   ],
   season_settings: [
     { id: 'season-1', organization_id: 'org-1', name: 'Fall 2024', status: 'active', created_at: new Date().toISOString() }
@@ -214,6 +215,9 @@ const initialMockData = {
   ],
   view_org_metrics: [
     { organization_id: 'org-1', total_players: 150, total_teams: 12, total_users: 25 }
+  ],
+  view_compliance_stats: [
+    { organization_id: 'org-1', form_title: 'Spring 2026 Registration', total_registrations: 45, medical_cleared: 38 }
   ]
 };
 
