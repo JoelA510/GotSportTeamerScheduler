@@ -240,6 +240,13 @@ function CalendarModal({ team, onClose }) {
   const [isRotating, setIsRotating] = useState(false);
   const [rotateMessage, setRotateMessage] = useState('');
 
+  // CRITICAL FIX: Sync token if team data hydrates after modal opens
+  useEffect(() => {
+    if (team?.calendar_token) {
+      setCalendarToken(team.calendar_token);
+    }
+  }, [team?.calendar_token]);
+
   const calendarUrl = `webcal://${window.location.host}/functions/v1/calendar-feed?token=${calendarToken}`;
 
   const handleRotateToken = async () => {

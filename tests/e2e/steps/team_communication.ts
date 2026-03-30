@@ -36,9 +36,12 @@ Given('my child {string} is on the {string} team', async ({ page }, childName: s
         const playerId = `player-${child.toLowerCase()}`;
 
         db.teams = db.teams || [];
-        if (!db.teams.find((t: any) => t.id === teamId)) {
-            db.teams.push({ id: teamId, name: team, organization_id: orgId });
-        }
+        // CRITICAL FIX: Aggressively clear previous state to prevent cross-worker contamination
+        db.teams = db.teams?.filter((t: any) => t.organization_id !== orgId) || [];
+        db.teams.push({ id: teamId, name: team, organization_id: orgId });
+        
+        db.team_messages = db.team_messages?.filter((m: any) => m.organization_id !== orgId) || [];
+        db.event_rsvps = db.event_rsvps?.filter((r: any) => r.organization_id !== orgId) || [];
 
         db.players = db.players || [];
         // CRITICAL FIX: Remove existing player to prevent duplicate keys

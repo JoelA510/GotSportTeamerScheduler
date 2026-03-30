@@ -88,16 +88,16 @@ When('I access my personalized calendar feed URL', async ({ page }) => {
 
 Then('a modal should appear displaying a subscription link', async ({ page }) => {
     await expect(page.getByRole('heading', { name: /Calendar Subscription/i }).first()).toBeVisible();
-    await expect(page.locator('input[readOnly]').first()).toBeVisible();
+    await expect(page.locator('input[readonly]').first()).toBeVisible();
 });
 
 Then('the link should contain {string}', async ({ page }, text: string) => {
-    const input = page.locator('input[readOnly]').first();
+    const input = page.locator('input[readonly]').first();
     await expect(input).toHaveValue(new RegExp(text));
 });
 
 Then('the link should contain a secure {string} query parameter', async ({ page }, param: string) => {
-    const input = page.locator('input[readOnly]').first();
+    const input = page.locator('input[readonly]').first();
     await expect(input).toHaveValue(new RegExp(`${param}=`));
 });
 
