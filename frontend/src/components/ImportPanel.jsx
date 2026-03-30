@@ -465,7 +465,26 @@ export default function ImportPanel({ onImport }) {
                     return (
                       <tr key={i} className="hover:bg-bg-surface-hover transition-colors">
                         {previewData.headers.slice(0, 5).map((header, j) => {
-                          const isCellError = rowError?.errorFields?.includes(header);
+                          // CRITICAL FIX: Normalize the header before checking errorFields
+                          const HEADER_ALIASES = {
+                            'first name': 'first_name', 'first_name': 'first_name', 'firstname': 'first_name',
+                            'last name': 'last_name', 'last_name': 'last_name', 'lastname': 'last_name',
+                            'date of birth': 'date_of_birth', 'date_of_birth': 'date_of_birth',
+                            'dob': 'date_of_birth', 'birthdate': 'date_of_birth',
+                            'full name': 'full_name', 'full_name': 'full_name', 'coach name': 'full_name',
+                            'email': 'email', 'email address': 'email',
+                            'name': 'name', 'field name': 'name', 'field_name': 'name',
+                            'coach willing': 'willing_to_coach', 'willing to coach': 'willing_to_coach',
+                            'buddy': 'buddy_request', 'buddy request': 'buddy_request',
+                            'friend': 'buddy_request', 'friend request': 'buddy_request',
+                            'medical': 'medical_info', 'medical info': 'medical_info',
+                            'allergy': 'medical_info', 'allergies': 'medical_info',
+                            'skill': 'skill_tier', 'skill level': 'skill_tier',
+                            'skill tier': 'skill_tier', 'level': 'skill_tier',
+                          };
+                          const normalizedHeader = HEADER_ALIASES[header.toLowerCase().trim()] ?? header.toLowerCase().trim();
+                          const isCellError = rowError?.errorFields?.includes(normalizedHeader);
+                          
                           return (
                             <td key={j} className={`px-4 py-3 whitespace-nowrap ${isCellError ? 'bg-status-error-bg text-status-error font-bold border border-status-error/50 cell-error' : ''}`}>
                               {row[header]}

@@ -73,7 +73,11 @@ When('I click to export the team rosters or schedules', async ({ page }) => {
     await page.goto('/');
     await page.evaluate(() => localStorage.setItem('dashboardActiveStep', '6'));
     await page.reload();
-    await page.locator('[data-testid*="workflow-step-output"]').first().click({ force: true });
+    
+    // CRITICAL FIX: Use a more robust locator that matches the actual rendered text
+    const step6 = page.locator('[data-testid*="workflow-step-"]').filter({ hasText: '6. Output & Communication' }).first();
+    await step6.click({ force: true });
+    
     await page.getByTestId('generate-csvs-btn').first().click({ force: true });
 });
 
@@ -103,7 +107,10 @@ When('I access the communication tools', async ({ page }) => {
     await page.goto('/');
     await page.evaluate(() => localStorage.setItem('dashboardActiveStep', '6'));
     await page.reload();
-    await page.locator('[data-testid*="workflow-step-output"]').first().click({ force: true });
+    
+    // CRITICAL FIX: Use a more robust locator that matches the actual rendered text
+    const step6 = page.locator('[data-testid*="workflow-step-"]').filter({ hasText: '6. Output & Communication' }).first();
+    await step6.click({ force: true });
 });
 
 Then('I should be able to generate a batch of draft emails for all head coaches', async ({ page }) => {
