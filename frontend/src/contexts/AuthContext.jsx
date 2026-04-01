@@ -29,10 +29,20 @@ export const AuthProvider = ({ children }) => {
       return;
     }
 
+    // Safety timeout — if onAuthStateChange never fires (network issues,
+    // misconfigured client, etc.), stop blocking the UI after 5 seconds.
+    const safetyTimer = setTimeout(() => {
+      if (loading) {
+        console.warn('[Auth] Safety timeout — onAuthStateChange did not fire within 5 s. Clearing loading state.');
+        setLoading(false);
+      }
+    }, 5000);
+
     // Listen for changes
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      clearTimeout(safetyTimer);
       setSession(session);
 
       if (session?.user) {
@@ -53,7 +63,10 @@ export const AuthProvider = ({ children }) => {
       setLoading(false);
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      clearTimeout(safetyTimer);
+      subscription.unsubscribe();
+    };
   }, []);
 
   const value = {
