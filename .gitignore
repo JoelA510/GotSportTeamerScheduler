@@ -33,3 +33,7 @@ tmp/
 
 # Playwright BDD Generated Files
 .features-gen/
+.features-gen-backup/
+
+# Backup directories
+test-results-backup/
