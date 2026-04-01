@@ -5,9 +5,28 @@ on:
     branches: [ main ]
   pull_request:
     branches: [ main ]
+  schedule:
+    # Keep the Supabase free-tier project alive (pauses after 7 days idle)
+    - cron: '0 12 * * 1'   # Every Monday at noon UTC
 
 jobs:
+  # ── Supabase keep-alive (scheduled runs only) ────────────────
+  keepalive:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase REST API
+        run: |
+          curl -sf "$SUPABASE_URL/rest/v1/" \
+            -H "apikey: $SUPABASE_ANON_KEY" \
+            -H "Authorization: Bearer $SUPABASE_ANON_KEY" || true
+        env:
+          SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+
+  # ── Main CI (push and PR only) ──────────────────────────────
   build-and-test:
+    if: github.event_name != 'schedule'
     name: Build & Test
     runs-on: ubuntu-latest
 
