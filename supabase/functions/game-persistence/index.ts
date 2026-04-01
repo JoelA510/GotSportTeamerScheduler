@@ -1,19 +1,14 @@
 /**
  * Game Persistence Edge Function
- * Phase 1 Security Remediation: Added org membership validation (C-1).
+ * Self-contained handler — all logic inlined for Deno Edge runtime compatibility.
+ * Security: org membership validation (C-1), rate limiting (M-4), payload validation.
  */
 import { serve } from 'https://deno.land/std@0.223.0/http/server.ts';
 import { z } from 'https://deno.land/x/zod@v3.22.4/mod.ts';
 import {
   createClient,
   type SupabaseClient,
-  type User,
 } from 'https://esm.sh/@supabase/supabase-js@2.45.3';
-import { createGamePersistenceHttpHandler } from '../../../packages/core/src/gamePersistenceEdgeHandler.js';
-import {
-  DEFAULT_ALLOWED_ROLES,
-  parseAllowedRolesEnv,
-} from '../../../packages/core/src/teamPersistenceEdgeConfig.js';
 import {
   getUserFromRequest,
   getUserOrgIds,
@@ -24,55 +19,139 @@ import {
 } from '../_shared/auth.ts';
 import { checkRateLimit, rateLimitExceededResponse } from '../_shared/rateLimit.ts';
 
-type HttpHandler = (request: Request) => Response | Promise<Response>;
+// ── Inlined constants & config ──────────────────────────────────────────────
+const DEFAULT_ALLOWED_ROLES = ['authenticated', 'service_role', 'admin', 'scheduler'];
 
-const supabaseUrl = Deno.env.get('SUPABASE_URL');
-const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-const allowedRoles = parseAllowedRolesEnv(Deno.env.get('GAME_PERSISTENCE_ALLOWED_ROLES'), {
-  fallbackRoles: DEFAULT_ALLOWED_ROLES,
-});
+function parseAllowedRolesEnv(
+  value: string | undefined | null,
+  { fallbackRoles = DEFAULT_ALLOWED_ROLES } = {}
+): string[] {
+  let roles: string[];
+  if (value === undefined || value === null) {
+    roles = fallbackRoles;
+  } else {
+    roles = value.split(',');
+  }
+  const normalized = roles.map((r) => r.trim().toLowerCase()).filter((r) => r.length > 0);
+  if (normalized.length === 0) throw new Error('at least one allowed role is required');
+  return normalized;
+}
 
+// ── Payload schema (Zod) ────────────────────────────────────────────────────
 const PersistencePayloadSchema = z.object({
   snapshot: z.object({
     payload: z.object({
       gameRows: z.array(z.object({ id: z.string() }).passthrough()),
     }),
+    lastRunId: z.string().nullish(),
+    runId: z.string().nullish(),
   }),
   overrides: z.array(z.unknown()).optional(),
+  runMetadata: z.record(z.unknown()).optional(),
 });
+
+// ── Inlined persistence logic ───────────────────────────────────────────────
+
+function evaluateOverrides(overrides: unknown[] = []): { pending: number } {
+  return {
+    pending: overrides.reduce((count: number, entry: unknown) => {
+      if (!entry || typeof entry !== 'object') return count;
+      const status =
+        (typeof (entry as Record<string, unknown>).status === 'string' &&
+          ((entry as Record<string, unknown>).status as string).trim().toLowerCase()) ||
+        'pending';
+      return status === 'pending' ? count + 1 : count;
+    }, 0),
+  };
+}
+
+interface RunMetadata {
+  runId?: string;
+  seasonSettingsId?: string;
+  parameters?: Record<string, unknown>;
+  metrics?: Record<string, unknown>;
+  results?: Record<string, unknown>;
+  createdBy?: string;
+  startedAt?: string;
+  completedAt?: string;
+}
+
+async function persistGameSnapshot(
+  supabaseClient: SupabaseClient,
+  snapshot: {
+    payload: { gameRows: Record<string, unknown>[] };
+    lastRunId?: string | null;
+    runId?: string | null;
+  },
+  runMetadata: RunMetadata = {},
+  now: Date = new Date()
+) {
+  const { gameRows } = snapshot.payload;
+  const effectiveRunId = runMetadata.runId ?? snapshot.lastRunId ?? snapshot.runId;
+
+  const runData = effectiveRunId
+    ? {
+        id: effectiveRunId,
+        run_type: 'game',
+        season_settings_id: runMetadata.seasonSettingsId,
+        status: 'completed',
+        parameters: runMetadata.parameters ?? {},
+        metrics: runMetadata.metrics ?? {},
+        results: runMetadata.results ?? {},
+        created_by: runMetadata.createdBy ?? 'system',
+        started_at: runMetadata.startedAt ?? now.toISOString(),
+        completed_at: runMetadata.completedAt ?? now.toISOString(),
+        updated_at: now.toISOString(),
+      }
+    : {
+        run_type: 'game',
+        status: 'completed',
+        updated_at: now.toISOString(),
+      };
+
+  const { data, error } = await supabaseClient.rpc('persist_game_schedule', {
+    run_data: runData,
+    assignments: gameRows,
+  });
+
+  if (error) throw error;
+
+  return {
+    status: 'success',
+    runId: effectiveRunId ?? data ?? null,
+    message: 'Persistence successful.',
+    syncedAt: now.toISOString(),
+  };
+}
+
+// ── Handler setup ───────────────────────────────────────────────────────────
+
+type HttpHandler = (request: Request) => Response | Promise<Response>;
+
+const supabaseUrl = Deno.env.get('SUPABASE_URL');
+const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+const allowedRoles = parseAllowedRolesEnv(Deno.env.get('GAME_PERSISTENCE_ALLOWED_ROLES'));
 
 let handler: HttpHandler;
 
 if (!supabaseUrl || !serviceRoleKey) {
   console.error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY for game persistence function.');
   handler = () =>
-    jsonResponse(
-      { status: 'error', message: 'Supabase service configuration is missing.' },
-      500
-    );
+    jsonResponse({ status: 'error', message: 'Supabase service configuration is missing.' }, 500);
 } else {
   const serviceClient = createClient(supabaseUrl, serviceRoleKey, {
     global: { fetch },
     auth: { persistSession: false },
   });
 
-  const innerHandler = createGamePersistenceHttpHandler({
-    supabaseClient: serviceClient,
-    allowedRoles,
-    getUser: (request: Request) => getUserFromRequest(request, serviceClient),
-  });
-
   handler = async (req: Request) => {
-    // Handle CORS preflight
+    // CORS preflight
     if (req.method === 'OPTIONS') {
       return new Response('ok', { headers: corsHeaders });
     }
-
     if (req.method !== 'POST') {
       return jsonResponse({ status: 'error', message: 'Method not allowed' }, 405);
     }
-
-    // --- Security: Validate user, rate limit, org membership BEFORE processing ---
 
     // 1. Authenticate user
     const user = await getUserFromRequest(req, serviceClient);
@@ -80,24 +159,37 @@ if (!supabaseUrl || !serviceRoleKey) {
       return jsonResponse({ status: 'error', message: 'Unauthorized' }, 401);
     }
 
-    // 1b. Rate limit (Phase 3.2, M-4)
+    // 1b. Rate limit
     const rateCheck = checkRateLimit(user.id);
     if (!rateCheck.allowed) {
       return rateLimitExceededResponse(rateCheck);
     }
 
-    // 2. Validate payload schema
-    let body: unknown;
+    // 1c. Role check
+    const userRole = (user as unknown as Record<string, unknown>).role as string ?? 'authenticated';
+    const effectiveRole =
+      ((user as unknown as Record<string, unknown>).app_metadata as Record<string, unknown>)?.role as string ??
+      userRole;
+    if (!allowedRoles.includes(effectiveRole)) {
+      return jsonResponse(
+        { status: 'error', message: `Role "${effectiveRole}" is not authorized.` },
+        403
+      );
+    }
+
+    // 2. Validate payload
+    let body: z.infer<typeof PersistencePayloadSchema>;
     try {
       const clone = req.clone();
-      body = await clone.json();
-      const parsed = PersistencePayloadSchema.safeParse(body);
+      const raw = await clone.json();
+      const parsed = PersistencePayloadSchema.safeParse(raw);
       if (!parsed.success) {
         return jsonResponse(
           { status: 'error', message: 'Invalid payload', issues: parsed.error.issues },
           400
         );
       }
+      body = parsed.data;
     } catch {
       return jsonResponse({ status: 'error', message: 'Invalid JSON' }, 400);
     }
@@ -111,16 +203,18 @@ if (!supabaseUrl || !serviceRoleKey) {
       );
     }
 
-    const payload = body as { snapshot?: { payload?: { gameRows?: Array<{ home_team_id?: string; away_team_id?: string }> } } };
-    const gameRows = payload?.snapshot?.payload?.gameRows ?? [];
+    const gameRows = body.snapshot.payload.gameRows;
     if (gameRows.length > 0) {
       const teamIds = [
         ...new Set(
           gameRows
-            .flatMap((r) => [r.home_team_id, r.away_team_id])
-            .filter(Boolean) as string[]
+            .flatMap((r) => [
+              (r as Record<string, unknown>).home_team_id as string | undefined,
+              (r as Record<string, unknown>).away_team_id as string | undefined,
+            ])
+            .filter(Boolean)
         ),
-      ];
+      ] as string[];
       if (teamIds.length > 0) {
         const targetOrgIds = await resolveOrgIdsFromTeamIds(serviceClient, teamIds);
         const unauthorized = targetOrgIds.filter((oid) => !userOrgIds.includes(oid));
@@ -133,32 +227,49 @@ if (!supabaseUrl || !serviceRoleKey) {
       }
     }
 
-    // 4. Delegate to inner handler
-    const response = await innerHandler(req);
-
-    // 4b. Audit log (fire-and-forget, Phase 4)
-    if (response.ok && userOrgIds.length > 0) {
-      recordAudit(serviceClient, {
-        organizationId: userOrgIds[0],
-        action: 'game.saved',
-        resourceType: 'game',
-        metadata: { game_count: gameRows.length },
-      });
+    // 4. Check for pending overrides
+    const { pending } = evaluateOverrides(body.overrides ?? []);
+    if (pending > 0) {
+      return jsonResponse(
+        {
+          status: 'blocked',
+          message: `${pending} manual override${pending === 1 ? ' is' : 's are'} still pending review.`,
+          pendingOverrides: pending,
+        },
+        409
+      );
     }
 
-    // Add CORS headers if missing
-    const newHeaders = new Headers(response.headers);
-    Object.entries(corsHeaders).forEach(([key, value]) => {
-      if (!newHeaders.has(key)) {
-        newHeaders.set(key, value);
-      }
-    });
+    // 5. Persist
+    try {
+      const result = await persistGameSnapshot(
+        serviceClient,
+        body.snapshot as Parameters<typeof persistGameSnapshot>[1],
+        (body.runMetadata ?? {}) as RunMetadata,
+        new Date()
+      );
 
-    return new Response(response.body, {
-      status: response.status,
-      statusText: response.statusText,
-      headers: newHeaders,
-    });
+      // Audit log (fire-and-forget)
+      if (userOrgIds.length > 0) {
+        recordAudit(serviceClient, {
+          organizationId: userOrgIds[0],
+          action: 'game.saved',
+          resourceType: 'game',
+          metadata: { game_count: gameRows.length },
+        });
+      }
+
+      return jsonResponse(result, 200);
+    } catch (error) {
+      console.error('Game persistence error:', error);
+      return jsonResponse(
+        {
+          status: 'error',
+          message: (error as Error)?.message || 'Failed to persist game snapshot.',
+        },
+        500
+      );
+    }
   };
 }
 
