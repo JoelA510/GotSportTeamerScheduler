@@ -90,7 +90,17 @@ const initialMockData = {
     { id: 'rsvp-1', organization_id: 'org-1', team_id: '00000000-0000-0000-0000-000000000001', player_id: 'player-1', reference_id: 'pa-1', event_type: 'practice', occurrence_date: '2025-01-07', status: 'attending', updated_at: new Date().toISOString() }
   ],
   locations: [{ id: 'loc-1', name: 'Central Park' }],
-  fields: [{ id: 'v1', name: 'Field 1', location_id: 'loc-1', organization_id: 'org-1', active: true, surface_type: 'Grass', size: '11v11' }],
+  fields: [
+    { id: 'v1', name: 'Field 1', location_id: 'loc-1', organization_id: 'org-1', active: true, surface_type: 'Grass', size: '11v11' },
+    { id: 'v2', name: 'Field 2', location_id: 'loc-1', organization_id: 'org-1', active: true, surface_type: 'Turf', size: '7v7' }
+  ],
+  game_slots: [
+    { id: 'gs-1', field_id: 'v1', start: '2026-04-04T08:00:00Z', end: '2026-04-04T09:00:00Z', capacity: 1, organization_id: 'org-1' },
+    { id: 'gs-2', field_id: 'v1', start: '2026-04-04T09:30:00Z', end: '2026-04-04T10:30:00Z', capacity: 1, organization_id: 'org-1' },
+    { id: 'gs-3', field_id: 'v2', start: '2026-04-04T08:00:00Z', end: '2026-04-04T09:00:00Z', capacity: 1, organization_id: 'org-1' },
+    { id: 'gs-4', field_id: 'v2', start: '2026-04-04T09:30:00Z', end: '2026-04-04T10:30:00Z', capacity: 1, organization_id: 'org-1' }
+  ],
+  game_assignments: [],
   games: [
     {
       id: 'g1',

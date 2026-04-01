@@ -485,20 +485,151 @@ Then('any new coach or field capacity conflicts are immediately flagged in the U
 });
 
 Given('I am on the Game Scheduling page viewing an identified conflict', async ({ page }) => {
+  // ── Navigate-then-seed-then-reload pattern ──────────────────────────────
+  // Navigate FIRST to establish the route, THEN seed mock data,
+  // THEN reload so React mounts fresh with all data in sessionStorage.
+  // This avoids race conditions between data seeding and hook initialization.
+
+  // Step 1: Navigate to the page (establishes route context)
   await page.goto('/schedule/game');
+  await page.waitForLoadState('domcontentloaded');
+
+  // Step 2: Seed the mock DB with conflict data while ON the page
+  await page.evaluate(() => {
+    const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
+    const orgId = localStorage.getItem('squadlogic_active_org') || 'org-1';
+
+    // Ensure we have enough teams with coach assignments
+    db.teams = db.teams || [];
+    if (!db.teams.find((t: any) => t.id === 'team-gc1')) {
+      db.teams.push(
+        { id: 'team-gc1', name: 'Conflict A', division_id: 'u8-div-id', coach_id: 'coach-gc1', organization_id: orgId },
+        { id: 'team-gc2', name: 'Conflict B', division_id: 'u8-div-id', coach_id: 'coach-gc2', organization_id: orgId },
+        { id: 'team-gc3', name: 'Conflict C', division_id: 'u8-div-id', coach_id: 'coach-gc3', organization_id: orgId },
+        { id: 'team-gc4', name: 'Conflict D', division_id: 'u8-div-id', coach_id: 'coach-gc4', organization_id: orgId }
+      );
+    }
+
+    // Ensure two fields exist
+    db.fields = db.fields || [];
+    if (!db.fields.find((f: any) => f.id === 'v1')) {
+      db.fields.push({ id: 'v1', name: 'Field 1', organization_id: orgId, active: true, surface_type: 'Grass', size: '11v11' });
+    }
+    if (!db.fields.find((f: any) => f.id === 'v2')) {
+      db.fields.push({ id: 'v2', name: 'Field 2', organization_id: orgId, active: true, surface_type: 'Turf', size: '7v7' });
+    }
+
+    // Wipe and re-seed to avoid stale data from prior tests
+    db.game_assignments = [
+      {
+        id: 'ga-conflict-1',
+        run_id: 'run-game-conflict',
+        slot_id: 'gs-1',
+        field_id: 'v1',
+        home_team_id: 'team-gc1',
+        away_team_id: 'team-gc2',
+        start: '2026-04-04T08:00:00Z',
+        end: '2026-04-04T09:00:00Z',
+        week_index: 1,
+        division: 'U8 Coed',
+        assignment_source: 'auto'
+      },
+      {
+        id: 'ga-conflict-2',
+        run_id: 'run-game-conflict',
+        slot_id: 'gs-1',
+        field_id: 'v1',
+        home_team_id: 'team-gc3',
+        away_team_id: 'team-gc4',
+        start: '2026-04-04T08:00:00Z',
+        end: '2026-04-04T09:00:00Z',
+        week_index: 1,
+        division: 'U8 Coed',
+        assignment_source: 'auto'
+      }
+    ];
+
+    db.game_slots = [
+      { id: 'gs-1', field_id: 'v1', start: '2026-04-04T08:00:00Z', end: '2026-04-04T09:00:00Z', capacity: 1, organization_id: orgId },
+      { id: 'gs-2', field_id: 'v1', start: '2026-04-04T09:30:00Z', end: '2026-04-04T10:30:00Z', capacity: 1, organization_id: orgId },
+      { id: 'gs-3', field_id: 'v2', start: '2026-04-04T08:00:00Z', end: '2026-04-04T09:00:00Z', capacity: 1, organization_id: orgId },
+      { id: 'gs-4', field_id: 'v2', start: '2026-04-04T09:30:00Z', end: '2026-04-04T10:30:00Z', capacity: 1, organization_id: orgId }
+    ];
+
+    // Wipe scheduler_runs and inject ONLY our conflict run with a future timestamp
+    // to guarantee it wins the ORDER BY completed_at DESC query
+    const futureDate = new Date();
+    futureDate.setFullYear(futureDate.getFullYear() + 1);
+    const timestamp = futureDate.toISOString();
+    db.scheduler_runs = (db.scheduler_runs || []).filter((r: any) => r.run_type !== 'game');
+    db.scheduler_runs.push({
+      id: 'run-game-conflict',
+      organization_id: orgId,
+      run_type: 'game',
+      status: 'completed',
+      results: { summary: { scheduledRate: 1.0, unscheduledMatchups: 0 } },
+      created_at: timestamp,
+      completed_at: timestamp
+    });
+
+    sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
+  });
+
+  // Step 3: Reload so React re-mounts with the fully seeded mock data
+  await page.reload({ waitUntil: 'domcontentloaded' });
+
+  // Step 4: Wait for the Edit Schedule button (proves the page loaded)
+  const editBtn = page.getByRole('button', { name: /Edit Schedule/i });
+  await editBtn.waitFor({ state: 'visible', timeout: 15000 });
+
+  // Step 5: Wait for the conflict banner (async hook cascade needs time)
+  await expect(page.getByTestId('game-conflict-banner')).toBeVisible({ timeout: 15000 });
+
+  // Step 6: Enter edit mode for the drag-and-drop steps that follow
+  await editBtn.click();
+  await expect(page.getByTestId('game-conflict-banner')).toBeVisible({ timeout: 5000 });
 });
 
 When('I drag a game to a new time slot to resolve the conflict', async ({ page }) => {
-  // Placeholder for DND simulation
-  expect(true).toBe(true);
+  // Drag ga-conflict-2 from v1:gs-1 (conflicting) to v2:gs-3 (open slot)
+  // @dnd-kit uses PointerSensor, so we must use raw mouse events (not dragTo).
+  // Pattern mirrors the working roster DnD test (line 370-374).
+  const gameCard = page.getByTestId('game-card-ga-conflict-2');
+  const targetZone = page.getByTestId('drop-zone-v2:gs-3');
+
+  await gameCard.waitFor({ state: 'visible', timeout: 10000 });
+  await targetZone.waitFor({ state: 'visible', timeout: 10000 });
+
+  // 1. Hover over the game card to position the pointer
+  await gameCard.hover();
+  // 2. Press down to activate PointerSensor
+  await page.mouse.down();
+  // 3. Small move to exceed the 5px distance activation constraint
+  await page.mouse.move(10, 10);
+  // 4. Hover over the target drop zone
+  await targetZone.hover();
+  // 5. Release to complete the drop
+  await page.mouse.up();
 });
 
 Then('the system validates the new slot against field availability and coach schedules', async ({ page }) => {
-  expect(true).toBe(true);
+  // After the drag, the game card should now be in the target drop zone (v2:gs-3)
+  const targetZone = page.getByTestId('drop-zone-v2:gs-3');
+  // The game card should have moved here
+  await expect(targetZone.getByTestId('game-card-ga-conflict-2')).toBeVisible({ timeout: 10000 });
 });
 
 Then('updates the game schedule if the selected slot is valid', async ({ page }) => {
-  expect(true).toBe(true);
+  // Verify the assignment was updated with manual source in the mock DB
+  const dbState = await page.evaluate(() => {
+    const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
+    return db.game_assignments || [];
+  });
+
+  const movedAssignment = dbState.find((a: any) => a.id === 'ga-conflict-2');
+  expect(movedAssignment).toBeTruthy();
+  expect(movedAssignment.assignment_source).toBe('manual');
+  expect(movedAssignment.field_id).toBe('v2');
 });
 
 // ────────────────────────────────────────────────────────────
