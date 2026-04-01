@@ -21,8 +21,7 @@ if (IS_MOCK_MODE) {
 }
 
 /**
- * Force TypeScript to treat this export strictly as the official SupabaseClient type.
- * This resolves TS1320 (await) and TS2769 (channel overload) IntelliSense errors in hooks.
+ * The Supabase client instance — real or mock depending on environment.
  * @type {import('@supabase/supabase-js').SupabaseClient}
  */
 export const supabase = IS_MOCK_MODE
