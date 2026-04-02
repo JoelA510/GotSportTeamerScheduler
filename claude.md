@@ -311,7 +311,7 @@ Plus a **weekly keepalive** cron job (Monday noon UTC) that pings the Supabase R
 | Frontend architecture | `docs/frontend-architecture.md` |
 | Data modeling | `docs/data-modeling.md` |
 | RLS policies | `docs/rls-policies.md` |
-| Requirements | `docs/requirements.md` |
+| Requirements | `docs/archive/requirements.md` |
 | E2E master plan | `docs/testing/e2e_master_plan.md` |
 | Test checklist | `TEST_CHECKLIST.md` |
 | Expansion roadmap | `docs/expansion/03_ROADMAP.md` |
