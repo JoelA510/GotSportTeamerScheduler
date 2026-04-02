@@ -1,3 +1,8 @@
+> [!NOTE]
+> **Implementation Status: COMPLETE**
+>
+> Practice scheduling is implemented in `packages/core/src/practiceScheduling.js` and `packages/core/src/practiceMetrics.js`. The UI includes lock/unlock toggles in `PracticeSchedulingPage.jsx` and manual overrides via `PracticeOverridePanel.jsx`. Key difference from original design: `javascript-lp-solver` and `OR-Tools` were **not used** — the algorithm uses a deterministic greedy slot allocation with conflict avoidance, which proved sufficient for the scale of youth sports leagues (~20-40 teams, 3-5 fields).
+
 # Practice Scheduling Design
 
 This document elaborates the roadmap's practice scheduling phase into concrete implementation guidance. It assumes the data schema defined in `docs/data-modeling.md` and that teams have already been generated as described in `docs/team-generation.md`.

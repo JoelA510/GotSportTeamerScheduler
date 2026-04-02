@@ -1,4 +1,9 @@
-# BUILDTWO vs. Main App: Final Gap Analysis
+> [!NOTE]
+> **HISTORICAL — ALL GAPS RESOLVED**
+>
+> All features listed below have been ported to the main application. The BUILDTWO prototype directory was deleted on 2026-03-10 (see `98_PROGRESS_LOG.md`, entry "HARVEST"). This document is retained for historical reference only.
+
+# BUILDTWO vs. Main App: Final Gap Analysis (Archive)
 
 This document identifies the remaining UX and functional gaps between the `BUILDTWO` prototype and the main `frontend/` application. These features must be ported before the `BUILDTWO` directory is deleted.
 

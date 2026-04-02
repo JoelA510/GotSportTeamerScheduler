@@ -1,47 +1,24 @@
-# Multi-Tenancy Strategy
+# Multi-Tenancy Implementation
 
 ## Overview
 
-SquadLogic is designing a multi-tenant architecture to support multiple youth sports organizations within a single deployment. This document outlines the strategy for data partitioning, security, and migration.
+SquadLogic implements a fully enforced multi-tenant architecture supporting multiple youth sports organizations within a single deployment. Data isolation is guaranteed at the database level via Row Level Security policies on every table.
 
-## Core Concepts
+## Data Partitioning
 
-### 1. Data Partitioning
+- **Primary key**: `organization_id` (UUID) on all data tables
+- **Hierarchy**: Organization → Season → Division → Team → Player/Coach
+- **Enforcement**: The `is_org_member(organization_id)` SQL function validates that the authenticated user has a membership record in the `organization_members` table for the specified organization
 
-- **Organization ID**: The primary key for partitioning is `organization_id` (UUID).
-- **Table Structure**: Key tables (`season_settings`, `teams`, `players` via seasons) will eventually be linked to an `organization_id`.
-- **Hierarchy**:
-  - Organization -> Season -> Division -> Team -> Player/Coach
+All tables that previously relied on implicit scoping (e.g., through JOINs to parent tables) have been denormalized with a direct `organization_id` column during the security remediation (migration `20260310000002`).
 
-### 2. Authentication & Authorization
+## Authentication & Authorization
 
-- **JWT Claims**: Future authentication tokens will include an `organization_id` claim.
-- **Row Level Security (RLS)**:
-  - Policies will enforce `organization_id` matching.
-  - Example: `auth.jwt() ->> 'organization_id' = organization_id::text`
-
-### 3. Current State (Transitional)
-
-- **Centralized Admin**: Currently, internal admins manage all data.
-- **Implicit Partitioning**: Data is naturally segmented by `Season`. Coaches only see teams they are assigned to, preventing cross-org data leakage validly but implicitly.
-
-## Migration Path
-
-### Phase 1: Schema Preparation (Current)
-
-- Create `organizations` table.
-- Add `organization_id` to `season_settings` (nullable).
-
-### Phase 2: Data Backfill
-
-- Create a "Default Organization" for existing data.
-- Update all existing `season_settings` to point to this default org.
-- Make `organization_id` NOT NULL.
-
-### Phase 3: Explicit Enforcement
-
-- Update RLS policies to strictly require `organization_id` checks for non-admin users.
-- Introduce `organization_id` into the invitation/auth flow for new users.
+- **Auth Provider**: Supabase Auth (email/password, magic link)
+- **Membership**: Users are linked to organizations via the `organization_members` table with a role (`admin`, `coach`, `player`, `parent`, `staff`)
+- **RLS Enforcement**: Every table has a `USING (is_org_member(organization_id))` policy — there is no cross-org data access even for admin users
+- **Edge Functions**: Validate both JWT authenticity and organization membership before any write operation
+- **Frontend**: `OrganizationContext` manages the active org selection, backed by `organization_members` queries. The active org is cached in `localStorage` as a preference (not as an auth token) and validated against the user's membership list on load
 
 ## Organization Schema
 
@@ -56,8 +33,19 @@ CREATE TABLE organizations (
 );
 ```
 
-## Security Considerations
+## Context Switching
 
-- **Strict RLS**: Ensure every query explicitly filters by organization.
-- **Service Role**: Minimize use of `service_role` to avoid bypassing org checks accidentally.
-- **Cross-Org Access**: If a user belongs to multiple organizations, the JWT handling needs to support switching contexts or carrying multiple claims.
+Users who belong to multiple organizations can switch between them via the sidebar org/season selector. On context switch:
+
+1. `OrganizationContext` updates the active org in state and `localStorage`
+2. All data hooks re-fetch with the new `organization_id` filter
+3. Supabase RLS ensures only the target org's data is returned
+
+## Security Safeguards
+
+- **Strict RLS**: Every query is automatically filtered by organization — no opt-in required
+- **Service Role Minimization**: Edge Functions use per-request scoped clients (user's JWT), not the service role key, for data queries
+- **Defense in Depth**: Organization ID is validated at three layers — RLS policies (database), Edge Function handlers (server), and React context guards (client)
+- **Audit Logging**: All admin actions are recorded in the `audit_log` table with `organization_id` for traceability
+
+See `docs/rls-policies.md` for the complete RLS policy reference and `docs/security/audit_and_remediation_plan.md` for the security audit that hardened this system.

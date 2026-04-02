@@ -1,92 +1,106 @@
-# Row Level Security Strategy
+# Row Level Security — Implementation Reference
 
-This document converts the data-modeling plan into an actionable Row Level Security (RLS) policy outline for the Supabase Postgres database. It assumes tables were provisioned using `docs/sql/initial_schema.sql` and focuses on protecting personally identifiable information while still enabling administrators to operate scheduling workflows.
+This document describes the **implemented** Row Level Security (RLS) strategy for the SquadLogic Supabase PostgreSQL database. All policies are organization-scoped via the `is_org_member()` helper function.
 
 ## Roles & Auth Model
 
-Supabase ships with the following JWT claims that map to database roles. We will lean on three logical personas:
+SquadLogic uses Supabase Auth with five logical roles stored in the `organization_members` table:
 
-| Persona                     | Supabase Role                         | Description                                                                                                                     |
-| --------------------------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| **Platform services**       | `service_role`                        | Trusted service key used exclusively by serverless functions (ingestion, schedulers, exports). Has full access via `bypassrls`. |
-| **League administrator**    | `authenticated` with `role = 'admin'` | Primary scheduler using the web UI. Can manage all season data.                                                                 |
-| **Coach/readonly (future)** | `authenticated` with `role = 'coach'` | Optional persona for future portal access. Limited to teams they coach.                                                         |
-| **Unauthenticated**         | `anon`                                | No direct access. Only used during onboarding flows that do not touch protected tables.                                         |
+| Role       | Description                                                   |
+|------------|---------------------------------------------------------------|
+| `admin`    | Full access to all organization data. Can manage users, import data, and run schedulers. |
+| `coach`    | View team data they are assigned to. Can update RSVP and participate in team chat. |
+| `player`   | Limited access to own team data and schedule views.            |
+| `parent`   | View child's team schedule and public calendar feeds.          |
+| `staff`    | Extended read access similar to coach, for non-coaching staff. |
 
-Policies reference the claim `auth.jwt() ->> 'role'` to discriminate between personas. Additional predicates use helper views described below.
+Roles are defined in `frontend/src/constants/permissions.js` and enforced via:
+- **Database**: `is_org_member(organization_id)` RLS policies on every table
+- **Frontend**: `usePermission` hook + `<ProtectedRoute>` component
+- **Edge Functions**: JWT validation + role allowlist checks
 
-## Helper Views & Functions
+## Primary RLS Helper: `is_org_member()`
 
-1. **`public.current_profile()`** – SQL function returning the active user’s Supabase UID and declared `role`. Simplifies policy predicates.
-2. **`public.admin_users`** – View projecting users flagged as administrators (backed by Supabase auth metadata table).
-3. **`public.coach_team_map`** – View joining `coaches`, `teams`, and `team_players` to list team IDs accessible to a coach account.
-4. **`public.mask_guardian_contacts(raw jsonb)`** – Function that strips phone/email data when a coach without admin permissions queries player records.
-
-These helpers will be added in the first migration that activates RLS so policies can stay concise.
-
-## Policy Matrix
-
-The following table summarizes desired permissions once RLS is enabled.
-
-| Table                            | Admin     | Coach                                         | Notes                                                                                            |
-| -------------------------------- | --------- | --------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| `season_settings`                | Full CRUD | Read-only (subset)                            | Coaches may read season label/dates to show context.                                             |
-| `divisions`                      | Full CRUD | Read-only                                     | Needed to display team divisions.                                                                |
-| `players`                        | Full CRUD | Read with masked PII                          | Coaches can read roster names but guardian contacts/emails are redacted via view/function.       |
-| `coaches`                        | Full CRUD | Self-manage (update own availability/contact) | Coach persona may update their own record but cannot view other coach contact info except names. |
-| `teams`                          | Full CRUD | Read teams they coach                         | Determined via `coach_team_map`.                                                                 |
-| `team_players`                   | Full CRUD | Read assignments for teams they coach         | No cross-team access.                                                                            |
-| `practice_slots`                 | Full CRUD | Read-only                                     | Enables viewing available slots when exposing schedule dashboards.                               |
-| `practice_assignments`           | Full CRUD | Read teams they coach                         | Allows coaches to view practice schedules.                                                       |
-| `game_slots` / `games`           | Full CRUD | Read teams they coach                         | Supports schedule visibility.                                                                    |
-| `import_jobs`, `staging_players` | Full CRUD | No access                                     | Contains raw PII and logs reserved for administrators.                                           |
-| `player_buddies`                 | Full CRUD | Read-only via team context                    | Coaches can see confirmed buddy pairings only for their teams (for communication).               |
-
-## Example Policy Definitions
-
-The snippet below illustrates how policies will be authored (final SQL will live in migrations once validated).
+The `is_org_member(org_id UUID)` SQL function is the cornerstone of all RLS policies. It verifies that the authenticated user has an active membership in the specified organization by checking the `organization_members` table:
 
 ```sql
-alter table public.players enable row level security;
-
-create policy "Admins can manage players"
-    on public.players
-    for all
-    to authenticated
-    using ((auth.jwt() ->> 'role') = 'admin')
-    with check ((auth.jwt() ->> 'role') = 'admin');
-
-create policy "Coaches can view roster names"
-    on public.players
-    for select
-    to authenticated
-    using (
-        (auth.jwt() ->> 'role') = 'coach'
-        and exists (
-            select 1
-            from public.coach_team_map ctm
-            join public.team_players tp on tp.team_id = ctm.team_id
-            where tp.player_id = players.id
-              and ctm.coach_user_id = auth.uid()
-        )
-    );
+CREATE OR REPLACE FUNCTION is_org_member(org_id UUID)
+RETURNS BOOLEAN AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM organization_members
+    WHERE organization_id = org_id
+      AND profile_id = auth.uid()
+  );
+$$ LANGUAGE sql SECURITY DEFINER STABLE;
 ```
 
-Additional column-level masking can be handled by exposing roster data to the front end through a security-definer view that calls `mask_guardian_contacts`. When using `SECURITY DEFINER`, ensure the owning role has only the privileges required for the view and explicitly set a safe `search_path` (for example, `set search_path = ''`) inside the function definition to avoid privilege escalation. The base table remains protected by RLS policies.
+All table policies follow this pattern:
 
-## Enforcement Plan
+```sql
+CREATE POLICY "org_scoped_access" ON public.<table_name>
+  FOR ALL TO authenticated
+  USING (is_org_member(organization_id))
+  WITH CHECK (is_org_member(organization_id));
+```
 
-1. **Migration sequencing** – Introduce helper views/functions, enable RLS, and add policies in the same migration to avoid downtime.
-2. **Default deny** – After enabling RLS on a table, add explicit policies for admin/coach personas and rely on the absence of an anonymous policy to deny unauthenticated users.
-3. **Testing** – Extend automated tests to cover:
-   - Admin JWT performing CRUD across all tables.
-   - Coach JWT reading only their team data; ensure attempts to access other teams fail.
-   - Anonymous access blocked from all tables.
-   - Masking function removes guardian contact info for coaches.
-4. **Monitoring** – Instrument serverless functions to log when queries that normally return data instead come back empty, which can signal an unexpected RLS denial, and pair this with database-level auditing (e.g., PostgreSQL `pgaudit`) when available.
+## Organization Scoping
 
-## Next Steps
+Every data table has a direct `organization_id` column (either native or backfilled via migration). This eliminates the need for multi-table JOINs in RLS policies and ensures consistent, performant access control:
 
-- Translate this strategy into timestamped Supabase migrations under `supabase/migrations/` once local stack is configured.
-- Implement Jest integration tests that call Supabase with admin vs. coach JWTs using the test dataset described in `docs/data-modeling.md`.
-- Document the helper views/functions in `docs/architecture.md` once implemented so the agent modules know which endpoints to call.
+| Table Group | Tables | Scope Method |
+|---|---|---|
+| **Core Admin** | `season_settings`, `divisions`, `import_jobs` | Direct `organization_id` |
+| **People** | `players`, `coaches`, `profiles` | Direct `organization_id` (profiles: self-only) |
+| **Teams & Rosters** | `teams`, `team_players` | Direct `organization_id` |
+| **Facilities** | `locations`, `fields`, `field_subunits` | Direct `organization_id` |
+| **Scheduling** | `practice_slots`, `game_slots`, `practice_assignments`, `games` | Direct `organization_id` |
+| **Communication** | `event_rsvps`, `team_messages`, `profile_players` | Direct `organization_id` |
+| **Evaluation** | `scheduler_runs`, `evaluation_runs`, `evaluation_findings`, `evaluation_metrics`, `evaluation_run_events` | Direct `organization_id` |
+| **Exports & Logs** | `export_jobs`, `email_log`, `audit_log` | Direct `organization_id` |
+| **Registration** | `registration_forms`, `registrations` | Direct `organization_id` via `organization_members` |
+| **Staging** | `staging_players`, `player_buddies` | Direct `organization_id` |
+
+## Edge Function Security
+
+Edge Functions use a dual-client pattern:
+
+1. **Service role client** — Used only for the initial `auth.getUser()` call to validate the JWT
+2. **Per-request scoped client** — Created using the user's JWT for all data queries, ensuring RLS enforcement
+
+Each Edge Function also performs explicit `organization_id` validation: the user's org membership is verified before any write operation.
+
+Role allowlists per Edge Function:
+- `team-persistence`: `admin`, `scheduler` (configurable via `TEAM_PERSISTENCE_ALLOWED_ROLES`)
+- `game-persistence`, `practice-persistence`: `admin`
+- `calendar-feed`: No JWT required (uses token-based auth with 90-day expiry)
+- `import-validation`: `admin`
+
+## Security Views
+
+- **`coach_team_map`** — View joining coaches, teams, and team_players. Created with `security_invoker = true` to ensure RLS applies to the querying user's context.
+
+## Remediation History
+
+The RLS system evolved through multiple migrations, consolidated during a 4-phase security audit (March 2026):
+
+| Phase | Migration | What Changed |
+|---|---|---|
+| Original | `20251208000000` | Admin-only role check policies (no org scope) |
+| Auth | `20251214000004` | Core auth schema, profiles, organization_members |
+| Communication | `20251217000000` | Team messages, RSVP tables with partial org scope |
+| RLS Remediation | `20260309000000` | `coach_team_map` security_invoker fix |
+| Unified RLS | `20260310000002` | `organization_id` denormalization, `is_org_member()` on all tables |
+| Registration Fix | `20260310000003` | Fixed policies referencing non-existent `organization_roles` table |
+| Audit Logging | `20260324000004` | Append-only `audit_log` table with admin-read-only RLS |
+
+See `docs/security/audit_and_remediation_plan.md` for the full audit report and finding details.
+
+## Testing
+
+RLS enforcement is validated at multiple levels:
+
+- **Unit tests**: `tests/usePermission.test.js` — role-based permission checks
+- **Unit tests**: `tests/verifyRpcUsage.test.js` — verifies RPC calls use correct org-scoped patterns
+- **E2E tests**: `rbac_multi_tenancy.feature` — cross-org isolation scenarios
+- **E2E tests**: `visual_rbac_enforcement.feature` — UI element visibility based on role
+- **Edge Function tests**: `tests/calendarFeed.test.js` — token validation and expiry

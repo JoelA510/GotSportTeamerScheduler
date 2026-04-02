@@ -1,4 +1,9 @@
-# SquadLogic — Testing Execution & Gap Report
+> [!WARNING]
+> **HISTORICAL SNAPSHOT — DO NOT USE AS CURRENT STATUS**
+>
+> This report was generated on 2026-03-25 during the post-security-remediation audit. Since then, all Vitest failures and all 22 E2E failures documented below have been resolved. As of 2026-03-31, the test suite is **57/57 E2E passing (100%)** and **all Vitest tests green**. See `TEST_CHECKLIST.md` for current testing instructions.
+
+# SquadLogic — Testing Execution & Gap Report (Archive)
 
 **Generated:** 2026-03-25
 **Scope:** Post-security-remediation (Phases 1–4) test audit

@@ -1,3 +1,13 @@
+> [!NOTE]
+> **Implementation Status: COMPLETE**
+>
+> The ingestion pipeline described below has been implemented. Key implementation differences from the original design:
+> - CSV parsing uses **PapaParse** (not `@fast-csv/parse`)
+> - Client-side validation is in `ImportContext.jsx`; server-side validation is in the `import-validation` Edge Function
+> - Header matching uses a strict alias map (not fuzzy `.includes()`)
+> - Testing uses **Vitest** (not Jest)
+> - File size enforcement (10 MB) is implemented both client-side and via Supabase Storage policy
+
 # Data Ingestion Pipeline Specification
 
 This document expands on the roadmap tasks for importing GotSport registrations and facility availability spreadsheets. It provides a step-by-step plan for implementing resilient ingestion tooling that writes normalized records into Supabase while giving the league administrator quick feedback when files contain issues.

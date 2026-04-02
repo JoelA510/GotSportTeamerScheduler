@@ -1,49 +1,81 @@
-# Architecture & Technology Selection
+# Architecture & Technology Overview
 
-## Modular Agentic Architecture
+## System Architecture
 
-- **Data Ingestion Agent**: Imports GotSport registration exports and field availability spreadsheets. Normalizes player, coach, and facility data, validates buddy pairs, and forwards clean records to storage.
-- **Team Formation Agent**: Generates balanced rosters per division using roster formulas, mutual buddy handling, and coach-child constraints. Surfaces adjustments back to the admin UI.
-- **Schedule Orchestration Agent**: Assigns weekly practices and Saturday games while evaluating conflicts, daylight adjustments, and fairness metrics. Integrates an evaluator loop to refine assignments.
-- **Evaluation & Export Agent**: Audits schedules, produces reports, and generates CSV/Excel exports for TeamSnap along with draft coach communications.
-- **Coordinator (UI/API Layer)**: Modern React front end (e.g., Vite + React Router) backed by Supabase auth and APIs, orchestrating user interactions, persisting state, and delegating tasks to agents.
+SquadLogic is a **monorepo SPA** (Single-Page Application) that converts raw GotSport registration data into teaming and scheduling frameworks for youth sports organizations. The system is structured into three layers:
 
-## Technology Stack Decisions
+1. **Frontend (React 19 + Vite 6)**: A Vite-built React SPA deployed as a static bundle on Vercel. Uses `VITE_*`-scoped environment variables. The frontend contains all UI components, routing, and state management via React Context providers.
 
-- **Front End**: Vite-based React application deployed as a static bundle (e.g., Vercel or Netlify) with environment variables scoped as `REACT_APP_*`.
-- **State & Data Access**: React Query or SWR for client data fetching; Supabase JavaScript client for Auth + Postgres.
-- **Back End / APIs**: Supabase Edge Functions (TypeScript) or lightweight serverless handlers (e.g., Vercel/Netlify functions) for ingestion, scheduling jobs, and export preparation.
-- **Database**: Supabase Postgres with Row Level Security, Storage for file uploads, and Functions for complex SQL views if needed.
-- **Task Automation**: Background scheduling via the hosting provider's cron/scheduled functions (e.g., Vercel Cron or Netlify Scheduled Functions) or Supabase Edge Functions for periodic evaluations or notifications.
+2. **Core Domain Logic (`@squadlogic/core`)**: A pure JavaScript package within the monorepo (`packages/core/src/`) containing all scheduling algorithms, team generation, metrics evaluation, and data validation. Framework-agnostic — no React imports allowed.
 
-### Proof-of-Concept Validation Plan
+3. **Backend (Supabase)**: PostgreSQL database with Row Level Security, Edge Functions (Deno/TypeScript) for persistence and calendar feeds, and Auth for user management. All data access is organization-scoped via `is_org_member()` RLS policies.
 
-1. **Supabase project dry run**
-   - Provision a sandbox Supabase project and enable Row Level Security on placeholder tables to ensure the default policy posture matches expectations.
-   - Deploy a minimal Edge Function (`hello-world`) with scheduled invocation to confirm cron support and cold start latency.
-   - Record resource consumption (invocations, bandwidth) after sample CSV uploads to validate free-tier headroom.
-2. **Hosting smoke test**
-   - Scaffold the Vite front end with a placeholder dashboard and connect it to the Supabase sandbox via environment variables.
-   - Deploy to both Netlify and Vercel trial projects to benchmark build times, bundle size limits, and environment variable management ergonomics.
-   - Capture build logs and deploy previews, noting any required configuration (e.g., `CI=false npm run build`).
-3. **Integration spike**
-   - Implement a prototype CSV upload flow that writes data to Supabase Storage and triggers the ingestion agent via webhook or direct Edge Function call.
-   - Generate a mock TeamSnap CSV export from the stored sample data to verify the round trip path and identify schema adjustments early.
-   - Document blockers or additional services (e.g., background job queue) uncovered during the spike.
+```text
+┌─────────────────────────────────────────────────────────┐
+│  Vercel (Static SPA Hosting)                            │
+│  ┌───────────────────────────────────────────────────┐  │
+│  │  React 19 + Vite 6 Frontend                       │  │
+│  │  • React Router v7 (lazy-loaded pages)            │  │
+│  │  • Deep Space Glass Design System (CSS + TW4)     │  │
+│  │  • React Context (Auth, Org, Import, Theme)       │  │
+│  │  • @dnd-kit (drag-and-drop scheduling)            │  │
+│  │  • Recharts (dashboard charts)                    │  │
+│  └────────────────────┬──────────────────────────────┘  │
+└───────────────────────┼─────────────────────────────────┘
+                        │ HTTPS
+┌───────────────────────┼─────────────────────────────────┐
+│  Supabase                                               │
+│  ├── Auth (JWT, email/password, magic link)              │
+│  ├── PostgreSQL + RLS (organization-scoped)              │
+│  ├── Edge Functions:                                     │
+│  │   ├── team-persistence                               │
+│  │   ├── practice-persistence                           │
+│  │   ├── game-persistence                               │
+│  │   ├── calendar-feed (public ICS, no JWT)              │
+│  │   └── import-validation                              │
+│  └── Storage (CSV imports, exported files)               │
+└─────────────────────────────────────────────────────────┘
+```
+
+## Technology Stack
+
+| Layer            | Technology                                              |
+|------------------|---------------------------------------------------------|
+| Frontend         | React 19, Vite 6, react-router-dom v7                  |
+| Styling          | Tailwind CSS 4 (`@tailwindcss/vite`) + Vanilla CSS ("Deep Space Glass" design system) |
+| State Management | React Context (Auth, Import, Organization, Theme)       |
+| Backend          | Supabase (PostgreSQL, Edge Functions, Auth, Storage)    |
+| Unit Testing     | Vitest + @testing-library/react + jsdom                 |
+| E2E Testing      | Playwright-BDD (Gherkin `.feature` files + TypeScript step definitions) |
+| Linting          | ESLint (flat config) + Prettier                         |
+| Type Checking    | TypeScript (`checkJs` + `allowJs`, `strict: false`)     |
+| Drag & Drop      | @dnd-kit/core + @dnd-kit/sortable                       |
+| Charts           | Recharts                                                |
+| Icons            | lucide-react                                            |
+| Deployment       | Vercel (static SPA + API rewrites)                      |
+
+## Domain Modules (`packages/core/src/`)
+
+The core package contains pure JavaScript modules implementing the scheduling domain:
+
+- **`teamGeneration.js`** — Balanced roster allocation honoring mutual buddy requests and coach assignments
+- **`practiceScheduling.js`** — Conflict-aware weekday practice slot assignment with daylight expansion
+- **`gameScheduling.js`** — Round-robin Saturday game generation with slot allocation
+- **`practiceMetrics.js` / `gameMetrics.js`** — Fairness scoring and conflict detection
+- **`evaluationPipeline.js`** — Automated readiness assessment across all scheduling outputs
+- **`gameValidation.js`** — Real-time drag-time validation for the interactive Game Schedule Grid
+- **`outputGeneration.js`** — CSV/export formatting for master and per-team schedule files
+- **`teamPersistenceSnapshot.js`** / **`teamPersistenceApi.js`** — Snapshot packaging and transactional persistence
 
 ## Free-Tier Constraints & Mitigations
 
-- **Hosting Platform**: Deploy on a provider with a generous free plan (e.g., Vercel or Netlify). Evaluate their free-tier allowances for build minutes, serverless function hours, cron support, bandwidth, and analytics to confirm they cover early-season needs; cache heavy results and batch schedule generation to stay within limits.
-- **Supabase**: 500 MB Postgres, 50K monthly active users, and project pause after 1 week inactivity. Mitigation—archive historical seasons, prune uploads, and schedule heartbeat jobs or manual logins.
-- **Client Performance**: Optimize bundle size with code splitting, avoid unnecessary re-renders, and lean on incremental static regeneration for read-heavy pages.
+- **Vercel**: Deployed on Vercel's free tier. Production builds are optimized with code splitting via `React.lazy()` page loading.
+- **Supabase**: 500 MB Postgres, project pause after 7 days inactivity. Mitigated by a **weekly keep-alive cron** in the GitHub Actions CI pipeline (Monday noon UTC) that pings the Supabase REST API.
+- **Client Performance**: Code-split pages, lazy-loaded routes, and minimal bundle size via Vite's tree-shaking.
 
 ## Integration Points
 
-- **TeamSnap**: Export CSV/Excel templates aligned with TeamSnap import schema; manual upload flow in MVP, with future API exploration.
-- **Email Workflows**: Generate mailto links or integrate with a transactional email API (e.g., Resend) once auth is in place.
-- **Authentication**: Launch with Supabase Auth (admin email/password or magic link) and expand roles or MFA requirements as collaborator access grows.
-- **Observability**: Use Supabase logs and the hosting platform's analytics; consider Logflare for aggregated monitoring if limits permit.
-  - **Scheduler run dashboards**: Expose `scheduler_runs` and linked `evaluation_runs` in the admin UI with per-run timelines,
-    duration charts, conflict/warning counts, and retry buttons for failed runs. Surface the latest status per run type on the
-    landing page and add filters by `season_settings_id` and `run_type` so operators can quickly validate the consolidated run
-    history.
+- **GotSport**: CSV import via the Data Import page — parsed client-side with PapaParse, validated server-side via the `import-validation` Edge Function.
+- **Calendar Sync**: Public ICS feeds generated by the `calendar-feed` Edge Function, accessible via token-authenticated URLs with 90-day expiry and rotation support.
+- **Authentication**: Supabase Auth with email/password. Role-based access control via `usePermission` hook and `<ProtectedRoute>` component. Five roles: `admin`, `coach`, `player`, `parent`, `staff`.
+- **Observability**: Supabase dashboard for API monitoring; `audit_log` table for admin action tracking; Content-Security-Policy headers via `vercel.json`.

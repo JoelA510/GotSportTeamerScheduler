@@ -1,3 +1,12 @@
+> [!NOTE]
+> **Implementation Status: PARTIALLY COMPLETE**
+>
+> Output generation is implemented in `packages/core/src/outputGeneration.js` and the `OutputGenerationPanel` component:
+> - ✅ CSV export generation (master schedule, per-team files)
+> - ✅ Coach welcome email generation
+> - ✅ Supabase Storage upload integration
+> - ⏳ **Deferred**: `exceljs` is not used — exports are CSV only. TeamSnap API integration (`teamsnap-mapping.md`) was not implemented and is out of scope for v1.0.
+
 # Output Generation & Integration Plan
 
 This guide expands roadmap section 8 by defining how the system will produce deliverables for TeamSnap and league communications

@@ -1,17 +1,12 @@
-# Evaluation & Refinement Loop Plan
+> [!NOTE]
+> **Implementation Status: COMPLETE**
+>
+> The evaluation pipeline described below has been implemented in `packages/core/src/evaluationPipeline.js`, `practiceMetrics.js`, and `gameMetrics.js`. Testing uses **Vitest** (not Jest as originally proposed). The TypeScript evaluation worker was implemented as a plain JavaScript module. Supabase tables (`evaluation_runs`, `evaluation_findings`, `evaluation_metrics`, `evaluation_run_events`) are in production with organization-scoped RLS.
 
-This document operationalizes the roadmap's evaluation loop so the scheduler can self-audit, suggest automatic fixes, and surface
-clear tasks for administrators. It assumes the scheduling engines described in `docs/practice-scheduling.md` and
-`docs/game-scheduling.md` feed their results into Supabase tables (`practice_assignments`, `games`).
+# Evaluation Pipeline Design Overview
 
-## Objectives
-
-- Automatically verify hard constraints immediately after team, practice, and game generation runs.
-- Quantify fairness and quality metrics so admins can judge schedule balance at a glance.
-- Provide a structured remediation workflow that attempts safe auto-fixes before requesting manual input.
-- Preserve an auditable history of evaluations, inputs, and outcomes for regression analysis.
-
-## Evaluation Pipeline Overview
+The evaluation lifecycle consists of four main phases:
+1. **Snapshot Inputs**
 
 1. **Snapshot Inputs**
    - Capture identifiers for the run being evaluated (`run_id`, `division_id`, scheduler type) plus the hash of relevant

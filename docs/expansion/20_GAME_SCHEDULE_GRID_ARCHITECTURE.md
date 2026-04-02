@@ -1,19 +1,27 @@
 # Phase 2: GameScheduleGrid — Component Architecture Design
 
+> [!NOTE]
+> **STATUS: IMPLEMENTED** — All components described in this architecture document have been built and are live. This document is preserved as an Architecture Decision Record (ADR) capturing the design rationale and component strategy.
+
 **Date:** March 30, 2026
 **Task:** 2.1 (Opus 4.6)
 **Prerequisite:** Phase 1 CI/CD complete — all changes validated by GitHub Actions pipeline
 
 ---
 
-## 1. Current State
+## 1. Implementation Status
 
-The Game Scheduling page today is **read-only**. `GameSchedulingPage.jsx` (59 lines) renders:
+All 5 planned components have been built and are operational in `frontend/src/components/scheduling/`:
 
-- `GameReadinessPanel` — metrics snapshot (scheduled %, unscheduled count, conflicts)
-- A team selector dropdown → `TeamScheduleView` — filtered list of games for one team
+| Component | File | Status |
+|---|---|---|
+| `GameConflictBanner` | `GameConflictBanner.jsx` | ✅ Implemented |
+| `GameScheduleGrid` | `GameScheduleGrid.jsx` | ✅ Implemented |
+| `FieldColumn` | `FieldColumn.jsx` | ✅ Implemented |
+| `TimeSlotDropZone` | `TimeSlotDropZone.jsx` | ✅ Implemented |
+| `GameCard` | `GameCard.jsx` | ✅ Implemented |
 
-There is no interactive scheduling surface. The `@skipped` E2E scenario "Resolving game schedule conflicts" in `admin_overrides.feature` defines the target behavior but has no implementation.
+`GameSchedulingPage.jsx` has been extended with the full DndContext integration, edit mode toggle, and real-time validation. Unit tests exist for all new components.
 
 **Existing infrastructure we build on:**
 

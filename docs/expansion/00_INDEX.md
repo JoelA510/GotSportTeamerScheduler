@@ -21,7 +21,15 @@ This folder contains the complete roadmap and execution plan for the SquadLogic 
 - **[15_EPIC_REGISTRATION_DATA.md](./15_EPIC_REGISTRATION_DATA.md)** - Data ingestion, Forms (No payments).
 - **[16_EPIC_REPORTING.md](./16_EPIC_REPORTING.md)** - Analytics, Exports.
 
+## Post-v1.0 Epics
+
+- **[17_EPIC_TECH_DEBT.md](./17_EPIC_TECH_DEBT.md)** - Tech debt: Vite 6, React 19, Tailwind 4, TypeScript adoption.
+- **[18_BUILDTWO_GAP_ANALYSIS.md](./18_BUILDTWO_GAP_ANALYSIS.md)** - *(Archive)* BUILDTWO prototype gap analysis — all gaps resolved.
+- **[19_EPIC_LAUNCH_AND_BEYOND.md](./19_EPIC_LAUNCH_AND_BEYOND.md)** - CI/CD, Game Scheduler, Live Backend — summary version.
+- **[19_EPIC_LAUNCH_AND_BEYOND_CLAUDE.md](./19_EPIC_LAUNCH_AND_BEYOND_CLAUDE.md)** - CI/CD, Game Scheduler, Live Backend — detailed execution plan.
+- **[20_GAME_SCHEDULE_GRID_ARCHITECTURE.md](./20_GAME_SCHEDULE_GRID_ARCHITECTURE.md)** - *(ADR)* Game Schedule Grid component architecture design.
+- **[PRODUCTION_CUTOVER_RUNBOOK.md](./PRODUCTION_CUTOVER_RUNBOOK.md)** - v1.0 production deployment runbook.
+
 ## Logs
 
 - **[98_PROGRESS_LOG.md](./98_PROGRESS_LOG.md)** - Running log of execution.
-- **[99_BLOCKERS.md](./99_BLOCKERS.md)** - (Created only if blocked)

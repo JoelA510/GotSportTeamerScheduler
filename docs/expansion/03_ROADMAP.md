@@ -34,12 +34,12 @@ _Note on Epics: All epics (10 through 17) have been fully implemented, verified,
 
 ---
 
-## Execution Sequence (Remaining Epics)
+## Post-v1.0 Work
 
-| Sequence | Epic ID     | File                           | Description                                            |
-| :------- | :---------- | :----------------------------- | :----------------------------------------------------- |
-| 1        | **CORE-UI** | `11_EPIC_CORE_DOMAIN.md`       | Finish RBAC enforcement and strict Multi-Tenant RLS.   |
-| 2        | **SCH-UI**  | `12_EPIC_SCHEDULING.md`        | Build Facility CRUD and manual conflict resolution UI. |
-| 3        | **COMMS**   | `14_EPIC_COMMS.md`             | Notifications, RSVP, Chat, ICS Feeds.                  |
-| 4        | **DATA**    | `15_EPIC_REGISTRATION_DATA.md` | Form Builder, User creation from intake.               |
-| 5        | **RPT**     | `16_EPIC_REPORTING.md`         | Standings, Stats, Compliance Dashboards.               |
+Following v1.0 completion, additional work was executed under **Epic 19: Launch & Beyond** (see `19_EPIC_LAUNCH_AND_BEYOND_CLAUDE.md`):
+
+- **Phase 1 (Completed):** GitHub Actions CI/CD pipeline, Vercel production deployment, branch protection
+- **Phase 2 (Completed):** Interactive Game Schedule Grid with drag-and-drop (`@dnd-kit`), real-time validation, and the final E2E test scenario
+- **Phase 3 (Completed):** Live Supabase backend transition, Edge Function deployment, production cutover (see `PRODUCTION_CUTOVER_RUNBOOK.md`)
+
+Additionally, a comprehensive **4-phase security audit** was completed in March 2026 (see `docs/security/audit_and_remediation_plan.md`).

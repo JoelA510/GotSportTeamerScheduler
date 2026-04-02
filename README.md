@@ -1,6 +1,6 @@
 # SquadLogic
 
-![SquadLogic Logo](logo.png)
+![SquadLogic Logo](frontend/src/assets/Logo.png)
 
 > **Focus on the Field.**
 >
@@ -9,7 +9,7 @@
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen)](https://github.com/JoelA510/SquadLogic/actions)
 [![License: ISC](https://img.shields.io/badge/License-ISC-blue.svg)](https://opensource.org/licenses/ISC)
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D20-green)](https://nodejs.org/)
-[![Vite](https://img.shields.io/badge/Vite-5.4.21-646cff)](https://vitejs.dev/)
+[![Vite](https://img.shields.io/badge/Vite-6.x-646cff)](https://vitejs.dev/)
 
 ---
 
@@ -43,8 +43,7 @@ SquadLogic v1.0 is feature-complete, providing a full-suite operational platform
 - **Styling**: Vanilla CSS (Deep Space Glass Design System), Tailwind CSS 4
 - **Backend**: Node.js, Supabase (PostgreSQL, Edge Functions, Storage, Auth)
 - **Testing**: Vitest (Unit/Integration), Playwright-BDD (E2E)
-- **Analysis**: TypeScript (Strict Mode), ESLint, Prettier
-- **Linting**: ESLint, Prettier
+- **Analysis**: TypeScript (`checkJs` + `allowJs`), ESLint (flat config), Prettier
 
 ## 🗺️ Current Routes
 

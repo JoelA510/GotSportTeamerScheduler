@@ -1,3 +1,8 @@
+> [!NOTE]
+> **Implementation Status: COMPLETE**
+>
+> Game scheduling is implemented in `packages/core/src/gameScheduling.js` (778 lines) and `packages/core/src/gameMetrics.js` (444 lines). The interactive Game Schedule Grid with drag-and-drop is in `frontend/src/components/scheduling/`. Key difference from original design: the `scheduling_exceptions` table referenced below was not created — exception handling is managed through the manual override system (`assignment_source: 'manual'`) and the `GameConflictBanner` UI.
+
 # Game Scheduling Plan
 
 ## Objectives & Scope

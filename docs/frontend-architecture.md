@@ -1,84 +1,122 @@
-# Front-End Architecture Plan
+# Front-End Architecture
 
-This document breaks down the roadmap's front-end milestones into an actionable implementation strategy using a modern React build tool (e.g., Vite). It establishes the page layout, state management approach, data-fetching patterns, and testing expectations so subsequent engineering tasks have clear guardrails.
+This document describes the implemented frontend architecture for SquadLogic. The frontend is a React 19 Single-Page Application built with Vite 6, deployed as a static bundle on Vercel.
 
-## UI Shell & Navigation
+## Routing & Navigation
 
-- **Routing**: Use `react-router-dom` v6 with a top-level `AppShell` that renders persistent navigation (sidebar on desktop, collapsible drawer on mobile).
-- **Layout primitives**: Implement a shared `PageHeader`, `Toolbar`, and `Card` component library leveraging CSS Modules or Tailwind (decision pending design assets). Prioritize responsive breakpoints (≥320px mobile, ≥768px tablet, ≥1024px desktop).
-- **Global status surfaces**: Reserve a notification/toast area tied to Supabase events (ingestion progress, evaluation results) and a global loading indicator for long-running jobs.
+- **Router**: `react-router-dom` v7 with `<BrowserRouter>`.
+- **Layout**: `DashboardLayout` provides a persistent sidebar (`Sidebar.jsx`) on desktop and a collapsible hamburger drawer on mobile.
+- **Page Loading**: All page components are lazy-loaded via `React.lazy()` in `App.jsx` for optimal bundle splitting.
+- **Route Protection**: `<ProtectedRoute requiredPermission={PERMISSIONS.*}>` gates admin-only pages with immediate redirect for unauthorized users.
+- **Provider Hierarchy**: `BrowserRouter > AuthProvider > OrganizationProvider > ImportProvider > ThemeProvider > ErrorBoundary`.
 
-## Core Screens & Component Slices
+## Current Routes
 
-1. **Dashboard**
-   - KPIs: total players imported, teams generated, practices scheduled, evaluation status.
-   - Components: `SummaryStat`, `ProgressTimeline`, `RecentActivity` (backed by Supabase `import_jobs` and scheduler run logs).
-   - **Scheduler run observability**: Wire tiles to `scheduler_runs` with live status badges, run durations, and conflict counts
-     drawn from the `metrics` and `results` JSON payloads. Include an expandable `RunDetailDrawer` that lists the latest run per
-     type (team, practice, game), links to related `evaluation_runs`, and surfaces retry controls when a run is stuck in
-     `needs_manual_review` or `failed` states.
-2. **Data Import**
-   - Tabs for registrations vs. field slots.
-   - Components: `CsvUploadDropzone`, `ImportHistoryTable`, `ValidationResultDrawer`.
-   - Hooks trigger Supabase Storage uploads, poll Edge Function status, and stream job metrics via Realtime.
-3. **Configuration**
-   - Form sections for roster rules, buddy policy toggles, season dates.
-   - Components: `SeasonSettingsForm`, `RosterFormulaTable`, `DateRangePicker` (wraps `react-day-picker`).
-   - Use Zod schemas for validation and integrate with `react-hook-form`.
-4. **Team Review**
-   - Table with expandable rows showing roster details.
-   - Components: `TeamRosterTable`, `RosterSwapModal`, `BuddyTag`.
-   - Drag-and-drop via `@dnd-kit/core`; persist manual swaps with Supabase RPC calls.
-5. **Practice Scheduler**
-   - Calendar-style grid grouped by weekday/field.
-   - Components: `PracticeScheduleGrid`, `ConflictBadge`, `SlotDetailDrawer`.
-   - Provide run controls ("Generate", "Resolve Conflicts") with progress modals.
-6. **Game Scheduler**
-   - Similar grid but grouped by Saturday dates.
-   - Components: `GameScheduleGrid`, `MatchupCard`, `ByeIndicator`.
-7. **Evaluation**
-   - Findings list, charts for fairness metrics, audit history timeline.
-   - Components: `FindingsTable`, `FairnessChart` (wrapping Recharts or Chart.js), `EvaluationRunHistory`.
-8. **Exports & Communications**
-   - Download cards for master/team files, email template previewer.
-   - Components: `ExportCard`, `EmailPreviewPane`, `SendChecklist`.
+| Route | Page Component | Description |
+|---|---|---|
+| `/` | `DashboardPage` | Dashboard with metrics, workflow progression, and league status |
+| `/import` | `ImportPage` | GotSport CSV data ingestion with validation |
+| `/teams` | `TeamAnalysisPage` | Roster generation, analysis, drag-and-drop overrides |
+| `/fields` | `FieldManagementPage` | Venue/field/blackout date CRUD with weekly grid |
+| `/schedule/practice` | `PracticeSchedulingPage` | Practice slot assignment with lock/unlock toggles |
+| `/schedule/game` | `GameSchedulingPage` | Interactive game schedule grid with drag-and-drop |
+| `/settings` | `SettingsPage` | League config, theme branding, season management |
+| `/compliance` | `AdminComplianceDashboard` | Registration forms, waiver tracking |
+| `/reporting` | `AdminReportingDashboard` | Game metrics, standings, charts |
+| `/standings` | `LeagueStandings` | Score entry, standings tables, tie-breaker logic |
+| `/registration/:formId` | `RegistrationFlow` | Public registration form flow |
+| `/team/:teamId` | `TeamPortalPage` | Coach/parent portal — roster, schedule, RSVP, chat |
 
-## State Management & Data Access
+## State Management
 
-- Adopt **React Query** for server-state caching with query keys per resource (`['players', seasonId]`, `['practiceAssignments', runId]`).
-- Store local UI state (filters, modal visibility) in `zustand` slices to avoid prop drilling.
-- Centralize Supabase client initialization in `supabaseClient.ts` and wrap the app in a context providing authenticated session info.
-- Implement optimistic updates for manual roster and schedule adjustments while verifying outcomes via evaluation reruns.
+State is managed entirely through **React Context** — no external state library is used.
 
-## Supabase Integration Strategy
+| Context | File | Purpose |
+|---|---|---|
+| `AuthContext` | `contexts/AuthContext.jsx` | Supabase auth session, user profile, login/logout |
+| `OrganizationContext` | `contexts/OrganizationContext.jsx` | Active org selection, org membership, org switching |
+| `ImportContext` | `contexts/ImportContext.jsx` | CSV import state, parsed data, validation results |
+| `ThemeContext` | `contexts/ThemeContext.jsx` | Theme selection (dark/light/party/club), timezone |
 
-- **Authentication**: Use Supabase Auth with a dedicated admin user (email/password or magic link) from the outset. Gate the UI with Supabase session state and validate JWT roles within serverless handlers. Keep the service-role key restricted to trusted server-side environments and never expose it to the client bundle.
-- **Edge Functions**: Define typed client wrappers (e.g., `importRegistrations`, `runPracticeScheduler`) returning discriminated unions `{ status: 'queued' | 'running' | 'error', data?: ... }`.
-- **Realtime channels**: Subscribe to `import_jobs` and scheduler run tables to push live status updates into React Query caches.
+## Custom Hooks (`frontend/src/hooks/`)
 
-## Styling & Accessibility
+| Hook | Purpose |
+|---|---|
+| `useDashboardData` | Aggregates team, practice, game, and evaluation data |
+| `useTeamSummary` | Team generation run data from `scheduler_runs` |
+| `useTeamAnalysis` | Player grouping by age/gender with season-aware age calculations |
+| `useTeamPersistence` | Snapshot packaging and Supabase persistence triggers |
+| `usePracticeSummary` | Practice scheduling run data |
+| `usePracticeAssignments` | Practice slot assignment data |
+| `useGameSummary` | Game scheduling run data |
+| `useGameAssignments` | Game assignment data by run ID |
+| `useGameSlots` | Available game time slots |
+| `useFields` | Field and venue CRUD operations |
+| `useConflicts` | Real-time conflict detection across scheduling data |
+| `useSchedulerRun` | Generic scheduler run execution and status tracking |
+| `usePermission` | RBAC permission checks against current user role |
+| `useTeamPortal` | Team portal data — roster, schedule, RSVP, chat |
 
-- Establish a theming system using CSS custom properties for colors/spacing to support dark mode later.
-- Follow WCAG 2.1 AA: ensure component library ships with keyboard focus states, ARIA labels on drag handles, and semantic heading structure per page.
-- Integrate Axe accessibility checks in Storybook (future) or via Jest + `@testing-library/jest-dom` to catch regressions.
+## Component Organization
 
-## Testing & Tooling
+```text
+frontend/src/components/
+├── scheduling/          # Game Schedule Grid components
+│   ├── GameScheduleGrid.jsx    # Interactive field × timeslot grid
+│   ├── FieldColumn.jsx         # Droppable column per field
+│   ├── TimeSlotDropZone.jsx    # Droppable zone per time slot
+│   ├── GameCard.jsx            # Draggable game assignment card
+│   └── GameConflictBanner.jsx  # Conflict summary banner
+├── teaming/             # Roster management components
+│   └── RosterManager.jsx       # Drag-and-drop roster with @dnd-kit
+├── ui/                  # Shared UI components
+├── DashboardWorkflow.jsx       # 6-step workflow orchestration
+├── ImportPanel.jsx             # CSV import with validation
+├── TeamPersistencePanel.jsx    # Team save with optimistic UI
+├── OutputGenerationPanel.jsx   # CSV/email export generation
+├── Sidebar.jsx                 # Navigation with org/season switcher
+├── ProtectedRoute.jsx          # RBAC route guard
+├── ErrorBoundary.jsx           # Global error boundary (Deep Space Glass)
+└── ...                         # Other panels and shared components
+```
 
-- **Unit tests**: `@testing-library/react` for components, `jest` snapshots for layouts, Zod schema tests.
-- **Integration tests**: Cypress component tests for drag-and-drop workflows and scheduler run flows (stub Supabase API).
-- **Performance budget**: Track bundle size with `source-map-explorer`; enforce <200KB initial JS after gzip.
-- **CI hooks**: Lint (`npm run lint`), type-check (`tsc --noEmit`), and run targeted Jest suites on pull requests touching `src/`.
+## Design System — "Deep Space Glass"
 
-## Incremental Delivery Milestones
+Defined in `frontend/src/index.css` with four themes controlled via `data-theme` attribute:
 
-1. Scaffold the React project with routing, Supabase client bootstrap, and placeholder navigation using a modern build tool such as Vite.
-2. Implement Data Import screen with live import history reading from stubbed data.
-3. Build Team Review workflow, then expand into practice/game schedulers.
-4. Layer in Evaluation dashboards and export utilities.
-5. Polish accessibility, performance, and offline error handling before production hardening.
+- **`dark`** (default) — Deep navy backgrounds, sky-blue accents
+- **`light`** — Slate/white backgrounds, ocean-blue accents
+- **`party`** — Purple/fuchsia backgrounds, pink accents
+- **`club`** — Dynamic club branding (with `data-club-mode` light/dark sub-modes)
 
-## Open Questions
+Key CSS utilities: `.glass-panel`, `.glass-button`, `.glass-input`, `.card-glass`, `.animate-fadeIn`, `.animate-slideUp`.
 
-- Finalize UI component library choice (headless vs. prebuilt design system like Chakra UI).
-- Confirm whether admin authentication should launch with Supabase Auth email/password or magic links and whether additional MFA is required for production.
-- Determine if scheduling agents run via Netlify Scheduled Functions or Supabase Edge Function cron (currently in beta), as this affects UI polling patterns and reliability expectations.
+All colors use CSS custom properties (e.g., `var(--color-bg-app)`, `var(--color-primary)`, `var(--color-text-accent)`) that auto-switch with theme.
+
+## Drag-and-Drop
+
+Two drag-and-drop surfaces use `@dnd-kit`:
+
+1. **RosterManager** — Cross-team player swaps with `SortableContext` per team column
+2. **GameScheduleGrid** — Game card moves across field × timeslot grid with `useDroppable` zones and real-time validation feedback
+
+Both follow the same pattern: `DndContext` with `closestCorners` collision detection, `DragOverlay` for ghost cards, optimistic UI with rollback on persistence failure.
+
+## Supabase Integration
+
+- **Client**: `frontend/src/lib/supabaseClient.js` auto-switches between real and mock clients based on `VITE_USE_MOCK_SUPABASE` or credential availability.
+- **Mock**: `frontend/src/lib/mockSupabaseClient.js` — sessionStorage-backed in-memory mock simulating `.from()`, `.select()`, `.insert()`, `.auth`, etc. Used by E2E tests.
+- **Rule**: All code imports from `supabaseClient.js` — never import the mock or `@supabase/supabase-js` directly.
+
+## Testing
+
+- **Unit/Integration**: Vitest + `@testing-library/react` + jsdom — `npm run test`
+- **E2E**: Playwright-BDD with Gherkin `.feature` files + TypeScript step definitions — `npm run test:e2e`
+- **Coverage**: V8 provider with thresholds (60% statements, 50% branches, 55% functions, 60% lines) scoped to `packages/core/src/**` and `frontend/src/hooks/**`
+
+## Accessibility (WCAG 2.2 AA)
+
+- Keyboard-accessible interactive elements with visible focus indicators
+- Semantic HTML landmarks (`<header>`, `<main>`, `<nav>`, `<section>`, `<article>`, `<footer>`)
+- Non-drag alternatives for drag-and-drop interactions
+- Sufficient color contrast across all themes

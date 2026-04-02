@@ -26,7 +26,7 @@ npm run typecheck
 
 ## Step 2 — Unit & Integration Tests (Vitest)
 
-Single command to run all 37 unit/integration test files:
+Single command to run all 46 unit/integration test files:
 
 ```bash
 npm run test
@@ -147,7 +147,7 @@ npx playwright test --grep "cross.org\|unauthorized\|RBAC\|rbac\|calendar token\
 - **Mock Scoping**: All `page.evaluate` mock injections **must** include an `organization_id` matching the active org in `localStorage`.
 - **Concurrency**: For maximum stability of shared `sessionStorage` mocks, run the full suite with `--workers=1`.
 - **Debugging**: If tests fail to find data, check the `__MOCK_DB__` key in `sessionStorage` via Browser DevTools.
-- **Expected Skips**: The scenario "Resolving game schedule conflicts" in `admin_overrides.feature` is `@skipped` (unimplemented in core).
+- **All scenarios active**: As of April 2026, no scenarios are `@skipped`. The Game Schedule Grid has been fully implemented.
 
 ---
 
@@ -167,14 +167,7 @@ After pushing to Vercel and applying Supabase migrations:
 
 1. **CSP violations** — Open browser DevTools → Console. Verify zero `Content-Security-Policy-Report-Only` violations during normal app use. When clean for a sprint, change `Content-Security-Policy-Report-Only` → `Content-Security-Policy` in `vercel.json`.
 
-2. **Supabase migrations** — Apply all pending migrations in order via the Supabase dashboard or CLI:
-   ```
-   20260324000000_phase1_rls_unification.sql
-   20260324000001_fix_registration_policies.sql
-   20260324000002_calendar_token_expiry.sql
-   20260324000003_phase3_registration_rpc_hardening.sql
-   20260324000004_audit_log.sql
-   ```
+2. **Supabase migrations** — All 34 migrations have been applied to the production database. For the complete migration history and deployment verification steps, see `docs/expansion/PRODUCTION_CUTOVER_RUNBOOK.md`.
 
 3. **Audit log smoke test** — As an admin user, perform one team save and one CSV import. Then run in Supabase SQL editor:
    ```sql

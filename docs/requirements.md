@@ -1,6 +1,9 @@
-# Requirements Analysis & Planning
+> [!NOTE]
+> **HISTORICAL — Pre-Development Planning Document**
+>
+> This requirements document was created during the initial planning phase. All requirements listed below have been implemented in the v1.0 MVP. For the current system architecture, see `docs/architecture.md`. For feature details, see the `docs/expansion/` epic files.
 
-## Stakeholder Interviews and Scope Definition
+# SquadLogic — Requirements & Stakeholder Interviews and Scope Definition
 
 - **Primary contact**: League administrator (single scheduler for ~1500 participants).
 - **Divisions**: Confirm list of age groups/divisions participating this season and whether any are co-ed.
