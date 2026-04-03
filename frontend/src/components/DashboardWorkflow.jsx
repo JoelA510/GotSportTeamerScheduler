@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabaseClient.js';
 import WorkflowStep from './WorkflowStep.jsx';
 import ImportPanel from './ImportPanel.jsx';
 import TeamOverviewPanel from './TeamOverviewPanel.jsx';
+import TeamListView from './teaming/TeamListView.jsx';
 import TeamPersistencePanel from './TeamPersistencePanel.jsx';
 import PracticeReadinessPanel from './PracticeReadinessPanel.jsx';
 import GameReadinessPanel from './GameReadinessPanel.jsx';
@@ -10,6 +11,8 @@ import OutputGenerationPanel from './OutputGenerationPanel.jsx';
 
 import Button from './ui/Button.jsx';
 import ProgressBar from './ui/ProgressBar.jsx';
+import { FeatureGuard } from './ui/FeatureGuard.jsx';
+import { FEATURE_FLAGS } from '../constants/featureFlags.js';
 import { logger } from '../lib/logger.js';
 
 const DashboardWorkflow = ({
@@ -176,12 +179,24 @@ const DashboardWorkflow = ({
               </div>
             ) : (
               <>
-                <TeamOverviewPanel
-                  totals={teamData.totals}
-                  divisions={teamData.divisions}
-                  generatedAt={teamData.generatedAt}
-                  timezone={timezone}
-                />
+                <FeatureGuard 
+                  flag={FEATURE_FLAGS.ACCESSIBILITY_LIST_VIEW} 
+                  fallback={
+                    <TeamOverviewPanel
+                      totals={teamData.totals}
+                      divisions={teamData.divisions}
+                      generatedAt={teamData.generatedAt}
+                      timezone={timezone}
+                    />
+                  }
+                >
+                  <TeamListView
+                    totals={teamData.totals}
+                    divisions={teamData.divisions}
+                    generatedAt={teamData.generatedAt}
+                    timezone={timezone}
+                  />
+                </FeatureGuard>
                 <TeamPersistencePanel teamPersistenceSnapshot={persistenceSnapshot} />
                 <div className="flex justify-end pt-4 border-t border-border-subtle">
                   <Button variant="primary" size="lg" onClick={() => handleStepChange(3)}>

@@ -17,6 +17,7 @@ export const FEATURE_FLAGS = {
   
   // Accessibility & Fallbacks (User Feedback)
   LIST_VIEW_TOGGLE: 'list_view_toggle',
+  ACCESSIBILITY_LIST_VIEW: 'accessibility_list_view',
   
   // Management & Automation
   GHOST_ROSTERS: 'ghost_rosters',
