@@ -1,8 +1,9 @@
-import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react';
 import { supabase } from '../lib/supabaseClient.js';
 import { useAuth } from './AuthContext.jsx';
 import { ROLE_PERMISSIONS } from '../constants/permissions.js';
 import { logger } from '../lib/logger.js';
+import { FeatureFlagSchema } from '../constants/featureFlags.js';
 
 /**
  * @typedef {Object} OrganizationContextValue
@@ -14,13 +15,17 @@ import { logger } from '../lib/logger.js';
  * @property {boolean} loading
  * @property {function} switchOrganization
  * @property {function} switchSeason
+ * @property {Object} featureFlags
  * @property {string[]} [permissions]
  */
 
-/** @type {React.Context<OrganizationContextValue>} */
+/** @type {React.Context<OrganizationContextValue>} React context for sharing organization and season state. */
 const OrganizationContext = createContext({});
 
-/** @returns {OrganizationContextValue} */
+/** 
+ * Hook for accessing the organization context.
+ * @returns {OrganizationContextValue} 
+ */
 export const useOrganization = () => useContext(OrganizationContext);
 
 export const OrganizationProvider = ({ children }) => {
@@ -90,9 +95,6 @@ export const OrganizationProvider = ({ children }) => {
         if (data && data.length > 0) {
           setOrganizations(data);
 
-          // Phase 3.4 (M-1): Validate localStorage org against actual memberships.
-          // Defense-in-depth: even if someone edits localStorage, they can only
-          // switch to orgs they're actually a member of. RLS is the real gate.
           const storedOrgId = localStorage.getItem('squadlogic_active_org');
           const validOrgIds = data.map(m => m.organization_id);
           const matchedMember = storedOrgId && validOrgIds.includes(storedOrgId)
@@ -104,7 +106,6 @@ export const OrganizationProvider = ({ children }) => {
             setOrgMember({ role: matchedMember.role, ...matchedMember });
             await fetchSeasonsForOrg(matchedMember.organization_id);
           } else {
-            // Stored org was invalid or absent — fall back to first membership
             const first = data[0];
             setCurrentOrganization(first.organizations);
             setOrgMember({ role: first.role, ...first });
@@ -128,7 +129,6 @@ export const OrganizationProvider = ({ children }) => {
       setCurrentOrganization(match.organizations);
       setOrgMember({ role: match.role, ...match });
       localStorage.setItem('squadlogic_active_org', orgId);
-      // Re-fetch seasons for the new org and validate currentSeason
       await fetchSeasonsForOrg(orgId);
     }
   }, [organizations, fetchSeasonsForOrg]);
@@ -141,7 +141,19 @@ export const OrganizationProvider = ({ children }) => {
     );
   }, []);
 
-  const value = {
+  // Memoize validated feature flags based on the current organization's data.
+  // Using Option B: Selective Ignore via Zod transform.
+  const validatedFeatureFlags = useMemo(() => {
+    try {
+      const rawFlags = currentOrganization?.feature_flags || {};
+      return FeatureFlagSchema.parse(rawFlags);
+    } catch (err) {
+      logger.error('[FeatureFlag] Validation failed, falling back to empty flags:', err);
+      return {};
+    }
+  }, [currentOrganization?.feature_flags]);
+
+  const value = useMemo(() => ({
     organizations,
     currentOrganization,
     orgMember,
@@ -150,9 +162,19 @@ export const OrganizationProvider = ({ children }) => {
     loading,
     switchOrganization,
     switchSeason,
+    featureFlags: validatedFeatureFlags,
     permissions: orgMember?.role ? (ROLE_PERMISSIONS[orgMember.role] || []) : [],
-  };
+  }), [
+    organizations,
+    currentOrganization,
+    orgMember,
+    availableSeasons,
+    currentSeasonSetting,
+    loading,
+    switchOrganization,
+    switchSeason,
+    validatedFeatureFlags,
+  ]);
 
   return <OrganizationContext.Provider value={value}>{children}</OrganizationContext.Provider>;
 };
-

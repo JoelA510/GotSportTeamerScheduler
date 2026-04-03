@@ -30,7 +30,7 @@ The database has RLS enabled and no seed data in production. Every user must bel
 INSERT INTO organizations (id, name, slug, created_at, updated_at)
 VALUES (
   gen_random_uuid(),
-  'Your Club Name',        -- e.g. 'Riverside Youth Soccer'
+  'Your Club Name',        -- e.g. 'Castro Valley Soccer Club'
   'riverside-youth-soccer', -- lowercase, hyphens, no spaces
   now(),
   now()

@@ -8,6 +8,7 @@
 
 import { TEAM_GENERATION } from './constants.js';
 import { PlayerSchema, TeamSchema } from './schemas/index.js';
+import { EVALUATOR_REGISTRY } from './evaluators/index.js';
 
 /** @typedef {import('./types.js').Player} Player */
 /** @typedef {import('./types.js').Team} Team */
@@ -19,6 +20,8 @@ import { PlayerSchema, TeamSchema } from './schemas/index.js';
  * @param {Object<string, DivisionConfig>} params.divisionConfigs - Map of division identifiers.
  * @param {function(): number} [params.random=Math.random] - RNG returning [0, 1).
  * @param {string|number} [params.seed] - Optional seed for deterministic generation. Overrides random if provided.
+ * @param {Object} [params.featureFlags={}] - Map of active feature flags for evaluating logic.
+ * @param {boolean} [params.dryRun=false] - If true, evaluates without final assignment (Ghost Roster).
  * @returns {{
  *   teamsByDivision: Record<string, Array<Team>>,
  *   overflowByDivision: Record<string, Array<{ players: Array<Player>, reason: string, metadata?: Object }>>,
@@ -70,9 +73,10 @@ import { PlayerSchema, TeamSchema } from './schemas/index.js';
  *       spread: number,
  *     },
  *   }>,
+ *   evaluationResults?: any,
  * }}
  */
-export function generateTeams({ players, divisionConfigs, random = Math.random, seed }) {
+export function generateTeams({ players, divisionConfigs, random = Math.random, seed, featureFlags = {}, dryRun = false }) {
   if (!Array.isArray(players)) {
     throw new TypeError('players must be an array');
   }
@@ -141,6 +145,7 @@ export function generateTeams({ players, divisionConfigs, random = Math.random, 
       maxRosterSize,
       divisionConfig: config,
       random,
+      featureFlags,
     });
 
     results[division] = teams.map((team) => ({
@@ -271,8 +276,9 @@ export function generateTeams({ players, divisionConfigs, random = Math.random, 
  * @param {number} params.maxRosterSize
  * @param {DivisionConfig} params.divisionConfig
  * @param {function(): number} params.random
+ * @param {Object} params.featureFlags
  */
-function buildTeamsForDivision({ division, players, maxRosterSize, divisionConfig, random }) {
+function buildTeamsForDivision({ division, players, maxRosterSize, divisionConfig, random, featureFlags }) {
   const coachIds = Array.from(
     new Set(players.filter((player) => player.coachId).map((player) => player.coachId))
   );
@@ -437,10 +443,11 @@ function buildTeamsForDivision({ division, players, maxRosterSize, divisionConfi
   for (const { unit, skillTotal } of generalUnits) {
     const team = pickTeamWithMostCapacity({
       teams,
-      unitSize: unit.length,
+      unit,
       unitSkillTotal: skillTotal,
       maxRosterSize,
       random,
+      featureFlags,
     });
     if (!team) {
       overflow.push({
@@ -561,54 +568,50 @@ function assignUnitToTeam({ unit, unitSkillTotal, team, maxRosterSize, reason })
 /**
  * @param {Object} params
  * @param {Array<Team>} params.teams
- * @param {number} params.unitSize
+ * @param {Array<Player>} params.unit
  * @param {number} params.unitSkillTotal
  * @param {number} params.maxRosterSize
  * @param {function(): number} params.random
+ * @param {Object} params.featureFlags
  * @returns {Team | null}
  */
-function pickTeamWithMostCapacity({ teams, unitSize, unitSkillTotal, maxRosterSize, random }) {
+function pickTeamWithMostCapacity({ teams, unit, unitSkillTotal, maxRosterSize, random, featureFlags }) {
+  const unitSize = unit.length;
   const candidates = teams.filter((team) => team.players.length + unitSize <= maxRosterSize);
   if (candidates.length === 0) {
     return null;
   }
 
-  let minSize = Infinity;
-  let smallestTeams = [];
-
-  for (const team of candidates) {
-    const teamSize = team.players.length;
-    if (teamSize < minSize) {
-      minSize = teamSize;
-      smallestTeams = [team];
-    } else if (teamSize === minSize) {
-      smallestTeams.push(team);
+  // Phase 1.2: Use modular evaluators
+  const evaluatedCandidates = candidates.map(team => {
+    let totalScore = 0;
+    
+    // Evaluate for unit anchor
+    for (const evaluator of EVALUATOR_REGISTRY) {
+      const score = evaluator.evaluate({
+        player: unit[0],
+        team,
+        allTeams: teams,
+        featureFlags
+      });
+      totalScore += score;
     }
-  }
 
-  if (smallestTeams.length === 1) {
-    return smallestTeams[0];
-  }
+    return { team, score: totalScore };
+  });
 
-  let lowestAverageSkill = Infinity;
-  let lowestSkillTeams = [];
+  // Sort by score descending, then by capacity (smallest teams first)
+  evaluatedCandidates.sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    return a.team.players.length - b.team.players.length;
+  });
 
-  for (const team of smallestTeams) {
-    const futureSkillTotal = team.skillTotal + unitSkillTotal;
-    const futurePlayerCount = team.players.length + unitSize;
-    const averageSkill = futurePlayerCount > 0 ? futureSkillTotal / futurePlayerCount : 0;
-
-    if (averageSkill < lowestAverageSkill) {
-      lowestAverageSkill = averageSkill;
-      lowestSkillTeams = [team];
-    } else if (averageSkill === lowestAverageSkill) {
-      lowestSkillTeams.push(team);
-    }
-  }
-
-  const pool = lowestSkillTeams.length > 0 ? lowestSkillTeams : smallestTeams;
-  const index = Math.floor(random() * pool.length);
-  return pool[index];
+  // Pick from the best candidates
+  const topScore = evaluatedCandidates[0].score;
+  const bestCandidates = evaluatedCandidates.filter(c => c.score === topScore);
+  
+  const index = Math.floor(random() * bestCandidates.length);
+  return bestCandidates[index].team;
 }
 
 function summarizeOverflow(entries) {

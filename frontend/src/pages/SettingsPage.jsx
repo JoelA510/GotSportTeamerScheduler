@@ -1,7 +1,9 @@
 import React, { useState, useRef } from 'react';
-import { Save, User, Shield, Palette, Globe, Upload, Calendar, Moon, Sun } from 'lucide-react';
+import { Save, User, Shield, Palette, Globe, Upload, Calendar, Moon, Sun, History } from 'lucide-react';
 import Button from '../components/ui/Button.jsx';
+import SettingsAuditLog from '../components/settings/SettingsAuditLog.jsx';
 import { useAuth } from '../contexts/AuthContext.jsx';
+import { useOrganization } from '../contexts/OrganizationContext.jsx';
 import { useTheme } from '../contexts/ThemeContext.jsx';
 import { PERSISTENCE_THEMES } from '../utils/themes.js';
 import { extractColorsFromImage } from '../utils/colorUtils.js';
@@ -28,6 +30,9 @@ export default function SettingsPage() {
     timezone,
     updateTimezone,
   } = useTheme();
+  const { orgMember } = useOrganization();
+  const isAdmin = orgMember?.role === 'admin';
+
   const [activeTab, setActiveTab] = useState('general');
   const fileInputRef = useRef(null);
   const [localLeagueName, setLocalLeagueName] = useState(leagueName);
@@ -46,6 +51,7 @@ export default function SettingsPage() {
     { id: 'account', label: 'Account & Security', icon: Shield },
     { id: 'appearance', label: 'Appearance & Branding', icon: Palette },
     { id: 'season', label: 'Season Configuration', icon: Calendar },
+    ...(isAdmin ? [{ id: 'audit', label: 'Audit Log', icon: History }] : []),
   ];
 
   const handleSave = () => {
@@ -525,6 +531,8 @@ export default function SettingsPage() {
             </div>
           </div>
         );
+      case 'audit':
+        return <SettingsAuditLog />;
       default:
         return null;
     }
