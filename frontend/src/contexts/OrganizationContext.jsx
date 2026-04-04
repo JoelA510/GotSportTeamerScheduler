@@ -15,6 +15,7 @@ import { FeatureFlagSchema } from '../constants/featureFlags.js';
  * @property {boolean} loading
  * @property {function} switchOrganization
  * @property {function} switchSeason
+ * @property {function} updateFeatureFlags - persistence via secure RPC
  * @property {Object} featureFlags
  * @property {string[]} [permissions]
  */
@@ -141,6 +142,42 @@ export const OrganizationProvider = ({ children }) => {
     );
   }, []);
 
+  /**
+   * Updates organization feature flags via secure RPC.
+   * Mandated by Governance Framework for Phase 2.
+   * @param {Object} newFlags 
+   */
+  const updateFeatureFlags = useCallback(async (newFlags) => {
+    if (!currentOrganization) {
+      logger.error('Cannot update feature flags: No organization selected');
+      return { success: false, error: 'No organization selected' };
+    }
+
+    try {
+      // Validate flags before transmission
+      const validatedFlags = FeatureFlagSchema.parse(newFlags);
+
+      const { error } = await supabase.rpc('update_org_feature_flags', {
+        p_org_id: currentOrganization.id,
+        p_flags: validatedFlags
+      });
+
+      if (error) throw error;
+
+      // Update local state to reflect changes immediately
+      setCurrentOrganization(prev => ({
+        ...prev,
+        feature_flags: validatedFlags
+      }));
+
+      logger.info('Feature flags updated successfully via RPC');
+      return { success: true };
+    } catch (err) {
+      logger.error('Failed to update feature flags via RPC:', err);
+      return { success: false, error: err.message };
+    }
+  }, [currentOrganization]);
+
   // Memoize validated feature flags based on the current organization's data.
   // Using Option B: Selective Ignore via Zod transform.
   const validatedFeatureFlags = useMemo(() => {
@@ -162,6 +199,7 @@ export const OrganizationProvider = ({ children }) => {
     loading,
     switchOrganization,
     switchSeason,
+    updateFeatureFlags,
     featureFlags: validatedFeatureFlags,
     permissions: orgMember?.role ? (ROLE_PERMISSIONS[orgMember.role] || []) : [],
   }), [
@@ -173,6 +211,7 @@ export const OrganizationProvider = ({ children }) => {
     loading,
     switchOrganization,
     switchSeason,
+    updateFeatureFlags,
     validatedFeatureFlags,
   ]);
 

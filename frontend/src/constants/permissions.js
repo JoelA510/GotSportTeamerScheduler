@@ -1,4 +1,5 @@
 export const ROLES = {
+  TENANT_ADMIN: 'tenant_admin',
   ADMIN: 'admin',
   COACH: 'coach',
   PLAYER: 'player',
@@ -10,6 +11,7 @@ export const PERMISSIONS = {
   // Org Level
   MANAGE_ORGANIZATION: 'manage_organization',
   VIEW_ORGANIZATION: 'view_organization',
+  MANAGE_GLOBAL_SETTINGS: 'manage_global_settings',
 
   // Team Level
   MANAGE_ALL_TEAMS: 'manage_all_teams',
@@ -24,6 +26,16 @@ export const PERMISSIONS = {
 };
 
 export const ROLE_PERMISSIONS = {
+  [ROLES.TENANT_ADMIN]: [
+    PERMISSIONS.MANAGE_ORGANIZATION,
+    PERMISSIONS.VIEW_ORGANIZATION,
+    PERMISSIONS.MANAGE_GLOBAL_SETTINGS,
+    PERMISSIONS.MANAGE_ALL_TEAMS,
+    PERMISSIONS.VIEW_ALL_TEAMS,
+    PERMISSIONS.MANAGE_SCHEDULE,
+    PERMISSIONS.VIEW_SCHEDULE,
+    PERMISSIONS.RSVP_EVENT,
+  ],
   [ROLES.ADMIN]: [
     PERMISSIONS.MANAGE_ORGANIZATION,
     PERMISSIONS.VIEW_ORGANIZATION,

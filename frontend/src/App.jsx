@@ -6,7 +6,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext.jsx';
 import { ImportProvider } from './contexts/ImportContext.jsx';
 import { ThemeProvider } from './contexts/ThemeContext.jsx';
-import { OrganizationProvider } from './contexts/OrganizationContext.jsx';
+import { OrganizationProvider, useOrganization } from './contexts/OrganizationContext.jsx';
 import LoadingScreen from './components/LoadingScreen.jsx';
 import ProtectedRoute from './components/ProtectedRoute.jsx';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
@@ -30,6 +30,7 @@ const AdminComplianceDashboard = lazy(() => import('./pages/AdminComplianceDashb
 const RegistrationForms = lazy(() => import('./pages/RegistrationForms.jsx'));
 const AdminReportingDashboard = lazy(() => import('./pages/AdminReportingDashboard.jsx'));
 const LeagueStandings = lazy(() => import('./pages/LeagueStandings.jsx'));
+const SetupWizard = lazy(() => import('./pages/SetupWizard.jsx'));
 const ThemeToggle = lazy(() => import('./components/ThemeToggle.jsx'));
 
 function AppContent() {
@@ -47,10 +48,24 @@ function AppContent() {
     );
   }
 
+  const { currentOrganization, permissions } = useOrganization();
+  const isOnboarded = currentOrganization?.is_onboarded;
+  const isTenantAdmin = permissions.includes(PERMISSIONS.MANAGE_GLOBAL_SETTINGS);
+
   return (
     <Suspense fallback={<LoadingScreen />}>
       <Routes>
-        <Route element={<DashboardLayout activeSection="dashboard" />}>
+        <Route 
+          path="/setup" 
+          element={
+            <ProtectedRoute requiredPermission={PERMISSIONS.MANAGE_GLOBAL_SETTINGS}>
+              <SetupWizard />
+            </ProtectedRoute>
+          } 
+        />
+        <Route element={
+          !isOnboarded && isTenantAdmin ? <Navigate to="/setup" replace /> : <DashboardLayout activeSection="dashboard" />
+        }>
           <Route path="/" element={<DashboardPage />} />
           <Route path="/register/:formId" element={<RegistrationFlow />} />
           <Route
