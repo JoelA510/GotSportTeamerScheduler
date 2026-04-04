@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabaseClient.js';
 import Papa from 'papaparse';
 import { logger } from '../lib/logger.js';
 import { useOrganization } from './OrganizationContext.jsx';
-import { matchHeaders } from '../utils/telemetryUtils.js';
+import { matchHeaders, SYSTEM_COLUMNS } from '../utils/telemetryUtils.js';
 
 const ImportContext = createContext({
   isImporting: false,
@@ -23,6 +23,7 @@ const ImportContext = createContext({
   importedFields: null,
   setImportedFields: (data) => {},
   telemetryLogs: [],
+  organizationSchemas: {},
   activeJobId: null,
   activeJob: null,
 });
@@ -47,6 +48,7 @@ export function ImportProvider({ children }) {
   const [importedCoaches, setImportedCoaches] = useState(null);
   const [importedFields, setImportedFields] = useState(null);
   const [importedData, setImportedData] = useState(null); // Legacy/General
+  const [organizationSchemas, setOrganizationSchemas] = useState({}); // { player: {}, coach: {}, team: {} }
   const [activeJobId, setActiveJobId] = useState(null);
   const [activeJob, setActiveJob] = useState(null);
 
@@ -83,27 +85,44 @@ export function ImportProvider({ children }) {
     });
   }, [currentOrganization?.id]);
 
-  // 1. Fetch Organization-Scoped Telemetry (RBAC Check)
+  // 1. Fetch Organization-Scoped Telemetry & Custom Schemas (Lazy Cache)
   useEffect(() => {
-    const loadTelemetry = async () => {
+    const loadOrgData = async () => {
       if (!currentOrganization?.id) return;
       
       try {
-        logger.log('[ImportContext] Fetching telemetry for org:', currentOrganization.id);
-        const { data, error } = await supabase
+        logger.log('[ImportContext] Fetching org data for:', currentOrganization.id);
+        
+        // Fetch Telemetry
+        const { data: telData, error: telError } = await supabase
           .from('telemetry_log')
           .select('*')
           .eq('org_id', currentOrganization.id)
           .order('created_at', { ascending: false });
 
-        if (error) throw error;
-        setTelemetryLogs(data || []);
+        if (telError) throw telError;
+        setTelemetryLogs(telData || []);
+
+        // Fetch Custom Schemas
+        const { data: schemaData, error: schemaError } = await supabase
+          .from('organization_schemas')
+          .select('entity_type, schema_definition')
+          .eq('organization_id', currentOrganization.id);
+
+        if (schemaError) throw schemaError;
+        
+        const schemaMap = {};
+        schemaData?.forEach(s => {
+          schemaMap[s.entity_type] = s.schema_definition;
+        });
+        setOrganizationSchemas(schemaMap);
+
       } catch (err) {
-        logger.error('Failed to fetch telemetry logs:', err);
+        logger.error('Failed to fetch org data:', err);
       }
     };
 
-    loadTelemetry();
+    loadOrgData();
   }, [currentOrganization?.id]);
 
   // 2. Load initial state & Setup Realtime Subscriptions
@@ -176,7 +195,7 @@ export function ImportProvider({ children }) {
             const newJob = payload.new;
             // Governance: Type safety and existence check
             if (newJob && typeof newJob === 'object' && 'status' in newJob && 'id' in newJob) {
-              const job = newJob as { status: string; id: string; progress_percent?: number; efficiency_metadata?: any };
+              const job = newJob;
               
               if (job.status === 'processing' || job.status === 'importing') {
                 // Throttled UI update logic for active job
@@ -190,7 +209,7 @@ export function ImportProvider({ children }) {
                 if (activeJobIdRef.current === job.id || !activeJobIdRef.current) {
                   setIsImporting(false);
                   setImportStatus(job.status);
-                  setActiveJob(prev => ({ ...(prev || {}), ...job } as any));
+                  setActiveJob(prev => ({ ...(prev || {}), ...job }));
                 }
               }
             }
@@ -258,16 +277,30 @@ export function ImportProvider({ children }) {
           // Update total rows
           await supabase.from('import_jobs').update({ total_rows: data.length }).eq('id', job.id);
 
-          // Phase 3: Smart Ingestion Logic
-          const { mappings, isFallback, timing } = matchHeaders(meta.fields, telemetryLogs);
+          // Phase 5: Dynamic Ingestion Logic
+          const entityType = type === 'players' ? 'player' : type === 'coaches' ? 'coach' : 'team';
+          const customSchema = organizationSchemas[entityType] || {};
           
-          const efficiency = isFallback ? 85.0 : 99.2; // Realistic mocked efficiency based on fallback status
-          const efficiencyMetadata = { efficiency, latency: timing };
+          const { mappings, isFallback, timing, needsConfirmation } = matchHeaders(
+            meta.fields, 
+            telemetryLogs, 
+            customSchema
+          );
+          
+          const efficiency = isFallback ? 85.0 : 99.2;
+          const efficiencyMetadata = { 
+            efficiency, 
+            latency: timing,
+            needs_confirmation: needsConfirmation 
+          };
 
           if (isFallback) {
              addLog(`Performance Warning: Smart Ingestion timed out (${timing.toFixed(2)}ms). Using static fallback.`);
           } else {
              addLog(`Smart Ingestion active. Match calculated in ${timing.toFixed(2)}ms.`);
+             if (needsConfirmation.length > 0) {
+               addLog(`Warning: ${needsConfirmation.length} fields require manual confirmation.`);
+             }
           }
 
           // Persist metrics for Enterprise Overlay
@@ -275,9 +308,19 @@ export function ImportProvider({ children }) {
             efficiency_metadata: efficiencyMetadata 
           }).eq('id', job.id);
           
-          setActiveJob(prev => ({ ...(prev || {}), efficiency_metadata: efficiencyMetadata } as any));
+          setActiveJob(prev => ({ ...(prev || {}), efficiency_metadata: efficiencyMetadata }));
 
           const normalizeHeader = (h) => mappings[h] || h.toLowerCase().trim();
+          
+          // Phase 5 Vibe Audit: Detect if a key must go into JSONB vs root table
+          const shouldGoToCustomAttributes = (mappedKey) => {
+             // If it's a known custom field, yes.
+             if (organizationSchemas[entityType]?.[mappedKey]) return true;
+             // If it's NOT a system column, yes (Fluid Schemas rule).
+             if (!SYSTEM_COLUMNS.has(mappedKey)) return true;
+             return false;
+          };
+
           const normalizedData = [];
           const validationErrors = [];
 
@@ -308,7 +351,12 @@ export function ImportProvider({ children }) {
 
             Object.keys(row).forEach((key) => {
               const mapped = normalizeHeader(key);
-              newRow[mapped] = row[key];
+              if (shouldGoToCustomAttributes(mapped)) {
+                if (!newRow.custom_attributes) newRow.custom_attributes = {};
+                newRow.custom_attributes[mapped] = row[key];
+              } else {
+                newRow[mapped] = row[key];
+              }
             });
 
             if (type === 'players') {
@@ -402,13 +450,14 @@ export function ImportProvider({ children }) {
     importedFields,
     setImportedFields,
     telemetryLogs,
+    organizationSchemas,
     activeJobId,
     activeJob,
   }), [
     isImporting, progress, importStatus, importLogs, 
     notifyOnComplete, startImport, resetImport, 
     importedData, importedPlayers, importedCoaches, 
-    importedFields, telemetryLogs, activeJobId, activeJob
+    importedFields, telemetryLogs, organizationSchemas, activeJobId, activeJob
   ]);
 
   return <ImportContext.Provider value={value}>{children}</ImportContext.Provider>;

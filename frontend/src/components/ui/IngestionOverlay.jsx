@@ -127,6 +127,28 @@ export function IngestionOverlay() {
                  </span>
                </div>
             )}
+
+            {/* Phase 5: Needs Confirmation (Indigo Accent) */}
+            {activeJob?.efficiency_metadata?.needs_confirmation?.length > 0 && (
+              <div className="space-y-2 pt-2 border-t border-white/5">
+                <div className="flex items-center gap-2">
+                  <AlertCircle className="w-3 h-3 text-indigo-400" />
+                  <span className="text-[10px] text-indigo-400 font-bold uppercase tracking-widest">
+                    Manual Confirmation Required
+                  </span>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {activeJob.efficiency_metadata.needs_confirmation.map((header) => (
+                    <span 
+                      key={header} 
+                      className="px-2 py-0.5 rounded text-[9px] font-bold bg-indigo-500/10 text-indigo-300 border border-indigo-500/20"
+                    >
+                      {header}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
