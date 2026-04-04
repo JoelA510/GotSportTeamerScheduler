@@ -1,11 +1,52 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import Papa from 'papaparse';
-import { UploadCloud, FileText, CheckCircle, AlertCircle, Bell } from 'lucide-react';
+import {
+  UploadCloud,
+  FileText,
+  CheckCircle,
+  AlertCircle,
+  Bell,
+  BrainCircuit,
+  Info,
+} from 'lucide-react';
 import { PERSISTENCE_THEMES } from '../utils/themes.js';
 import { useImport } from '../contexts/ImportContext.jsx';
+import { useOrganization } from '../contexts/OrganizationContext.jsx';
+import { matchHeaders } from '../utils/telemetryUtils.js';
+import { supabase } from '../lib/supabaseClient.js';
 import Button from './ui/Button.jsx';
 import ProgressBar from './ui/ProgressBar.jsx';
 import DataValidationPanel from './teaming/DataValidationPanel.jsx';
+import { logger } from '../lib/logger.js';
+
+/**
+ * Smart Confidence Badge component for high-fidelity mapping indicators.
+ */
+const SmartBadge = ({ score, rationale }) => {
+  const getColor = () => {
+    if (score >= 0.9) return 'text-green-400 bg-green-400/10 border-green-400/20';
+    if (score >= 0.7) return 'text-blue-400 bg-blue-400/10 border-blue-400/20';
+    return 'text-amber-400 bg-amber-400/10 border-amber-400/20';
+  };
+
+  return (
+    <div
+      className={`flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] whitespace-nowrap group relative cursor-help animate-fadeIn ${getColor()}`}
+    >
+      <BrainCircuit size={10} />
+      <span>{(score * 100).toFixed(0)}% Match</span>
+
+      {/* Tooltip */}
+      <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 w-48 p-2 bg-bg-surface border border-border-highlight rounded-lg shadow-xl opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 text-text-primary text-[11px] leading-snug">
+        <div className="flex items-start gap-1.5">
+          <Info size={12} className="shrink-0 mt-0.5 text-blue-400" />
+          <span>{rationale}</span>
+        </div>
+        <div className="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-bg-surface"></div>
+      </div>
+    </div>
+  );
+};
 
 export default function ImportPanel({ onImport }) {
   const [isDragging, setIsDragging] = useState(false);
@@ -26,7 +67,10 @@ export default function ImportPanel({ onImport }) {
     importedPlayers,
     importedCoaches,
     importedFields,
+    telemetryLogs,
   } = useImport();
+
+  const { currentOrganization } = useOrganization();
 
   const theme = PERSISTENCE_THEMES.green;
 
@@ -58,7 +102,6 @@ export default function ImportPanel({ onImport }) {
     validateAndReadFile(selectedFile);
   };
 
-  // Phase 2.2 (H-1): File size enforcement — 10 MB maximum
   const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
 
   const validateAndReadFile = (file) => {
@@ -68,7 +111,9 @@ export default function ImportPanel({ onImport }) {
       return;
     }
     if (file.size > MAX_FILE_SIZE_BYTES) {
-      setError(`File is too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Maximum size is 10 MB.`);
+      setError(
+        `File is too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Maximum size is 10 MB.`
+      );
       return;
     }
 
@@ -91,24 +136,13 @@ export default function ImportPanel({ onImport }) {
         const headers = meta.fields || [];
         const previewRows = data.slice(0, 5);
 
-        // Phase 4 (L-3): Strict alias map — mirrors server-side import-validation.
-        const HEADER_ALIASES = {
-          'first name': 'first_name', 'first_name': 'first_name', 'firstname': 'first_name',
-          'last name': 'last_name', 'last_name': 'last_name', 'lastname': 'last_name',
-          'date of birth': 'date_of_birth', 'date_of_birth': 'date_of_birth',
-          'dob': 'date_of_birth', 'birthdate': 'date_of_birth',
-          'full name': 'full_name', 'full_name': 'full_name', 'coach name': 'full_name',
-          'email': 'email', 'email address': 'email',
-          'name': 'name', 'field name': 'name', 'field_name': 'name',
-          'coach willing': 'willing_to_coach', 'willing to coach': 'willing_to_coach',
-          'buddy': 'buddy_request', 'buddy request': 'buddy_request',
-          'friend': 'buddy_request', 'friend request': 'buddy_request',
-          'medical': 'medical_info', 'medical info': 'medical_info',
-          'allergy': 'medical_info', 'allergies': 'medical_info',
-          'skill': 'skill_tier', 'skill level': 'skill_tier',
-          'skill tier': 'skill_tier', 'level': 'skill_tier',
-        };
-        const normalizeHeader = (h) => HEADER_ALIASES[h.toLowerCase().trim()] ?? h.toLowerCase().trim();
+        // Phase 3: Smart Header Mapping with Performance Gating
+        const { mappings, confidence, rationales, timing, isFallback } = matchHeaders(
+          headers,
+          telemetryLogs
+        );
+
+        const normalizeHeader = (h) => mappings[h] || h.toLowerCase().trim();
 
         const normalizedData = [];
         const validationErrors = [];
@@ -116,13 +150,15 @@ export default function ImportPanel({ onImport }) {
         const REQUIRED_HEADERS = {
           players: ['first_name', 'last_name', 'date_of_birth'],
           coaches: ['full_name', 'email'],
-          fields: ['name']
+          fields: ['name'],
         };
 
         const requiredForType = REQUIRED_HEADERS[importType] || [];
         const normalizedFileHeaders = headers.map(normalizeHeader);
 
-        const missingHeaders = requiredForType.filter(req => !normalizedFileHeaders.includes(req));
+        const missingHeaders = requiredForType.filter(
+          (req) => !normalizedFileHeaders.includes(req)
+        );
         if (missingHeaders.length > 0) {
           setError(`Import failed: Missing required columns: ${missingHeaders.join(', ')}`);
           return;
@@ -140,9 +176,21 @@ export default function ImportPanel({ onImport }) {
           });
 
           if (importType === 'players') {
-            if (!newRow['first_name']) { isRowValid = false; rowErrors.push('Missing first name'); errorFields.push('first_name'); }
-            if (!newRow['last_name']) { isRowValid = false; rowErrors.push('Missing last name'); errorFields.push('last_name'); }
-            if (!newRow['date_of_birth']) { isRowValid = false; rowErrors.push('Missing date of birth'); errorFields.push('date_of_birth'); }
+            if (!newRow['first_name']) {
+              isRowValid = false;
+              rowErrors.push('Missing first name');
+              errorFields.push('first_name');
+            }
+            if (!newRow['last_name']) {
+              isRowValid = false;
+              rowErrors.push('Missing last name');
+              errorFields.push('last_name');
+            }
+            if (!newRow['date_of_birth']) {
+              isRowValid = false;
+              rowErrors.push('Missing date of birth');
+              errorFields.push('date_of_birth');
+            }
           }
 
           if (isRowValid) {
@@ -157,7 +205,8 @@ export default function ImportPanel({ onImport }) {
           rows: previewRows,
           totalRows: data.length,
           fullData: data,
-          validationErrors
+          validationErrors,
+          smartMetadata: { mappings, confidence, rationales, timing, isFallback },
         });
       },
       error: (err) => {
@@ -166,8 +215,36 @@ export default function ImportPanel({ onImport }) {
     });
   };
 
-  const handleStartImport = () => {
+  const handleStartImport = async () => {
     if (file) {
+      // Phase 3: Telemetry Write-back
+      if (previewData?.smartMetadata && !previewData.smartMetadata.isFallback) {
+        try {
+          const {
+            data: { user },
+          } = await supabase.auth.getUser();
+          if (user && currentOrganization?.id) {
+            await supabase.rpc('log_telemetry_event', {
+              p_org_id: currentOrganization.id,
+              p_event_name: 'import.suggestions_applied',
+              p_payload: {
+                session_id: crypto.randomUUID?.() || 'unknown',
+                import_type: importType,
+                file_name: file.name,
+                match_count: Object.keys(previewData.smartMetadata.mappings).length,
+                avg_confidence:
+                  Object.values(previewData.smartMetadata.confidence).reduce((a, b) => a + b, 0) /
+                  Object.keys(previewData.smartMetadata.confidence).length,
+                latency_ms: previewData.smartMetadata.timing,
+                match_rationale: previewData.smartMetadata.rationales,
+              },
+            });
+          }
+        } catch (err) {
+          logger.error('Failed to log telemetry write-back:', err);
+        }
+      }
+
       startImport(file, importType);
     }
   };
@@ -207,12 +284,6 @@ export default function ImportPanel({ onImport }) {
             {importStatus === 'completed' ? 'Import Complete!' : 'Importing Data...'}
           </h2>
 
-          <p className="text-text-secondary mb-8 max-w-md">
-            {importStatus === 'completed'
-              ? `Successfully imported ${previewData?.validRows || previewData?.totalRows || 0} ${importType}.`
-              : `Processing your ${importType} file. You can navigate away, the import will continue in the background.`}
-          </p>
-
           <div className="w-full max-w-lg mb-8">
             <ProgressBar
               progress={progress}
@@ -220,25 +291,12 @@ export default function ImportPanel({ onImport }) {
             />
           </div>
 
-          {importStatus === 'completed' && previewData?.validationErrors?.length > 0 && (
-            <div className="w-full max-w-2xl mb-8 text-left">
-              <DataValidationPanel
-                errors={previewData.validationErrors.flatMap(ve =>
-                  ve.errors.map(err => ({ type: 'row_validation', message: `Row ${ve.row}: ${err}` }))
-                )}
-              />
-            </div>
-          )}
-
           {importStatus === 'completed' ? (
             <div className="flex gap-4">
               <Button
                 variant="secondary"
                 size="lg"
                 onClick={() => {
-                  if (onImport && previewData) {
-                    onImport(previewData, importType);
-                  }
                   resetImport('all');
                   setFile(null);
                   setPreviewData(null);
@@ -319,12 +377,13 @@ export default function ImportPanel({ onImport }) {
                 setError(null);
               }}
               className={`
-                                flex-1 p-4 rounded-xl border transition-all duration-200 text-left relative overflow-hidden group
-                                ${importType === type
-                  ? 'bg-blue-500/10 border-blue-500/50 shadow-[0_0_20px_rgba(56,189,248,0.1)]'
-                  : 'bg-bg-surface border-border-subtle hover:bg-bg-surface-hover hover:border-border-highlight'
-                }
-                            `}
+                                 flex-1 p-4 rounded-xl border transition-all duration-200 text-left relative overflow-hidden group
+                                 ${
+                                   importType === type
+                                     ? 'bg-blue-500/10 border-blue-500/50 shadow-[0_0_20px_rgba(56,189,248,0.1)]'
+                                     : 'bg-bg-surface border-border-subtle hover:bg-bg-surface-hover hover:border-border-highlight'
+                                 }
+                             `}
             >
               <div className="relative z-10">
                 <div className="flex justify-between items-center mb-1">
@@ -352,10 +411,11 @@ export default function ImportPanel({ onImport }) {
 
         {!previewData ? (
           <div
-            className={`border-2 border-dashed rounded-xl p-12 text-center transition-all duration-300 ${isDragging
-              ? 'border-blue-400 bg-blue-500/10 scale-[1.02]'
-              : 'border-border-subtle hover:border-border-highlight bg-bg-surface hover:bg-bg-surface-hover'
-              }`}
+            className={`border-2 border-dashed rounded-xl p-12 text-center transition-all duration-300 ${
+              isDragging
+                ? 'border-blue-400 bg-blue-500/10 scale-[1.02]'
+                : 'border-border-subtle hover:border-border-highlight bg-bg-surface hover:bg-bg-surface-hover'
+            }`}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
@@ -385,34 +445,13 @@ export default function ImportPanel({ onImport }) {
                   </label>
                 </p>
               </div>
-              {getImportedCount(importType) > 0 && (
-                <div className="bg-amber-500/10 border border-amber-500/20 text-amber-400 px-4 py-2 rounded-lg text-sm mt-2 flex items-center gap-2 max-w-md">
-                  <AlertCircle size={16} className="shrink-0" />
-                  <span>
-                    Warning: {importType} data already exists. Uploading a new file will overwrite
-                    existing data and any manual overrides.
-                  </span>
-                </div>
-              )}
               {error && (
-                <div data-testid="import-error-banner" className="bg-red-500/10 border border-red-500/20 text-red-400 px-4 py-2 rounded-lg text-sm mt-2 animate-slideUp flex items-center gap-2">
+                <div
+                  data-testid="import-error-banner"
+                  className="bg-red-500/10 border border-red-500/20 text-red-400 px-4 py-2 rounded-lg text-sm mt-2 animate-slideUp flex items-center gap-2"
+                >
                   <AlertCircle size={16} />
                   {error}
-                </div>
-              )}
-              {importStatus === 'error' && importLogs.length > 0 && (
-                <div className="bg-red-500/10 border border-red-500/20 text-red-400 px-4 py-3 rounded-xl text-sm mt-4 animate-slideUp flex flex-col items-start gap-1 w-full max-w-md" data-testid="import-error-banner">
-                  <div className="flex items-center gap-2 font-bold">
-                    <AlertCircle size={16} />
-                    Import Failed
-                  </div>
-                  <p className="text-xs opacity-80">{importLogs[importLogs.length - 1].message}</p>
-                  <button
-                    onClick={() => resetImport('all')}
-                    className="mt-2 text-xs underline hover:no-underline"
-                  >
-                    Try Again
-                  </button>
                 </div>
               )}
             </div>
@@ -426,8 +465,14 @@ export default function ImportPanel({ onImport }) {
                 </div>
                 <div>
                   <h3 className="text-lg font-semibold text-text-primary">{file.name}</h3>
-                  <p className="text-sm text-text-secondary">
+                  <p className="text-sm text-text-secondary flex items-center gap-2">
                     {previewData.totalRows} rows detected
+                    {previewData.smartMetadata && !previewData.smartMetadata.isFallback && (
+                      <span className="text-[10px] bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded border border-blue-500/30 flex items-center gap-1">
+                        <BrainCircuit size={10} />
+                        Smart Mapping Active ({previewData.smartMetadata.timing.toFixed(1)}ms)
+                      </span>
+                    )}
                   </p>
                 </div>
               </div>
@@ -449,51 +494,51 @@ export default function ImportPanel({ onImport }) {
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm text-text-secondary">
-                <thead className="bg-bg-surface text-xs uppercase font-semibold text-text-muted">
+                <thead className="bg-bg-surface text-xs uppercase font-semibold text-text-muted border-b border-border-subtle">
                   <tr>
-                    {previewData.headers.slice(0, 5).map((header, i) => (
-                      <th key={i} className="px-4 py-3">
-                        {header}
-                      </th>
-                    ))}
-                    {previewData.headers.length > 5 && <th className="px-4 py-3">...</th>}
+                    {previewData.headers.slice(0, 5).map((header, i) => {
+                      const confidence = previewData.smartMetadata?.confidence[header] || 0;
+                      const rationale = previewData.smartMetadata?.rationales[header] || '';
+
+                      return (
+                        <th key={i} className="px-4 py-4 min-w-[150px]">
+                          <div className="flex flex-col gap-1.5">
+                            <span className="text-text-primary truncate" title={header}>
+                              {header}
+                            </span>
+                            {confidence > 0 && (
+                              <SmartBadge score={confidence} rationale={rationale} />
+                            )}
+                          </div>
+                        </th>
+                      );
+                    })}
+                    {previewData.headers.length > 5 && <th className="px-4 py-4 w-10">...</th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border-subtle">
                   {previewData.rows.map((row, i) => {
-                    const rowError = previewData.validationErrors?.find(ve => ve.row === i + 2);
+                    const rowError = previewData.validationErrors?.find((ve) => ve.row === i + 2);
                     return (
                       <tr key={i} className="hover:bg-bg-surface-hover transition-colors">
                         {previewData.headers.slice(0, 5).map((header, j) => {
-                          // CRITICAL FIX: Normalize the header before checking errorFields
-                          const HEADER_ALIASES = {
-                            'first name': 'first_name', 'first_name': 'first_name', 'firstname': 'first_name',
-                            'last name': 'last_name', 'last_name': 'last_name', 'lastname': 'last_name',
-                            'date of birth': 'date_of_birth', 'date_of_birth': 'date_of_birth',
-                            'dob': 'date_of_birth', 'birthdate': 'date_of_birth',
-                            'full name': 'full_name', 'full_name': 'full_name', 'coach name': 'full_name',
-                            'email': 'email', 'email address': 'email',
-                            'name': 'name', 'field name': 'name', 'field_name': 'name',
-                            'coach willing': 'willing_to_coach', 'willing to coach': 'willing_to_coach',
-                            'buddy': 'buddy_request', 'buddy request': 'buddy_request',
-                            'friend': 'buddy_request', 'friend request': 'buddy_request',
-                            'medical': 'medical_info', 'medical info': 'medical_info',
-                            'allergy': 'medical_info', 'allergies': 'medical_info',
-                            'skill': 'skill_tier', 'skill level': 'skill_tier',
-                            'skill tier': 'skill_tier', 'level': 'skill_tier',
-                          };
-                          const normalizedHeader = HEADER_ALIASES[header.toLowerCase().trim()] ?? header.toLowerCase().trim();
-                          const isCellError = rowError?.errorFields?.includes(normalizedHeader);
-                          
+                          const mapped =
+                            previewData.smartMetadata?.mappings[header] ||
+                            header.toLowerCase().trim();
+                          const isCellError = rowError?.errorFields?.includes(mapped);
+
                           return (
-                            <td key={j} className={`px-4 py-3 whitespace-nowrap ${isCellError ? 'bg-status-error-bg text-status-error font-bold border border-status-error/50 cell-error' : ''}`}>
-                              {row[header]}
+                            <td
+                              key={j}
+                              className={`px-4 py-3 whitespace-nowrap ${isCellError ? 'bg-status-error-bg text-status-error font-bold cell-error' : ''}`}
+                            >
+                              {row[header] || <span className="opacity-20">—</span>}
                             </td>
-                          )
+                          );
                         })}
                         {previewData.headers.length > 5 && <td className="px-4 py-3">...</td>}
                       </tr>
-                    )
+                    );
                   })}
                 </tbody>
               </table>

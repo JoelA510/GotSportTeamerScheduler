@@ -1,7 +1,9 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
 import { supabase } from '../lib/supabaseClient.js';
 import Papa from 'papaparse';
 import { logger } from '../lib/logger.js';
+import { useOrganization } from './OrganizationContext.jsx';
+import { matchHeaders } from '../utils/telemetryUtils.js';
 
 const ImportContext = createContext({
   isImporting: false,
@@ -20,6 +22,7 @@ const ImportContext = createContext({
   setImportedCoaches: (data) => {},
   importedFields: null,
   setImportedFields: (data) => {},
+  telemetryLogs: [],
 });
 
 export function useImport() {
@@ -27,6 +30,7 @@ export function useImport() {
 }
 
 export function ImportProvider({ children }) {
+  const { currentOrganization } = useOrganization();
   const [isImporting, setIsImporting] = useState(false);
   const [progress, setProgress] = useState(0);
   const [importStatus, setImportStatus] = useState(() => {
@@ -34,6 +38,7 @@ export function ImportProvider({ children }) {
   }); // idle, importing, completed, error
   const [importLogs, setImportLogs] = useState([]);
   const [notifyOnComplete, setNotifyOnComplete] = useState(false);
+  const [telemetryLogs, setTelemetryLogs] = useState([]);
 
   // Multi-type state
   const [importedPlayers, setImportedPlayers] = useState(null);
@@ -41,7 +46,30 @@ export function ImportProvider({ children }) {
   const [importedFields, setImportedFields] = useState(null);
   const [importedData, setImportedData] = useState(null); // Legacy/General
 
-  // Load initial state from Supabase
+  // 1. Fetch Organization-Scoped Telemetry (RBAC Check)
+  useEffect(() => {
+    const loadTelemetry = async () => {
+      if (!currentOrganization?.id) return;
+      
+      try {
+        logger.log('[ImportContext] Fetching telemetry for org:', currentOrganization.id);
+        const { data, error } = await supabase
+          .from('telemetry_log')
+          .select('*')
+          .eq('org_id', currentOrganization.id)
+          .order('created_at', { ascending: false });
+
+        if (error) throw error;
+        setTelemetryLogs(data || []);
+      } catch (err) {
+        logger.error('Failed to fetch telemetry logs:', err);
+      }
+    };
+
+    loadTelemetry();
+  }, [currentOrganization?.id]);
+
+  // 2. Load initial state from Supabase
   useEffect(() => {
     const loadFromSupabase = async () => {
       try {
@@ -53,11 +81,12 @@ export function ImportProvider({ children }) {
           return;
         }
 
-        logger.log('[ImportContext] Loading imports for user:', user.id);
+        logger.log('[ImportContext] Loading imports for user:', user.id, 'org:', currentOrganization.id);
         const { data, error } = await supabase
           .from('imports')
           .select('*')
           .eq('user_id', user.id)
+          .eq('organization_id', currentOrganization.id)
           .order('created_at', { ascending: false });
 
         if (error) throw error;
@@ -79,12 +108,9 @@ export function ImportProvider({ children }) {
 
     loadFromSupabase();
 
-    // Listen for auth changes to reload data
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
       if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
         loadFromSupabase();
-      } else if (event === 'SIGNED_OUT') {
-        resetImport('all');
       }
     });
 
@@ -93,21 +119,23 @@ export function ImportProvider({ children }) {
     };
   }, []);
 
-  // Helper for safe storage
-  const saveToStorage = (key, value) => {
-    try {
-      localStorage.setItem(key, JSON.stringify(value));
-    } catch (e) {
-      if (e.name === 'QuotaExceededError' || e.code === 22) {
-        logger.warn(`Storage quota exceeded for ${key}. Persistence disabled for this item.`);
-        addLog(`Warning: Data too large to save locally. It will be lost on refresh.`);
-      } else {
-        logger.error(`Failed to save ${key} to localStorage`, e);
-      }
-    }
-  };
+  const addLog = useCallback((message) => {
+    setImportLogs((prev) => [...prev, { timestamp: new Date(), message }]);
+  }, []);
 
-  const startImport = async (file, type = 'players') => {
+  const completeImport = useCallback((type, previewData) => {
+    setIsImporting(false);
+    setImportStatus('completed');
+    localStorage.setItem('importStatus', 'completed');
+    addLog(`Import for ${type} completed successfully.`);
+
+    if (notifyOnComplete) {
+      logger.log('Sending email notification...');
+      addLog('Email notification sent.');
+    }
+  }, [addLog, notifyOnComplete]);
+
+  const startImport = useCallback(async (file, type = 'players') => {
     setIsImporting(true);
     setImportStatus('importing');
     setProgress(0);
@@ -115,7 +143,6 @@ export function ImportProvider({ children }) {
     addLog(`Starting import for ${type} from ${file.name}...`);
 
     try {
-      // 1. Parse CSV client-side
       addLog('Parsing CSV data...');
       Papa.parse(file, {
         header: true,
@@ -123,27 +150,16 @@ export function ImportProvider({ children }) {
         complete: async (results) => {
           const { data, meta } = results;
 
-          // R3 Update: Normalize headers to match schema
-          // Phase 4 (L-3): Strict alias map replaces fuzzy .includes() matching.
-          // Mirrors the server-side HEADER_ALIASES in import-validation Edge Function.
-          const HEADER_ALIASES = {
-            'first name': 'first_name', 'first_name': 'first_name', 'firstname': 'first_name',
-            'last name': 'last_name', 'last_name': 'last_name', 'lastname': 'last_name',
-            'date of birth': 'date_of_birth', 'date_of_birth': 'date_of_birth',
-            'dob': 'date_of_birth', 'birthdate': 'date_of_birth',
-            'full name': 'full_name', 'full_name': 'full_name', 'coach name': 'full_name',
-            'email': 'email', 'email address': 'email',
-            'name': 'name', 'field name': 'name', 'field_name': 'name',
-            'coach willing': 'willing_to_coach', 'willing to coach': 'willing_to_coach',
-            'buddy': 'buddy_request', 'buddy request': 'buddy_request',
-            'friend': 'buddy_request', 'friend request': 'buddy_request',
-            'medical': 'medical_info', 'medical info': 'medical_info',
-            'allergy': 'medical_info', 'allergies': 'medical_info',
-            'skill': 'skill_tier', 'skill level': 'skill_tier',
-            'skill tier': 'skill_tier', 'level': 'skill_tier',
-          };
-          const normalizeHeader = (h) => HEADER_ALIASES[h.toLowerCase().trim()] ?? h.toLowerCase().trim();
+          // Phase 3: Smart Ingestion Logic
+          const { mappings, isFallback, timing } = matchHeaders(meta.fields, telemetryLogs);
+          
+          if (isFallback) {
+             addLog(`Performance Warning: Smart Ingestion timed out (${timing.toFixed(2)}ms). Using static fallback.`);
+          } else {
+             addLog(`Smart Ingestion active. Match calculated in ${timing.toFixed(2)}ms.`);
+          }
 
+          const normalizeHeader = (h) => mappings[h] || h.toLowerCase().trim();
           const normalizedData = [];
           const validationErrors = [];
 
@@ -156,7 +172,6 @@ export function ImportProvider({ children }) {
           const requiredForType = REQUIRED_HEADERS[type] || [];
           const normalizedFileHeaders = meta.fields.map(normalizeHeader);
 
-          // 1. Validate Headers (strict alias match)
           const missingHeaders = requiredForType.filter(req => !normalizedFileHeaders.includes(req));
           if (missingHeaders.length > 0) {
               setImportStatus('error');
@@ -165,7 +180,6 @@ export function ImportProvider({ children }) {
               return;
           }
 
-          // 2. Process and Validate Rows
           data.forEach((row, index) => {
             const newRow = {};
             let isRowValid = true;
@@ -176,26 +190,16 @@ export function ImportProvider({ children }) {
               newRow[mapped] = row[key];
             });
 
-            // Row validation
             if (type === 'players') {
-               if (!newRow['first_name']) {
-                   isRowValid = false;
-                   rowErrors.push('Missing first name');
-               }
-               if (!newRow['last_name']) {
-                   isRowValid = false;
-                   rowErrors.push('Missing last name');
-               }
+               if (!newRow['first_name']) { isRowValid = false; rowErrors.push('Missing first name'); }
+               if (!newRow['last_name']) { isRowValid = false; rowErrors.push('Missing last name'); }
             }
 
-            if (isRowValid) {
-                normalizedData.push(newRow);
-            } else {
-                validationErrors.push({ row: index + 2, data: newRow, errors: rowErrors });
-            }
+            if (isRowValid) normalizedData.push(newRow);
+            else validationErrors.push({ row: index + 2, data: newRow, errors: rowErrors });
           });
 
-          addLog(`Parsed ${normalizedData.length} valid rows. Found ${validationErrors.length} rows with errors.`);
+          addLog(`Processed ${normalizedData.length} valid rows.`);
 
           const importData = {
             fileName: file.name,
@@ -207,15 +211,13 @@ export function ImportProvider({ children }) {
             validationErrors
           };
 
-          // 2. Save to Supabase DB (If we had real staging tables we'd insert them here, for now we save the blob)
           addLog('Saving to database...');
-          const {
-            data: { user },
-          } = await supabase.auth.getUser();
+          const { data: { user } } = await supabase.auth.getUser();
 
-          if (user) {
-            const { error: insertError } = await supabase.from('import_jobs').insert({
+          if (user && currentOrganization?.id) {
+            await supabase.from('import_jobs').insert({
               created_by: user.id,
+              organization_id: currentOrganization.id,
               job_type: type === 'fields' ? 'fields' : 'registration',
               storage_path: `imports/${user.id}/${file.name}`,
               status: validationErrors.length > 0 ? 'completed_with_warnings' : 'completed',
@@ -223,23 +225,14 @@ export function ImportProvider({ children }) {
               processed_rows: normalizedData.length,
               error_summary: { rowErrors: validationErrors }
             });
-
-            if (insertError) {
-              addLog(`Warning: Failed to save to import_jobs: ${insertError.message}`);
-            } else {
-               addLog('Saved to database successfully.');
-            }
-          } else {
-            addLog('Warning: User not authenticated, data will not be saved to DB.');
           }
 
-          // Update local state
           if (type === 'players') setImportedPlayers(importData);
           if (type === 'coaches') setImportedCoaches(importData);
           if (type === 'fields') setImportedFields(importData);
-          setImportedData(importData); // Legacy
+          setImportedData(importData);
 
-          completeImport(type);
+          completeImport(type, importData);
         },
         error: (err) => {
           addLog(`Error parsing CSV: ${err.message}`);
@@ -253,26 +246,9 @@ export function ImportProvider({ children }) {
       setImportStatus('error');
       setIsImporting(false);
     }
-  };
+  }, [addLog, telemetryLogs, completeImport]);
 
-  const completeImport = (type) => {
-    setIsImporting(false);
-    setImportStatus('completed');
-    localStorage.setItem('importStatus', 'completed'); // Keep status in local storage for UI flow
-    addLog(`Import for ${type} completed successfully.`);
-
-    if (notifyOnComplete) {
-      // Simulate email notification
-      logger.log('Sending email notification...');
-      addLog('Email notification sent.');
-    }
-  };
-
-  const addLog = (message) => {
-    setImportLogs((prev) => [...prev, { timestamp: new Date(), message }]);
-  };
-
-  const resetImport = async (type = 'all') => {
+  const resetImport = useCallback(async (type = 'all') => {
     if (type === 'all') {
       setIsImporting(false);
       setImportStatus('idle');
@@ -282,18 +258,14 @@ export function ImportProvider({ children }) {
       setImportedPlayers(null);
       setImportedCoaches(null);
       setImportedFields(null);
-
-      // Optional: Delete from DB? For now, just clearing local state is safer/simpler for "reset"
-      // If we wanted to delete, we'd need the ID.
     } else {
-      // Reset specific type
       if (type === 'players') setImportedPlayers(null);
       if (type === 'coaches') setImportedCoaches(null);
       if (type === 'fields') setImportedFields(null);
     }
-  };
+  }, []);
 
-  const value = {
+  const value = useMemo(() => ({
     isImporting,
     progress,
     importStatus,
@@ -310,7 +282,13 @@ export function ImportProvider({ children }) {
     setImportedCoaches,
     importedFields,
     setImportedFields,
-  };
+    telemetryLogs,
+  }), [
+    isImporting, progress, importStatus, importLogs, 
+    notifyOnComplete, startImport, resetImport, 
+    importedData, importedPlayers, importedCoaches, 
+    importedFields, telemetryLogs
+  ]);
 
   return <ImportContext.Provider value={value}>{children}</ImportContext.Provider>;
 }

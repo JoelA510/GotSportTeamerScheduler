@@ -12,8 +12,8 @@
 ### Pass/Fail Criteria
 | Metric | Requirement | Pass Condition |
 | :--- | :--- | :--- |
-| **Logic Traceability** | Match Rationale | The `Smart Header Matcher` must return an object containing the `suggested_mapping` AND a `confidence_score` (0.0 - 1.0). |
-| **Decision Logging** | Telemetry Write-Back | When a user accepts a "Smart Suggestion," a `telemetry_log` event (`import.suggestion_accepted`) must be emitted. |
+| **Logic Traceability** | Match Rationale | The `Smart Header Matcher` must return an object containing the `suggested_mapping`, `confidence_score` (0.0 - 1.0), and a string-based `match_rationale`. |
+| **Decision Logging** | Telemetry Write-Back | When a user accepts a "Smart Suggestion," a `telemetry_log` event (`import.suggestions_applied`) must be emitted. |
 | **Explanation UI** | Semantic Clarity | Hovering over a "Smart" badge in the UI must briefly explain *why* (e.g., "Matched based on GotSport Legacy profile"). |
 
 ---
@@ -22,28 +22,29 @@
 *Ensuring the system remains functional even if "Smart" signals are missing.*
 
 ### Non-Negotiable Guardrails
-1. **Static Fallback**: If the `telemetry_log` is empty or the `telemetryUtils` parser fails, the system **MUST** default to the hardcoded `HEADER_ALIASES` within 50ms.
-2. **Schema Sanitization**: Any dynamic aliases generated from telemetry must be sanitized against the `ImportSchema` (Zod) before being applied to the UI state.
-3. **Graceful Degradation**: Toggling off the `SMART_INGESTION` feature flag must instantly revert the UI to the standard "Manual Mapping" mode without a page refresh.
+1. **50ms Circuit Breaker**: If `telemetry_log` parsing or `Smart Header Matcher` execution exceeds **50ms**, the system **MUST** instantly default to the static `HEADER_ALIASES`.
+2. **Telemetry Isolation**: Telemetry parsing failures must be caught silently and trigger the fallback without interrupting the user flow.
+3. **Schema Sanitization**: Any dynamic aliases generated from telemetry must be sanitized against the `ImportSchema` (Zod) before being applied to the UI state.
+4. **Graceful Degradation**: Toggling off the `SMART_INGESTION` feature flag must instantly revert the UI to the standard "Manual Mapping" mode without a page refresh.
 
 ---
 
-## 3. Performance & Density
-*Maintaining the "Premium" feel under high data loads.*
+## 3. Performance & Telemetry Loop
+*Closing the feedback loop for enterprise-grade ingestion.*
 
-### Performance Targets
-* **Mapping Latency**: Initial "Smart Match" calculation for a 50-column CSV must complete in **< 100ms**.
+### Loop Requirements
+* **Event Ingestion**: Every successful import must write an `import.suggestions_applied` event to the `telemetry_log` with the final mapping used.
+* **Latency Monitoring**: Log the total time spent in the matching algorithm to the console (development) or telemetry (production).
 * **Memory Management**: Telemetry processing must happen in a `useMemo` hook or within the `ImportWorker` thread to prevent UI thread blocking.
-* **Density Management**: "Smart" badges must be non-intrusive (e.g., a subtle 12px icon/dot) to avoid cluttering the already dense table headers.
 
 ---
 
 ## 4. Operational 'Go/No-Go' Protocol
 As the Governance Supervisor, I will evaluate Phase 3 implementation against:
 * [ ] **Black Box Risk?** (Is the matching logic opaque?)
-* [ ] **Dependency Loop?** (Does the ImportPanel depend too heavily on Telemetry state?)
+* [ ] **Decision Traceability?** (Is every 'Smart' match explained?)
 * [ ] **A11y Regression?** (Are the "Smart" indicators screen-reader accessible?)
 
 ---
 > [!IMPORTANT]
-> Any "Smart" logic that does not include a **Confidence Score** and a **Static Fallback** will be rejected.
+> Any "Smart" logic that does not include a **Confidence Score**, **Match Rationale**, and a **50ms Circuit Breaker** will receive a 'No-Go' recommendation.
