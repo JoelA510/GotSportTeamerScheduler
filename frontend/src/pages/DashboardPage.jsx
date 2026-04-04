@@ -8,6 +8,9 @@ import { useTheme } from '../contexts/ThemeContext.jsx';
 import { useOrganization } from '../contexts/OrganizationContext.jsx';
 import LoadingScreen from '../components/LoadingScreen.jsx';
 import { Building2, Calendar, Users, Trophy } from 'lucide-react';
+import { FeatureGuard } from '../components/ui/FeatureGuard.jsx';
+import { FEATURE_FLAGS } from '../constants/featureFlags.js';
+import { IngestionOverlay } from '../components/ui/IngestionOverlay.jsx';
 
 export default function DashboardPage() {
   // E2E Testing Error Trigger
@@ -251,6 +254,10 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
+      
+      <FeatureGuard flag={FEATURE_FLAGS.ENTERPRISE_OVERLAYS}>
+        <IngestionOverlay />
+      </FeatureGuard>
     </div>
   );
 }

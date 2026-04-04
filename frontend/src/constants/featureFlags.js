@@ -14,6 +14,7 @@ export const FEATURE_FLAGS = {
   // High-impact UI features (Phase 4)
   SPATIAL_CANVAS: 'spatial_canvas',
   SCHEDULE_MINIMAP: 'schedule_minimap',
+  ENTERPRISE_OVERLAYS: 'enterprise_overlays',
   
   // Accessibility & Fallbacks (User Feedback)
   LIST_VIEW_TOGGLE: 'list_view_toggle',

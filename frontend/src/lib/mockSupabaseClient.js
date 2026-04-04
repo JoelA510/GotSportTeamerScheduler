@@ -790,7 +790,25 @@ export const mockSupabase = {
             }
           })
         };
-      }
+      },
+      send: ({ type, event, payload }) => {
+        logger.log(`[Mock Supabase] Broadcasting ${event} on channel ${name}`, payload);
+        realtimeCallbacks.forEach(cb => {
+          // If the listener is for this channel name (or table) and event type
+          if (cb.table === name || cb.table === table) {
+            cb.callback({ event, payload, type });
+          }
+        });
+        return Promise.resolve('ok');
+      },
+      subscribe: (statusCallback) => {
+        if (statusCallback) setTimeout(() => statusCallback('SUBSCRIBED'), 0);
+        return {
+          unsubscribe: () => {
+            // Cleanup if needed
+          },
+        };
+      },
     };
   },
   removeChannel: (channel) => {

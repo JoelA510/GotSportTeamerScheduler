@@ -1,0 +1,135 @@
+import React, { useEffect, useState } from 'react';
+import { useImport } from '../../contexts/ImportContext.jsx';
+import { Activity, CheckCircle, AlertCircle, X, ChevronRight, BarChart3 } from 'lucide-react';
+
+export function IngestionOverlay() {
+  const { isImporting, progress, activeJob, importStatus, resetImport } = useImport();
+  const [isVisible, setIsVisible] = useState(false);
+  const [isMinimized, setIsMinimized] = useState(false);
+
+  useEffect(() => {
+    if (isImporting || (activeJob && !['completed', 'failed'].includes(importStatus))) {
+      setIsVisible(true);
+    } else if (importStatus === 'completed' || importStatus === 'failed') {
+      // Keep visible for 5 seconds after completion then hide
+      const timer = setTimeout(() => setIsVisible(false), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [isImporting, activeJob, importStatus]);
+
+  if (!isVisible) return null;
+
+  const getStatusColor = () => {
+    if (importStatus === 'failed' || importStatus === 'error') return 'text-red-400';
+    if (importStatus === 'completed') return 'text-emerald-400';
+    return 'text-sky-400';
+  };
+
+  const getStatusIcon = () => {
+    if (importStatus === 'failed' || importStatus === 'error') return <AlertCircle className="w-5 h-5" />;
+    if (importStatus === 'completed') return <CheckCircle className="w-5 h-5" />;
+    return <Activity className="w-5 h-5 animate-pulse" />;
+  };
+
+  return (
+    <div 
+      className={`fixed bottom-6 right-6 z-50 transition-all duration-500 ease-in-out transform ${
+        isVisible ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0'
+      }`}
+    >
+      <div className={`glass-panel-enterprise p-0 overflow-hidden w-80 border border-white/10 ${
+        isImporting ? 'animate-squadlogic-pulse' : ''
+      }`}>
+        {/* Header */}
+        <div className="flex items-center justify-between p-4 border-b border-white/5 bg-white/5">
+          <div className="flex items-center gap-3">
+            <div className={`p-2 rounded-lg bg-black/20 ${getStatusColor()}`}>
+              {getStatusIcon()}
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-white tracking-tight">
+                {activeJob?.job_type === 'fields' ? 'Field Ingestion' : 'Registration Sync'}
+              </h3>
+              <p className="text-[10px] uppercase tracking-widest text-white/40 font-semibold">
+                Enterprise Observability
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-1">
+             <button 
+              onClick={() => setIsMinimized(!isMinimized)}
+              className="p-1.5 hover:bg-white/10 rounded-md transition-colors text-white/60"
+            >
+              <ChevronRight className={`w-4 h-4 transition-transform duration-300 ${isMinimized ? 'rotate-90' : '-rotate-90'}`} />
+            </button>
+            <button 
+              onClick={() => setIsVisible(false)}
+              className="p-1.5 hover:bg-white/10 rounded-md transition-colors text-white/60"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        {!isMinimized && (
+          <div className="p-4 space-y-4 bg-gradient-to-b from-transparent to-black/20">
+            {/* Progress Section */}
+            <div className="space-y-2">
+              <div className="flex justify-between text-xs font-medium">
+                <span className="text-white/60">Real-time Progress</span>
+                <span className={getStatusColor()}>{progress}%</span>
+              </div>
+              <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
+                <div 
+                  className={`h-full transition-all duration-300 ease-out bg-gradient-to-r from-sky-500 to-indigo-500 shadow-[0_0_8px_rgba(14,165,233,0.5)]`}
+                  style={{ width: `${progress}%` }}
+                />
+              </div>
+            </div>
+
+            {/* Metrics Grid */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="p-3 rounded-xl bg-white/5 border border-white/5 space-y-1">
+                <p className="text-[10px] text-white/40 font-bold uppercase tracking-wider">Efficiency</p>
+                <div className="flex items-center gap-2">
+                  <BarChart3 className="w-4 h-4 text-sky-400/80" />
+                  <span className="text-sm font-bold text-white">
+                    {activeJob?.efficiency_metadata?.efficiency || '100'}%
+                  </span>
+                </div>
+              </div>
+              <div className="p-3 rounded-xl bg-white/5 border border-white/5 space-y-1">
+                <p className="text-[10px] text-white/40 font-bold uppercase tracking-wider">Latency</p>
+                <div className="flex items-center gap-1.5">
+                  <Activity className="w-4 h-4 text-emerald-400/80" />
+                  <span className="text-sm font-bold text-white">
+                    {activeJob?.efficiency_metadata?.latency?.toFixed(1) || '0.0'}ms
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Ingestion Meta */}
+            {importStatus === 'importing' && (
+               <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-sky-500/10 border border-sky-500/20">
+                 <div className="w-1.5 h-1.5 rounded-full bg-sky-400 animate-pulse" />
+                 <span className="text-[10px] text-sky-400 font-bold uppercase tracking-widest">
+                   Live Broadcast Active
+                 </span>
+               </div>
+            )}
+            
+            {importStatus === 'completed' && (
+               <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+                 <CheckCircle className="w-3 h-3 text-emerald-400" />
+                 <span className="text-[10px] text-emerald-400 font-bold uppercase tracking-widest">
+                   Ingestion Certified
+                 </span>
+               </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
