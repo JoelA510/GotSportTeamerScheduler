@@ -197,6 +197,11 @@ export const OrganizationProvider = ({ children }) => {
     }
   }, [currentOrganization?.feature_flags]);
 
+  // Memoize permissions separately for stability
+  const permissions = useMemo(() => {
+    return orgMember?.role ? ROLE_PERMISSIONS[orgMember.role] || [] : [];
+  }, [orgMember?.role]);
+
   const value = useMemo(
     () => ({
       organizations,
@@ -209,7 +214,7 @@ export const OrganizationProvider = ({ children }) => {
       switchSeason,
       updateFeatureFlags,
       featureFlags: validatedFeatureFlags,
-      permissions: orgMember?.role ? ROLE_PERMISSIONS[orgMember.role] || [] : [],
+      permissions,
     }),
     [
       organizations,
@@ -222,6 +227,7 @@ export const OrganizationProvider = ({ children }) => {
       switchSeason,
       updateFeatureFlags,
       validatedFeatureFlags,
+      permissions,
     ]
   );
 

@@ -16,5 +16,8 @@ export const useEnterpriseMetrics = (players = [], orgSchema = {}) => {
 export const AnalyticsProvider = ({ children, players = [], orgSchema = {} }) => {
   const metrics = useEnterpriseMetrics(players, orgSchema);
 
-  return <AnalyticsContext.Provider value={metrics}>{children}</AnalyticsContext.Provider>;
+  // Stabilize the context value
+  const value = useMemo(() => metrics, [metrics]);
+
+  return <AnalyticsContext.Provider value={value}>{children}</AnalyticsContext.Provider>;
 };

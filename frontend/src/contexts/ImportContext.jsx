@@ -44,6 +44,30 @@ export function useImport() {
   return useContext(ImportContext);
 }
 
+// Static Utility: Mask Sensitive Data out of component scope to ensure stability
+const maskDataInternal = (importPayload, entitySchema) => {
+  if (!importPayload || !importPayload.data || !entitySchema) return importPayload;
+
+  // Check if any schema fields are marked as sensitive
+  const hasSensitiveFields = Object.values(entitySchema).some((field) => field.isSensitive);
+  if (!hasSensitiveFields) return importPayload;
+
+  const maskedRows = importPayload.data.map((row) => {
+    if (!row.custom_attributes) return row;
+    const newAttrs = { ...row.custom_attributes };
+    let masked = false;
+    for (const [key] of Object.entries(newAttrs)) {
+      // Schema definition tells us if it's sensitive
+      if (entitySchema[key]?.isSensitive) {
+        newAttrs[key] = '***';
+        masked = true;
+      }
+    }
+    return masked ? { ...row, custom_attributes: newAttrs } : row;
+  });
+  return { ...importPayload, data: maskedRows };
+};
+
 export function ImportProvider({ children }) {
   const { currentOrganization } = useOrganization();
   const [isImporting, setIsImporting] = useState(false);
@@ -60,7 +84,11 @@ export function ImportProvider({ children }) {
   const [importedCoaches, setImportedCoaches] = useState(null);
   const [importedFields, setImportedFields] = useState(null);
   const [importedData, setImportedData] = useState(null); // Legacy/General
-  const [organizationSchemas, setOrganizationSchemas] = useState({}); // { player: {}, coach: {}, team: {} }
+  const [organizationSchemas, setOrganizationSchemas] = useState({
+    player: {},
+    coach: {},
+    field: {},
+  }); // { player: {}, coach: {}, team: {} }
   const [activeJobId, setActiveJobId] = useState(null);
   const [activeJob, setActiveJob] = useState(null);
 
@@ -129,7 +157,7 @@ export function ImportProvider({ children }) {
 
         if (schemaError) throw schemaError;
 
-        const schemaMap = {};
+        const schemaMap = { player: {}, coach: {}, field: {} };
         schemaData?.forEach((s) => {
           schemaMap[s.entity_type] = s.schema_definition;
         });
@@ -209,33 +237,29 @@ export function ImportProvider({ children }) {
     if (currentOrganization?.id) {
       channel = supabase
         .channel(`import-jobs-${currentOrganization.id}`)
-        .on(
-          'postgres_changes',
-          { event: 'UPDATE', schema: 'public', table: 'import_jobs' },
-          (payload) => {
-            const newJob = payload.new;
-            // Governance: Type safety and existence check
-            if (newJob && typeof newJob === 'object' && 'status' in newJob && 'id' in newJob) {
-              const job = newJob;
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'import_jobs' }, (payload) => {
+          const newJob = payload.new;
+          // Governance: Type safety and existence check
+          if (newJob && typeof newJob === 'object' && 'status' in newJob && 'id' in newJob) {
+            const job = newJob;
 
-              if (job.status === 'processing' || job.status === 'importing') {
-                // Throttled UI update logic for active job
-                if (activeJobIdRef.current === job.id) {
-                  setActiveJob((prev) => ({ ...prev, ...job }));
-                  if (job.progress_percent !== undefined) {
-                    setProgress(job.progress_percent);
-                  }
+            if (job.status === 'processing' || job.status === 'importing') {
+              // Throttled UI update logic for active job
+              if (activeJobIdRef.current === job.id) {
+                setActiveJob((prev) => ({ ...prev, ...job }));
+                if (job.progress_percent !== undefined) {
+                  setProgress(job.progress_percent);
                 }
-              } else if (['completed', 'failed', 'completed_with_warnings'].includes(job.status)) {
-                if (activeJobIdRef.current === job.id || !activeJobIdRef.current) {
-                  setIsImporting(false);
-                  setImportStatus(job.status);
-                  setActiveJob((prev) => ({ ...(prev || {}), ...job }));
-                }
+              }
+            } else if (['completed', 'failed', 'completed_with_warnings'].includes(job.status)) {
+              if (activeJobIdRef.current === job.id || !activeJobIdRef.current) {
+                setIsImporting(false);
+                setImportStatus(job.status);
+                setActiveJob((prev) => ({ ...(prev || {}), ...job }));
               }
             }
           }
-        )
+        })
         .subscribe();
     }
 
@@ -276,8 +300,7 @@ export function ImportProvider({ children }) {
         const {
           data: { user },
         } = await supabase.auth.getUser();
-        if (!user || !currentOrganization?.id)
-          throw new Error('Unauthenticated or no organization');
+        if (!user || !currentOrganization?.id) throw new Error('Unauthenticated or no organization');
 
         // Create Job entry
         const { data: job, error: jobError } = await supabase
@@ -308,26 +331,31 @@ export function ImportProvider({ children }) {
 
             // Check hard limits for DoS mitigation
             if (meta.fields.length > MAX_COLS) {
-               await supabase.from('import_jobs').update({ status: 'failed', error_summary: { message: `Payload exceeds column limit of ${MAX_COLS}` } }).eq('id', job.id);
-               setImportStatus('error');
-               setIsImporting(false);
-               addLog('Validation Error: Payload exceeds column limit of ' + MAX_COLS);
-               return;
-             }
-             if (data.length > MAX_ROWS) {
-               await supabase.from('import_jobs').update({ status: 'failed', error_summary: { message: `Payload exceeds row limit of ${MAX_ROWS}` } }).eq('id', job.id);
-               setImportStatus('error');
-               setIsImporting(false);
-               addLog('Validation Error: Payload exceeds row limit of ' + MAX_ROWS);
-               return;
-             }
+              await supabase
+                .from('import_jobs')
+                .update({ status: 'failed', error_summary: { message: `Payload exceeds column limit of ${MAX_COLS}` } })
+                .eq('id', job.id);
+              setImportStatus('error');
+              setIsImporting(false);
+              addLog('Validation Error: Payload exceeds column limit of ' + MAX_COLS);
+              return;
+            }
+            if (data.length > MAX_ROWS) {
+              await supabase
+                .from('import_jobs')
+                .update({ status: 'failed', error_summary: { message: `Payload exceeds row limit of ${MAX_ROWS}` } })
+                .eq('id', job.id);
+              setImportStatus('error');
+              setIsImporting(false);
+              addLog('Validation Error: Payload exceeds row limit of ' + MAX_ROWS);
+              return;
+            }
 
             // Update total rows
             await supabase.from('import_jobs').update({ total_rows: data.length }).eq('id', job.id);
 
             // Phase 5: Dynamic Ingestion Logic
-            const entityType =
-              type === 'players' ? 'player' : type === 'coaches' ? 'coach' : 'team';
+            const entityType = type === 'players' ? 'player' : type === 'coaches' ? 'coach' : 'team';
             const customSchema = organizationSchemas[entityType] || {};
 
             const { mappings, isFallback, timing, needsConfirmation } = matchHeaders(
@@ -344,9 +372,7 @@ export function ImportProvider({ children }) {
             };
 
             if (isFallback) {
-              addLog(
-                `Performance Warning: Smart Ingestion timed out (${timing.toFixed(2)}ms). Using static fallback.`
-              );
+              addLog(`Performance Warning: Smart Ingestion timed out (${timing.toFixed(2)}ms). Using static fallback.`);
             } else {
               addLog(`Smart Ingestion active. Match calculated in ${timing.toFixed(2)}ms.`);
               if (needsConfirmation.length > 0) {
@@ -387,9 +413,7 @@ export function ImportProvider({ children }) {
             const requiredForType = REQUIRED_HEADERS[type] || [];
             const normalizedFileHeaders = meta.fields.map(normalizeHeader);
 
-            const missingHeaders = requiredForType.filter(
-              (req) => !normalizedFileHeaders.includes(req)
-            );
+            const missingHeaders = requiredForType.filter((req) => !normalizedFileHeaders.includes(req));
             if (missingHeaders.length > 0) {
               await supabase
                 .from('import_jobs')
@@ -408,7 +432,7 @@ export function ImportProvider({ children }) {
 
             // Create Zod Schema dynamically for the base requirement
             const schemaShape = {};
-            requiredForType.forEach(req => {
+            requiredForType.forEach((req) => {
               schemaShape[req] = z.string().min(1, `Missing ${req}`);
             });
             const rowSchema = z.object(schemaShape).passthrough();
@@ -422,7 +446,7 @@ export function ImportProvider({ children }) {
               for (let i = currentIndex; i < endIndex; i++) {
                 const row = data[i];
                 const newRow = {};
-                
+
                 Object.keys(row).forEach((key) => {
                   const mapped = normalizeHeader(key);
                   if (shouldGoToCustomAttributes(mapped)) {
@@ -433,13 +457,13 @@ export function ImportProvider({ children }) {
                   }
                 });
 
-                // Zod Execution (Validating dynamically mapped row) // 
+                // Zod Execution (Validating dynamically mapped row) //
                 const zodResult = rowSchema.safeParse(newRow);
                 let isRowValid = zodResult.success;
                 let rowErrors = [];
 
                 if (!isRowValid) {
-                  rowErrors = zodResult.error.issues.map(e => e.message);
+                  rowErrors = zodResult.error.issues.map((e) => e.message);
                 }
 
                 if (isRowValid) normalizedData.push(newRow);
@@ -456,7 +480,7 @@ export function ImportProvider({ children }) {
 
               if (currentIndex < data.length) {
                 // Yield thread to avoid DoS/locking
-                setTimeout(processChunk, 0); 
+                setTimeout(processChunk, 0);
               } else {
                 finalizeImport();
               }
@@ -509,7 +533,7 @@ export function ImportProvider({ children }) {
         setIsImporting(false);
       }
     },
-    [addLog, telemetryLogs, completeImport, currentOrganization?.id, updateJobProgress]
+    [addLog, telemetryLogs, completeImport, currentOrganization?.id, updateJobProgress, organizationSchemas]
   );
 
   const resetImport = useCallback(async (type = 'all') => {
@@ -531,34 +555,34 @@ export function ImportProvider({ children }) {
     }
   }, []);
 
-  // PII MASKING HOOK - Applies zero-trust sensitive field masking for preview
-  const maskData = useCallback((importPayload, entitySchema) => {
-    if (!importPayload || !importPayload.data || !entitySchema) return importPayload;
-    
-    // Check if any schema fields are marked as sensitive
-    const hasSensitiveFields = Object.values(entitySchema).some(field => field.isSensitive);
-    if (!hasSensitiveFields) return importPayload;
+  // Stabilized Memoized Data Views
+  const maskedImportedPlayers = useMemo(
+    () => maskDataInternal(importedPlayers, organizationSchemas?.player),
+    [importedPlayers, organizationSchemas?.player]
+  );
+  const maskedImportedCoaches = useMemo(
+    () => maskDataInternal(importedCoaches, organizationSchemas?.coach),
+    [importedCoaches, organizationSchemas?.coach]
+  );
+  const maskedImportedFields = useMemo(
+    () => maskDataInternal(importedFields, organizationSchemas?.field),
+    [importedFields, organizationSchemas?.field]
+  );
+  const maskedImportedData = useMemo(
+    () =>
+      maskDataInternal(
+        importedData,
+        organizationSchemas?.player || organizationSchemas?.coach || organizationSchemas?.field
+      ),
+    [importedData, organizationSchemas]
+  );
 
-    const maskedRows = importPayload.data.map(row => {
-      if (!row.custom_attributes) return row;
-      const newAttrs = { ...row.custom_attributes };
-      let masked = false;
-      for (const [key, value] of Object.entries(newAttrs)) {
-         // Schema definition tells us if it's sensitive
-         if (entitySchema[key]?.isSensitive) {
-            newAttrs[key] = '***';
-            masked = true;
-         }
-      }
-      return masked ? { ...row, custom_attributes: newAttrs } : row;
-    });
-    return { ...importPayload, data: maskedRows };
-  }, []);
-
-  const maskedImportedPlayers = useMemo(() => maskData(importedPlayers, organizationSchemas?.player), [importedPlayers, organizationSchemas?.player, maskData]);
-  const maskedImportedCoaches = useMemo(() => maskData(importedCoaches, organizationSchemas?.coach), [importedCoaches, organizationSchemas?.coach, maskData]);
-  const maskedImportedFields = useMemo(() => maskData(importedFields, organizationSchemas?.field), [importedFields, organizationSchemas?.field, maskData]);
-  const maskedImportedData = useMemo(() => maskData(importedData, organizationSchemas?.player || organizationSchemas?.coach || organizationSchemas?.field), [importedData, organizationSchemas, maskData]);
+  // Stabilize State Setters
+  const stableSetNotifyOnComplete = useCallback((val) => setNotifyOnComplete(val), []);
+  const stableSetImportedData = useCallback((data) => setImportedData(data), []);
+  const stableSetImportedPlayers = useCallback((data) => setImportedPlayers(data), []);
+  const stableSetImportedCoaches = useCallback((data) => setImportedCoaches(data), []);
+  const stableSetImportedFields = useCallback((data) => setImportedFields(data), []);
 
   const value = useMemo(
     () => ({
@@ -567,17 +591,17 @@ export function ImportProvider({ children }) {
       importStatus,
       importLogs,
       notifyOnComplete,
-      setNotifyOnComplete,
+      setNotifyOnComplete: stableSetNotifyOnComplete,
       startImport,
       resetImport,
       importedData: maskedImportedData,
-      setImportedData,
+      setImportedData: stableSetImportedData,
       importedPlayers: maskedImportedPlayers,
-      setImportedPlayers,
+      setImportedPlayers: stableSetImportedPlayers,
       importedCoaches: maskedImportedCoaches,
-      setImportedCoaches,
+      setImportedCoaches: stableSetImportedCoaches,
       importedFields: maskedImportedFields,
-      setImportedFields,
+      setImportedFields: stableSetImportedFields,
       telemetryLogs,
       organizationSchemas,
       activeJobId,
@@ -589,12 +613,17 @@ export function ImportProvider({ children }) {
       importStatus,
       importLogs,
       notifyOnComplete,
+      stableSetNotifyOnComplete,
       startImport,
       resetImport,
       maskedImportedData,
+      stableSetImportedData,
       maskedImportedPlayers,
+      stableSetImportedPlayers,
       maskedImportedCoaches,
+      stableSetImportedCoaches,
       maskedImportedFields,
+      stableSetImportedFields,
       telemetryLogs,
       organizationSchemas,
       activeJobId,
@@ -604,3 +633,4 @@ export function ImportProvider({ children }) {
 
   return <ImportContext.Provider value={value}>{children}</ImportContext.Provider>;
 }
+

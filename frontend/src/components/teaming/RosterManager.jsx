@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   DndContext,
   DragOverlay,
@@ -17,12 +17,16 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { GripVertical, User, ShieldAlert, Zap, ArrowRight } from 'lucide-react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { useConflicts } from '../../hooks/useConflicts.js';
 import { supabase } from '../../lib/supabaseClient.js';
 import { useOrganization } from '../../contexts/OrganizationContext.jsx';
 import { logger } from '../../lib/logger.js';
 
-export function SortablePlayer({ player }) {
+/**
+ * @param {{ player: any }} props
+ */
+const PlayerCard = ({ player }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: player.id,
     data: player,
@@ -39,7 +43,7 @@ export function SortablePlayer({ player }) {
       ref={setNodeRef}
       style={style}
       data-testid={`player-card-${player.id}`}
-      className={`p-3 bg-bg-surface border border-border-subtle rounded-md mb-2 flex items-center justify-between shadow-sm cursor-grab active:cursor-grabbing ${isDragging ? 'shadow-lg border-blue-500/50' : 'hover:border-border-highlight'}`}
+      className={`p-3 bg-bg-surface border border-border-subtle rounded-md flex items-center justify-between shadow-sm cursor-grab active:cursor-grabbing ${isDragging ? 'shadow-lg border-blue-500/50' : 'hover:border-border-highlight'}`}
       {...attributes}
       {...listeners}
     >
@@ -68,9 +72,22 @@ export function SortablePlayer({ player }) {
       </div>
     </div>
   );
-}
+};
+
+// Governance: Memoize individual player rows to prevent unnecessary re-renders during drag transitions
+export const SortablePlayer = React.memo(PlayerCard);
 
 export function TeamColumn({ team, players }) {
+  const parentRef = useRef(null);
+
+  // CRITICAL: Virtualizer mapping for 60FPS roster interaction
+  const rowVirtualizer = useVirtualizer({
+    count: players.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 68,
+    overscan: 10,
+  });
+
   const { setNodeRef } = useSortable({
     id: team.id,
     data: { type: 'Column', team },
@@ -102,17 +119,38 @@ export function TeamColumn({ team, players }) {
         <div className="text-xs mt-2 text-text-secondary">Coach: {team.headCoach || 'Vacant'}</div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-3" ref={setNodeRef}>
-        <SortableContext items={players.map((p) => p.id)} strategy={verticalListSortingStrategy}>
-          {players.map((player) => (
-            <SortablePlayer key={player.id} player={player} />
-          ))}
-          {players.length === 0 && (
-            <div className="h-24 border-2 border-dashed border-border-subtle rounded-lg flex items-center justify-center text-text-muted text-sm italic">
-              Drop players here
-            </div>
-          )}
-        </SortableContext>
+      <div className="flex-1 overflow-y-auto p-3 relative h-full" ref={parentRef}>
+        <div
+          ref={setNodeRef}
+          style={{
+            height: `${rowVirtualizer.getTotalSize()}px`,
+            width: '100%',
+            position: 'relative',
+          }}
+        >
+          <SortableContext items={players.map((p) => p.id)} strategy={verticalListSortingStrategy}>
+            {rowVirtualizer.getVirtualItems().map((virtualItem) => (
+              <div
+                key={virtualItem.key}
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  width: '100%',
+                  height: `${virtualItem.size}px`,
+                  transform: `translateY(${virtualItem.start}px)`,
+                }}
+              >
+                <SortablePlayer player={players[virtualItem.index]} />
+              </div>
+            ))}
+            {players.length === 0 && (
+              <div className="h-24 border-2 border-dashed border-border-subtle rounded-lg flex items-center justify-center text-text-muted text-sm italic">
+                Drop players here
+              </div>
+            )}
+          </SortableContext>
+        </div>
       </div>
     </div>
   );

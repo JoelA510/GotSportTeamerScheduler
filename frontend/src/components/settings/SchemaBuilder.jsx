@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { supabase } from '../../lib/supabaseClient.js';
 import { useOrganization } from '../../contexts/OrganizationContext.jsx';
 import { logger } from '../../lib/logger.js';
@@ -13,7 +13,15 @@ import {
   User,
   Users,
   Shield,
+  Activity,
+  AlertCircle,
 } from 'lucide-react';
+
+const SCHEMA_TABS = [
+  { id: 'player', label: 'Players', icon: User },
+  { id: 'coach', label: 'Coaches', icon: Shield },
+  { id: 'team', label: 'Teams', icon: Users },
+];
 
 export function SchemaBuilder() {
   const { currentOrganization } = useOrganization();
@@ -50,7 +58,13 @@ export function SchemaBuilder() {
     loadSchemas();
   }, [currentOrganization?.id]);
 
-  const handleAddField = () => {
+  // Heavy Computation: Memoize entries to prevent O(N) object keys processing on every flicker
+  const attributeEntries = useMemo(
+    () => Object.entries(schemas[activeTab]),
+    [schemas, activeTab]
+  );
+
+  const handleAddField = useCallback(() => {
     const fieldName = newFieldName.toLowerCase().trim().replace(/\s+/g, '_');
 
     if (!fieldName) return;
@@ -75,16 +89,21 @@ export function SchemaBuilder() {
     }));
     setNewFieldName('');
     setError(null);
-  };
+  }, [newFieldName, activeTab, schemas, newFieldType]);
 
-  const handleRemoveField = (fieldName) => {
-    const updatedSchema = { ...schemas[activeTab] };
-    delete updatedSchema[fieldName];
-    setSchemas((prev) => ({
-      ...prev,
-      [activeTab]: updatedSchema,
-    }));
-  };
+  const handleRemoveField = useCallback(
+    (fieldName) => {
+      setSchemas((prev) => {
+        const updatedSchema = { ...prev[activeTab] };
+        delete updatedSchema[fieldName];
+        return {
+          ...prev,
+          [activeTab]: updatedSchema,
+        };
+      });
+    },
+    [activeTab]
+  );
 
   const saveSchema = async () => {
     if (!currentOrganization?.id) return;
@@ -92,10 +111,6 @@ export function SchemaBuilder() {
     setError(null);
 
     try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
       const { error: saveError } = await supabase.from('organization_schemas').upsert(
         {
           organization_id: currentOrganization.id,
@@ -116,12 +131,6 @@ export function SchemaBuilder() {
       setIsSaving(false);
     }
   };
-
-  const tabs = [
-    { id: 'player', label: 'Players', icon: User },
-    { id: 'coach', label: 'Coaches', icon: Shield },
-    { id: 'team', label: 'Teams', icon: Users },
-  ];
 
   return (
     <div className="space-y-6">
@@ -146,7 +155,7 @@ export function SchemaBuilder() {
 
       {/* Tabs */}
       <div className="flex p-1 bg-white/5 border border-white/10 rounded-2xl w-fit">
-        {tabs.map((tab) => (
+        {SCHEMA_TABS.map((tab) => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
@@ -173,7 +182,7 @@ export function SchemaBuilder() {
           </div>
 
           <div className="space-y-3">
-            {Object.keys(schemas[activeTab]).length === 0 ? (
+            {attributeEntries.length === 0 ? (
               <div className="py-12 flex flex-col items-center justify-center text-white/20 border-2 border-dashed border-white/5 rounded-2xl">
                 <Settings className="w-12 h-12 mb-3 opacity-10" />
                 <p className="text-sm font-medium">
@@ -181,7 +190,7 @@ export function SchemaBuilder() {
                 </p>
               </div>
             ) : (
-              Object.entries(schemas[activeTab]).map(([name, type]) => (
+              attributeEntries.map(([name, type]) => (
                 <div
                   key={name}
                   className="flex items-center justify-between p-4 rounded-xl bg-white/5 border border-white/5 group hover:border-white/20 transition-all duration-300"

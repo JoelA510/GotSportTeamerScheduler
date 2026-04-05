@@ -115,7 +115,11 @@ export default function EnterpriseDashboard() {
     ];
   }, [metrics]);
 
-  const attributeOptions = Object.keys(aggregates).filter((key) => !maskedFields.includes(key));
+  // Governance: Stabilize attribute options to prevent dropdown flicker
+  const attributeOptions = useMemo(
+    () => Object.keys(aggregates).filter((key) => !maskedFields.includes(key)),
+    [aggregates, maskedFields]
+  );
 
   useEffect(() => {
     if (!selectedMapping && attributeOptions.length > 0) {
@@ -123,7 +127,8 @@ export default function EnterpriseDashboard() {
     }
   }, [attributeOptions, selectedMapping]);
 
-  const getDynamicChartData = () => {
+  // Heavy Computation: Memoize dynamic chart data to maintain 60FPS during re-renders
+  const dynamicChartData = useMemo(() => {
     if (!selectedMapping || !aggregates[selectedMapping]) return [];
     const counts = aggregates[selectedMapping].counts;
     return Object.keys(counts)
@@ -132,7 +137,7 @@ export default function EnterpriseDashboard() {
         value: counts[val],
       }))
       .sort((a, b) => b.value - a.value);
-  };
+  }, [selectedMapping, aggregates]);
 
   const handleExportDummy = () => {
     alert('Export triggered');
@@ -284,7 +289,7 @@ export default function EnterpriseDashboard() {
             ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart
-                  data={getDynamicChartData()}
+                  data={dynamicChartData}
                   margin={{ top: 20, right: 30, left: 0, bottom: 5 }}
                 >
                   <CartesianGrid
@@ -318,7 +323,7 @@ export default function EnterpriseDashboard() {
                     radius={[6, 6, 0, 0]}
                     animationDuration={800}
                   >
-                    {getDynamicChartData().map((entry, index) => (
+                    {dynamicChartData.map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                     ))}
                   </Bar>
