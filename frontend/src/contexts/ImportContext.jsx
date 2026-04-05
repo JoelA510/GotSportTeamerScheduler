@@ -9,9 +9,13 @@ import React, {
 } from 'react';
 import { supabase } from '../lib/supabaseClient.js';
 import Papa from 'papaparse';
+import { z } from 'zod';
 import { logger } from '../lib/logger.js';
 import { useOrganization } from './OrganizationContext.jsx';
 import { matchHeaders, SYSTEM_COLUMNS } from '../utils/telemetryUtils.js';
+
+const MAX_ROWS = 10000;
+const MAX_COLS = 1200;
 
 const ImportContext = createContext({
   isImporting: false,
@@ -302,6 +306,22 @@ export function ImportProvider({ children }) {
           complete: async (results) => {
             const { data, meta } = results;
 
+            // Check hard limits for DoS mitigation
+            if (meta.fields.length > MAX_COLS) {
+               await supabase.from('import_jobs').update({ status: 'failed', error_summary: { message: `Payload exceeds column limit of ${MAX_COLS}` } }).eq('id', job.id);
+               setImportStatus('error');
+               setIsImporting(false);
+               addLog('Validation Error: Payload exceeds column limit of ' + MAX_COLS);
+               return;
+             }
+             if (data.length > MAX_ROWS) {
+               await supabase.from('import_jobs').update({ status: 'failed', error_summary: { message: `Payload exceeds row limit of ${MAX_ROWS}` } }).eq('id', job.id);
+               setImportStatus('error');
+               setIsImporting(false);
+               addLog('Validation Error: Payload exceeds row limit of ' + MAX_ROWS);
+               return;
+             }
+
             // Update total rows
             await supabase.from('import_jobs').update({ total_rows: data.length }).eq('id', job.id);
 
@@ -386,71 +406,95 @@ export function ImportProvider({ children }) {
               return;
             }
 
-            // Process rows with progress simulation
-            for (let i = 0; i < data.length; i++) {
-              const row = data[i];
-              const newRow = {};
-              let isRowValid = true;
-              let rowErrors = [];
+            // Create Zod Schema dynamically for the base requirement
+            const schemaShape = {};
+            requiredForType.forEach(req => {
+              schemaShape[req] = z.string().min(1, `Missing ${req}`);
+            });
+            const rowSchema = z.object(schemaShape).passthrough();
 
-              Object.keys(row).forEach((key) => {
-                const mapped = normalizeHeader(key);
-                if (shouldGoToCustomAttributes(mapped)) {
-                  if (!newRow.custom_attributes) newRow.custom_attributes = {};
-                  newRow.custom_attributes[mapped] = row[key];
-                } else {
-                  newRow[mapped] = row[key];
-                }
-              });
+            const CHUNK_SIZE = 500;
+            let currentIndex = 0;
 
-              if (type === 'players') {
-                if (!newRow['first_name']) {
-                  isRowValid = false;
-                  rowErrors.push('Missing first name');
+            const processChunk = async () => {
+              const endIndex = Math.min(currentIndex + CHUNK_SIZE, data.length);
+
+              for (let i = currentIndex; i < endIndex; i++) {
+                const row = data[i];
+                const newRow = {};
+                
+                Object.keys(row).forEach((key) => {
+                  const mapped = normalizeHeader(key);
+                  if (shouldGoToCustomAttributes(mapped)) {
+                    if (!newRow.custom_attributes) newRow.custom_attributes = {};
+                    newRow.custom_attributes[mapped] = row[key];
+                  } else {
+                    newRow[mapped] = row[key];
+                  }
+                });
+
+                // Zod Execution (Validating dynamically mapped row) // 
+                const zodResult = rowSchema.safeParse(newRow);
+                let isRowValid = zodResult.success;
+                let rowErrors = [];
+
+                if (!isRowValid) {
+                  rowErrors = zodResult.error.issues.map(e => e.message);
                 }
-                if (!newRow['last_name']) {
-                  isRowValid = false;
-                  rowErrors.push('Missing last name');
+
+                if (isRowValid) normalizedData.push(newRow);
+                else validationErrors.push({ row: i + 2, data: newRow, errors: rowErrors });
+
+                // Throttled progress update
+                if (i % 100 === 0 || i === endIndex - 1) {
+                  const currentProgress = Math.floor(((i + 1) / data.length) * 100);
+                  await updateJobProgress(job.id, currentProgress);
                 }
               }
 
-              if (isRowValid) normalizedData.push(newRow);
-              else validationErrors.push({ row: i + 2, data: newRow, errors: rowErrors });
+              currentIndex = endIndex;
 
-              // Throttled progress update
-              const currentProgress = Math.floor(((i + 1) / data.length) * 100);
-              updateJobProgress(job.id, currentProgress);
-            }
-
-            addLog(`Processed ${normalizedData.length} valid rows.`);
-
-            const importData = {
-              fileName: file.name,
-              totalRows: data.length,
-              validRows: normalizedData.length,
-              errorRows: validationErrors.length,
-              timestamp: new Date(),
-              data: normalizedData,
-              validationErrors,
+              if (currentIndex < data.length) {
+                // Yield thread to avoid DoS/locking
+                setTimeout(processChunk, 0); 
+              } else {
+                finalizeImport();
+              }
             };
 
-            addLog('Finalizing ingest...');
-            await supabase
-              .from('import_jobs')
-              .update({
-                status: validationErrors.length > 0 ? 'completed_with_warnings' : 'completed',
-                processed_rows: normalizedData.length,
-                progress_percent: 100,
-                error_summary: { rowErrors: validationErrors },
-              })
-              .eq('id', job.id);
+            const finalizeImport = async () => {
+              addLog(`Processed ${normalizedData.length} valid rows.`);
 
-            if (type === 'players') setImportedPlayers(importData);
-            if (type === 'coaches') setImportedCoaches(importData);
-            if (type === 'fields') setImportedFields(importData);
-            setImportedData(importData);
+              const importData = {
+                fileName: file.name,
+                totalRows: data.length,
+                validRows: normalizedData.length,
+                errorRows: validationErrors.length,
+                timestamp: new Date(),
+                data: normalizedData,
+                validationErrors,
+              };
 
-            completeImport(type, importData);
+              addLog('Finalizing ingest...');
+              await supabase
+                .from('import_jobs')
+                .update({
+                  status: validationErrors.length > 0 ? 'completed_with_warnings' : 'completed',
+                  processed_rows: normalizedData.length,
+                  progress_percent: 100,
+                  error_summary: { rowErrors: validationErrors },
+                })
+                .eq('id', job.id);
+
+              if (type === 'players') setImportedPlayers(importData);
+              if (type === 'coaches') setImportedCoaches(importData);
+              if (type === 'fields') setImportedFields(importData);
+              setImportedData(importData);
+
+              completeImport(type, importData);
+            };
+
+            processChunk();
           },
           error: (err) => {
             addLog(`Error parsing CSV: ${err.message}`);
@@ -487,6 +531,35 @@ export function ImportProvider({ children }) {
     }
   }, []);
 
+  // PII MASKING HOOK - Applies zero-trust sensitive field masking for preview
+  const maskData = useCallback((importPayload, entitySchema) => {
+    if (!importPayload || !importPayload.data || !entitySchema) return importPayload;
+    
+    // Check if any schema fields are marked as sensitive
+    const hasSensitiveFields = Object.values(entitySchema).some(field => field.isSensitive);
+    if (!hasSensitiveFields) return importPayload;
+
+    const maskedRows = importPayload.data.map(row => {
+      if (!row.custom_attributes) return row;
+      const newAttrs = { ...row.custom_attributes };
+      let masked = false;
+      for (const [key, value] of Object.entries(newAttrs)) {
+         // Schema definition tells us if it's sensitive
+         if (entitySchema[key]?.isSensitive) {
+            newAttrs[key] = '***';
+            masked = true;
+         }
+      }
+      return masked ? { ...row, custom_attributes: newAttrs } : row;
+    });
+    return { ...importPayload, data: maskedRows };
+  }, []);
+
+  const maskedImportedPlayers = useMemo(() => maskData(importedPlayers, organizationSchemas?.player), [importedPlayers, organizationSchemas?.player, maskData]);
+  const maskedImportedCoaches = useMemo(() => maskData(importedCoaches, organizationSchemas?.coach), [importedCoaches, organizationSchemas?.coach, maskData]);
+  const maskedImportedFields = useMemo(() => maskData(importedFields, organizationSchemas?.field), [importedFields, organizationSchemas?.field, maskData]);
+  const maskedImportedData = useMemo(() => maskData(importedData, organizationSchemas?.player || organizationSchemas?.coach || organizationSchemas?.field), [importedData, organizationSchemas, maskData]);
+
   const value = useMemo(
     () => ({
       isImporting,
@@ -497,13 +570,13 @@ export function ImportProvider({ children }) {
       setNotifyOnComplete,
       startImport,
       resetImport,
-      importedData,
+      importedData: maskedImportedData,
       setImportedData,
-      importedPlayers,
+      importedPlayers: maskedImportedPlayers,
       setImportedPlayers,
-      importedCoaches,
+      importedCoaches: maskedImportedCoaches,
       setImportedCoaches,
-      importedFields,
+      importedFields: maskedImportedFields,
       setImportedFields,
       telemetryLogs,
       organizationSchemas,
@@ -518,10 +591,10 @@ export function ImportProvider({ children }) {
       notifyOnComplete,
       startImport,
       resetImport,
-      importedData,
-      importedPlayers,
-      importedCoaches,
-      importedFields,
+      maskedImportedData,
+      maskedImportedPlayers,
+      maskedImportedCoaches,
+      maskedImportedFields,
       telemetryLogs,
       organizationSchemas,
       activeJobId,
