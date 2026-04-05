@@ -22,6 +22,7 @@ import { EVALUATOR_REGISTRY } from './evaluators/index.js';
  * @param {string|number} [params.seed] - Optional seed for deterministic generation. Overrides random if provided.
  * @param {Object} [params.featureFlags={}] - Map of active feature flags for evaluating logic.
  * @param {boolean} [params.dryRun=false] - If true, evaluates without final assignment (Ghost Roster).
+ * @param {Record<string, number>} [params.customWeights={}] - Optional weighting parameter for traits.
  * @returns {{
  *   teamsByDivision: Record<string, Array<Team>>,
  *   overflowByDivision: Record<string, Array<{ players: Array<Player>, reason: string, metadata?: Object }>>,
@@ -76,7 +77,7 @@ import { EVALUATOR_REGISTRY } from './evaluators/index.js';
  *   evaluationResults?: any,
  * }}
  */
-export function generateTeams({ players, divisionConfigs, random = Math.random, seed, featureFlags = {}, dryRun = false }) {
+export function generateTeams({ players, divisionConfigs, random = Math.random, seed, featureFlags = {}, dryRun = false, customWeights = {} }) {
   if (!Array.isArray(players)) {
     throw new TypeError('players must be an array');
   }
@@ -113,6 +114,42 @@ export function generateTeams({ players, divisionConfigs, random = Math.random, 
     playersByDivision.set(player.division, bucket);
   }
 
+  // Calculate globalStats (orgMeans and minMax) for weighted evaluation
+  let globalStatsCount = 0;
+  const orgMeansMap = {};
+  const minMaxMap = {};
+
+  for (const player of players) {
+    globalStatsCount++;
+
+    // Base skill
+    const skill = typeof player.skillRating === 'number' ? player.skillRating : (player.custom_attributes?.skill_rating || 0);
+    orgMeansMap['skill_rating'] = (orgMeansMap['skill_rating'] || 0) + Number(skill);
+    minMaxMap['skill_rating'] = minMaxMap['skill_rating'] || { min: Number.MAX_VALUE, max: -Number.MAX_VALUE };
+    minMaxMap['skill_rating'].min = Math.min(minMaxMap['skill_rating'].min, Number(skill));
+    minMaxMap['skill_rating'].max = Math.max(minMaxMap['skill_rating'].max, Number(skill));
+
+    // Custom attributes
+    const attrs = player.custom_attributes || {};
+    for (const [key, val] of Object.entries(attrs)) {
+      const numVal = Number(val);
+      if (!isNaN(numVal)) {
+        orgMeansMap[key] = (orgMeansMap[key] || 0) + numVal;
+        minMaxMap[key] = minMaxMap[key] || { min: Number.MAX_VALUE, max: -Number.MAX_VALUE };
+        minMaxMap[key].min = Math.min(minMaxMap[key].min, numVal);
+        minMaxMap[key].max = Math.max(minMaxMap[key].max, numVal);
+      }
+    }
+  }
+
+  for (const key of Object.keys(orgMeansMap)) {
+    orgMeansMap[key] = orgMeansMap[key] / globalStatsCount;
+  }
+  const globalStats = { orgMeans: orgMeansMap, minMax: minMaxMap };
+
+  // Log custom weights applied for telemetry
+  console.log(`[Teaming] Generating teams using weights:`, Object.keys(customWeights).length > 0 ? customWeights : { skill_rating: 1.0 });
+
   /** @type {Record<string, Array<Team>>} */
   const results = {};
   /** @type {any} */
@@ -146,6 +183,8 @@ export function generateTeams({ players, divisionConfigs, random = Math.random, 
       divisionConfig: config,
       random,
       featureFlags,
+      customWeights,
+      globalStats,
     });
 
     results[division] = teams.map((team) => ({
@@ -277,8 +316,10 @@ export function generateTeams({ players, divisionConfigs, random = Math.random, 
  * @param {DivisionConfig} params.divisionConfig
  * @param {function(): number} params.random
  * @param {Object} params.featureFlags
+ * @param {Object} [params.customWeights]
+ * @param {Object} [params.globalStats]
  */
-function buildTeamsForDivision({ division, players, maxRosterSize, divisionConfig, random, featureFlags }) {
+function buildTeamsForDivision({ division, players, maxRosterSize, divisionConfig, random, featureFlags, customWeights, globalStats }) {
   const coachIds = Array.from(
     new Set(players.filter((player) => player.coachId).map((player) => player.coachId))
   );
@@ -448,6 +489,8 @@ function buildTeamsForDivision({ division, players, maxRosterSize, divisionConfi
       maxRosterSize,
       random,
       featureFlags,
+      customWeights,
+      globalStats,
     });
     if (!team) {
       overflow.push({
@@ -573,9 +616,11 @@ function assignUnitToTeam({ unit, unitSkillTotal, team, maxRosterSize, reason })
  * @param {number} params.maxRosterSize
  * @param {function(): number} params.random
  * @param {Object} params.featureFlags
+ * @param {Object} [params.customWeights]
+ * @param {Object} [params.globalStats]
  * @returns {Team | null}
  */
-function pickTeamWithMostCapacity({ teams, unit, unitSkillTotal, maxRosterSize, random, featureFlags }) {
+function pickTeamWithMostCapacity({ teams, unit, unitSkillTotal, maxRosterSize, random, featureFlags, customWeights, globalStats }) {
   const unitSize = unit.length;
   const candidates = teams.filter((team) => team.players.length + unitSize <= maxRosterSize);
   if (candidates.length === 0) {
@@ -592,7 +637,9 @@ function pickTeamWithMostCapacity({ teams, unit, unitSkillTotal, maxRosterSize, 
         player: unit[0],
         team,
         allTeams: teams,
-        featureFlags
+        featureFlags,
+        customWeights,
+        globalStats
       });
       totalScore += score;
     }

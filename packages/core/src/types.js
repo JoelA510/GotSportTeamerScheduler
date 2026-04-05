@@ -52,6 +52,7 @@
  * @property {string} [coachId] - Voluntary coach link (Engine)
  * @property {string} [coach_id] - Voluntary coach link (DB)
  * @property {string} [assistantCoachId] - Voluntary assistant link
+ * @property {Record<string, any>} [custom_attributes] - Dynamic attributes
  */
 
 /**

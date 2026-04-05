@@ -18,7 +18,9 @@ export class BaseEvaluator {
    * @param {Object} context.player - The player being assigned.
    * @param {Object} context.team - The target team.
    * @param {Object} context.allTeams - Current state of all teams.
-   * @param {Object} context.featureFlags - Active feature flags for the organization.
+   * @param {Object} [context.featureFlags] - Active feature flags for the organization.
+   * @param {Record<string, number>} [context.customWeights] - Custom weight mappings
+   * @param {Object} [context.globalStats] - Normalized globals & mins/maxes
    * @returns {number} A score representing the "fit" (0 to 100, where 100 is perfect).
    */
   evaluate(context) {
