@@ -9,15 +9,15 @@
 
 ## System State Checklist (confirm before launch)
 
-| System | Expected state | How to verify |
-|---|---|---|
-| Vercel deployment | `READY` on `main` | https://vercel.com/secureyourtech/squadlogic |
-| Vercel env vars | `VITE_SUPABASE_URL` + `VITE_SUPABASE_ANON_KEY` set, `VITE_USE_MOCK_SUPABASE` absent | Vercel dashboard → Settings → Environment Variables |
-| Supabase project | `ACTIVE_HEALTHY` | Supabase dashboard or MCP `get_project` |
-| Database migrations | 34 applied, no pending | Supabase dashboard → Database → Migrations |
-| Edge Functions | All 5 `ACTIVE` with `verify_jwt: true` (except `calendar-feed`) | Supabase dashboard → Edge Functions |
-| `.env` in repo | No secret key, no mock flag | `cat .env` — only `VITE_SUPABASE_URL` + `VITE_SUPABASE_ANON_KEY` |
-| GitHub CI | Passing on `main` | GitHub → Actions |
+| System              | Expected state                                                                      | How to verify                                                    |
+| ------------------- | ----------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| Vercel deployment   | `READY` on `main`                                                                   | https://vercel.com/secureyourtech/squadlogic                     |
+| Vercel env vars     | `VITE_SUPABASE_URL` + `VITE_SUPABASE_ANON_KEY` set, `VITE_USE_MOCK_SUPABASE` absent | Vercel dashboard → Settings → Environment Variables              |
+| Supabase project    | `ACTIVE_HEALTHY`                                                                    | Supabase dashboard or MCP `get_project`                          |
+| Database migrations | 34 applied, no pending                                                              | Supabase dashboard → Database → Migrations                       |
+| Edge Functions      | All 5 `ACTIVE` with `verify_jwt: true` (except `calendar-feed`)                     | Supabase dashboard → Edge Functions                              |
+| `.env` in repo      | No secret key, no mock flag                                                         | `cat .env` — only `VITE_SUPABASE_URL` + `VITE_SUPABASE_ANON_KEY` |
+| GitHub CI           | Passing on `main`                                                                   | GitHub → Actions                                                 |
 
 ---
 
@@ -94,6 +94,7 @@ Confirm that a second user without org membership cannot see any data:
 **4a.** Create a second user in Supabase Auth (no `organization_members` row — deliberately).
 
 **4b.** Sign in as that user. Confirm:
+
 - Dashboard shows no teams, no schedules.
 - API calls return empty arrays, not errors (RLS returns 0 rows, not 403).
 - No data from the admin account leaks through.
@@ -141,6 +142,7 @@ Roles and their permissions are defined in `frontend/src/constants/permissions.j
 ## Monitoring
 
 **Daily (first two weeks):**
+
 - Supabase dashboard → Reports → API requests. Look for spikes in 4xx/5xx.
 - Supabase dashboard → Database → Connection pooling. Free tier limit is 60 direct connections.
 
@@ -150,7 +152,7 @@ Supabase pauses free-tier projects after 7 days of inactivity. Add a scheduled k
 ```yaml
 on:
   schedule:
-    - cron: '0 12 * * 1'   # Every Monday at noon UTC
+    - cron: '0 12 * * 1' # Every Monday at noon UTC
 ```
 
 With a job that simply hits the Supabase health endpoint:

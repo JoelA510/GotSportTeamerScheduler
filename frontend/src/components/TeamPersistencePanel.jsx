@@ -13,9 +13,6 @@ const SUPABASE_SYNC_TIMEOUT_MS = 10000;
 export default function TeamPersistencePanel({ teamPersistenceSnapshot }) {
   const { session } = useAuth();
 
-  if (!teamPersistenceSnapshot) {
-    return null;
-  }
 
   const [persistenceActionState, setPersistenceActionState] = useState('idle');
   const [persistenceActionMessage, setPersistenceActionMessage] = useState('');
@@ -24,6 +21,11 @@ export default function TeamPersistencePanel({ teamPersistenceSnapshot }) {
     teamPersistenceSnapshot.manualOverrides ?? []
   );
   const persistenceTimeoutRef = useRef(null);
+
+  if (!teamPersistenceSnapshot) {
+    return null;
+  }
+
 
   useEffect(() => {
     setPersistenceOverrides(teamPersistenceSnapshot.manualOverrides ?? []);

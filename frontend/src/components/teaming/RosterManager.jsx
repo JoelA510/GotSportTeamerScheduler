@@ -38,27 +38,35 @@ const PlayerCard = ({ player }) => {
     opacity: isDragging ? 0.4 : 1,
   };
 
+  const playerName =
+    player.name ||
+    `${player.first_name || ''} ${player.last_name || ''}`.trim() ||
+    'Unknown Player';
+  const playerSkill = player.skill || player.skillRating || player.skill_tier || 'Unrated';
+
   return (
     <div
       ref={setNodeRef}
       style={style}
       data-testid={`player-card-${player.id}`}
+      role="listitem"
+      aria-label={`${playerName}, Skill: ${playerSkill}${player.assignment_source === 'manual' ? ', manually assigned' : ''}`}
+      aria-roledescription="draggable item"
       className={`p-3 bg-bg-surface border border-border-subtle rounded-md flex items-center justify-between shadow-sm cursor-grab active:cursor-grabbing ${isDragging ? 'shadow-lg border-blue-500/50' : 'hover:border-border-highlight'}`}
       {...attributes}
       {...listeners}
     >
       <div className="flex items-center gap-3">
-        <div className="text-text-muted hover:text-text-primary transition-colors">
+        <div
+          className="text-text-muted hover:text-text-primary transition-colors"
+          aria-hidden="true"
+        >
           <GripVertical size={16} />
         </div>
         <div className="flex flex-col">
-          <span className="font-medium text-sm text-text-primary">
-            {player.name ||
-              `${player.first_name || ''} ${player.last_name || ''}`.trim() ||
-              'Unknown Player'}
-          </span>
+          <span className="font-medium text-sm text-text-primary">{playerName}</span>
           <span className="text-xs text-text-muted flex items-center gap-2">
-            Skill: {player.skill || player.skillRating || player.skill_tier || 'Unrated'}
+            Skill: {playerSkill}
             {player.assignment_source === 'manual' && (
               <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full font-bold bg-amber-500/20 text-amber-500 border border-amber-500/30">
                 manual
@@ -67,7 +75,7 @@ const PlayerCard = ({ player }) => {
           </span>
         </div>
       </div>
-      <div className="bg-bg-surface-hover p-1.5 rounded-full text-text-muted">
+      <div className="bg-bg-surface-hover p-1.5 rounded-full text-text-muted" aria-hidden="true">
         <User size={14} />
       </div>
     </div>
@@ -119,7 +127,7 @@ export function TeamColumn({ team, players }) {
         <div className="text-xs mt-2 text-text-secondary">Coach: {team.headCoach || 'Vacant'}</div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-3 relative h-full" ref={parentRef}>
+      <div className="flex-1 overflow-y-auto p-3 relative h-full" ref={parentRef} role="list">
         <div
           ref={setNodeRef}
           style={{
@@ -160,6 +168,7 @@ export default function RosterManager({ initialTeams }) {
   const [teams, setTeams] = useState(initialTeams);
   const [activePlayer, setActivePlayer] = useState(null);
   const [isDrafting, setIsDrafting] = useState(false);
+  const [announcement, setAnnouncement] = useState('');
   const { conflicts, hasConflicts } = useConflicts(teams);
   const { currentOrganization } = useOrganization();
 
@@ -255,6 +264,7 @@ export default function RosterManager({ initialTeams }) {
         newTeams[tIdx].players = arrayMove(newTeams[tIdx].players, oldIndex, newIndex);
         return newTeams;
       });
+      setAnnouncement(`Moved ${activePlayer.name} within ${destTeam.name}`);
     } else {
       try {
         const { error } = /** @type {any} */ (
@@ -268,8 +278,10 @@ export default function RosterManager({ initialTeams }) {
         );
 
         if (error) throw error;
+        setAnnouncement(`Assigned ${activePlayer.name} to ${destTeam.name}`);
       } catch (e) {
         logger.error('Failed to persist player assignment override', e);
+        setAnnouncement(`Failed to move ${activePlayer.name}`);
       }
     }
   };
@@ -333,13 +345,18 @@ export default function RosterManager({ initialTeams }) {
         </div>
       )}
 
+      <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        {announcement}
+      </div>
+
       <div className="flex justify-end mb-4">
         <button
           onClick={handleQuickDraft}
           disabled={isDrafting}
           className="relative z-10 glass-button flex items-center gap-2 text-sm"
+          aria-label={isDrafting ? 'Drafting in progress' : 'Execute Quick Draft'}
         >
-          <Zap size={16} />
+          <Zap size={16} aria-hidden="true" />
           {isDrafting ? 'Drafting...' : 'Quick Draft'}
         </button>
       </div>

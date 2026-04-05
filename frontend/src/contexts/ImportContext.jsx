@@ -237,29 +237,33 @@ export function ImportProvider({ children }) {
     if (currentOrganization?.id) {
       channel = supabase
         .channel(`import-jobs-${currentOrganization.id}`)
-        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'import_jobs' }, (payload) => {
-          const newJob = payload.new;
-          // Governance: Type safety and existence check
-          if (newJob && typeof newJob === 'object' && 'status' in newJob && 'id' in newJob) {
-            const job = newJob;
+        .on(
+          'postgres_changes',
+          { event: 'UPDATE', schema: 'public', table: 'import_jobs' },
+          (payload) => {
+            const newJob = payload.new;
+            // Governance: Type safety and existence check
+            if (newJob && typeof newJob === 'object' && 'status' in newJob && 'id' in newJob) {
+              const job = newJob;
 
-            if (job.status === 'processing' || job.status === 'importing') {
-              // Throttled UI update logic for active job
-              if (activeJobIdRef.current === job.id) {
-                setActiveJob((prev) => ({ ...prev, ...job }));
-                if (job.progress_percent !== undefined) {
-                  setProgress(job.progress_percent);
+              if (job.status === 'processing' || job.status === 'importing') {
+                // Throttled UI update logic for active job
+                if (activeJobIdRef.current === job.id) {
+                  setActiveJob((prev) => ({ ...prev, ...job }));
+                  if (job.progress_percent !== undefined) {
+                    setProgress(job.progress_percent);
+                  }
                 }
-              }
-            } else if (['completed', 'failed', 'completed_with_warnings'].includes(job.status)) {
-              if (activeJobIdRef.current === job.id || !activeJobIdRef.current) {
-                setIsImporting(false);
-                setImportStatus(job.status);
-                setActiveJob((prev) => ({ ...(prev || {}), ...job }));
+              } else if (['completed', 'failed', 'completed_with_warnings'].includes(job.status)) {
+                if (activeJobIdRef.current === job.id || !activeJobIdRef.current) {
+                  setIsImporting(false);
+                  setImportStatus(job.status);
+                  setActiveJob((prev) => ({ ...(prev || {}), ...job }));
+                }
               }
             }
           }
-        })
+        )
         .subscribe();
     }
 
@@ -300,7 +304,8 @@ export function ImportProvider({ children }) {
         const {
           data: { user },
         } = await supabase.auth.getUser();
-        if (!user || !currentOrganization?.id) throw new Error('Unauthenticated or no organization');
+        if (!user || !currentOrganization?.id)
+          throw new Error('Unauthenticated or no organization');
 
         // Create Job entry
         const { data: job, error: jobError } = await supabase
@@ -333,7 +338,10 @@ export function ImportProvider({ children }) {
             if (meta.fields.length > MAX_COLS) {
               await supabase
                 .from('import_jobs')
-                .update({ status: 'failed', error_summary: { message: `Payload exceeds column limit of ${MAX_COLS}` } })
+                .update({
+                  status: 'failed',
+                  error_summary: { message: `Payload exceeds column limit of ${MAX_COLS}` },
+                })
                 .eq('id', job.id);
               setImportStatus('error');
               setIsImporting(false);
@@ -343,7 +351,10 @@ export function ImportProvider({ children }) {
             if (data.length > MAX_ROWS) {
               await supabase
                 .from('import_jobs')
-                .update({ status: 'failed', error_summary: { message: `Payload exceeds row limit of ${MAX_ROWS}` } })
+                .update({
+                  status: 'failed',
+                  error_summary: { message: `Payload exceeds row limit of ${MAX_ROWS}` },
+                })
                 .eq('id', job.id);
               setImportStatus('error');
               setIsImporting(false);
@@ -355,7 +366,8 @@ export function ImportProvider({ children }) {
             await supabase.from('import_jobs').update({ total_rows: data.length }).eq('id', job.id);
 
             // Phase 5: Dynamic Ingestion Logic
-            const entityType = type === 'players' ? 'player' : type === 'coaches' ? 'coach' : 'team';
+            const entityType =
+              type === 'players' ? 'player' : type === 'coaches' ? 'coach' : 'team';
             const customSchema = organizationSchemas[entityType] || {};
 
             const { mappings, isFallback, timing, needsConfirmation } = matchHeaders(
@@ -372,7 +384,9 @@ export function ImportProvider({ children }) {
             };
 
             if (isFallback) {
-              addLog(`Performance Warning: Smart Ingestion timed out (${timing.toFixed(2)}ms). Using static fallback.`);
+              addLog(
+                `Performance Warning: Smart Ingestion timed out (${timing.toFixed(2)}ms). Using static fallback.`
+              );
             } else {
               addLog(`Smart Ingestion active. Match calculated in ${timing.toFixed(2)}ms.`);
               if (needsConfirmation.length > 0) {
@@ -413,7 +427,9 @@ export function ImportProvider({ children }) {
             const requiredForType = REQUIRED_HEADERS[type] || [];
             const normalizedFileHeaders = meta.fields.map(normalizeHeader);
 
-            const missingHeaders = requiredForType.filter((req) => !normalizedFileHeaders.includes(req));
+            const missingHeaders = requiredForType.filter(
+              (req) => !normalizedFileHeaders.includes(req)
+            );
             if (missingHeaders.length > 0) {
               await supabase
                 .from('import_jobs')
@@ -533,7 +549,14 @@ export function ImportProvider({ children }) {
         setIsImporting(false);
       }
     },
-    [addLog, telemetryLogs, completeImport, currentOrganization?.id, updateJobProgress, organizationSchemas]
+    [
+      addLog,
+      telemetryLogs,
+      completeImport,
+      currentOrganization?.id,
+      updateJobProgress,
+      organizationSchemas,
+    ]
   );
 
   const resetImport = useCallback(async (type = 'all') => {
@@ -633,4 +656,3 @@ export function ImportProvider({ children }) {
 
   return <ImportContext.Provider value={value}>{children}</ImportContext.Provider>;
 }
-

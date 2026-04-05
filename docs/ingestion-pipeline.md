@@ -2,6 +2,7 @@
 > **Implementation Status: COMPLETE**
 >
 > The ingestion pipeline described below has been implemented. Key implementation differences from the original design:
+>
 > - CSV parsing uses **PapaParse** (not `@fast-csv/parse`)
 > - Client-side validation is in `ImportContext.jsx`; server-side validation is in the `import-validation` Edge Function
 > - Header matching uses a strict alias map (not fuzzy `.includes()`)

@@ -87,20 +87,20 @@ SquadLogic/
 
 ### Key Technologies
 
-| Layer         | Technology                                           |
-|---------------|------------------------------------------------------|
-| Frontend      | React 19, Vite 6, react-router-dom v7                |
+| Layer         | Technology                                                              |
+| ------------- | ----------------------------------------------------------------------- |
+| Frontend      | React 19, Vite 6, react-router-dom v7                                   |
 | Styling       | Tailwind CSS 4 (`@tailwindcss/vite` plugin) + Vanilla CSS design system |
-| State         | React Context (Auth, Import, Organization, Theme)    |
-| Backend       | Supabase (PostgreSQL, Edge Functions, Auth, Storage) |
-| Unit Testing  | Vitest + @testing-library/react + jsdom              |
-| E2E Testing   | Playwright-BDD (Gherkin features + TS step defs)     |
-| Linting       | ESLint (flat config) + Prettier                      |
-| Type Checking | TypeScript (checkJs + allowJs, strict: false)        |
-| Drag & Drop   | @dnd-kit/core + @dnd-kit/sortable                    |
-| Charts        | Recharts                                             |
-| Icons         | lucide-react                                         |
-| Deployment    | Vercel (static SPA + rewrites)                       |
+| State         | React Context (Auth, Import, Organization, Theme)                       |
+| Backend       | Supabase (PostgreSQL, Edge Functions, Auth, Storage)                    |
+| Unit Testing  | Vitest + @testing-library/react + jsdom                                 |
+| E2E Testing   | Playwright-BDD (Gherkin features + TS step defs)                        |
+| Linting       | ESLint (flat config) + Prettier                                         |
+| Type Checking | TypeScript (checkJs + allowJs, strict: false)                           |
+| Drag & Drop   | @dnd-kit/core + @dnd-kit/sortable                                       |
+| Charts        | Recharts                                                                |
+| Icons         | lucide-react                                                            |
+| Deployment    | Vercel (static SPA + rewrites)                                          |
 
 ### Path Aliases (vite.config.js + tsconfig.json)
 
@@ -255,16 +255,16 @@ When asked to perform a "UI/UX pass", "visual polish", or work on frontend views
 
 ## 10. Environment Variables
 
-| Variable | Purpose | Committed? |
-|----------|---------|------------|
-| `VITE_SUPABASE_URL` | Supabase project URL | `.env` (yes) |
-| `VITE_SUPABASE_ANON_KEY` | Supabase publishable (anon) key | `.env.local` (no) |
-| `VITE_USE_MOCK_SUPABASE` | Force mock Supabase client (`true`) | `.env.local` / CI |
-| `VITE_PERSISTENCE_ENDPOINT` | Custom persistence API endpoint | `.env.local` (no) |
-| `TEST_ADMIN_EMAIL` | E2E admin test email | `.env.test` (no) |
-| `TEST_COACH_EMAIL` | E2E coach test email | `.env.test` (no) |
-| `TEST_PARENT_EMAIL` | E2E parent test email | `.env.test` (no) |
-| `TEST_PASSWORD` | E2E test password | `.env.test` (no) |
+| Variable                    | Purpose                             | Committed?        |
+| --------------------------- | ----------------------------------- | ----------------- |
+| `VITE_SUPABASE_URL`         | Supabase project URL                | `.env` (yes)      |
+| `VITE_SUPABASE_ANON_KEY`    | Supabase publishable (anon) key     | `.env.local` (no) |
+| `VITE_USE_MOCK_SUPABASE`    | Force mock Supabase client (`true`) | `.env.local` / CI |
+| `VITE_PERSISTENCE_ENDPOINT` | Custom persistence API endpoint     | `.env.local` (no) |
+| `TEST_ADMIN_EMAIL`          | E2E admin test email                | `.env.test` (no)  |
+| `TEST_COACH_EMAIL`          | E2E coach test email                | `.env.test` (no)  |
+| `TEST_PARENT_EMAIL`         | E2E parent test email               | `.env.test` (no)  |
+| `TEST_PASSWORD`             | E2E test password                   | `.env.test` (no)  |
 
 **Never commit** `.env`, `.env.local`, or `.env.test` — they are gitignored. Use the `.example` templates.
 
@@ -287,38 +287,38 @@ Plus a **weekly keepalive** cron job (Monday noon UTC) that pings the Supabase R
 
 ## 12. Common Commands
 
-| Command | Description |
-|---------|-------------|
-| `npm run frontend:dev` | Start Vite dev server (port 5173) |
-| `npm run frontend:build` | Production build → `dist/` |
-| `npm run test` | Vitest unit/integration tests |
-| `npm run test:watch` | Vitest in watch mode |
-| `npm run test:coverage` | Vitest with coverage report |
-| `npm run test:e2e` | `bddgen` + Playwright E2E suite |
-| `npm run test:e2e:ui` | Playwright with interactive debug UI |
-| `npm run typecheck` | TypeScript type checking (`tsc --noEmit`) |
-| `npm run lint` | ESLint check |
-| `npm run lint:fix` | ESLint auto-fix |
-| `npm run format` | Prettier format all files |
+| Command                  | Description                               |
+| ------------------------ | ----------------------------------------- |
+| `npm run frontend:dev`   | Start Vite dev server (port 5173)         |
+| `npm run frontend:build` | Production build → `dist/`                |
+| `npm run test`           | Vitest unit/integration tests             |
+| `npm run test:watch`     | Vitest in watch mode                      |
+| `npm run test:coverage`  | Vitest with coverage report               |
+| `npm run test:e2e`       | `bddgen` + Playwright E2E suite           |
+| `npm run test:e2e:ui`    | Playwright with interactive debug UI      |
+| `npm run typecheck`      | TypeScript type checking (`tsc --noEmit`) |
+| `npm run lint`           | ESLint check                              |
+| `npm run lint:fix`       | ESLint auto-fix                           |
+| `npm run format`         | Prettier format all files                 |
 
 ---
 
 ## 13. Key Documentation Reference
 
-| Document | Path |
-|----------|------|
-| Architecture overview | `docs/architecture.md` |
-| Frontend architecture | `docs/frontend-architecture.md` |
-| Data modeling | `docs/data-modeling.md` |
-| RLS policies | `docs/rls-policies.md` |
-| Requirements | `docs/archive/requirements.md` |
-| E2E master plan | `docs/testing/e2e_master_plan.md` |
-| Test checklist | `TEST_CHECKLIST.md` |
-| Expansion roadmap | `docs/expansion/03_ROADMAP.md` |
-| Agent runbook (full) | `docs/expansion/04_AGENT_RUNBOOK.md` |
-| Code review template | `docs/expansion/05_CODE_REVIEW_TEMPLATE.md` |
-| Progress log | `docs/expansion/98_PROGRESS_LOG.md` |
-| Security audit | `docs/security/audit_and_remediation_plan.md` |
-| UI/UX agent guidelines | `docs/ui/agent-ui-ux-guidelines.md` |
-| UI/UX checklist | `docs/ui/ui-ux-pass.md` |
-| UI/UX polish guide | `docs/ui/ui-ux-polish.md` |
+| Document               | Path                                          |
+| ---------------------- | --------------------------------------------- |
+| Architecture overview  | `docs/architecture.md`                        |
+| Frontend architecture  | `docs/frontend-architecture.md`               |
+| Data modeling          | `docs/data-modeling.md`                       |
+| RLS policies           | `docs/rls-policies.md`                        |
+| Requirements           | `docs/archive/requirements.md`                |
+| E2E master plan        | `docs/testing/e2e_master_plan.md`             |
+| Test checklist         | `TEST_CHECKLIST.md`                           |
+| Expansion roadmap      | `docs/expansion/03_ROADMAP.md`                |
+| Agent runbook (full)   | `docs/expansion/04_AGENT_RUNBOOK.md`          |
+| Code review template   | `docs/expansion/05_CODE_REVIEW_TEMPLATE.md`   |
+| Progress log           | `docs/expansion/98_PROGRESS_LOG.md`           |
+| Security audit         | `docs/security/audit_and_remediation_plan.md` |
+| UI/UX agent guidelines | `docs/ui/agent-ui-ux-guidelines.md`           |
+| UI/UX checklist        | `docs/ui/ui-ux-pass.md`                       |
+| UI/UX polish guide     | `docs/ui/ui-ux-polish.md`                     |

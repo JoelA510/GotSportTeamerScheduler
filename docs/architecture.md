@@ -40,20 +40,20 @@ SquadLogic is a **monorepo SPA** (Single-Page Application) that converts raw Got
 
 ## Technology Stack
 
-| Layer            | Technology                                              |
-|------------------|---------------------------------------------------------|
-| Frontend         | React 19, Vite 6, react-router-dom v7                  |
+| Layer            | Technology                                                                            |
+| ---------------- | ------------------------------------------------------------------------------------- |
+| Frontend         | React 19, Vite 6, react-router-dom v7                                                 |
 | Styling          | Tailwind CSS 4 (`@tailwindcss/vite`) + Vanilla CSS ("Deep Space Glass" design system) |
-| State Management | React Context (Auth, Import, Organization, Theme)       |
-| Backend          | Supabase (PostgreSQL, Edge Functions, Auth, Storage)    |
-| Unit Testing     | Vitest + @testing-library/react + jsdom                 |
-| E2E Testing      | Playwright-BDD (Gherkin `.feature` files + TypeScript step definitions) |
-| Linting          | ESLint (flat config) + Prettier                         |
-| Type Checking    | TypeScript (`checkJs` + `allowJs`, `strict: false`)     |
-| Drag & Drop      | @dnd-kit/core + @dnd-kit/sortable                       |
-| Charts           | Recharts                                                |
-| Icons            | lucide-react                                            |
-| Deployment       | Vercel (static SPA + API rewrites)                      |
+| State Management | React Context (Auth, Import, Organization, Theme)                                     |
+| Backend          | Supabase (PostgreSQL, Edge Functions, Auth, Storage)                                  |
+| Unit Testing     | Vitest + @testing-library/react + jsdom                                               |
+| E2E Testing      | Playwright-BDD (Gherkin `.feature` files + TypeScript step definitions)               |
+| Linting          | ESLint (flat config) + Prettier                                                       |
+| Type Checking    | TypeScript (`checkJs` + `allowJs`, `strict: false`)                                   |
+| Drag & Drop      | @dnd-kit/core + @dnd-kit/sortable                                                     |
+| Charts           | Recharts                                                                              |
+| Icons            | lucide-react                                                                          |
+| Deployment       | Vercel (static SPA + API rewrites)                                                    |
 
 ## Domain Modules (`packages/core/src/`)
 

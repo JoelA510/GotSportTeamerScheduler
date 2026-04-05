@@ -24,10 +24,10 @@ This folder contains the complete roadmap and execution plan for the SquadLogic 
 ## Post-v1.0 Epics
 
 - **[17_EPIC_TECH_DEBT.md](./17_EPIC_TECH_DEBT.md)** - Tech debt: Vite 6, React 19, Tailwind 4, TypeScript adoption.
-- **[18_BUILDTWO_GAP_ANALYSIS.md](../archive/expansion/18_BUILDTWO_GAP_ANALYSIS.md)** - *(Archive)* BUILDTWO prototype gap analysis — all gaps resolved.
+- **[18_BUILDTWO_GAP_ANALYSIS.md](../archive/expansion/18_BUILDTWO_GAP_ANALYSIS.md)** - _(Archive)_ BUILDTWO prototype gap analysis — all gaps resolved.
 - **[19_EPIC_LAUNCH_AND_BEYOND.md](../archive/expansion/19_EPIC_LAUNCH_AND_BEYOND.md)** - CI/CD, Game Scheduler, Live Backend — summary version.
 - **[19_EPIC_LAUNCH_AND_BEYOND_CLAUDE.md](./19_EPIC_LAUNCH_AND_BEYOND_CLAUDE.md)** - CI/CD, Game Scheduler, Live Backend — detailed execution plan.
-- **[20_GAME_SCHEDULE_GRID_ARCHITECTURE.md](./20_GAME_SCHEDULE_GRID_ARCHITECTURE.md)** - *(ADR)* Game Schedule Grid component architecture design.
+- **[20_GAME_SCHEDULE_GRID_ARCHITECTURE.md](./20_GAME_SCHEDULE_GRID_ARCHITECTURE.md)** - _(ADR)_ Game Schedule Grid component architecture design.
 - **[PRODUCTION_CUTOVER_RUNBOOK.md](./PRODUCTION_CUTOVER_RUNBOOK.md)** - v1.0 production deployment runbook.
 
 ## Logs

@@ -24,7 +24,11 @@ import BrandingModule from '../components/settings/modules/BrandingModule.jsx';
  * Premium Error Banner for critical setup failures.
  */
 const ErrorBanner = ({ message, onRetry, onClose }) => (
-  <div className="mb-6 p-4 rounded-2xl bg-red-500/10 border border-red-500/20 backdrop-blur-xl animate-fadeIn flex items-start gap-4">
+  <div
+    role="alert"
+    aria-live="assertive"
+    className="mb-6 p-4 rounded-2xl bg-red-500/10 border border-red-500/20 backdrop-blur-xl animate-fadeIn flex items-start gap-4"
+  >
     <div className="p-2 bg-red-500/20 text-red-400 rounded-xl">
       <XCircle size={20} />
     </div>
@@ -186,7 +190,10 @@ export default function SetupWizard() {
   if (!isTenantAdmin) return null;
 
   return (
-    <div className="min-h-screen bg-bg-main flex items-center justify-center p-6 animate-fadeIn">
+    <main
+      role="main"
+      className="min-h-screen bg-bg-main flex items-center justify-center p-6 animate-fadeIn"
+    >
       <div className="max-w-3xl w-full bg-bg-surface border border-white/5 rounded-3xl shadow-2xl overflow-hidden glass-effect flex flex-col min-h-[600px]">
         {/* Header / Progress */}
         <div className="p-8 border-b border-white/5 flex items-center justify-between">
@@ -195,14 +202,24 @@ export default function SetupWizard() {
               <Rocket size={24} />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-text-primary">SquadLogic Setup</h1>
+              <h1 id="wizard-title" className="text-xl font-bold text-text-primary">
+                SquadLogic Setup
+              </h1>
               <p className="text-text-muted text-sm px-1">Phase 2: Smart Architecture Activation</p>
             </div>
           </div>
-          <div className="flex gap-2">
+          <div
+            role="progressbar"
+            aria-valuenow={step}
+            aria-valuemin={1}
+            aria-valuemax={3}
+            aria-label={`Step ${step} of 3: ${step === 1 ? 'Branding' : step === 2 ? 'Architecture' : 'Launch'}`}
+            className="flex gap-2"
+          >
             {[1, 2, 3].map((s) => (
               <div
                 key={s}
+                aria-hidden="true"
                 className={`h-1.5 w-12 rounded-full transition-all duration-500 ${s <= step ? 'bg-brand-400' : 'bg-white/10'}`}
               />
             ))}
@@ -216,9 +233,16 @@ export default function SetupWizard() {
           )}
 
           {step === 1 && (
-            <div className="space-y-8 animate-slideInRight">
+            <section
+              aria-labelledby="step-1-title"
+              aria-current="step"
+              className="space-y-8 animate-slideInRight"
+            >
               <div className="space-y-2">
-                <h2 className="text-2xl font-bold text-text-primary uppercase tracking-tight">
+                <h2
+                  id="step-1-title"
+                  className="text-2xl font-bold text-text-primary uppercase tracking-tight"
+                >
                   Welcome to the Enterprise Tier
                 </h2>
                 <p className="text-text-muted">
@@ -242,13 +266,20 @@ export default function SetupWizard() {
                   <BrandingModule />
                 </div>
               </div>
-            </div>
+            </section>
           )}
 
           {step === 2 && (
-            <div className="space-y-8 animate-slideInRight">
+            <section
+              aria-labelledby="step-2-title"
+              aria-current="step"
+              className="space-y-8 animate-slideInRight"
+            >
               <div className="space-y-2">
-                <h2 className="text-2xl font-bold text-text-primary uppercase tracking-tight">
+                <h2
+                  id="step-2-title"
+                  className="text-2xl font-bold text-text-primary uppercase tracking-tight"
+                >
                   Smart Architecture
                 </h2>
                 <p className="text-text-muted">
@@ -304,16 +335,23 @@ export default function SetupWizard() {
                   Changing them will be recorded in the persistent Audit Log.
                 </p>
               </div>
-            </div>
+            </section>
           )}
 
           {step === 3 && (
-            <div className="space-y-8 text-center animate-slideInRight py-6">
+            <section
+              aria-labelledby="step-3-title"
+              aria-current="step"
+              className="space-y-8 text-center animate-slideInRight py-6"
+            >
               <div className="w-20 h-20 bg-green-500/20 text-green-400 rounded-full flex items-center justify-center mx-auto mb-6">
                 <CheckCircle size={48} />
               </div>
               <div className="space-y-3 max-w-md mx-auto">
-                <h2 className="text-3xl font-bold text-text-primary uppercase tracking-tight">
+                <h2
+                  id="step-3-title"
+                  className="text-3xl font-bold text-text-primary uppercase tracking-tight"
+                >
                   Ready to Launch
                 </h2>
                 <p className="text-text-muted">
@@ -355,7 +393,7 @@ export default function SetupWizard() {
                   granted access to the production dashboard.
                 </p>
               </div>
-            </div>
+            </section>
           )}
         </div>
 
@@ -393,6 +431,6 @@ export default function SetupWizard() {
           )}
         </div>
       </div>
-    </div>
+    </main>
   );
 }

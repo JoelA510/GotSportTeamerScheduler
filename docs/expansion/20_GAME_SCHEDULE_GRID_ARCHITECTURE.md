@@ -13,27 +13,27 @@
 
 All 5 planned components have been built and are operational in `frontend/src/components/scheduling/`:
 
-| Component | File | Status |
-|---|---|---|
+| Component            | File                     | Status         |
+| -------------------- | ------------------------ | -------------- |
 | `GameConflictBanner` | `GameConflictBanner.jsx` | ✅ Implemented |
-| `GameScheduleGrid` | `GameScheduleGrid.jsx` | ✅ Implemented |
-| `FieldColumn` | `FieldColumn.jsx` | ✅ Implemented |
-| `TimeSlotDropZone` | `TimeSlotDropZone.jsx` | ✅ Implemented |
-| `GameCard` | `GameCard.jsx` | ✅ Implemented |
+| `GameScheduleGrid`   | `GameScheduleGrid.jsx`   | ✅ Implemented |
+| `FieldColumn`        | `FieldColumn.jsx`        | ✅ Implemented |
+| `TimeSlotDropZone`   | `TimeSlotDropZone.jsx`   | ✅ Implemented |
+| `GameCard`           | `GameCard.jsx`           | ✅ Implemented |
 
 `GameSchedulingPage.jsx` has been extended with the full DndContext integration, edit mode toggle, and real-time validation. Unit tests exist for all new components.
 
 **Existing infrastructure we build on:**
 
-| Asset | Location | What it gives us |
-|---|---|---|
-| `gameScheduling.js` (778 lines) | `packages/core/src/` | Round-robin generation, slot allocation, coach conflict detection |
-| `gameMetrics.js` (444 lines) | `packages/core/src/` | `evaluateGameSchedule()` — field overlap, coach conflict, team double-booking detection |
-| `RosterManager.jsx` (329 lines) | `frontend/src/components/teaming/` | Proven `@dnd-kit` pattern: DndContext + closestCorners + SortableContext + DragOverlay + cross-container moves + Supabase persistence |
-| `PracticeSchedulingPage.jsx` (64 lines) | `frontend/src/pages/` | Read-only ↔ edit mode toggle pattern |
-| `useGameAssignments.js` (45 lines) | `frontend/src/hooks/` | Fetches `game_assignments` by `run_id`, maps to camelCase |
-| `TeamScheduleView.jsx` (68 lines) | `frontend/src/components/` | Per-team game list (becomes the read-only fallback) |
-| Mock Supabase client | `frontend/src/lib/supabaseClient.js` | In-memory CRUD with sessionStorage isolation for E2E |
+| Asset                                   | Location                             | What it gives us                                                                                                                      |
+| --------------------------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `gameScheduling.js` (778 lines)         | `packages/core/src/`                 | Round-robin generation, slot allocation, coach conflict detection                                                                     |
+| `gameMetrics.js` (444 lines)            | `packages/core/src/`                 | `evaluateGameSchedule()` — field overlap, coach conflict, team double-booking detection                                               |
+| `RosterManager.jsx` (329 lines)         | `frontend/src/components/teaming/`   | Proven `@dnd-kit` pattern: DndContext + closestCorners + SortableContext + DragOverlay + cross-container moves + Supabase persistence |
+| `PracticeSchedulingPage.jsx` (64 lines) | `frontend/src/pages/`                | Read-only ↔ edit mode toggle pattern                                                                                                  |
+| `useGameAssignments.js` (45 lines)      | `frontend/src/hooks/`                | Fetches `game_assignments` by `run_id`, maps to camelCase                                                                             |
+| `TeamScheduleView.jsx` (68 lines)       | `frontend/src/components/`           | Per-team game list (becomes the read-only fallback)                                                                                   |
+| Mock Supabase client                    | `frontend/src/lib/supabaseClient.js` | In-memory CRUD with sessionStorage isolation for E2E                                                                                  |
 
 ---
 
@@ -86,16 +86,16 @@ GameSchedulingPage
 
 ```typescript
 interface GameAssignment {
-  id: string;                    // assignment UUID
-  slotId: string;                // game_slot FK
+  id: string; // assignment UUID
+  slotId: string; // game_slot FK
   weekIndex: number;
-  start: string;                 // ISO datetime
-  end: string;                   // ISO datetime
+  start: string; // ISO datetime
+  end: string; // ISO datetime
   homeTeamId: string;
   awayTeamId: string;
   fieldId: string;
   division: string;
-  assignmentSource: 'auto' | 'manual';  // manual flag for overrides
+  assignmentSource: 'auto' | 'manual'; // manual flag for overrides
 }
 ```
 
@@ -149,12 +149,14 @@ DndContext (closestCorners)
 ### 4.3 Drag Lifecycle
 
 **`handleDragStart(event)`**
+
 1. Find the assignment matching `event.active.id`
 2. Set `activeGame` → triggers DragOverlay to show GameCardPreview
 3. Add `dragging` CSS class to source card (opacity reduction, like RosterManager)
 
 **`handleDragOver(event)`**
 Real-time validation as the user hovers over potential drop targets:
+
 1. Parse `event.over.id` → extract `targetFieldId` and `targetSlotKey`
 2. Call validation functions from `gameMetrics.js`:
    - `isFieldAvailable(targetFieldId, targetSlotKey, assignments, activeGame.id)` — is another game already there?
@@ -166,6 +168,7 @@ Real-time validation as the user hovers over potential drop targets:
    - No indicator for cells not being hovered
 
 **`handleDragEnd(event)`**
+
 1. Clear `activeGame` and `validationResult`
 2. If `!event.over` or validation failed → no-op (card snaps back via @dnd-kit default)
 3. If valid drop:
@@ -186,10 +189,8 @@ These are thin wrappers around `gameMetrics.js` logic, extracted for drag-time u
  * Excludes the assignment being moved (so it doesn't conflict with itself).
  */
 export function isSlotAvailable(fieldId, slotKey, assignments, excludeAssignmentId) {
-  return !assignments.some(a =>
-    a.id !== excludeAssignmentId &&
-    a.fieldId === fieldId &&
-    a.slotId === slotKey
+  return !assignments.some(
+    (a) => a.id !== excludeAssignmentId && a.fieldId === fieldId && a.slotId === slotKey
   );
 }
 
@@ -198,17 +199,17 @@ export function isSlotAvailable(fieldId, slotKey, assignments, excludeAssignment
  * A coach conflict exists when the same coach has two games with overlapping times.
  */
 export function hasCoachConflict(game, targetStart, targetEnd, assignments, teams) {
-  const homeTeam = teams.find(t => t.id === game.homeTeamId);
-  const awayTeam = teams.find(t => t.id === game.awayTeamId);
+  const homeTeam = teams.find((t) => t.id === game.homeTeamId);
+  const awayTeam = teams.find((t) => t.id === game.awayTeamId);
   const coachIds = [homeTeam?.coachId, awayTeam?.coachId].filter(Boolean);
 
-  return assignments.some(a => {
+  return assignments.some((a) => {
     if (a.id === game.id) return false;
-    const aHome = teams.find(t => t.id === a.homeTeamId);
-    const aAway = teams.find(t => t.id === a.awayTeamId);
+    const aHome = teams.find((t) => t.id === a.homeTeamId);
+    const aAway = teams.find((t) => t.id === a.awayTeamId);
     const aCoachIds = [aHome?.coachId, aAway?.coachId].filter(Boolean);
 
-    const hasSharedCoach = coachIds.some(c => aCoachIds.includes(c));
+    const hasSharedCoach = coachIds.some((c) => aCoachIds.includes(c));
     if (!hasSharedCoach) return false;
 
     // Check time overlap
@@ -231,6 +232,7 @@ export function hasCoachConflict(game, targetStart, targetEnd, assignments, team
 **Props:** `{ conflicts: Conflict[], onConflictClick?: (assignmentId) => void }`
 
 Mirrors the RosterManager conflict banner pattern (red bg, ShieldAlert icon, expandable list). Each conflict row shows:
+
 - Conflict type badge (field-overlap / coach-conflict / team-double-booking)
 - Affected teams and time slots
 - Severity indicator (red for hard conflicts, amber for warnings)
@@ -257,6 +259,7 @@ Presentational column with the field name header and a vertical stack of `TimeSl
 **Props:** `{ slotId, fieldId, assignment?, isValidTarget, isInvalidTarget }`
 
 Uses `useDroppable({ id: \`${fieldId}:${slotId}\` })`. Shows:
+
 - The contained `GameCard` if an assignment exists
 - An empty dashed placeholder otherwise
 - Green border when `isValidTarget` (valid drop hover)
@@ -268,6 +271,7 @@ Uses `useDroppable({ id: \`${fieldId}:${slotId}\` })`. Shows:
 **Props:** `{ assignment, hasConflict, isDragging }`
 
 Uses `useDraggable({ id: assignment.id, data: assignment })`. Displays:
+
 - Home team vs Away team
 - Time range
 - Division badge
@@ -341,6 +345,7 @@ export default function GameSchedulingPage() {
 The mock Supabase client needs two additions for E2E testing:
 
 1. **`game_slots` seed data** — A set of time slots across multiple fields for one Saturday:
+
    ```javascript
    { id: 'gs-1', field_id: 'v1', start: '2026-04-04T08:00', end: '2026-04-04T09:00', capacity: 1 }
    { id: 'gs-2', field_id: 'v1', start: '2026-04-04T09:30', end: '2026-04-04T10:30', capacity: 1 }
@@ -381,40 +386,40 @@ Scenario: Resolving game schedule conflicts
 
 This ordering ensures each step is independently testable:
 
-| Step | File(s) | Depends On | Testable |
-|---|---|---|---|
-| 1 | `packages/core/src/gameValidation.js` | gameMetrics.js | Unit tests (pure functions) |
-| 2 | `GameConflictBanner.jsx` + `ConflictItem` | evaluateGameSchedule | Unit test (render with mock conflicts) |
-| 3 | `GameCard.jsx` | — | Unit test (render with props) |
-| 4 | `TimeSlotDropZone.jsx` | @dnd-kit/core | Unit test (droppable state) |
-| 5 | `FieldColumn.jsx` | TimeSlotDropZone, GameCard | Unit test (renders slots) |
-| 6 | `GameScheduleGrid.jsx` | FieldColumn | Unit test (grid assembly) |
-| 7 | `GameSchedulingPage.jsx` (extend) | All above + DndContext | E2E test (full drag flow) |
-| 8 | Mock data seed | supabaseClient.js | E2E test (conflict scenario) |
-| 9 | Unskip + implement E2E scenario | All above | `npx playwright test` → 58/58 |
+| Step | File(s)                                   | Depends On                 | Testable                               |
+| ---- | ----------------------------------------- | -------------------------- | -------------------------------------- |
+| 1    | `packages/core/src/gameValidation.js`     | gameMetrics.js             | Unit tests (pure functions)            |
+| 2    | `GameConflictBanner.jsx` + `ConflictItem` | evaluateGameSchedule       | Unit test (render with mock conflicts) |
+| 3    | `GameCard.jsx`                            | —                          | Unit test (render with props)          |
+| 4    | `TimeSlotDropZone.jsx`                    | @dnd-kit/core              | Unit test (droppable state)            |
+| 5    | `FieldColumn.jsx`                         | TimeSlotDropZone, GameCard | Unit test (renders slots)              |
+| 6    | `GameScheduleGrid.jsx`                    | FieldColumn                | Unit test (grid assembly)              |
+| 7    | `GameSchedulingPage.jsx` (extend)         | All above + DndContext     | E2E test (full drag flow)              |
+| 8    | Mock data seed                            | supabaseClient.js          | E2E test (conflict scenario)           |
+| 9    | Unskip + implement E2E scenario           | All above                  | `npx playwright test` → 58/58          |
 
 ---
 
 ## 10. Risks & Mitigations
 
-| Risk | Mitigation |
-|---|---|
-| `@dnd-kit` drag simulation unreliable in Playwright | Use `page.locator().dragTo()` with explicit `{ targetPosition }` offsets; fallback to manual `page.dispatchEvent()` sequence |
-| Grid layout breaks on mobile/small screens | Not a Phase 2 concern — admin scheduling is desktop-only. Add `min-w-[800px]` with horizontal scroll wrapper |
-| Large slot counts cause performance issues | Unlikely for youth soccer (3-5 fields × 4-6 slots = max 30 cells). If needed, virtualize later |
-| `useDraggable` vs `useSortable` confusion | We use `useDraggable` for GameCards (no within-slot ordering) and `useDroppable` for TimeSlotDropZones. This is simpler than RosterManager's pattern |
-| Optimistic UI rollback edge cases | Snapshot assignments before drag, restore on persistence failure. Simple since we're updating one row |
+| Risk                                                | Mitigation                                                                                                                                           |
+| --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@dnd-kit` drag simulation unreliable in Playwright | Use `page.locator().dragTo()` with explicit `{ targetPosition }` offsets; fallback to manual `page.dispatchEvent()` sequence                         |
+| Grid layout breaks on mobile/small screens          | Not a Phase 2 concern — admin scheduling is desktop-only. Add `min-w-[800px]` with horizontal scroll wrapper                                         |
+| Large slot counts cause performance issues          | Unlikely for youth soccer (3-5 fields × 4-6 slots = max 30 cells). If needed, virtualize later                                                       |
+| `useDraggable` vs `useSortable` confusion           | We use `useDraggable` for GameCards (no within-slot ordering) and `useDroppable` for TimeSlotDropZones. This is simpler than RosterManager's pattern |
+| Optimistic UI rollback edge cases                   | Snapshot assignments before drag, restore on persistence failure. Simple since we're updating one row                                                |
 
 ---
 
 ## 11. Decision Log
 
-| Decision | Rationale |
-|---|---|
-| Fields as columns, time as rows | Matches physical field layout admins think in. Columns scale horizontally (3-5 fields typical) |
-| `useDroppable` not `SortableContext` for slots | Each slot holds 0 or 1 game per field — no intra-slot sorting needed |
-| Validation on `dragOver` not `dragEnd` | Immediate visual feedback prevents wasted drops. User sees green/red before releasing |
-| `evaluateGameSchedule()` for conflict recomputation | Already built, battle-tested, and covers all three conflict types |
-| DndContext on page, not inside grid | Follows RosterManager pattern. DragOverlay must be a sibling of the grid, not nested inside it |
-| Keep TeamScheduleView as read-only fallback | Zero-risk path for users who just want to see their team's games without editing |
-| New `gameValidation.js` in core package | Keeps drag-time validation logic pure and unit-testable, separate from UI |
+| Decision                                            | Rationale                                                                                      |
+| --------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| Fields as columns, time as rows                     | Matches physical field layout admins think in. Columns scale horizontally (3-5 fields typical) |
+| `useDroppable` not `SortableContext` for slots      | Each slot holds 0 or 1 game per field — no intra-slot sorting needed                           |
+| Validation on `dragOver` not `dragEnd`              | Immediate visual feedback prevents wasted drops. User sees green/red before releasing          |
+| `evaluateGameSchedule()` for conflict recomputation | Already built, battle-tested, and covers all three conflict types                              |
+| DndContext on page, not inside grid                 | Follows RosterManager pattern. DragOverlay must be a sibling of the grid, not nested inside it |
+| Keep TeamScheduleView as read-only fallback         | Zero-risk path for users who just want to see their team's games without editing               |
+| New `gameValidation.js` in core package             | Keeps drag-time validation logic pure and unit-testable, separate from UI                      |

@@ -59,16 +59,6 @@ export const ThemeProvider = ({ children }) => {
     return localStorage.getItem('squadlogic-timezone') || 'UTC';
   });
 
-  useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme);
-    localStorage.setItem('squadlogic-theme', theme);
-
-    if (theme === 'club') {
-      applyClubTheme(clubColors, clubMode);
-    } else {
-      removeClubTheme();
-    }
-  }, [theme, clubColors, clubMode]);
 
   const updateClubColors = (colors) => {
     const newColors = { ...clubColors, ...colors };
@@ -242,7 +232,19 @@ export const ThemeProvider = ({ children }) => {
     props.forEach((p) => root.style.removeProperty(p));
   };
 
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('squadlogic-theme', theme);
+
+    if (theme === 'club') {
+      applyClubTheme(clubColors, clubMode);
+    } else {
+      removeClubTheme();
+    }
+  }, [theme, clubColors, clubMode]);
+
   return (
+
     <ThemeContext.Provider
       value={{
         theme,

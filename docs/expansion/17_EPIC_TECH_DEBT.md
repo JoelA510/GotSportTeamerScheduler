@@ -8,12 +8,12 @@ These are **non-blocking** upgrades identified during the BUILDTWO integration a
 
 ## Items
 
-| Item | Current | Target | Effort | Status | Notes |
-|---|---|---|---|---|---|
-| Vite | 5.x | 6.x | Low | [PROCESSED] | Upgrade verified by build |
-| React | 18.x | 19.x | Medium | [PROCESSED] | Types added, build verified |
-| Tailwind CSS | 3.x | 4.x (CSS-first) | High | [PROCESSED] | @theme migration, config deleted |
-| TypeScript | None | Incremental | High | [PROCESSED] | tsc --noEmit, tsconfig.json |
+| Item         | Current | Target          | Effort | Status      | Notes                            |
+| ------------ | ------- | --------------- | ------ | ----------- | -------------------------------- |
+| Vite         | 5.x     | 6.x             | Low    | [PROCESSED] | Upgrade verified by build        |
+| React        | 18.x    | 19.x            | Medium | [PROCESSED] | Types added, build verified      |
+| Tailwind CSS | 3.x     | 4.x (CSS-first) | High   | [PROCESSED] | @theme migration, config deleted |
+| TypeScript   | None    | Incremental     | High   | [PROCESSED] | tsc --noEmit, tsconfig.json      |
 
 ## Prerequisites
 

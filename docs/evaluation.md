@@ -6,13 +6,14 @@
 # Evaluation Pipeline Design Overview
 
 The evaluation lifecycle consists of four main phases:
+
 1. **Snapshot Inputs**
 
 1. **Snapshot Inputs**
    - Capture identifiers for the run being evaluated (`run_id`, `division_id`, scheduler type) plus the hash of relevant
      configuration (`season_settings`, algorithm parameters) and the data revision timestamp.
    - Store snapshots in `evaluation_runs` with JSONB fields referencing the exact roster and slot assignments examined.
-2. **Constraint Verification**
+1. **Constraint Verification**
    - Validate team coverage: each active team must have exactly one practice slot and the configured number of games per week.
    - Ensure field capacities are respected by checking overlapping `practice_assignments` and `games` by `field_subunit_id`
      or `field_id` within the same time range.
@@ -21,19 +22,19 @@ The evaluation lifecycle consists of four main phases:
    - Guard against division drift by validating that every player listed in `team_players` matches the parent team's
      `division_id`, catching any data corruption that slips past roster generation.
    - Write failures to `evaluation_findings` with severity (`error`, `warning`) and machine-friendly `finding_code`s.
-3. **Fairness Metrics**
+1. **Fairness Metrics**
    - Compute per-division distributions of early/mid/late time slots for practices and games.
    - Measure field utilization variance so administrators can spot overused facilities.
    - Track rest spacing between games (days between fixtures) and flag teams with back-to-back weeks of early mornings or
      late evenings.
    - Persist metric summaries in `evaluation_metrics` with thresholds defined in configuration for alerting.
-4. **Auto-Fix Attempts**
+1. **Auto-Fix Attempts**
    - For eligible findings (e.g., coach overlap resolvable by swapping compatible slots), invoke a remediation service that
      proposes swaps or reassignments using heuristics already outlined in the scheduling docs.
    - Apply fixes only when they reduce the total severity score and do not introduce new conflicts, recording before/after
      deltas in `evaluation_run_events`.
    - Leave unresolved items tagged `requires_manual_review` with recommended alternate slots or teams.
-5. **Reporting & Notifications**
+1. **Reporting & Notifications**
    - Emit Supabase Realtime events so the UI can update evaluation dashboards live.
    - Generate a structured JSON summary consumable by the export agent for inclusion in release notes.
    - Provide a markdown-like report template (rendered in the admin UI) that lists blocking issues, warnings, fairness charts,

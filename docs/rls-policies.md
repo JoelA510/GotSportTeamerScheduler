@@ -6,15 +6,16 @@ This document describes the **implemented** Row Level Security (RLS) strategy fo
 
 SquadLogic uses Supabase Auth with five logical roles stored in the `organization_members` table:
 
-| Role       | Description                                                   |
-|------------|---------------------------------------------------------------|
-| `admin`    | Full access to all organization data. Can manage users, import data, and run schedulers. |
-| `coach`    | View team data they are assigned to. Can update RSVP and participate in team chat. |
-| `player`   | Limited access to own team data and schedule views.            |
-| `parent`   | View child's team schedule and public calendar feeds.          |
-| `staff`    | Extended read access similar to coach, for non-coaching staff. |
+| Role     | Description                                                                              |
+| -------- | ---------------------------------------------------------------------------------------- |
+| `admin`  | Full access to all organization data. Can manage users, import data, and run schedulers. |
+| `coach`  | View team data they are assigned to. Can update RSVP and participate in team chat.       |
+| `player` | Limited access to own team data and schedule views.                                      |
+| `parent` | View child's team schedule and public calendar feeds.                                    |
+| `staff`  | Extended read access similar to coach, for non-coaching staff.                           |
 
 Roles are defined in `frontend/src/constants/permissions.js` and enforced via:
+
 - **Database**: `is_org_member(organization_id)` RLS policies on every table
 - **Frontend**: `usePermission` hook + `<ProtectedRoute>` component
 - **Edge Functions**: JWT validation + role allowlist checks
@@ -47,18 +48,18 @@ CREATE POLICY "org_scoped_access" ON public.<table_name>
 
 Every data table has a direct `organization_id` column (either native or backfilled via migration). This eliminates the need for multi-table JOINs in RLS policies and ensures consistent, performant access control:
 
-| Table Group | Tables | Scope Method |
-|---|---|---|
-| **Core Admin** | `season_settings`, `divisions`, `import_jobs` | Direct `organization_id` |
-| **People** | `players`, `coaches`, `profiles` | Direct `organization_id` (profiles: self-only) |
-| **Teams & Rosters** | `teams`, `team_players` | Direct `organization_id` |
-| **Facilities** | `locations`, `fields`, `field_subunits` | Direct `organization_id` |
-| **Scheduling** | `practice_slots`, `game_slots`, `practice_assignments`, `games` | Direct `organization_id` |
-| **Communication** | `event_rsvps`, `team_messages`, `profile_players` | Direct `organization_id` |
-| **Evaluation** | `scheduler_runs`, `evaluation_runs`, `evaluation_findings`, `evaluation_metrics`, `evaluation_run_events` | Direct `organization_id` |
-| **Exports & Logs** | `export_jobs`, `email_log`, `audit_log` | Direct `organization_id` |
-| **Registration** | `registration_forms`, `registrations` | Direct `organization_id` via `organization_members` |
-| **Staging** | `staging_players`, `player_buddies` | Direct `organization_id` |
+| Table Group         | Tables                                                                                                    | Scope Method                                        |
+| ------------------- | --------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
+| **Core Admin**      | `season_settings`, `divisions`, `import_jobs`                                                             | Direct `organization_id`                            |
+| **People**          | `players`, `coaches`, `profiles`                                                                          | Direct `organization_id` (profiles: self-only)      |
+| **Teams & Rosters** | `teams`, `team_players`                                                                                   | Direct `organization_id`                            |
+| **Facilities**      | `locations`, `fields`, `field_subunits`                                                                   | Direct `organization_id`                            |
+| **Scheduling**      | `practice_slots`, `game_slots`, `practice_assignments`, `games`                                           | Direct `organization_id`                            |
+| **Communication**   | `event_rsvps`, `team_messages`, `profile_players`                                                         | Direct `organization_id`                            |
+| **Evaluation**      | `scheduler_runs`, `evaluation_runs`, `evaluation_findings`, `evaluation_metrics`, `evaluation_run_events` | Direct `organization_id`                            |
+| **Exports & Logs**  | `export_jobs`, `email_log`, `audit_log`                                                                   | Direct `organization_id`                            |
+| **Registration**    | `registration_forms`, `registrations`                                                                     | Direct `organization_id` via `organization_members` |
+| **Staging**         | `staging_players`, `player_buddies`                                                                       | Direct `organization_id`                            |
 
 ## Edge Function Security
 
@@ -70,6 +71,7 @@ Edge Functions use a dual-client pattern:
 Each Edge Function also performs explicit `organization_id` validation: the user's org membership is verified before any write operation.
 
 Role allowlists per Edge Function:
+
 - `team-persistence`: `admin`, `scheduler` (configurable via `TEAM_PERSISTENCE_ALLOWED_ROLES`)
 - `game-persistence`, `practice-persistence`: `admin`
 - `calendar-feed`: No JWT required (uses token-based auth with 90-day expiry)
@@ -83,15 +85,15 @@ Role allowlists per Edge Function:
 
 The RLS system evolved through multiple migrations, consolidated during a 4-phase security audit (March 2026):
 
-| Phase | Migration | What Changed |
-|---|---|---|
-| Original | `20251208000000` | Admin-only role check policies (no org scope) |
-| Auth | `20251214000004` | Core auth schema, profiles, organization_members |
-| Communication | `20251217000000` | Team messages, RSVP tables with partial org scope |
-| RLS Remediation | `20260309000000` | `coach_team_map` security_invoker fix |
-| Unified RLS | `20260310000002` | `organization_id` denormalization, `is_org_member()` on all tables |
+| Phase            | Migration        | What Changed                                                       |
+| ---------------- | ---------------- | ------------------------------------------------------------------ |
+| Original         | `20251208000000` | Admin-only role check policies (no org scope)                      |
+| Auth             | `20251214000004` | Core auth schema, profiles, organization_members                   |
+| Communication    | `20251217000000` | Team messages, RSVP tables with partial org scope                  |
+| RLS Remediation  | `20260309000000` | `coach_team_map` security_invoker fix                              |
+| Unified RLS      | `20260310000002` | `organization_id` denormalization, `is_org_member()` on all tables |
 | Registration Fix | `20260310000003` | Fixed policies referencing non-existent `organization_roles` table |
-| Audit Logging | `20260324000004` | Append-only `audit_log` table with admin-read-only RLS |
+| Audit Logging    | `20260324000004` | Append-only `audit_log` table with admin-read-only RLS             |
 
 See `docs/security/audit_and_remediation_plan.md` for the full audit report and finding details.
 

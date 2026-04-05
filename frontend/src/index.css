@@ -1,4 +1,4 @@
-@import "tailwindcss";
+@import 'tailwindcss';
 
 @theme {
   /* Colors — mapped to CSS variables defined in :root / [data-theme] below */
@@ -34,25 +34,50 @@
 }
 
 @keyframes fadeIn {
-  0% { opacity: 0; }
-  100% { opacity: 1; }
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
 }
 
 @keyframes slideUp {
-  0% { opacity: 0; transform: translateY(10px); }
-  100% { opacity: 1; transform: translateY(0); }
+  0% {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @keyframes pulseGlow {
-  0% { box-shadow: 0 0 0 0 rgba(56, 189, 248, 0.4); }
-  70% { box-shadow: 0 0 0 10px rgba(56, 189, 248, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(56, 189, 248, 0); }
+  0% {
+    box-shadow: 0 0 0 0 rgba(56, 189, 248, 0.4);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(56, 189, 248, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(56, 189, 248, 0);
+  }
 }
 
 @keyframes squadlogic-pulse {
-  0% { box-shadow: 0 0 0 0 rgba(14, 165, 233, 0.4); border-color: rgba(14, 165, 233, 0.2); }
-  50% { box-shadow: 0 0 25px 2px rgba(14, 165, 233, 0.3); border-color: rgba(14, 165, 233, 0.5); }
-  100% { box-shadow: 0 0 0 0 rgba(14, 165, 233, 0.4); border-color: rgba(14, 165, 233, 0.2); }
+  0% {
+    box-shadow: 0 0 0 0 rgba(14, 165, 233, 0.4);
+    border-color: rgba(14, 165, 233, 0.2);
+  }
+  50% {
+    box-shadow: 0 0 25px 2px rgba(14, 165, 233, 0.3);
+    border-color: rgba(14, 165, 233, 0.5);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(14, 165, 233, 0.4);
+    border-color: rgba(14, 165, 233, 0.2);
+  }
 }
 
 :root {
@@ -232,7 +257,7 @@ body {
 /* Global Focus */
 :focus-visible {
   outline: 2px solid var(--color-focus-ring);
-  outline-offset: 2px;
+  outline-offset: 4px;
 }
 
 a {
@@ -253,10 +278,10 @@ a {
 /* Glass Panel Utility */
 /* Glass Panel Utility (Global Upgrade) */
 .glass-panel {
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.01) 100%);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.05) 100%);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.2);
   box-shadow:
     0 8px 32px 0 rgba(0, 0, 0, 0.36),
     inset 0 0 0 1px rgba(255, 255, 255, 0.05);
@@ -276,8 +301,8 @@ a {
 
 /* Inner Card Utility */
 .card-glass {
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: var(--radius-lg);
   padding: var(--space-6);
   /* Increased padding */
@@ -302,6 +327,19 @@ a {
 
 .text-muted {
   color: var(--color-text-muted);
+}
+
+/* Accessibility Utilities */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
 }
 
 /* --- ANIMATIONS --- */
@@ -333,10 +371,10 @@ a {
 
 /* Premium Glass Utilities */
 .glass-panel-premium {
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.01) 100%);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.05) 100%);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.2);
   box-shadow:
     0 8px 32px 0 rgba(0, 0, 0, 0.36),
     inset 0 0 0 1px rgba(255, 255, 255, 0.05);
@@ -421,7 +459,11 @@ a {
 /* --- INTERACTIVE GLASS UTILITIES (Ported from BUILDTWO) --- */
 
 .glass-button {
-  background: linear-gradient(135deg, var(--color-primary, rgba(59, 130, 246, 0.8)), var(--color-primary-600, rgba(37, 99, 235, 0.8)));
+  background: linear-gradient(
+    135deg,
+    var(--color-primary, rgba(59, 130, 246, 0.8)),
+    var(--color-primary-600, rgba(37, 99, 235, 0.8))
+  );
   backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);
   border: 1px solid rgba(255, 255, 255, 0.2);
@@ -475,7 +517,9 @@ a {
   padding: var(--space-2) var(--space-4);
   font-family: inherit;
   font-size: inherit;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
 }
 
 .glass-input:focus {

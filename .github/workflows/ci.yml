@@ -2,12 +2,12 @@ name: SquadLogic CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
   schedule:
     # Keep the Supabase free-tier project alive (pauses after 7 days idle)
-    - cron: '0 12 * * 1'   # Every Monday at noon UTC
+    - cron: '0 12 * * 1' # Every Monday at noon UTC
 
 jobs:
   # ── Supabase keep-alive (scheduled runs only) ────────────────

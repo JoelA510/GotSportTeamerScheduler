@@ -45,16 +45,37 @@ export default function SettingsPage() {
           Organization Settings
         </h1>
         <p className="text-text-muted mt-2">
-          Configure your league's identity, behavior, and structural configurations.
+          Configure your league&apos;s identity, behavior, and structural configurations.
         </p>
       </header>
 
-      <div className="flex border-b border-white/5 mb-8 overflow-x-auto scrollbar-hide">
+      <div
+        role="tablist"
+        aria-label="Organization settings tabs"
+        className="flex border-b border-white/5 mb-8 overflow-x-auto scrollbar-hide"
+      >
         {tabs.map((tab) => (
           <button
             key={tab.id}
+            id={`tab-${tab.id}`}
+            role="tab"
+            aria-selected={activeTab === tab.id}
+            aria-controls={`panel-${tab.id}`}
+            tabIndex={activeTab === tab.id ? 0 : -1}
             onClick={() => setActiveTab(tab.id)}
-            className={`flex items-center gap-2 px-6 py-4 text-sm font-medium transition-all relative whitespace-nowrap ${
+            onKeyDown={(e) => {
+              const index = tabs.findIndex((t) => t.id === tab.id);
+              if (e.key === 'ArrowRight') {
+                const nextIndex = (index + 1) % tabs.length;
+                setActiveTab(tabs[nextIndex].id);
+                document.getElementById(`tab-${tabs[nextIndex].id}`).focus();
+              } else if (e.key === 'ArrowLeft') {
+                const prevIndex = (index - 1 + tabs.length) % tabs.length;
+                setActiveTab(tabs[prevIndex].id);
+                document.getElementById(`tab-${tabs[prevIndex].id}`).focus();
+              }
+            }}
+            className={`flex items-center gap-2 px-6 py-4 text-sm font-medium transition-all relative whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-inset ${
               activeTab === tab.id ? 'text-brand-400' : 'text-text-muted hover:text-text-primary'
             }`}
           >
@@ -67,7 +88,12 @@ export default function SettingsPage() {
         ))}
       </div>
 
-      <div className="bg-bg-surface p-8 rounded-2xl border border-white/5 shadow-xl glass-effect min-h-[400px]">
+      <div
+        id={`panel-${activeTab}`}
+        role="tabpanel"
+        aria-labelledby={`tab-${activeTab}`}
+        className="bg-bg-surface p-8 rounded-2xl border border-white/5 shadow-xl glass-effect min-h-[400px]"
+      >
         {renderContent()}
       </div>
     </div>

@@ -12,50 +12,50 @@ This document describes the implemented frontend architecture for SquadLogic. Th
 
 ## Current Routes
 
-| Route | Page Component | Description |
-|---|---|---|
-| `/` | `DashboardPage` | Dashboard with metrics, workflow progression, and league status |
-| `/import` | `ImportPage` | GotSport CSV data ingestion with validation |
-| `/teams` | `TeamAnalysisPage` | Roster generation, analysis, drag-and-drop overrides |
-| `/fields` | `FieldManagementPage` | Venue/field/blackout date CRUD with weekly grid |
-| `/schedule/practice` | `PracticeSchedulingPage` | Practice slot assignment with lock/unlock toggles |
-| `/schedule/game` | `GameSchedulingPage` | Interactive game schedule grid with drag-and-drop |
-| `/settings` | `SettingsPage` | League config, theme branding, season management |
-| `/compliance` | `AdminComplianceDashboard` | Registration forms, waiver tracking |
-| `/reporting` | `AdminReportingDashboard` | Game metrics, standings, charts |
-| `/standings` | `LeagueStandings` | Score entry, standings tables, tie-breaker logic |
-| `/registration/:formId` | `RegistrationFlow` | Public registration form flow |
-| `/team/:teamId` | `TeamPortalPage` | Coach/parent portal — roster, schedule, RSVP, chat |
+| Route                   | Page Component             | Description                                                     |
+| ----------------------- | -------------------------- | --------------------------------------------------------------- |
+| `/`                     | `DashboardPage`            | Dashboard with metrics, workflow progression, and league status |
+| `/import`               | `ImportPage`               | GotSport CSV data ingestion with validation                     |
+| `/teams`                | `TeamAnalysisPage`         | Roster generation, analysis, drag-and-drop overrides            |
+| `/fields`               | `FieldManagementPage`      | Venue/field/blackout date CRUD with weekly grid                 |
+| `/schedule/practice`    | `PracticeSchedulingPage`   | Practice slot assignment with lock/unlock toggles               |
+| `/schedule/game`        | `GameSchedulingPage`       | Interactive game schedule grid with drag-and-drop               |
+| `/settings`             | `SettingsPage`             | League config, theme branding, season management                |
+| `/compliance`           | `AdminComplianceDashboard` | Registration forms, waiver tracking                             |
+| `/reporting`            | `AdminReportingDashboard`  | Game metrics, standings, charts                                 |
+| `/standings`            | `LeagueStandings`          | Score entry, standings tables, tie-breaker logic                |
+| `/registration/:formId` | `RegistrationFlow`         | Public registration form flow                                   |
+| `/team/:teamId`         | `TeamPortalPage`           | Coach/parent portal — roster, schedule, RSVP, chat              |
 
 ## State Management
 
 State is managed entirely through **React Context** — no external state library is used.
 
-| Context | File | Purpose |
-|---|---|---|
-| `AuthContext` | `contexts/AuthContext.jsx` | Supabase auth session, user profile, login/logout |
+| Context               | File                               | Purpose                                             |
+| --------------------- | ---------------------------------- | --------------------------------------------------- |
+| `AuthContext`         | `contexts/AuthContext.jsx`         | Supabase auth session, user profile, login/logout   |
 | `OrganizationContext` | `contexts/OrganizationContext.jsx` | Active org selection, org membership, org switching |
-| `ImportContext` | `contexts/ImportContext.jsx` | CSV import state, parsed data, validation results |
-| `ThemeContext` | `contexts/ThemeContext.jsx` | Theme selection (dark/light/party/club), timezone |
+| `ImportContext`       | `contexts/ImportContext.jsx`       | CSV import state, parsed data, validation results   |
+| `ThemeContext`        | `contexts/ThemeContext.jsx`        | Theme selection (dark/light/party/club), timezone   |
 
 ## Custom Hooks (`frontend/src/hooks/`)
 
-| Hook | Purpose |
-|---|---|
-| `useDashboardData` | Aggregates team, practice, game, and evaluation data |
-| `useTeamSummary` | Team generation run data from `scheduler_runs` |
-| `useTeamAnalysis` | Player grouping by age/gender with season-aware age calculations |
-| `useTeamPersistence` | Snapshot packaging and Supabase persistence triggers |
-| `usePracticeSummary` | Practice scheduling run data |
-| `usePracticeAssignments` | Practice slot assignment data |
-| `useGameSummary` | Game scheduling run data |
-| `useGameAssignments` | Game assignment data by run ID |
-| `useGameSlots` | Available game time slots |
-| `useFields` | Field and venue CRUD operations |
-| `useConflicts` | Real-time conflict detection across scheduling data |
-| `useSchedulerRun` | Generic scheduler run execution and status tracking |
-| `usePermission` | RBAC permission checks against current user role |
-| `useTeamPortal` | Team portal data — roster, schedule, RSVP, chat |
+| Hook                     | Purpose                                                          |
+| ------------------------ | ---------------------------------------------------------------- |
+| `useDashboardData`       | Aggregates team, practice, game, and evaluation data             |
+| `useTeamSummary`         | Team generation run data from `scheduler_runs`                   |
+| `useTeamAnalysis`        | Player grouping by age/gender with season-aware age calculations |
+| `useTeamPersistence`     | Snapshot packaging and Supabase persistence triggers             |
+| `usePracticeSummary`     | Practice scheduling run data                                     |
+| `usePracticeAssignments` | Practice slot assignment data                                    |
+| `useGameSummary`         | Game scheduling run data                                         |
+| `useGameAssignments`     | Game assignment data by run ID                                   |
+| `useGameSlots`           | Available game time slots                                        |
+| `useFields`              | Field and venue CRUD operations                                  |
+| `useConflicts`           | Real-time conflict detection across scheduling data              |
+| `useSchedulerRun`        | Generic scheduler run execution and status tracking              |
+| `usePermission`          | RBAC permission checks against current user role                 |
+| `useTeamPortal`          | Team portal data — roster, schedule, RSVP, chat                  |
 
 ## Component Organization
 

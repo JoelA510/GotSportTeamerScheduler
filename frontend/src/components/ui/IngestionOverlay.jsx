@@ -9,9 +9,9 @@ export function IngestionOverlay() {
 
   useEffect(() => {
     if (isImporting || (activeJob && !['completed', 'failed'].includes(importStatus))) {
-      setIsVisible(true);
+      const timer = setTimeout(() => setIsVisible(true), 0);
+      return () => clearTimeout(timer);
     } else if (importStatus === 'completed' || importStatus === 'failed') {
-      // Keep visible for 5 seconds after completion then hide
       const timer = setTimeout(() => setIsVisible(false), 5000);
       return () => clearTimeout(timer);
     }

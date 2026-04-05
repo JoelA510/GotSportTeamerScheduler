@@ -59,10 +59,7 @@ export function SchemaBuilder() {
   }, [currentOrganization?.id]);
 
   // Heavy Computation: Memoize entries to prevent O(N) object keys processing on every flicker
-  const attributeEntries = useMemo(
-    () => Object.entries(schemas[activeTab]),
-    [schemas, activeTab]
-  );
+  const attributeEntries = useMemo(() => Object.entries(schemas[activeTab]), [schemas, activeTab]);
 
   const handleAddField = useCallback(() => {
     const fieldName = newFieldName.toLowerCase().trim().replace(/\s+/g, '_');

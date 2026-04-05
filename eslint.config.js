@@ -7,6 +7,21 @@ import eslintConfigPrettier from 'eslint-config-prettier';
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
+  {
+    ignores: [
+      '**/node_modules/**',
+      '**/dist/**',
+      '**/build/**',
+      '**/coverage/**',
+      '**/playwright-report/**',
+      '**/test-results/**',
+      '**/.features-gen/**',
+      '**/.features-gen-backup/**',
+      '**/trace/**',
+      '**/.gemini/**',
+      '**/.github/**',
+    ],
+  },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {

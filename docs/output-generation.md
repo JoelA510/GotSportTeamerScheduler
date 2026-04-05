@@ -2,6 +2,7 @@
 > **Implementation Status: PARTIALLY COMPLETE**
 >
 > Output generation is implemented in `packages/core/src/outputGeneration.js` and the `OutputGenerationPanel` component:
+>
 > - ✅ CSV export generation (master schedule, per-team files)
 > - ✅ Coach welcome email generation
 > - ✅ Supabase Storage upload integration

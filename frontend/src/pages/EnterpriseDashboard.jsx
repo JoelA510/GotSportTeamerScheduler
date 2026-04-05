@@ -23,6 +23,37 @@ import {
 import { Download, Users, ShieldCheck, Activity, BarChart2, Lock } from 'lucide-react';
 import { logger } from '../lib/logger.js';
 
+/**
+ * Accessible Data Table for Screen Readers.
+ * Uses the .sr-only utility to remain hidden visually while providing
+ * structured data to assistive technology.
+ */
+const AccessibleDataTable = ({ title, data, columns }) => (
+  <div className="sr-only">
+    <h4 id={`table-desc-${title.replace(/\s+/g, '-').toLowerCase()}`}>{title} Data Table</h4>
+    <table aria-labelledby={`table-desc-${title.replace(/\s+/g, '-').toLowerCase()}`}>
+      <thead>
+        <tr>
+          {columns.map((col) => (
+            <th key={col.key} scope="col">
+              {col.label}
+            </th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {data.map((row, i) => (
+          <tr key={i}>
+            {columns.map((col) => (
+              <td key={col.key}>{row[col.key]}</td>
+            ))}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+);
+
 export default function EnterpriseDashboard() {
   const { currentOrganization } = useOrganization();
   const [players, setPlayers] = useState([]);
@@ -223,8 +254,21 @@ export default function EnterpriseDashboard() {
         <div className="bg-bg-surface border border-white/5 bg-white/5 backdrop-blur-xl rounded-2xl p-6 shadow-2xl">
           <h3 className="text-lg font-bold text-text-primary mb-6">Organization Readiness</h3>
           <div className="h-80 w-full relative">
+            <AccessibleDataTable
+              title="Organization Readiness"
+              data={radarData}
+              columns={[
+                { key: 'subject', label: 'Metric' },
+                { key: 'A', label: 'Score (%)' },
+              ]}
+            />
             <ResponsiveContainer width="100%" height="100%">
-              <RadarChart data={radarData} outerRadius="70%">
+              <RadarChart
+                data={radarData}
+                outerRadius="70%"
+                role="img"
+                aria-label="Radar chart showing organization readiness across Compliance, Staffing, Balance, and Skill Variability."
+              >
                 <PolarGrid stroke="rgba(255,255,255,0.1)" />
                 <PolarAngleAxis
                   dataKey="subject"
@@ -287,48 +331,60 @@ export default function EnterpriseDashboard() {
                 No custom schema attributes detected.
               </div>
             ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart
+              <>
+                <AccessibleDataTable
+                  title={`${selectedMapping.replace(/_/g, ' ')} Distribution`}
                   data={dynamicChartData}
-                  margin={{ top: 20, right: 30, left: 0, bottom: 5 }}
-                >
-                  <CartesianGrid
-                    strokeDasharray="3 3"
-                    stroke="rgba(255,255,255,0.05)"
-                    vertical={false}
-                  />
-                  <XAxis
-                    dataKey="name"
-                    stroke="var(--color-text-muted)"
-                    tick={{ fill: 'var(--color-text-muted)' }}
-                  />
-                  <YAxis
-                    stroke="var(--color-text-muted)"
-                    tick={{ fill: 'var(--color-text-muted)' }}
-                  />
-                  <Tooltip
-                    cursor={{ fill: 'rgba(255,255,255,0.05)' }}
-                    contentStyle={{
-                      backgroundColor: 'rgba(0,0,0,0.8)',
-                      borderColor: 'rgba(255,255,255,0.1)',
-                      borderRadius: '12px',
-                      backdropFilter: 'blur(8px)',
-                    }}
-                    itemStyle={{ color: 'var(--color-text-primary)' }}
-                  />
-                  <Bar
-                    dataKey="value"
-                    name="Players"
-                    fill="var(--color-primary)"
-                    radius={[6, 6, 0, 0]}
-                    animationDuration={800}
+                  columns={[
+                    { key: 'name', label: 'Attribute Value' },
+                    { key: 'value', label: 'Player Count' },
+                  ]}
+                />
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={dynamicChartData}
+                    margin={{ top: 20, right: 30, left: 0, bottom: 5 }}
+                    role="img"
+                    aria-label={`Bar chart showing distribution of players by ${selectedMapping.replace(/_/g, ' ')}.`}
                   >
-                    {dynamicChartData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
+                    <CartesianGrid
+                      strokeDasharray="3 3"
+                      stroke="rgba(255,255,255,0.05)"
+                      vertical={false}
+                    />
+                    <XAxis
+                      dataKey="name"
+                      stroke="var(--color-text-muted)"
+                      tick={{ fill: 'var(--color-text-muted)' }}
+                    />
+                    <YAxis
+                      stroke="var(--color-text-muted)"
+                      tick={{ fill: 'var(--color-text-muted)' }}
+                    />
+                    <Tooltip
+                      cursor={{ fill: 'rgba(255,255,255,0.05)' }}
+                      contentStyle={{
+                        backgroundColor: 'rgba(0,0,0,0.8)',
+                        borderColor: 'rgba(255,255,255,0.1)',
+                        borderRadius: '12px',
+                        backdropFilter: 'blur(8px)',
+                      }}
+                      itemStyle={{ color: 'var(--color-text-primary)' }}
+                    />
+                    <Bar
+                      dataKey="value"
+                      name="Players"
+                      fill="var(--color-primary)"
+                      radius={[6, 6, 0, 0]}
+                      animationDuration={800}
+                    >
+                      {dynamicChartData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </>
             )}
           </div>
         </div>
