@@ -41,7 +41,7 @@ const navItems = [
 ];
 
 export default function Sidebar({ isOpen, toggleSidebar }) {
-  const { signOut, isAdmin, isCoach } = useAuth();
+  const { signOut, isAdmin, isCoach, isImpersonating } = useAuth();
   const {
     organizations,
     currentOrganization,
@@ -66,10 +66,11 @@ export default function Sidebar({ isOpen, toggleSidebar }) {
 
       <aside
         className={`
-                fixed md:static inset-y-0 left-0 z-[100]
+                fixed md:static left-0 z-[100]
                 w-72 bg-bg-app border-r border-border-subtle
                 transform transition-transform duration-300 ease-in-out
                 ${isOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
+                ${isImpersonating ? 'top-[48px] h-[calc(100vh-48px)] md:top-0' : 'inset-y-0'}
                 flex flex-col
             `}
       >

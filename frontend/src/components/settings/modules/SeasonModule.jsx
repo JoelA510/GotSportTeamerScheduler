@@ -1,9 +1,12 @@
 import React, { useState } from 'react';
 import { useTheme } from '../../../contexts/ThemeContext.jsx';
+import { useAuth } from '../../../contexts/AuthContext.jsx';
+import { supabase } from '../../../lib/supabaseClient.js';
 
 export default function SeasonModule() {
   const { currentSeason, updateCurrentSeason, availableSeasons, timezone, updateTimezone } =
     useTheme();
+  const { user, isImpersonating } = useAuth();
 
   const [seasonFormat, setSeasonFormat] = useState('single');
   const [localCurrentSeason, setLocalCurrentSeason] = useState(currentSeason);
@@ -54,7 +57,21 @@ export default function SeasonModule() {
               type="text"
               value={localCurrentSeason}
               onChange={(e) => setLocalCurrentSeason(e.target.value)}
-              onBlur={() => updateCurrentSeason(localCurrentSeason)}
+              onBlur={async () => {
+                updateCurrentSeason(localCurrentSeason);
+                const orgId = user?.profile?.organization_id;
+                if (orgId) {
+                  await supabase.rpc('record_audit_event', {
+                    p_organization_id: orgId,
+                    p_action: 'settings.season_updated',
+                    p_metadata: { 
+                      season: localCurrentSeason,
+                      user_id: user.id,
+                      is_impersonating: isImpersonating
+                    }
+                  });
+                }
+              }}
               className="w-full bg-bg-surface border border-border-subtle rounded-lg px-4 py-3 text-text-primary focus:outline-none focus:border-brand-400 transition-colors"
               placeholder={seasonFormat === 'single' ? '2025' : '2025-2026'}
             />

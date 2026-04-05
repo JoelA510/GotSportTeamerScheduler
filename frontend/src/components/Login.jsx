@@ -12,7 +12,8 @@ export default function Login() {
   const [error, setError] = useState(null);
   const [message, setMessage] = useState(null);
 
-  const { isConfigured } = useAuth();
+  const [isForgotPassword, setIsForgotPassword] = useState(false);
+  const { isConfigured, resetPasswordForEmail } = useAuth();
 
   const handleAuth = async (e) => {
     e.preventDefault();
@@ -24,7 +25,15 @@ export default function Login() {
     setError(null);
     setMessage(null);
 
-    if (isSignUp) {
+    if (isForgotPassword) {
+      const { error: resetError } = await resetPasswordForEmail(email);
+      if (resetError) {
+        setError(resetError.message);
+      } else {
+        setMessage('Password reset link sent! Please check your email.');
+        setIsForgotPassword(false);
+      }
+    } else if (isSignUp) {
       const { error, data } = await supabase.auth.signUp({
         email,
         password,
@@ -33,8 +42,6 @@ export default function Login() {
         setError(error.message);
       } else if (data.user && !data.session) {
         setMessage('Registration successful! Please check your email to confirm your account.');
-      } else {
-        // Auto-login might happen if email confirmation is disabled
       }
     } else {
       const { error } = await supabase.auth.signInWithPassword({
@@ -95,7 +102,11 @@ export default function Login() {
                 margin: 0,
               }}
             >
-              {isSignUp ? 'Create an account' : 'Sign in to manage schedules'}
+              {isForgotPassword
+                ? 'Reset your password'
+                : isSignUp
+                  ? 'Create an account'
+                  : 'Sign in to manage schedules'}
             </h2>
           </div>
         </header>
@@ -172,37 +183,58 @@ export default function Login() {
             />
           </div>
 
-          <div className="form-group">
-            <label
-              htmlFor="password"
-              style={{
-                display: 'block',
-                marginBottom: '0.5rem',
-                fontSize: '1rem',
-                fontWeight: '500',
-              }}
-            >
-              Password
-            </label>
-            <input
-              id="password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              className="glass-input"
-              placeholder="••••••••"
-              style={{
-                width: '100%',
-                padding: '1rem',
-                fontSize: '1rem',
-                borderRadius: '0.75rem',
-                border: '1px solid var(--glass-border)',
-                background: 'var(--glass-bg)',
-                color: 'inherit',
-              }}
-            />
-          </div>
+          {!isForgotPassword && (
+            <div className="form-group">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <label
+                  htmlFor="password"
+                  style={{
+                    display: 'block',
+                    marginBottom: '0.5rem',
+                    fontSize: '1rem',
+                    fontWeight: '500',
+                  }}
+                >
+                  Password
+                </label>
+                {!isSignUp && (
+                  <button
+                    type="button"
+                    onClick={() => setIsForgotPassword(true)}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: 'var(--accent-color)',
+                      cursor: 'pointer',
+                      fontSize: '0.875rem',
+                      textDecoration: 'underline',
+                      padding: 0,
+                    }}
+                  >
+                    Forgot Password?
+                  </button>
+                )}
+              </div>
+              <input
+                id="password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                className="glass-input"
+                placeholder="••••••••"
+                style={{
+                  width: '100%',
+                  padding: '1rem',
+                  fontSize: '1rem',
+                  borderRadius: '0.75rem',
+                  border: '1px solid var(--glass-border)',
+                  background: 'var(--glass-bg)',
+                  color: 'inherit',
+                }}
+              />
+            </div>
+          )}
 
           <button
             type="submit"
@@ -217,12 +249,16 @@ export default function Login() {
             }}
           >
             {loading
-              ? isSignUp
-                ? 'Creating account...'
-                : 'Signing in...'
-              : isSignUp
-                ? 'Sign Up'
-                : 'Sign In'}
+              ? isForgotPassword
+                ? 'Sending reset link...'
+                : isSignUp
+                  ? 'Creating account...'
+                  : 'Signing in...'
+              : isForgotPassword
+                ? 'Send Reset Link'
+                : isSignUp
+                  ? 'Sign Up'
+                  : 'Sign In'}
           </button>
         </form>
 
@@ -234,27 +270,48 @@ export default function Login() {
             color: 'var(--text-secondary)',
           }}
         >
-          {isSignUp ? 'Already have an account?' : "Don't have an account?"}{' '}
-          <button
-            type="button"
-            onClick={() => {
-              setIsSignUp(!isSignUp);
-              setError(null);
-              setMessage(null);
-            }}
-            style={{
-              background: 'none',
-              border: 'none',
-              color: 'var(--accent-color)',
-              cursor: 'pointer',
-              textDecoration: 'underline',
-              padding: 0,
-              font: 'inherit',
-              fontWeight: '500',
-            }}
-          >
-            {isSignUp ? 'Sign In' : 'Sign Up'}
-          </button>
+          {isForgotPassword ? (
+            <button
+              type="button"
+              onClick={() => setIsForgotPassword(false)}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: 'var(--accent-color)',
+                cursor: 'pointer',
+                textDecoration: 'underline',
+                padding: 0,
+                font: 'inherit',
+                fontWeight: '500',
+              }}
+            >
+              Back to Sign In
+            </button>
+          ) : (
+            <>
+              {isSignUp ? 'Already have an account?' : "Don't have an account?"}{' '}
+              <button
+                type="button"
+                onClick={() => {
+                  setIsSignUp(!isSignUp);
+                  setError(null);
+                  setMessage(null);
+                }}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--accent-color)',
+                  cursor: 'pointer',
+                  textDecoration: 'underline',
+                  padding: 0,
+                  font: 'inherit',
+                  fontWeight: '500',
+                }}
+              >
+                {isSignUp ? 'Sign In' : 'Sign Up'}
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>

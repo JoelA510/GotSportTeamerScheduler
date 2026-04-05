@@ -1,0 +1,702 @@
+
+> squad-logic@1.0.0 lint
+> eslint .
+
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+
+C:\Users\joel.abraham\Downloads\SquadLogic\frontend\src\components\ErrorBoundary.jsx
+  2:23  warning  'RotateCcw' is defined but never used  @typescript-eslint/no-unused-vars
+  3:8   warning  'Button' is defined but never used     @typescript-eslint/no-unused-vars
+
+C:\Users\joel.abraham\Downloads\SquadLogic\frontend\src\components\GamePersistencePanel.jsx
+  64:7  error  Include a description after the "@ts-expect-error" directive to explain why the @ts-expect-error is necessary. The description must be 3 characters or longer  @typescript-eslint/ban-ts-comment
+
+C:\Users\joel.abraham\Downloads\SquadLogic\frontend\src\components\Hero.jsx
+  12:27  error  `'` can be escaped with `&apos;`, `&lsquo;`, `&#39;`, `&rsquo;`  react/no-unescaped-entities
+
+C:\Users\joel.abraham\Downloads\SquadLogic\frontend\src\components\ImportPanel.jsx
+   1:27  warning  'useEffect' is defined but never used            @typescript-eslint/no-unused-vars
+   1:38  warning  'useMemo' is defined but never used              @typescript-eslint/no-unused-vars
+  19:8   warning  'DataValidationPanel' is defined but never used  @typescript-eslint/no-unused-vars
+  62:5   warning  'importLogs' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\joel.abraham\Downloads\SquadLogic\frontend\src\components\Login.jsx
+  4:1  error  Use "@ts-expect-error" instead of "@ts-ignore", as "@ts-ignore" will do nothing if the following line is error-free  @typescript-eslint/ban-ts-comment
+
+C:\Users\joel.abraham\Downloads\SquadLogic\frontend\src\components\PracticePersistencePanel.jsx
+  76:7  error  Include a description after the "@ts-expect-error" directive to explain why the @ts-expect-error is necessary. The description must be 3 characters or longer  @typescript-eslint/ban-ts-comment
+
+C:\Users\joel.abraham\Downloads\SquadLogic\frontend\src\components\TeamPersistencePanel.jsx
+   20:63  error    React Hook "useState" is called conditionally. React Hooks must be called in the exact same order in every component render                                                                    react-hooks/rules-of-hooks
+   21:67  error    React Hook "useState" is called conditionally. React Hooks must be called in the exact same order in every component render                                                                    react-hooks/rules-of-hooks
+   22:43  error    React Hook "useState" is called conditionally. React Hooks must be called in the exact same order in every component render                                                                    react-hooks/rules-of-hooks
+   23:59  error    React Hook "useState" is called conditionally. React Hooks must be called in the exact same order in every component render                                                                    react-hooks/rules-of-hooks
+   26:33  error    React Hook "useRef" is called conditionally. React Hooks must be called in the exact same order in every component render. Did you accidentally call a React Hook after an early return?       react-hooks/rules-of-hooks
+   28:3   error    React Hook "useEffect" is called conditionally. React Hooks must be called in the exact same order in every component render. Did you accidentally call a React Hook after an early return?    react-hooks/rules-of-hooks
+   32:36  error    React Hook "useMemo" is called conditionally. React Hooks must be called in the exact same order in every component render. Did you accidentally call a React Hook after an early return?      react-hooks/rules-of-hooks
+   39:29  error    React Hook "useMemo" is called conditionally. React Hooks must be called in the exact same order in every component render. Did you accidentally call a React Hook after an early return?      react-hooks/rules-of-hooks
+   58:3   error    React Hook "useEffect" is called conditionally. React Hooks must be called in the exact same order in every component render. Did you accidentally call a React Hook after an early return?    react-hooks/rules-of-hooks
+   66:27  error    React Hook "useCallback" is called conditionally. React Hooks must be called in the exact same order in every component render. Did you accidentally call a React Hook after an early return?  react-hooks/rules-of-hooks
+   75:3   error    React Hook "useEffect" is called conditionally. React Hooks must be called in the exact same order in every component render. Did you accidentally call a React Hook after an early return?    react-hooks/rules-of-hooks
+   90:34  error    React Hook "useMemo" is called conditionally. React Hooks must be called in the exact same order in every component render. Did you accidentally call a React Hook after an early return?      react-hooks/rules-of-hooks
+  142:14  warning  'error' is defined but never used                                                                                                                                                              @typescript-eslint/no-unused-vars
+
+C:\Users\joel.abraham\Downloads\SquadLogic\frontend\src\components\TeamScheduleView.jsx
+  24:15  warning  'date' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\joel.abraham\Downloads\SquadLogic\frontend\src\components\scheduling\GameScheduleGrid.jsx
+  22:3  warning  'teams' is assigned a value but never used. Allowed unused args must match /^_/u  @typescript-eslint/no-unused-vars
+
+C:\Users\joel.abraham\Downloads\SquadLogic\frontend\src\components\settings\FeatureFlagSettings.jsx
+  31:14  warning  'err' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\joel.abraham\Downloads\SquadLogic\frontend\src\components\settings\SchemaBuilder.jsx
+  62:36  error  Replace `ΓÅÄ┬╖┬╖┬╖┬╖()┬╖=>┬╖Object.entries(schemas[activeTab]),ΓÅÄ┬╖┬╖┬╖┬╖[schemas,┬╖activeTab]ΓÅÄ┬╖┬╖` with `()┬╖=>┬╖Object.entries(schemas[activeTab]),┬╖[schemas,┬╖activeTab]`  prettier/prettier
+
+C:\Users\joel.abraham\Downloads\SquadLogic\frontend\src\components\settings\modules\SeasonModule.jsx
+  27:55  error  `"` can be escaped with `&quot;`, `&ldquo;`, `&#34;`, `&rdquo;`  react/no-unescaped-entities
+  27:60  error  `"` can be escaped with `&quot;`, `&ldquo;`, `&#34;`, `&rdquo;`  react/no-unescaped-entities
+  27:63  error  `"` can be escaped with `&quot;`, `&ldquo;`, `&#34;`, `&rdquo;`  react/no-unescaped-entities
+  27:68  error  `"` can be escaped with `&quot;`, `&ldquo;`, `&#34;`, `&rdquo;`  react/no-unescaped-entities
+  38:55  error  `"` can be escaped with `&quot;`, `&ldquo;`, `&#34;`, `&rdquo;`  react/no-unescaped-entities
+  38:65  error  `"` can be escaped with `&quot;`, `&ldquo;`, `&#34;`, `&rdquo;`  react/no-unescaped-entities
+
+C:\Users\joel.abraham\Downloads\SquadLogic\frontend\src\components\teaming\DataValidationPanel.jsx
+  2:38  warning  'XCircle' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\joel.abraham\Downloads\SquadLogic\frontend\src\components\teaming\RosterManager.jsx
+    1:46  warning  'useMemo' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      @typescript-eslint/no-unused-vars
+   41:21  error    Replace `┬╖player.name┬╖||┬╖`${player.first_name┬╖||┬╖''}┬╖${player.last_name┬╖||┬╖''}`.trim()┬╖||` with `ΓÅÄ┬╖┬╖┬╖┬╖player.name┬╖||ΓÅÄ┬╖┬╖┬╖┬╖`${player.first_name┬╖||┬╖''}┬╖${player.last_name┬╖||┬╖''}`.trim()┬╖||ΓÅÄ┬╖┬╖┬╖`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           prettier/prettier
+   57:13  error    Replace `┬╖className="text-text-muted┬╖hover:text-text-primary┬╖transition-colors"┬╖aria-hidden="true"` with `ΓÅÄ┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖className="text-text-muted┬╖hover:text-text-primary┬╖transition-colors"ΓÅÄ┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖aria-hidden="true"ΓÅÄ┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        prettier/prettier
+   61:67  error    Replace `ΓÅÄ┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖{playerName}ΓÅÄ┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖` with `{playerName}`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       prettier/prettier
+   88:26  warning  Compilation Skipped: Use of incompatible library
+
+This API returns functions which cannot be memoized without leading to stale UI. To prevent this, by default React Compiler will skip memoizing this component/hook. However, you may see issues if values from this API are passed to other components/hooks that are memoized.
+
+  86 |
+  87 |   // CRITICAL: Virtualizer mapping for 60FPS roster interaction
+> 88 |   const rowVirtualizer = useVirtualizer({
+     |                          ^^^^^^^^^^^^^^ TanStack Virtual's `useVirtualizer()` API returns functions that cannot be memoized safely
+  89 |     count: players.length,
+  90 |     getScrollElement: () => parentRef.current,
+  91 |     estimateSize: () => 68,  react-hooks/incompatible-library
+  344:12  error    Replace `ΓÅÄ┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖className="sr-only"┬╖ΓÅÄ┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖role="status"┬╖ΓÅÄ┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖aria-live="polite"┬╖ΓÅÄ┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖aria-atomic="true"ΓÅÄ┬╖┬╖┬╖┬╖┬╖┬╖` with `className="sr-only"┬╖role="status"┬╖aria-live="polite"┬╖aria-atomic="true"`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              prettier/prettier
+
+C:\Users\joel.abraham\Downloads\SquadLogic\frontend\src\components\ui\IngestionOverlay.jsx
+   6:59  warning  'resetImport' is assigned a value but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              @typescript-eslint/no-unused-vars
+  12:7   error    Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+  10 |   useEffect(() => {
+  11 |     if (isImporting || (activeJob && !['completed', 'failed'].includes(importStatus))) {
+> 12 |       setIsVisible(true);
+     |       ^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  13 |     } else if (importStatus === 'completed' || importStatus === 'failed') {
+  14 |       // Keep visible for 5 seconds after completion then hide
+  15 |       const timer = setTimeout(() => setIsVisible(false), 5000);  react-hooks/set-state-in-effect
+
+C:\Users\joel.abraham\Downloads\SquadLogic\frontend\src\config.js
+  7:3  error  Use "@ts-expect-error" instead of "@ts-ignore", as "@ts-ignore" will do nothing if the following line is error-free  @typescript-eslint/ban-ts-comment
+  9:5  error  Use "@ts-expect-error" instead of "@ts-ignore", as "@ts-ignore" will do nothing if the following line is error-free  @typescript-eslint/ban-ts-comment
+
+C:\Users\joel.abraham\Downloads\SquadLogic\frontend\src\contexts\AuthContext.jsx
+  28:7  error    Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+  26 |   useEffect(() => {
+  27 |     if (!supabase) {
+> 28 |       setLoading(false);
+     |       ^^^^^^^^^^ Avoid calling setState() directly within an effect
+  29 |       return;
+  30 |     }
+  31 |  react-hooks/set-state-in-effect
+  72:6  warning  React Hook useEffect has a missing dependency: 'loading'. Either include it or remove the dependency array                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     react-hooks/exhaustive-deps
+
+C:\Users\joel.abraham\Downloads\SquadLogic\frontend\src\contexts\ImportContext.jsx
+   26:25  warning  'val' is defined but never used. Allowed unused args must match /^_/u                                                                                                                                                                                                      @typescript-eslint/no-unused-vars
+   27:23  warning  'file' is defined but never used. Allowed unused args must match /^_/u                                                                                                                                                                                                     @typescript-eslint/no-unused-vars
+   27:29  warning  'type' is defined but never used. Allowed unused args must match /^_/u                                                                                                                                                                                                     @typescript-eslint/no-unused-vars
+   28:23  warning  'type' is defined but never used. Allowed unused args must match /^_/u                                                                                                                                                                                                     @typescript-eslint/no-unused-vars
+   30:21  warning  'data' is defined but never used. Allowed unused args must match /^_/u                                                                                                                                                                                                     @typescript-eslint/no-unused-vars
+   32:24  warning  'data' is defined but never used. Allowed unused args must match /^_/u                                                                                                                                                                                                     @typescript-eslint/no-unused-vars
+   34:24  warning  'data' is defined but never used. Allowed unused args must match /^_/u                                                                                                                                                                                                     @typescript-eslint/no-unused-vars
+   36:23  warning  'data' is defined but never used. Allowed unused args must match /^_/u                                                                                                                                                                                                     @typescript-eslint/no-unused-vars
+  185:42  warning  'jobError' is assigned a value but never used                                                                                                                                                                                                                              @typescript-eslint/no-unused-vars
+  240:13  error    Replace `'postgres_changes',┬╖{┬╖event:┬╖'UPDATE',┬╖schema:┬╖'public',┬╖table:┬╖'import_jobs'┬╖},` with `ΓÅÄ┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖'postgres_changes',ΓÅÄ┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖{┬╖event:┬╖'UPDATE',┬╖schema:┬╖'public',┬╖table:┬╖'import_jobs'┬╖},ΓÅÄ┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖`                                                          prettier/prettier
+  241:1   error    Insert `┬╖┬╖`                                                                                                                                                                                                                                                                prettier/prettier
+  242:1   error    Insert `┬╖┬╖`                                                                                                                                                                                                                                                                prettier/prettier
+  243:11  error    Insert `┬╖┬╖`                                                                                                                                                                                                                                                                prettier/prettier
+  244:13  error    Insert `┬╖┬╖`                                                                                                                                                                                                                                                                prettier/prettier
+  246:1   error    Replace `┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖` with `┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖`                                                                                                                                                                                                                               prettier/prettier
+  247:15  error    Insert `┬╖┬╖`                                                                                                                                                                                                                                                                prettier/prettier
+  248:1   error    Insert `┬╖┬╖`                                                                                                                                                                                                                                                                prettier/prettier
+  249:17  error    Insert `┬╖┬╖`                                                                                                                                                                                                                                                                prettier/prettier
+  250:17  error    Insert `┬╖┬╖`                                                                                                                                                                                                                                                                prettier/prettier
+  251:1   error    Replace `┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖` with `┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖`                                                                                                                                                                                                                   prettier/prettier
+  252:17  error    Insert `┬╖┬╖`                                                                                                                                                                                                                                                                prettier/prettier
+  253:1   error    Insert `┬╖┬╖`                                                                                                                                                                                                                                                                prettier/prettier
+  254:13  error    Insert `┬╖┬╖`                                                                                                                                                                                                                                                                prettier/prettier
+  255:15  error    Insert `┬╖┬╖`                                                                                                                                                                                                                                                                prettier/prettier
+  256:1   error    Replace `┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖` with `┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖`                                                                                                                                                                                                                       prettier/prettier
+  257:1   error    Insert `┬╖┬╖`                                                                                                                                                                                                                                                                prettier/prettier
+  258:1   error    Insert `┬╖┬╖`                                                                                                                                                                                                                                                                prettier/prettier
+  259:15  error    Insert `┬╖┬╖`                                                                                                                                                                                                                                                                prettier/prettier
+  260:1   error    Insert `┬╖┬╖`                                                                                                                                                                                                                                                                prettier/prettier
+  261:1   error    Replace `┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖` with `┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖`                                                                                                                                                                                                                                   prettier/prettier
+  262:9   error    Replace `}` with `┬╖┬╖}ΓÅÄ┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖`                                                                                                                                                                                                                                            prettier/prettier
+  277:12  warning  'previewData' is defined but never used. Allowed unused args must match /^_/u                                                                                                                                                                                              @typescript-eslint/no-unused-vars
+  303:47  error    Insert `ΓÅÄ┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖`                                                                                                                                                                                                                                                        prettier/prettier
+  336:26  error    Replace `┬╖status:┬╖'failed',┬╖error_summary:┬╖{┬╖message:┬╖`Payload┬╖exceeds┬╖column┬╖limit┬╖of┬╖${MAX_COLS}`┬╖}` with `ΓÅÄ┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖status:┬╖'failed',ΓÅÄ┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖error_summary:┬╖{┬╖message:┬╖`Payload┬╖exceeds┬╖column┬╖limit┬╖of┬╖${MAX_COLS}`┬╖},ΓÅÄ┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖`            prettier/prettier
+  346:26  error    Replace `┬╖status:┬╖'failed',┬╖error_summary:┬╖{┬╖message:┬╖`Payload┬╖exceeds┬╖row┬╖limit┬╖of┬╖${MAX_ROWS}`┬╖}` with `ΓÅÄ┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖status:┬╖'failed',ΓÅÄ┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖error_summary:┬╖{┬╖message:┬╖`Payload┬╖exceeds┬╖row┬╖limit┬╖of┬╖${MAX_ROWS}`┬╖},ΓÅÄ┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖`                  prettier/prettier
+  358:31  error    Insert `ΓÅÄ┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖`                                                                                                                                                                                                                                                    prettier/prettier
+  375:22  error    Replace ``Performance┬╖Warning:┬╖Smart┬╖Ingestion┬╖timed┬╖out┬╖(${timing.toFixed(2)}ms).┬╖Using┬╖static┬╖fallback.`` with `ΓÅÄ┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖`Performance┬╖Warning:┬╖Smart┬╖Ingestion┬╖timed┬╖out┬╖(${timing.toFixed(2)}ms).┬╖Using┬╖static┬╖fallback.`ΓÅÄ┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖`                       prettier/prettier
+  416:59  error    Replace `(req)┬╖=>┬╖!normalizedFileHeaders.includes(req)` with `ΓÅÄ┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖(req)┬╖=>┬╖!normalizedFileHeaders.includes(req)ΓÅÄ┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖`                                                                                                                                   prettier/prettier
+  536:6   error    Replace `addLog,┬╖telemetryLogs,┬╖completeImport,┬╖currentOrganization?.id,┬╖updateJobProgress,┬╖organizationSchemas` with `ΓÅÄ┬╖┬╖┬╖┬╖┬╖┬╖addLog,ΓÅÄ┬╖┬╖┬╖┬╖┬╖┬╖telemetryLogs,ΓÅÄ┬╖┬╖┬╖┬╖┬╖┬╖completeImport,ΓÅÄ┬╖┬╖┬╖┬╖┬╖┬╖currentOrganization?.id,ΓÅÄ┬╖┬╖┬╖┬╖┬╖┬╖updateJobProgress,ΓÅÄ┬╖┬╖┬╖┬╖┬╖┬╖organizationSchemas,ΓÅÄ┬╖┬╖┬╖┬╖`  prettier/prettier
+  636:1   error    Delete `ΓÅÄ`                                                                                                                                                                                                                                                                 prettier/prettier
+
+C:\Users\joel.abraham\Downloads\SquadLogic\frontend\src\contexts\ThemeContext.jsx
+  67:7  error  Error: Cannot access variable before it is declared
+
+`applyClubTheme` is accessed before it is declared, which prevents the earlier access from updating when this value changes over time.
+
+  65 |
+  66 |     if (theme === 'club') {
+> 67 |       applyClubTheme(clubColors, clubMode);
+     |       ^^^^^^^^^^^^^^ `applyClubTheme` accessed before it is declared
+  68 |     } else {
+  69 |       removeClubTheme();
+  70 |     }
+
+  126 |   };
+  127 |
+> 128 |   const applyClubTheme = (colors, mode) => {
+      |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 129 |     const root = document.documentElement;
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 130 |     root.setAttribute('data-club-mode', mode);
+      ΓÇª
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 222 |     );
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 223 |   };
+      | ^^^^^ `applyClubTheme` is declared here
+  224 |
+  225 |   const removeClubTheme = () => {
+  226 |     const root = document.documentElement;  react-hooks/immutability
+  69:7  error  Error: Cannot access variable before it is declared
+
+`removeClubTheme` is accessed before it is declared, which prevents the earlier access from updating when this value changes over time.
+
+  67 |       applyClubTheme(clubColors, clubMode);
+  68 |     } else {
+> 69 |       removeClubTheme();
+     |       ^^^^^^^^^^^^^^^ `removeClubTheme` accessed before it is declared
+  70 |     }
+  71 |   }, [theme, clubColors, clubMode]);
+  72 |
+
+  223 |   };
+  224 |
+> 225 |   const removeClubTheme = () => {
+      |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 226 |     const root = document.documentElement;
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 227 |     root.removeAttribute('data-club-mode');
+      ΓÇª
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 242 |     props.forEach((p) => root.style.removeProperty(p));
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 243 |   };
+      | ^^^^^ `removeClubTheme` is declared here
+  244 |
+  245 |   return (
+  246 |     <ThemeContext.Provider    react-hooks/immutability
+
+C:\Users\joel.abraham\Downloads\SquadLogic\frontend\src\global.d.ts
+  8:18  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\joel.abraham\Downloads\SquadLogic\frontend\src\hooks\useSchedulerRun.js
+  33:11  error  Use "@ts-expect-error" instead of "@ts-ignore", as "@ts-ignore" will do nothing if the following line is error-free  @typescript-eslint/ban-ts-comment
+
+C:\Users\joel.abraham\Downloads\SquadLogic\frontend\src\hooks\useTeamAnalysis.js
+  16:5  error    Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+  14 |   // Clear-and-refetch: reset state when org or season changes
+  15 |   useEffect(() => {
+> 16 |     setPrograms([]);
+     |     ^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  17 |     setValidationErrors([]);
+  18 |     setConfigs({});
+  19 |     setSelectedProgramId(null);        react-hooks/set-state-in-effect
+  76:5  error    Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+  74 |
+  75 |     const processed = processPrograms(importedPlayers.data);
+> 76 |     setPrograms(processed.programs);
+     |     ^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  77 |     setValidationErrors(processed.errors);
+  78 |
+  79 |     // Auto-select first program if none selected  react-hooks/set-state-in-effect
+  95:6  warning  React Hook useEffect has a missing dependency: 'processPrograms'. Either include it or remove the dependency array                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     react-hooks/exhaustive-deps
+
+C:\Users\joel.abraham\Downloads\SquadLogic\frontend\src\hooks\useTeamPortal.js
+  361:39  warning  'timezone' is defined but never used. Allowed unused args must match /^_/u  @typescript-eslint/no-unused-vars
+  378:61  error    Unnecessary escape character: \[                                            no-useless-escape
+  378:63  error    Unnecessary escape character: \)                                            no-useless-escape
+  378:65  error    Unnecessary escape character: \(                                            no-useless-escape
+
+C:\Users\joel.abraham\Downloads\SquadLogic\frontend\src\hooks\useTeamSummary.js
+  28:17  warning  'setError' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\joel.abraham\Downloads\SquadLogic\frontend\src\layouts\DashboardLayout.jsx
+  7:43  warning  'activeSection' is defined but never used. Allowed unused args must match /^_/u  @typescript-eslint/no-unused-vars
+
+C:\Users\joel.abraham\Downloads\SquadLogic\frontend\src\lib\apiClient.js
+  50:16  warning  'ignore' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\joel.abraham\Downloads\SquadLogic\frontend\src\pages\DashboardPage.jsx
+  49:20  warning  'roadmap' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\joel.abraham\Downloads\SquadLogic\frontend\src\pages\EnterpriseDashboard.jsx
+   18:3   warning  'PieChart' is defined but never used                                  @typescript-eslint/no-unused-vars
+   19:3   warning  'Pie' is defined but never used                                       @typescript-eslint/no-unused-vars
+   21:3   warning  'Legend' is defined but never used                                    @typescript-eslint/no-unused-vars
+   23:50  warning  'BarChart2' is defined but never used                                 @typescript-eslint/no-unused-vars
+   28:71  error    Delete `┬╖`                                                            prettier/prettier
+   38:43  error    Replace `{col.label}` with `ΓÅÄ┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖{col.label}ΓÅÄ┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖`  prettier/prettier
+   58:10  warning  'teamsData' is assigned a value but never used                        @typescript-eslint/no-unused-vars
+   58:21  warning  'setTeamsData' is assigned a value but never used                     @typescript-eslint/no-unused-vars
+   67:21  warning  'setExporting' is assigned a value but never used                     @typescript-eslint/no-unused-vars
+  255:33  error    Delete `┬╖`                                                            prettier/prettier
+  256:45  error    Delete `┬╖`                                                            prettier/prettier
+  257:31  error    Delete `┬╖`                                                            prettier/prettier
+  260:49  error    Insert `,`                                                            prettier/prettier
+  261:17  error    Delete `┬╖`                                                            prettier/prettier
+  264:26  error    Delete `┬╖`                                                            prettier/prettier
+  265:33  error    Delete `┬╖`                                                            prettier/prettier
+  333:37  error    Delete `┬╖`                                                            prettier/prettier
+  334:79  error    Delete `┬╖`                                                            prettier/prettier
+  335:42  error    Delete `┬╖`                                                            prettier/prettier
+  338:60  error    Insert `,`                                                            prettier/prettier
+  339:21  error    Delete `┬╖`                                                            prettier/prettier
+
+C:\Users\joel.abraham\Downloads\SquadLogic\frontend\src\pages\GameSchedulingPage.jsx
+  51:9  warning  The 'teams' logical expression could make the dependencies of useMemo Hook (at line 132) change on every render. To fix this, wrap the initialization of 'teams' in its own useMemo() Hook      react-hooks/exhaustive-deps
+  51:9  warning  The 'teams' logical expression could make the dependencies of useCallback Hook (at line 203) change on every render. To fix this, wrap the initialization of 'teams' in its own useMemo() Hook  react-hooks/exhaustive-deps
+  51:9  warning  The 'teams' logical expression could make the dependencies of useCallback Hook (at line 292) change on every render. To fix this, wrap the initialization of 'teams' in its own useMemo() Hook  react-hooks/exhaustive-deps
+
+C:\Users\joel.abraham\Downloads\SquadLogic\frontend\src\pages\RegistrationFlow.jsx
+  108:21  warning  'regId' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\joel.abraham\Downloads\SquadLogic\frontend\src\pages\RegistrationForms.jsx
+  27:6  warning  React Hook useEffect has a missing dependency: 'loadForms'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+C:\Users\joel.abraham\Downloads\SquadLogic\frontend\src\pages\SettingsPage.jsx
+  48:32  error  `'` can be escaped with `&apos;`, `&lsquo;`, `&#39;`, `&rsquo;`  react/no-unescaped-entities
+  52:11  error  Delete `┬╖`                                                       prettier/prettier
+  53:23  error  Delete `┬╖`                                                       prettier/prettier
+  67:44  error  Replace `t` with `(t)`                                           prettier/prettier
+  91:11  error  Delete `┬╖`                                                       prettier/prettier
+
+C:\Users\joel.abraham\Downloads\SquadLogic\frontend\src\pages\SetupWizard.jsx
+   27:7   error    Delete `┬╖`                                                                                                                                                                                                                                                       prettier/prettier
+  118:6   warning  React Hook useEffect has missing dependencies: 'localFlags' and 'localLeagueName'. Either include them or remove the dependency array                                                                                                                            react-hooks/exhaustive-deps
+  193:10  error    Delete `┬╖`                                                                                                                                                                                                                                                       prettier/prettier
+  205:85  error    Replace `SquadLogic┬╖Setup` with `ΓÅÄ┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖SquadLogic┬╖SetupΓÅÄ┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖`                                                                                                                                                                               prettier/prettier
+  209:15  error    Delete `┬╖`                                                                                                                                                                                                                                                       prettier/prettier
+  234:21  error    Delete `┬╖`                                                                                                                                                                                                                                                       prettier/prettier
+  240:20  error    Replace `┬╖id="step-1-title"┬╖className="text-2xl┬╖font-bold┬╖text-text-primary┬╖uppercase┬╖tracking-tight"` with `ΓÅÄ┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖id="step-1-title"ΓÅÄ┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖className="text-2xl┬╖font-bold┬╖text-text-primary┬╖uppercase┬╖tracking-tight"ΓÅÄ┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖`  prettier/prettier
+  244:37  error    `'` can be escaped with `&apos;`, `&lsquo;`, `&#39;`, `&rsquo;`                                                                                                                                                                                                  react/no-unescaped-entities
+  268:21  error    Delete `┬╖`                                                                                                                                                                                                                                                       prettier/prettier
+  274:20  error    Replace `┬╖id="step-2-title"┬╖className="text-2xl┬╖font-bold┬╖text-text-primary┬╖uppercase┬╖tracking-tight"` with `ΓÅÄ┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖id="step-2-title"ΓÅÄ┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖className="text-2xl┬╖font-bold┬╖text-text-primary┬╖uppercase┬╖tracking-tight"ΓÅÄ┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖`  prettier/prettier
+  278:74  error    `'` can be escaped with `&apos;`, `&lsquo;`, `&#39;`, `&rsquo;`                                                                                                                                                                                                  react/no-unescaped-entities
+  334:21  error    Delete `┬╖`                                                                                                                                                                                                                                                       prettier/prettier
+  343:20  error    Replace `┬╖id="step-3-title"┬╖className="text-3xl┬╖font-bold┬╖text-text-primary┬╖uppercase┬╖tracking-tight"` with `ΓÅÄ┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖id="step-3-title"ΓÅÄ┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖className="text-3xl┬╖font-bold┬╖text-text-primary┬╖uppercase┬╖tracking-tight"ΓÅÄ┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖┬╖`  prettier/prettier
+  347:85  error    `'` can be escaped with `&apos;`, `&lsquo;`, `&#39;`, `&rsquo;`                                                                                                                                                                                                  react/no-unescaped-entities
+  381:31  error    `'` can be escaped with `&apos;`, `&lsquo;`, `&#39;`, `&rsquo;`                                                                                                                                                                                                  react/no-unescaped-entities
+  381:46  error    `'` can be escaped with `&apos;`, `&lsquo;`, `&#39;`, `&rsquo;`                                                                                                                                                                                                  react/no-unescaped-entities
+
+C:\Users\joel.abraham\Downloads\SquadLogic\frontend\src\pages\TeamAnalysisPage.jsx
+  87:7  error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+  85 |       team?.status === 'error'
+  86 |     ) {
+> 87 |       setIsGenerating(false);
+     |       ^^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  88 |     }
+  89 |   }, [team?.status]);
+  90 |  react-hooks/set-state-in-effect
+
+C:\Users\joel.abraham\Downloads\SquadLogic\packages\core\src\evaluationPipeline.js
+  99:11  error  Use "@ts-expect-error" instead of "@ts-ignore", as "@ts-ignore" will do nothing if the following line is error-free  @typescript-eslint/ban-ts-comment
+
+C:\Users\joel.abraham\Downloads\SquadLogic\packages\core\src\evaluators\BaseEvaluator.js
+  26:12  warning  'context' is defined but never used. Allowed unused args must match /^_/u  @typescript-eslint/no-unused-vars
+
+C:\Users\joel.abraham\Downloads\SquadLogic\packages\core\src\gameMetrics.js
+  159:15  warning  'division' is assigned a value but never used  @typescript-eslint/no-unused-vars
+  162:15  warning  'fieldKey' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\joel.abraham\Downloads\SquadLogic\packages\core\src\gamePersistenceEdgeHandler.js
+  43:16  warning  'error' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\joel.abraham\Downloads\SquadLogic\packages\core\src\gamePersistenceHandler.js
+  50:5  error  Use "@ts-expect-error" instead of "@ts-ignore", as "@ts-ignore" will do nothing if the following line is error-free  @typescript-eslint/ban-ts-comment
+
+C:\Users\joel.abraham\Downloads\SquadLogic\packages\core\src\gamePersistenceSnapshot.js
+  4:3  warning  'normalizeRunMetadata' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\joel.abraham\Downloads\SquadLogic\packages\core\src\gameSupabase.js
+  2:3  warning  'normalizeString' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\joel.abraham\Downloads\SquadLogic\packages\core\src\persistenceHandler.js
+   71:3  error  Use "@ts-expect-error" instead of "@ts-ignore", as "@ts-ignore" will do nothing if the following line is error-free  @typescript-eslint/ban-ts-comment
+   94:3  error  Use "@ts-expect-error" instead of "@ts-ignore", as "@ts-ignore" will do nothing if the following line is error-free  @typescript-eslint/ban-ts-comment
+  106:3  error  Use "@ts-expect-error" instead of "@ts-ignore", as "@ts-ignore" will do nothing if the following line is error-free  @typescript-eslint/ban-ts-comment
+  114:5  error  Use "@ts-expect-error" instead of "@ts-ignore", as "@ts-ignore" will do nothing if the following line is error-free  @typescript-eslint/ban-ts-comment
+  117:5  error  Use "@ts-expect-error" instead of "@ts-ignore", as "@ts-ignore" will do nothing if the following line is error-free  @typescript-eslint/ban-ts-comment
+  199:3  error  Use "@ts-expect-error" instead of "@ts-ignore", as "@ts-ignore" will do nothing if the following line is error-free  @typescript-eslint/ban-ts-comment
+
+C:\Users\joel.abraham\Downloads\SquadLogic\packages\core\src\practicePersistenceEdgeHandler.js
+  43:16  warning  'error' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\joel.abraham\Downloads\SquadLogic\packages\core\src\practicePersistenceHandler.js
+  50:5  error  Use "@ts-expect-error" instead of "@ts-ignore", as "@ts-ignore" will do nothing if the following line is error-free  @typescript-eslint/ban-ts-comment
+
+C:\Users\joel.abraham\Downloads\SquadLogic\packages\core\src\practicePersistenceSnapshot.js
+  4:3  warning  'normalizeRunMetadata' is defined but never used                @typescript-eslint/no-unused-vars
+  7:3  warning  'deriveRunMetadataFromSchedulerRuns' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\joel.abraham\Downloads\SquadLogic\packages\core\src\practiceScheduling.js
+  125:18  warning  'e' is defined but never used                                                         @typescript-eslint/no-unused-vars
+  569:3   warning  'assignmentByTeamId' is defined but never used. Allowed unused args must match /^_/u  @typescript-eslint/no-unused-vars
+
+C:\Users\joel.abraham\Downloads\SquadLogic\packages\core\src\practiceSlotExpansion.js
+  123:15  warning  'seasonOverrides' is assigned a value but never used  @typescript-eslint/no-unused-vars
+  123:32  warning  'validFrom' is assigned a value but never used        @typescript-eslint/no-unused-vars
+  123:43  warning  'validUntil' is assigned a value but never used       @typescript-eslint/no-unused-vars
+
+C:\Users\joel.abraham\Downloads\SquadLogic\packages\core\src\rosterSizing.js
+  184:23  warning  '_seasonId' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\joel.abraham\Downloads\SquadLogic\packages\core\src\teamGeneration.js
+   10:24  warning  'TeamSchema' is defined but never used                                             @typescript-eslint/no-unused-vars
+   86:3   warning  'dryRun' is assigned a value but never used. Allowed unused args must match /^_/u  @typescript-eslint/no-unused-vars
+  620:72  warning  'reason' is defined but never used. Allowed unused args must match /^_/u           @typescript-eslint/no-unused-vars
+  652:3   warning  'unitSkillTotal' is defined but never used. Allowed unused args must match /^_/u   @typescript-eslint/no-unused-vars
+
+C:\Users\joel.abraham\Downloads\SquadLogic\packages\core\src\teamPersistenceApi.js
+  44:3  error  Use "@ts-expect-error" instead of "@ts-ignore", as "@ts-ignore" will do nothing if the following line is error-free  @typescript-eslint/ban-ts-comment
+  48:5  error  Use "@ts-expect-error" instead of "@ts-ignore", as "@ts-ignore" will do nothing if the following line is error-free  @typescript-eslint/ban-ts-comment
+  70:7  error  Use "@ts-expect-error" instead of "@ts-ignore", as "@ts-ignore" will do nothing if the following line is error-free  @typescript-eslint/ban-ts-comment
+
+C:\Users\joel.abraham\Downloads\SquadLogic\packages\core\src\teamPersistenceEdgeHandler.js
+  55:16  warning  'error' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\joel.abraham\Downloads\SquadLogic\packages\core\src\teamPersistenceHandler.js
+   29:3   error    Use "@ts-expect-error" instead of "@ts-ignore", as "@ts-ignore" will do nothing if the following line is error-free  @typescript-eslint/ban-ts-comment
+   49:3   error    Use "@ts-expect-error" instead of "@ts-ignore", as "@ts-ignore" will do nothing if the following line is error-free  @typescript-eslint/ban-ts-comment
+   63:5   error    Use "@ts-expect-error" instead of "@ts-ignore", as "@ts-ignore" will do nothing if the following line is error-free  @typescript-eslint/ban-ts-comment
+   73:5   error    Use "@ts-expect-error" instead of "@ts-ignore", as "@ts-ignore" will do nothing if the following line is error-free  @typescript-eslint/ban-ts-comment
+   77:5   error    Use "@ts-expect-error" instead of "@ts-ignore", as "@ts-ignore" will do nothing if the following line is error-free  @typescript-eslint/ban-ts-comment
+   87:7   error    Use "@ts-expect-error" instead of "@ts-ignore", as "@ts-ignore" will do nothing if the following line is error-free  @typescript-eslint/ban-ts-comment
+  159:3   error    Use "@ts-expect-error" instead of "@ts-ignore", as "@ts-ignore" will do nothing if the following line is error-free  @typescript-eslint/ban-ts-comment
+  161:3   error    Use "@ts-expect-error" instead of "@ts-ignore", as "@ts-ignore" will do nothing if the following line is error-free  @typescript-eslint/ban-ts-comment
+  172:5   error    Use "@ts-expect-error" instead of "@ts-ignore", as "@ts-ignore" will do nothing if the following line is error-free  @typescript-eslint/ban-ts-comment
+  173:26  warning  'snapshot' is defined but never used. Allowed unused args must match /^_/u                                           @typescript-eslint/no-unused-vars
+  207:3   error    Use "@ts-expect-error" instead of "@ts-ignore", as "@ts-ignore" will do nothing if the following line is error-free  @typescript-eslint/ban-ts-comment
+
+C:\Users\joel.abraham\Downloads\SquadLogic\packages\core\src\teamSupabase.js
+  159:9  warning  'rows' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\joel.abraham\Downloads\SquadLogic\scripts\benchmark_phase_5.js
+  1:24  warning  'RESERVED_KEYS' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\joel.abraham\Downloads\SquadLogic\scripts\clear-remote-storage.js
+  128:12  warning  'err' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\joel.abraham\Downloads\SquadLogic\scripts\verify_security_e2e.js
+   31:16  warning  'createUserClient' is defined but never used  @typescript-eslint/no-unused-vars
+   32:11  warning  'data' is assigned a value but never used     @typescript-eslint/no-unused-vars
+  197:19  warning  'run' is assigned a value but never used      @typescript-eslint/no-unused-vars
+
+C:\Users\joel.abraham\Downloads\SquadLogic\supabase\functions\_shared\auth.ts
+  8:3  warning  'createClient' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\joel.abraham\Downloads\SquadLogic\supabase\functions\calendar-feed\index.ts
+   22:7   warning  'generateUid' is assigned a value but never used  @typescript-eslint/no-unused-vars
+  127:67  error    Unnecessary escape character: \[                  no-useless-escape
+  215:88  error    Unnecessary escape character: \-                  no-useless-escape
+
+C:\Users\joel.abraham\Downloads\SquadLogic\supabase\functions\import-validation\index.ts
+  37:14  error    Unexpected control character(s) in regular expression: \x00, \x08, \x0b, \x0c, \x0e, \x1f  no-control-regex
+  42:10  warning  'sanitizeRow' is defined but never used                                                    @typescript-eslint/no-unused-vars
+
+C:\Users\joel.abraham\Downloads\SquadLogic\tests\GameCard.test.jsx
+  93:13  warning  'container' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\joel.abraham\Downloads\SquadLogic\tests\authIntegration.test.jsx
+  126:5  error  Use "@ts-expect-error" instead of "@ts-ignore", as "@ts-ignore" will do nothing if the following line is error-free  @typescript-eslint/ban-ts-comment
+
+C:\Users\joel.abraham\Downloads\SquadLogic\tests\e2e\steps\async_and_optimistic_ui.ts
+   69:44  error    Unexpected any. Specify a different type                                     @typescript-eslint/no-explicit-any
+   81:20  error    Unexpected any. Specify a different type                                     @typescript-eslint/no-explicit-any
+   82:18  error    Unexpected any. Specify a different type                                     @typescript-eslint/no-explicit-any
+  203:16  error    Unexpected any. Specify a different type                                     @typescript-eslint/no-explicit-any
+  247:9   warning  'label' is assigned a value but never used                                   @typescript-eslint/no-unused-vars
+  255:78  warning  'text' is defined but never used. Allowed unused args must match /^_/u       @typescript-eslint/no-unused-vars
+  269:67  warning  'chartName' is defined but never used. Allowed unused args must match /^_/u  @typescript-eslint/no-unused-vars
+  333:70  warning  'text' is defined but never used. Allowed unused args must match /^_/u       @typescript-eslint/no-unused-vars
+
+C:\Users\joel.abraham\Downloads\SquadLogic\tests\e2e\steps\auth_setup.ts
+   13:42  error    Unexpected any. Specify a different type    @typescript-eslint/no-explicit-any
+   15:9   warning  'email' is assigned a value but never used  @typescript-eslint/no-unused-vars
+   37:40  error    Unexpected any. Specify a different type    @typescript-eslint/no-explicit-any
+   44:17  error    Unexpected any. Specify a different type    @typescript-eslint/no-explicit-any
+   56:42  error    Unexpected any. Specify a different type    @typescript-eslint/no-explicit-any
+  125:48  error    Unexpected any. Specify a different type    @typescript-eslint/no-explicit-any
+  130:49  error    Unexpected any. Specify a different type    @typescript-eslint/no-explicit-any
+
+C:\Users\joel.abraham\Downloads\SquadLogic\tests\e2e\steps\coach_and_calendar.ts
+   12:74  error    Unexpected any. Specify a different type                                      @typescript-eslint/no-explicit-any
+   23:28  error    Unexpected any. Specify a different type                                      @typescript-eslint/no-explicit-any
+   32:16  error    Unexpected any. Specify a different type                                      @typescript-eslint/no-explicit-any
+   40:74  error    Unexpected any. Specify a different type                                      @typescript-eslint/no-explicit-any
+   56:16  error    Unexpected any. Specify a different type                                      @typescript-eslint/no-explicit-any
+   85:76  warning  'page' is defined but never used. Allowed unused args must match /^_/u        @typescript-eslint/no-unused-vars
+  104:12  error    Unexpected any. Specify a different type                                      @typescript-eslint/no-explicit-any
+  132:25  error    Unexpected any. Specify a different type                                      @typescript-eslint/no-explicit-any
+  139:27  error    Unexpected any. Specify a different type                                      @typescript-eslint/no-explicit-any
+  160:20  warning  'statusType' is defined but never used. Allowed unused args must match /^_/u  @typescript-eslint/no-unused-vars
+
+C:\Users\joel.abraham\Downloads\SquadLogic\tests\e2e\steps\common_steps.ts
+   18:57  warning  'seasonName' is defined but never used. Allowed unused args must match /^_/u  @typescript-eslint/no-unused-vars
+  181:78  warning  'orgName' is defined but never used. Allowed unused args must match /^_/u     @typescript-eslint/no-unused-vars
+
+C:\Users\joel.abraham\Downloads\SquadLogic\tests\e2e\steps\dashboard_and_sidebar.ts
+  200:37  error    Unexpected any. Specify a different type                                    @typescript-eslint/no-explicit-any
+  248:39  error    Unexpected any. Specify a different type                                    @typescript-eslint/no-explicit-any
+  377:53  error    Unexpected any. Specify a different type                                    @typescript-eslint/no-explicit-any
+  380:63  error    Unexpected any. Specify a different type                                    @typescript-eslint/no-explicit-any
+  416:20  warning  'dropdown' is defined but never used. Allowed unused args must match /^_/u  @typescript-eslint/no-unused-vars
+  416:38  warning  'orgName' is defined but never used. Allowed unused args must match /^_/u   @typescript-eslint/no-unused-vars
+  463:20  warning  'orgName' is defined but never used. Allowed unused args must match /^_/u   @typescript-eslint/no-unused-vars
+  510:51  error    Unexpected any. Specify a different type                                    @typescript-eslint/no-explicit-any
+
+C:\Users\joel.abraham\Downloads\SquadLogic\tests\e2e\steps\data_and_output.ts
+  10:12  error    Unexpected any. Specify a different type                                @typescript-eslint/no-explicit-any
+  18:24  error    Unexpected any. Specify a different type                                @typescript-eslint/no-explicit-any
+  25:20  warning  'col1' is defined but never used. Allowed unused args must match /^_/u  @typescript-eslint/no-unused-vars
+  25:34  warning  'col2' is defined but never used. Allowed unused args must match /^_/u  @typescript-eslint/no-unused-vars
+
+C:\Users\joel.abraham\Downloads\SquadLogic\tests\e2e\steps\facility_management.ts
+   28:52  error    Unexpected any. Specify a different type                                     @typescript-eslint/no-explicit-any
+   29:46  error    Unexpected any. Specify a different type                                     @typescript-eslint/no-explicit-any
+   99:39  warning  'locName' is defined but never used. Allowed unused args must match /^_/u    @typescript-eslint/no-unused-vars
+  108:67  warning  'priority' is defined but never used. Allowed unused args must match /^_/u   @typescript-eslint/no-unused-vars
+  136:50  error    Unexpected any. Specify a different type                                     @typescript-eslint/no-explicit-any
+  140:17  error    Unexpected any. Specify a different type                                     @typescript-eslint/no-explicit-any
+  243:39  warning  'indicator' is defined but never used. Allowed unused args must match /^_/u  @typescript-eslint/no-unused-vars
+  269:50  error    Unexpected any. Specify a different type                                     @typescript-eslint/no-explicit-any
+  273:17  error    Unexpected any. Specify a different type                                     @typescript-eslint/no-explicit-any
+  332:50  error    Unexpected any. Specify a different type                                     @typescript-eslint/no-explicit-any
+  336:17  error    Unexpected any. Specify a different type                                     @typescript-eslint/no-explicit-any
+  390:47  error    Unexpected any. Specify a different type                                     @typescript-eslint/no-explicit-any
+  395:43  error    Unexpected any. Specify a different type                                     @typescript-eslint/no-explicit-any
+
+C:\Users\joel.abraham\Downloads\SquadLogic\tests\e2e\steps\network_resilience.ts
+  25:11  error    Unexpected any. Specify a different type                                @typescript-eslint/no-explicit-any
+  56:80  warning  'page' is defined but never used. Allowed unused args must match /^_/u  @typescript-eslint/no-unused-vars
+
+C:\Users\joel.abraham\Downloads\SquadLogic\tests\e2e\steps\rbac_and_fields.ts
+  208:12  warning  'e' is defined but never used                                               @typescript-eslint/no-unused-vars
+  343:51  warning  'pageName' is defined but never used. Allowed unused args must match /^_/u  @typescript-eslint/no-unused-vars
+
+C:\Users\joel.abraham\Downloads\SquadLogic\tests\e2e\steps\registration_compliance.ts
+    4:28  warning  'Before' is assigned a value but never used                                   @typescript-eslint/no-unused-vars
+    6:35  error    Unexpected any. Specify a different type                                      @typescript-eslint/no-explicit-any
+    8:27  error    Unexpected any. Specify a different type                                      @typescript-eslint/no-explicit-any
+   11:36  error    Unexpected any. Specify a different type                                      @typescript-eslint/no-explicit-any
+   16:38  error    Unexpected any. Specify a different type                                      @typescript-eslint/no-explicit-any
+   27:41  error    Unexpected any. Specify a different type                                      @typescript-eslint/no-explicit-any
+   38:36  error    Unexpected any. Specify a different type                                      @typescript-eslint/no-explicit-any
+   51:32  error    Unexpected any. Specify a different type                                      @typescript-eslint/no-explicit-any
+   61:41  error    Unexpected any. Specify a different type                                      @typescript-eslint/no-explicit-any
+   69:16  error    Unexpected any. Specify a different type                                      @typescript-eslint/no-explicit-any
+   75:62  warning  'seasonName' is defined but never used. Allowed unused args must match /^_/u  @typescript-eslint/no-unused-vars
+  148:76  warning  'formTitle' is defined but never used. Allowed unused args must match /^_/u   @typescript-eslint/no-unused-vars
+
+C:\Users\joel.abraham\Downloads\SquadLogic\tests\e2e\steps\reporting.ts
+   11:32  error    Unexpected any. Specify a different type                                     @typescript-eslint/no-explicit-any
+  130:20  warning  'tableName' is defined but never used. Allowed unused args must match /^_/u  @typescript-eslint/no-unused-vars
+
+C:\Users\joel.abraham\Downloads\SquadLogic\tests\e2e\steps\scheduling_and_overrides.ts
+  115:50  error    Unexpected any. Specify a different type                                  @typescript-eslint/no-explicit-any
+  141:26  error    Unexpected any. Specify a different type                                  @typescript-eslint/no-explicit-any
+  240:51  error    Unexpected any. Specify a different type                                  @typescript-eslint/no-explicit-any
+  278:60  error    Unexpected any. Specify a different type                                  @typescript-eslint/no-explicit-any
+  286:60  error    Unexpected any. Specify a different type                                  @typescript-eslint/no-explicit-any
+  294:60  error    Unexpected any. Specify a different type                                  @typescript-eslint/no-explicit-any
+  310:30  error    Unexpected any. Specify a different type                                  @typescript-eslint/no-explicit-any
+  328:11  warning  'now' is assigned a value but never used                                  @typescript-eslint/no-unused-vars
+  442:14  error    Unexpected any. Specify a different type                                  @typescript-eslint/no-explicit-any
+  456:31  error    Unexpected any. Specify a different type                                  @typescript-eslint/no-explicit-any
+  463:31  error    Unexpected any. Specify a different type                                  @typescript-eslint/no-explicit-any
+  577:20  warning  'flag' is defined but never used. Allowed unused args must match /^_/u    @typescript-eslint/no-unused-vars
+  607:28  error    Unexpected any. Specify a different type                                  @typescript-eslint/no-explicit-any
+  642:29  error    Unexpected any. Specify a different type                                  @typescript-eslint/no-explicit-any
+  652:29  error    Unexpected any. Specify a different type                                  @typescript-eslint/no-explicit-any
+  733:62  error    Unexpected any. Specify a different type                                  @typescript-eslint/no-explicit-any
+  801:44  error    Unexpected any. Specify a different type                                  @typescript-eslint/no-explicit-any
+  887:38  warning  'status' is defined but never used. Allowed unused args must match /^_/u  @typescript-eslint/no-unused-vars
+
+C:\Users\joel.abraham\Downloads\SquadLogic\tests\e2e\steps\team_and_roster.ts
+    9:42  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+    9:55  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   14:46  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   28:65  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   60:28  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  168:63  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  213:32  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  241:63  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  244:43  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  288:32  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  313:63  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  316:43  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  423:30  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\joel.abraham\Downloads\SquadLogic\tests\e2e\steps\team_communication.ts
+    2:10  warning  'test' is defined but never used                                        @typescript-eslint/no-unused-vars
+    6:62  warning  'page' is defined but never used. Allowed unused args must match /^_/u  @typescript-eslint/no-unused-vars
+   45:41  error    Unexpected any. Specify a different type                                @typescript-eslint/no-explicit-any
+   48:57  error    Unexpected any. Specify a different type                                @typescript-eslint/no-explicit-any
+   49:53  error    Unexpected any. Specify a different type                                @typescript-eslint/no-explicit-any
+   53:44  error    Unexpected any. Specify a different type                                @typescript-eslint/no-explicit-any
+   62:55  error    Unexpected any. Specify a different type                                @typescript-eslint/no-explicit-any
+   66:61  error    Unexpected any. Specify a different type                                @typescript-eslint/no-explicit-any
+   89:44  error    Unexpected any. Specify a different type                                @typescript-eslint/no-explicit-any
+   98:55  error    Unexpected any. Specify a different type                                @typescript-eslint/no-explicit-any
+  102:61  error    Unexpected any. Specify a different type                                @typescript-eslint/no-explicit-any
+  133:37  error    Unexpected any. Specify a different type                                @typescript-eslint/no-explicit-any
+  142:44  error    Unexpected any. Specify a different type                                @typescript-eslint/no-explicit-any
+  230:36  error    Unexpected any. Specify a different type                                @typescript-eslint/no-explicit-any
+
+C:\Users\joel.abraham\Downloads\SquadLogic\tests\e2e\steps\visual_rbac_enforcement.ts
+   4:9  warning  'Given' is assigned a value but never used                                                                           @typescript-eslint/no-unused-vars
+  10:5  error    Use "@ts-expect-error" instead of "@ts-ignore", as "@ts-ignore" will do nothing if the following line is error-free  @typescript-eslint/ban-ts-comment
+
+C:\Users\joel.abraham\Downloads\SquadLogic\tests\evaluationPipeline.test.js
+  1:16  warning  'expect' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\joel.abraham\Downloads\SquadLogic\tests\gamePersistenceApi.test.js
+  1:16  warning  'expect' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\joel.abraham\Downloads\SquadLogic\tests\gamePersistenceHandler.test.js
+  1:16  warning  'expect' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\joel.abraham\Downloads\SquadLogic\tests\gameScheduling.test.js
+  1:16  warning  'expect' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\joel.abraham\Downloads\SquadLogic\tests\gameSupabase.test.js
+  1:16  warning  'expect' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\joel.abraham\Downloads\SquadLogic\tests\outputGeneration.test.js
+  2:16  warning  'expect' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\joel.abraham\Downloads\SquadLogic\tests\practiceMetrics.test.js
+  1:16  warning  'expect' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\joel.abraham\Downloads\SquadLogic\tests\practicePersistenceApi.test.js
+  1:16  warning  'expect' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\joel.abraham\Downloads\SquadLogic\tests\practicePersistenceHandler.test.js
+  1:16  warning  'expect' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\joel.abraham\Downloads\SquadLogic\tests\practiceSchedulingTimezone.test.js
+   5:70  warning  't' is defined but never used. Allowed unused args must match /^_/u  @typescript-eslint/no-unused-vars
+  62:64  warning  't' is defined but never used. Allowed unused args must match /^_/u  @typescript-eslint/no-unused-vars
+
+C:\Users\joel.abraham\Downloads\SquadLogic\tests\practiceSupabase.test.js
+  383:5  error  Use "@ts-expect-error" instead of "@ts-ignore", as "@ts-ignore" will do nothing if the following line is error-free  @typescript-eslint/ban-ts-comment
+
+C:\Users\joel.abraham\Downloads\SquadLogic\tests\rosterSizing.test.js
+  145:5  error  Use "@ts-expect-error" instead of "@ts-ignore", as "@ts-ignore" will do nothing if the following line is error-free  @typescript-eslint/ban-ts-comment
+
+C:\Users\joel.abraham\Downloads\SquadLogic\tests\teamDiagnostics.test.js
+  1:16  warning  'expect' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\joel.abraham\Downloads\SquadLogic\tests\teamGeneration.test.js
+    1:16  warning  'expect' is defined but never used                                                                                   @typescript-eslint/no-unused-vars
+  299:5   error    Use "@ts-expect-error" instead of "@ts-ignore", as "@ts-ignore" will do nothing if the following line is error-free  @typescript-eslint/ban-ts-comment
+  306:5   error    Use "@ts-expect-error" instead of "@ts-ignore", as "@ts-ignore" will do nothing if the following line is error-free  @typescript-eslint/ban-ts-comment
+  313:5   error    Use "@ts-expect-error" instead of "@ts-ignore", as "@ts-ignore" will do nothing if the following line is error-free  @typescript-eslint/ban-ts-comment
+
+C:\Users\joel.abraham\Downloads\SquadLogic\tests\teamGenerationSeed.test.js
+  1:16  warning  'expect' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\joel.abraham\Downloads\SquadLogic\tests\teamPersistenceApi.test.js
+  1:16  warning  'expect' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\joel.abraham\Downloads\SquadLogic\tests\teamPersistenceEdgeHandler.test.js
+  1:16  warning  'expect' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\joel.abraham\Downloads\SquadLogic\tests\teamPersistenceHandler.test.js
+   1:16  warning  'expect' is defined but never used                                                                                   @typescript-eslint/no-unused-vars
+  21:3   error    Use "@ts-expect-error" instead of "@ts-ignore", as "@ts-ignore" will do nothing if the following line is error-free  @typescript-eslint/ban-ts-comment
+  26:3   error    Use "@ts-expect-error" instead of "@ts-ignore", as "@ts-ignore" will do nothing if the following line is error-free  @typescript-eslint/ban-ts-comment
+
+C:\Users\joel.abraham\Downloads\SquadLogic\tests\teamPersistencePanel.test.js
+  2:16  warning  'expect' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\joel.abraham\Downloads\SquadLogic\tests\teamPersistenceSnapshot.test.js
+    1:16  warning  'expect' is defined but never used                                                                                   @typescript-eslint/no-unused-vars
+  160:3   error    Use "@ts-expect-error" instead of "@ts-ignore", as "@ts-ignore" will do nothing if the following line is error-free  @typescript-eslint/ban-ts-comment
+
+C:\Users\joel.abraham\Downloads\SquadLogic\tests\teamSupabase.test.js
+  1:16  warning  'expect' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\joel.abraham\Downloads\SquadLogic\tests\usePracticeAssignments.test.js
+  32:5  error  Use "@ts-expect-error" instead of "@ts-ignore", as "@ts-ignore" will do nothing if the following line is error-free  @typescript-eslint/ban-ts-comment
+  52:5  error  Use "@ts-expect-error" instead of "@ts-ignore", as "@ts-ignore" will do nothing if the following line is error-free  @typescript-eslint/ban-ts-comment
+
+C:\Users\joel.abraham\Downloads\SquadLogic\tests\useTeamAnalysis.test.js
+  26:5  error  Use "@ts-expect-error" instead of "@ts-ignore", as "@ts-ignore" will do nothing if the following line is error-free  @typescript-eslint/ban-ts-comment
+  44:5  error  Use "@ts-expect-error" instead of "@ts-ignore", as "@ts-ignore" will do nothing if the following line is error-free  @typescript-eslint/ban-ts-comment
+  68:5  error  Use "@ts-expect-error" instead of "@ts-ignore", as "@ts-ignore" will do nothing if the following line is error-free  @typescript-eslint/ban-ts-comment
+
+C:\Users\joel.abraham\Downloads\SquadLogic\tests\verifyRpcUsage.test.js
+   1:16  warning  'expect' is defined but never used                                      @typescript-eslint/no-unused-vars
+  11:17  warning  'name' is defined but never used. Allowed unused args must match /^_/u  @typescript-eslint/no-unused-vars
+  11:23  warning  'args' is defined but never used. Allowed unused args must match /^_/u  @typescript-eslint/no-unused-vars
+
+Γ£û 359 problems (231 errors, 128 warnings)
+  63 errors and 0 warnings potentially fixable with the `--fix` option.
+

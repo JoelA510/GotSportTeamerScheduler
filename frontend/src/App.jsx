@@ -32,6 +32,8 @@ const EnterpriseDashboard = lazy(() => import('./pages/EnterpriseDashboard.jsx')
 const LeagueStandings = lazy(() => import('./pages/LeagueStandings.jsx'));
 const SetupWizard = lazy(() => import('./pages/SetupWizard.jsx'));
 const ThemeToggle = lazy(() => import('./components/ThemeToggle.jsx'));
+const ResetPassword = lazy(() => import('./pages/ResetPassword.jsx'));
+import ShadowBanner from './components/auth/ShadowBanner.jsx';
 
 function AppContent() {
   const { session, loading } = useAuth();
@@ -41,7 +43,7 @@ function AppContent() {
     return <LoadingScreen />;
   }
 
-  if (!session) {
+  if (!session && window.location.pathname !== '/auth/reset-password') {
     return (
       <Suspense fallback={<LoadingScreen />}>
         <Login />
@@ -53,7 +55,9 @@ function AppContent() {
 
   return (
     <Suspense fallback={<LoadingScreen />}>
+      <ShadowBanner />
       <Routes>
+        <Route path="/auth/reset-password" element={<ResetPassword />} />
         <Route
           path="/setup"
           element={

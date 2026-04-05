@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient.js';
 import { useOrganization } from '../contexts/OrganizationContext.jsx';
-import { Search, CheckCircle2, AlertCircle, ClipboardCheck, History } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext.jsx';
+import { Search, CheckCircle2, AlertCircle, ClipboardCheck, History, Eye } from 'lucide-react';
 import { logger } from '../lib/logger.js';
 
 export default function AdminComplianceDashboard() {
   const { currentOrganization } = useOrganization();
+  const { isAdmin, impersonateUser, isImpersonating, user } = useAuth();
   const [forms, setForms] = useState([]);
   const [selectedFormId, setSelectedFormId] = useState('');
   const [registrations, setRegistrations] = useState([]);
@@ -80,6 +82,17 @@ export default function AdminComplianceDashboard() {
         .update({ medical_cleared: newStatus })
         .eq('id', regId);
       if (error) throw error;
+
+      // Log audit event
+      await supabase.rpc('record_audit_event', {
+        p_organization_id: currentOrganization?.id,
+        p_action: 'compliance.medical_update',
+        p_metadata: {
+          registration_id: regId,
+          new_status: newStatus,
+          impersonated_by: isImpersonating ? user.id : null
+        }
+      });
     } catch (err) {
       logger.error(err);
       // Rollback
@@ -163,7 +176,7 @@ export default function AdminComplianceDashboard() {
                     Medical Clearance
                   </th>
                   <th className="px-6 py-4 font-semibold tracking-wider text-right">
-                    Registered On
+                    Actions
                   </th>
                 </tr>
               </thead>
@@ -208,8 +221,21 @@ export default function AdminComplianceDashboard() {
                         {reg.medical_cleared ? 'Cleared' : 'Reviewing'}
                       </button>
                     </td>
-                    <td className="px-6 py-4 text-right text-xs whitespace-nowrap text-text-muted">
-                      {new Date(reg.created_at).toLocaleDateString()}
+                    <td className="px-6 py-4 text-right">
+                      <div className="flex flex-col items-end gap-1">
+                        {isAdmin && reg.profiles?.id && (
+                          <button
+                            onClick={() => impersonateUser(reg.profiles)}
+                            className="flex items-center gap-1.5 px-3 py-1 rounded-md bg-amber-500/10 text-amber-500 text-xs font-bold border border-amber-500/20 hover:bg-amber-500/20 transition-all"
+                            title="View as this parent"
+                          >
+                            <Eye size={12} /> View As
+                          </button>
+                        )}
+                        <span className="text-[10px] text-text-muted">
+                          {new Date(reg.created_at).toLocaleDateString()}
+                        </span>
+                      </div>
                     </td>
                   </tr>
                 ))}

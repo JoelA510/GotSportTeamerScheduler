@@ -1,6 +1,8 @@
 import React, { useRef } from 'react';
 import { Upload, Sun, Moon } from 'lucide-react';
 import { useTheme } from '../../../contexts/ThemeContext.jsx';
+import { useAuth } from '../../../contexts/AuthContext.jsx';
+import { supabase } from '../../../lib/supabaseClient.js';
 import { extractColorsFromImage } from '../../../utils/colorUtils.js';
 import { logger } from '../../../lib/logger.js';
 
@@ -15,6 +17,7 @@ export default function BrandingModule() {
     extractedColors,
     updateExtractedColors,
   } = useTheme();
+  const { user, isImpersonating } = useAuth();
 
   const fileInputRef = useRef(null);
 
@@ -31,6 +34,19 @@ export default function BrandingModule() {
       try {
         const colors = await extractColorsFromImage(dataUrl);
         updateExtractedColors(colors);
+
+        // Audit logo change
+        const orgId = user?.profile?.organization_id;
+        if (orgId) {
+          await supabase.rpc('record_audit_event', {
+            p_organization_id: orgId,
+            p_action: 'settings.logo_updated',
+            p_metadata: { 
+              user_id: user.id,
+              is_impersonating: isImpersonating
+            }
+          });
+        }
       } catch (error) {
         logger.error('Failed to extract colors', error);
       }

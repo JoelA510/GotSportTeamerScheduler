@@ -16,11 +16,12 @@ import {
   useSortable,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { GripVertical, User, ShieldAlert, Zap, ArrowRight } from 'lucide-react';
+import { GripVertical, User, ShieldAlert, Zap, ArrowRight, Eye } from 'lucide-react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useConflicts } from '../../hooks/useConflicts.js';
 import { supabase } from '../../lib/supabaseClient.js';
 import { useOrganization } from '../../contexts/OrganizationContext.jsx';
+import { useAuth } from '../../contexts/AuthContext.jsx';
 import { logger } from '../../lib/logger.js';
 
 /**
@@ -171,6 +172,7 @@ export default function RosterManager({ initialTeams }) {
   const [announcement, setAnnouncement] = useState('');
   const { conflicts, hasConflicts } = useConflicts(teams);
   const { currentOrganization } = useOrganization();
+  const { user, isImpersonating } = useAuth();
 
   // CRITICAL FIX: Sync state when async mock data finishes loading
   useEffect(() => {
@@ -279,6 +281,19 @@ export default function RosterManager({ initialTeams }) {
 
         if (error) throw error;
         setAnnouncement(`Assigned ${activePlayer.name} to ${destTeam.name}`);
+
+        // Audit the manual override
+        await supabase.rpc('record_audit_event', {
+          p_organization_id: currentOrganization?.id,
+          p_action: 'player.reassigned',
+          p_metadata: {
+            player_id: activeId,
+            from_team_id: sourceTeam.id,
+            to_team_id: destTeam.id,
+            impersonated_by: isImpersonating ? user.id : null,
+            trigger: 'roster_drag_drop'
+          }
+        });
       } catch (e) {
         logger.error('Failed to persist player assignment override', e);
         setAnnouncement(`Failed to move ${activePlayer.name}`);

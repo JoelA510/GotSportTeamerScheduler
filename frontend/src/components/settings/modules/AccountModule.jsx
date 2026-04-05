@@ -4,10 +4,39 @@ import Button from '../../ui/Button.jsx';
 import { useAuth } from '../../../contexts/AuthContext.jsx';
 
 export default function AccountModule() {
-  const { user } = useAuth();
-  const [currentPassword, setCurrentPassword] = useState('');
+  const { user, updatePassword, isImpersonating } = useAuth();
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState({ type: '', text: '' });
+
+  const handlePasswordUpdate = async (e) => {
+    e.preventDefault();
+    if (newPassword !== confirmPassword) {
+      setMessage({ type: 'error', text: 'New passwords do not match' });
+      return;
+    }
+    if (newPassword.length < 12) {
+      setMessage({ type: 'error', text: 'Password must be at least 12 characters' });
+      return;
+    }
+
+    setLoading(true);
+    setMessage({ type: '', text: '' });
+
+    try {
+      const { error } = await updatePassword(newPassword);
+      if (error) throw error;
+
+      setMessage({ type: 'success', text: 'Password updated successfully' });
+      setNewPassword('');
+      setConfirmPassword('');
+    } catch (error) {
+      setMessage({ type: 'error', text: error.message || 'Failed to update password' });
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="space-y-6 animate-fadeIn">
@@ -23,22 +52,15 @@ export default function AccountModule() {
 
       <div className="border-t border-white/10 pt-6">
         <h3 className="text-lg font-medium text-text-primary mb-4">Change Password</h3>
-        <div className="space-y-4">
-          <div>
-            <label
-              htmlFor="current-password"
-              className="block text-sm font-medium text-text-secondary mb-2"
-            >
-              Current Password
-            </label>
-            <input
-              id="current-password"
-              type="password"
-              value={currentPassword}
-              onChange={(e) => setCurrentPassword(e.target.value)}
-              className="w-full bg-bg-surface border border-border-subtle rounded-lg px-4 py-3 text-text-primary focus:outline-none focus:border-brand-400 transition-colors"
-            />
-          </div>
+        <form onSubmit={handlePasswordUpdate} className="space-y-4">
+          {message.text && (
+            <div className={`p-3 rounded-lg text-sm ${
+              message.type === 'success' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-red-500/10 text-red-400 border border-red-500/20'
+            }`}>
+              {message.text}
+            </div>
+          )}
+          
           <div>
             <label
               htmlFor="new-password"
@@ -49,9 +71,11 @@ export default function AccountModule() {
             <input
               id="new-password"
               type="password"
+              required
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
               className="w-full bg-bg-surface border border-border-subtle rounded-lg px-4 py-3 text-text-primary focus:outline-none focus:border-brand-400 transition-colors"
+              placeholder="Min. 12 characters"
             />
           </div>
           <div>
@@ -64,15 +88,22 @@ export default function AccountModule() {
             <input
               id="confirm-password"
               type="password"
+              required
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               className="w-full bg-bg-surface border border-border-subtle rounded-lg px-4 py-3 text-text-primary focus:outline-none focus:border-brand-400 transition-colors"
             />
           </div>
-          <Button variant="secondary" size="sm">
+          <Button 
+            type="submit" 
+            variant="secondary" 
+            size="sm" 
+            loading={loading}
+            disabled={loading || !newPassword || !confirmPassword}
+          >
             Update Password
           </Button>
-        </div>
+        </form>
       </div>
     </div>
   );
