@@ -245,14 +245,19 @@ export function useTeamPortal(teamId) {
           table: 'event_rsvps',
           filter: `team_id=eq.${teamId}`,
         },
-        () => {
-          // Simplest approach: refetch RSVPs when one changes
-          // A more surgical update of the state could be done for performance
-          const refetchRsvps = async () => {
-            const { data } = await supabase.from('event_rsvps').select('*').eq('team_id', teamId);
-            if (data) setRsvps(data);
-          };
-          refetchRsvps();
+        (payload) => {
+          setRsvps((currentRsvps) => {
+            if (payload.eventType === 'INSERT') {
+              const exists = currentRsvps.some((r) => r.id === payload.new.id);
+              if (exists) return currentRsvps;
+              return [...currentRsvps, payload.new];
+            } else if (payload.eventType === 'UPDATE') {
+              return currentRsvps.map((r) => (r.id === payload.new.id ? payload.new : r));
+            } else if (payload.eventType === 'DELETE') {
+              return currentRsvps.filter((r) => r.id !== payload.old.id);
+            }
+            return currentRsvps;
+          });
         }
       )
       .subscribe();
