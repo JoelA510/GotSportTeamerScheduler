@@ -10,9 +10,9 @@ import {
 const TEAMS = [
   { id: 'team-1', division: 'U10', coachId: 'coach-a' },
   { id: 'team-2', division: 'U10', coachId: 'coach-b' },
-  { id: 'team-3', division: 'U10', coachId: 'coach-a' },  // same coach as team-1
+  { id: 'team-3', division: 'U10', coachId: 'coach-a' }, // same coach as team-1
   { id: 'team-4', division: 'U10', coachId: 'coach-c' },
-  { id: 'team-5', division: 'U12', coachId: null },        // no coach
+  { id: 'team-5', division: 'U12', coachId: null }, // no coach
   { id: 'team-6', division: 'U12', coachId: null },
 ];
 
@@ -92,9 +92,7 @@ describe('checkSlotAvailability', () => {
   });
 
   test('handles string/number coercion for fieldId and slotId', () => {
-    const assignments = [
-      { ...BASE_ASSIGNMENTS[0], fieldId: 1, slotId: 100 },
-    ];
+    const assignments = [{ ...BASE_ASSIGNMENTS[0], fieldId: 1, slotId: 100 }];
     const result = checkSlotAvailability({
       fieldId: '1',
       slotId: '100',
@@ -104,9 +102,15 @@ describe('checkSlotAvailability', () => {
   });
 
   test('returns available:false for missing parameters', () => {
-    expect(checkSlotAvailability({ fieldId: null, slotId: 'gs-1', assignments: [] }).available).toBe(false);
-    expect(checkSlotAvailability({ fieldId: 'v1', slotId: null, assignments: [] }).available).toBe(false);
-    expect(checkSlotAvailability({ fieldId: 'v1', slotId: 'gs-1', assignments: null }).available).toBe(false);
+    expect(
+      checkSlotAvailability({ fieldId: null, slotId: 'gs-1', assignments: [] }).available
+    ).toBe(false);
+    expect(checkSlotAvailability({ fieldId: 'v1', slotId: null, assignments: [] }).available).toBe(
+      false
+    );
+    expect(
+      checkSlotAvailability({ fieldId: 'v1', slotId: 'gs-1', assignments: null }).available
+    ).toBe(false);
   });
 });
 
@@ -210,7 +214,7 @@ describe('validateGameMove', () => {
     const result = validateGameMove({
       game: BASE_ASSIGNMENTS[1], // ga-2
       targetFieldId: 'v1',
-      targetSlotId: 'gs-1',      // occupied by ga-1
+      targetSlotId: 'gs-1', // occupied by ga-1
       targetStart: '2026-04-04T08:00:00Z',
       targetEnd: '2026-04-04T09:00:00Z',
       assignments: BASE_ASSIGNMENTS,
@@ -242,7 +246,7 @@ describe('validateGameMove', () => {
       game: BASE_ASSIGNMENTS[0],
       targetFieldId: 'v1',
       targetSlotId: 'gs-1',
-      targetStart: '2026-04-04T11:00:00Z',  // different time → no coach conflict
+      targetStart: '2026-04-04T11:00:00Z', // different time → no coach conflict
       targetEnd: '2026-04-04T12:00:00Z',
       assignments: BASE_ASSIGNMENTS,
       teams: TEAMS,

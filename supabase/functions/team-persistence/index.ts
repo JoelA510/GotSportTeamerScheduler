@@ -5,10 +5,7 @@
  */
 import { serve } from 'https://deno.land/std@0.223.0/http/server.ts';
 import { z } from 'https://deno.land/x/zod@v3.22.4/mod.ts';
-import {
-  createClient,
-  type SupabaseClient,
-} from 'https://esm.sh/@supabase/supabase-js@2.45.3';
+import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.45.3';
 import {
   getUserFromRequest,
   getUserOrgIds,
@@ -171,10 +168,11 @@ if (!supabaseUrl || !serviceRoleKey) {
     }
 
     // 1c. Role check
-    const userRole = (user as unknown as Record<string, unknown>).role as string ?? 'authenticated';
+    const userRole =
+      ((user as unknown as Record<string, unknown>).role as string) ?? 'authenticated';
     const effectiveRole =
-      ((user as unknown as Record<string, unknown>).app_metadata as Record<string, unknown>)?.role as string ??
-      userRole;
+      (((user as unknown as Record<string, unknown>).app_metadata as Record<string, unknown>)
+        ?.role as string) ?? userRole;
     if (!allowedRoles.includes(effectiveRole)) {
       return jsonResponse(
         { status: 'error', message: `Role "${effectiveRole}" is not authorized.` },
@@ -224,11 +222,7 @@ if (!supabaseUrl || !serviceRoleKey) {
           .in('id', divisionIds);
 
         const targetOrgIds = [
-          ...new Set(
-            (divisions ?? []).map(
-              (d: { organization_id: string }) => d.organization_id
-            )
-          ),
+          ...new Set((divisions ?? []).map((d: { organization_id: string }) => d.organization_id)),
         ];
         const unauthorized = targetOrgIds.filter((oid) => !userOrgIds.includes(oid));
         if (unauthorized.length > 0) {

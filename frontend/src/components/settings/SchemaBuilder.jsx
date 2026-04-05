@@ -3,16 +3,16 @@ import { supabase } from '../../lib/supabaseClient.js';
 import { useOrganization } from '../../contexts/OrganizationContext.jsx';
 import { logger } from '../../lib/logger.js';
 import { RESERVED_KEYS } from '../../utils/telemetryUtils.js';
-import { 
-  Settings, 
-  Plus, 
-  Trash2, 
-  Save, 
-  ShieldCheck, 
+import {
+  Settings,
+  Plus,
+  Trash2,
+  Save,
+  ShieldCheck,
   Database,
   User,
   Users,
-  Shield
+  Shield,
 } from 'lucide-react';
 
 export function SchemaBuilder() {
@@ -21,7 +21,7 @@ export function SchemaBuilder() {
   const [schemas, setSchemas] = useState({
     player: {},
     coach: {},
-    team: {}
+    team: {},
   });
   const [isSaving, setIsSaving] = useState(false);
   const [newFieldName, setNewFieldName] = useState('');
@@ -42,7 +42,7 @@ export function SchemaBuilder() {
       }
 
       const loadedSchemas = { player: {}, coach: {}, team: {} };
-      data?.forEach(s => {
+      data?.forEach((s) => {
         loadedSchemas[s.entity_type] = s.schema_definition;
       });
       setSchemas(loadedSchemas);
@@ -52,9 +52,9 @@ export function SchemaBuilder() {
 
   const handleAddField = () => {
     const fieldName = newFieldName.toLowerCase().trim().replace(/\s+/g, '_');
-    
+
     if (!fieldName) return;
-    
+
     // Core Immortality: RESERVED_KEYS Guard
     if (RESERVED_KEYS.has(fieldName)) {
       setError(`Cannot use '${fieldName}': It is a system-reserved field.`);
@@ -66,12 +66,12 @@ export function SchemaBuilder() {
       return;
     }
 
-    setSchemas(prev => ({
+    setSchemas((prev) => ({
       ...prev,
       [activeTab]: {
         ...prev[activeTab],
-        [fieldName]: newFieldType
-      }
+        [fieldName]: newFieldType,
+      },
     }));
     setNewFieldName('');
     setError(null);
@@ -80,9 +80,9 @@ export function SchemaBuilder() {
   const handleRemoveField = (fieldName) => {
     const updatedSchema = { ...schemas[activeTab] };
     delete updatedSchema[fieldName];
-    setSchemas(prev => ({
+    setSchemas((prev) => ({
       ...prev,
-      [activeTab]: updatedSchema
+      [activeTab]: updatedSchema,
     }));
   };
 
@@ -92,18 +92,21 @@ export function SchemaBuilder() {
     setError(null);
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      const { error: saveError } = await supabase
-        .from('organization_schemas')
-        .upsert({
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      const { error: saveError } = await supabase.from('organization_schemas').upsert(
+        {
           organization_id: currentOrganization.id,
           entity_type: activeTab,
-          schema_definition: schemas[activeTab]
-        }, { onConflict: 'organization_id,entity_type' });
+          schema_definition: schemas[activeTab],
+        },
+        { onConflict: 'organization_id,entity_type' }
+      );
 
       if (saveError) throw saveError;
-      
+
       logger.log(`[SchemaBuilder] Saved ${activeTab} schema successfully.`);
       alert(`${activeTab.charAt(0).toUpperCase() + activeTab.slice(1)} schema updated!`);
     } catch (err) {
@@ -148,8 +151,8 @@ export function SchemaBuilder() {
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
             className={`flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-bold transition-all duration-300 ${
-              activeTab === tab.id 
-                ? 'bg-sky-500 text-white shadow-lg shadow-sky-500/20' 
+              activeTab === tab.id
+                ? 'bg-sky-500 text-white shadow-lg shadow-sky-500/20'
                 : 'text-white/40 hover:text-white/60 hover:bg-white/5'
             }`}
           >
@@ -173,11 +176,13 @@ export function SchemaBuilder() {
             {Object.keys(schemas[activeTab]).length === 0 ? (
               <div className="py-12 flex flex-col items-center justify-center text-white/20 border-2 border-dashed border-white/5 rounded-2xl">
                 <Settings className="w-12 h-12 mb-3 opacity-10" />
-                <p className="text-sm font-medium">No custom attributes defined for {activeTab}s.</p>
+                <p className="text-sm font-medium">
+                  No custom attributes defined for {activeTab}s.
+                </p>
               </div>
             ) : (
               Object.entries(schemas[activeTab]).map(([name, type]) => (
-                <div 
+                <div
                   key={name}
                   className="flex items-center justify-between p-4 rounded-xl bg-white/5 border border-white/5 group hover:border-white/20 transition-all duration-300"
                 >
@@ -185,10 +190,12 @@ export function SchemaBuilder() {
                     <div className="w-2 h-2 rounded-full bg-sky-500 shadow-[0_0_8px_rgba(14,165,233,0.4)]" />
                     <div>
                       <p className="text-sm font-bold text-white tracking-tight">{name}</p>
-                      <p className="text-[10px] font-bold text-sky-400/60 uppercase tracking-widest">{type}</p>
+                      <p className="text-[10px] font-bold text-sky-400/60 uppercase tracking-widest">
+                        {type}
+                      </p>
                     </div>
                   </div>
-                  <button 
+                  <button
                     onClick={() => handleRemoveField(name)}
                     className="p-2 text-white/20 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all opacity-0 group-hover:opacity-100"
                   >
@@ -199,12 +206,16 @@ export function SchemaBuilder() {
             )}
           </div>
 
-          <button 
+          <button
             disabled={isSaving}
             onClick={saveSchema}
             className="w-full py-4 rounded-2xl bg-gradient-to-r from-sky-600 to-indigo-600 text-white font-bold text-sm flex items-center justify-center gap-3 hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-50 disabled:grayscale"
           >
-            {isSaving ? <Activity className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
+            {isSaving ? (
+              <Activity className="w-5 h-5 animate-spin" />
+            ) : (
+              <Save className="w-5 h-5" />
+            )}
             {isSaving ? 'Processing Evolution...' : `Finalize ${activeTab.toUpperCase()} Schema`}
           </button>
         </div>
@@ -216,13 +227,13 @@ export function SchemaBuilder() {
               <Plus className="w-5 h-5 text-indigo-400" />
               New Attribute
             </h3>
-            
+
             <div className="space-y-4">
               <div>
                 <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-1.5 block">
                   Field Identity
                 </label>
-                <input 
+                <input
                   type="text"
                   placeholder="e.g. jersey_size"
                   value={newFieldName}
@@ -235,7 +246,7 @@ export function SchemaBuilder() {
                 <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-1.5 block">
                   Data Structure
                 </label>
-                <select 
+                <select
                   value={newFieldType}
                   onChange={(e) => setNewFieldType(e.target.value)}
                   className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:border-indigo-500/50 outline-none transition-all"
@@ -254,7 +265,7 @@ export function SchemaBuilder() {
                 </div>
               )}
 
-              <button 
+              <button
                 onClick={handleAddField}
                 className="w-full py-4 rounded-xl bg-indigo-500/20 text-indigo-300 font-bold text-xs uppercase tracking-widest border border-indigo-500/30 hover:bg-indigo-500/30 transition-all"
               >
@@ -264,12 +275,15 @@ export function SchemaBuilder() {
           </div>
 
           <div className="p-5 rounded-2xl bg-white/5 border border-white/5">
-             <div className="flex gap-3">
-               <Shield className="w-5 h-5 text-sky-400 shrink-0" />
-               <p className="text-[11px] leading-relaxed text-white/60">
-                 <strong className="text-white">Governance Note:</strong> Changes to schema definitions are audited in <code className="text-sky-300">organization_schema_history</code>. System fields are immutable.
-               </p>
-             </div>
+            <div className="flex gap-3">
+              <Shield className="w-5 h-5 text-sky-400 shrink-0" />
+              <p className="text-[11px] leading-relaxed text-white/60">
+                <strong className="text-white">Governance Note:</strong> Changes to schema
+                definitions are audited in{' '}
+                <code className="text-sky-300">organization_schema_history</code>. System fields are
+                immutable.
+              </p>
+            </div>
           </div>
         </div>
       </div>

@@ -58,7 +58,9 @@ export default function FieldColumn({
               assignment={assignment}
               isValidTarget={isActiveTarget ? validationResult.valid === true : false}
               isInvalidTarget={isActiveTarget ? validationResult.valid === false : false}
-              invalidReason={isActiveTarget && !validationResult.valid ? validationResult.reason : ''}
+              invalidReason={
+                isActiveTarget && !validationResult.valid ? validationResult.reason : ''
+              }
               conflictSet={conflictSet}
               isDragDisabled={isDragDisabled}
               timezone={timezone}

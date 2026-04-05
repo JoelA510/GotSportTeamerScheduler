@@ -35,6 +35,7 @@ const ThemeToggle = lazy(() => import('./components/ThemeToggle.jsx'));
 
 function AppContent() {
   const { session, loading } = useAuth();
+  const { currentOrganization, permissions } = useOrganization();
 
   if (loading) {
     return <LoadingScreen />;
@@ -47,25 +48,29 @@ function AppContent() {
       </Suspense>
     );
   }
-
-  const { currentOrganization, permissions } = useOrganization();
   const isOnboarded = currentOrganization?.is_onboarded;
   const isTenantAdmin = permissions.includes(PERMISSIONS.MANAGE_GLOBAL_SETTINGS);
 
   return (
     <Suspense fallback={<LoadingScreen />}>
       <Routes>
-        <Route 
-          path="/setup" 
+        <Route
+          path="/setup"
           element={
             <ProtectedRoute requiredPermission={PERMISSIONS.MANAGE_GLOBAL_SETTINGS}>
               <SetupWizard />
             </ProtectedRoute>
-          } 
+          }
         />
-        <Route element={
-          !isOnboarded && isTenantAdmin ? <Navigate to="/setup" replace /> : <DashboardLayout activeSection="dashboard" />
-        }>
+        <Route
+          element={
+            !isOnboarded && isTenantAdmin ? (
+              <Navigate to="/setup" replace />
+            ) : (
+              <DashboardLayout activeSection="dashboard" />
+            )
+          }
+        >
           <Route path="/" element={<DashboardPage />} />
           <Route path="/register/:formId" element={<RegistrationFlow />} />
           <Route

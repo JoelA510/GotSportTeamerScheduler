@@ -123,7 +123,9 @@ export function schedulePractices({
             return false;
           }
         } catch (e) {
-          console.error(`Invalid timezone provided: ${timezone}. Skipping schoolDayEnd filter for slot ${slot.id}.`);
+          console.error(
+            `Invalid timezone provided: ${timezone}. Skipping schoolDayEnd filter for slot ${slot.id}.`
+          );
         }
       }
       return true;

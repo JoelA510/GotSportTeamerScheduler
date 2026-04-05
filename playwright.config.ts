@@ -29,8 +29,8 @@ export default defineConfig({
     reuseExistingServer: false,
     timeout: 120 * 1000,
     env: {
-      VITE_USE_MOCK_SUPABASE: 'true'
-    }
+      VITE_USE_MOCK_SUPABASE: 'true',
+    },
   },
   projects: [
     {

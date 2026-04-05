@@ -3,9 +3,22 @@ import { supabase } from '../lib/supabaseClient.js';
 import { useOrganization } from '../contexts/OrganizationContext.jsx';
 import { useEnterpriseMetrics } from '../contexts/AnalyticsContext.jsx';
 import {
-  RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar,
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
-  PieChart, Pie, Cell, Legend
+  RadarChart,
+  PolarGrid,
+  PolarAngleAxis,
+  PolarRadiusAxis,
+  Radar,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  CartesianGrid,
+  PieChart,
+  Pie,
+  Cell,
+  Legend,
 } from 'recharts';
 import { Download, Users, ShieldCheck, Activity, BarChart2, Lock } from 'lucide-react';
 import { logger } from '../lib/logger.js';
@@ -14,7 +27,13 @@ export default function EnterpriseDashboard() {
   const { currentOrganization } = useOrganization();
   const [players, setPlayers] = useState([]);
   const [teamsData, setTeamsData] = useState([]);
-  const [metrics, setMetrics] = useState({ teams: 0, users: 0, coaches: 0, compliance_cleared: 0, compliance_total: 0 });
+  const [metrics, setMetrics] = useState({
+    teams: 0,
+    users: 0,
+    coaches: 0,
+    compliance_cleared: 0,
+    compliance_total: 0,
+  });
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [selectedMapping, setSelectedMapping] = useState('');
@@ -45,20 +64,20 @@ export default function EnterpriseDashboard() {
         let cCleared = 0;
         let cTotal = 0;
         if (compData) {
-          compData.forEach(c => {
+          compData.forEach((c) => {
             cCleared += c.medical_cleared || 0;
             cTotal += c.total_registrations || 0;
           });
         }
-        
+
         // Coach info mock from users count (stub)
         if (orgData) {
-          setMetrics({ 
-            teams: orgData.total_teams, 
-            users: orgData.total_users, 
+          setMetrics({
+            teams: orgData.total_teams,
+            users: orgData.total_users,
             coaches: Math.floor(orgData.total_users * 0.4), // Stub calculation for coaches
             compliance_cleared: cCleared,
-            compliance_total: cTotal
+            compliance_total: cTotal,
           });
         }
       } catch (err) {
@@ -75,25 +94,29 @@ export default function EnterpriseDashboard() {
   // Radar Metrics Calculation
   const radarData = useMemo(() => {
     // 1. Compliance
-    const complianceScore = metrics.compliance_total > 0 ? (metrics.compliance_cleared / metrics.compliance_total) * 100 : 85; 
-    
+    const complianceScore =
+      metrics.compliance_total > 0
+        ? (metrics.compliance_cleared / metrics.compliance_total) * 100
+        : 85;
+
     // 2. Staffing (Coaches to Teams ratio)
-    const staffingScore = metrics.teams > 0 ? Math.min(100, (metrics.coaches / metrics.teams) * 100) : 90;
+    const staffingScore =
+      metrics.teams > 0 ? Math.min(100, (metrics.coaches / metrics.teams) * 100) : 90;
 
     // 3. Balance & Skill Variability (Stub calculations returning realistic percentages)
-    const balanceScore = 88; 
+    const balanceScore = 88;
     const skillVariabilityScore = 92;
 
     return [
       { subject: 'Compliance', A: Math.round(complianceScore), fullMark: 100 },
       { subject: 'Staffing', A: Math.round(staffingScore), fullMark: 100 },
       { subject: 'Balance', A: balanceScore, fullMark: 100 },
-      { subject: 'Skill Variability', A: skillVariabilityScore, fullMark: 100 }
+      { subject: 'Skill Variability', A: skillVariabilityScore, fullMark: 100 },
     ];
   }, [metrics]);
 
-  const attributeOptions = Object.keys(aggregates).filter(key => !maskedFields.includes(key));
-  
+  const attributeOptions = Object.keys(aggregates).filter((key) => !maskedFields.includes(key));
+
   useEffect(() => {
     if (!selectedMapping && attributeOptions.length > 0) {
       setSelectedMapping(attributeOptions[0]);
@@ -103,14 +126,16 @@ export default function EnterpriseDashboard() {
   const getDynamicChartData = () => {
     if (!selectedMapping || !aggregates[selectedMapping]) return [];
     const counts = aggregates[selectedMapping].counts;
-    return Object.keys(counts).map(val => ({
-      name: val,
-      value: counts[val]
-    })).sort((a, b) => b.value - a.value);
+    return Object.keys(counts)
+      .map((val) => ({
+        name: val,
+        value: counts[val],
+      }))
+      .sort((a, b) => b.value - a.value);
   };
 
   const handleExportDummy = () => {
-    alert("Export triggered");
+    alert('Export triggered');
   };
 
   const COLORS = ['#2cdb85', '#60a5fa', '#fcd34d', '#f472b6', '#a78bfa'];
@@ -128,7 +153,9 @@ export default function EnterpriseDashboard() {
       {/* Header */}
       <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-display font-bold text-text-primary">Enterprise Dashboard</h1>
+          <h1 className="text-3xl font-display font-bold text-text-primary">
+            Enterprise Dashboard
+          </h1>
           <p className="text-text-secondary">Multi-Dimensional Analytics & Predictive Modularity</p>
         </div>
         <button
@@ -143,7 +170,8 @@ export default function EnterpriseDashboard() {
       {/* K-Anonymity Warning */}
       {isLowSample && (
         <div className="p-4 bg-status-warning-bg border border-status-warning/50 text-status-warning rounded-xl text-sm font-medium flex items-center gap-2 shadow-lg backdrop-blur-md">
-          <Lock size={16} /> Sub-population threshold active (K-Anonymity rules applied). Aggregated charting features are masked.
+          <Lock size={16} /> Sub-population threshold active (K-Anonymity rules applied). Aggregated
+          charting features are masked.
         </div>
       )}
 
@@ -155,7 +183,9 @@ export default function EnterpriseDashboard() {
             <span className="text-text-muted text-sm font-bold uppercase tracking-wider mb-2 flex items-center gap-2">
               <Users size={16} /> Total Players
             </span>
-            <span className="text-4xl font-black tracking-tight text-text-primary">{players.length}</span>
+            <span className="text-4xl font-black tracking-tight text-text-primary">
+              {players.length}
+            </span>
           </div>
         </div>
         <div className="bg-bg-surface border border-white/5 bg-white/5 backdrop-blur-xl rounded-2xl p-6 shadow-2xl relative overflow-hidden group">
@@ -164,7 +194,9 @@ export default function EnterpriseDashboard() {
             <span className="text-text-muted text-sm font-bold uppercase tracking-wider mb-2 flex items-center gap-2">
               <ShieldCheck size={16} /> Active Teams
             </span>
-            <span className="text-4xl font-black tracking-tight text-text-primary">{metrics.teams}</span>
+            <span className="text-4xl font-black tracking-tight text-text-primary">
+              {metrics.teams}
+            </span>
           </div>
         </div>
         <div className="bg-bg-surface border border-white/5 bg-white/5 backdrop-blur-xl rounded-2xl p-6 shadow-2xl relative overflow-hidden group">
@@ -173,7 +205,9 @@ export default function EnterpriseDashboard() {
             <span className="text-text-muted text-sm font-bold uppercase tracking-wider mb-2 flex items-center gap-2">
               <Activity size={16} /> Network Readiness
             </span>
-            <span className="text-4xl font-black tracking-tight text-text-primary">{radarData[0].A}%</span>
+            <span className="text-4xl font-black tracking-tight text-text-primary">
+              {radarData[0].A}%
+            </span>
           </div>
         </div>
       </div>
@@ -187,18 +221,26 @@ export default function EnterpriseDashboard() {
             <ResponsiveContainer width="100%" height="100%">
               <RadarChart data={radarData} outerRadius="70%">
                 <PolarGrid stroke="rgba(255,255,255,0.1)" />
-                <PolarAngleAxis dataKey="subject" tick={{ fill: 'var(--color-text-secondary)', fontSize: 13 }} />
+                <PolarAngleAxis
+                  dataKey="subject"
+                  tick={{ fill: 'var(--color-text-secondary)', fontSize: 13 }}
+                />
                 <PolarRadiusAxis angle={30} domain={[0, 100]} tick={false} axisLine={false} />
-                <Radar 
-                  name="Organization" 
-                  dataKey="A" 
-                  stroke="var(--color-primary)" 
-                  fill="var(--color-primary)" 
-                  fillOpacity={0.4} 
+                <Radar
+                  name="Organization"
+                  dataKey="A"
+                  stroke="var(--color-primary)"
+                  fill="var(--color-primary)"
+                  fillOpacity={0.4}
                   animationDuration={800}
                 />
                 <Tooltip
-                  contentStyle={{ backgroundColor: 'rgba(0,0,0,0.8)', borderColor: 'rgba(255,255,255,0.1)', borderRadius: '12px', backdropFilter: 'blur(8px)' }}
+                  contentStyle={{
+                    backgroundColor: 'rgba(0,0,0,0.8)',
+                    borderColor: 'rgba(255,255,255,0.1)',
+                    borderRadius: '12px',
+                    backdropFilter: 'blur(8px)',
+                  }}
                   itemStyle={{ color: 'var(--color-text-primary)' }}
                 />
               </RadarChart>
@@ -216,8 +258,10 @@ export default function EnterpriseDashboard() {
                 value={selectedMapping}
                 onChange={(e) => setSelectedMapping(e.target.value)}
               >
-                {attributeOptions.map(opt => (
-                  <option key={opt} value={opt}>{opt.replace(/_/g, ' ').toUpperCase()}</option>
+                {attributeOptions.map((opt) => (
+                  <option key={opt} value={opt}>
+                    {opt.replace(/_/g, ' ').toUpperCase()}
+                  </option>
                 ))}
               </select>
             )}
@@ -225,26 +269,46 @@ export default function EnterpriseDashboard() {
 
           <div className="h-80 w-full relative">
             {isLowSample ? (
-               <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center z-10 glass-panel rounded-xl animate-pulse">
-                 <Lock size={32} className="text-text-muted mb-4" />
-                 <h4 className="text-text-primary font-bold mb-2">Data Masked for Privacy</h4>
-                 <p className="text-text-muted text-sm max-w-sm">
-                   Insufficient dataset size triggers K-Anonymity protective masking. To view dynamic distributions, ensure there are at least 3 players registered.
-                 </p>
-               </div>
+              <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center z-10 glass-panel rounded-xl animate-pulse">
+                <Lock size={32} className="text-text-muted mb-4" />
+                <h4 className="text-text-primary font-bold mb-2">Data Masked for Privacy</h4>
+                <p className="text-text-muted text-sm max-w-sm">
+                  Insufficient dataset size triggers K-Anonymity protective masking. To view dynamic
+                  distributions, ensure there are at least 3 players registered.
+                </p>
+              </div>
             ) : attributeOptions.length === 0 ? (
               <div className="absolute inset-0 flex items-center justify-center text-text-muted">
                 No custom schema attributes detected.
               </div>
             ) : (
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={getDynamicChartData()} margin={{ top: 20, right: 30, left: 0, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
-                  <XAxis dataKey="name" stroke="var(--color-text-muted)" tick={{ fill: 'var(--color-text-muted)' }} />
-                  <YAxis stroke="var(--color-text-muted)" tick={{ fill: 'var(--color-text-muted)' }} />
+                <BarChart
+                  data={getDynamicChartData()}
+                  margin={{ top: 20, right: 30, left: 0, bottom: 5 }}
+                >
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    stroke="rgba(255,255,255,0.05)"
+                    vertical={false}
+                  />
+                  <XAxis
+                    dataKey="name"
+                    stroke="var(--color-text-muted)"
+                    tick={{ fill: 'var(--color-text-muted)' }}
+                  />
+                  <YAxis
+                    stroke="var(--color-text-muted)"
+                    tick={{ fill: 'var(--color-text-muted)' }}
+                  />
                   <Tooltip
                     cursor={{ fill: 'rgba(255,255,255,0.05)' }}
-                    contentStyle={{ backgroundColor: 'rgba(0,0,0,0.8)', borderColor: 'rgba(255,255,255,0.1)', borderRadius: '12px', backdropFilter: 'blur(8px)' }}
+                    contentStyle={{
+                      backgroundColor: 'rgba(0,0,0,0.8)',
+                      borderColor: 'rgba(255,255,255,0.1)',
+                      borderRadius: '12px',
+                      backdropFilter: 'blur(8px)',
+                    }}
                     itemStyle={{ color: 'var(--color-text-primary)' }}
                   />
                   <Bar

@@ -32,7 +32,7 @@ class ErrorBoundary extends React.Component {
               The application encountered an unexpected error.
             </p>
             <button
-              onClick={() => window.location.href = '/'}
+              onClick={() => (window.location.href = '/')}
               className="w-full bg-brand-600 hover:bg-brand-500 text-white font-semibold py-3 px-6 rounded-xl transition-all shadow-lg shadow-brand-glow"
             >
               Return Home

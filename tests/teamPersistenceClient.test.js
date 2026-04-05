@@ -147,7 +147,10 @@ test('posts to a configured endpoint and returns payload data', async () => {
     lastRunId: 'run-live-1',
     runMetadata: { seasonSettingsId: 'fall', runId: 'run-live-1' },
   });
-  assert.deepEqual(/** @type {any} */ (capturedBody).runMetadata, { seasonSettingsId: 'fall', runId: 'run-live-1' });
+  assert.deepEqual(/** @type {any} */ (capturedBody).runMetadata, {
+    seasonSettingsId: 'fall',
+    runId: 'run-live-1',
+  });
   assert.equal(result.status, 'success');
   assert.equal(result.syncedAt, '2024-07-20T18:00:00Z');
 });

@@ -87,11 +87,7 @@ describe('FieldColumn', () => {
     const assignmentsBySlot = { 'gs-1': ASSIGNMENT_1 };
     render(
       <DndWrapper>
-        <FieldColumn
-          field={FIELD}
-          timeSlots={TIME_SLOTS}
-          assignmentsBySlot={assignmentsBySlot}
-        />
+        <FieldColumn field={FIELD} timeSlots={TIME_SLOTS} assignmentsBySlot={assignmentsBySlot} />
       </DndWrapper>
     );
     // gs-1 should have a game card

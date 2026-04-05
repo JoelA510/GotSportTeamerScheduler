@@ -30,7 +30,12 @@ const navItems = [
   },
   { id: 'standings', label: 'League Standings', icon: Trophy, path: '/standings' },
   { id: 'reports', label: 'Reporting Dashboard', icon: LayoutDashboard, path: '/admin/reports' },
-  { id: 'compliance', label: 'Compliance Dashboard', icon: ClipboardCheck, path: '/admin/compliance' },
+  {
+    id: 'compliance',
+    label: 'Compliance Dashboard',
+    icon: ClipboardCheck,
+    path: '/admin/compliance',
+  },
   { id: 'forms', label: 'Registration Forms', icon: ClipboardList, path: '/admin/forms' },
   { id: 'settings', label: 'Settings', icon: Settings, path: '/settings' },
 ];
@@ -244,4 +249,3 @@ export default function Sidebar({ isOpen, toggleSidebar }) {
     </>
   );
 }
-

@@ -64,7 +64,9 @@ function normalizeRole(value, index) {
  * @param {string} [params.runId] - Optional scheduler run identifier.
  * @returns {{ rows: Array<Object>, teamIdMap: Map<string, string>, teamNameByGeneratorId: Map<string, string> }} Supabase row payloads with snake_case keys and a mapping from generator ids to UUIDs.
  */
-export function buildTeamRows({ teamsByDivision, divisionIdMap, teamOverrides = [], runId } = { teamsByDivision: {} }) {
+export function buildTeamRows(
+  { teamsByDivision, divisionIdMap, teamOverrides = [], runId } = { teamsByDivision: {} }
+) {
   if (!teamsByDivision || typeof teamsByDivision !== 'object' || Array.isArray(teamsByDivision)) {
     throw new TypeError('teamsByDivision must be an object');
   }
@@ -142,12 +144,11 @@ export function buildTeamRows({ teamsByDivision, divisionIdMap, teamOverrides = 
  * @param {Map<string, string>} [params.teamIdMap] - Optional mapping from generator team IDs to Supabase UUIDs.
  * @returns {Array<Object>} Supabase row payloads with snake_case keys.
  */
-export function buildTeamPlayerRows({
-  teamsByDivision,
-  manualAssignments = [],
-  runId = undefined,
-  teamIdMap = undefined,
-} = { teamsByDivision: {} }) {
+export function buildTeamPlayerRows(
+  { teamsByDivision, manualAssignments = [], runId = undefined, teamIdMap = undefined } = {
+    teamsByDivision: {},
+  }
+) {
   if (!teamsByDivision || typeof teamsByDivision !== 'object' || Array.isArray(teamsByDivision)) {
     throw new TypeError('teamsByDivision must be an object');
   }
@@ -272,14 +273,16 @@ async function persistRows({ supabaseClient, tableName, rows, upsert = false }) 
  * @param {boolean} [params.upsert=false]
  * @returns {Promise<{ data: Array<Object> | null, teamIdMap: Map<string, string> }>}
  */
-export async function persistTeams({
-  supabaseClient,
-  teamsByDivision,
-  divisionIdMap = undefined,
-  teamOverrides = undefined,
-  runId = undefined,
-  upsert = false,
-} = { supabaseClient: undefined, teamsByDivision: {} }) {
+export async function persistTeams(
+  {
+    supabaseClient,
+    teamsByDivision,
+    divisionIdMap = undefined,
+    teamOverrides = undefined,
+    runId = undefined,
+    upsert = false,
+  } = { supabaseClient: undefined, teamsByDivision: {} }
+) {
   const { rows, teamIdMap } = buildTeamRows({
     teamsByDivision,
     divisionIdMap,
@@ -304,14 +307,16 @@ export async function persistTeams({
  * @param {Map<string, string>} [params.teamIdMap]
  * @returns {Promise<Array<Object> | null>} Supabase response payload.
  */
-export async function persistTeamPlayers({
-  supabaseClient,
-  teamsByDivision,
-  manualAssignments = undefined,
-  runId = undefined,
-  upsert = false,
-  teamIdMap = undefined,
-} = { supabaseClient: undefined, teamsByDivision: {} }) {
+export async function persistTeamPlayers(
+  {
+    supabaseClient,
+    teamsByDivision,
+    manualAssignments = undefined,
+    runId = undefined,
+    upsert = false,
+    teamIdMap = undefined,
+  } = { supabaseClient: undefined, teamsByDivision: {} }
+) {
   const rows = buildTeamPlayerRows({ teamsByDivision, manualAssignments, runId, teamIdMap });
   if (rows.length === 0) {
     return [];

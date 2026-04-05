@@ -4,9 +4,9 @@ import { ALL_FLAGS } from '../../constants/featureFlags.js';
 
 /**
  * FeatureGuard Component
- * 
+ *
  * Conditionally renders children based on the state of an organization's feature flags.
- * 
+ *
  * @param {Object} props
  * @param {string} props.flag - The key of the feature flag to check (e.g., 'advanced_fairness').
  * @param {React.ReactNode} props.children - The content to show if the flag is enabled.
@@ -18,7 +18,9 @@ export const FeatureGuard = ({ flag, children, fallback = null, inverted = false
 
   useEffect(() => {
     if (process.env.NODE_ENV === 'development' && !ALL_FLAGS.includes(flag)) {
-      console.warn(`[FeatureGuard] Warning: The flag "${flag}" is not recognized in constants/featureFlags.js. This may be a typo.`);
+      console.warn(
+        `[FeatureGuard] Warning: The flag "${flag}" is not recognized in constants/featureFlags.js. This may be a typo.`
+      );
     }
   }, [flag]);
 

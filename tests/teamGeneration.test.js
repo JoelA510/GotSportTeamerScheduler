@@ -236,8 +236,11 @@ test('throws when buddy unit has conflicting coach assignments', () => {
     () => generateTeams({ players, divisionConfigs, random: createDeterministicRandom() }),
     (err) => {
       assert.ok(err instanceof Error, `Expected Error, got ${typeof err}: ${err}`);
-      assert.match(err.message, /conflicting coach assignments/i,
-        `Expected "Conflicting coach assignments" but got: "${err.message}"`);
+      assert.match(
+        err.message,
+        /conflicting coach assignments/i,
+        `Expected "Conflicting coach assignments" but got: "${err.message}"`
+      );
       return true;
     }
   );
@@ -332,7 +335,10 @@ test('validates input arguments', () => {
     { id: 'dup', division: 'U10' },
     { id: 'dup', division: 'U12' },
   ];
-  const divisionConfigsWithU12 = { ...divisionConfigs, U12: { id: 'U12', teamsCount: 1, slotsPerWeek: 1, maxRosterSize: 8 } };
+  const divisionConfigsWithU12 = {
+    ...divisionConfigs,
+    U12: { id: 'U12', teamsCount: 1, slotsPerWeek: 1, maxRosterSize: 8 },
+  };
   assert.throws(
     () =>
       generateTeams({

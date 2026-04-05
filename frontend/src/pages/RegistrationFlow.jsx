@@ -132,7 +132,8 @@ export default function RegistrationFlow() {
         Loading Registration...
       </div>
     );
-  if (!form) return <div className="text-center text-status-error p-8">{error || 'Form not found'}</div>;
+  if (!form)
+    return <div className="text-center text-status-error p-8">{error || 'Form not found'}</div>;
 
   if (success) {
     return (
@@ -235,7 +236,9 @@ export default function RegistrationFlow() {
               >
                 <UserPlus
                   size={24}
-                  className={isCreatingNewPlayer ? 'text-color-primary mb-2' : 'text-text-muted mb-2'}
+                  className={
+                    isCreatingNewPlayer ? 'text-color-primary mb-2' : 'text-text-muted mb-2'
+                  }
                 />
                 <h4 className="font-bold text-text-primary">New Player</h4>
                 <p className="text-xs text-text-secondary">Register a new child</p>
@@ -288,7 +291,7 @@ export default function RegistrationFlow() {
               {form.fields &&
                 form.fields.map((field, idx) => (
                   <div key={idx}>
-                    <label 
+                    <label
                       htmlFor={`custom-field-${idx}`}
                       className="block text-sm font-medium text-text-primary mb-1"
                     >

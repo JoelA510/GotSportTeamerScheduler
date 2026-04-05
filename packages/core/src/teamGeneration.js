@@ -77,7 +77,15 @@ import { EVALUATOR_REGISTRY } from './evaluators/index.js';
  *   evaluationResults?: any,
  * }}
  */
-export function generateTeams({ players, divisionConfigs, random = Math.random, seed, featureFlags = {}, dryRun = false, customWeights = {} }) {
+export function generateTeams({
+  players,
+  divisionConfigs,
+  random = Math.random,
+  seed,
+  featureFlags = {},
+  dryRun = false,
+  customWeights = {},
+}) {
   if (!Array.isArray(players)) {
     throw new TypeError('players must be an array');
   }
@@ -123,9 +131,15 @@ export function generateTeams({ players, divisionConfigs, random = Math.random, 
     globalStatsCount++;
 
     // Base skill
-    const skill = typeof player.skillRating === 'number' ? player.skillRating : (player.custom_attributes?.skill_rating || 0);
+    const skill =
+      typeof player.skillRating === 'number'
+        ? player.skillRating
+        : player.custom_attributes?.skill_rating || 0;
     orgMeansMap['skill_rating'] = (orgMeansMap['skill_rating'] || 0) + Number(skill);
-    minMaxMap['skill_rating'] = minMaxMap['skill_rating'] || { min: Number.MAX_VALUE, max: -Number.MAX_VALUE };
+    minMaxMap['skill_rating'] = minMaxMap['skill_rating'] || {
+      min: Number.MAX_VALUE,
+      max: -Number.MAX_VALUE,
+    };
     minMaxMap['skill_rating'].min = Math.min(minMaxMap['skill_rating'].min, Number(skill));
     minMaxMap['skill_rating'].max = Math.max(minMaxMap['skill_rating'].max, Number(skill));
 
@@ -148,7 +162,10 @@ export function generateTeams({ players, divisionConfigs, random = Math.random, 
   const globalStats = { orgMeans: orgMeansMap, minMax: minMaxMap };
 
   // Log custom weights applied for telemetry
-  console.log(`[Teaming] Generating teams using weights:`, Object.keys(customWeights).length > 0 ? customWeights : { skill_rating: 1.0 });
+  console.log(
+    `[Teaming] Generating teams using weights:`,
+    Object.keys(customWeights).length > 0 ? customWeights : { skill_rating: 1.0 }
+  );
 
   /** @type {Record<string, Array<Team>>} */
   const results = {};
@@ -319,7 +336,16 @@ export function generateTeams({ players, divisionConfigs, random = Math.random, 
  * @param {Object} [params.customWeights]
  * @param {Object} [params.globalStats]
  */
-function buildTeamsForDivision({ division, players, maxRosterSize, divisionConfig, random, featureFlags, customWeights, globalStats }) {
+function buildTeamsForDivision({
+  division,
+  players,
+  maxRosterSize,
+  divisionConfig,
+  random,
+  featureFlags,
+  customWeights,
+  globalStats,
+}) {
   const coachIds = Array.from(
     new Set(players.filter((player) => player.coachId).map((player) => player.coachId))
   );
@@ -620,7 +646,16 @@ function assignUnitToTeam({ unit, unitSkillTotal, team, maxRosterSize, reason })
  * @param {Object} [params.globalStats]
  * @returns {Team | null}
  */
-function pickTeamWithMostCapacity({ teams, unit, unitSkillTotal, maxRosterSize, random, featureFlags, customWeights, globalStats }) {
+function pickTeamWithMostCapacity({
+  teams,
+  unit,
+  unitSkillTotal,
+  maxRosterSize,
+  random,
+  featureFlags,
+  customWeights,
+  globalStats,
+}) {
   const unitSize = unit.length;
   const candidates = teams.filter((team) => team.players.length + unitSize <= maxRosterSize);
   if (candidates.length === 0) {
@@ -628,9 +663,9 @@ function pickTeamWithMostCapacity({ teams, unit, unitSkillTotal, maxRosterSize, 
   }
 
   // Phase 1.2: Use modular evaluators
-  const evaluatedCandidates = candidates.map(team => {
+  const evaluatedCandidates = candidates.map((team) => {
     let totalScore = 0;
-    
+
     // Evaluate for unit anchor
     for (const evaluator of EVALUATOR_REGISTRY) {
       const score = evaluator.evaluate({
@@ -639,7 +674,7 @@ function pickTeamWithMostCapacity({ teams, unit, unitSkillTotal, maxRosterSize, 
         allTeams: teams,
         featureFlags,
         customWeights,
-        globalStats
+        globalStats,
       });
       totalScore += score;
     }
@@ -655,8 +690,8 @@ function pickTeamWithMostCapacity({ teams, unit, unitSkillTotal, maxRosterSize, 
 
   // Pick from the best candidates
   const topScore = evaluatedCandidates[0].score;
-  const bestCandidates = evaluatedCandidates.filter(c => c.score === topScore);
-  
+  const bestCandidates = evaluatedCandidates.filter((c) => c.score === topScore);
+
   const index = Math.floor(random() * bestCandidates.length);
   return bestCandidates[index].team;
 }

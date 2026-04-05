@@ -33,7 +33,7 @@ function sanitizeString(value: unknown): string {
   if (value === null || value === undefined) return '';
   const str = String(value);
   return str
-    .replace(/<[^>]*>/g, '')           // Strip HTML tags
+    .replace(/<[^>]*>/g, '') // Strip HTML tags
     .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '') // Strip control chars
     .trim()
     .slice(0, MAX_STRING_LENGTH);
@@ -57,37 +57,37 @@ const REQUIRED_FIELDS: Record<string, string[]> = {
 // GotSport header alias map (strict matching, not fuzzy .includes())
 const HEADER_ALIASES: Record<string, string> = {
   'first name': 'first_name',
-  'first_name': 'first_name',
-  'firstname': 'first_name',
+  first_name: 'first_name',
+  firstname: 'first_name',
   'last name': 'last_name',
-  'last_name': 'last_name',
-  'lastname': 'last_name',
+  last_name: 'last_name',
+  lastname: 'last_name',
   'date of birth': 'date_of_birth',
-  'date_of_birth': 'date_of_birth',
-  'dob': 'date_of_birth',
-  'birthdate': 'date_of_birth',
+  date_of_birth: 'date_of_birth',
+  dob: 'date_of_birth',
+  birthdate: 'date_of_birth',
   'full name': 'full_name',
-  'full_name': 'full_name',
+  full_name: 'full_name',
   'coach name': 'full_name',
-  'email': 'email',
+  email: 'email',
   'email address': 'email',
-  'name': 'name',
+  name: 'name',
   'field name': 'name',
-  'field_name': 'name',
+  field_name: 'name',
   'coach willing': 'willing_to_coach',
   'willing to coach': 'willing_to_coach',
-  'buddy': 'buddy_request',
+  buddy: 'buddy_request',
   'buddy request': 'buddy_request',
-  'friend': 'buddy_request',
+  friend: 'buddy_request',
   'friend request': 'buddy_request',
-  'medical': 'medical_info',
+  medical: 'medical_info',
   'medical info': 'medical_info',
-  'allergy': 'medical_info',
-  'allergies': 'medical_info',
-  'skill': 'skill_tier',
+  allergy: 'medical_info',
+  allergies: 'medical_info',
+  skill: 'skill_tier',
   'skill level': 'skill_tier',
   'skill tier': 'skill_tier',
-  'level': 'skill_tier',
+  level: 'skill_tier',
 };
 
 function normalizeHeader(header: string): string {
@@ -143,7 +143,10 @@ function validateRow(
     }
   }
 
-  if (row['skill_tier'] && !['novice', 'developing', 'advanced'].includes(row['skill_tier'].toLowerCase())) {
+  if (
+    row['skill_tier'] &&
+    !['novice', 'developing', 'advanced'].includes(row['skill_tier'].toLowerCase())
+  ) {
     errors.push({
       row: rowIndex + 1,
       field: 'skill_tier',
@@ -198,7 +201,10 @@ serve(async (req: Request) => {
   const contentLength = parseInt(req.headers.get('content-length') ?? '0', 10);
   if (contentLength > MAX_PAYLOAD_BYTES) {
     return jsonResponse(
-      { status: 'error', message: `Payload too large. Maximum size is ${MAX_PAYLOAD_BYTES / 1024 / 1024} MB.` },
+      {
+        status: 'error',
+        message: `Payload too large. Maximum size is ${MAX_PAYLOAD_BYTES / 1024 / 1024} MB.`,
+      },
       413
     );
   }

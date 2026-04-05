@@ -18,11 +18,11 @@ import { logger } from '../../lib/logger.js';
 
 /**
  * SettingsAuditLog Component
- * 
+ *
  * Renders a searchable, filtered table of administrative audit events.
  * Specifically tracks 'settings.updated' and 'feature_flags.updated' actions.
  * Access is restricted to organization administrators via both UI logic and database-level checks.
- * 
+ *
  * @returns {React.ReactElement} The rendered audit log view.
  */
 const SettingsAuditLog = () => {
@@ -46,7 +46,7 @@ const SettingsAuditLog = () => {
       setError(null);
       try {
         const { data, error: fetchError } = await supabase.rpc('get_settings_audit_log', {
-          p_organization_id: currentOrganization.id
+          p_organization_id: currentOrganization.id,
         });
 
         if (fetchError) throw fetchError;
@@ -66,16 +66,18 @@ const SettingsAuditLog = () => {
    * Filters logs based on search query and action type.
    */
   const filteredLogs = useMemo(() => {
-    return logs.filter(log => {
-      const actorMatch = 
+    return logs.filter((log) => {
+      const actorMatch =
         log.actor_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         log.actor_email?.toLowerCase().includes(searchQuery.toLowerCase());
-      
-      const contentMatch = JSON.stringify(log.metadata).toLowerCase().includes(searchQuery.toLowerCase());
-      
+
+      const contentMatch = JSON.stringify(log.metadata)
+        .toLowerCase()
+        .includes(searchQuery.toLowerCase());
+
       const matchesSearch = actorMatch || contentMatch;
       const matchesAction = filterAction === 'all' || log.action === filterAction;
-      
+
       return matchesSearch && matchesAction;
     });
   }, [logs, searchQuery, filterAction]);
@@ -95,7 +97,7 @@ const SettingsAuditLog = () => {
   /**
    * Renders the change details from audit metadata.
    * Handles both field-specific diffs and generic metadata blobs.
-   * 
+   *
    * @param {Object} metadata - The audit metadata object.
    */
   const renderChange = (metadata) => {
@@ -190,8 +192,8 @@ const SettingsAuditLog = () => {
           <Clock size={48} className="mx-auto text-text-muted mb-4 opacity-10" />
           <p className="text-text-secondary font-semibold text-lg">No audit events found</p>
           <p className="text-text-muted text-sm mt-1 max-w-xs mx-auto">
-            {searchQuery 
-              ? `No results matching "${searchQuery}" in ${filterAction === 'all' ? 'any category' : filterAction.replace('.', ' ')}.` 
+            {searchQuery
+              ? `No results matching "${searchQuery}" in ${filterAction === 'all' ? 'any category' : filterAction.replace('.', ' ')}.`
               : 'Security and configuration changes will be logged here automatically.'}
           </p>
         </div>
@@ -201,10 +203,18 @@ const SettingsAuditLog = () => {
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="border-b border-white/10 bg-white/[0.03]">
-                  <th className="px-6 py-4 text-[11px] font-bold text-text-muted uppercase tracking-widest">Timestamp</th>
-                  <th className="px-6 py-4 text-[11px] font-bold text-text-muted uppercase tracking-widest">Actor</th>
-                  <th className="px-6 py-4 text-[11px] font-bold text-text-muted uppercase tracking-widest">Action Type</th>
-                  <th className="px-6 py-4 text-[11px] font-bold text-text-muted uppercase tracking-widest">Change Details</th>
+                  <th className="px-6 py-4 text-[11px] font-bold text-text-muted uppercase tracking-widest">
+                    Timestamp
+                  </th>
+                  <th className="px-6 py-4 text-[11px] font-bold text-text-muted uppercase tracking-widest">
+                    Actor
+                  </th>
+                  <th className="px-6 py-4 text-[11px] font-bold text-text-muted uppercase tracking-widest">
+                    Action Type
+                  </th>
+                  <th className="px-6 py-4 text-[11px] font-bold text-text-muted uppercase tracking-widest">
+                    Change Details
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5">
@@ -213,10 +223,14 @@ const SettingsAuditLog = () => {
                     <td className="px-6 py-5 whitespace-nowrap">
                       <div className="flex flex-col">
                         <span className="text-sm text-text-primary font-medium">
-                          {new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(log.created_at))}
+                          {new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(
+                            new Date(log.created_at)
+                          )}
                         </span>
                         <span className="text-xs text-text-muted opacity-60">
-                          {new Intl.DateTimeFormat(undefined, { timeStyle: 'short' }).format(new Date(log.created_at))}
+                          {new Intl.DateTimeFormat(undefined, { timeStyle: 'short' }).format(
+                            new Date(log.created_at)
+                          )}
                         </span>
                       </div>
                     </td>
@@ -226,23 +240,27 @@ const SettingsAuditLog = () => {
                           <User size={16} />
                         </div>
                         <div className="flex flex-col min-w-0">
-                          <span className="text-sm font-semibold text-text-primary truncate">{log.actor_name}</span>
-                          <span className="text-xs text-text-muted truncate opacity-70">{log.actor_email}</span>
+                          <span className="text-sm font-semibold text-text-primary truncate">
+                            {log.actor_name}
+                          </span>
+                          <span className="text-xs text-text-muted truncate opacity-70">
+                            {log.actor_email}
+                          </span>
                         </div>
                       </div>
                     </td>
                     <td className="px-6 py-5 whitespace-nowrap">
-                      <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-tight border ${
-                        log.action === 'feature_flags.updated' 
-                          ? 'bg-purple-500/10 text-purple-400 border-purple-500/20' 
-                          : 'bg-blue-500/10 text-blue-400 border-blue-500/20'
-                      }`}>
+                      <span
+                        className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-tight border ${
+                          log.action === 'feature_flags.updated'
+                            ? 'bg-purple-500/10 text-purple-400 border-purple-500/20'
+                            : 'bg-blue-500/10 text-blue-400 border-blue-500/20'
+                        }`}
+                      >
                         {log.action.split('.')[0]}
                       </span>
                     </td>
-                    <td className="px-6 py-5">
-                      {renderChange(log.metadata)}
-                    </td>
+                    <td className="px-6 py-5">{renderChange(log.metadata)}</td>
                   </tr>
                 ))}
               </tbody>

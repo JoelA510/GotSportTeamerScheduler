@@ -11,7 +11,12 @@ import { formatTime } from '../../utils/formatters.js';
  * Uses `useDraggable` from @dnd-kit/core (not useSortable, since slots hold 0-1 games).
  * Attaches the full assignment as drag data so handlers can access it.
  */
-export default function GameCard({ assignment, hasConflict = false, isDragDisabled = false, timezone = undefined }) {
+export default function GameCard({
+  assignment,
+  hasConflict = false,
+  isDragDisabled = false,
+  timezone = undefined,
+}) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: assignment.id,
     data: assignment,
@@ -49,13 +54,9 @@ export default function GameCard({ assignment, hasConflict = false, isDragDisabl
               <GripVertical size={14} />
             </div>
           )}
-          <span className="font-semibold text-sm text-text-primary">
-            {assignment.homeTeamId}
-          </span>
+          <span className="font-semibold text-sm text-text-primary">{assignment.homeTeamId}</span>
           <span className="text-xs text-text-muted">vs</span>
-          <span className="font-semibold text-sm text-text-primary">
-            {assignment.awayTeamId}
-          </span>
+          <span className="font-semibold text-sm text-text-primary">{assignment.awayTeamId}</span>
         </div>
         {isManual && (
           <span

@@ -20,7 +20,8 @@ export function useConflicts(teams) {
       if (!team) return;
       (team.players || []).forEach((player) => {
         if (!player) return;
-        const name = player.name || `${player.first_name || ''} ${player.last_name || ''}`.trim() || 'Unknown';
+        const name =
+          player.name || `${player.first_name || ''} ${player.last_name || ''}`.trim() || 'Unknown';
         allPlayers.push({ ...player, name, teamId: team.id, teamName: team.name });
       });
     });
@@ -50,9 +51,7 @@ export function useConflicts(teams) {
               (!t.gender || p2.gender === t.gender)
           );
 
-          const sharedTeams = p1Eligible.filter((t1) =>
-            p2Eligible.some((t2) => t1.id === t2.id)
-          );
+          const sharedTeams = p1Eligible.filter((t1) => p2Eligible.some((t2) => t1.id === t2.id));
 
           if (p1.teamId !== p2.teamId && sharedTeams.length > 0) {
             detected.push({

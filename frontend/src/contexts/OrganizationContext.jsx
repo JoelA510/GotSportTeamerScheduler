@@ -23,9 +23,9 @@ import { FeatureFlagSchema } from '../constants/featureFlags.js';
 /** @type {React.Context<OrganizationContextValue>} React context for sharing organization and season state. */
 const OrganizationContext = createContext({});
 
-/** 
+/**
  * Hook for accessing the organization context.
- * @returns {OrganizationContextValue} 
+ * @returns {OrganizationContextValue}
  */
 export const useOrganization = () => useContext(OrganizationContext);
 
@@ -97,10 +97,11 @@ export const OrganizationProvider = ({ children }) => {
           setOrganizations(data);
 
           const storedOrgId = localStorage.getItem('squadlogic_active_org');
-          const validOrgIds = data.map(m => m.organization_id);
-          const matchedMember = storedOrgId && validOrgIds.includes(storedOrgId)
-            ? data.find(m => m.organization_id === storedOrgId)
-            : null;
+          const validOrgIds = data.map((m) => m.organization_id);
+          const matchedMember =
+            storedOrgId && validOrgIds.includes(storedOrgId)
+              ? data.find((m) => m.organization_id === storedOrgId)
+              : null;
 
           if (matchedMember) {
             setCurrentOrganization(matchedMember.organizations);
@@ -124,15 +125,18 @@ export const OrganizationProvider = ({ children }) => {
     fetchOrgs();
   }, [user, fetchSeasonsForOrg]);
 
-  const switchOrganization = useCallback(async (orgId) => {
-    const match = organizations.find((m) => m.organization_id === orgId);
-    if (match) {
-      setCurrentOrganization(match.organizations);
-      setOrgMember({ role: match.role, ...match });
-      localStorage.setItem('squadlogic_active_org', orgId);
-      await fetchSeasonsForOrg(orgId);
-    }
-  }, [organizations, fetchSeasonsForOrg]);
+  const switchOrganization = useCallback(
+    async (orgId) => {
+      const match = organizations.find((m) => m.organization_id === orgId);
+      if (match) {
+        setCurrentOrganization(match.organizations);
+        setOrgMember({ role: match.role, ...match });
+        localStorage.setItem('squadlogic_active_org', orgId);
+        await fetchSeasonsForOrg(orgId);
+      }
+    },
+    [organizations, fetchSeasonsForOrg]
+  );
 
   const switchSeason = useCallback((seasonSetting) => {
     setCurrentSeasonSetting(seasonSetting);
@@ -145,38 +149,41 @@ export const OrganizationProvider = ({ children }) => {
   /**
    * Updates organization feature flags via secure RPC.
    * Mandated by Governance Framework for Phase 2.
-   * @param {Object} newFlags 
+   * @param {Object} newFlags
    */
-  const updateFeatureFlags = useCallback(async (newFlags) => {
-    if (!currentOrganization) {
-      logger.error('Cannot update feature flags: No organization selected');
-      return { success: false, error: 'No organization selected' };
-    }
+  const updateFeatureFlags = useCallback(
+    async (newFlags) => {
+      if (!currentOrganization) {
+        logger.error('Cannot update feature flags: No organization selected');
+        return { success: false, error: 'No organization selected' };
+      }
 
-    try {
-      // Validate flags before transmission
-      const validatedFlags = FeatureFlagSchema.parse(newFlags);
+      try {
+        // Validate flags before transmission
+        const validatedFlags = FeatureFlagSchema.parse(newFlags);
 
-      const { error } = await supabase.rpc('update_org_feature_flags', {
-        p_org_id: currentOrganization.id,
-        p_flags: validatedFlags
-      });
+        const { error } = await supabase.rpc('update_org_feature_flags', {
+          p_org_id: currentOrganization.id,
+          p_flags: validatedFlags,
+        });
 
-      if (error) throw error;
+        if (error) throw error;
 
-      // Update local state to reflect changes immediately
-      setCurrentOrganization(prev => ({
-        ...prev,
-        feature_flags: validatedFlags
-      }));
+        // Update local state to reflect changes immediately
+        setCurrentOrganization((prev) => ({
+          ...prev,
+          feature_flags: validatedFlags,
+        }));
 
-      logger.info('Feature flags updated successfully via RPC');
-      return { success: true };
-    } catch (err) {
-      logger.error('Failed to update feature flags via RPC:', err);
-      return { success: false, error: err.message };
-    }
-  }, [currentOrganization]);
+        logger.info('Feature flags updated successfully via RPC');
+        return { success: true };
+      } catch (err) {
+        logger.error('Failed to update feature flags via RPC:', err);
+        return { success: false, error: err.message };
+      }
+    },
+    [currentOrganization]
+  );
 
   // Memoize validated feature flags based on the current organization's data.
   // Using Option B: Selective Ignore via Zod transform.
@@ -190,30 +197,33 @@ export const OrganizationProvider = ({ children }) => {
     }
   }, [currentOrganization?.feature_flags]);
 
-  const value = useMemo(() => ({
-    organizations,
-    currentOrganization,
-    orgMember,
-    availableSeasons,
-    currentSeasonSetting,
-    loading,
-    switchOrganization,
-    switchSeason,
-    updateFeatureFlags,
-    featureFlags: validatedFeatureFlags,
-    permissions: orgMember?.role ? (ROLE_PERMISSIONS[orgMember.role] || []) : [],
-  }), [
-    organizations,
-    currentOrganization,
-    orgMember,
-    availableSeasons,
-    currentSeasonSetting,
-    loading,
-    switchOrganization,
-    switchSeason,
-    updateFeatureFlags,
-    validatedFeatureFlags,
-  ]);
+  const value = useMemo(
+    () => ({
+      organizations,
+      currentOrganization,
+      orgMember,
+      availableSeasons,
+      currentSeasonSetting,
+      loading,
+      switchOrganization,
+      switchSeason,
+      updateFeatureFlags,
+      featureFlags: validatedFeatureFlags,
+      permissions: orgMember?.role ? ROLE_PERMISSIONS[orgMember.role] || [] : [],
+    }),
+    [
+      organizations,
+      currentOrganization,
+      orgMember,
+      availableSeasons,
+      currentSeasonSetting,
+      loading,
+      switchOrganization,
+      switchSeason,
+      updateFeatureFlags,
+      validatedFeatureFlags,
+    ]
+  );
 
   return <OrganizationContext.Provider value={value}>{children}</OrganizationContext.Provider>;
 };

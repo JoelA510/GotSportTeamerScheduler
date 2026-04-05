@@ -54,10 +54,7 @@ export interface RateLimitResult {
  * Check if a request from this user is within the rate limit.
  * Call this with the authenticated user's ID before processing.
  */
-export function checkRateLimit(
-  userId: string,
-  config: RateLimitConfig = {}
-): RateLimitResult {
+export function checkRateLimit(userId: string, config: RateLimitConfig = {}): RateLimitResult {
   const maxRequests = config.maxRequests ?? 60;
   const windowMs = config.windowMs ?? 60_000;
 

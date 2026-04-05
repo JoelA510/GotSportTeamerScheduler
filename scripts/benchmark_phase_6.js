@@ -5,7 +5,7 @@ const performance = {
   now: () => {
     const hrTime = process.hrtime();
     return hrTime[0] * 1000 + hrTime[1] / 1000000;
-  }
+  },
 };
 
 const runBenchmark = () => {
@@ -18,23 +18,23 @@ const runBenchmark = () => {
     first_name: `John${i}`,
     last_name: `Doe${i}`,
     custom_attributes: {
-      'jersey_size': ['S', 'M', 'L', 'XL'][i % 4],
-      'preferred_position': ['Defender', 'Midfielder', 'Attacker', 'Goalkeeper'][i % 4],
-      'emergency_contact': `555-000-${i}`, // PII
-      'medical_allergies': i % 10 === 0 ? 'Peanuts' : 'None', // PII
-      'skill_rating': (i % 5) + 1,
-      'attendance_score': (i % 100)
-    }
+      jersey_size: ['S', 'M', 'L', 'XL'][i % 4],
+      preferred_position: ['Defender', 'Midfielder', 'Attacker', 'Goalkeeper'][i % 4],
+      emergency_contact: `555-000-${i}`, // PII
+      medical_allergies: i % 10 === 0 ? 'Peanuts' : 'None', // PII
+      skill_rating: (i % 5) + 1,
+      attendance_score: i % 100,
+    },
   }));
 
   // Schema with sensitive flags
   const orgSchema = {
-    'jersey_size': { type: 'string', sensitive: false },
-    'preferred_position': { type: 'string', sensitive: false },
-    'emergency_contact': { type: 'string', sensitive: true },
-    'medical_allergies': { type: 'string', sensitive: true },
-    'skill_rating': { type: 'number', sensitive: false },
-    'attendance_score': { type: 'number', sensitive: false }
+    jersey_size: { type: 'string', sensitive: false },
+    preferred_position: { type: 'string', sensitive: false },
+    emergency_contact: { type: 'string', sensitive: true },
+    medical_allergies: { type: 'string', sensitive: true },
+    skill_rating: { type: 'number', sensitive: false },
+    attendance_score: { type: 'number', sensitive: false },
   };
 
   console.log('Schema loaded with sensitive fields flagged.\n');
@@ -42,7 +42,7 @@ const runBenchmark = () => {
   // 2. Differential Privacy Audit (PII Masking)
   console.log('🔒 EXECUTING @security-auditor Differential Privacy Check...');
   const auditResult = computeEnterpriseMetrics(players, orgSchema);
-  
+
   const hasEmergencyContact = auditResult.aggregates['emergency_contact'] !== undefined;
   const hasMedicalAllergies = auditResult.aggregates['medical_allergies'] !== undefined;
 
@@ -56,7 +56,10 @@ const runBenchmark = () => {
   }
 
   // Check masked fields tracking
-  if (auditResult.maskedFields.includes('emergency_contact') && auditResult.maskedFields.includes('medical_allergies')) {
+  if (
+    auditResult.maskedFields.includes('emergency_contact') &&
+    auditResult.maskedFields.includes('medical_allergies')
+  ) {
     console.log('✅ PASS: Sensitive fields properly tracked and excluded from processing.');
   }
 
@@ -81,12 +84,14 @@ const runBenchmark = () => {
     computeEnterpriseMetrics(players, orgSchema);
   }
   const end = performance.now();
-  
+
   const avgTime = (end - start) / iterations;
 
   console.log(`- Average Execution Time: ${avgTime.toFixed(4)}ms`);
   console.log(`- Governance Limit (Ceiling): 200.00ms`);
-  console.log(`- Status: ${avgTime < 50 ? '✅ EXCELLENT' : avgTime < 200 ? '✅ PASS' : '❌ FAIL (Ceiling Exceeded)'}`);
+  console.log(
+    `- Status: ${avgTime < 50 ? '✅ EXCELLENT' : avgTime < 200 ? '✅ PASS' : '❌ FAIL (Ceiling Exceeded)'}`
+  );
 
   if (avgTime > 200) {
     console.error('❌ FATAL PERFORMANCE AUDIT FAILURE: Metric computation exceeds 200ms.');

@@ -21,7 +21,10 @@ export default function TeamingConfiguration({ program, config, onUpdate }) {
 
       <div className="space-y-6">
         <div>
-          <label htmlFor="target-team-size" className="block text-sm font-medium text-text-secondary mb-2">
+          <label
+            htmlFor="target-team-size"
+            className="block text-sm font-medium text-text-secondary mb-2"
+          >
             Target Team Size
           </label>
           <input
@@ -36,7 +39,12 @@ export default function TeamingConfiguration({ program, config, onUpdate }) {
 
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label htmlFor="min-roster" className="block text-sm font-medium text-text-secondary mb-2">Min Roster</label>
+            <label
+              htmlFor="min-roster"
+              className="block text-sm font-medium text-text-secondary mb-2"
+            >
+              Min Roster
+            </label>
             <input
               id="min-roster"
               type="number"
@@ -46,7 +54,12 @@ export default function TeamingConfiguration({ program, config, onUpdate }) {
             />
           </div>
           <div>
-            <label htmlFor="max-roster" className="block text-sm font-medium text-text-secondary mb-2">Max Roster</label>
+            <label
+              htmlFor="max-roster"
+              className="block text-sm font-medium text-text-secondary mb-2"
+            >
+              Max Roster
+            </label>
             <input
               id="max-roster"
               type="number"
@@ -58,7 +71,10 @@ export default function TeamingConfiguration({ program, config, onUpdate }) {
         </div>
 
         <div className="pt-4 border-t border-border-subtle">
-          <label htmlFor="team-count-override" className="block text-sm font-medium text-text-secondary mb-2">
+          <label
+            htmlFor="team-count-override"
+            className="block text-sm font-medium text-text-secondary mb-2"
+          >
             Override Team Count
           </label>
           <div className="flex gap-2">
@@ -84,7 +100,10 @@ export default function TeamingConfiguration({ program, config, onUpdate }) {
         </div>
 
         <div className="pt-4 border-t border-border-subtle">
-          <label htmlFor="random-seed" className="block text-sm font-medium text-text-secondary mb-2">
+          <label
+            htmlFor="random-seed"
+            className="block text-sm font-medium text-text-secondary mb-2"
+          >
             Random Seed
           </label>
           <div className="flex gap-2">

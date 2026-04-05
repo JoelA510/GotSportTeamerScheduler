@@ -6,152 +6,184 @@ const { Given, When, Then } = createBdd();
 // --- Pillar 2: Coach Daily Loop ---
 
 Given('I have been assigned to the {string}', async ({ page }, teamName: string) => {
-    await page.evaluate((name) => {
-        // CRITICAL FIX: Aggressively clear state to prevent parallel worker contamination
-        const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || JSON.stringify((window as any).__MOCK_DB__ || {}));
-        const orgId = localStorage.getItem('squadlogic_active_org') || 'org-1';
-        
-        // Wipe players to ensure clean slate for this test
-        db.players = [];
-        db.team_players = [];
-        db.profile_players = [];
-        
-        db.teams = db.teams || [];
-        const teamId = name.toLowerCase().replace(/\s+/g, '-');
-        if (!db.teams.find((t: any) => t.id === teamId)) {
-            db.teams.push({ id: teamId, name: name, organization_id: orgId });
-        }
-        db.team_members = db.team_members || [];
-        db.team_members.push({ team_id: teamId, profile_id: 'mock-coach-id', role: 'coach' });
+  await page.evaluate((name) => {
+    // CRITICAL FIX: Aggressively clear state to prevent parallel worker contamination
+    const db = JSON.parse(
+      sessionStorage.getItem('__MOCK_DB__') || JSON.stringify((window as any).__MOCK_DB__ || {})
+    );
+    const orgId = localStorage.getItem('squadlogic_active_org') || 'org-1';
 
-        // CRITICAL FIX: Save teamId for direct navigation
-        localStorage.setItem('test_target_team_id', teamId);
+    // Wipe players to ensure clean slate for this test
+    db.players = [];
+    db.team_players = [];
+    db.profile_players = [];
 
-        (window as any).__MOCK_DB__ = db;
-        sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
-    }, teamName);
+    db.teams = db.teams || [];
+    const teamId = name.toLowerCase().replace(/\s+/g, '-');
+    if (!db.teams.find((t: any) => t.id === teamId)) {
+      db.teams.push({ id: teamId, name: name, organization_id: orgId });
+    }
+    db.team_members = db.team_members || [];
+    db.team_members.push({ team_id: teamId, profile_id: 'mock-coach-id', role: 'coach' });
+
+    // CRITICAL FIX: Save teamId for direct navigation
+    localStorage.setItem('test_target_team_id', teamId);
+
+    (window as any).__MOCK_DB__ = db;
+    sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
+  }, teamName);
 });
 
 Given('my team has {int} players assigned', async ({ page }, count: number) => {
-    await page.evaluate((num) => {
-        const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || JSON.stringify((window as any).__MOCK_DB__ || {}));
-        const team = db.teams?.[0] || { id: 'team-1' };
-        db.team_players = db.team_players || [];
-        db.players = db.players || [];
-        for (let i = 0; i < num; i++) {
-            // CRITICAL FIX: TeamPortalPage hardcodes 'player-1' for the Pending status check.
-            const pid = i === 1 ? 'player-1' : `p-${i}`;
-            db.team_players.push({ id: `tp-${i}`, team_id: team.id, player_id: pid });
-            db.players.push({ id: pid, first_name: `Player ${i}`, last_name: 'Test', medical_cleared: i % 2 === 0 });
-        }
-        (window as any).__MOCK_DB__ = db;
-        sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
-    }, count);
+  await page.evaluate((num) => {
+    const db = JSON.parse(
+      sessionStorage.getItem('__MOCK_DB__') || JSON.stringify((window as any).__MOCK_DB__ || {})
+    );
+    const team = db.teams?.[0] || { id: 'team-1' };
+    db.team_players = db.team_players || [];
+    db.players = db.players || [];
+    for (let i = 0; i < num; i++) {
+      // CRITICAL FIX: TeamPortalPage hardcodes 'player-1' for the Pending status check.
+      const pid = i === 1 ? 'player-1' : `p-${i}`;
+      db.team_players.push({ id: `tp-${i}`, team_id: team.id, player_id: pid });
+      db.players.push({
+        id: pid,
+        first_name: `Player ${i}`,
+        last_name: 'Test',
+        medical_cleared: i % 2 === 0,
+      });
+    }
+    (window as any).__MOCK_DB__ = db;
+    sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
+  }, count);
 });
 
 When('I view my Team Portal', async ({ page }) => {
-    // CRITICAL FIX: Navigate directly to the portal instead of relying on the Admin overview page
-    const teamId = await page.evaluate(() => localStorage.getItem('test_target_team_id') || 'team-1');
-    await page.goto(`/team/${teamId}`);
+  // CRITICAL FIX: Navigate directly to the portal instead of relying on the Admin overview page
+  const teamId = await page.evaluate(() => localStorage.getItem('test_target_team_id') || 'team-1');
+  await page.goto(`/team/${teamId}`);
 });
 
 Then('I should see a list of all players and their contact information', async ({ page }) => {
-    await expect(page.locator('.bg-bg-surface').first()).toBeVisible();
-    await expect(page.getByText(/Player 0/i).first()).toBeVisible();
+  await expect(page.locator('.bg-bg-surface').first()).toBeVisible();
+  await expect(page.getByText(/Player 0/i).first()).toBeVisible();
 });
 
-Then('I should see a dashboard indicating which players have completed their medical waivers', async ({ page }) => {
+Then(
+  'I should see a dashboard indicating which players have completed their medical waivers',
+  async ({ page }) => {
     await expect(page.getByText(/Medical Clearance/i).first()).toBeVisible();
-});
+  }
+);
 
 Then('I should be flagged if any player is currently non-compliant', async ({ page }) => {
-    // The UI renders "Medical Clearance: Pending" with a warning badge
-    await expect(page.getByText(/Pending/i).first()).toBeVisible();
-    await expect(page.locator('.bg-status-warning-bg').first()).toBeVisible();
+  // The UI renders "Medical Clearance: Pending" with a warning badge
+  await expect(page.getByText(/Pending/i).first()).toBeVisible();
+  await expect(page.locator('.bg-status-warning-bg').first()).toBeVisible();
 });
 
 Given('my team has practices on Tuesdays and games on Saturdays', async ({ page }) => {
-    // Mock schedule data
+  // Mock schedule data
 });
 
 When('I access my personalized calendar feed URL', async ({ page }) => {
-    await page.route('**/*calendar-feed*', async route => {
-        await route.fulfill({ status: 200, contentType: 'text/calendar', body: 'BEGIN:VCALENDAR\nVERSION:2.0\nSUMMARY:Practice\nEND:VCALENDAR' });
+  await page.route('**/*calendar-feed*', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'text/calendar',
+      body: 'BEGIN:VCALENDAR\nVERSION:2.0\nSUMMARY:Practice\nEND:VCALENDAR',
     });
+  });
 
-    const responseText = await page.evaluate(async () => {
-        const res = await fetch(window.location.origin + '/functions/v1/calendar-feed?token=mock-token');
-        return await res.text();
-    });
-    (page as any).icsResponse = responseText;
+  const responseText = await page.evaluate(async () => {
+    const res = await fetch(
+      window.location.origin + '/functions/v1/calendar-feed?token=mock-token'
+    );
+    return await res.text();
+  });
+  (page as any).icsResponse = responseText;
 });
 
 Then('a modal should appear displaying a subscription link', async ({ page }) => {
-    await expect(page.getByRole('heading', { name: /Calendar Subscription/i }).first()).toBeVisible();
-    await expect(page.locator('input[readonly]').first()).toBeVisible();
+  await expect(page.getByRole('heading', { name: /Calendar Subscription/i }).first()).toBeVisible();
+  await expect(page.locator('input[readonly]').first()).toBeVisible();
 });
 
 Then('the link should contain {string}', async ({ page }, text: string) => {
-    const input = page.locator('input[readonly]').first();
-    await expect(input).toHaveValue(new RegExp(text));
+  const input = page.locator('input[readonly]').first();
+  await expect(input).toHaveValue(new RegExp(text));
 });
 
-Then('the link should contain a secure {string} query parameter', async ({ page }, param: string) => {
+Then(
+  'the link should contain a secure {string} query parameter',
+  async ({ page }, param: string) => {
     const input = page.locator('input[readonly]').first();
     await expect(input).toHaveValue(new RegExp(`${param}=`));
-});
+  }
+);
 
 Then('I should be able to click a button to copy the link to my clipboard', async ({ page }) => {
-    const copyBtn = page.getByRole('button', { name: /Copy Link/i }).first();
-    await expect(copyBtn).toBeVisible();
-    await expect(copyBtn).toBeEnabled();
+  const copyBtn = page.getByRole('button', { name: /Copy Link/i }).first();
+  await expect(copyBtn).toBeVisible();
+  await expect(copyBtn).toBeEnabled();
 });
 
 Then('I should see all my team events in my external calendar application', async ({ page }) => {
-    const text = (page as any).icsResponse || 'BEGIN:VCALENDAR';
-    expect(text).toContain('BEGIN:VCALENDAR');
+  const text = (page as any).icsResponse || 'BEGIN:VCALENDAR';
+  expect(text).toContain('BEGIN:VCALENDAR');
 });
 
-Then(/the feed should only contain data for my authorized team \(no data leakage\)/, async ({ page }) => {
+Then(
+  /the feed should only contain data for my authorized team \(no data leakage\)/,
+  async ({ page }) => {
     const text = (page as any).icsResponse || 'END:VCALENDAR';
     expect(text).toContain('END:VCALENDAR');
-});
+  }
+);
 
 // --- Additional Helper Steps ---
 
 Given('I am on the Team Portal for {string}', async ({ page }, teamName: string) => {
-    const teamId = teamName.toLowerCase().includes('lions') ? 'team-lions-1' : 'team-1';
-    await page.goto(`/team/${teamId}`);
-    await expect(page.getByRole('heading', { name: teamName }).first()).toBeVisible({ timeout: 15000 });
+  const teamId = teamName.toLowerCase().includes('lions') ? 'team-lions-1' : 'team-1';
+  await page.goto(`/team/${teamId}`);
+  await expect(page.getByRole('heading', { name: teamName }).first()).toBeVisible({
+    timeout: 15000,
+  });
 });
 
 Then('I should see a {string} button in the sidebar', async ({ page }, btnLabel: string) => {
-    await expect(page.getByRole('button', { name: btnLabel }).first()).toBeVisible();
+  await expect(page.getByRole('button', { name: btnLabel }).first()).toBeVisible();
 });
 
-Then('I should see a list of players with their {string} status', async ({ page }, statusType: string) => {
+Then(
+  'I should see a list of players with their {string} status',
+  async ({ page }, statusType: string) => {
     await expect(page.locator('.bg-bg-surface').first()).toBeVisible();
     await expect(page.getByText(/Cleared|Pending/i).first()).toBeVisible();
-});
+  }
+);
 
 When('I click {string} in the Team Portal', async ({ page }, btnLabel: string) => {
-    await page.getByRole('button', { name: btnLabel }).first().click({ force: true });
+  await page.getByRole('button', { name: btnLabel }).first().click({ force: true });
 });
 
 Then('a subscription modal should appear', async ({ page }) => {
-    await expect(page.getByRole('heading', { name: /Subscribe|Calendar/i }).first()).toBeVisible();
+  await expect(page.getByRole('heading', { name: /Subscribe|Calendar/i }).first()).toBeVisible();
 });
 
 Given('I am viewing the Coach Schedule for {string}', async ({ page }, coachName: string) => {
-    await page.goto('/coach/schedule');
-    await expect(page.getByText(coachName).first()).toBeVisible({ timeout: 15000 });
+  await page.goto('/coach/schedule');
+  await expect(page.getByText(coachName).first()).toBeVisible({ timeout: 15000 });
 });
 
 Then('I should see a {string} badge next to the team name', async ({ page }, badge: string) => {
-    const row = page.locator('tr, .flex-row').filter({ hasText: /Lions|Tigers/i }).first();
-    await expect(row.getByText(badge).first()).toBeVisible();
+  const row = page
+    .locator('tr, .flex-row')
+    .filter({ hasText: /Lions|Tigers/i })
+    .first();
+  await expect(row.getByText(badge).first()).toBeVisible();
 });
 
 Then('the {string} status should be {string}', async ({ page }, label: string, status: string) => {
-    await expect(page.getByText(status).first()).toBeVisible();
+  await expect(page.getByText(status).first()).toBeVisible();
 });

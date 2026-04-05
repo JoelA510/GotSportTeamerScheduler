@@ -70,7 +70,7 @@ export default function AdminReportingDashboard() {
           .select('division, count as teams_count')
           .eq('organization_id', currentOrganization.id);
         if (stdErr && stdErr.code !== 'PGRST116') {
-             // We can ignore if it fails or log it, but the pie chart just needs raw rawStdData below
+          // We can ignore if it fails or log it, but the pie chart just needs raw rawStdData below
         }
         // Note: PostgREST won't effortlessly count over views without aggregation,
         // to keep it simple we'll just pull raw standings and count manually in JS for the pie chart
@@ -227,27 +227,46 @@ export default function AdminReportingDashboard() {
 
       {/* Metric Cards Top Row */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-bg-surface border border-border-highlight rounded-xl p-6 shadow-xl relative overflow-hidden group bg-bg-card" data-testid="metric-card-total-players">
+        <div
+          className="bg-bg-surface border border-border-highlight rounded-xl p-6 shadow-xl relative overflow-hidden group bg-bg-card"
+          data-testid="metric-card-total-players"
+        >
           <div className="absolute top-0 right-0 w-32 h-32 bg-brand-glow rounded-full blur-3xl -mr-10 -mt-10 transition-transform group-hover:scale-110" />
           <div className="flex flex-col">
             <span className="text-text-muted text-sm font-bold uppercase tracking-wider mb-2 flex items-center gap-2">
               <Users size={16} /> Total Players
             </span>
-            <span className="text-4xl font-black text-text-primary" data-testid="metric-value-total-players">{metrics.players}</span>
+            <span
+              className="text-4xl font-black text-text-primary"
+              data-testid="metric-value-total-players"
+            >
+              {metrics.players}
+            </span>
             <span className="text-xs text-color-primary mt-2">Active in Organization</span>
           </div>
         </div>
-        <div className="bg-bg-surface border border-border-highlight rounded-xl p-6 shadow-xl relative overflow-hidden group bg-bg-card" data-testid="metric-card-active-teams">
+        <div
+          className="bg-bg-surface border border-border-highlight rounded-xl p-6 shadow-xl relative overflow-hidden group bg-bg-card"
+          data-testid="metric-card-active-teams"
+        >
           <div className="absolute top-0 right-0 w-32 h-32 bg-status-success-bg rounded-full blur-3xl -mr-10 -mt-10 transition-transform group-hover:scale-110" />
           <div className="flex flex-col">
             <span className="text-text-muted text-sm font-bold uppercase tracking-wider mb-2 flex items-center gap-2">
               <ShieldCheck size={16} /> Active Teams
             </span>
-            <span className="text-4xl font-black text-text-primary" data-testid="metric-value-active-teams">{metrics.teams}</span>
+            <span
+              className="text-4xl font-black text-text-primary"
+              data-testid="metric-value-active-teams"
+            >
+              {metrics.teams}
+            </span>
             <span className="text-xs text-status-success mt-2">Current Season</span>
           </div>
         </div>
-        <div className="bg-bg-surface border border-border-highlight rounded-xl p-6 shadow-xl relative overflow-hidden group bg-bg-card" data-testid="metric-card-staff-admins">
+        <div
+          className="bg-bg-surface border border-border-highlight rounded-xl p-6 shadow-xl relative overflow-hidden group bg-bg-card"
+          data-testid="metric-card-staff-admins"
+        >
           <div className="absolute top-0 right-0 w-32 h-32 bg-brand-glow rounded-full blur-3xl -mr-10 -mt-10 transition-transform group-hover:scale-110" />
           <div className="flex flex-col">
             <span className="text-text-muted text-sm font-bold uppercase tracking-wider mb-2 flex items-center gap-2">
@@ -268,9 +287,20 @@ export default function AdminReportingDashboard() {
             {compliance.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={compliance} margin={{ top: 20, right: 30, left: 0, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border-subtle)" vertical={false} />
-                  <XAxis dataKey="form_title" stroke="var(--color-text-muted)" tick={{ fill: 'var(--color-text-muted)' }} />
-                  <YAxis stroke="var(--color-text-muted)" tick={{ fill: 'var(--color-text-muted)' }} />
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    stroke="var(--color-border-subtle)"
+                    vertical={false}
+                  />
+                  <XAxis
+                    dataKey="form_title"
+                    stroke="var(--color-text-muted)"
+                    tick={{ fill: 'var(--color-text-muted)' }}
+                  />
+                  <YAxis
+                    stroke="var(--color-text-muted)"
+                    tick={{ fill: 'var(--color-text-muted)' }}
+                  />
                   <Tooltip
                     contentStyle={{
                       backgroundColor: 'var(--color-bg-app)',
@@ -353,7 +383,11 @@ export default function AdminReportingDashboard() {
                   layout="vertical"
                   margin={{ top: 5, right: 30, left: 40, bottom: 5 }}
                 >
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border-subtle)" horizontal={false} />
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    stroke="var(--color-border-subtle)"
+                    horizontal={false}
+                  />
                   <XAxis type="number" stroke="var(--color-text-muted)" />
                   <YAxis
                     dataKey="field_name"

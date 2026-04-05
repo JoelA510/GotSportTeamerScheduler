@@ -160,7 +160,11 @@ export default function LeagueStandings() {
                   {standings
                     .filter((s) => (s.division || 'Uncategorized') === division)
                     .map((team, idx) => (
-                      <tr key={team.team_id} className="hover:bg-bg-app/50 transition-colors" data-testid={`standings-row-${team.team_name.replace(/\s+/g, '-').toLowerCase()}`}>
+                      <tr
+                        key={team.team_id}
+                        className="hover:bg-bg-app/50 transition-colors"
+                        data-testid={`standings-row-${team.team_name.replace(/\s+/g, '-').toLowerCase()}`}
+                      >
                         <td className="px-6 py-4 text-center font-bold text-text-muted">
                           {idx + 1}
                         </td>
@@ -196,7 +200,8 @@ export default function LeagueStandings() {
       {/* Recent Games Section - visible to all roles */}
       <div className="bg-bg-surface border border-border-subtle rounded-xl p-6 shadow-xl mt-12">
         <h2 className="text-xl font-bold text-text-primary mb-6 flex items-center gap-2">
-          <CheckCircle2 className="text-text-muted w-5 h-5" /> Recent Games {canEditScores && '- Score Entry'}
+          <CheckCircle2 className="text-text-muted w-5 h-5" /> Recent Games{' '}
+          {canEditScores && '- Score Entry'}
         </h2>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -220,7 +225,9 @@ export default function LeagueStandings() {
                         type="number"
                         className="w-12 h-10 bg-bg-surface border border-border-highlight text-center rounded text-text-primary font-bold focus:border-color-primary focus:ring-1 focus:ring-color-primary"
                         value={game.score_home ?? ''}
-                        onChange={(e) => handleScoreUpdate(game.id, e.target.value, game.score_away)}
+                        onChange={(e) =>
+                          handleScoreUpdate(game.id, e.target.value, game.score_away)
+                        }
                         disabled={updatingGameId === game.id}
                         aria-label="Home Score"
                       />
@@ -229,14 +236,17 @@ export default function LeagueStandings() {
                         type="number"
                         className="w-12 h-10 bg-bg-surface border border-border-highlight text-center rounded text-text-primary font-bold focus:border-color-primary focus:ring-1 focus:ring-color-primary"
                         value={game.score_away ?? ''}
-                        onChange={(e) => handleScoreUpdate(game.id, game.score_home, e.target.value)}
+                        onChange={(e) =>
+                          handleScoreUpdate(game.id, game.score_home, e.target.value)
+                        }
                         disabled={updatingGameId === game.id}
                         aria-label="Away Score"
                       />
                     </>
                   ) : (
                     <div className="text-lg font-bold text-text-primary">
-                      {game.score_home ?? '-'} <span className="text-text-muted mx-1">-</span> {game.score_away ?? '-'}
+                      {game.score_home ?? '-'} <span className="text-text-muted mx-1">-</span>{' '}
+                      {game.score_away ?? '-'}
                     </div>
                   )}
                 </div>

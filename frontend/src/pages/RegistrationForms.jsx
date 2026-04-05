@@ -10,13 +10,13 @@ export default function RegistrationForms() {
   const [forms, setForms] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showEditor, setShowEditor] = useState(false);
-  
+
   // Editor State
   const [editingForm, setEditingForm] = useState({
     title: '',
     description: '',
     season_id: '',
-    fields: []
+    fields: [],
   });
 
   const [saving, setSaving] = useState(false);
@@ -49,7 +49,7 @@ export default function RegistrationForms() {
       title: '',
       description: '',
       season_id: currentSeasonSetting?.id || '',
-      fields: []
+      fields: [],
     });
     setShowEditor(true);
   };
@@ -57,7 +57,7 @@ export default function RegistrationForms() {
   const addField = () => {
     setEditingForm({
       ...editingForm,
-      fields: [...editingForm.fields, { label: '', type: 'text', required: false }]
+      fields: [...editingForm.fields, { label: '', type: 'text', required: false }],
     });
   };
 
@@ -70,7 +70,7 @@ export default function RegistrationForms() {
   const removeField = (index) => {
     setEditingForm({
       ...editingForm,
-      fields: editingForm.fields.filter((_, i) => i !== index)
+      fields: editingForm.fields.filter((_, i) => i !== index),
     });
   };
 
@@ -81,15 +81,15 @@ export default function RegistrationForms() {
     }
     setSaving(true);
     try {
-      const { error } = await supabase
-        .from('registration_forms')
-        .insert([{
+      const { error } = await supabase.from('registration_forms').insert([
+        {
           ...editingForm,
           organization_id: currentOrganization.id,
-          status: 'active'
-        }]);
+          status: 'active',
+        },
+      ]);
       if (error) throw error;
-      
+
       setMessage({ type: 'success', text: 'Form saved successfully!' });
       setTimeout(() => {
         setShowEditor(false);
@@ -107,29 +107,43 @@ export default function RegistrationForms() {
     return (
       <div className="max-w-4xl mx-auto space-y-6 animate-fadeIn">
         <div className="flex items-center justify-between">
-          <h1 className="text-3xl font-display font-bold text-text-primary">Create Registration Form</h1>
-          <Button variant="ghost" onClick={() => setShowEditor(false)}>Back to List</Button>
+          <h1 className="text-3xl font-display font-bold text-text-primary">
+            Create Registration Form
+          </h1>
+          <Button variant="ghost" onClick={() => setShowEditor(false)}>
+            Back to List
+          </Button>
         </div>
 
         <div className="bg-bg-surface border border-border-subtle rounded-2xl p-8 shadow-xl space-y-6">
           <div className="space-y-4">
             <div>
-              <label htmlFor="form-title" className="block text-sm font-medium text-text-secondary mb-1">Form Title</label>
-              <input 
+              <label
+                htmlFor="form-title"
+                className="block text-sm font-medium text-text-secondary mb-1"
+              >
+                Form Title
+              </label>
+              <input
                 id="form-title"
-                type="text" 
+                type="text"
                 value={editingForm.title}
-                onChange={(e) => setEditingForm({...editingForm, title: e.target.value})}
+                onChange={(e) => setEditingForm({ ...editingForm, title: e.target.value })}
                 className="w-full bg-bg-app border border-border-highlight rounded-lg p-3 text-text-primary focus:border-color-primary outline-none"
                 placeholder="e.g. Fall 2026 Season Registration"
               />
             </div>
             <div>
-              <label htmlFor="form-description" className="block text-sm font-medium text-text-secondary mb-1">Description</label>
-              <textarea 
+              <label
+                htmlFor="form-description"
+                className="block text-sm font-medium text-text-secondary mb-1"
+              >
+                Description
+              </label>
+              <textarea
                 id="form-description"
                 value={editingForm.description}
-                onChange={(e) => setEditingForm({...editingForm, description: e.target.value})}
+                onChange={(e) => setEditingForm({ ...editingForm, description: e.target.value })}
                 className="w-full bg-bg-app border border-border-highlight rounded-lg p-3 text-text-primary focus:border-color-primary outline-none"
                 rows={3}
               />
@@ -139,24 +153,39 @@ export default function RegistrationForms() {
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-bold text-text-primary">Custom Fields</h3>
-              <Button size="sm" icon={Plus} onClick={addField}>Add Field</Button>
+              <Button size="sm" icon={Plus} onClick={addField}>
+                Add Field
+              </Button>
             </div>
-            
+
             {editingForm.fields.map((field, idx) => (
-              <div key={idx} className="form-field-editor bg-bg-app/50 border border-border-subtle rounded-xl p-4 flex flex-col md:flex-row gap-4 items-end">
+              <div
+                key={idx}
+                className="form-field-editor bg-bg-app/50 border border-border-subtle rounded-xl p-4 flex flex-col md:flex-row gap-4 items-end"
+              >
                 <div className="flex-1 w-full text-left">
-                  <label htmlFor={`field-label-${idx}`} className="block text-xs font-bold text-text-muted uppercase mb-1">Label</label>
-                  <input 
+                  <label
+                    htmlFor={`field-label-${idx}`}
+                    className="block text-xs font-bold text-text-muted uppercase mb-1"
+                  >
+                    Label
+                  </label>
+                  <input
                     id={`field-label-${idx}`}
-                    type="text" 
+                    type="text"
                     value={field.label}
                     onChange={(e) => updateField(idx, { label: e.target.value })}
                     className="w-full bg-bg-surface border border-border-highlight rounded-lg p-2 text-sm text-text-primary outline-none"
                   />
                 </div>
                 <div className="w-full md:w-32 text-left">
-                  <label htmlFor={`field-type-${idx}`} className="block text-xs font-bold text-text-muted uppercase mb-1">Type</label>
-                  <select 
+                  <label
+                    htmlFor={`field-type-${idx}`}
+                    className="block text-xs font-bold text-text-muted uppercase mb-1"
+                  >
+                    Type
+                  </label>
+                  <select
                     id={`field-type-${idx}`}
                     value={field.type}
                     onChange={(e) => updateField(idx, { type: e.target.value })}
@@ -168,15 +197,18 @@ export default function RegistrationForms() {
                   </select>
                 </div>
                 <div className="flex items-center gap-2 mb-2">
-                   <input 
-                    type="checkbox" 
+                  <input
+                    type="checkbox"
                     checked={field.required}
                     onChange={(e) => updateField(idx, { required: e.target.checked })}
                     className="rounded border-border-highlight"
-                   />
-                   <span className="text-xs text-text-secondary">Required</span>
+                  />
+                  <span className="text-xs text-text-secondary">Required</span>
                 </div>
-                <button onClick={() => removeField(idx)} className="p-2 text-status-error hover:bg-status-error-bg rounded-lg transition-colors">
+                <button
+                  onClick={() => removeField(idx)}
+                  className="p-2 text-status-error hover:bg-status-error-bg rounded-lg transition-colors"
+                >
                   <Trash2 size={18} />
                 </button>
               </div>
@@ -184,7 +216,9 @@ export default function RegistrationForms() {
           </div>
 
           {message && (
-            <div className={`p-4 rounded-xl flex items-center gap-3 ${message.type === 'error' ? 'bg-status-error-bg text-status-error border border-status-error/20' : 'bg-status-success-bg text-status-success border border-status-success/20'}`}>
+            <div
+              className={`p-4 rounded-xl flex items-center gap-3 ${message.type === 'error' ? 'bg-status-error-bg text-status-error border border-status-error/20' : 'bg-status-success-bg text-status-success border border-status-success/20'}`}
+            >
               {message.type === 'error' ? <AlertCircle size={20} /> : <CheckCircle2 size={20} />}
               <span className="font-medium">{message.text}</span>
             </div>
@@ -207,7 +241,9 @@ export default function RegistrationForms() {
           <h1 className="text-3xl font-display font-bold text-text-primary">Registration Forms</h1>
           <p className="text-text-secondary">Manage how parents register their children.</p>
         </div>
-        <Button icon={Plus} onClick={handleCreateNew}>Create Form</Button>
+        <Button icon={Plus} onClick={handleCreateNew}>
+          Create Form
+        </Button>
       </div>
 
       <div className="bg-bg-surface border border-border-subtle rounded-xl overflow-hidden shadow-md">
@@ -223,7 +259,11 @@ export default function RegistrationForms() {
           </thead>
           <tbody className="divide-y divide-border-subtle text-text-primary">
             {loading ? (
-              <tr><td colSpan={5} className="px-6 py-12 text-center text-text-muted animate-pulse">Loading forms...</td></tr>
+              <tr>
+                <td colSpan={5} className="px-6 py-12 text-center text-text-muted animate-pulse">
+                  Loading forms...
+                </td>
+              </tr>
             ) : forms.length === 0 ? (
               <tr>
                 <td colSpan={5} className="px-6 py-12 text-center text-text-secondary">
@@ -232,7 +272,7 @@ export default function RegistrationForms() {
                 </td>
               </tr>
             ) : (
-              forms.map(form => (
+              forms.map((form) => (
                 <tr key={form.id} className="hover:bg-bg-app/50 transition-colors">
                   <td className="px-6 py-4 font-medium">{form.title}</td>
                   <td className="px-6 py-4">
@@ -241,9 +281,13 @@ export default function RegistrationForms() {
                     </span>
                   </td>
                   <td className="px-6 py-4">{form.fields?.length || 0} fields</td>
-                  <td className="px-6 py-4 text-text-muted">{new Date(form.created_at).toLocaleDateString()}</td>
+                  <td className="px-6 py-4 text-text-muted">
+                    {new Date(form.created_at).toLocaleDateString()}
+                  </td>
                   <td className="px-6 py-4 text-right">
-                    <Button variant="ghost" size="sm">Manage</Button>
+                    <Button variant="ghost" size="sm">
+                      Manage
+                    </Button>
                   </td>
                 </tr>
               ))

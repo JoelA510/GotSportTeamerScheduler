@@ -11,14 +11,23 @@ import {
 /**
  * Prepare a persistence snapshot with Supabase-ready payloads and admin metadata.
  */
-export function prepareGamePersistenceSnapshot({
-  assignments = [],
-  runHistory = [],
-  schedulerRuns = [],
-  lastSyncedAt = null,
-  runId = undefined,
-  runMetadata = {},
-} = { assignments: [], runHistory: [], schedulerRuns: [], lastSyncedAt: null, runId: undefined, runMetadata: {} }) {
+export function prepareGamePersistenceSnapshot(
+  {
+    assignments = [],
+    runHistory = [],
+    schedulerRuns = [],
+    lastSyncedAt = null,
+    runId = undefined,
+    runMetadata = {},
+  } = {
+    assignments: [],
+    runHistory: [],
+    schedulerRuns: [],
+    lastSyncedAt: null,
+    runId: undefined,
+    runMetadata: {},
+  }
+) {
   // 1. Build Supabase rows
   const assignmentRows = buildGameAssignmentRows({
     assignments,

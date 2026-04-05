@@ -29,7 +29,10 @@ export function checkSlotAvailability({ fieldId, slotId, assignments, excludeId 
   }
 
   const blocker = assignments.find(
-    (a) => a.id !== excludeId && String(a.fieldId) === String(fieldId) && String(a.slotId) === String(slotId)
+    (a) =>
+      a.id !== excludeId &&
+      String(a.fieldId) === String(fieldId) &&
+      String(a.slotId) === String(slotId)
   );
 
   return {
@@ -111,7 +114,15 @@ export function checkCoachConflict({ game, targetStart, targetEnd, assignments, 
  * @param {Array}  params.teams            - All teams with coachId.
  * @returns {{ valid: boolean, reason: string|null }}
  */
-export function validateGameMove({ game, targetFieldId, targetSlotId, targetStart, targetEnd, assignments, teams }) {
+export function validateGameMove({
+  game,
+  targetFieldId,
+  targetSlotId,
+  targetStart,
+  targetEnd,
+  assignments,
+  teams,
+}) {
   const slot = checkSlotAvailability({
     fieldId: targetFieldId,
     slotId: targetSlotId,

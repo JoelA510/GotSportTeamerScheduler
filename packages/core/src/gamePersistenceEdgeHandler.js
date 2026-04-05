@@ -22,12 +22,11 @@ function mapStatusToHttpCode(status) {
   }
 }
 
-export function createGamePersistenceHttpHandler({
-  supabaseClient,
-  allowedRoles = undefined,
-  now = undefined,
-  getUser = undefined,
-} = { supabaseClient: undefined }) {
+export function createGamePersistenceHttpHandler(
+  { supabaseClient, allowedRoles = undefined, now = undefined, getUser = undefined } = {
+    supabaseClient: undefined,
+  }
+) {
   if (!supabaseClient) {
     throw new TypeError('supabaseClient is required');
   }

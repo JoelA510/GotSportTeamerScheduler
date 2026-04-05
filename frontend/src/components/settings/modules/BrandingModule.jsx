@@ -158,7 +158,9 @@ export default function BrandingModule() {
         {/* Color Suggestions */}
         {extractedColors.length > 0 && (
           <div className="mt-6 p-4 bg-bg-surface rounded-lg border border-border-subtle">
-            <h4 className="text-sm font-medium text-text-primary mb-3">Detected Colors from Logo</h4>
+            <h4 className="text-sm font-medium text-text-primary mb-3">
+              Detected Colors from Logo
+            </h4>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
               {extractedColors.map((color, index) => (
                 <div

@@ -49,7 +49,9 @@ export function SortablePlayer({ player }) {
         </div>
         <div className="flex flex-col">
           <span className="font-medium text-sm text-text-primary">
-            {player.name || `${player.first_name || ''} ${player.last_name || ''}`.trim() || 'Unknown Player'}
+            {player.name ||
+              `${player.first_name || ''} ${player.last_name || ''}`.trim() ||
+              'Unknown Player'}
           </span>
           <span className="text-xs text-text-muted flex items-center gap-2">
             Skill: {player.skill || player.skillRating || player.skill_tier || 'Unrated'}
@@ -217,13 +219,15 @@ export default function RosterManager({ initialTeams }) {
       });
     } else {
       try {
-        const { error } = /** @type {any} */ (await supabase
-          .from('players')
-          .update({
-            team_id: destTeam.id,
-            assignment_source: 'manual'
-          })
-          .eq('id', activeId));
+        const { error } = /** @type {any} */ (
+          await supabase
+            .from('players')
+            .update({
+              team_id: destTeam.id,
+              assignment_source: 'manual',
+            })
+            .eq('id', activeId)
+        );
 
         if (error) throw error;
       } catch (e) {
@@ -235,12 +239,14 @@ export default function RosterManager({ initialTeams }) {
   const handleQuickDraft = async () => {
     setIsDrafting(true);
     try {
-      const { data: settings } = /** @type {any} */ (await supabase
-        .from('season_settings')
-        .select('id')
-        .eq('organization_id', currentOrganization?.id)
-        .limit(1)
-        .single());
+      const { data: settings } = /** @type {any} */ (
+        await supabase
+          .from('season_settings')
+          .select('id')
+          .eq('organization_id', currentOrganization?.id)
+          .limit(1)
+          .single()
+      );
 
       if (settings) {
         await supabase.from('scheduler_runs').insert({
@@ -275,10 +281,11 @@ export default function RosterManager({ initialTeams }) {
               >
                 <span className="text-text-secondary">{c.message}</span>
                 <span
-                  className={`text-xs px-2 py-0.5 rounded-full font-semibold ${c.severity === 'error'
-                    ? 'bg-status-error/20 text-status-error'
-                    : 'bg-status-warning/20 text-status-warning'
-                    }`}
+                  className={`text-xs px-2 py-0.5 rounded-full font-semibold ${
+                    c.severity === 'error'
+                      ? 'bg-status-error/20 text-status-error'
+                      : 'bg-status-warning/20 text-status-warning'
+                  }`}
                 >
                   {c.type}
                 </span>

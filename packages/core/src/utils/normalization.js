@@ -71,7 +71,7 @@ export function normalizePlayerData(data) {
       errors.push({
         row: index,
         column: 'dob',
-        message: 'Missing critical column: Date of Birth'
+        message: 'Missing critical column: Date of Birth',
       });
       return;
     }

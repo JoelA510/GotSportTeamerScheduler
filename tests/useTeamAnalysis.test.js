@@ -37,8 +37,8 @@ describe('useTeamAnalysis', () => {
 
   it('processes imported players into program groups', async () => {
     const mockPlayers = [
-      { 'First Name': 'Alice', 'Last Name': 'Smith', 'Birthdate': '2016-01-01', 'Gender': 'f' }, // Age 9 (2025-2016) -> U10 Girls
-      { 'First Name': 'Bob', 'Last Name': 'Brown', 'Birthdate': '2018-06-15', 'Gender': 'm' },   // Age 7 (2025-2018) -> U8 Boys
+      { 'First Name': 'Alice', 'Last Name': 'Smith', Birthdate: '2016-01-01', Gender: 'f' }, // Age 9 (2025-2016) -> U10 Girls
+      { 'First Name': 'Bob', 'Last Name': 'Brown', Birthdate: '2018-06-15', Gender: 'm' }, // Age 7 (2025-2018) -> U8 Boys
     ];
 
     // @ts-ignore — partial mock for test isolation
@@ -48,11 +48,14 @@ describe('useTeamAnalysis', () => {
 
     const { result } = renderHook(() => useTeamAnalysis());
 
-    await waitFor(() => {
-      expect(result.current.programs.length).toBeGreaterThan(0);
-    }, { timeout: 3000 });
+    await waitFor(
+      () => {
+        expect(result.current.programs.length).toBeGreaterThan(0);
+      },
+      { timeout: 3000 }
+    );
 
-    const programNames = result.current.programs.map(p => p.name);
+    const programNames = result.current.programs.map((p) => p.name);
     expect(programNames).toContain('U10 Girls');
     expect(programNames).toContain('U8 Boys');
   });
@@ -69,9 +72,12 @@ describe('useTeamAnalysis', () => {
 
     const { result } = renderHook(() => useTeamAnalysis());
 
-    await waitFor(() => {
-      expect(result.current.validationErrors.length).toBe(1);
-    }, { timeout: 2000 });
+    await waitFor(
+      () => {
+        expect(result.current.validationErrors.length).toBe(1);
+      },
+      { timeout: 2000 }
+    );
     expect(result.current.validationErrors[0].type).toBe('missing_info');
   });
 });

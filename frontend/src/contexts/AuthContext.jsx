@@ -33,7 +33,9 @@ export const AuthProvider = ({ children }) => {
     // misconfigured client, etc.), stop blocking the UI after 5 seconds.
     const safetyTimer = setTimeout(() => {
       if (loading) {
-        console.warn('[Auth] Safety timeout — onAuthStateChange did not fire within 5 s. Clearing loading state.');
+        console.warn(
+          '[Auth] Safety timeout — onAuthStateChange did not fire within 5 s. Clearing loading state.'
+        );
         setLoading(false);
       }
     }, 5000);

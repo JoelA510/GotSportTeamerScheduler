@@ -74,13 +74,6 @@ export default function ImportPanel({ onImport }) {
 
   const theme = PERSISTENCE_THEMES.green;
 
-  useEffect(() => {
-    if (importStatus === 'idle' && !isImporting) {
-      setFile(null);
-      setPreviewData(null);
-    }
-  }, [importStatus, isImporting]);
-
   const handleDragOver = (e) => {
     e.preventDefault();
     setIsDragging(true);
@@ -312,6 +305,8 @@ export default function ImportPanel({ onImport }) {
                     onImport(previewData, importType);
                   }
                   resetImport('all');
+                  setFile(null);
+                  setPreviewData(null);
                 }}
               >
                 Continue

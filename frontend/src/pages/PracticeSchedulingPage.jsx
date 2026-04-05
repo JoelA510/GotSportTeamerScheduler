@@ -10,10 +10,10 @@ import { Edit2, Save } from 'lucide-react';
 
 export default function PracticeSchedulingPage() {
   const { practice, team, loading: dashboardLoading } = useDashboardData();
-  const { 
-    assignments, 
-    loading: assignmentsLoading, 
-    updateAssignmentSource 
+  const {
+    assignments,
+    loading: assignmentsLoading,
+    updateAssignmentSource,
   } = usePracticeAssignments(practice.runId);
   const { timezone } = useTheme();
   const [isEditMode, setIsEditMode] = useState(false);

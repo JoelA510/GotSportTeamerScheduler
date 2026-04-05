@@ -1,15 +1,15 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { 
-  CheckCircle, 
-  ChevronRight, 
-  ChevronLeft, 
-  Shield, 
+import {
+  CheckCircle,
+  ChevronRight,
+  ChevronLeft,
+  Shield,
   Rocket,
   AlertTriangle,
   Info,
   XCircle,
-  RefreshCw
+  RefreshCw,
 } from 'lucide-react';
 import { useOrganization } from '../contexts/OrganizationContext.jsx';
 import { useTheme } from '../contexts/ThemeContext.jsx';
@@ -29,13 +29,20 @@ const ErrorBanner = ({ message, onRetry, onClose }) => (
       <XCircle size={20} />
     </div>
     <div className="flex-1">
-      <h4 className="text-red-400 font-bold text-sm uppercase tracking-wider">Setup Synchronization Error</h4>
+      <h4 className="text-red-400 font-bold text-sm uppercase tracking-wider">
+        Setup Synchronization Error
+      </h4>
       <p className="text-red-300/80 text-xs mt-1 leading-relaxed">{message}</p>
       <div className="flex gap-3 mt-4">
         <Button variant="danger" size="sm" onClick={onRetry} icon={RefreshCw}>
           Retry Finalization
         </Button>
-        <Button variant="ghost" size="sm" onClick={onClose} className="text-red-400/60 hover:text-red-400">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onClose}
+          className="text-red-400/60 hover:text-red-400"
+        >
           Dismiss
         </Button>
       </div>
@@ -90,7 +97,7 @@ export default function SetupWizard() {
   const [localLeagueName, setLocalLeagueName] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
-  
+
   // Telemetry session initialization
   const sessionId = useMemo(() => Math.random().toString(36).substring(2, 15), []);
 
@@ -108,7 +115,7 @@ export default function SetupWizard() {
 
   useEffect(() => {
     if (permissions.length > 0 && !isTenantAdmin && currentOrganization) {
-       navigate('/');
+      navigate('/');
     }
   }, [isTenantAdmin, currentOrganization, navigate, permissions]);
 
@@ -118,7 +125,7 @@ export default function SetupWizard() {
         org_id: currentOrganization?.id,
         session_id: sessionId,
         event_type: eventType,
-        payload: { ...payload, step }
+        payload: { ...payload, step },
       });
     } catch (err) {
       logger.error('Telemetry failed', err);
@@ -128,16 +135,16 @@ export default function SetupWizard() {
   const handleNext = () => {
     setError(null);
     logTelemetry('wizard.step_completed');
-    setStep(prev => prev + 1);
+    setStep((prev) => prev + 1);
   };
 
   const handleBack = () => {
     setError(null);
-    setStep(prev => prev - 1);
+    setStep((prev) => prev - 1);
   };
 
   const handleToggle = (flag) => {
-    setLocalFlags(prev => ({ ...prev, [flag]: !prev[flag] }));
+    setLocalFlags((prev) => ({ ...prev, [flag]: !prev[flag] }));
   };
 
   const finalizeSetup = async () => {
@@ -152,24 +159,27 @@ export default function SetupWizard() {
       // 2. Call finalize_onboarding RPC
       const { error: rpcError } = await supabase.rpc('finalize_onboarding', {
         p_org_id: currentOrganization.id,
-        p_flags: localFlags
+        p_flags: localFlags,
       });
 
       if (rpcError) throw rpcError;
 
       await logTelemetry('wizard.finalized', { final_flags: localFlags });
-      
+
       // Force reload to pick up new organization state
       window.location.href = '/?onboarded=true';
     } catch (err) {
       logger.error('Finalization failed', err);
-      setError(err.message || 'An unexpected error occurred while finalizing your organization setup. Please verify your connection and try again.');
+      setError(
+        err.message ||
+          'An unexpected error occurred while finalizing your organization setup. Please verify your connection and try again.'
+      );
     } finally {
       setSaving(false);
     }
   };
 
-  if (!currentOrganization || !featureFlags || (permissions.length === 0)) {
+  if (!currentOrganization || !featureFlags || permissions.length === 0) {
     return <SetupSkeleton />;
   }
 
@@ -190,8 +200,11 @@ export default function SetupWizard() {
             </div>
           </div>
           <div className="flex gap-2">
-            {[1, 2, 3].map(s => (
-              <div key={s} className={`h-1.5 w-12 rounded-full transition-all duration-500 ${s <= step ? 'bg-brand-400' : 'bg-white/10'}`} />
+            {[1, 2, 3].map((s) => (
+              <div
+                key={s}
+                className={`h-1.5 w-12 rounded-full transition-all duration-500 ${s <= step ? 'bg-brand-400' : 'bg-white/10'}`}
+              />
             ))}
           </div>
         </div>
@@ -199,24 +212,26 @@ export default function SetupWizard() {
         {/* Content */}
         <div className="flex-1 p-8 overflow-y-auto">
           {error && (
-            <ErrorBanner 
-              message={error} 
-              onRetry={finalizeSetup} 
-              onClose={() => setError(null)} 
-            />
+            <ErrorBanner message={error} onRetry={finalizeSetup} onClose={() => setError(null)} />
           )}
 
           {step === 1 && (
             <div className="space-y-8 animate-slideInRight">
               <div className="space-y-2">
-                <h2 className="text-2xl font-bold text-text-primary uppercase tracking-tight">Welcome to the Enterprise Tier</h2>
-                <p className="text-text-muted">Refine your league's identity and branding before activating advanced features.</p>
+                <h2 className="text-2xl font-bold text-text-primary uppercase tracking-tight">
+                  Welcome to the Enterprise Tier
+                </h2>
+                <p className="text-text-muted">
+                  Refine your league's identity and branding before activating advanced features.
+                </p>
               </div>
 
               <div className="space-y-6">
                 <div>
-                  <label className="block text-sm font-medium text-text-secondary mb-2">League Display Name</label>
-                  <input 
+                  <label className="block text-sm font-medium text-text-secondary mb-2">
+                    League Display Name
+                  </label>
+                  <input
                     type="text"
                     value={localLeagueName}
                     onChange={(e) => setLocalLeagueName(e.target.value)}
@@ -233,21 +248,27 @@ export default function SetupWizard() {
           {step === 2 && (
             <div className="space-y-8 animate-slideInRight">
               <div className="space-y-2">
-                <h2 className="text-2xl font-bold text-text-primary uppercase tracking-tight">Smart Architecture</h2>
-                <p className="text-text-muted">Enable specialized logic handlers for your organization's unique requirements.</p>
+                <h2 className="text-2xl font-bold text-text-primary uppercase tracking-tight">
+                  Smart Architecture
+                </h2>
+                <p className="text-text-muted">
+                  Enable specialized logic handlers for your organization's unique requirements.
+                </p>
               </div>
 
               <div className="grid gap-4">
-                {ALL_FLAGS.map(flag => (
-                  <label 
+                {ALL_FLAGS.map((flag) => (
+                  <label
                     key={flag}
                     className={`p-5 rounded-2xl border cursor-pointer transition-all flex items-start gap-4 ${
-                      localFlags[flag] 
-                        ? 'bg-brand-glow/10 border-brand-500/40 shadow-lg shadow-brand-500/5' 
+                      localFlags[flag]
+                        ? 'bg-brand-glow/10 border-brand-500/40 shadow-lg shadow-brand-500/5'
                         : 'bg-white/5 border-white/5 hover:border-white/20'
                     }`}
                   >
-                    <div className={`mt-1 p-2 rounded-lg ${localFlags[flag] ? 'bg-brand-500/20 text-brand-400' : 'bg-white/10 text-white/40'}`}>
+                    <div
+                      className={`mt-1 p-2 rounded-lg ${localFlags[flag] ? 'bg-brand-500/20 text-brand-400' : 'bg-white/10 text-white/40'}`}
+                    >
                       <Shield size={20} />
                     </div>
                     <div className="flex-1">
@@ -255,17 +276,22 @@ export default function SetupWizard() {
                         {flag.replace(/_/g, ' ')}
                       </h4>
                       <p className="text-xs text-text-muted mt-1 leading-relaxed">
-                        Activates the high-conversion {flag.replace(/_/g, ' ')} logic within your ingestion pipeline.
+                        Activates the high-conversion {flag.replace(/_/g, ' ')} logic within your
+                        ingestion pipeline.
                       </p>
                     </div>
-                    <input 
-                      type="checkbox" 
-                      className="hidden" 
-                      checked={!!localFlags[flag]} 
-                      onChange={() => handleToggle(flag)} 
+                    <input
+                      type="checkbox"
+                      className="hidden"
+                      checked={!!localFlags[flag]}
+                      onChange={() => handleToggle(flag)}
                     />
-                    <div className={`w-12 h-6 rounded-full relative transition-colors ${localFlags[flag] ? 'bg-brand-500' : 'bg-white/10'}`}>
-                       <div className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${localFlags[flag] ? 'translate-x-6' : 'translate-x-0'}`} />
+                    <div
+                      className={`w-12 h-6 rounded-full relative transition-colors ${localFlags[flag] ? 'bg-brand-500' : 'bg-white/10'}`}
+                    >
+                      <div
+                        className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${localFlags[flag] ? 'translate-x-6' : 'translate-x-0'}`}
+                      />
                     </div>
                   </label>
                 ))}
@@ -274,7 +300,8 @@ export default function SetupWizard() {
               <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-xl flex gap-3 text-blue-400">
                 <Info size={18} className="shrink-0 mt-0.5" />
                 <p className="text-xs leading-relaxed">
-                  <strong>Architectural Note</strong>: These toggles enforce RPC-only persistence. Changing them will be recorded in the persistent Audit Log.
+                  <strong>Architectural Note</strong>: These toggles enforce RPC-only persistence.
+                  Changing them will be recorded in the persistent Audit Log.
                 </p>
               </div>
             </div>
@@ -286,23 +313,31 @@ export default function SetupWizard() {
                 <CheckCircle size={48} />
               </div>
               <div className="space-y-3 max-w-md mx-auto">
-                <h2 className="text-3xl font-bold text-text-primary uppercase tracking-tight">Ready to Launch</h2>
+                <h2 className="text-3xl font-bold text-text-primary uppercase tracking-tight">
+                  Ready to Launch
+                </h2>
                 <p className="text-text-muted">
-                  Your organization is now configured with a custom architecture. We've initialized a telemetry session for this setup.
+                  Your organization is now configured with a custom architecture. We've initialized
+                  a telemetry session for this setup.
                 </p>
               </div>
 
               <div className="p-6 bg-white/5 border border-white/5 rounded-2xl text-left space-y-4">
                 <div className="flex justify-between items-center px-2">
-                  <span className="text-sm font-medium text-text-secondary">Selected Architectures</span>
+                  <span className="text-sm font-medium text-text-secondary">
+                    Selected Architectures
+                  </span>
                   <span className="text-xs bg-brand-500/20 text-brand-400 px-2 py-0.5 rounded-full font-bold">
                     {Object.values(localFlags).filter(Boolean).length} Active
                   </span>
                 </div>
                 <div className="grid grid-cols-2 gap-2">
-                  {ALL_FLAGS.filter(f => localFlags[f]).map(f => (
-                    <div key={f} className="text-[10px] text-text-muted truncate bg-white/5 p-2 rounded-lg border border-white/5">
-                       {f.replace(/_/g, ' ')}
+                  {ALL_FLAGS.filter((f) => localFlags[f]).map((f) => (
+                    <div
+                      key={f}
+                      className="text-[10px] text-text-muted truncate bg-white/5 p-2 rounded-lg border border-white/5"
+                    >
+                      {f.replace(/_/g, ' ')}
                     </div>
                   ))}
                   {Object.values(localFlags).filter(Boolean).length === 0 && (
@@ -316,7 +351,8 @@ export default function SetupWizard() {
               <div className="flex items-center gap-3 p-4 bg-yellow-500/10 border border-yellow-500/20 rounded-xl text-yellow-500 text-left">
                 <AlertTriangle size={20} className="shrink-0" />
                 <p className="text-xs leading-relaxed font-bold">
-                  By clicking 'Complete Setup', you finalize the enterprise transition and will be granted access to the production dashboard.
+                  By clicking 'Complete Setup', you finalize the enterprise transition and will be
+                  granted access to the production dashboard.
                 </p>
               </div>
             </div>
@@ -326,9 +362,9 @@ export default function SetupWizard() {
         {/* Footer */}
         <div className="p-8 border-t border-white/5 flex gap-4 bg-bg-surface/50">
           {step > 1 && (
-            <Button 
-              variant="secondary" 
-              onClick={handleBack} 
+            <Button
+              variant="secondary"
+              onClick={handleBack}
               className="flex items-center gap-2"
               disabled={saving}
             >
@@ -337,17 +373,18 @@ export default function SetupWizard() {
           )}
           <div className="flex-1" />
           {step < 3 ? (
-            <Button 
-              variant="primary" 
-              onClick={handleNext} 
+            <Button
+              variant="primary"
+              onClick={handleNext}
               className="flex items-center gap-2 group"
             >
-              Continue <ChevronRight size={18} className="group-hover:translate-x-1 transition-transform" />
+              Continue{' '}
+              <ChevronRight size={18} className="group-hover:translate-x-1 transition-transform" />
             </Button>
           ) : (
-            <Button 
-              variant="primary" 
-              onClick={finalizeSetup} 
+            <Button
+              variant="primary"
+              onClick={finalizeSetup}
               disabled={saving}
               className="px-8 shadow-glow-brand"
             >

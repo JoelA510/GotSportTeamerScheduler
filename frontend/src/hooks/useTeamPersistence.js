@@ -14,8 +14,8 @@ export function useTeamPersistence() {
     preparedPlayerRows: 0,
     payload: {
       teamRows: [],
-      teamPlayerRows: []
-    }
+      teamPlayerRows: [],
+    },
   });
   const [loading, setLoading] = useState(true);
 
@@ -62,8 +62,8 @@ export function useTeamPersistence() {
           preparedPlayerRows: lastRun?.results?.team_players?.length || 0,
           payload: {
             teamRows: lastRun?.results?.teams || [],
-            teamPlayerRows: lastRun?.results?.team_players || []
-          }
+            teamPlayerRows: lastRun?.results?.team_players || [],
+          },
         });
       } catch (err) {
         logger.error('Failed to init persistence snapshot:', err);

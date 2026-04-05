@@ -82,18 +82,31 @@ function deriveAppliedTeamOverrides(overrides = []) {
 /**
  * Prepare a persistence snapshot with Supabase-ready payloads and admin metadata.
  */
-export function prepareTeamPersistenceSnapshot({
-  teamsByDivision = {},
-  divisionIdMap = {},
-  teamOverrides = [],
-  manualAssignments = [],
-  runHistory = [],
-  schedulerRuns = [],
-  lastSyncedAt = null,
-  runId = undefined,
-  runMetadata = {},
-  pendingManualOverrideGoal = 'Resolve pending overrides before the next Supabase sync.',
-} = { teamsByDivision: {}, divisionIdMap: {}, teamOverrides: [], manualAssignments: [], runHistory: [], schedulerRuns: [], lastSyncedAt: null, runId: undefined, runMetadata: {}, pendingManualOverrideGoal: '' }) {
+export function prepareTeamPersistenceSnapshot(
+  {
+    teamsByDivision = {},
+    divisionIdMap = {},
+    teamOverrides = [],
+    manualAssignments = [],
+    runHistory = [],
+    schedulerRuns = [],
+    lastSyncedAt = null,
+    runId = undefined,
+    runMetadata = {},
+    pendingManualOverrideGoal = 'Resolve pending overrides before the next Supabase sync.',
+  } = {
+    teamsByDivision: {},
+    divisionIdMap: {},
+    teamOverrides: [],
+    manualAssignments: [],
+    runHistory: [],
+    schedulerRuns: [],
+    lastSyncedAt: null,
+    runId: undefined,
+    runMetadata: {},
+    pendingManualOverrideGoal: '',
+  }
+) {
   const appliedTeamOverrides = deriveAppliedTeamOverrides(teamOverrides);
   const {
     rows: teamRows,

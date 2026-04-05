@@ -20,13 +20,15 @@ import {
  * @param {Date} [params.now] - Clock injection for deterministic responses.
  * @returns {Promise<Object>} Normalized response for API handlers to relay.
  */
-export async function processPracticePersistenceRequest({
-  supabaseClient,
-  requestBody = {},
-  user = undefined,
-  allowedRoles = undefined,
-  now = new Date(),
-} = { supabaseClient: undefined }) {
+export async function processPracticePersistenceRequest(
+  {
+    supabaseClient,
+    requestBody = {},
+    user = undefined,
+    allowedRoles = undefined,
+    now = new Date(),
+  } = { supabaseClient: undefined }
+) {
   const authResult = authorizePracticePersistenceRequest({ user, allowedRoles });
   if (authResult.status !== 'authorized') {
     return authResult;

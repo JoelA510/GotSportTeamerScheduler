@@ -18,9 +18,7 @@ export function useGameSlots() {
       setLoading(true);
       setError(null);
       try {
-        const { data, error: fetchError } = await supabase
-          .from('game_slots')
-          .select('*');
+        const { data, error: fetchError } = await supabase.from('game_slots').select('*');
 
         if (fetchError) throw fetchError;
 

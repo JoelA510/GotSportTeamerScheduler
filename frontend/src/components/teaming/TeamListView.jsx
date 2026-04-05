@@ -3,10 +3,10 @@ import { formatPercent, formatDate } from '../../utils/formatters.js';
 
 /**
  * TeamListView Component
- * 
+ *
  * A high-contrast, semantic table-based alternative to the graphical TeamOverviewPanel.
  * Designed for maximum accessibility and screen-reader compatibility.
- * 
+ *
  * @param {Object} props
  * @param {Object} props.totals - Global allocator totals.
  * @param {Array} props.divisions - List of division-specific results.
@@ -15,12 +15,15 @@ import { formatPercent, formatDate } from '../../utils/formatters.js';
  */
 const TeamListView = ({ totals, divisions, generatedAt, timezone }) => {
   return (
-    <section 
-      className="bg-bg-surface border-4 border-text-primary p-6 rounded-none my-4" 
+    <section
+      className="bg-bg-surface border-4 border-text-primary p-6 rounded-none my-4"
       aria-labelledby="accessibility-view-heading"
     >
       <header className="mb-6 border-b-2 border-text-primary pb-4">
-        <h2 id="accessibility-view-heading" className="text-2xl font-bold text-text-primary uppercase tracking-tight">
+        <h2
+          id="accessibility-view-heading"
+          className="text-2xl font-bold text-text-primary uppercase tracking-tight"
+        >
           Drafting Summary (Table View)
         </h2>
         <p className="text-text-primary font-medium mt-2">
@@ -49,23 +52,38 @@ const TeamListView = ({ totals, divisions, generatedAt, timezone }) => {
 
       <div className="overflow-x-auto">
         <table className="w-full border-collapse border-2 border-text-primary text-left">
-          <caption className="sr-only">Detailed breakdown of team generation results by division</caption>
+          <caption className="sr-only">
+            Detailed breakdown of team generation results by division
+          </caption>
           <thead>
             <tr className="bg-text-primary text-bg-surface">
               <th className="border border-bg-surface p-3 font-bold uppercase text-sm">Division</th>
               <th className="border border-bg-surface p-3 font-bold uppercase text-sm">Teams</th>
               <th className="border border-bg-surface p-3 font-bold uppercase text-sm">Players</th>
-              <th className="border border-bg-surface p-3 font-bold uppercase text-sm">Fill Rate</th>
-              <th className="border border-bg-surface p-3 font-bold uppercase text-sm">Coach Coverage</th>
+              <th className="border border-bg-surface p-3 font-bold uppercase text-sm">
+                Fill Rate
+              </th>
+              <th className="border border-bg-surface p-3 font-bold uppercase text-sm">
+                Coach Coverage
+              </th>
               <th className="border border-bg-surface p-3 font-bold uppercase text-sm">Status</th>
             </tr>
           </thead>
           <tbody>
             {divisions.map((division) => (
-              <tr key={division.divisionId} className="border-b-2 border-text-primary hover:bg-bg-surface-hover transition-colors">
-                <td className="p-3 font-bold border-r-2 border-text-primary">{division.divisionId}</td>
-                <td className="p-3 border-r-2 border-text-primary text-center font-mono">{division.totalTeams}</td>
-                <td className="p-3 border-r-2 border-text-primary text-center font-mono">{division.playersAssigned}</td>
+              <tr
+                key={division.divisionId}
+                className="border-b-2 border-text-primary hover:bg-bg-surface-hover transition-colors"
+              >
+                <td className="p-3 font-bold border-r-2 border-text-primary">
+                  {division.divisionId}
+                </td>
+                <td className="p-3 border-r-2 border-text-primary text-center font-mono">
+                  {division.totalTeams}
+                </td>
+                <td className="p-3 border-r-2 border-text-primary text-center font-mono">
+                  {division.playersAssigned}
+                </td>
                 <td className="p-3 border-r-2 border-text-primary text-center font-mono">
                   {formatPercent(division.averageFillRate)}
                 </td>

@@ -26,7 +26,8 @@ export function useTeamPortal(teamId) {
       // 1. Fetch Team Details + League Timezone
       const { data: teamData, error: teamError } = await supabase
         .from('teams')
-        .select(`
+        .select(
+          `
           *,
           division:divisions (
             id,
@@ -38,7 +39,8 @@ export function useTeamPortal(teamId) {
               season_end
             )
           )
-        `)
+        `
+        )
         .eq('id', teamId)
         .single();
 
@@ -50,17 +52,19 @@ export function useTeamPortal(teamId) {
       // 2. Fetch Roster
       const { data: rosterData, error: rosterError } = await supabase
         .from('team_players')
-        .select(`
+        .select(
+          `
           player:players (
             id,
             first_name,
             last_name
           )
-        `)
+        `
+        )
         .eq('team_id', teamId);
 
       if (rosterError) throw rosterError;
-      
+
       // Deduplicate roster by player ID to prevent React key collisions
       const uniqueRoster = [];
       const seenIds = new Set();
@@ -76,7 +80,8 @@ export function useTeamPortal(teamId) {
       // 3. Fetch Games
       const { data: gamesData, error: gamesError } = await supabase
         .from('games')
-        .select(`
+        .select(
+          `
           *,
           game_slot:game_slots (
             slot_date,
@@ -89,7 +94,8 @@ export function useTeamPortal(teamId) {
           ),
           home_team:teams!home_team_id (name),
           away_team:teams!away_team_id (name)
-        `)
+        `
+        )
         .or(`home_team_id.eq.${teamId},away_team_id.eq.${teamId}`);
 
       if (gamesError) throw gamesError;
@@ -104,13 +110,14 @@ export function useTeamPortal(teamId) {
         homeTeam: g.home_team?.name,
         awayTeam: g.away_team?.name,
         opponent: g.home_team_id === teamId ? g.away_team?.name : g.home_team?.name,
-        description: `vs ${g.home_team_id === teamId ? g.away_team?.name : g.home_team?.name}`
+        description: `vs ${g.home_team_id === teamId ? g.away_team?.name : g.home_team?.name}`,
       }));
 
       // 4. Fetch Practices and Expand
       const { data: practiceAssignments, error: practiceError } = await supabase
         .from('practice_assignments')
-        .select(`
+        .select(
+          `
           *,
           slot:practice_slots (
             day_of_week,
@@ -121,7 +128,8 @@ export function useTeamPortal(teamId) {
               location:locations (name)
             )
           )
-        `)
+        `
+        )
         .eq('team_id', teamId);
 
       if (practiceError) throw practiceError;
@@ -152,13 +160,13 @@ export function useTeamPortal(teamId) {
           .from('profile_players')
           .select('player_id')
           .eq('profile_id', authData.user.id);
-        
+
         if (myPlayerData) {
-          const myIds = myPlayerData.map(mp => mp.player_id);
+          const myIds = myPlayerData.map((mp) => mp.player_id);
           const matchedPlayers = [];
           const seenMyIds = new Set();
-          
-          rosterData?.forEach(r => {
+
+          rosterData?.forEach((r) => {
             const p = Array.isArray(r.player) ? r.player[0] : r.player;
             if (p && myIds.includes(p.id) && !seenMyIds.has(p.id)) {
               seenMyIds.add(p.id);
@@ -174,18 +182,19 @@ export function useTeamPortal(teamId) {
       // 8. Fetch Messages
       const { data: msgData, error: msgError } = await supabase
         .from('team_messages')
-        .select(`
+        .select(
+          `
           *,
           author:profiles (
             full_name
           )
-        `)
+        `
+        )
         .eq('team_id', teamId)
         .order('created_at', { ascending: true });
 
       if (msgError) throw msgError;
       setMessages(msgData);
-
     } catch (err) {
       logger.error('Error fetching Team Portal data:', err);
       setError(err.message);
@@ -206,7 +215,7 @@ export function useTeamPortal(teamId) {
           event: 'INSERT',
           schema: 'public',
           table: 'team_messages',
-          filter: `team_id=eq.${teamId}`
+          filter: `team_id=eq.${teamId}`,
         },
         async (payload) => {
           // Fetch the author's name to match the state format
@@ -218,7 +227,7 @@ export function useTeamPortal(teamId) {
 
           const newMessage = {
             ...payload.new,
-            author: authorData || { full_name: 'Unknown User' }
+            author: authorData || { full_name: 'Unknown User' },
           };
           setMessages((current) => [...current, newMessage]);
         }
@@ -234,16 +243,13 @@ export function useTeamPortal(teamId) {
           event: '*',
           schema: 'public',
           table: 'event_rsvps',
-          filter: `team_id=eq.${teamId}`
+          filter: `team_id=eq.${teamId}`,
         },
         () => {
           // Simplest approach: refetch RSVPs when one changes
           // A more surgical update of the state could be done for performance
           const refetchRsvps = async () => {
-            const { data } = await supabase
-              .from('event_rsvps')
-              .select('*')
-              .eq('team_id', teamId);
+            const { data } = await supabase.from('event_rsvps').select('*').eq('team_id', teamId);
             if (data) setRsvps(data);
           };
           refetchRsvps();
@@ -270,9 +276,8 @@ export function useTeamPortal(teamId) {
 
       if (!orgData) throw new Error('No organization found for profile');
 
-      const { error: upsertError } = await supabase
-        .from('event_rsvps')
-        .upsert({
+      const { error: upsertError } = await supabase.from('event_rsvps').upsert(
+        {
           organization_id: orgData.organization_id,
           team_id: teamId,
           player_id: playerId,
@@ -280,10 +285,12 @@ export function useTeamPortal(teamId) {
           event_type: eventType,
           occurrence_date: occurrenceDate,
           status,
-          updated_at: new Date().toISOString()
-        }, {
-          onConflict: 'player_id,reference_id,occurrence_date'
-        });
+          updated_at: new Date().toISOString(),
+        },
+        {
+          onConflict: 'player_id,reference_id,occurrence_date',
+        }
+      );
 
       if (upsertError) throw upsertError;
     } catch (err) {
@@ -310,18 +317,16 @@ export function useTeamPortal(teamId) {
         id: Date.now(),
         author: { full_name: authData.user.user_metadata?.full_name || 'You' },
         content,
-        created_at: new Date().toISOString()
+        created_at: new Date().toISOString(),
       };
-      setMessages(prev => [...prev, optimisticMsg]);
+      setMessages((prev) => [...prev, optimisticMsg]);
 
-      const { error: sendError } = await supabase
-        .from('team_messages')
-        .insert({
-          organization_id: profileData.organization_id,
-          team_id: teamId,
-          author_id: authData.user.id,
-          content
-        });
+      const { error: sendError } = await supabase.from('team_messages').insert({
+        organization_id: profileData.organization_id,
+        team_id: teamId,
+        author_id: authData.user.id,
+        content,
+      });
 
       if (sendError) throw sendError;
     } catch (err) {
@@ -340,7 +345,7 @@ export function useTeamPortal(teamId) {
     myPlayers,
     updateRsvp,
     sendMessage,
-    refresh: fetchData
+    refresh: fetchData,
   };
 }
 
@@ -351,7 +356,13 @@ export function useTeamPortal(teamId) {
 function expandPractices(assignments, timezone) {
   const expanded = [];
   const daysMap = {
-    mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6, sun: 0
+    mon: 1,
+    tue: 2,
+    wed: 3,
+    thu: 4,
+    fri: 5,
+    sat: 6,
+    sun: 0,
   };
 
   assignments.forEach((assignment) => {
@@ -374,7 +385,7 @@ function expandPractices(assignments, timezone) {
           startTime: slot.start_time,
           endTime: slot.end_time,
           location: `${slot.field?.location?.name} - ${slot.field?.name}`,
-          description: 'Practice'
+          description: 'Practice',
         });
       }
       current.setDate(current.getDate() + 1);

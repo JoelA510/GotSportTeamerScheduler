@@ -4,431 +4,536 @@ import { expect } from '@playwright/test';
 const { Given, When, Then } = createBdd();
 
 Given('an organization and season are active', async ({ page }) => {
-    await page.goto('/');
-    await page.evaluate(() => {
-        const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
-        const orgId = 'org-test-e2e';
-        db.organizations = [{ id: orgId, name: 'SquadLogic FC', status: 'active' }];
-        db.organization_members = [{
-            organization_id: orgId,
-            profile_id: 'mock-admin-id',
-            role: 'admin',
-            organizations: { id: orgId, name: 'SquadLogic FC' }
-        }];
-        db.season_settings = [{ id: 's1', name: 'Fall 2024', organization_id: orgId }];
-        sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
-        localStorage.setItem('squadlogic_active_org', orgId);
-        localStorage.setItem('squadlogic-current-season', 'Fall 2024');
-    });
+  await page.goto('/');
+  await page.evaluate(() => {
+    const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
+    const orgId = 'org-test-e2e';
+    db.organizations = [{ id: orgId, name: 'SquadLogic FC', status: 'active' }];
+    db.organization_members = [
+      {
+        organization_id: orgId,
+        profile_id: 'mock-admin-id',
+        role: 'admin',
+        organizations: { id: orgId, name: 'SquadLogic FC' },
+      },
+    ];
+    db.season_settings = [{ id: 's1', name: 'Fall 2024', organization_id: orgId }];
+    sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
+    localStorage.setItem('squadlogic_active_org', orgId);
+    localStorage.setItem('squadlogic-current-season', 'Fall 2024');
+  });
 });
 
 Then('I should see a {int}-step workflow on the left side', async ({ page }, steps: number) => {
-    await expect(page.locator('.space-y-4 > .group')).toHaveCount(steps);
+  await expect(page.locator('.space-y-4 > .group')).toHaveCount(steps);
 });
 
 Then('I should see a {string} panel on the right side', async ({ page }, panelName: string) => {
-    await expect(page.getByRole('heading', { name: panelName })).toBeVisible();
+  await expect(page.getByRole('heading', { name: panelName })).toBeVisible();
 });
 
 Then('the League Status panel should show the active organization name', async ({ page }) => {
-    const orgValue = page.getByText('Active Club', { exact: true }).locator('..').locator('span').last();
-    await expect(orgValue).not.toContainText('—', { timeout: 15000 });
+  const orgValue = page
+    .getByText('Active Club', { exact: true })
+    .locator('..')
+    .locator('span')
+    .last();
+  await expect(orgValue).not.toContainText('—', { timeout: 15000 });
 });
 
 Then('the League Status panel should show the active season name', async ({ page }) => {
-    const seasonValue = page.getByText('Active Season', { exact: true }).locator('..').locator('span').last();
-    await expect(seasonValue).not.toContainText('—', { timeout: 15000 });
+  const seasonValue = page
+    .getByText('Active Season', { exact: true })
+    .locator('..')
+    .locator('span')
+    .last();
+  await expect(seasonValue).not.toContainText('—', { timeout: 15000 });
 });
 
 Given('I have imported player data', async ({ page }) => {
-    await page.goto('/');
-    await page.evaluate(() => {
-        const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
-        db.imports = [{
-            id: 'imp-1',
-            user_id: 'mock-admin-id',
-            import_type: 'players',
-            status: 'completed',
-            created_at: new Date().toISOString(),
-            data: { totalRows: 150, validRows: 150 }
-        }];
-        // CRITICAL FIX: Override initialMockData runs to 'deleted' so they don't match 'completed'
-        db.scheduler_runs = [
-            { id: 'run-practice-1', status: 'deleted' },
-            { id: 'run-game-1', status: 'deleted' },
-            { id: 'run-1', status: 'deleted' }
-        ];
-        sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
-        localStorage.setItem('dashboardActiveStep', '2'); // Preserve across reloads
-    });
-    await page.reload();
-    
-    // Force Playwright to visually locate and click the specific stepper buttons
-    const step2 = page.locator('[data-testid*="workflow-step-"]').filter({ hasText: '2. Teaming & Analysis' }).first();
-    await step2.click({ force: true });
+  await page.goto('/');
+  await page.evaluate(() => {
+    const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
+    db.imports = [
+      {
+        id: 'imp-1',
+        user_id: 'mock-admin-id',
+        import_type: 'players',
+        status: 'completed',
+        created_at: new Date().toISOString(),
+        data: { totalRows: 150, validRows: 150 },
+      },
+    ];
+    // CRITICAL FIX: Override initialMockData runs to 'deleted' so they don't match 'completed'
+    db.scheduler_runs = [
+      { id: 'run-practice-1', status: 'deleted' },
+      { id: 'run-game-1', status: 'deleted' },
+      { id: 'run-1', status: 'deleted' },
+    ];
+    sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
+    localStorage.setItem('dashboardActiveStep', '2'); // Preserve across reloads
+  });
+  await page.reload();
+
+  // Force Playwright to visually locate and click the specific stepper buttons
+  const step2 = page
+    .locator('[data-testid*="workflow-step-"]')
+    .filter({ hasText: '2. Teaming & Analysis' })
+    .first();
+  await step2.click({ force: true });
 });
 
 Given('I have not generated teams', async ({ page }) => {
-    await page.goto('/');
-    await page.evaluate(() => {
-        const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
-        db.scheduler_runs = db.scheduler_runs || [];
-        db.scheduler_runs.push({ id: 'run-1', status: 'deleted' }); // Override initialMockData team run
-        sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
-    });
-    await page.reload();
+  await page.goto('/');
+  await page.evaluate(() => {
+    const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
+    db.scheduler_runs = db.scheduler_runs || [];
+    db.scheduler_runs.push({ id: 'run-1', status: 'deleted' }); // Override initialMockData team run
+    sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
+  });
+  await page.reload();
 });
 
 Given('I have not generated a practice schedule', async ({ page }) => {
-    await page.goto('/');
-    await page.evaluate(() => {
-        const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
-        db.scheduler_runs = db.scheduler_runs || [];
-        db.scheduler_runs.push({ id: 'run-practice-1', status: 'deleted' }); // Override initialMockData practice run
-        sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
-    });
-    await page.reload();
+  await page.goto('/');
+  await page.evaluate(() => {
+    const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
+    db.scheduler_runs = db.scheduler_runs || [];
+    db.scheduler_runs.push({ id: 'run-practice-1', status: 'deleted' }); // Override initialMockData practice run
+    sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
+  });
+  await page.reload();
 });
 
 Given('I have not generated a game schedule', async ({ page }) => {
-    await page.goto('/');
-    await page.evaluate(() => {
-        const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
-        db.scheduler_runs = db.scheduler_runs || [];
-        db.scheduler_runs.push({ id: 'run-game-1', status: 'deleted' }); // Override initialMockData game run
-        sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
-    });
-    await page.reload();
+  await page.goto('/');
+  await page.evaluate(() => {
+    const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
+    db.scheduler_runs = db.scheduler_runs || [];
+    db.scheduler_runs.push({ id: 'run-game-1', status: 'deleted' }); // Override initialMockData game run
+    sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
+  });
+  await page.reload();
 });
 
 Given('all setup steps are complete', async ({ page }) => {
-    await page.goto('/');
-    await page.evaluate(() => {
-        const now = new Date().toISOString();
-        const orgId = localStorage.getItem('squadlogic_active_org') || 'org-test-e2e';
-        const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
-        db.imports = [{
-            id: 'imp-full',
-            user_id: 'mock-admin-id',
-            import_type: 'players',
-            status: 'completed',
-            created_at: now,
-            data: { totalRows: 150, validRows: 150 }
-        }];
-        db.scheduler_runs = [
-            {
-                id: 'run-t',
-                organization_id: orgId,
-                run_type: 'team',
-                status: 'completed',
-                completed_at: now,
-                metrics: { progress: 100 },
-                results: {
-                    teamsByDivision: { 'U10 Boys': [{ id: 't1', name: 'Tigers' }] },
-                    rosterBalanceByDivision: { 'U10 Boys': { summary: { totalPlayers: 15, totalCapacity: 20 } } }
-                },
-                created_at: now
-            },
-            {
-                id: 'run-p',
-                organization_id: orgId,
-                run_type: 'practice',
-                status: 'completed',
-                completed_at: now,
-                metrics: { progress: 100 },
-                results: {
-                    summary: { assignmentRate: 1.0, manualFollowUpRate: 0, unassignedTeams: 0 },
-                    totals: { practices: 20 }
-                },
-                created_at: now
-            },
-            {
-                id: 'run-g',
-                organization_id: orgId,
-                run_type: 'game',
-                status: 'completed',
-                completed_at: now,
-                metrics: { progress: 100 },
-                results: {
-                    summary: { totalGames: 15, scheduledRate: 1.0, unscheduledMatchups: 0 },
-                    totals: { games: 15 }
-                },
-                created_at: now
-            },
-            // Override initialMockData runs
-            { id: 'run-practice-1', status: 'deleted' },
-            { id: 'run-game-1', status: 'deleted' },
-            { id: 'run-1', status: 'deleted' }
-        ];
-        sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
-    });
-    await page.reload();
+  await page.goto('/');
+  await page.evaluate(() => {
+    const now = new Date().toISOString();
+    const orgId = localStorage.getItem('squadlogic_active_org') || 'org-test-e2e';
+    const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
+    db.imports = [
+      {
+        id: 'imp-full',
+        user_id: 'mock-admin-id',
+        import_type: 'players',
+        status: 'completed',
+        created_at: now,
+        data: { totalRows: 150, validRows: 150 },
+      },
+    ];
+    db.scheduler_runs = [
+      {
+        id: 'run-t',
+        organization_id: orgId,
+        run_type: 'team',
+        status: 'completed',
+        completed_at: now,
+        metrics: { progress: 100 },
+        results: {
+          teamsByDivision: { 'U10 Boys': [{ id: 't1', name: 'Tigers' }] },
+          rosterBalanceByDivision: {
+            'U10 Boys': { summary: { totalPlayers: 15, totalCapacity: 20 } },
+          },
+        },
+        created_at: now,
+      },
+      {
+        id: 'run-p',
+        organization_id: orgId,
+        run_type: 'practice',
+        status: 'completed',
+        completed_at: now,
+        metrics: { progress: 100 },
+        results: {
+          summary: { assignmentRate: 1.0, manualFollowUpRate: 0, unassignedTeams: 0 },
+          totals: { practices: 20 },
+        },
+        created_at: now,
+      },
+      {
+        id: 'run-g',
+        organization_id: orgId,
+        run_type: 'game',
+        status: 'completed',
+        completed_at: now,
+        metrics: { progress: 100 },
+        results: {
+          summary: { totalGames: 15, scheduledRate: 1.0, unscheduledMatchups: 0 },
+          totals: { games: 15 },
+        },
+        created_at: now,
+      },
+      // Override initialMockData runs
+      { id: 'run-practice-1', status: 'deleted' },
+      { id: 'run-game-1', status: 'deleted' },
+      { id: 'run-1', status: 'deleted' },
+    ];
+    sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
+  });
+  await page.reload();
 
-    // Force Playwright to visually locate and click the specific stepper buttons
-    const step6 = page.locator('[data-testid*="workflow-step-"]').filter({ hasText: '6. Output & Communication' }).first();
-    await step6.click({ force: true });
+  // Force Playwright to visually locate and click the specific stepper buttons
+  const step6 = page
+    .locator('[data-testid*="workflow-step-"]')
+    .filter({ hasText: '6. Output & Communication' })
+    .first();
+  await step6.click({ force: true });
 });
 
 Given('I have generated teams', async ({ page }) => {
-    await page.goto('/');
-    await page.evaluate(() => {
-        const orgId = localStorage.getItem('squadlogic_active_org') || 'org-test-e2e';
-        const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
-        db.scheduler_runs = db.scheduler_runs || [];
-        if (!db.scheduler_runs.find((r: any) => r.run_type === 'team' && r.status === 'completed')) {
-            const now = new Date().toISOString();
-            db.scheduler_runs.push({
-                id: 'run-t',
-                organization_id: orgId,
-                run_type: 'team',
-                status: 'completed',
-                completed_at: now,
-                results: {
-                    teamsByDivision: { 'U10 Boys': [{ id: 't1', name: 'Tigers' }] },
-                    rosterBalanceByDivision: { 'U10 Boys': { summary: { totalPlayers: 15, totalCapacity: 20 } } }
-                },
-                created_at: now
-            });
-        }
-        sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
-    });
-    await page.reload();
-
-    // Force Playwright to visually locate and click the specific stepper buttons
-    const step2 = page.locator('[data-testid*="workflow-step-"]').filter({ hasText: '2. Teaming & Analysis' }).first();
-    await step2.click({ force: true });
-
-    const confirmBtn = page.getByRole('button', { name: 'Confirm Teams & Proceed' }).first();
-    if (await confirmBtn.isVisible()) {
-        await confirmBtn.click({ force: true });
-    } else {
-        const step3 = page.locator('[data-testid*="workflow-step-"]').filter({ hasText: '3. Field Management' }).first();
-        await step3.click({ force: true });
+  await page.goto('/');
+  await page.evaluate(() => {
+    const orgId = localStorage.getItem('squadlogic_active_org') || 'org-test-e2e';
+    const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
+    db.scheduler_runs = db.scheduler_runs || [];
+    if (!db.scheduler_runs.find((r: any) => r.run_type === 'team' && r.status === 'completed')) {
+      const now = new Date().toISOString();
+      db.scheduler_runs.push({
+        id: 'run-t',
+        organization_id: orgId,
+        run_type: 'team',
+        status: 'completed',
+        completed_at: now,
+        results: {
+          teamsByDivision: { 'U10 Boys': [{ id: 't1', name: 'Tigers' }] },
+          rosterBalanceByDivision: {
+            'U10 Boys': { summary: { totalPlayers: 15, totalCapacity: 20 } },
+          },
+        },
+        created_at: now,
+      });
     }
+    sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
+  });
+  await page.reload();
+
+  // Force Playwright to visually locate and click the specific stepper buttons
+  const step2 = page
+    .locator('[data-testid*="workflow-step-"]')
+    .filter({ hasText: '2. Teaming & Analysis' })
+    .first();
+  await step2.click({ force: true });
+
+  const confirmBtn = page.getByRole('button', { name: 'Confirm Teams & Proceed' }).first();
+  if (await confirmBtn.isVisible()) {
+    await confirmBtn.click({ force: true });
+  } else {
+    const step3 = page
+      .locator('[data-testid*="workflow-step-"]')
+      .filter({ hasText: '3. Field Management' })
+      .first();
+    await step3.click({ force: true });
+  }
 });
 
 Given('I have generated a practice schedule', async ({ page }) => {
-    await page.goto('/');
-    await page.evaluate(() => {
-        const orgId = localStorage.getItem('squadlogic_active_org') || 'org-test-e2e';
-        const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
-        db.scheduler_runs = db.scheduler_runs || [];
-        const now = new Date().toISOString();
-        ['team', 'practice', 'game'].forEach(type => {
-            if (!db.scheduler_runs.find((r: any) => r.run_type === type && r.status === 'completed')) {
-                db.scheduler_runs.push({
-                    id: `run-${type}`,
-                    organization_id: orgId,
-                    run_type: type,
-                    status: 'completed',
-                    created_at: now,
-                    completed_at: now,
-                    results: { totals: { playersAssigned: 100, teams: 10 } }
-                });
-            }
+  await page.goto('/');
+  await page.evaluate(() => {
+    const orgId = localStorage.getItem('squadlogic_active_org') || 'org-test-e2e';
+    const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
+    db.scheduler_runs = db.scheduler_runs || [];
+    const now = new Date().toISOString();
+    ['team', 'practice', 'game'].forEach((type) => {
+      if (!db.scheduler_runs.find((r: any) => r.run_type === type && r.status === 'completed')) {
+        db.scheduler_runs.push({
+          id: `run-${type}`,
+          organization_id: orgId,
+          run_type: type,
+          status: 'completed',
+          created_at: now,
+          completed_at: now,
+          results: { totals: { playersAssigned: 100, teams: 10 } },
         });
-        sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
+      }
     });
-    await page.reload();
+    sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
+  });
+  await page.reload();
 });
 
 Given('I have generated a game schedule', async ({ page }) => {
-    await page.goto('/');
-    await page.evaluate(() => {
-        const orgId = localStorage.getItem('squadlogic_active_org') || 'org-test-e2e';
-        const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
-        db.scheduler_runs = db.scheduler_runs || [];
-        db.scheduler_runs.push({ 
-            id: 'run-g', 
-            organization_id: orgId,
-            run_type: 'game', 
-            status: 'completed', 
-            results: { totals: { games: 15 } }, 
-            created_at: new Date().toISOString() 
-        });
-        sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
+  await page.goto('/');
+  await page.evaluate(() => {
+    const orgId = localStorage.getItem('squadlogic_active_org') || 'org-test-e2e';
+    const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
+    db.scheduler_runs = db.scheduler_runs || [];
+    db.scheduler_runs.push({
+      id: 'run-g',
+      organization_id: orgId,
+      run_type: 'game',
+      status: 'completed',
+      results: { totals: { games: 15 } },
+      created_at: new Date().toISOString(),
     });
-    await page.reload();
+    sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
+  });
+  await page.reload();
 });
 
 When('I view the Dashboard page', async ({ page }) => {
-    await page.goto('/');
+  await page.goto('/');
 });
 
 Then('the Readiness Score should display {string}', async ({ page }, score: string) => {
-    const panel = page.getByTestId('readiness-score');
-    await expect(panel).toContainText(score, { timeout: 15000 });
-    
-    // Assert that the "Readiness Score" progress bar in the DOM actually visually updates its width
-    // CRITICAL FIX: Target the specific progress bar inside the Readiness Score section, not the global workflow one
-    const progressBar = page.getByText('Readiness Score').locator('..').locator('..').locator('.bg-bg-surface.rounded-full.overflow-hidden > div').first();
-    await expect(progressBar).toHaveAttribute('style', new RegExp(`width:\\s*${score}`));
+  const panel = page.getByTestId('readiness-score');
+  await expect(panel).toContainText(score, { timeout: 15000 });
+
+  // Assert that the "Readiness Score" progress bar in the DOM actually visually updates its width
+  // CRITICAL FIX: Target the specific progress bar inside the Readiness Score section, not the global workflow one
+  const progressBar = page
+    .getByText('Readiness Score')
+    .locator('..')
+    .locator('..')
+    .locator('.bg-bg-surface.rounded-full.overflow-hidden > div')
+    .first();
+  await expect(progressBar).toHaveAttribute('style', new RegExp(`width:\\s*${score}`));
 });
 
 Then('the {string} step should show as completed', async ({ page }, stepName: string) => {
-    const step = page.locator(`[data-testid*="workflow-step-"]`).filter({ hasText: stepName }).first();
-    await expect(step.getByText(/Completed/i)).toBeVisible({ timeout: 10000 });
+  const step = page
+    .locator(`[data-testid*="workflow-step-"]`)
+    .filter({ hasText: stepName })
+    .first();
+  await expect(step.getByText(/Completed/i)).toBeVisible({ timeout: 10000 });
 });
 
 When('I click on the {string} workflow step', async ({ page }, stepName: string) => {
-    const step = page.locator(`[data-testid*="workflow-step-"]`).filter({ hasText: stepName }).first();
-    await step.click({ force: true });
+  const step = page
+    .locator(`[data-testid*="workflow-step-"]`)
+    .filter({ hasText: stepName })
+    .first();
+  await step.click({ force: true });
 });
 
 Then('the {string} step should expand to show its content', async ({ page }, stepName: string) => {
-    const step = page.locator(`[data-testid*="workflow-step-"]`).filter({ hasText: stepName }).first();
-    await expect(step.locator('.grid.transition-all')).toHaveClass(/grid-rows-\[1fr\]/);
+  const step = page
+    .locator(`[data-testid*="workflow-step-"]`)
+    .filter({ hasText: stepName })
+    .first();
+  await expect(step.locator('.grid.transition-all')).toHaveClass(/grid-rows-\[1fr\]/);
 });
 
 Then('the previously active step should collapse', async ({ page }) => {
-    const expandedSteps = page.locator('.grid-rows-\\[1fr\\]');
-    await expect(expandedSteps).toHaveCount(1);
+  const expandedSteps = page.locator('.grid-rows-\\[1fr\\]');
+  await expect(expandedSteps).toHaveCount(1);
 });
 
-Given('I belong to organizations {string} and {string}', async ({ page }, org1: string, org2: string) => {
+Given(
+  'I belong to organizations {string} and {string}',
+  async ({ page }, org1: string, org2: string) => {
     await page.goto('/');
-    await page.evaluate(({ o1, o2 }) => {
+    await page.evaluate(
+      ({ o1, o2 }) => {
         const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
         const org1Id = 'org-test-e2e';
         const org2Id = 'org-2';
         db.organizations = [
-            { id: org1Id, name: o1, status: 'active' },
-            { id: org2Id, name: o2, status: 'active' }
+          { id: org1Id, name: o1, status: 'active' },
+          { id: org2Id, name: o2, status: 'active' },
         ];
         db.season_settings = [
-            { id: 's1', name: 'Fall 2024', organization_id: org1Id },
-            { id: 's2', name: 'Spring 2024', organization_id: org1Id },
-            { id: 's3', name: 'Winter 2024', organization_id: org2Id }
+          { id: 's1', name: 'Fall 2024', organization_id: org1Id },
+          { id: 's2', name: 'Spring 2024', organization_id: org1Id },
+          { id: 's3', name: 'Winter 2024', organization_id: org2Id },
         ];
         db.organization_members = [
-            { organization_id: org1Id, profile_id: 'mock-admin-id', role: 'admin', organizations: { id: org1Id, name: o1 } },
-            { organization_id: org2Id, profile_id: 'mock-admin-id', role: 'admin', organizations: { id: org2Id, name: o2 } }
+          {
+            organization_id: org1Id,
+            profile_id: 'mock-admin-id',
+            role: 'admin',
+            organizations: { id: org1Id, name: o1 },
+          },
+          {
+            organization_id: org2Id,
+            profile_id: 'mock-admin-id',
+            role: 'admin',
+            organizations: { id: org2Id, name: o2 },
+          },
         ];
         sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
-    }, { o1: org1, o2: org2 });
+      },
+      { o1: org1, o2: org2 }
+    );
     await page.reload();
-});
+  }
+);
 
-Given('the sidebar shows {string} as the active organization', async ({ page }, orgName: string) => {
+Given(
+  'the sidebar shows {string} as the active organization',
+  async ({ page }, orgName: string) => {
     await page.evaluate((name) => {
-        const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
-        const org = (db.organizations || []).find((o: any) => o.name === name);
-        if (org) {
-            localStorage.setItem('squadlogic_active_org', org.id);
-            const seasons = (db.season_settings || []).filter((s: any) => s.organization_id === org.id);
-            if (seasons.length > 0) {
-                localStorage.setItem('squadlogic-current-season', seasons[0].name);
-            }
+      const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
+      const org = (db.organizations || []).find((o: any) => o.name === name);
+      if (org) {
+        localStorage.setItem('squadlogic_active_org', org.id);
+        const seasons = (db.season_settings || []).filter((s: any) => s.organization_id === org.id);
+        if (seasons.length > 0) {
+          localStorage.setItem('squadlogic-current-season', seasons[0].name);
         }
+      }
     }, orgName);
     if (page.url() !== 'about:blank') await page.reload();
-});
+  }
+);
 
-Then('I should see a dropdown with {string} and {string}', async ({ page }, org1: string, org2: string) => {
+Then(
+  'I should see a dropdown with {string} and {string}',
+  async ({ page }, org1: string, org2: string) => {
     const menu = page.locator('.absolute.top-full').first();
     await expect(menu.getByRole('button', { name: org1 }).first()).toBeVisible();
     await expect(menu.getByRole('button', { name: org2 }).first()).toBeVisible();
-});
+  }
+);
 
 When('I click the {string} selector in the sidebar', async ({ page }, selectorName: string) => {
-    const label = page.locator('aside').getByText(selectorName, { exact: false }).first();
-    await label.locator('..').getByRole('button').first().click({ force: true });
+  const label = page.locator('aside').getByText(selectorName, { exact: false }).first();
+  await label.locator('..').getByRole('button').first().click({ force: true });
 });
 
 When('I select {string}', async ({ page }, option: string) => {
-    await page.getByRole('button', { name: option, exact: true }).first().click({ force: true });
+  await page.getByRole('button', { name: option, exact: true }).first().click({ force: true });
 });
 
 Then('the sidebar header should display {string}', async ({ page }, orgName: string) => {
-    await expect(page.getByText('Active Organization').locator('..').locator('button')).toContainText(orgName);
+  await expect(page.getByText('Active Organization').locator('..').locator('button')).toContainText(
+    orgName
+  );
 });
 
-Then('the {string} dropdown should update to show seasons for {string}', async ({ page }, dropdown: string, orgName: string) => {
+Then(
+  'the {string} dropdown should update to show seasons for {string}',
+  async ({ page }, dropdown: string, orgName: string) => {
     const seasonButton = page.getByText('Active Season').locator('..').getByRole('button');
     await expect(seasonButton).toBeVisible();
     await expect(seasonButton).not.toContainText('No seasons');
-});
+  }
+);
 
-Then('the dashboard data should refresh to show {string} data', async ({ page }, orgName: string) => {
-    const orgValue = page.getByText('Active Club', { exact: true }).locator('..').locator('span').last();
+Then(
+  'the dashboard data should refresh to show {string} data',
+  async ({ page }, orgName: string) => {
+    const orgValue = page
+      .getByText('Active Club', { exact: true })
+      .locator('..')
+      .locator('span')
+      .last();
     await expect(orgValue).toContainText(orgName, { timeout: 15000 });
-});
+  }
+);
 
-Then('I should see a dropdown with valid seasons for the current organization', async ({ page }) => {
+Then(
+  'I should see a dropdown with valid seasons for the current organization',
+  async ({ page }) => {
     await expect(page.locator('.absolute.top-full button')).not.toHaveCount(0);
-});
+  }
+);
 
 When('I select a different season', async ({ page }) => {
-    await page.locator('.absolute.top-full button').last().click({ force: true });
+  await page.locator('.absolute.top-full button').last().click({ force: true });
 });
 
 Then('the season selector should display the selected season', async ({ page }) => {
-    const seasonButton = page.getByText('Active Season').locator('..').getByRole('button');
-    await expect(seasonButton).toBeVisible();
+  const seasonButton = page.getByText('Active Season').locator('..').getByRole('button');
+  await expect(seasonButton).toBeVisible();
 });
 
 Then('the dashboard data should refresh to show data for the selected season', async ({ page }) => {
-    const seasonValue = page.getByText('Active Season', { exact: true }).locator('..').locator('span').last();
-    await expect(seasonValue).toBeVisible();
-    await expect(seasonValue).not.toContainText('—', { timeout: 15000 });
+  const seasonValue = page
+    .getByText('Active Season', { exact: true })
+    .locator('..')
+    .locator('span')
+    .last();
+  await expect(seasonValue).toBeVisible();
+  await expect(seasonValue).not.toContainText('—', { timeout: 15000 });
 });
 
-Given('the localStorage contains a season ID that does not exist for {string}', async ({ page }, orgName: string) => {
+Given(
+  'the localStorage contains a season ID that does not exist for {string}',
+  async ({ page }, orgName: string) => {
     await page.evaluate(() => localStorage.setItem('squadlogic-current-season', 'invalid-id'));
-});
+  }
+);
 
 When('I switch the active organization to {string}', async ({ page }, orgName: string) => {
-    await page.getByText('Active Organization').locator('..').getByRole('button').first().click({ force: true });
-    const menu = page.locator('.absolute.top-full').first();
-    await expect(menu).toBeVisible();
-    await menu.getByRole('button', { name: orgName }).first().click({ force: true });
+  await page
+    .getByText('Active Organization')
+    .locator('..')
+    .getByRole('button')
+    .first()
+    .click({ force: true });
+  const menu = page.locator('.absolute.top-full').first();
+  await expect(menu).toBeVisible();
+  await menu.getByRole('button', { name: orgName }).first().click({ force: true });
 });
 
-Then('the active season should automatically select the most recent season for {string}', async ({ page }, orgName: string) => {
+Then(
+  'the active season should automatically select the most recent season for {string}',
+  async ({ page }, orgName: string) => {
     const seasonButton = page.getByText('Active Season').locator('..').getByRole('button');
     await expect(seasonButton).not.toContainText('No seasons');
 
     // Assert that the Dashboard UI repaints to reflect the new data
-    const orgValue = page.getByText('Active Club', { exact: true }).locator('..').locator('span').last();
+    const orgValue = page
+      .getByText('Active Club', { exact: true })
+      .locator('..')
+      .locator('span')
+      .last();
     await expect(orgValue).toContainText(orgName, { timeout: 15000 });
-});
+  }
+);
 
 Then('localStorage should be updated with the valid season', async ({ page }) => {
-    // Verify the UI reflects the valid season instead of just checking localStorage
-    const seasonButton = page.getByText('Active Season').locator('..').getByRole('button');
-    await expect(seasonButton).not.toContainText('invalid-id');
-    await expect(seasonButton).not.toContainText('No seasons');
+  // Verify the UI reflects the valid season instead of just checking localStorage
+  const seasonButton = page.getByText('Active Season').locator('..').getByRole('button');
+  await expect(seasonButton).not.toContainText('invalid-id');
+  await expect(seasonButton).not.toContainText('No seasons');
 
-    // Secondary check for localStorage
-    const season = await page.evaluate(() => localStorage.getItem('squadlogic-current-season'));
-    expect(season).not.toBe('invalid-id');
+  // Secondary check for localStorage
+  const season = await page.evaluate(() => localStorage.getItem('squadlogic-current-season'));
+  expect(season).not.toBe('invalid-id');
 });
 
 Given('I have selected {string} as the active organization', async ({ page }, orgName: string) => {
-    await page.evaluate((name) => {
-        const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
-        const org = (db.organizations || []).find((o: any) => o.name === name);
-        if (org) {
-            localStorage.setItem('squadlogic_active_org', org.id);
-        }
-    }, orgName);
-    if (page.url() !== 'about:blank') await page.reload();
+  await page.evaluate((name) => {
+    const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
+    const org = (db.organizations || []).find((o: any) => o.name === name);
+    if (org) {
+      localStorage.setItem('squadlogic_active_org', org.id);
+    }
+  }, orgName);
+  if (page.url() !== 'about:blank') await page.reload();
 });
 
 Given('a valid season is selected', async ({ page }) => {
-    await page.evaluate(() => {
-        const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
-        const seasons = db.season_settings || [];
-        if (seasons.length > 0) {
-            localStorage.setItem('squadlogic-current-season', seasons[0].name || seasons[0].id);
-        }
-    });
+  await page.evaluate(() => {
+    const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
+    const seasons = db.season_settings || [];
+    if (seasons.length > 0) {
+      localStorage.setItem('squadlogic-current-season', seasons[0].name || seasons[0].id);
+    }
+  });
 });
 
-Then('the sidebar should still show {string} as the active organization', async ({ page }, orgName: string) => {
-    await expect(page.locator('aside').getByRole('button').filter({ hasText: orgName }).first()).toBeVisible();
-});
+Then(
+  'the sidebar should still show {string} as the active organization',
+  async ({ page }, orgName: string) => {
+    await expect(
+      page.locator('aside').getByRole('button').filter({ hasText: orgName }).first()
+    ).toBeVisible();
+  }
+);
 
 Then('the sidebar should still show the selected season', async ({ page }) => {
-    await expect(page.getByText('Active Season').locator('..').locator('button')).toBeVisible();
+  await expect(page.getByText('Active Season').locator('..').locator('button')).toBeVisible();
 });

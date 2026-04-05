@@ -306,7 +306,10 @@ export default function FieldManagementPage() {
               </div>
 
               <div>
-                <label htmlFor="field-name" className="block text-sm font-medium text-text-secondary mb-1">
+                <label
+                  htmlFor="field-name"
+                  className="block text-sm font-medium text-text-secondary mb-1"
+                >
                   Field Name
                 </label>
                 <input
@@ -321,7 +324,10 @@ export default function FieldManagementPage() {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label htmlFor="surface-type" className="block text-sm font-medium text-text-secondary mb-1">
+                  <label
+                    htmlFor="surface-type"
+                    className="block text-sm font-medium text-text-secondary mb-1"
+                  >
                     Surface Type
                   </label>
                   <select
@@ -336,7 +342,10 @@ export default function FieldManagementPage() {
                   </select>
                 </div>
                 <div>
-                  <label htmlFor="field-size" className="block text-sm font-medium text-text-secondary mb-1">
+                  <label
+                    htmlFor="field-size"
+                    className="block text-sm font-medium text-text-secondary mb-1"
+                  >
                     Size
                   </label>
                   <select
@@ -355,7 +364,10 @@ export default function FieldManagementPage() {
               </div>
 
               <div>
-                <label htmlFor="field-priority" className="block text-sm font-medium text-text-secondary mb-1">
+                <label
+                  htmlFor="field-priority"
+                  className="block text-sm font-medium text-text-secondary mb-1"
+                >
                   Priority (1-10)
                 </label>
                 <input

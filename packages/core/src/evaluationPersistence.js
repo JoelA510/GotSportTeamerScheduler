@@ -41,7 +41,8 @@ export async function persistEvaluation({ supabaseClient, evaluationResult, runI
     gameUnscheduled: games?.unscheduled?.length ?? 0,
   };
 
-  const findingsSeverity = summary.errorCount > 0 ? 'error' : summary.warningCount > 0 ? 'warning' : 'ok';
+  const findingsSeverity =
+    summary.errorCount > 0 ? 'error' : summary.warningCount > 0 ? 'warning' : 'ok';
 
   // 1. Insert Run
   const { data: runData, error: runError } = await supabaseClient

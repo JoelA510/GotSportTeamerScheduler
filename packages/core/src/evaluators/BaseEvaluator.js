@@ -30,7 +30,7 @@ export class BaseEvaluator {
   /**
    * Provides detailed diagnostics for a specific assignment.
    * Useful for the "Team Diagnostics" view and debugging.
-   * @param {Object} context 
+   * @param {Object} context
    * @returns {Object} { score: number, reasons: string[], warnings: string[] }
    */
   getDiagnostics(context) {
@@ -40,7 +40,7 @@ export class BaseEvaluator {
       name: this.name,
       score,
       reasons: [],
-      warnings: []
+      warnings: [],
     };
   }
 }

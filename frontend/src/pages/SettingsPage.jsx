@@ -55,9 +55,7 @@ export default function SettingsPage() {
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
             className={`flex items-center gap-2 px-6 py-4 text-sm font-medium transition-all relative whitespace-nowrap ${
-              activeTab === tab.id
-                ? 'text-brand-400'
-                : 'text-text-muted hover:text-text-primary'
+              activeTab === tab.id ? 'text-brand-400' : 'text-text-muted hover:text-text-primary'
             }`}
           >
             <tab.icon size={18} />

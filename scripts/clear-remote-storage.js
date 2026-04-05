@@ -50,7 +50,7 @@ const TABLES_TO_CLEAR = [
   'evaluation_metrics',
   'evaluation_runs',
   'export_jobs',
-  'email_log'
+  'email_log',
 ];
 
 /**
@@ -78,8 +78,8 @@ async function confirmExecution(url) {
   }
   console.log('!'.repeat(50) + '\n');
 
-  const question = isLocal 
-    ? 'Are you sure you want to clear ALL data? (y/N): ' 
+  const question = isLocal
+    ? 'Are you sure you want to clear ALL data? (y/N): '
     : `Type the full URL to CONFIRM deletion of ${url}: `;
 
   return new Promise((resolve) => {
@@ -96,11 +96,11 @@ async function confirmExecution(url) {
 
 /**
  * Attempt to dynamically fetch tables from public schema.
- * 
+ *
  * NOTE: For full dynamic discovery, run the following SQL in your Supabase Editor:
- * 
+ *
  * CREATE OR REPLACE FUNCTION get_public_tables()
- * RETURNS TABLE (table_name text) 
+ * RETURNS TABLE (table_name text)
  * LANGUAGE plpgsql
  * SECURITY DEFINER
  * AS $$
@@ -117,9 +117,9 @@ async function getDynamicTableList() {
   try {
     // Attempt to use the helper RPC for true dynamic discovery
     const { data: rpcData, error: rpcError } = await adminClient.rpc('get_public_tables');
-    
+
     if (!rpcError && Array.isArray(rpcData)) {
-      return rpcData.map(t => typeof t === 'string' ? t : t.table_name);
+      return rpcData.map((t) => (typeof t === 'string' ? t : t.table_name));
     }
 
     console.warn('     ℹ️  Dynamic discovery (RPC) unavailable. Using internal registry.');
@@ -132,7 +132,7 @@ async function getDynamicTableList() {
 
 async function clearStorage() {
   const confirmed = await confirmExecution(SUPABASE_URL);
-  
+
   if (!confirmed) {
     console.log('\n❌ Operation cancelled by user. No data was deleted.');
     return;
@@ -145,7 +145,7 @@ async function clearStorage() {
   for (const table of tables) {
     try {
       console.log(`   - Clearing table: ${table}...`);
-      
+
       // Try by UUID primary key (most common)
       const { error } = await adminClient
         .from(table)
@@ -158,7 +158,7 @@ async function clearStorage() {
           .from(table)
           .delete()
           .gte('created_at', '1900-01-01');
-          
+
         if (retryError) {
           // If both fail, the table likely has a unique schema or different PK name
           console.warn(`     ⚠️  Skipped ${table}: ${retryError.message}`);
@@ -174,7 +174,9 @@ async function clearStorage() {
   }
 
   console.log('\n✨ Database storage cleared (DATA ONLY).');
-  console.log('NOTE: Schema changes (Migrations) must be applied via the Supabase SQL Editor as the CLI is unavailable.');
+  console.log(
+    'NOTE: Schema changes (Migrations) must be applied via the Supabase SQL Editor as the CLI is unavailable.'
+  );
 }
 
 clearStorage();

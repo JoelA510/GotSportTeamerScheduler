@@ -23,7 +23,10 @@ export default function GeneralSettings() {
         return (
           <div className="space-y-6 animate-fadeIn">
             <div>
-              <label htmlFor="league-name" className="block text-sm font-medium text-text-secondary mb-2">
+              <label
+                htmlFor="league-name"
+                className="block text-sm font-medium text-text-secondary mb-2"
+              >
                 League Name
               </label>
               <input
@@ -37,7 +40,10 @@ export default function GeneralSettings() {
             </div>
             {/* Switch League dropdown logic could also be moved to a module if it grows */}
             <div>
-              <label htmlFor="switch-league" className="block text-sm font-medium text-text-secondary mb-2">
+              <label
+                htmlFor="switch-league"
+                className="block text-sm font-medium text-text-secondary mb-2"
+              >
                 Switch Organization
               </label>
               <select
@@ -78,10 +84,8 @@ export default function GeneralSettings() {
           </button>
         ))}
       </div>
-      
-      <div className="pt-2 border-t border-white/5">
-        {renderSubContent()}
-      </div>
+
+      <div className="pt-2 border-t border-white/5">{renderSubContent()}</div>
     </div>
   );
 }

@@ -26,20 +26,23 @@ export function IngestionOverlay() {
   };
 
   const getStatusIcon = () => {
-    if (importStatus === 'failed' || importStatus === 'error') return <AlertCircle className="w-5 h-5" />;
+    if (importStatus === 'failed' || importStatus === 'error')
+      return <AlertCircle className="w-5 h-5" />;
     if (importStatus === 'completed') return <CheckCircle className="w-5 h-5" />;
     return <Activity className="w-5 h-5 animate-pulse" />;
   };
 
   return (
-    <div 
+    <div
       className={`fixed bottom-6 right-6 z-50 transition-all duration-500 ease-in-out transform ${
         isVisible ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0'
       }`}
     >
-      <div className={`glass-panel-enterprise p-0 overflow-hidden w-80 border border-white/10 ${
-        isImporting ? 'animate-squadlogic-pulse' : ''
-      }`}>
+      <div
+        className={`glass-panel-enterprise p-0 overflow-hidden w-80 border border-white/10 ${
+          isImporting ? 'animate-squadlogic-pulse' : ''
+        }`}
+      >
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-white/5 bg-white/5">
           <div className="flex items-center gap-3">
@@ -56,13 +59,15 @@ export function IngestionOverlay() {
             </div>
           </div>
           <div className="flex items-center gap-1">
-             <button 
+            <button
               onClick={() => setIsMinimized(!isMinimized)}
               className="p-1.5 hover:bg-white/10 rounded-md transition-colors text-white/60"
             >
-              <ChevronRight className={`w-4 h-4 transition-transform duration-300 ${isMinimized ? 'rotate-90' : '-rotate-90'}`} />
+              <ChevronRight
+                className={`w-4 h-4 transition-transform duration-300 ${isMinimized ? 'rotate-90' : '-rotate-90'}`}
+              />
             </button>
-            <button 
+            <button
               onClick={() => setIsVisible(false)}
               className="p-1.5 hover:bg-white/10 rounded-md transition-colors text-white/60"
             >
@@ -80,7 +85,7 @@ export function IngestionOverlay() {
                 <span className={getStatusColor()}>{progress}%</span>
               </div>
               <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
-                <div 
+                <div
                   className={`h-full transition-all duration-300 ease-out bg-gradient-to-r from-sky-500 to-indigo-500 shadow-[0_0_8px_rgba(14,165,233,0.5)]`}
                   style={{ width: `${progress}%` }}
                 />
@@ -90,7 +95,9 @@ export function IngestionOverlay() {
             {/* Metrics Grid */}
             <div className="grid grid-cols-2 gap-3">
               <div className="p-3 rounded-xl bg-white/5 border border-white/5 space-y-1">
-                <p className="text-[10px] text-white/40 font-bold uppercase tracking-wider">Efficiency</p>
+                <p className="text-[10px] text-white/40 font-bold uppercase tracking-wider">
+                  Efficiency
+                </p>
                 <div className="flex items-center gap-2">
                   <BarChart3 className="w-4 h-4 text-sky-400/80" />
                   <span className="text-sm font-bold text-white">
@@ -99,7 +106,9 @@ export function IngestionOverlay() {
                 </div>
               </div>
               <div className="p-3 rounded-xl bg-white/5 border border-white/5 space-y-1">
-                <p className="text-[10px] text-white/40 font-bold uppercase tracking-wider">Latency</p>
+                <p className="text-[10px] text-white/40 font-bold uppercase tracking-wider">
+                  Latency
+                </p>
                 <div className="flex items-center gap-1.5">
                   <Activity className="w-4 h-4 text-emerald-400/80" />
                   <span className="text-sm font-bold text-white">
@@ -111,21 +120,21 @@ export function IngestionOverlay() {
 
             {/* Ingestion Meta */}
             {importStatus === 'importing' && (
-               <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-sky-500/10 border border-sky-500/20">
-                 <div className="w-1.5 h-1.5 rounded-full bg-sky-400 animate-pulse" />
-                 <span className="text-[10px] text-sky-400 font-bold uppercase tracking-widest">
-                   Live Broadcast Active
-                 </span>
-               </div>
+              <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-sky-500/10 border border-sky-500/20">
+                <div className="w-1.5 h-1.5 rounded-full bg-sky-400 animate-pulse" />
+                <span className="text-[10px] text-sky-400 font-bold uppercase tracking-widest">
+                  Live Broadcast Active
+                </span>
+              </div>
             )}
-            
+
             {importStatus === 'completed' && (
-               <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
-                 <CheckCircle className="w-3 h-3 text-emerald-400" />
-                 <span className="text-[10px] text-emerald-400 font-bold uppercase tracking-widest">
-                   Ingestion Certified
-                 </span>
-               </div>
+              <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+                <CheckCircle className="w-3 h-3 text-emerald-400" />
+                <span className="text-[10px] text-emerald-400 font-bold uppercase tracking-widest">
+                  Ingestion Certified
+                </span>
+              </div>
             )}
 
             {/* Phase 5: Needs Confirmation (Indigo Accent) */}
@@ -139,8 +148,8 @@ export function IngestionOverlay() {
                 </div>
                 <div className="flex flex-wrap gap-1.5">
                   {activeJob.efficiency_metadata.needs_confirmation.map((header) => (
-                    <span 
-                      key={header} 
+                    <span
+                      key={header}
                       className="px-2 py-0.5 rounded text-[9px] font-bold bg-indigo-500/10 text-indigo-300 border border-indigo-500/20"
                     >
                       {header}

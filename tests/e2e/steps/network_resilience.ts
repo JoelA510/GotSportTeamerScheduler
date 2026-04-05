@@ -4,69 +4,85 @@ import { expect } from '@playwright/test';
 const { Given, When, Then } = createBdd();
 
 Given('the user has modified the {string} roster', async ({ page }, teamName: string) => {
-    // CRITICAL FIX: Go to root first to set origin, then set localStorage
-    await page.goto('/');
-    
-    // Wait for the app to initialize and set the active org in localStorage
-    await expect(page.getByRole('heading', { name: /League Management|Dashboard/i }).first()).toBeVisible({ timeout: 15000 });
-    
-    await page.evaluate(() => localStorage.setItem('dashboardActiveStep', '2'));
+  // CRITICAL FIX: Go to root first to set origin, then set localStorage
+  await page.goto('/');
 
-    // Inject a mock pending override so the Sync button becomes active
-    await page.evaluate((tName) => {
-        const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
-        const orgId = localStorage.getItem('squadlogic_active_org') || 'org-1';
-        db.scheduler_runs = db.scheduler_runs || [];
-        
-        // Remove any existing 'team' runs for this mock org to ensure this one is picked up
-        db.scheduler_runs = db.scheduler_runs.filter((r: any) => !(r.organization_id === orgId && r.run_type === 'team'));
-        
-        db.scheduler_runs.push({
-            id: 'mock-run-1',
-            organization_id: orgId,
-            run_type: 'team',
-            status: 'completed',
-            results: { 
-                teams: [{ id: 't1', name: tName, division_id: 'U10' }],
-                teamsByDivision: { 'U10': [{ id: 't1', name: tName, division_id: 'U10' }] },
-                team_players: []
-            },
-            created_at: new Date().toISOString()
-        });
-        sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
-        window.__MOCK_DB__ = db;
-    }, teamName);
+  // Wait for the app to initialize and set the active org in localStorage
+  await expect(
+    page.getByRole('heading', { name: /League Management|Dashboard/i }).first()
+  ).toBeVisible({ timeout: 15000 });
 
-    await page.goto('/teams');
-    await expect(page.getByRole('heading', { name: /Teaming & Analysis/i }).first()).toBeVisible({ timeout: 15000 });
+  await page.evaluate(() => localStorage.setItem('dashboardActiveStep', '2'));
+
+  // Inject a mock pending override so the Sync button becomes active
+  await page.evaluate((tName) => {
+    const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
+    const orgId = localStorage.getItem('squadlogic_active_org') || 'org-1';
+    db.scheduler_runs = db.scheduler_runs || [];
+
+    // Remove any existing 'team' runs for this mock org to ensure this one is picked up
+    db.scheduler_runs = db.scheduler_runs.filter(
+      (r: any) => !(r.organization_id === orgId && r.run_type === 'team')
+    );
+
+    db.scheduler_runs.push({
+      id: 'mock-run-1',
+      organization_id: orgId,
+      run_type: 'team',
+      status: 'completed',
+      results: {
+        teams: [{ id: 't1', name: tName, division_id: 'U10' }],
+        teamsByDivision: { U10: [{ id: 't1', name: tName, division_id: 'U10' }] },
+        team_players: [],
+      },
+      created_at: new Date().toISOString(),
+    });
+    sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
+    window.__MOCK_DB__ = db;
+  }, teamName);
+
+  await page.goto('/teams');
+  await expect(page.getByRole('heading', { name: /Teaming & Analysis/i }).first()).toBeVisible({
+    timeout: 15000,
+  });
 });
 
 When('the application attempts to sync the changes', async ({ page }) => {
-    const syncBtn = page.getByRole('button', { name: /Sync to Supabase/i }).first();
-    await expect(syncBtn).toBeVisible({ timeout: 10000 });
-    await syncBtn.click({ force: true });
+  const syncBtn = page.getByRole('button', { name: /Sync to Supabase/i }).first();
+  await expect(syncBtn).toBeVisible({ timeout: 10000 });
+  await syncBtn.click({ force: true });
 });
 
 When('the network connection drops or the API returns a 504 Timeout', async ({ page, context }) => {
-    // CRITICAL FIX: Use Playwright's native offline simulation to truly kill the browser's network
-    await context.setOffline(true);
+  // CRITICAL FIX: Use Playwright's native offline simulation to truly kill the browser's network
+  await context.setOffline(true);
 });
 
 Then('the user should see a {string} banner', async ({ page }, expectedBanner: string) => {
-    // Map feature file text to actual app text
-    const textToFind = expectedBanner.includes('Sync Failed') ? 'Failed to fetch' : expectedBanner;
-    await expect(page.getByText(textToFind, { exact: false }).first()).toBeVisible({ timeout: 15000 });
+  // Map feature file text to actual app text
+  const textToFind = expectedBanner.includes('Sync Failed') ? 'Failed to fetch' : expectedBanner;
+  await expect(page.getByText(textToFind, { exact: false }).first()).toBeVisible({
+    timeout: 15000,
+  });
 });
 
-Then('the {string} card should remain in its newly modified state locally', async ({ page, context }, teamName: string) => {
+Then(
+  'the {string} card should remain in its newly modified state locally',
+  async ({ page, context }, teamName: string) => {
     // Reveal the team cards by entering Edit Mode since the new UI hides them behind a toggle
     await page.getByRole('button', { name: /Edit Mode/i }).click();
 
     // Verify optimistic UI holds state despite API failure (the team is still rendered)
     // The UI renders "U10" and "Lightning" separately. Just look for the team name part.
     const shortName = teamName.replace('U10 ', '');
-    await expect(page.locator('.bg-bg-surface').filter({ hasText: new RegExp(shortName, 'i') }).first()).toBeVisible({ timeout: 15000 });
-    
+    await expect(
+      page
+        .locator('.bg-bg-surface')
+        .filter({ hasText: new RegExp(shortName, 'i') })
+        .first()
+    ).toBeVisible({ timeout: 15000 });
+
     // Restore network connection so subsequent tests in this worker don't fail
     await context.setOffline(false);
-});
+  }
+);

@@ -76,7 +76,9 @@ describe('GameConflictBanner', () => {
   test('displays warning messages', () => {
     render(<GameConflictBanner warnings={ALL_WARNINGS} />);
     expect(screen.getByText('Field v1 has overlapping games')).toBeInTheDocument();
-    expect(screen.getByText('Coach coach-a has overlapping games across teams')).toBeInTheDocument();
+    expect(
+      screen.getByText('Coach coach-a has overlapping games across teams')
+    ).toBeInTheDocument();
   });
 
   test('hard conflicts render before soft warnings', () => {

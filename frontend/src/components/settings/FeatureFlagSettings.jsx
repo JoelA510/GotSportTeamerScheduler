@@ -40,11 +40,13 @@ export default function FeatureFlagSettings() {
   const flagMetadata = {
     [FEATURE_FLAGS.ADVANCED_FAIRNESS]: {
       label: 'Advanced Fairness Evaluation',
-      description: 'Enables multi-weighted metrics for team balancing including commute time and coach experience.',
+      description:
+        'Enables multi-weighted metrics for team balancing including commute time and coach experience.',
     },
     [FEATURE_FLAGS.COACH_OVERLAP_STRICT]: {
       label: 'Strict Coach Conflict Enforcement',
-      description: 'Prevents any scheduling that results in a coach having overlapping practice slots across multiple teams.',
+      description:
+        'Prevents any scheduling that results in a coach having overlapping practice slots across multiple teams.',
     },
     [FEATURE_FLAGS.LIST_VIEW_TOGGLE]: {
       label: 'Enable Dashboard List View',
@@ -52,7 +54,8 @@ export default function FeatureFlagSettings() {
     },
     [FEATURE_FLAGS.FUZZY_IMPORT_MAPPING]: {
       label: 'Fuzzy Data Alignment (AI)',
-      description: 'Uses intelligent string matching to automatically align CSV headers with internal data fields.',
+      description:
+        'Uses intelligent string matching to automatically align CSV headers with internal data fields.',
     },
     // Add other metadata as needed
   };
@@ -65,7 +68,9 @@ export default function FeatureFlagSettings() {
         </div>
         <div>
           <h3 className="text-lg font-medium text-text-primary">Executive Control Panel</h3>
-          <p className="text-text-muted text-sm px-1">Manage high-impact architectural toggles for your organization.</p>
+          <p className="text-text-muted text-sm px-1">
+            Manage high-impact architectural toggles for your organization.
+          </p>
         </div>
       </div>
 
@@ -85,7 +90,10 @@ export default function FeatureFlagSettings() {
       <div className="grid gap-4">
         {ALL_FLAGS.map((flag) => {
           const meta = flagMetadata[flag] || {
-            label: flag.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
+            label: flag
+              .split('_')
+              .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+              .join(' '),
             description: 'Organization-level feature toggle.',
           };
           const isEnabled = localFlags[flag] || false;
@@ -153,7 +161,9 @@ export default function FeatureFlagSettings() {
       <div className="mt-4 p-4 bg-yellow-500/5 border border-yellow-500/20 rounded-lg flex gap-3">
         <AlertTriangle className="text-yellow-500 shrink-0" size={18} />
         <p className="text-xs text-yellow-500/80 leading-relaxed">
-          <strong>Caution</strong>: Modifying these flags can fundamentally alter teaming and scheduling outcomes. ensure all stakeholders are informed before performing structural changes.
+          <strong>Caution</strong>: Modifying these flags can fundamentally alter teaming and
+          scheduling outcomes. ensure all stakeholders are informed before performing structural
+          changes.
         </p>
       </div>
     </div>

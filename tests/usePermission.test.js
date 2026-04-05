@@ -17,19 +17,25 @@ describe('usePermission', () => {
   });
 
   it('should allow Admin to manage organization', () => {
-    /** @type {any} */ (OrgContext.useOrganization).mockReturnValue({ orgMember: { role: ROLES.ADMIN } });
+    /** @type {any} */ (OrgContext.useOrganization).mockReturnValue({
+      orgMember: { role: ROLES.ADMIN },
+    });
     const { result } = renderHook(() => usePermission());
     expect(result.current.can(PERMISSIONS.MANAGE_ORGANIZATION)).toBe(true);
   });
 
   it('should deny Player from managing organization', () => {
-    /** @type {any} */ (OrgContext.useOrganization).mockReturnValue({ orgMember: { role: ROLES.PLAYER } });
+    /** @type {any} */ (OrgContext.useOrganization).mockReturnValue({
+      orgMember: { role: ROLES.PLAYER },
+    });
     const { result } = renderHook(() => usePermission());
     expect(result.current.can(PERMISSIONS.MANAGE_ORGANIZATION)).toBe(false);
   });
 
   it('should allow Player to view own team', () => {
-    /** @type {any} */ (OrgContext.useOrganization).mockReturnValue({ orgMember: { role: ROLES.PLAYER } });
+    /** @type {any} */ (OrgContext.useOrganization).mockReturnValue({
+      orgMember: { role: ROLES.PLAYER },
+    });
     const { result } = renderHook(() => usePermission());
     expect(result.current.can(PERMISSIONS.VIEW_OWN_TEAM)).toBe(true);
   });

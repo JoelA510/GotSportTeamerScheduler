@@ -14,8 +14,10 @@ import { IngestionOverlay } from '../components/ui/IngestionOverlay.jsx';
 
 export default function DashboardPage() {
   // E2E Testing Error Trigger
-  if (typeof window !== 'undefined' &&
-    (window.__FORCE_ERROR__ === true || localStorage.getItem('__FORCE_ERROR__') === 'true')) {
+  if (
+    typeof window !== 'undefined' &&
+    (window.__FORCE_ERROR__ === true || localStorage.getItem('__FORCE_ERROR__') === 'true')
+  ) {
     throw new Error('E2E Testing Error Triggered');
   }
 
@@ -58,9 +60,10 @@ export default function DashboardPage() {
   const readinessScore = useMemo(() => {
     let score = 0;
     // Check if data is imported (either via state or derived from summaries)
-    const hasData = (importedData && importedData.totalRows > 0) ||
-      (team?.summary?.totals?.playersAssigned > 0) ||
-      (team?.summary?.totals?.teams > 0) ||
+    const hasData =
+      (importedData && importedData.totalRows > 0) ||
+      team?.summary?.totals?.playersAssigned > 0 ||
+      team?.summary?.totals?.teams > 0 ||
       (importedData && importedData.data && importedData.data.length > 0);
 
     if (hasData) score += 25;
@@ -83,7 +86,12 @@ export default function DashboardPage() {
       {error && (
         <div className="bg-red-500/10 border border-red-500 text-red-500 p-4 rounded-md mb-4 flex justify-between items-center">
           <span>{error}</span>
-          <button onClick={() => setError(null)} className="text-red-500 hover:text-red-700 font-bold">✕</button>
+          <button
+            onClick={() => setError(null)}
+            className="text-red-500 hover:text-red-700 font-bold"
+          >
+            ✕
+          </button>
         </div>
       )}
 
@@ -151,9 +159,7 @@ export default function DashboardPage() {
                   <Users size={14} />
                   Total Players
                 </span>
-                <span className="font-mono text-text-primary">
-                  {importedData?.totalRows || 0}
-                </span>
+                <span className="font-mono text-text-primary">{importedData?.totalRows || 0}</span>
               </div>
 
               <div className="flex justify-between items-center">
@@ -161,9 +167,7 @@ export default function DashboardPage() {
                   <Trophy size={14} />
                   Total Teams
                 </span>
-                <span className="font-mono text-text-primary">
-                  {team?.totals?.teamCount || 0}
-                </span>
+                <span className="font-mono text-text-primary">{team?.totals?.teamCount || 0}</span>
               </div>
 
               {/* Readiness Score */}
@@ -172,24 +176,26 @@ export default function DashboardPage() {
                   <span className="text-text-muted text-sm font-semibold">Readiness Score</span>
                   <span
                     data-testid="readiness-score"
-                    className={`font-mono text-sm font-bold ${readinessScore === 100
-                      ? 'text-status-success'
-                      : readinessScore >= 50
-                        ? 'text-status-warning'
-                        : 'text-text-muted'
-                      }`}
+                    className={`font-mono text-sm font-bold ${
+                      readinessScore === 100
+                        ? 'text-status-success'
+                        : readinessScore >= 50
+                          ? 'text-status-warning'
+                          : 'text-text-muted'
+                    }`}
                   >
                     {readinessScore}%
                   </span>
                 </div>
                 <div className="w-full h-2.5 bg-bg-surface rounded-full overflow-hidden">
                   <div
-                    className={`h-full rounded-full transition-all duration-700 ease-out ${readinessScore === 100
-                      ? 'bg-status-success shadow-[0_0_10px_var(--color-status-success-glow)]'
-                      : readinessScore >= 50
-                        ? 'bg-status-warning shadow-[0_0_10px_var(--color-status-warning-glow)]'
-                        : 'bg-brand-400 shadow-[0_0_10px_var(--color-primary-glow)]'
-                      }`}
+                    className={`h-full rounded-full transition-all duration-700 ease-out ${
+                      readinessScore === 100
+                        ? 'bg-status-success shadow-[0_0_10px_var(--color-status-success-glow)]'
+                        : readinessScore >= 50
+                          ? 'bg-status-warning shadow-[0_0_10px_var(--color-status-warning-glow)]'
+                          : 'bg-brand-400 shadow-[0_0_10px_var(--color-primary-glow)]'
+                    }`}
                     style={{ width: `${readinessScore}%` }}
                   />
                 </div>
@@ -204,10 +210,11 @@ export default function DashboardPage() {
                   ].map((item) => (
                     <div key={item.label} className="flex items-center gap-2 text-xs">
                       <div
-                        className={`w-1.5 h-1.5 rounded-full ${item.done
-                          ? 'bg-status-success shadow-[0_0_5px_var(--color-status-success-glow)]'
-                          : 'bg-text-muted opacity-40'
-                          }`}
+                        className={`w-1.5 h-1.5 rounded-full ${
+                          item.done
+                            ? 'bg-status-success shadow-[0_0_5px_var(--color-status-success-glow)]'
+                            : 'bg-text-muted opacity-40'
+                        }`}
                       />
                       <span className={item.done ? 'text-text-secondary' : 'text-text-muted'}>
                         {item.label}
@@ -254,7 +261,7 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
-      
+
       <FeatureGuard flag={FEATURE_FLAGS.ENTERPRISE_OVERLAYS}>
         <IngestionOverlay />
       </FeatureGuard>

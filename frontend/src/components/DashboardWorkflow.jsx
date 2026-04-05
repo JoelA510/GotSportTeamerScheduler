@@ -179,8 +179,8 @@ const DashboardWorkflow = ({
               </div>
             ) : (
               <>
-                <FeatureGuard 
-                  flag={FEATURE_FLAGS.ACCESSIBILITY_LIST_VIEW} 
+                <FeatureGuard
+                  flag={FEATURE_FLAGS.ACCESSIBILITY_LIST_VIEW}
                   fallback={
                     <TeamOverviewPanel
                       totals={teamData.totals}

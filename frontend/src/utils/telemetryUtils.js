@@ -43,9 +43,21 @@ export const HEADER_ALIASES = {
  * Core Immortality: System-critical fields that cannot be shadowed.
  */
 export const RESERVED_KEYS = new Set([
-  'id', 'org_id', 'organization_id', 'created_at', 'updated_at', 
-  'email', 'first_name', 'last_name', 'phone', 'full_name', 
-  'status', 'profile_id', 'user_id', 'team_id', 'division_id'
+  'id',
+  'org_id',
+  'organization_id',
+  'created_at',
+  'updated_at',
+  'email',
+  'first_name',
+  'last_name',
+  'phone',
+  'full_name',
+  'status',
+  'profile_id',
+  'user_id',
+  'team_id',
+  'division_id',
 ]);
 
 // Phase 5 Hardening: Explicit list of native database columns for Players, Coaches, and Teams
@@ -53,9 +65,18 @@ export const SYSTEM_COLUMNS = new Set([
   ...Object.values(HEADER_ALIASES),
   ...RESERVED_KEYS,
   // Add additional mission-critical native columns not in the alias map
-  'org_id', 'id', 'created_at', 'updated_at', 'status',
-  'willing_to_coach', 'buddy_request', 'medical_info', 'skill_tier',
-  'gotsport_id', 'division_name', 'organization_name'
+  'org_id',
+  'id',
+  'created_at',
+  'updated_at',
+  'status',
+  'willing_to_coach',
+  'buddy_request',
+  'medical_info',
+  'skill_tier',
+  'gotsport_id',
+  'division_name',
+  'organization_name',
 ]);
 
 /**
@@ -71,7 +92,7 @@ function getSimilarity(s1, s2) {
   }
   const longerLength = longer.length;
   if (longerLength === 0) return 1.0;
-  
+
   const distance = editDistance(longer, shorter);
   return (longerLength - distance) / parseFloat(longerLength);
 }
@@ -79,7 +100,7 @@ function getSimilarity(s1, s2) {
 function editDistance(s1, s2) {
   s1 = s1.toLowerCase();
   s2 = s2.toLowerCase();
-  const costs = new Array();
+  const costs = [];
   for (let i = 0; i <= s1.length; i++) {
     let lastValue = i;
     for (let j = 0; j <= s2.length; j++) {
@@ -192,7 +213,7 @@ export function matchHeaders(headers, telemetryLogs = [], customSchema = {}) {
     }
 
     // D. Exact Match (Universal System Keys) - O(1)
-    if (maxScore < 1.0 && KNOWN_TARGET_KEYS.has(h)) {
+    if (maxScore < 1.0 && SYSTEM_COLUMNS.has(h)) {
       bestMatch = h;
       maxScore = 1.0;
       reason = `Exact System Match: '${rawHeader}'`;
@@ -205,7 +226,7 @@ export function matchHeaders(headers, telemetryLogs = [], customSchema = {}) {
         if (RESERVED_KEYS.has(customKey)) continue;
 
         const similarity = getSimilarity(h, customKey.toLowerCase());
-        
+
         // Governance: Levenshtein threshold 0.85
         if (similarity > 0.85 && similarity > maxScore) {
           bestMatch = customKey;

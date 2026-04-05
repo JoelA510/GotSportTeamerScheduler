@@ -198,7 +198,7 @@ describe.skipIf(!canRun)('Staging Supabase Integration', () => {
       const res = await safeFetch(`${edgeFunctionBase}/team-persistence`, {
         method: 'OPTIONS',
         headers: {
-          'Origin': 'https://squadlogic.app',
+          Origin: 'https://squadlogic.app',
           'Access-Control-Request-Method': 'POST',
           apikey: SUPABASE_ANON_KEY,
         },

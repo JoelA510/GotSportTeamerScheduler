@@ -20,9 +20,12 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: {
-          'react-vendor': ['react', 'react-dom'],
+          'react-vendor': ['react', 'react-dom', 'react-router-dom'],
           'supabase-vendor': ['@supabase/supabase-js'],
           'lucide-vendor': ['lucide-react'],
+          'chart-vendor': ['recharts'],
+          'dnd-vendor': ['@dnd-kit/core', '@dnd-kit/sortable', '@dnd-kit/utilities'],
+          'virtual-vendor': ['@tanstack/react-virtual'],
         },
       },
     },

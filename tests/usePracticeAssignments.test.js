@@ -7,10 +7,10 @@ vi.mock('../frontend/src/lib/supabaseClient.js', () => ({
   supabase: {
     from: vi.fn(() => ({
       select: vi.fn(() => ({
-        eq: vi.fn()
-      }))
-    }))
-  }
+        eq: vi.fn(),
+      })),
+    })),
+  },
 }));
 
 describe('usePracticeAssignments', () => {
@@ -23,7 +23,7 @@ describe('usePracticeAssignments', () => {
   it('fetches assignments from supabase when runId is provided', async () => {
     const mockData = [
       { id: '1', team_id: 't1', run_id: 'run-123' },
-      { id: '2', team_id: 't2', run_id: 'run-123' }
+      { id: '2', team_id: 't2', run_id: 'run-123' },
     ];
 
     const mockEq = vi.fn().mockResolvedValue({ data: mockData, error: null });

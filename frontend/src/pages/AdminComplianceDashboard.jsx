@@ -105,7 +105,10 @@ export default function AdminComplianceDashboard() {
       <div className="bg-bg-surface border border-border-subtle rounded-xl p-6 shadow-md">
         <div className="flex flex-col md:flex-row justify-between items-center gap-4 mb-6">
           <div className="w-full md:w-1/3">
-            <label htmlFor="form-filter" className="block text-xs font-bold text-text-muted uppercase tracking-wider mb-2">
+            <label
+              htmlFor="form-filter"
+              className="block text-xs font-bold text-text-muted uppercase tracking-wider mb-2"
+            >
               Filter by Form
             </label>
             <select

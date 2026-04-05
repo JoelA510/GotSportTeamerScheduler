@@ -76,17 +76,17 @@ export function runScheduleEvaluations({ practice, games, schoolDayEnd, timezone
     throw new TypeError('games must be an object when provided');
   }
 
-    const practiceResult =
-      practice === undefined
-        ? null
-        : evaluatePracticeSchedule({
-            assignments: practice.assignments,
-            unassigned: practice.unassigned ?? [],
-            teams: practice.teams,
-            slots: practice.slots,
-            schoolDayEnd: practice.schoolDayEnd ?? schoolDayEnd,
-            timezone: practice.timezone ?? timezone,
-          });
+  const practiceResult =
+    practice === undefined
+      ? null
+      : evaluatePracticeSchedule({
+          assignments: practice.assignments,
+          unassigned: practice.unassigned ?? [],
+          teams: practice.teams,
+          slots: practice.slots,
+          schoolDayEnd: practice.schoolDayEnd ?? schoolDayEnd,
+          timezone: practice.timezone ?? timezone,
+        });
 
   const gameResult =
     games === undefined

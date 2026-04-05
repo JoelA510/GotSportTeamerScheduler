@@ -12,7 +12,7 @@ export class WeightedAttributeEvaluator extends BaseEvaluator {
 
   /**
    * Generates a composite score based on divergence of the team's new mean vs system mean for weighted attributes.
-   * 
+   *
    * @param {Object} context
    * @param {Object} context.player
    * @param {Object} context.team
@@ -22,8 +22,14 @@ export class WeightedAttributeEvaluator extends BaseEvaluator {
    * @returns {number} Score from 0 to 100.
    */
   evaluate(context) {
-    const { player, team, allTeams, customWeights = { skill_rating: 1.0 }, globalStats = {} } = context;
-    
+    const {
+      player,
+      team,
+      allTeams,
+      customWeights = { skill_rating: 1.0 },
+      globalStats = {},
+    } = context;
+
     // Default or empty weights handling
     let weights = customWeights;
     if (!weights || Object.keys(weights).length === 0) {
@@ -60,7 +66,7 @@ export class WeightedAttributeEvaluator extends BaseEvaluator {
     let totalDivergence = 0;
     let totalWeight = 0;
 
-    const activeTeams = allTeams.filter(t => t.players.length > 0);
+    const activeTeams = allTeams.filter((t) => t.players.length > 0);
     const systemPlayersCount = activeTeams.reduce((sum, t) => sum + t.players.length, 0) + 1;
 
     for (const [attr, weightStr] of Object.entries(weights)) {
@@ -88,18 +94,18 @@ export class WeightedAttributeEvaluator extends BaseEvaluator {
         }
       }
       totalSystemSum += playerNormVal;
-      
+
       const systemAverage = systemPlayersCount > 0 ? totalSystemSum / systemPlayersCount : 0.5;
 
       // Max possible deviation is 1 for normalized attributes
       const deviation = Math.abs(teamNewAverage - systemAverage);
-      totalDivergence += (deviation * weight);
+      totalDivergence += deviation * weight;
     }
 
     if (totalWeight === 0) return 100;
 
     const weightedAvgDivergence = totalDivergence / totalWeight;
-    
+
     // Normalize into a 0-100 score. Divergence represents percentage absolute difference.
     // E.g., a divergence of 0.2 means on average, it deviates by 20% of the entire scale.
     // If deviation is 0, score is 100.
@@ -117,7 +123,8 @@ export class WeightedAttributeEvaluator extends BaseEvaluator {
       name: this.name,
       score,
       reasons: [`Composite divergence evaluated.`],
-      warnings: score < 40 ? ['Assignment significantly shifts multidimensional team balance.'] : []
+      warnings:
+        score < 40 ? ['Assignment significantly shifts multidimensional team balance.'] : [],
     };
   }
 }

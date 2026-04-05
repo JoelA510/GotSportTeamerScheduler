@@ -206,7 +206,13 @@ test('swap resolution updates division load tracking when teams move between bas
     'coach-5': { unavailableSlotIds: ['field-c-one', 'field-d-one'] },
   };
 
-  const result = schedulePractices({ teams, slots, coachPreferences, schoolDayEnd: '16:00', timezone: 'UTC' });
+  const result = schedulePractices({
+    teams,
+    slots,
+    coachPreferences,
+    schoolDayEnd: '16:00',
+    timezone: 'UTC',
+  });
 
   assert.equal(result.unassigned.length, 0);
 

@@ -79,7 +79,11 @@ export default function TeamAnalysisPage() {
 
   // Clear generating state when the polling hook detects completion
   useEffect(() => {
-    if (team?.status === 'completed' || team?.status === 'completed_with_warnings' || team?.status === 'error') {
+    if (
+      team?.status === 'completed' ||
+      team?.status === 'completed_with_warnings' ||
+      team?.status === 'error'
+    ) {
       setIsGenerating(false);
     }
   }, [team?.status]);
@@ -101,7 +105,8 @@ export default function TeamAnalysisPage() {
           return {
             id: tp.player_id,
             name: playerDetails
-              ? `${playerDetails['First Name'] || playerDetails['first_name'] || ''} ${playerDetails['Last Name'] || playerDetails['last_name'] || ''}`.trim() || 'Unnamed Player'
+              ? `${playerDetails['First Name'] || playerDetails['first_name'] || ''} ${playerDetails['Last Name'] || playerDetails['last_name'] || ''}`.trim() ||
+                'Unnamed Player'
               : 'Unknown Player',
             skill: playerDetails?.['Skill Level'] || playerDetails?.['skill_tier'] || 'developing',
             buddyId: playerDetails?.buddyId || playerDetails?.buddy_id,
@@ -142,7 +147,8 @@ export default function TeamAnalysisPage() {
           return {
             id: tp.player_id,
             name: playerDetails
-              ? `${playerDetails['First Name'] || playerDetails['first_name'] || ''} ${playerDetails['Last Name'] || playerDetails['last_name'] || ''}`.trim() || 'Unnamed Player'
+              ? `${playerDetails['First Name'] || playerDetails['first_name'] || ''} ${playerDetails['Last Name'] || playerDetails['last_name'] || ''}`.trim() ||
+                'Unnamed Player'
               : 'Unknown Player',
             skill: playerDetails?.['Skill Level'] || playerDetails?.['skill_tier'] || 'developing',
             buddyId: playerDetails?.buddyId || playerDetails?.buddy_id,

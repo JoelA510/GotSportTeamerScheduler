@@ -29,8 +29,8 @@ export default function OutputGenerationPanel({
         const scheduleStr =
           teamPractices.length > 0
             ? teamPractices
-              .map((p) => `${p.day} at ${p.slotId.split('_').pop().slice(0, 5)} on ${p.fieldId}`)
-              .join(' and ')
+                .map((p) => `${p.day} at ${p.slotId.split('_').pop().slice(0, 5)} on ${p.fieldId}`)
+                .join(' and ')
             : 'TBD';
 
         const subject = `Welcome to the season, Coach ${team.headCoach}!`;

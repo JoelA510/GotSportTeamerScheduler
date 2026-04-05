@@ -20,13 +20,15 @@ import {
  * @param {Date} [params.now] - Clock injection for deterministic responses.
  * @returns {Promise<Object>} Normalized response for API handlers to relay.
  */
-export async function processGamePersistenceRequest({
-  supabaseClient,
-  requestBody = {},
-  user = undefined,
-  allowedRoles = undefined,
-  now = new Date(),
-} = { supabaseClient: undefined }) {
+export async function processGamePersistenceRequest(
+  {
+    supabaseClient,
+    requestBody = {},
+    user = undefined,
+    allowedRoles = undefined,
+    now = new Date(),
+  } = { supabaseClient: undefined }
+) {
   const authResult = authorizeGamePersistenceRequest({ user, allowedRoles });
   if (authResult.status !== 'authorized') {
     return authResult;

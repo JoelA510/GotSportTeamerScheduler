@@ -50,7 +50,7 @@ vi.mock('../frontend/src/contexts/AuthContext.jsx', async () => {
           isCoach: false,
         },
       },
-      children,
+      children
     );
   };
 
@@ -68,9 +68,10 @@ import {
 // ---------- Helpers ----------
 
 /** Flush microtasks + React scheduler by waiting one macro-tick inside act. */
-const flush = () => act(async () => {
-  await new Promise((r) => setTimeout(r, 10));
-});
+const flush = () =>
+  act(async () => {
+    await new Promise((r) => setTimeout(r, 10));
+  });
 
 // ---------- Tests ----------
 
@@ -111,9 +112,15 @@ describe('Auth & Organization Integration', () => {
     const store = {};
     vi.stubGlobal('localStorage', {
       getItem: vi.fn((key) => store[key] ?? null),
-      setItem: vi.fn((key, val) => { store[key] = String(val); }),
-      removeItem: vi.fn((key) => { delete store[key]; }),
-      clear: vi.fn(() => { Object.keys(store).forEach((k) => delete store[k]); }),
+      setItem: vi.fn((key, val) => {
+        store[key] = String(val);
+      }),
+      removeItem: vi.fn((key) => {
+        delete store[key];
+      }),
+      clear: vi.fn(() => {
+        Object.keys(store).forEach((k) => delete store[k]);
+      }),
     });
 
     // @ts-ignore — partial mock for test isolation

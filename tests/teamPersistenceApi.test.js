@@ -41,7 +41,11 @@ function buildTransactionStub() {
 }
 
 test('processTeamPersistenceRequest returns unauthorized when role is missing', async () => {
-  const result = await processTeamPersistenceRequest({ supabaseClient: {}, requestBody: {}, user: null });
+  const result = await processTeamPersistenceRequest({
+    supabaseClient: {},
+    requestBody: {},
+    user: null,
+  });
 
   assert.strictEqual(result.status, 'unauthorized');
   assert.match(result.message, /Authentication required/i);

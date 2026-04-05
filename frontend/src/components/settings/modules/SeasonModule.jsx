@@ -2,13 +2,8 @@ import React, { useState } from 'react';
 import { useTheme } from '../../../contexts/ThemeContext.jsx';
 
 export default function SeasonModule() {
-  const {
-    currentSeason,
-    updateCurrentSeason,
-    availableSeasons,
-    timezone,
-    updateTimezone,
-  } = useTheme();
+  const { currentSeason, updateCurrentSeason, availableSeasons, timezone, updateTimezone } =
+    useTheme();
 
   const [seasonFormat, setSeasonFormat] = useState('single');
   const [localCurrentSeason, setLocalCurrentSeason] = useState(currentSeason);
@@ -89,7 +84,10 @@ export default function SeasonModule() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div>
-          <label htmlFor="season-timezone" className="block text-sm font-medium text-text-secondary mb-2">
+          <label
+            htmlFor="season-timezone"
+            className="block text-sm font-medium text-text-secondary mb-2"
+          >
             Timezone
           </label>
           <select
@@ -107,7 +105,10 @@ export default function SeasonModule() {
         </div>
 
         <div>
-          <label htmlFor="school-day-end" className="block text-sm font-medium text-text-secondary mb-2">
+          <label
+            htmlFor="school-day-end"
+            className="block text-sm font-medium text-text-secondary mb-2"
+          >
             School Day End (Earliest Practice)
           </label>
           <input

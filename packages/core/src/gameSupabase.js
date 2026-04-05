@@ -70,12 +70,12 @@ export function buildGameAssignmentRows({ assignments, runId } = { assignments: 
  * @param {boolean} [params.upsert=false] - Whether to upsert instead of insert.
  * @returns {Promise<Array<Object> | null>} Supabase response payload.
  */
-export async function persistGameAssignments({
-  supabaseClient,
-  assignments,
-  runId = undefined,
-  upsert = false,
-} = { supabaseClient: undefined, assignments: [] }) {
+export async function persistGameAssignments(
+  { supabaseClient, assignments, runId = undefined, upsert = false } = {
+    supabaseClient: undefined,
+    assignments: [],
+  }
+) {
   if (!supabaseClient || typeof supabaseClient.from !== 'function') {
     throw new TypeError('supabaseClient with a from() method is required');
   }

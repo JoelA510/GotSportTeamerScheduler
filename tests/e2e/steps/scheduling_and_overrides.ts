@@ -22,8 +22,24 @@ Given('a set of registered players and available field slots', async ({ page }) 
     // Seed practice slots
     db.practice_slots = db.practice_slots || [];
     db.practice_slots.push(
-      { id: 'slot-1', field_id: 'field-1', day_of_week: 'tue', start_time: '17:00', end_time: '18:30', capacity: 2, organization_id: orgId },
-      { id: 'slot-2', field_id: 'field-2', day_of_week: 'thu', start_time: '17:00', end_time: '18:30', capacity: 2, organization_id: orgId }
+      {
+        id: 'slot-1',
+        field_id: 'field-1',
+        day_of_week: 'tue',
+        start_time: '17:00',
+        end_time: '18:30',
+        capacity: 2,
+        organization_id: orgId,
+      },
+      {
+        id: 'slot-2',
+        field_id: 'field-2',
+        day_of_week: 'thu',
+        start_time: '17:00',
+        end_time: '18:30',
+        capacity: 2,
+        organization_id: orgId,
+      }
     );
 
     sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
@@ -42,9 +58,13 @@ Given('coach availability and preference constraints are defined', async ({ page
     );
 
     db.coach_constraints = db.coach_constraints || [];
-    db.coach_constraints.push(
-      { id: 'cc-1', coach_id: 'coach-1', max_teams: 1, preferred_days: ['tue'], organization_id: orgId }
-    );
+    db.coach_constraints.push({
+      id: 'cc-1',
+      coach_id: 'coach-1',
+      max_teams: 1,
+      preferred_days: ['tue'],
+      organization_id: orgId,
+    });
 
     sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
   });
@@ -54,45 +74,60 @@ Given('coach availability and preference constraints are defined', async ({ page
 // Scenario 1: Automated Team Generation
 // ────────────────────────────────────────────────────────────
 
-Given(/there are (\d+) players in the (.*) division/, async ({ page }, countStr: string, division: string) => {
-  const playerCount = parseInt(countStr, 10);
-  await page.evaluate(({ count, div }) => {
-    const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
-    const orgId = localStorage.getItem('squadlogic_active_org') || 'org-1';
+Given(
+  /there are (\d+) players in the (.*) division/,
+  async ({ page }, countStr: string, division: string) => {
+    const playerCount = parseInt(countStr, 10);
+    await page.evaluate(
+      ({ count, div }) => {
+        const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
+        const orgId = localStorage.getItem('squadlogic_active_org') || 'org-1';
 
-    db.divisions = db.divisions || [];
-    db.divisions.push({ id: `div-${div}`, name: div, organization_id: orgId });
+        db.divisions = db.divisions || [];
+        db.divisions.push({ id: `div-${div}`, name: div, organization_id: orgId });
 
-    db.players = db.players || [];
-    for (let i = 1; i <= count; i++) {
-      db.players.push({
-        id: `player-${i}`,
-        first_name: `Player`,
-        last_name: `${i}`,
-        division_id: `div-${div}`,
-        organization_id: orgId,
-        skill_rating: (i % 5) + 1, // Vary skills 1-5
-        buddy_request: i % 2 === 0 ? `player-${i - 1}` : null // Create mutual pairs
-      });
-    }
-    sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
-  }, { count: playerCount, div: division });
-});
+        db.players = db.players || [];
+        for (let i = 1; i <= count; i++) {
+          db.players.push({
+            id: `player-${i}`,
+            first_name: `Player`,
+            last_name: `${i}`,
+            division_id: `div-${div}`,
+            organization_id: orgId,
+            skill_rating: (i % 5) + 1, // Vary skills 1-5
+            buddy_request: i % 2 === 0 ? `player-${i - 1}` : null, // Create mutual pairs
+          });
+        }
+        sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
+      },
+      { count: playerCount, div: division }
+    );
+  }
+);
 
 Given('a target roster size of {int}', async ({ page }, targetSize: number) => {
-  await page.evaluate(({ size }) => {
-    const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
-    const orgId = localStorage.getItem('squadlogic_active_org') || 'org-1';
+  await page.evaluate(
+    ({ size }) => {
+      const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
+      const orgId = localStorage.getItem('squadlogic_active_org') || 'org-1';
 
-    db.season_settings = db.season_settings || [];
-    const season = db.season_settings.find((s: any) => s.organization_id === orgId);
-    if (season) {
-      season.target_roster_size = size;
-    } else {
-      db.season_settings.push({ id: 'season-1', organization_id: orgId, name: 'Fall 2026', status: 'active', target_roster_size: size });
-    }
-    sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
-  }, { size: targetSize });
+      db.season_settings = db.season_settings || [];
+      const season = db.season_settings.find((s: any) => s.organization_id === orgId);
+      if (season) {
+        season.target_roster_size = size;
+      } else {
+        db.season_settings.push({
+          id: 'season-1',
+          organization_id: orgId,
+          name: 'Fall 2026',
+          status: 'active',
+          target_roster_size: size,
+        });
+      }
+      sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
+    },
+    { size: targetSize }
+  );
 });
 
 When('I trigger the team generation algorithm', async ({ page }) => {
@@ -109,7 +144,7 @@ When('I trigger the team generation algorithm', async ({ page }) => {
       generatedTeams.push({
         id: `team-gen-${i}`,
         name: `U10 Team ${i}`,
-        division_id: 'div-U10'
+        division_id: 'div-U10',
       });
       rosterBalance.push({ teamId: `team-gen-${i}`, slotsRemaining: 0, skillScore: 95 });
     }
@@ -122,17 +157,22 @@ When('I trigger the team generation algorithm', async ({ page }) => {
       status: 'completed',
       results: {
         teamsByDivision: {
-          'U10': generatedTeams
+          U10: generatedTeams,
         },
         rosterBalanceByDivision: {
-          'U10': {
-            summary: { totalPlayers: 100, totalCapacity: 100, averageFillRate: 1.0, averageSkillBalance: 95 },
-            teamStats: rosterBalance
-          }
-        }
+          U10: {
+            summary: {
+              totalPlayers: 100,
+              totalCapacity: 100,
+              averageFillRate: 1.0,
+              averageSkillBalance: 95,
+            },
+            teamStats: rosterBalance,
+          },
+        },
       },
       created_at: now,
-      completed_at: now
+      completed_at: now,
     });
 
     sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
@@ -173,8 +213,20 @@ Given('multiple teams require weekly practice slots', async ({ page }) => {
 
     db.teams = db.teams || [];
     db.teams.push(
-      { id: 'team-p1', name: 'Practice Team 1', division_id: 'div-U10', organization_id: orgId, coach_id: 'coach-1' },
-      { id: 'team-p2', name: 'Practice Team 2', division_id: 'div-U10', organization_id: orgId, coach_id: 'coach-2' }
+      {
+        id: 'team-p1',
+        name: 'Practice Team 1',
+        division_id: 'div-U10',
+        organization_id: orgId,
+        coach_id: 'coach-1',
+      },
+      {
+        id: 'team-p2',
+        name: 'Practice Team 2',
+        division_id: 'div-U10',
+        organization_id: orgId,
+        coach_id: 'coach-2',
+      }
     );
     sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
   });
@@ -208,31 +260,37 @@ When('the scheduler runs', async ({ page }) => {
       results: {
         assignments: [
           { team_id: 'team-p1', slot_id: 'slot-1', timezone_offset: '-08:00' },
-          { team_id: 'team-p2', slot_id: 'slot-2', timezone_offset: '-08:00' }
+          { team_id: 'team-p2', slot_id: 'slot-2', timezone_offset: '-08:00' },
         ],
-        metrics: { conflicts: 0, double_bookings: 0, over_capacity: 0 }
+        metrics: { conflicts: 0, double_bookings: 0, over_capacity: 0 },
       },
       created_at: now,
-      completed_at: now
+      completed_at: now,
     });
     sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
   });
 });
 
 Then('practice assignments should respect the local timezone offsets', async ({ page }) => {
-  const state = await page.evaluate(() => JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}'));
+  const state = await page.evaluate(() =>
+    JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}')
+  );
   const run = [...state.scheduler_runs].reverse().find((r: any) => r.run_type === 'practice');
   expect(run.results.assignments[0].timezone_offset).toBe('-08:00');
 });
 
 Then('no coach should be scheduled for two concurrent practices', async ({ page }) => {
-  const state = await page.evaluate(() => JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}'));
+  const state = await page.evaluate(() =>
+    JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}')
+  );
   const run = [...state.scheduler_runs].reverse().find((r: any) => r.run_type === 'practice');
   expect(run.results.metrics.double_bookings).toBe(0);
 });
 
 Then('no field slot should exceed its maximum capacity', async ({ page }) => {
-  const state = await page.evaluate(() => JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}'));
+  const state = await page.evaluate(() =>
+    JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}')
+  );
   const run = [...state.scheduler_runs].reverse().find((r: any) => r.run_type === 'practice');
   expect(run.results.metrics.over_capacity).toBe(0);
 });
@@ -250,7 +308,13 @@ Given('a list of teams in a division', async ({ page }) => {
     // Ensure at least 4 teams exist for a round-robin
     for (let i = 1; i <= 4; i++) {
       if (!db.teams.find((t: any) => t.id === `team-g${i}`)) {
-        db.teams.push({ id: `team-g${i}`, name: `Game Team ${i}`, division_id: 'div-U10', organization_id: orgId, coach_id: `coach-${i}` });
+        db.teams.push({
+          id: `team-g${i}`,
+          name: `Game Team ${i}`,
+          division_id: 'div-U10',
+          organization_id: orgId,
+          coach_id: `coach-${i}`,
+        });
       }
     }
     sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
@@ -271,7 +335,7 @@ When('I generate a round-robin game schedule', async ({ page }) => {
         home_team_id: `team-g${(i % 4) + 1}`,
         away_team_id: `team-g${((i + 1) % 4) + 1}`,
         field_id: 'field-1', // High priority field
-        time: '10:00 AM'
+        time: '10:00 AM',
       });
     }
 
@@ -290,10 +354,14 @@ When('I generate a round-robin game schedule', async ({ page }) => {
         schedule: schedule,
         // Provide both camelCase and snake_case to satisfy any mapper layer
         summary: { scheduledRate: 1.0, scheduled_rate: 1.0, unscheduledMatchups: 0 },
-        metrics: { consecutive_coach_games: 0, high_priority_field_usage: 1.0, teams_played_twice: true }
+        metrics: {
+          consecutive_coach_games: 0,
+          high_priority_field_usage: 1.0,
+          teams_played_twice: true,
+        },
       },
       created_at: timestamp,
-      completed_at: timestamp
+      completed_at: timestamp,
     });
     sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
   });
@@ -303,7 +371,11 @@ Then('every team should play every other team twice', async ({ page }) => {
   // Verify via the DOM in the Game Readiness panel
   await page.goto('/schedule/game');
   // CRITICAL FIX: Use .first() to bypass strict mode violations from hidden skeletons
-  const scheduledMetric = page.locator('.game-readiness .metric-item').filter({ hasText: 'Scheduled' }).locator('dd').first();
+  const scheduledMetric = page
+    .locator('.game-readiness .metric-item')
+    .filter({ hasText: 'Scheduled' })
+    .locator('dd')
+    .first();
   // The mock data sets scheduledRate to 1.0 (100%)
   await expect(scheduledMetric).toHaveText('100%', { timeout: 15000 });
 });
@@ -311,7 +383,10 @@ Then('every team should play every other team twice', async ({ page }) => {
 Then('games should be assigned to the highest priority field slots first', async ({ page }) => {
   // The UI does not currently display field priority metrics.
   // We verify the schedule generated without unscheduled matchups.
-  const unscheduledMetric = page.locator('.metric-item').filter({ hasText: 'Unscheduled' }).locator('dd');
+  const unscheduledMetric = page
+    .locator('.metric-item')
+    .filter({ hasText: 'Unscheduled' })
+    .locator('dd');
   await expect(unscheduledMetric).toHaveText('0');
 });
 
@@ -338,41 +413,44 @@ Given('I am viewing the Team Roster page', async ({ page }) => {
       status: 'completed',
       results: {
         teamsByDivision: {
-          'U10': [
+          U10: [
             { id: 'team-a', name: 'Team A', division_id: 'U10' },
-            { id: 'team-b', name: 'Team B', division_id: 'U10' }
-          ]
+            { id: 'team-b', name: 'Team B', division_id: 'U10' },
+          ],
         },
-        team_players: [
-          { team_id: 'team-a', player_id: 'p1' }
-        ]
+        team_players: [{ team_id: 'team-a', player_id: 'p1' }],
       },
-      created_at: new Date().toISOString()
+      created_at: new Date().toISOString(),
     });
-    db.imports = [{ id: 'imp-1', data: { data: [{ id: 'p1', 'First Name': 'John', 'Last Name': 'Doe' }] } }];
+    db.imports = [
+      { id: 'imp-1', data: { data: [{ id: 'p1', 'First Name': 'John', 'Last Name': 'Doe' }] } },
+    ];
     sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
   });
   await page.goto('/teams');
   await page.getByRole('button', { name: /Edit Mode/i }).click();
 });
 
-When('I move a player from {string} to {string} using drag-and-drop', async ({ page }, teamA: string, teamB: string) => {
-  const sourceColumn = page.getByTestId(`team-column-team-a`);
-  const player = sourceColumn.locator('[data-testid^="player-card-"]').first();
-  
-  // Save the player's name to verify it moved
-  const playerName = await player.locator('.font-medium').first().textContent();
-  (page as any).playerMoved = playerName?.trim();
+When(
+  'I move a player from {string} to {string} using drag-and-drop',
+  async ({ page }, teamA: string, teamB: string) => {
+    const sourceColumn = page.getByTestId(`team-column-team-a`);
+    const player = sourceColumn.locator('[data-testid^="player-card-"]').first();
 
-  const targetColumn = page.locator('.bg-bg-surface\\/50').filter({ hasText: teamB }).first();
-  
-  // dnd-kit requires precise mouse movements to register the drag
-  await player.hover();
-  await page.mouse.down();
-  await page.mouse.move(10, 10); // Trigger drag start
-  await targetColumn.hover();
-  await page.mouse.up();
-});
+    // Save the player's name to verify it moved
+    const playerName = await player.locator('.font-medium').first().textContent();
+    (page as any).playerMoved = playerName?.trim();
+
+    const targetColumn = page.locator('.bg-bg-surface\\/50').filter({ hasText: teamB }).first();
+
+    // dnd-kit requires precise mouse movements to register the drag
+    await player.hover();
+    await page.mouse.down();
+    await page.mouse.move(10, 10); // Trigger drag start
+    await targetColumn.hover();
+    await page.mouse.up();
+  }
+);
 
 Then('the system should save the new player assignment', async ({ page }) => {
   const playerName = (page as any).playerMoved;
@@ -383,29 +461,44 @@ Then('the system should save the new player assignment', async ({ page }) => {
 
 Then('designate the source of this assignment as {string}', async ({ page }, source: string) => {
   const playerName = (page as any).playerMoved;
-  const playerCard = page.locator('[data-testid^="player-card-"]').filter({ hasText: playerName }).first();
+  const playerCard = page
+    .locator('[data-testid^="player-card-"]')
+    .filter({ hasText: playerName })
+    .first();
   // Verify the "manual" badge is rendered on the player card
   await expect(playerCard.getByText(source, { exact: true })).toBeVisible();
 });
 
-Then('instantly recalculate the skill balance and capacity metrics for both teams', async ({ page }) => {
-  // Verify the player count badge updated
-  const targetColumn = page.locator('.bg-bg-surface\\/50').filter({ hasText: 'Team B' }).first();
-  await expect(targetColumn.getByText(/1 Players/)).toBeVisible();
-});
+Then(
+  'instantly recalculate the skill balance and capacity metrics for both teams',
+  async ({ page }) => {
+    // Verify the player count badge updated
+    const targetColumn = page.locator('.bg-bg-surface\\/50').filter({ hasText: 'Team B' }).first();
+    await expect(targetColumn.getByText(/1 Players/)).toBeVisible();
+  }
+);
 
 Given('the automated schedule has been generated', async ({ page }) => {
   // ERADICATE NOISE: Wipe the specific tables first to ensure no competing hardcoded runs exist
   await page.evaluate(() => {
     const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
     const orgId = localStorage.getItem('squadlogic_active_org') || 'org-1';
-    
+
     db.scheduler_runs = [];
     db.practice_assignments = [];
-    
+
     // CRITICAL FIX: Add organization_id so the hooks don't filter these out
     db.teams = [{ id: 'team-a', name: 'Team A', division_id: 'div-1', organization_id: orgId }];
-    db.practice_slots = [{ id: 'slot-1', day_of_week: 'mon', start_time: '17:00', end_time: '18:30', field_id: 'field-1', organization_id: orgId }];
+    db.practice_slots = [
+      {
+        id: 'slot-1',
+        day_of_week: 'mon',
+        start_time: '17:00',
+        end_time: '18:30',
+        field_id: 'field-1',
+        organization_id: orgId,
+      },
+    ];
 
     const futureDate = new Date();
     futureDate.setFullYear(futureDate.getFullYear() + 1);
@@ -417,11 +510,11 @@ Given('the automated schedule has been generated', async ({ page }) => {
       organization_id: orgId,
       run_type: 'team',
       status: 'completed',
-      results: { 
-        teamsByDivision: { 'div-1': [{ id: 'team-a', name: 'Team A', division: 'div-1' }] }
+      results: {
+        teamsByDivision: { 'div-1': [{ id: 'team-a', name: 'Team A', division: 'div-1' }] },
       },
       created_at: timestamp,
-      completed_at: timestamp 
+      completed_at: timestamp,
     });
 
     // The Override Panel needs a PRACTICE run to populate the Slot dropdown
@@ -430,28 +523,30 @@ Given('the automated schedule has been generated', async ({ page }) => {
       organization_id: orgId,
       run_type: 'practice',
       status: 'completed',
-      results: { 
+      results: {
         assignments: [{ team_id: 'team-a', slot_id: 'slot-1', source: 'auto' }],
         // The override panel needs baseSlotDistribution to populate the slot dropdown
-        baseSlotDistribution: [{ baseSlotId: 'slot-1', day: 'Monday', totalCapacity: 10, totalAssigned: 1 }]
+        baseSlotDistribution: [
+          { baseSlotId: 'slot-1', day: 'Monday', totalCapacity: 10, totalAssigned: 1 },
+        ],
       },
       created_at: timestamp,
-      completed_at: timestamp 
+      completed_at: timestamp,
     });
 
     db.practice_assignments.push({
-        id: 'assign-team-a',
-        run_id: 'active-practice-run-id',
-        team_id: 'team-a',
-        slot_id: 'slot-1',
-        source: 'auto',
-        teams: { name: 'Team A', divisions: { name: 'U10' } },
-        practiceSlots: { 
-            dayOfWeek: 'mon', 
-            startTime: '17:00', 
-            endTime: '18:30', 
-            fields: { name: 'Main Field' } 
-        }
+      id: 'assign-team-a',
+      run_id: 'active-practice-run-id',
+      team_id: 'team-a',
+      slot_id: 'slot-1',
+      source: 'auto',
+      teams: { name: 'Team A', divisions: { name: 'U10' } },
+      practiceSlots: {
+        dayOfWeek: 'mon',
+        startTime: '17:00',
+        endTime: '18:30',
+        fields: { name: 'Main Field' },
+      },
     });
 
     sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
@@ -465,24 +560,32 @@ When('I manually assign a team to an alternative practice slot', async ({ page }
   await editBtn.click();
 
   // Wait for the override panel to mount
-  await expect(page.getByRole('heading', { name: /Manual Practice Overrides/i }).first()).toBeVisible({ timeout: 10000 });
+  await expect(
+    page.getByRole('heading', { name: /Manual Practice Overrides/i }).first()
+  ).toBeVisible({ timeout: 10000 });
 
   // Select the first team and the first available slot
   await page.getByTestId('team-select').selectOption({ index: 1 });
   await page.getByTestId('slot-select').selectOption({ index: 1 });
-  
+
   // Click the Assign Slot button
   await page.getByTestId('assign-slot-button').click();
 });
 
-Then('the new practice assignment is saved with the {string} source flag', async ({ page }, flag: string) => {
-  await expect(page.getByText(/Manual/i, { exact: false }).first()).toBeVisible();
-});
+Then(
+  'the new practice assignment is saved with the {string} source flag',
+  async ({ page }, flag: string) => {
+    await expect(page.getByText(/Manual/i, { exact: false }).first()).toBeVisible();
+  }
+);
 
-Then('any new coach or field capacity conflicts are immediately flagged in the UI', async ({ page }) => {
-  // Look for any conflict indicator
-  await expect(page.locator('.text-status-error, .text-status-warning').first()).toBeDefined();
-});
+Then(
+  'any new coach or field capacity conflicts are immediately flagged in the UI',
+  async ({ page }) => {
+    // Look for any conflict indicator
+    await expect(page.locator('.text-status-error, .text-status-warning').first()).toBeDefined();
+  }
+);
 
 Given('I am on the Game Scheduling page viewing an identified conflict', async ({ page }) => {
   // ── Navigate-then-seed-then-reload pattern ──────────────────────────────
@@ -503,20 +606,58 @@ Given('I am on the Game Scheduling page viewing an identified conflict', async (
     db.teams = db.teams || [];
     if (!db.teams.find((t: any) => t.id === 'team-gc1')) {
       db.teams.push(
-        { id: 'team-gc1', name: 'Conflict A', division_id: 'u8-div-id', coach_id: 'coach-gc1', organization_id: orgId },
-        { id: 'team-gc2', name: 'Conflict B', division_id: 'u8-div-id', coach_id: 'coach-gc2', organization_id: orgId },
-        { id: 'team-gc3', name: 'Conflict C', division_id: 'u8-div-id', coach_id: 'coach-gc3', organization_id: orgId },
-        { id: 'team-gc4', name: 'Conflict D', division_id: 'u8-div-id', coach_id: 'coach-gc4', organization_id: orgId }
+        {
+          id: 'team-gc1',
+          name: 'Conflict A',
+          division_id: 'u8-div-id',
+          coach_id: 'coach-gc1',
+          organization_id: orgId,
+        },
+        {
+          id: 'team-gc2',
+          name: 'Conflict B',
+          division_id: 'u8-div-id',
+          coach_id: 'coach-gc2',
+          organization_id: orgId,
+        },
+        {
+          id: 'team-gc3',
+          name: 'Conflict C',
+          division_id: 'u8-div-id',
+          coach_id: 'coach-gc3',
+          organization_id: orgId,
+        },
+        {
+          id: 'team-gc4',
+          name: 'Conflict D',
+          division_id: 'u8-div-id',
+          coach_id: 'coach-gc4',
+          organization_id: orgId,
+        }
       );
     }
 
     // Ensure two fields exist
     db.fields = db.fields || [];
     if (!db.fields.find((f: any) => f.id === 'v1')) {
-      db.fields.push({ id: 'v1', name: 'Field 1', organization_id: orgId, active: true, surface_type: 'Grass', size: '11v11' });
+      db.fields.push({
+        id: 'v1',
+        name: 'Field 1',
+        organization_id: orgId,
+        active: true,
+        surface_type: 'Grass',
+        size: '11v11',
+      });
     }
     if (!db.fields.find((f: any) => f.id === 'v2')) {
-      db.fields.push({ id: 'v2', name: 'Field 2', organization_id: orgId, active: true, surface_type: 'Turf', size: '7v7' });
+      db.fields.push({
+        id: 'v2',
+        name: 'Field 2',
+        organization_id: orgId,
+        active: true,
+        surface_type: 'Turf',
+        size: '7v7',
+      });
     }
 
     // Wipe and re-seed to avoid stale data from prior tests
@@ -532,7 +673,7 @@ Given('I am on the Game Scheduling page viewing an identified conflict', async (
         end: '2026-04-04T09:00:00Z',
         week_index: 1,
         division: 'U8 Coed',
-        assignment_source: 'auto'
+        assignment_source: 'auto',
       },
       {
         id: 'ga-conflict-2',
@@ -545,15 +686,43 @@ Given('I am on the Game Scheduling page viewing an identified conflict', async (
         end: '2026-04-04T09:00:00Z',
         week_index: 1,
         division: 'U8 Coed',
-        assignment_source: 'auto'
-      }
+        assignment_source: 'auto',
+      },
     ];
 
     db.game_slots = [
-      { id: 'gs-1', field_id: 'v1', start: '2026-04-04T08:00:00Z', end: '2026-04-04T09:00:00Z', capacity: 1, organization_id: orgId },
-      { id: 'gs-2', field_id: 'v1', start: '2026-04-04T09:30:00Z', end: '2026-04-04T10:30:00Z', capacity: 1, organization_id: orgId },
-      { id: 'gs-3', field_id: 'v2', start: '2026-04-04T08:00:00Z', end: '2026-04-04T09:00:00Z', capacity: 1, organization_id: orgId },
-      { id: 'gs-4', field_id: 'v2', start: '2026-04-04T09:30:00Z', end: '2026-04-04T10:30:00Z', capacity: 1, organization_id: orgId }
+      {
+        id: 'gs-1',
+        field_id: 'v1',
+        start: '2026-04-04T08:00:00Z',
+        end: '2026-04-04T09:00:00Z',
+        capacity: 1,
+        organization_id: orgId,
+      },
+      {
+        id: 'gs-2',
+        field_id: 'v1',
+        start: '2026-04-04T09:30:00Z',
+        end: '2026-04-04T10:30:00Z',
+        capacity: 1,
+        organization_id: orgId,
+      },
+      {
+        id: 'gs-3',
+        field_id: 'v2',
+        start: '2026-04-04T08:00:00Z',
+        end: '2026-04-04T09:00:00Z',
+        capacity: 1,
+        organization_id: orgId,
+      },
+      {
+        id: 'gs-4',
+        field_id: 'v2',
+        start: '2026-04-04T09:30:00Z',
+        end: '2026-04-04T10:30:00Z',
+        capacity: 1,
+        organization_id: orgId,
+      },
     ];
 
     // Wipe scheduler_runs and inject ONLY our conflict run with a future timestamp
@@ -569,7 +738,7 @@ Given('I am on the Game Scheduling page viewing an identified conflict', async (
       status: 'completed',
       results: { summary: { scheduledRate: 1.0, unscheduledMatchups: 0 } },
       created_at: timestamp,
-      completed_at: timestamp
+      completed_at: timestamp,
     });
 
     sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
@@ -612,12 +781,15 @@ When('I drag a game to a new time slot to resolve the conflict', async ({ page }
   await page.mouse.up();
 });
 
-Then('the system validates the new slot against field availability and coach schedules', async ({ page }) => {
-  // After the drag, the game card should now be in the target drop zone (v2:gs-3)
-  const targetZone = page.getByTestId('drop-zone-v2:gs-3');
-  // The game card should have moved here
-  await expect(targetZone.getByTestId('game-card-ga-conflict-2')).toBeVisible({ timeout: 10000 });
-});
+Then(
+  'the system validates the new slot against field availability and coach schedules',
+  async ({ page }) => {
+    // After the drag, the game card should now be in the target drop zone (v2:gs-3)
+    const targetZone = page.getByTestId('drop-zone-v2:gs-3');
+    // The game card should have moved here
+    await expect(targetZone.getByTestId('game-card-ga-conflict-2')).toBeVisible({ timeout: 10000 });
+  }
+);
 
 Then('updates the game schedule if the selected slot is valid', async ({ page }) => {
   // Verify the assignment was updated with manual source in the mock DB
@@ -640,14 +812,22 @@ Given('a practice schedule has been generated', async ({ page }) => {
   // ERADICATE NOISE: Wipe the specific tables first to ensure no competing hardcoded runs exist
   await page.evaluate(() => {
     const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
-    
+
     // Clear out existing runs and assignments to ensure our injected one is the only "Latest"
     db.scheduler_runs = [];
     db.practice_assignments = [];
-    
+
     // 1. Seed base tables
     db.teams = [{ id: 'team-a', name: 'Team A', division_id: 'div-1' }];
-    db.practice_slots = [{ id: 'slot-1', day_of_week: 'mon', start_time: '17:00', end_time: '18:30', field_id: 'field-1' }];
+    db.practice_slots = [
+      {
+        id: 'slot-1',
+        day_of_week: 'mon',
+        start_time: '17:00',
+        end_time: '18:30',
+        field_id: 'field-1',
+      },
+    ];
 
     // 2. Inject the run with a massive future timestamp to guarantee it wins any sort
     const futureDate = new Date();
@@ -660,24 +840,24 @@ Given('a practice schedule has been generated', async ({ page }) => {
       status: 'completed',
       results: { assignments: [{ team_id: 'team-a', slot_id: 'slot-1', source: 'auto' }] },
       created_at: timestamp,
-      completed_at: timestamp 
+      completed_at: timestamp,
     });
 
     // 3. Link the assignment directly to that future-dated run
     db.practice_assignments.push({
-        id: 'assign-team-a',
-        run_id: 'active-run-id',
-        team_id: 'team-a',
-        slot_id: 'slot-1',
-        source: 'auto',
-        // Hydrate objects to bypass any mock client join failures
-        teams: { name: 'Team A', divisions: { name: 'U10' } },
-        practiceSlots: { 
-            dayOfWeek: 'mon', 
-            startTime: '17:00', 
-            endTime: '18:30', 
-            fields: { name: 'Main Field' } 
-        }
+      id: 'assign-team-a',
+      run_id: 'active-run-id',
+      team_id: 'team-a',
+      slot_id: 'slot-1',
+      source: 'auto',
+      // Hydrate objects to bypass any mock client join failures
+      teams: { name: 'Team A', divisions: { name: 'U10' } },
+      practiceSlots: {
+        dayOfWeek: 'mon',
+        startTime: '17:00',
+        endTime: '18:30',
+        fields: { name: 'Main Field' },
+      },
     });
 
     sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
@@ -690,25 +870,31 @@ Given('I am on the Practice Scheduling page', async ({ page }) => {
   await expect(page.locator('table').first()).toBeVisible({ timeout: 15000 });
 });
 
-When('I click the {string} icon on for {string}', async ({ page }, iconName: string, teamName: string) => {
-  // Wait for the table to load, then target the specific row
-  const row = page.locator('tr').filter({ hasText: teamName }).first();
-  await row.waitFor({ state: 'visible', timeout: 10000 });
-  
-  // Target the specific button inside that row
-  await row.locator('button').first().click({ force: true });
-});
+When(
+  'I click the {string} icon on for {string}',
+  async ({ page }, iconName: string, teamName: string) => {
+    // Wait for the table to load, then target the specific row
+    const row = page.locator('tr').filter({ hasText: teamName }).first();
+    await row.waitFor({ state: 'visible', timeout: 10000 });
 
-Then('the assignment for {string} should show a {string} status', async ({ page }, teamName: string, status: string) => {
-  const row = page.locator('tr').filter({ hasText: teamName }).first();
-  
-  // Based on PracticeAssignmentList.jsx, check for the specific locked CSS class applied to the button
-  await expect(row.locator('button.text-amber-500').first()).toBeVisible({ timeout: 5000 });
-});
+    // Target the specific button inside that row
+    await row.locator('button').first().click({ force: true });
+  }
+);
+
+Then(
+  'the assignment for {string} should show a {string} status',
+  async ({ page }, teamName: string, status: string) => {
+    const row = page.locator('tr').filter({ hasText: teamName }).first();
+
+    // Based on PracticeAssignmentList.jsx, check for the specific locked CSS class applied to the button
+    await expect(row.locator('button.text-amber-500').first()).toBeVisible({ timeout: 5000 });
+  }
+);
 
 Then('the lock state should be persisted to the database', async ({ page }) => {
   // Since we removed the DB check, we verify the UI state remains stable after a brief wait
-  await page.waitForTimeout(1000); 
+  await page.waitForTimeout(1000);
   const row = page.locator('tr').filter({ hasText: 'Team A' }).first();
   await expect(row.locator('button.text-amber-500').first()).toBeVisible();
 });
@@ -716,18 +902,18 @@ Then('the lock state should be persisted to the database', async ({ page }) => {
 Given('{string} has a locked practice assignment', async ({ page }, teamName: string) => {
   // Ensure we are on the page for the second scenario
   if (!page.url().includes('/schedule/practice')) {
-      await page.goto('/schedule/practice');
+    await page.goto('/schedule/practice');
   }
-  
+
   const row = page.locator('tr').filter({ hasText: teamName }).first();
   await row.waitFor({ state: 'visible', timeout: 10000 });
-  
+
   // If it's not locked yet (amber text), click the toggle to lock it
   const lockBtn = row.locator('button').first();
   const isLocked = await lockBtn.evaluate((el) => el.classList.contains('text-amber-500'));
   if (!isLocked) {
-      await lockBtn.click({ force: true });
-      await expect(row.locator('button.text-amber-500').first()).toBeVisible();
+    await lockBtn.click({ force: true });
+    await expect(row.locator('button.text-amber-500').first()).toBeVisible();
   }
 });
 
@@ -738,5 +924,7 @@ Then('the assignment for {string} should remain unchanged', async ({ page }, tea
 
 Then('other unlocked assignments should be updated by the engine', async ({ page }) => {
   // Visually check for success indicator of the scheduling engine running in the UI
-  await expect(page.locator('.text-status-success, text="Schedule Generated"').first()).toBeVisible({ timeout: 5000 }).catch(() => {});
+  await expect(page.locator('.text-status-success, text="Schedule Generated"').first())
+    .toBeVisible({ timeout: 5000 })
+    .catch(() => {});
 });
