@@ -1,3 +1,6 @@
+[← Back to Documentation Index](docs/README.md)
+---
+
 # Phase 2: GameScheduleGrid — Component Architecture Design
 
 > [!NOTE]

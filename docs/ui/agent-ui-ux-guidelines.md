@@ -1,3 +1,6 @@
+[← Back to Documentation Index](docs/README.md)
+---
+
 # Agent Workspace Instructions – UI/UX Guidelines (SquadLogic)
 
 ## Role and Scope

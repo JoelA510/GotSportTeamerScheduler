@@ -1,3 +1,6 @@
+[← Back to Documentation Index](docs/README.md)
+---
+
 # SquadLogic Expansion Execution Pack
 
 This folder contains the active roadmap, architectural decisions, and execution log for the SquadLogic platform.

@@ -99,10 +99,25 @@ npm run frontend:build
 
 ## 📄 Documentation
 
-Detailed architecture, roadmap, and testing plans can be found in the `docs/` directory.
+The SquadLogic knowledge base is organized into a categorized hierarchy for high discoverability and audit traceability. For the full index, see [**`docs/README.md`**](docs/README.md).
 
-- [Expansion Roadmap](docs/expansion/03_ROADMAP.md)
-- [E2E Testing Master Plan](docs/testing/e2e_master_plan.md)
+### 🏛️ Architecture & Core
+- [**System Overview**](docs/architecture/system-overview.md): Full tech stack and system diagram.
+- [**Frontend Architecture**](docs/architecture/frontend-architecture.md): Routing, hooks, and component patterns.
+- [**Data Modeling**](docs/architecture/data-modeling.md): Database schema and multi-tenant isolation.
+- [**Scheduling Algorithms**](docs/architecture/game-scheduling.md): Team generation and field allocation logic.
+
+### 🛡️ Security & Governance
+- [**Security Audit Plan**](docs/security/audit_and_remediation_plan.md): Hardening steps and remediation status.
+- [**RLS Policies**](docs/security/rls-policies.md): Strict multi-tenant data access rules.
+- [**Master Audit Certification**](docs/governance/master-audit-certification.md): Enterprise-ready production readiness report.
+- [**Governance Framework**](docs/governance/governance-framework.md): RPC enforcement and Zod validation mandates.
+
+### 🚀 Roadmap & Operations
+- [**Expansion Roadmap**](docs/expansion/03_ROADMAP.md): Current sprint and milestone tracking.
+- [**E2E Testing Master Plan**](docs/testing/e2e_master_plan.md): Playwright-BDD coverage and quality gates.
+- [**Production Cutover**](docs/operations/production-cutover.md): Deployment runbook and environment setup.
+- [**UI/UX Guidelines**](docs/ui/agent-ui-ux-guidelines.md): "Deep Space Glass" standards and accessibility requirements.
 
 ## 📄 License
 

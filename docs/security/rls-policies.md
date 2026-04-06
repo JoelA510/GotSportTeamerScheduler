@@ -1,3 +1,6 @@
+[← Back to Documentation Index](docs/README.md)
+---
+
 # Row Level Security — Implementation Reference
 
 This document describes the **implemented** Row Level Security (RLS) strategy for the SquadLogic Supabase PostgreSQL database. All policies are organization-scoped via the `is_org_member()` helper function.

@@ -1,3 +1,6 @@
+[← Back to Documentation Index](docs/README.md)
+---
+
 # Phase 4 Governance Framework: Enterprise Overlays & Real-time Sync
 
 **Role**: Lead Enterprise Architect & Governance Supervisor  

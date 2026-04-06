@@ -1,3 +1,6 @@
+[← Back to Documentation Index](docs/README.md)
+---
+
 # Epic 19: Launch & Beyond — From 57 Green Tests to v1.0 Production
 
 > [!NOTE]
@@ -82,7 +85,7 @@ Connect the repo to Vercel (the existing `vercel.json` already has security head
 - Verify the GitHub Actions workflow runs and passes
 - Verify Vercel preview deployment is accessible
 - Merge to `main`, verify production deployment
-- Document the CI/CD setup in `docs/ci-cd.md`
+- Document the CI/CD setup in [**`claude.md#11-ci-pipeline`**](../../claude.md#11-ci-pipeline)
 
 ---
 

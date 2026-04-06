@@ -1,3 +1,6 @@
+[← Back to Documentation Index](docs/README.md)
+---
+
 # SquadLogic v1.0 — Production Cutover Runbook
 
 **Date written:** 2026-04-01

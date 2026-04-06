@@ -1,3 +1,6 @@
+[← Back to Documentation Index](docs/README.md)
+---
+
 # Production Roadmap: SquadLogic Expansion
 
 **Strategy**: "Full Suite Realization". We have successfully executed the expansion roadmap, transforming SquadLogic from a core scheduling engine into a comprehensive club management platform. The v1.0 MVP is now feature-complete and production-ready.

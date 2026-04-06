@@ -1,3 +1,6 @@
+[← Back to Documentation Index](docs/README.md)
+---
+
 # Phase 3 Governance Framework: Smart Ingestion & Telemetry
 
 **Role**: Lead Enterprise Architect & Governance Supervisor  

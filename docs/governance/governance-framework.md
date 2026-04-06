@@ -1,3 +1,6 @@
+[← Back to Documentation Index](docs/README.md)
+---
+
 # Phase 2 Governance Framework: Smart Ingestion & Modularity
 
 **Role**: Lead Enterprise Architect & Governance Supervisor  

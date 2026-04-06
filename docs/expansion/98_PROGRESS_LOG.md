@@ -1,3 +1,6 @@
+[← Back to Documentation Index](docs/README.md)
+---
+
 # Progress Log
 
 | Date       | Step/PR   | Status   | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                |

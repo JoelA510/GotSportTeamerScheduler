@@ -37,10 +37,12 @@ When executing the roadmap file-by-file, follow this exact loop:
 2. **Read Epic File**: Ingest the relevant `docs/expansion/1X_EPIC_*.md`.
 3. **Process PRs Sequentially**: Create branch → Implement → Verify → Self-Review (using `docs/expansion/05_CODE_REVIEW_TEMPLATE.md`) → Commit → Mark Complete.
 
-### Critical Rules (Agent Behavior)
-
 - **Refactor First**: If a PR requires modifying existing messy code, refactor it into a clean utility/hook _before_ adding new logic.
 - **Test-Driven**: Create the test file `tests/<feature>.test.js` _before_ or _during_ implementation.
+- **RPC Enforcement**: Dedicated RPCs are mandatory for all state persistence; direct table `upsert` is discouraged for sensitive domain state.
+- **Schema Rigidity**: All data updates must be governed by Zod schema validation to ensure platform integrity.
+- **Audit Immutability**: All administrative or state-altering actions must be captured in the `audit_log` with full metadata.
+- **Accessibility First**: WCAG 2.2 AA conformance is a core requirement; use screen-reader-friendly semantic HTML and focus management.
 - **No Broken Main**: Never leave the `main` branch in a broken state.
 - **Blocker Handling**: If a hard blocker (missing secret, impassable error) occurs, write to `docs/expansion/98_PROGRESS_LOG.md` or `99_BLOCKERS.md` and stop.
 
@@ -305,20 +307,24 @@ Plus a **weekly keepalive** cron job (Monday noon UTC) that pings the Supabase R
 
 ## 13. Key Documentation Reference
 
-| Document               | Path                                          |
-| ---------------------- | --------------------------------------------- |
-| Architecture overview  | `docs/architecture.md`                        |
-| Frontend architecture  | `docs/frontend-architecture.md`               |
-| Data modeling          | `docs/data-modeling.md`                       |
-| RLS policies           | `docs/rls-policies.md`                        |
-| Requirements           | `docs/archive/requirements.md`                |
-| E2E master plan        | `docs/testing/e2e_master_plan.md`             |
-| Test checklist         | `TEST_CHECKLIST.md`                           |
-| Expansion roadmap      | `docs/expansion/03_ROADMAP.md`                |
-| Agent runbook (full)   | `docs/expansion/04_AGENT_RUNBOOK.md`          |
-| Code review template   | `docs/expansion/05_CODE_REVIEW_TEMPLATE.md`   |
-| Progress log           | `docs/expansion/98_PROGRESS_LOG.md`           |
-| Security audit         | `docs/security/audit_and_remediation_plan.md` |
-| UI/UX agent guidelines | `docs/ui/agent-ui-ux-guidelines.md`           |
-| UI/UX checklist        | `docs/ui/ui-ux-pass.md`                       |
-| UI/UX polish guide     | `docs/ui/ui-ux-polish.md`                     |
+| Document               | Path                                           |
+| ---------------------- | ---------------------------------------------- |
+| **Documentation Index**| `docs/README.md`                               |
+| Architecture overview  | `docs/architecture/system-overview.md`         |
+| Frontend architecture  | `docs/architecture/frontend-architecture.md`   |
+| Data modeling          | `docs/architecture/data-modeling.md`           |
+| Output Generation      | `docs/architecture/output-generation.md`       |
+| Governance Framework   | `docs/governance/governance-framework.md`      |
+| Master Audit Cert      | `docs/governance/master-audit-certification.md`|
+| RLS policies           | `docs/security/rls-policies.md`                |
+| Security Audit Plan    | `docs/security/audit_and_remediation_plan.md`  |
+| E2E master plan        | `docs/testing/e2e_master_plan.md`              |
+| Expansion roadmap      | `docs/expansion/03_ROADMAP.md`                 |
+| Agent runbook (full)   | `docs/expansion/04_AGENT_RUNBOOK.md`           |
+| Code review template   | `docs/expansion/05_CODE_REVIEW_TEMPLATE.md`    |
+| Progress log           | `docs/expansion/98_PROGRESS_LOG.md`            |
+| UI/UX agent guidelines | `docs/ui/agent-ui-ux-guidelines.md`            |
+| UI/UX checklist        | `docs/ui/ui-ux-pass.md`                        |
+| UI/UX polish guide     | `docs/ui/ui-ux-polish.md`                      |
+| Requirements Archive   | `docs/archive/requirements.md`                 |
+| SQL Migration Index    | `docs/sql/README.md`                           |

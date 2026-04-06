@@ -1,3 +1,6 @@
+[← Back to Documentation Index](docs/README.md)
+---
+
 # Data Modeling & Storage Plan
 
 ## Core Database Schema

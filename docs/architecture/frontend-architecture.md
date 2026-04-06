@@ -1,3 +1,6 @@
+[← Back to Documentation Index](docs/README.md)
+---
+
 # Front-End Architecture
 
 This document describes the implemented frontend architecture for SquadLogic. The frontend is a React 19 Single-Page Application built with Vite 6, deployed as a static bundle on Vercel.

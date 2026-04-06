@@ -1,3 +1,6 @@
+[← Back to Documentation Index](docs/README.md)
+---
+
 > [!NOTE]
 > **Implementation Status: PARTIALLY COMPLETE**
 >
@@ -48,7 +51,7 @@ once schedules are finalized. It assumes team, practice, game, and evaluation da
 
 ## TeamSnap Integration Considerations
 
-- Maintain a mapping of Supabase fields to TeamSnap import columns; document this in the repository (`docs/teamsnap-mapping.md`,
+- Maintain a mapping of Supabase fields to TeamSnap import columns (referenced historically as `teamsnap-mapping.md`, see [**`docs/README.md`**](../README.md) for current active indices).
   to be created once TeamSnap templates are confirmed).
 - Allow administrators to choose between bulk import (single master CSV) or individual team files depending on TeamSnap's
   requirements for the season.

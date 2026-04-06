@@ -2,11 +2,11 @@
 
 Below are the files to add to your repo.
 
-- `docs/ui-ux-pass.md` – canonical full checklist.
-- `docs/ui-ux-pass-summary.md` – P0/P1 quick version.
-- `docs/ui-ux-rules.json` – optional structured rules.
-- `docs/agent-gemini-ui-ux.md` – workspace instructions for Gemini 3 in Antigravity.
-- `docs/agent-codex-ui-ux.md` – project instructions for Codex-GPT5.1-Pro.
+- `docs/ui/ui-ux-pass.md` – canonical full checklist.
+- `docs/ui/ui-ux-pass-summary.md` – P0/P1 quick version.
+- `docs/ui/ui-ux-rules.json` – optional structured rules.
+- `docs/ui/agent-ui-ux-guidelines.md` – workspace instructions for Gemini 3 in Antigravity.
+- `docs/ui/agent-ui-ux-guidelines.md` – project instructions (consolidated).
 
 ---
 
@@ -689,12 +689,12 @@ Use this when you need a quick version of the full checklist.
 
 You are a senior product engineer working in the Antigravity AI IDE on this repository.
 
-When the user asks you to perform any "UI/UX pass" or mentions "UI/UX checklist", you must follow `docs/ui-ux-pass.md` as the canonical source of truth.
+When the user asks you to perform any "UI/UX pass" or mentions "UI/UX checklist", you must follow `docs/ui/ui-ux-pass.md` as the canonical source of truth.
 
 ## Rules
 
 1. **Use the checklist document**
-   - Before making UI changes, open `docs/ui-ux-pass.md`.
+   - Before making UI changes, open `docs/ui/ui-ux-pass.md`.
    - Use it as the primary reference for layout, typography, color/contrast, components, navigation, forms, tables, accessibility, motion, content, and performance.
 
 2. **Flows and components**
@@ -740,7 +740,7 @@ For each, explicitly open the relevant files and the checklist, then perform the
 
 You are assisting with frontend development for this repository using React, TypeScript, Tailwind CSS, and related tooling.
 
-When the user mentions a "UI/UX pass" or "UI/UX checklist", treat `docs/ui-ux-pass.md` as the canonical design guideline for UI work.
+When the user mentions a "UI/UX pass" or "UI/UX checklist", treat `docs/ui/ui-ux-pass.md` as the canonical design guideline for UI work.
 
 ## Frontend Guidance
 
@@ -753,7 +753,7 @@ When the user mentions a "UI/UX pass" or "UI/UX checklist", treat `docs/ui-ux-pa
 
 When a request involves a UI/UX pass:
 
-1. Open `docs/ui-ux-pass.md`.
+1. Open `docs/ui/ui-ux-pass.md`.
 2. Open the relevant component(s) and page(s).
 3. Compare the current implementation with the checklist.
 4. Produce a short report that:
@@ -773,9 +773,9 @@ When a request involves a UI/UX pass:
 
 Examples of user prompts you should handle using the UI/UX checklist:
 
-- "Open `docs/ui-ux-pass.md` and run a UI/UX pass on `src/components/ShipmentDetails.tsx`. Fix P0 and P1 issues."
+- "Open `docs/ui/ui-ux-pass.md` and run a UI/UX pass on `src/components/ShipmentDetails.tsx`. Fix P0 and P1 issues."
 - "Review all modals for accessibility according to the checklist and apply necessary changes."
 - "Update the tables in `src/pages/InvoicesPage.tsx` to comply with our UI/UX guidelines."
 
-In each case, start by reading `docs/ui-ux-pass.md`, then apply it to the requested files.
+In each case, start by reading `docs/ui/ui-ux-pass.md`, then apply it to the requested files.
 ```

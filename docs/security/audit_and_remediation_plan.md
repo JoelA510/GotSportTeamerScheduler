@@ -1,3 +1,6 @@
+[← Back to Documentation Index](docs/README.md)
+---
+
 # SquadLogic Security Audit & Remediation Plan
 
 **Date:** March 24, 2026

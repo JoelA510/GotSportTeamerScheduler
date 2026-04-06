@@ -1,3 +1,6 @@
+[← Back to Documentation Index](docs/README.md)
+---
+
 # SquadLogic: Enterprise UI/UX & Modularity Master Plan
 
 ### Phase 1: Architectural Foundation (Modularity, State, & Security)

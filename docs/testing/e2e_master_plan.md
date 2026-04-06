@@ -1,3 +1,6 @@
+[← Back to Documentation Index](docs/README.md)
+---
+
 # E2E Testing Master Plan: SquadLogic
 
 ## Philosophy: UI-Driven, Behavior-Driven Development (BDD)

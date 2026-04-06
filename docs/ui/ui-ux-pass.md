@@ -1,3 +1,6 @@
+[← Back to Documentation Index](docs/README.md)
+---
+
 # UI / UX Pass Checklist – SquadLogic (Web)
 
 ## 0. Purpose and Scope

@@ -1,3 +1,6 @@
+[← Back to Documentation Index](docs/README.md)
+---
+
 # Accessibility Compliance Log: SquadLogic Stage 4 Audit
 
 ## 📌 Audit Overview

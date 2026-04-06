@@ -1,3 +1,6 @@
+[← Back to Documentation Index](docs/README.md)
+---
+
 # UI / UX Visual Polish – SquadLogic
 
 This document defines **P2-level visual polish rules** for the SquadLogic web client (React + Vite + CSS). Use it _after_ P0/P1 issues from `docs/ui/ui-ux-pass.md` are resolved or explicitly logged.

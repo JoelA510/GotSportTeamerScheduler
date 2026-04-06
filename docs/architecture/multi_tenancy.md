@@ -1,3 +1,6 @@
+[← Back to Documentation Index](docs/README.md)
+---
+
 # Multi-Tenancy Implementation
 
 ## Overview

@@ -1,3 +1,6 @@
+[← Back to Documentation Index](docs/README.md)
+---
+
 # Phase 5 Governance Framework: Dynamic Data Schemas & Enterprise Mapping
 
 **Role**: Lead Enterprise Architect & Governance Supervisor  
