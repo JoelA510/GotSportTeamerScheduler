@@ -12,6 +12,7 @@ import {
   Building2,
   ClipboardCheck,
   ClipboardList,
+  History,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext.jsx';
 import { useOrganization } from '../contexts/OrganizationContext.jsx';
@@ -37,6 +38,7 @@ const navItems = [
     path: '/admin/compliance',
   },
   { id: 'forms', label: 'Registration Forms', icon: ClipboardList, path: '/admin/forms' },
+  { id: 'audit', label: 'Audit Explorer', icon: History, path: '/admin/audit-logs' },
   { id: 'settings', label: 'Settings', icon: Settings, path: '/settings' },
 ];
 
@@ -66,11 +68,11 @@ export default function Sidebar({ isOpen, toggleSidebar }) {
 
       <aside
         className={`
-                fixed md:static left-0 z-[100]
+                fixed md:sticky left-0 z-[100]
                 w-72 bg-bg-app border-r border-border-subtle
                 transform transition-transform duration-300 ease-in-out
                 ${isOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
-                ${isImpersonating ? 'top-[48px] h-[calc(100vh-48px)] md:top-0' : 'inset-y-0'}
+                ${isImpersonating ? 'top-12 h-[calc(100vh-48px)]' : 'top-0 h-screen'}
                 flex flex-col
             `}
       >

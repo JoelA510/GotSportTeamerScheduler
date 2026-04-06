@@ -41,10 +41,14 @@ export default function BrandingModule() {
           await supabase.rpc('record_audit_event', {
             p_organization_id: orgId,
             p_action: 'settings.logo_updated',
-            p_metadata: { 
+            p_metadata: {
               user_id: user.id,
-              is_impersonating: isImpersonating
-            }
+              ...(isImpersonating && {
+                target_user_id: user.profile.id,
+                impersonated_by: user.id,
+                admin_email: user.email,
+              }),
+            },
           });
         }
       } catch (error) {
@@ -54,8 +58,29 @@ export default function BrandingModule() {
     reader.readAsDataURL(file);
   };
 
+  const logColorChange = async (type, value) => {
+    const orgId = user?.profile?.organization_id;
+    if (orgId) {
+      await supabase.rpc('record_audit_event', {
+        p_organization_id: orgId,
+        p_action: 'settings.color_updated',
+        p_metadata: {
+          user_id: user.id,
+          color_type: type,
+          new_value: value,
+          ...(isImpersonating && {
+            target_user_id: user.profile.id,
+            impersonated_by: user.id,
+            admin_email: user.email,
+          }),
+        },
+      });
+    }
+  };
+
   const handleColorSuggestionClick = (color, type) => {
     updateClubColors({ [type]: color });
+    logColorChange(type, color);
   };
 
   return (
@@ -76,7 +101,11 @@ export default function BrandingModule() {
                   id="primary-accent"
                   type="color"
                   value={clubColors.primaryAccent}
-                  onChange={(e) => updateClubColors({ primaryAccent: e.target.value })}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    updateClubColors({ primaryAccent: val });
+                  }}
+                  onBlur={(e) => logColorChange('primaryAccent', e.target.value)}
                   className="w-12 h-12 rounded cursor-pointer bg-transparent border-0 p-0"
                 />
                 <span className="text-text-muted font-mono">{clubColors.primaryAccent}</span>
@@ -96,7 +125,11 @@ export default function BrandingModule() {
                   id="secondary-accent"
                   type="color"
                   value={clubColors.secondaryAccent}
-                  onChange={(e) => updateClubColors({ secondaryAccent: e.target.value })}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    updateClubColors({ secondaryAccent: val });
+                  }}
+                  onBlur={(e) => logColorChange('secondaryAccent', e.target.value)}
                   className="w-12 h-12 rounded cursor-pointer bg-transparent border-0 p-0"
                 />
                 <span className="text-text-muted font-mono">{clubColors.secondaryAccent}</span>
@@ -114,7 +147,11 @@ export default function BrandingModule() {
                   id="background-1"
                   type="color"
                   value={clubColors.background1}
-                  onChange={(e) => updateClubColors({ background1: e.target.value })}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    updateClubColors({ background1: val });
+                  }}
+                  onBlur={(e) => logColorChange('background1', e.target.value)}
                   className="w-12 h-12 rounded cursor-pointer bg-transparent border-0 p-0"
                 />
                 <span className="text-text-muted font-mono">{clubColors.background1}</span>
@@ -132,7 +169,11 @@ export default function BrandingModule() {
                   id="background-2"
                   type="color"
                   value={clubColors.background2}
-                  onChange={(e) => updateClubColors({ background2: e.target.value })}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    updateClubColors({ background2: val });
+                  }}
+                  onBlur={(e) => logColorChange('background2', e.target.value)}
                   className="w-12 h-12 rounded cursor-pointer bg-transparent border-0 p-0"
                 />
                 <span className="text-text-muted font-mono">{clubColors.background2}</span>

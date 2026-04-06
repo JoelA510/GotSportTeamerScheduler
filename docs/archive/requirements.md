@@ -1,7 +1,7 @@
 > [!NOTE]
 > **HISTORICAL — Pre-Development Planning Document**
 >
-> This requirements document was created during the initial planning phase. All requirements listed below have been implemented in the v1.0 MVP. For the current system architecture, see `docs/architecture.md`. For feature details, see the `docs/expansion/` epic files.
+> This requirements document was created during the initial planning phase. All requirements listed below have been implemented in the v1.0 MVP. For the current system architecture, see `docs/architecture/system-overview.md`. For feature details, see the `docs/expansion/` epic files.
 
 # SquadLogic — Requirements & Stakeholder Interviews and Scope Definition
 

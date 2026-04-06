@@ -20,7 +20,7 @@ once schedules are finalized. It assumes team, practice, game, and evaluation da
 - Provide administrators with tooling to preview, download, and confirm outputs before sharing them externally.
 - Maintain traceability so exports can be regenerated consistently after manual adjustments or reruns.
 - Ensure exports only surface necessary information, redacting sensitive player data per the data governance principles in
-  `docs/data-modeling.md`.
+  `docs/architecture/data-modeling.md`.
 
 ## Export Architecture
 

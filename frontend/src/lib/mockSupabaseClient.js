@@ -11,6 +11,36 @@ import { logger } from './logger.js';
 // ── Mock Data Seed ──────────────────────────────────────────────────────────
 const initialMockData = {
   organizations: [{ id: 'org-1', name: 'SquadLogic FC' }],
+  audit_log: [
+    {
+      id: 'audit-1',
+      organization_id: 'org-1',
+      action: 'auth.password_updated',
+      user_id: 'mock-admin-id',
+      metadata: { user_id: 'mock-admin-id' },
+      created_at: new Date(Date.now() - 3600000 * 2).toISOString(),
+    },
+    {
+      id: 'audit-2',
+      organization_id: 'org-1',
+      action: 'impersonation.started',
+      user_id: 'mock-admin-id',
+      metadata: { target_user_id: 'mock-coach-id', admin_email: 'admin@example.com' },
+      created_at: new Date(Date.now() - 3600000).toISOString(),
+    },
+    {
+      id: 'audit-3',
+      organization_id: 'org-1',
+      action: 'settings.flags_updated',
+      user_id: 'mock-coach-id',
+      metadata: { 
+        impersonated_by: 'mock-admin-id', 
+        admin_email: 'admin@example.com',
+        flags: { ADVANCED_FAIRNESS: true }
+      },
+      created_at: new Date(Date.now() - 1800000).toISOString(),
+    }
+  ],
   profiles: [
     {
       id: 'mock-admin-id',
@@ -648,9 +678,41 @@ const createMockQuery = (table, data = null) => {
     },
     eq: (col, val) => {
       results = results.filter((item) => {
+        // Handle JSONB path navigation (e.g. 'metadata->user_id')
+        if (col.includes('->')) {
+          const parts = col.split('->');
+          let current = item;
+          for (const part of parts) {
+            current = current?.[part];
+          }
+          return String(current) === String(val);
+        }
         const itemVal = item[col] !== undefined ? String(item[col]) : 'undefined';
         return itemVal === String(val);
       });
+      return proxy;
+    },
+    not: (col, op, val) => {
+      results = results.filter((item) => {
+        let current = item;
+        if (col.includes('->')) {
+          const parts = col.split('->');
+          for (const part of parts) {
+            current = current?.[part];
+          }
+        } else {
+          current = item[col];
+        }
+
+        if (op === 'is' && val === null) {
+          return current !== null && current !== undefined;
+        }
+        return String(current) !== String(val);
+      });
+      return proxy;
+    },
+    range: (from, to) => {
+      results = results.slice(from, to + 1);
       return proxy;
     },
     lte: (col, val) => {
@@ -812,6 +874,25 @@ export const mockSupabase = {
         if (stored) session = JSON.parse(stored);
       }
       return { data: { user: session?.user || null }, error: null };
+    },
+    signUp: async ({ email, password, options }) => {
+      if (password.length < 12) {
+        return { 
+          data: { user: null, session: null }, 
+          error: { message: 'Database error: Password must be at least 12 characters long (Postgres Trigger Enforcement)' } 
+        };
+      }
+      // Simple mock signup
+      return { data: { user: { id: 'new-user', email }, session: null }, error: null };
+    },
+    updateUser: async ({ password, data }) => {
+      if (password && password.length < 12) {
+        return { 
+          data: { user: null }, 
+          error: { message: 'Database error: Password must be at least 12 characters long (Postgres Trigger Enforcement)' } 
+        };
+      }
+      return { data: { user: { id: 'mock-admin-id' } }, error: null };
     },
   },
   from: (table) => {
@@ -1148,6 +1229,31 @@ export const mockSupabase = {
       saveDB(db);
 
       return { data: registration.id, error: null };
+    }
+
+    if (name === 'record_audit_event') {
+      const { 
+        p_organization_id, 
+        p_action, 
+        p_user_id, 
+        p_metadata 
+      } = params;
+
+      const event = {
+        id: Math.random().toString(36).substr(2, 9),
+        organization_id: p_organization_id,
+        action: p_action,
+        user_id: p_user_id,
+        metadata: p_metadata,
+        created_at: new Date().toISOString(),
+      };
+
+      db.audit_log = db.audit_log || [];
+      db.audit_log.push(event);
+      saveDB(db);
+
+      logger.log(`[Mock Supabase] Audit event recorded: ${p_action}`, event);
+      return { data: true, error: null };
     }
 
     return { data: null, error: { message: `Mock RPC ${name} not implemented` } };

@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient.js';
+import { useAuth } from '../contexts/AuthContext.jsx';
 import { useOrganization } from '../contexts/OrganizationContext.jsx';
 import { PERMISSIONS, hasPermission } from '../constants/permissions.js';
 import { Trophy, CheckCircle2 } from 'lucide-react';
 import { logger } from '../lib/logger.js';
 
 export default function LeagueStandings() {
+  const { user, isImpersonating } = useAuth();
   const { currentOrganization, orgMember } = useOrganization();
 
   const [standings, setStandings] = useState([]);
@@ -92,6 +94,22 @@ export default function LeagueStandings() {
         .order('goal_differential', { ascending: false });
 
       if (standingsData) setStandings(standingsData);
+
+      // Audit score update
+      await supabase.rpc('record_audit_event', {
+        p_organization_id: currentOrganization?.id,
+        p_action: 'competition.score_updated',
+        p_metadata: {
+          game_id: gameId,
+          score_home: hScore,
+          score_away: aScore,
+          ...(isImpersonating && {
+            target_user_id: user.profile.id,
+            impersonated_by: user.id,
+            admin_email: user.email,
+          }),
+        },
+      });
     } catch (err) {
       logger.error(err);
       alert('Failed to update score.');

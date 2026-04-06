@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { User } from 'lucide-react';
 import Button from '../../ui/Button.jsx';
 import { useAuth } from '../../../contexts/AuthContext.jsx';
+import { supabase } from '../../../lib/supabaseClient.js';
 
 export default function AccountModule() {
   const { user, updatePassword, isImpersonating } = useAuth();
@@ -27,6 +28,23 @@ export default function AccountModule() {
     try {
       const { error } = await updatePassword(newPassword);
       if (error) throw error;
+
+      // Audit the change
+      const orgId = user?.profile?.organization_id;
+      if (orgId) {
+        await supabase.rpc('record_audit_event', {
+          p_organization_id: orgId,
+          p_action: 'auth.password_updated',
+          p_metadata: {
+            user_id: user?.id,
+            ...(isImpersonating && {
+              target_user_id: user?.profile?.id,
+              impersonated_by: user?.id,
+              admin_email: user?.email,
+            }),
+          },
+        });
+      }
 
       setMessage({ type: 'success', text: 'Password updated successfully' });
       setNewPassword('');
@@ -54,13 +72,17 @@ export default function AccountModule() {
         <h3 className="text-lg font-medium text-text-primary mb-4">Change Password</h3>
         <form onSubmit={handlePasswordUpdate} className="space-y-4">
           {message.text && (
-            <div className={`p-3 rounded-lg text-sm ${
-              message.type === 'success' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-red-500/10 text-red-400 border border-red-500/20'
-            }`}>
+            <div
+              className={`p-3 rounded-lg text-sm ${
+                message.type === 'success'
+                  ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                  : 'bg-red-500/10 text-red-400 border border-red-500/20'
+              }`}
+            >
               {message.text}
             </div>
           )}
-          
+
           <div>
             <label
               htmlFor="new-password"
@@ -94,10 +116,10 @@ export default function AccountModule() {
               className="w-full bg-bg-surface border border-border-subtle rounded-lg px-4 py-3 text-text-primary focus:outline-none focus:border-brand-400 transition-colors"
             />
           </div>
-          <Button 
-            type="submit" 
-            variant="secondary" 
-            size="sm" 
+          <Button
+            type="submit"
+            variant="secondary"
+            size="sm"
             loading={loading}
             disabled={loading || !newPassword || !confirmPassword}
           >

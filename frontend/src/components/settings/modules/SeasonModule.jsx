@@ -19,7 +19,24 @@ export default function SeasonModule() {
         </label>
         <div className="grid grid-cols-2 gap-4">
           <button
-            onClick={() => setSeasonFormat('single')}
+            onClick={async () => {
+              setSeasonFormat('single');
+              const orgId = user?.profile?.organization_id;
+              if (orgId) {
+                await supabase.rpc('record_audit_event', {
+                  p_organization_id: orgId,
+                  p_action: 'settings.season_format_updated',
+                  p_metadata: {
+                    format: 'single',
+                    ...(isImpersonating && {
+                      target_user_id: user.profile.id,
+                      impersonated_by: user.id,
+                      admin_email: user.email,
+                    }),
+                  },
+                });
+              }
+            }}
             className={`p-4 rounded-lg border text-left transition-all ${
               seasonFormat === 'single'
                 ? 'bg-brand-glow border-brand-400 text-text-primary'
@@ -27,10 +44,27 @@ export default function SeasonModule() {
             }`}
           >
             <div className="font-medium mb-1">Single Year</div>
-            <div className="text-xs opacity-70">e.g., "2025", "2026"</div>
+            <div className="text-xs opacity-70">e.g., &quot;2025&quot;, &quot;2026&quot;</div>
           </button>
           <button
-            onClick={() => setSeasonFormat('dual')}
+            onClick={async () => {
+              setSeasonFormat('dual');
+              const orgId = user?.profile?.organization_id;
+              if (orgId) {
+                await supabase.rpc('record_audit_event', {
+                  p_organization_id: orgId,
+                  p_action: 'settings.season_format_updated',
+                  p_metadata: {
+                    format: 'dual',
+                    ...(isImpersonating && {
+                      target_user_id: user.profile.id,
+                      impersonated_by: user.id,
+                      admin_email: user.email,
+                    }),
+                  },
+                });
+              }
+            }}
             className={`p-4 rounded-lg border text-left transition-all ${
               seasonFormat === 'dual'
                 ? 'bg-brand-glow border-brand-400 text-text-primary'
@@ -38,7 +72,7 @@ export default function SeasonModule() {
             }`}
           >
             <div className="font-medium mb-1">Dual Year</div>
-            <div className="text-xs opacity-70">e.g., "2025-2026"</div>
+            <div className="text-xs opacity-70">e.g., &quot;2025-2026&quot;</div>
           </button>
         </div>
       </div>
@@ -64,11 +98,14 @@ export default function SeasonModule() {
                   await supabase.rpc('record_audit_event', {
                     p_organization_id: orgId,
                     p_action: 'settings.season_updated',
-                    p_metadata: { 
+                    p_metadata: {
                       season: localCurrentSeason,
-                      user_id: user.id,
-                      is_impersonating: isImpersonating
-                    }
+                      ...(isImpersonating && {
+                        target_user_id: user.profile.id,
+                        impersonated_by: user.id,
+                        admin_email: user.email,
+                      }),
+                    },
                   });
                 }
               }}
@@ -110,7 +147,25 @@ export default function SeasonModule() {
           <select
             id="season-timezone"
             value={timezone}
-            onChange={(e) => updateTimezone(e.target.value)}
+            onChange={async (e) => {
+              const newVal = e.target.value;
+              updateTimezone(newVal);
+              const orgId = user?.profile?.organization_id;
+              if (orgId) {
+                await supabase.rpc('record_audit_event', {
+                  p_organization_id: orgId,
+                  p_action: 'settings.timezone_updated',
+                  p_metadata: {
+                    timezone: newVal,
+                    ...(isImpersonating && {
+                      target_user_id: user.profile.id,
+                      impersonated_by: user.id,
+                      admin_email: user.email,
+                    }),
+                  },
+                });
+              }
+            }}
             className="w-full bg-bg-surface border border-border-subtle rounded-lg px-4 py-3 text-text-primary focus:outline-none focus:border-brand-400 transition-colors"
           >
             <option value="America/Los_Angeles">Pacific Time (US & Canada)</option>

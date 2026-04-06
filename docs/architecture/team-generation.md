@@ -1,6 +1,6 @@
 # Team Generation Design
 
-This document translates the roadmap's team formation phase into actionable plans for the SquadLogic. It assumes the data model described in `docs/data-modeling.md` and focuses on how to transform cleaned registration data into balanced rosters that honor mutual buddy requests and coach commitments.
+This document translates the roadmap's team formation phase into actionable plans for the SquadLogic. It assumes the data model described in `docs/architecture/data-modeling.md` and focuses on how to transform cleaned registration data into balanced rosters that honor mutual buddy requests and coach commitments.
 
 ## Objectives
 

@@ -5,7 +5,7 @@
 
 # Practice Scheduling Design
 
-This document elaborates the roadmap's practice scheduling phase into concrete implementation guidance. It assumes the data schema defined in `docs/data-modeling.md` and that teams have already been generated as described in `docs/team-generation.md`.
+This document elaborates the roadmap's practice scheduling phase into concrete implementation guidance. It assumes the data schema defined in `docs/architecture/data-modeling.md` and that teams have already been generated as described in `docs/architecture/team-generation.md`.
 
 ## Objectives
 

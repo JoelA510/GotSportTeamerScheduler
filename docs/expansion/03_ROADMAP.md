@@ -40,6 +40,6 @@ Following v1.0 completion, additional work was executed under **Epic 19: Launch 
 
 - **Phase 1 (Completed):** GitHub Actions CI/CD pipeline, Vercel production deployment, branch protection
 - **Phase 2 (Completed):** Interactive Game Schedule Grid with drag-and-drop (`@dnd-kit`), real-time validation, and the final E2E test scenario
-- **Phase 3 (Completed):** Live Supabase backend transition, Edge Function deployment, production cutover (see `PRODUCTION_CUTOVER_RUNBOOK.md`)
+- **Phase 3 (Completed):** Live Supabase backend transition, Edge Function deployment, production cutover (see `docs/operations/production-cutover.md`)
 
 Additionally, a comprehensive **4-phase security audit** was completed in March 2026 (see `docs/security/audit_and_remediation_plan.md`).

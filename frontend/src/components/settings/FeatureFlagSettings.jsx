@@ -1,12 +1,15 @@
 import React, { useState } from 'react';
 import { Shield, Info, AlertTriangle } from 'lucide-react';
 import { useOrganization } from '../../contexts/OrganizationContext.jsx';
+import { useAuth } from '../../contexts/AuthContext.jsx';
+import { supabase } from '../../lib/supabaseClient.js';
 import { FEATURE_FLAGS, ALL_FLAGS } from '../../constants/featureFlags.js';
 import Button from '../ui/Button.jsx';
 import LoadingScreen from '../LoadingScreen.jsx';
 
 export default function FeatureFlagSettings() {
-  const { featureFlags, updateFeatureFlags, loading } = useOrganization();
+  const { featureFlags, updateFeatureFlags, loading, currentOrganization } = useOrganization();
+  const { user, isImpersonating } = useAuth();
   const [localFlags, setLocalFlags] = useState({ ...featureFlags });
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState(null);
@@ -24,11 +27,28 @@ export default function FeatureFlagSettings() {
     try {
       const result = await updateFeatureFlags(localFlags);
       if (result.success) {
+        // Audit the change
+        const orgId = currentOrganization?.id;
+        if (orgId) {
+          await supabase.rpc('record_audit_event', {
+            p_organization_id: orgId,
+            p_action: 'settings.flags_updated',
+            p_metadata: {
+              user_id: user?.id,
+              flags: localFlags,
+              ...(isImpersonating && {
+                target_user_id: user?.profile?.id,
+                impersonated_by: user?.id,
+                admin_email: user?.email,
+              }),
+            },
+          });
+        }
         setMessage({ type: 'success', text: 'Feature flags updated successfully.' });
       } else {
         setMessage({ type: 'error', text: result.error || 'Failed to update flags.' });
       }
-    } catch (err) {
+    } catch {
       setMessage({ type: 'error', text: 'An unexpected error occurred.' });
     } finally {
       setSaving(false);

@@ -90,7 +90,11 @@ export default function AdminComplianceDashboard() {
         p_metadata: {
           registration_id: regId,
           new_status: newStatus,
-          impersonated_by: isImpersonating ? user.id : null
+          ...(isImpersonating && {
+            target_user_id: user.profile.id,
+            impersonated_by: user.id,
+            admin_email: user.email
+          })
         }
       });
     } catch (err) {

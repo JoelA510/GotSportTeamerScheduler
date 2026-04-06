@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient.js';
 import { useOrganization } from '../contexts/OrganizationContext.jsx';
+import { useAuth } from '../contexts/AuthContext.jsx';
 import Button from '../components/ui/Button.jsx';
 import { Plus, Save, Trash2, ClipboardList, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { logger } from '../lib/logger.js';
 
 export default function RegistrationForms() {
   const { currentOrganization, currentSeasonSetting } = useOrganization();
+  const { user, isImpersonating } = useAuth();
   const [forms, setForms] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showEditor, setShowEditor] = useState(false);
@@ -89,6 +91,22 @@ export default function RegistrationForms() {
         },
       ]);
       if (error) throw error;
+
+      // Audit form creation
+      await supabase.rpc('record_audit_event', {
+        p_organization_id: currentOrganization.id,
+        p_action: 'registration.form_created',
+        p_metadata: {
+          title: editingForm.title,
+          season_id: editingForm.season_id,
+          field_count: editingForm.fields.length,
+          ...(isImpersonating && {
+            target_user_id: user.profile.id,
+            impersonated_by: user.id,
+            admin_email: user.email
+          })
+        }
+      });
 
       setMessage({ type: 'success', text: 'Form saved successfully!' });
       setTimeout(() => {

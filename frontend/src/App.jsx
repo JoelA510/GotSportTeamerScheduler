@@ -33,6 +33,7 @@ const LeagueStandings = lazy(() => import('./pages/LeagueStandings.jsx'));
 const SetupWizard = lazy(() => import('./pages/SetupWizard.jsx'));
 const ThemeToggle = lazy(() => import('./components/ThemeToggle.jsx'));
 const ResetPassword = lazy(() => import('./pages/ResetPassword.jsx'));
+const AuditLogPage = lazy(() => import('./pages/AuditLogPage.jsx'));
 import ShadowBanner from './components/auth/ShadowBanner.jsx';
 
 function AppContent() {
@@ -107,6 +108,14 @@ function AppContent() {
             element={
               <ProtectedRoute requiredPermission={PERMISSIONS.MANAGE_ORGANIZATION}>
                 <RegistrationForms />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/audit-logs"
+            element={
+              <ProtectedRoute requiredPermission={PERMISSIONS.MANAGE_GLOBAL_SETTINGS}>
+                <AuditLogPage />
               </ProtectedRoute>
             }
           />

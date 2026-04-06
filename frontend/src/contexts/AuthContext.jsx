@@ -76,7 +76,7 @@ export const AuthProvider = ({ children }) => {
       clearTimeout(safetyTimer);
       subscription.unsubscribe();
     };
-  }, []);
+  }, [loading]);
 
   const resetPasswordForEmail = async (email) => {
     try {
@@ -95,20 +95,34 @@ export const AuthProvider = ({ children }) => {
     try {
       const { data, error } = await supabase.auth.updateUser({
         password: newPassword,
+        data: { password_length: newPassword.length },
       });
       if (error) throw error;
 
       // Log the password update
       if (data.user) {
         // We need organization_id for audit log. Fetch if not in user profile yet.
-        const orgId = user?.profile?.organization_id || 
-                     (await supabase.from('organization_members').select('organization_id').eq('profile_id', data.user.id).single()).data?.organization_id;
+        const orgId =
+          user?.profile?.organization_id ||
+          (
+            await supabase
+              .from('organization_members')
+              .select('organization_id')
+              .eq('profile_id', data.user.id)
+              .single()
+          ).data?.organization_id;
 
         if (orgId) {
           await supabase.rpc('record_audit_event', {
             p_organization_id: orgId,
             p_action: 'auth.password_updated',
-            p_metadata: { user_id: data.user.id }
+            p_metadata: {
+              user_id: data.user.id,
+              ...(impersonatedUser && {
+                impersonated_by: user.id,
+                admin_email: user.email,
+              }),
+            },
           });
         }
       }
@@ -132,8 +146,9 @@ export const AuthProvider = ({ children }) => {
         p_action: 'impersonation.started',
         p_metadata: {
           target_user_id: targetProfile.id,
-          admin_id: user.id
-        }
+          impersonated_by: user.id,
+          admin_email: user.email,
+        },
       });
 
       setImpersonatedUser(targetProfile);
@@ -153,8 +168,9 @@ export const AuthProvider = ({ children }) => {
         p_action: 'impersonation.ended',
         p_metadata: {
           target_user_id: impersonatedUser.id,
-          admin_id: user.id
-        }
+          impersonated_by: user.id,
+          admin_email: user.email,
+        },
       });
 
       setImpersonatedUser(null);

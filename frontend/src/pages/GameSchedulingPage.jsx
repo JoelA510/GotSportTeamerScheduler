@@ -19,6 +19,8 @@ import { useDashboardData } from '../hooks/useDashboardData.js';
 import { useFields } from '../hooks/useFields.js';
 import { useGameSlots } from '../hooks/useGameSlots.js';
 import { useTheme } from '../contexts/ThemeContext.jsx';
+import { useAuth } from '../contexts/AuthContext.jsx';
+import { useOrganization } from '../contexts/OrganizationContext.jsx';
 import { evaluateGameSchedule } from '../../../packages/core/src/gameMetrics.js';
 import { validateGameMove } from '../../../packages/core/src/gameValidation.js';
 import { supabase } from '../lib/supabaseClient.js';
@@ -28,6 +30,8 @@ import Button from '../components/ui/Button.jsx';
 export default function GameSchedulingPage() {
   // ── Existing hooks ────────────────────────────────────────────────────────
   const [selectedTeamId, setSelectedTeamId] = useState('');
+  const { user, isImpersonating } = useAuth();
+  const { currentOrganization } = useOrganization();
   const { game, team } = useDashboardData();
   const { timezone } = useTheme();
   const { fields } = useFields();
@@ -283,13 +287,31 @@ export default function GameSchedulingPage() {
         );
 
         if (error) throw error;
+
+        // Audit game move
+        await supabase.rpc('record_audit_event', {
+          p_organization_id: currentOrganization?.id,
+          p_action: 'scheduling.game_moved',
+          p_metadata: {
+            game_id: draggedGame.id,
+            from_field: draggedGame.fieldId,
+            from_slot: draggedGame.slotId,
+            to_field: targetFieldId,
+            to_slot: targetSlotId,
+            ...(isImpersonating && {
+              target_user_id: user.profile.id,
+              impersonated_by: user.id,
+              admin_email: user.email,
+            }),
+          },
+        });
       } catch (e) {
         logger.error('Failed to persist game assignment move', e);
         // Rollback optimistic update
         setLocalAssignments(snapshot);
       }
     },
-    [activeGame, localAssignments, teams, slotTimeLookup]
+    [activeGame, localAssignments, teams, slotTimeLookup, user, isImpersonating, currentOrganization]
   );
 
   // ── Render ────────────────────────────────────────────────────────────────

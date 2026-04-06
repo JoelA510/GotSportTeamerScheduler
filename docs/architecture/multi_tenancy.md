@@ -48,4 +48,4 @@ Users who belong to multiple organizations can switch between them via the sideb
 - **Defense in Depth**: Organization ID is validated at three layers — RLS policies (database), Edge Function handlers (server), and React context guards (client)
 - **Audit Logging**: All admin actions are recorded in the `audit_log` table with `organization_id` for traceability
 
-See `docs/rls-policies.md` for the complete RLS policy reference and `docs/security/audit_and_remediation_plan.md` for the security audit that hardened this system.
+See `docs/security/rls-policies.md` for the complete RLS policy reference and `docs/security/audit_and_remediation_plan.md` for the security audit that hardened this system.

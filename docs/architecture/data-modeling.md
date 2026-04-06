@@ -127,7 +127,7 @@
 
 ## Data Ingestion Utilities
 
-Detailed ingestion workflows live in `docs/ingestion-pipeline.md`. Highlights below summarize the responsibilities that inform the database design.
+Detailed ingestion workflows live in `docs/operations/ingestion-pipeline.md`. Highlights below summarize the responsibilities that inform the database design.
 
 1. **Registration Importer**
    - Parses GotSport CSV exports.
@@ -152,7 +152,7 @@ Detailed ingestion workflows live in `docs/ingestion-pipeline.md`. Highlights be
 
 ## Initial Schema Draft
 
-- The first-pass DDL for these entities lives in `docs/sql/initial_schema.sql`. It can be copied into a Supabase migration
+- The first-pass DDL for these entities lives in `docs/archive/sql/initial_schema.sql` (archived; superseded by the definitive migration). It can be copied into a Supabase migration
   once validated locally. The script establishes core tables, lookup constraints, helper staging tables, scheduler run histories,
   evaluation artifacts, export trackers, and supporting indexes required for ingestion, team assignments, scheduling, and
   downstream reporting. Shared timestamp triggers keep `updated_at` fresh across mutable tables.
@@ -161,7 +161,7 @@ Detailed ingestion workflows live in `docs/ingestion-pipeline.md`. Highlights be
 
 ## Data Governance Considerations
 
-- Enable Row Level Security on all tables with policy breakdowns captured in `docs/rls-policies.md`. Admin personas receive full access while future coach-facing views are limited to roster visibility with masked guardian contact data.
+- Enable Row Level Security on all tables with policy breakdowns captured in `docs/security/rls-policies.md`. Admin personas receive full access while future coach-facing views are limited to roster visibility with masked guardian contact data.
 - Store personally identifiable information (PII) only as required; redact optional fields from exports when not necessary.
 - Regularly archive prior seasons by copying data into `season_history` tables or Supabase Storage exports to stay within free-tier quotas.
 - Monitor Supabase storage for uploaded CSVs and purge older imports after verification.

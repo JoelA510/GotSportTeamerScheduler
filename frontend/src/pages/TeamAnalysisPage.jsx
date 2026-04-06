@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useTheme } from '../contexts/ThemeContext.jsx';
+import { useAuth } from '../contexts/AuthContext.jsx';
 import { supabase } from '../lib/supabaseClient.js';
 import TeamOverviewPanel from '../components/TeamOverviewPanel.jsx';
 import TeamPersistencePanel from '../components/TeamPersistencePanel.jsx';
@@ -9,6 +10,7 @@ import { useDashboardData } from '../hooks/useDashboardData.js';
 import { useTeamPersistence } from '../hooks/useTeamPersistence.js';
 import { useImport } from '../contexts/ImportContext.jsx';
 import { useTeamAnalysis } from '../hooks/useTeamAnalysis.js';
+import { useOrganization } from '../contexts/OrganizationContext.jsx';
 import { useNavigate } from 'react-router-dom';
 import { Edit2, Save, ArrowRight } from 'lucide-react';
 import { logger } from '../lib/logger.js';
@@ -21,6 +23,8 @@ import RosterManager from '../components/teaming/RosterManager.jsx';
 
 export default function TeamAnalysisPage() {
   const { team, loading } = useDashboardData();
+  const { user, isImpersonating } = useAuth();
+  const { currentOrganization } = useOrganization();
   const { persistenceSnapshot } = useTeamPersistence();
   const { importedData } = useImport();
   const { timezone } = useTheme();
@@ -66,6 +70,20 @@ export default function TeamAnalysisPage() {
           parameters: runParams,
           metrics: { progress: 0 },
           started_at: new Date().toISOString(),
+        });
+
+        // Audit teaming generation
+        await supabase.rpc('record_audit_event', {
+          p_organization_id: currentOrganization?.id,
+          p_action: 'teaming.generation_started',
+          p_metadata: {
+            program_count: programs.length,
+            ...(isImpersonating && {
+              target_user_id: user.profile.id,
+              impersonated_by: user.id,
+              admin_email: user.email
+            })
+          }
         });
       } else {
         logger.warn('No season settings found.');
