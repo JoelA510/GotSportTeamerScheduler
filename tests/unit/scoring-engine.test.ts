@@ -46,6 +46,6 @@ describe('evaluatePracticeSchedule', () => {
 
     expect(result.coachConflicts.length).toBe(1);
     expect(result.coachConflicts[0].coachId).toBe('coach-a');
-    expect(result.coachConflicts[0].reason).toContain('Time overlap');
+    expect(result.coachConflicts[0].reason).toContain('overlapping practices');
   });
 });

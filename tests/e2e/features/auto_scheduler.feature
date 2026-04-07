@@ -9,7 +9,7 @@ Feature: Intelligent Auto-Scheduler
 
   Scenario: Auto-Scheduler panel is visible on Practice Scheduling page
     When I navigate to the Practice Scheduling page
-    Then I should see the "Intelligent Auto-Scheduler" panel
+    Then I should see the "Auto-Scheduler" panel
     And I should see an "Auto-Generate" button
     And the Auto-Generate button should be enabled
 

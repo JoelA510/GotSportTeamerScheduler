@@ -8,6 +8,7 @@ dotenv.config();
 const testDir = defineBddConfig({
   features: 'tests/e2e/features/**/*.feature',
   steps: 'tests/e2e/steps/**/*.ts',
+  outputDir: '.features-gen-local',
 });
 
 export default defineConfig({

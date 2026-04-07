@@ -17,6 +17,6 @@ Feature: Practice Schedule Locking
 
   Scenario: Re-running scheduler with locked slots
     Given "Team A" has a locked practice assignment
-    When I click "Run Scheduler"
+    When I click the "Auto-Generate" button
     Then the assignment for "Team A" should remain unchanged
     And other unlocked assignments should be updated by the engine

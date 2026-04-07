@@ -27,13 +27,6 @@ Then('the Auto-Generate button should be enabled', async ({ page }) => {
   await expect(button).toBeEnabled();
 });
 
-// --- Trigger ---
-
-When('I click the {string} button', async ({ page }, buttonText: string) => {
-  const button = page.getByRole('button', { name: buttonText });
-  await button.click();
-});
-
 // --- Progress ---
 
 Then('I should see an optimization progress indicator', async ({ page }) => {

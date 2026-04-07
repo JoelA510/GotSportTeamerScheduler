@@ -1,1 +1,0 @@
-supabase/functions/_shared/engines/scoring-engine.ts(1,64): error TS5097: An import path can only end with a '.ts' extension when 'allowImportingTsExtensions' is enabled.
