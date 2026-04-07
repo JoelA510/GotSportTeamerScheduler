@@ -46,3 +46,33 @@ Following v1.0 completion, additional work was executed under **Epic 19: Launch 
 - **Phase 3 (Completed):** Live Supabase backend transition, Edge Function deployment, production cutover (see `docs/operations/production-cutover.md`)
 
 Additionally, a comprehensive **4-phase security audit** was completed in March 2026 (see `docs/security/audit_and_remediation_plan.md`).
+
+---
+
+## Phase 7: Audit & Analytics Persistence (Completed)
+
+**Goal**: Establish immutable audit trails and structured analytics for all admin actions.
+
+- **Audit Pipeline**: `record_audit_event` RPC with telemetry and compliance metadata.
+- **Analytics Persistence**: `persist_evaluation_run` overloaded RPC with findings/metrics sub-tables.
+- **Observability Layer**: Phase 4 telemetry RPCs, efficiency metrics views, import job progress tracking.
+
+## Phase 8: Intelligent Auto-Scheduler (Completed)
+
+**Goal**: Server-side Hill Climbing optimizer for practice schedule generation.
+
+- **Edge Function**: `auto-scheduler` with seeded PRNG, greedy seed, swap/relocate/chain-swap mutations.
+- **Scoring Engine**: Isomorphic `evaluatePracticeSchedule` shared between client and Edge Function.
+- **Realtime Progress**: Live iteration/score tracking via `audit_log` Realtime subscription.
+- **Governance**: Full evaluation_run persistence with findings and metrics.
+- **Retention**: Reduced default retention from 365 → 180 days for free-tier storage protection.
+
+## Phase 9: Production Hardening & Global Deployment (Completed — Prime)
+
+**Goal**: Transition Phase 8 into a production-ready, globally resilient system optimized for Supabase Free Account.
+
+- **Edge Optimization**: CPU yield every 100 iterations + 140s wall-clock safety cutoff for free-tier compliance.
+- **Enterprise Observability**: Sentry React SDK with `ErrorBoundary` integration and `withProfiler`. BetterStack/Logtail structured JSON logger for Edge Functions with buffered flush.
+- **Resilience & Failover**: `OfflineGuard` glassmorphic overlay with adaptive connectivity monitoring (30s/10s polling). `useMaintenanceMode` hook with Supabase Realtime subscription to `organizations.settings.maintenance_mode` flag.
+- **Performance**: In-memory TTL cache with stale-while-revalidate for 200ms dashboard interaction ceiling.
+- **Data Governance**: `audit_log` 180-day retention pruning function + composite index. `maintenance_mode` flag backfilled to all organizations.

@@ -6,8 +6,9 @@
  * - logger.captureException — explicit Sentry error capture with optional context.
  * - logger.setUser — attach user identity to all future Sentry events.
  *
- * Sentry integration is lazy-loaded and gated behind the VITE_SENTRY_DSN
- * environment variable. When the DSN is absent, all Sentry calls are no-ops.
+ * Sentry integration uses the @sentry/react SDK (installed as a dependency).
+ * When VITE_SENTRY_DSN is absent, the SDK is imported but init() was never
+ * called (see main.jsx), so all capture calls are harmless no-ops.
  *
  * Usage:
  *   import { logger } from '../lib/logger.js';
@@ -15,57 +16,14 @@
  *   logger.captureException(error, { extra: { teamId } });
  */
 
+import * as Sentry from '@sentry/react';
+
 const isDev =
   typeof import.meta !== 'undefined' && import.meta.env
     ? import.meta.env.DEV
     : typeof process !== 'undefined' && process.env
       ? process.env.NODE_ENV !== 'production'
       : true;
-
-// ---------------------------------------------------------------------------
-// Sentry integration (lazy, optional)
-// ---------------------------------------------------------------------------
-
-/** @type {any} */
-let _sentry = null;
-let _sentryInitialized = false;
-
-/**
- * Lazily initialise Sentry on first error capture.
- * Avoids blocking the main bundle with an eager import when the DSN is unset.
- */
-async function getSentry() {
-  if (_sentryInitialized) return _sentry;
-  _sentryInitialized = true;
-
-  const dsn =
-    typeof import.meta !== 'undefined' && import.meta.env
-      ? import.meta.env.VITE_SENTRY_DSN
-      : undefined;
-
-  if (!dsn) return null;
-
-  try {
-    // @ts-expect-error — CDN import has no local type declarations
-    const Sentry = await import(/* @vite-ignore */ 'https://esm.sh/@sentry/browser@8');
-    Sentry.init({
-      dsn,
-      environment: isDev ? 'development' : 'production',
-      // Keep sample rate low for free tier (10k events/mo)
-      tracesSampleRate: isDev ? 1.0 : 0.1,
-      // Filter noisy console breadcrumbs in dev
-      beforeBreadcrumb(breadcrumb) {
-        if (isDev && breadcrumb.category === 'console') return null;
-        return breadcrumb;
-      },
-    });
-    _sentry = Sentry;
-    return Sentry;
-  } catch {
-    // Sentry SDK unavailable — graceful no-op
-    return null;
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Logger API
@@ -85,9 +43,9 @@ export const logger = {
     // Forward genuine errors to Sentry
     const err = args.find((a) => a instanceof Error);
     if (err) {
-      getSentry().then((s) => s?.captureException(err));
+      Sentry.captureException(err);
     } else {
-      getSentry().then((s) => s?.captureMessage(args.map(String).join(' '), 'error'));
+      Sentry.captureMessage(args.map(String).join(' '), 'error');
     }
   },
 
@@ -98,26 +56,23 @@ export const logger = {
    */
   captureException: (error, ctx) => {
     console.error(error);
-    getSentry().then((s) => {
-      if (!s) return;
-      if (ctx) {
-        s.withScope((scope) => {
-          if (ctx.extra) {
-            for (const [k, v] of Object.entries(ctx.extra)) {
-              scope.setExtra(k, v);
-            }
+    if (ctx) {
+      Sentry.withScope((scope) => {
+        if (ctx.extra) {
+          for (const [k, v] of Object.entries(ctx.extra)) {
+            scope.setExtra(k, v);
           }
-          if (ctx.tags) {
-            for (const [k, v] of Object.entries(ctx.tags)) {
-              scope.setTag(k, v);
-            }
+        }
+        if (ctx.tags) {
+          for (const [k, v] of Object.entries(ctx.tags)) {
+            scope.setTag(k, v);
           }
-          s.captureException(error);
-        });
-      } else {
-        s.captureException(error);
-      }
-    });
+        }
+        Sentry.captureException(error);
+      });
+    } else {
+      Sentry.captureException(error);
+    }
   },
 
   /**
@@ -126,6 +81,6 @@ export const logger = {
    * @param {{ id: string, email?: string, role?: string } | null} user
    */
   setUser: (user) => {
-    getSentry().then((s) => s?.setUser(user));
+    Sentry.setUser(user);
   },
 };

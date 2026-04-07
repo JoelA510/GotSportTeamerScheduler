@@ -33,6 +33,7 @@
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
     "@rollup/rollup-linux-x64-gnu": "^4.60.1",
+    "@sentry/react": "^10.47.0",
     "@supabase/supabase-js": "^2.87.1",
     "@tanstack/react-virtual": "^3.13.23",
     "dotenv": "^17.2.3",

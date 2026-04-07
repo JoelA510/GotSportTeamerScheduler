@@ -1,13 +1,21 @@
 import React from 'react';
 import { WifiOff, Wrench, RefreshCw, AlertTriangle } from 'lucide-react';
 import { useConnectivityMonitor } from '../hooks/useConnectivityMonitor.js';
+import { useMaintenanceMode } from '../hooks/useMaintenanceMode.js';
+import { useOrganization } from '../contexts/OrganizationContext.jsx';
 
 /**
  * OfflineGuard — Phase 9 Production Hardening
  *
  * A glassmorphic overlay that appears when the Supabase backend is
- * unreachable or in maintenance mode. Prevents white-screen crashes
- * by showing an actionable, accessible, and beautifully styled overlay.
+ * unreachable or the organization is placed in maintenance mode.
+ * Prevents white-screen crashes by showing an actionable, accessible,
+ * and beautifully styled overlay.
+ *
+ * Maintenance mode detection:
+ *  - Network-level: useConnectivityMonitor pings the Supabase REST API
+ *  - DB-level: useMaintenanceMode subscribes to the organizations table
+ *    via Supabase Realtime for the maintenance_mode settings flag.
  *
  * Accessibility: role="alertdialog", focus-trapped retry button, aria-live
  * for status changes, keyboard-accessible dismiss.
@@ -16,6 +24,8 @@ import { useConnectivityMonitor } from '../hooks/useConnectivityMonitor.js';
  */
 export default function OfflineGuard({ children }) {
   const { status, lastChecked, checkNow } = useConnectivityMonitor();
+  const { currentOrganization } = useOrganization();
+  const { isMaintenanceMode } = useMaintenanceMode(currentOrganization?.id);
   const [isRetrying, setIsRetrying] = React.useState(false);
 
   const handleRetry = async () => {
@@ -25,13 +35,15 @@ export default function OfflineGuard({ children }) {
     setTimeout(() => setIsRetrying(false), 600);
   };
 
-  // Online or degraded (degraded = 1 failure, show nothing yet)
-  if (status === 'online' || status === 'degraded') {
+  // Derive the effective display state
+  const isOffline = status === 'offline';
+  const isMaintenance = status === 'maintenance' || isMaintenanceMode;
+  const showOverlay = isOffline || isMaintenance;
+
+  // Online and no maintenance — render children normally
+  if (!showOverlay) {
     return <>{children}</>;
   }
-
-  const isOffline = status === 'offline';
-  const isMaintenance = status === 'maintenance';
 
   const Icon = isMaintenance ? Wrench : WifiOff;
   const title = isMaintenance ? 'Scheduled Maintenance' : 'Service Interrupted';
@@ -116,7 +128,7 @@ export default function OfflineGuard({ children }) {
           </p>
 
           {/* Retry button (offline only — maintenance doesn't benefit from retry spam) */}
-          {isOffline && (
+          {isOffline && !isMaintenance && (
             <button
               onClick={handleRetry}
               disabled={isRetrying}
