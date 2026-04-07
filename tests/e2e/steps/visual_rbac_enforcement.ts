@@ -7,7 +7,6 @@ const { Given, When, Then } = createBdd();
 When('I view the main navigation Sidebar', async ({ page }) => {
   await page.evaluate(() => {
     console.log('[DEBUG] Auth State:', window.localStorage.getItem('supabase.auth.token'));
-    // @ts-ignore
     console.log('[DEBUG] Mock Session:', sessionStorage.getItem('__MOCK_SESSION__'));
   });
   await expect(page.locator('aside')).toBeVisible();

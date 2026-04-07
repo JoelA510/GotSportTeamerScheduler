@@ -13,29 +13,23 @@ const SUPABASE_SYNC_TIMEOUT_MS = 10000;
 export default function TeamPersistencePanel({ teamPersistenceSnapshot }) {
   const { session } = useAuth();
 
-
   const [persistenceActionState, setPersistenceActionState] = useState('idle');
   const [persistenceActionMessage, setPersistenceActionMessage] = useState('');
-  const [lastSyncedAt, setLastSyncedAt] = useState(teamPersistenceSnapshot.lastSyncedAt);
+  const [lastSyncedAt, setLastSyncedAt] = useState(teamPersistenceSnapshot?.lastSyncedAt);
   const [persistenceOverrides, setPersistenceOverrides] = useState(
-    teamPersistenceSnapshot.manualOverrides ?? []
+    teamPersistenceSnapshot?.manualOverrides ?? []
   );
   const persistenceTimeoutRef = useRef(null);
 
-  if (!teamPersistenceSnapshot) {
-    return null;
-  }
-
-
   useEffect(() => {
-    setPersistenceOverrides(teamPersistenceSnapshot.manualOverrides ?? []);
-  }, [teamPersistenceSnapshot.manualOverrides]);
+    setPersistenceOverrides(teamPersistenceSnapshot?.manualOverrides ?? []);
+  }, [teamPersistenceSnapshot?.manualOverrides]);
 
   const sortedPersistenceHistory = useMemo(() => {
-    return [...(teamPersistenceSnapshot.runHistory ?? [])].sort(
+    return [...(teamPersistenceSnapshot?.runHistory ?? [])].sort(
       (a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime()
     );
-  }, [teamPersistenceSnapshot.runHistory]);
+  }, [teamPersistenceSnapshot?.runHistory]);
 
   const latestHistory = sortedPersistenceHistory.slice(0, 3);
   const persistenceCounts = useMemo(() => {
@@ -90,8 +84,13 @@ export default function TeamPersistencePanel({ teamPersistenceSnapshot }) {
 
   const persistenceEndpoint = getPersistenceEndpoint();
   const snapshotForPersistence = useMemo(() => {
+    if (!teamPersistenceSnapshot) return null;
     return applyOverridesToSnapshot(teamPersistenceSnapshot, persistenceOverrides);
   }, [teamPersistenceSnapshot, persistenceOverrides]);
+
+  if (!teamPersistenceSnapshot) {
+    return null;
+  }
 
   const handlePersist = async () => {
     if (persistenceActionState === 'submitting') {

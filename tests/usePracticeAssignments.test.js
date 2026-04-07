@@ -29,7 +29,7 @@ describe('usePracticeAssignments', () => {
     const mockEq = vi.fn().mockResolvedValue({ data: mockData, error: null });
     const mockSelect = vi.fn(() => ({ eq: mockEq }));
     const mockFrom = vi.fn(() => ({ select: mockSelect }));
-    // @ts-ignore
+    // @ts-expect-error [MOCK] - overriding readonly client property for test isolation; Supabase from() is typed as a method on the client instance
     supabase.from = mockFrom;
 
     const { result } = renderHook(() => usePracticeAssignments('run-123'));
@@ -49,7 +49,7 @@ describe('usePracticeAssignments', () => {
     const mockError = { message: 'Database error' };
     const mockEq = vi.fn().mockResolvedValue({ data: null, error: mockError });
     const mockSelect = vi.fn(() => ({ eq: mockEq }));
-    // @ts-ignore
+    // @ts-expect-error [MOCK] - overriding readonly client property for test isolation; Supabase from() is typed as a method on the client instance
     supabase.from = vi.fn(() => ({ select: mockSelect }));
 
     const { result } = renderHook(() => usePracticeAssignments('run-err'));

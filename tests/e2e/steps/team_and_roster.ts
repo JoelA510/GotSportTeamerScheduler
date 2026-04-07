@@ -1,17 +1,19 @@
 import { createBdd } from 'playwright-bdd';
-import { expect } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
 
 const { Given, When, Then } = createBdd();
 
 /**
  * Helper to ensure a player exists in the "imports" table so TeamAnalysisPage can hydrate it.
  */
-async function syncPlayerToImports(page: any, player: any) {
+async function syncPlayerToImports(page: Page, player: Record<string, unknown>) {
   await page.evaluate(
     ({ p }) => {
       const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
       db.imports = db.imports || [];
-      let playerImport = db.imports.find((i: any) => i.import_type === 'players');
+      let playerImport = db.imports.find(
+        (i: Record<string, unknown>) => i.import_type === 'players'
+      );
 
       if (!playerImport) {
         playerImport = {
@@ -25,7 +27,9 @@ async function syncPlayerToImports(page: any, player: any) {
       }
 
       // Add or update player in the import blob
-      const existingIdx = playerImport.data.data.findIndex((rp: any) => rp.id === p.id);
+      const existingIdx = playerImport.data.data.findIndex(
+        (rp: Record<string, unknown>) => rp.id === p.id
+      );
       const normalizedPlayer = {
         id: p.id,
         first_name: p.first_name,
@@ -57,7 +61,7 @@ Given('teams have been generated for the current season', async ({ page }) => {
     const orgId = localStorage.getItem('squadlogic_active_org') || 'org-1';
 
     db.teams = db.teams || [];
-    if (!db.teams.find((t: any) => t.id === 'team-alpha')) {
+    if (!db.teams.find((t: Record<string, unknown>) => t.id === 'team-alpha')) {
       db.teams.push(
         {
           id: 'team-alpha',
@@ -165,7 +169,9 @@ Given(
           { team_id: 'team-beta', player_id: id2 }
         );
 
-        const run = [...db.scheduler_runs].reverse().find((r: any) => r.run_type === 'team');
+        const run = [...db.scheduler_runs]
+          .reverse()
+          .find((r: Record<string, unknown>) => r.run_type === 'team');
         if (run && run.results) {
           run.results.team_players = run.results.team_players || [];
           run.results.team_players.push(
@@ -210,7 +216,7 @@ Given(
         const teamId = `team-${tGender.toLowerCase()}`;
 
         db.teams = db.teams || [];
-        if (!db.teams.find((t: any) => t.id === teamId)) {
+        if (!db.teams.find((t: Record<string, unknown>) => t.id === teamId)) {
           db.teams.push({
             id: teamId,
             name: `${tGender} Team`,
@@ -238,10 +244,12 @@ Given(
         db.team_players = db.team_players || [];
         db.team_players.push({ team_id: teamId, player_id: playerId });
 
-        const run = [...db.scheduler_runs].reverse().find((r: any) => r.run_type === 'team');
+        const run = [...db.scheduler_runs]
+          .reverse()
+          .find((r: Record<string, unknown>) => r.run_type === 'team');
         if (run && run.results) {
           run.results.teams = run.results.teams || [];
-          if (!run.results.teams.find((t: any) => t.id === teamId)) {
+          if (!run.results.teams.find((t: Record<string, unknown>) => t.id === teamId)) {
             const teamObj = {
               id: teamId,
               name: `${tGender} Team`,
@@ -285,7 +293,7 @@ Given(
         const teamId = `team-${div.toLowerCase()}`;
 
         db.teams = db.teams || [];
-        if (!db.teams.find((t: any) => t.id === teamId)) {
+        if (!db.teams.find((t: Record<string, unknown>) => t.id === teamId)) {
           db.teams.push({
             id: teamId,
             name: `${div} Team`,
@@ -310,10 +318,12 @@ Given(
         db.team_players = db.team_players || [];
         db.team_players.push({ team_id: teamId, player_id: playerId });
 
-        const run = [...db.scheduler_runs].reverse().find((r: any) => r.run_type === 'team');
+        const run = [...db.scheduler_runs]
+          .reverse()
+          .find((r: Record<string, unknown>) => r.run_type === 'team');
         if (run && run.results) {
           run.results.teams = run.results.teams || [];
-          if (!run.results.teams.find((t: any) => t.id === teamId)) {
+          if (!run.results.teams.find((t: Record<string, unknown>) => t.id === teamId)) {
             const teamObj = {
               id: teamId,
               name: `${div} Team`,
@@ -420,7 +430,7 @@ Then(
       ({ t, s }) => {
         const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
         const runs = db.scheduler_runs || [];
-        return runs.some((r: any) => r.run_type === t && r.status === s);
+        return runs.some((r: Record<string, unknown>) => r.run_type === t && r.status === s);
       },
       { t: type, s: status }
     );

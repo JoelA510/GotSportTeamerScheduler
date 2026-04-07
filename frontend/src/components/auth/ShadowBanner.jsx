@@ -17,7 +17,10 @@ const ShadowBanner = () => {
             Active Shadow Session
           </span>
           <span className="text-sm font-medium text-white/90 leading-tight">
-            Viewing as <span className="text-amber-400 font-bold">{impersonatedUser.full_name || impersonatedUser.email}</span>
+            Viewing as{' '}
+            <span className="text-amber-400 font-bold">
+              {impersonatedUser.full_name || impersonatedUser.email}
+            </span>
           </span>
         </div>
       </div>

@@ -33,13 +33,13 @@ const initialMockData = {
       organization_id: 'org-1',
       action: 'settings.flags_updated',
       user_id: 'mock-coach-id',
-      metadata: { 
-        impersonated_by: 'mock-admin-id', 
+      metadata: {
+        impersonated_by: 'mock-admin-id',
         admin_email: 'admin@example.com',
-        flags: { ADVANCED_FAIRNESS: true }
+        flags: { ADVANCED_FAIRNESS: true },
       },
       created_at: new Date(Date.now() - 1800000).toISOString(),
-    }
+    },
   ],
   profiles: [
     {
@@ -525,8 +525,8 @@ if (typeof window !== 'undefined') {
   window.__MOCK_DB__ = getDB();
   logger.log(
     '[Mock Supabase] DB Initialized. Tables:',
-    Object.keys(window.__MOCK_DB__)
-      .map((k) => `${k}(${window.__MOCK_DB__[k]?.length || 0})`)
+    Object.keys(/** @type {Object} */ (window.__MOCK_DB__))
+      .map((k) => `${k}(${(/** @type {any} */ (window.__MOCK_DB__))[k]?.length || 0})`)
       .join(', ')
   );
 }
@@ -807,16 +807,18 @@ export const mockSupabase = {
 
         const db = (typeof window !== 'undefined' && window.__MOCK_DB__) || initialMockData;
 
-        if (!db.profiles.find((p) => p.id === userId)) {
-          db.profiles.push({
+        const typedDb = /** @type {any} */ (db);
+
+        if (!typedDb.profiles.find((p) => p.id === userId)) {
+          typedDb.profiles.push({
             id: userId,
             full_name: session.user.user_metadata.full_name,
             role: session.user.app_metadata.role,
           });
         }
 
-        if (!db.organization_members.find((m) => m.profile_id === userId)) {
-          db.organization_members.push({
+        if (!typedDb.organization_members.find((m) => m.profile_id === userId)) {
+          typedDb.organization_members.push({
             organization_id: 'org-1',
             profile_id: userId,
             role: session.user.app_metadata.role,
@@ -877,9 +879,12 @@ export const mockSupabase = {
     },
     signUp: async ({ email, password, options }) => {
       if (password.length < 12) {
-        return { 
-          data: { user: null, session: null }, 
-          error: { message: 'Database error: Password must be at least 12 characters long (Postgres Trigger Enforcement)' } 
+        return {
+          data: { user: null, session: null },
+          error: {
+            message:
+              'Database error: Password must be at least 12 characters long (Postgres Trigger Enforcement)',
+          },
         };
       }
       // Simple mock signup
@@ -887,9 +892,12 @@ export const mockSupabase = {
     },
     updateUser: async ({ password, data }) => {
       if (password && password.length < 12) {
-        return { 
-          data: { user: null }, 
-          error: { message: 'Database error: Password must be at least 12 characters long (Postgres Trigger Enforcement)' } 
+        return {
+          data: { user: null },
+          error: {
+            message:
+              'Database error: Password must be at least 12 characters long (Postgres Trigger Enforcement)',
+          },
         };
       }
       return { data: { user: { id: 'mock-admin-id' } }, error: null };
@@ -1232,12 +1240,7 @@ export const mockSupabase = {
     }
 
     if (name === 'record_audit_event') {
-      const { 
-        p_organization_id, 
-        p_action, 
-        p_user_id, 
-        p_metadata 
-      } = params;
+      const { p_organization_id, p_action, p_user_id, p_metadata } = params;
 
       const event = {
         id: Math.random().toString(36).substr(2, 9),

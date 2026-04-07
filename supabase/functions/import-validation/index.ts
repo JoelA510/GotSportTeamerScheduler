@@ -32,19 +32,14 @@ const MAX_PAYLOAD_BYTES = 10 * 1024 * 1024; // 10 MB
 function sanitizeString(value: unknown): string {
   if (value === null || value === undefined) return '';
   const str = String(value);
-  return str
-    .replace(/<[^>]*>/g, '') // Strip HTML tags
-    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '') // Strip control chars
-    .trim()
-    .slice(0, MAX_STRING_LENGTH);
-}
-
-function sanitizeRow(row: Record<string, unknown>): Record<string, string> {
-  const clean: Record<string, string> = {};
-  for (const [key, value] of Object.entries(row)) {
-    clean[sanitizeString(key)] = sanitizeString(value);
-  }
-  return clean;
+  return (
+    str
+      .replace(/<[^>]*>/g, '') // Strip HTML tags
+      // eslint-disable-next-line no-control-regex
+      .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '') // Strip control chars
+      .trim()
+      .slice(0, MAX_STRING_LENGTH)
+  );
 }
 
 // --- Schema Definitions ---

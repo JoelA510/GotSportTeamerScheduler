@@ -1,5 +1,5 @@
 import { createBdd } from 'playwright-bdd';
-import { expect } from '@playwright/test';
+import { expect, Page } from '@playwright/test';
 import { randomUUID } from 'crypto';
 import { createClient } from '@supabase/supabase-js';
 
@@ -10,9 +10,9 @@ const supabaseKey =
   process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || '';
 const supabase = supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabaseKey) : null;
 
-async function setupIsolatedTenant(page: any, role: string = 'admin') {
+async function setupIsolatedTenant(page: Page, role: string = 'admin') {
   const dynamicOrgId = randomUUID();
-  const email =
+  const _email =
     role === 'coach'
       ? 'coach@squadlogic.app'
       : role === 'parent'
@@ -34,14 +34,14 @@ async function setupIsolatedTenant(page: any, role: string = 'admin') {
         const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
 
         db.organizations = db.organizations || [];
-        if (!db.organizations.find((o: any) => o.id === orgId)) {
+        if (!db.organizations.find((o: Record<string, unknown>) => (o as { id: string }).id === orgId)) {
           db.organizations.push({ id: orgId, name: `E2E-Isolation-${orgId}`, status: 'active' });
         }
 
         db.organization_members = db.organization_members || [];
         if (
           !db.organization_members.find(
-            (m: any) => m.organization_id === orgId && m.profile_id === uId
+            (m: Record<string, unknown>) => m.organization_id === orgId && m.profile_id === uId
           )
         ) {
           db.organization_members.push({
@@ -53,7 +53,7 @@ async function setupIsolatedTenant(page: any, role: string = 'admin') {
         }
 
         db.season_settings = db.season_settings || [];
-        if (!db.season_settings.find((s: any) => s.organization_id === orgId)) {
+        if (!db.season_settings.find((s: Record<string, unknown>) => s.organization_id === orgId)) {
           db.season_settings.push({
             id: 's1',
             organization_id: orgId,
@@ -122,13 +122,13 @@ Given(
           const profiles = db.profiles || [];
 
           // Check if this specific user was pre-seeded (e.g., "Coach Alice")
-          const seededUser = profiles.find((p: any) => p.full_name === rawRoleName);
+          const seededUser = profiles.find((p: Record<string, unknown>) => p.full_name === rawRoleName);
 
           if (seededUser) {
             // User is pre-seeded. Find their assigned organization.
             const members = db.organization_members || [];
-            const membership = members.find((m: any) => m.profile_id === seededUser.id);
-            const orgId = membership ? membership.organization_id : null;
+            const membership = members.find((m: Record<string, unknown>) => m.profile_id === seededUser.id);
+            const orgId = membership ? (membership.organization_id as string) : null;
 
             if (orgId) {
               localStorage.setItem('squadlogic_active_org', orgId);

@@ -246,7 +246,8 @@ export default function SetupWizard() {
                   Welcome to the Enterprise Tier
                 </h2>
                 <p className="text-text-muted">
-                  Refine your league's identity and branding before activating advanced features.
+                  Refine your league&apos;s identity and branding before activating advanced
+                  features.
                 </p>
               </div>
 
@@ -283,7 +284,8 @@ export default function SetupWizard() {
                   Smart Architecture
                 </h2>
                 <p className="text-text-muted">
-                  Enable specialized logic handlers for your organization's unique requirements.
+                  Enable specialized logic handlers for your organization&apos;s unique
+                  requirements.
                 </p>
               </div>
 
@@ -355,8 +357,8 @@ export default function SetupWizard() {
                   Ready to Launch
                 </h2>
                 <p className="text-text-muted">
-                  Your organization is now configured with a custom architecture. We've initialized
-                  a telemetry session for this setup.
+                  Your organization is now configured with a custom architecture. We&apos;ve
+                  initialized a telemetry session for this setup.
                 </p>
               </div>
 
@@ -389,8 +391,8 @@ export default function SetupWizard() {
               <div className="flex items-center gap-3 p-4 bg-yellow-500/10 border border-yellow-500/20 rounded-xl text-yellow-500 text-left">
                 <AlertTriangle size={20} className="shrink-0" />
                 <p className="text-xs leading-relaxed font-bold">
-                  By clicking 'Complete Setup', you finalize the enterprise transition and will be
-                  granted access to the production dashboard.
+                  By clicking &apos;Complete Setup&apos;, you finalize the enterprise transition and
+                  will be granted access to the production dashboard.
                 </p>
               </div>
             </section>

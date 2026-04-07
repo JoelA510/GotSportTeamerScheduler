@@ -1,19 +1,19 @@
 import { createBdd } from 'playwright-bdd';
 import { expect } from '@playwright/test';
 
-const { Given, When, Then, Before } = createBdd();
+const { Given, When, Then } = createBdd();
 
-const seedDatabase = async (page: any) => {
+const seedDatabase = async (page: { addInitScript: (fn: () => void) => Promise<void> }) => {
   await page.addInitScript(() => {
-    const db = (window as any).__MOCK_DB__ || {};
+    const db = (window as { __MOCK_DB__?: any }).__MOCK_DB__ || {};
     const orgId = localStorage.getItem('squadlogic_active_org') || 'org-1';
     db.organizations = db.organizations || [];
-    if (!db.organizations.find((o: any) => o.id === orgId)) {
+    if (!db.organizations.find((o: Record<string, unknown>) => o.id === orgId)) {
       db.organizations.push({ id: orgId, name: 'Test Org' });
     }
 
     db.season_settings = db.season_settings || [];
-    if (!db.season_settings.find((s: any) => s.name === 'Fall 2026')) {
+    if (!db.season_settings.find((s: Record<string, unknown>) => s.name === 'Fall 2026')) {
       db.season_settings.push({
         id: 'season-fall-26',
         organization_id: orgId,
@@ -24,7 +24,7 @@ const seedDatabase = async (page: any) => {
     }
 
     db.registration_forms = db.registration_forms || [];
-    if (!db.registration_forms.find((f: any) => f.title === 'Fall Registration')) {
+    if (!db.registration_forms.find((f: Record<string, unknown>) => f.title === 'Fall Registration')) {
       db.registration_forms.push({
         id: 'f-fall',
         title: 'Fall Registration',
@@ -35,7 +35,7 @@ const seedDatabase = async (page: any) => {
     }
 
     db.registrations = db.registrations || [];
-    if (!db.registrations.find((r: any) => r.id === 'reg-alex')) {
+    if (!db.registrations.find((r: Record<string, unknown>) => r.id === 'reg-alex')) {
       db.registrations.push({
         id: 'reg-alex',
         organization_id: orgId,
@@ -48,7 +48,7 @@ const seedDatabase = async (page: any) => {
       });
 
       db.players = db.players || [];
-      if (!db.players.find((p: any) => p.id === 'player-1')) {
+      if (!db.players.find((p: Record<string, unknown>) => p.id === 'player-1')) {
         db.players.push({
           id: 'player-1',
           first_name: 'Alex',
@@ -58,7 +58,7 @@ const seedDatabase = async (page: any) => {
       }
 
       db.profile_players = db.profile_players || [];
-      if (!db.profile_players.find((pp: any) => pp.player_id === 'player-1')) {
+      if (!db.profile_players.find((pp: Record<string, unknown>) => pp.player_id === 'player-1')) {
         db.profile_players.push({
           profile_id: 'mock-parent-id',
           player_id: 'player-1',
@@ -66,13 +66,13 @@ const seedDatabase = async (page: any) => {
       }
     }
 
-    (window as any).__MOCK_DB__ = db;
+    (window as { __MOCK_DB__?: unknown }).__MOCK_DB__ = db;
     sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
     localStorage.setItem('squadlogic_active_org', orgId);
   });
 };
 
-Given('there is an active season {string}', async ({ page }, seasonName: string) => {
+Given('there is an active season {string}', async ({ page }, _seasonName: string) => {
   await seedDatabase(page);
 });
 
@@ -145,7 +145,7 @@ Then('the form {string} should appear in the forms list', async ({ page }, formT
   await expect(page.locator('table').first()).toContainText(formTitle);
 });
 
-Given('I navigate to the registration link for {string}', async ({ page }, formTitle: string) => {
+Given('I navigate to the registration link for {string}', async ({ page }, _formTitle: string) => {
   await seedDatabase(page);
   await page.goto('/register/f-fall');
   await page.waitForLoadState('networkidle');

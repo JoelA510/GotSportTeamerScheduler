@@ -1,0 +1,58 @@
+
+C:\Users\joel.abraham\Downloads\SquadLogic\tests\e2e\steps\reporting.ts
+   11:32  error    Unexpected any. Specify a different type                                     @typescript-eslint/no-explicit-any
+  130:20  warning  'tableName' is defined but never used. Allowed unused args must match /^_/u  @typescript-eslint/no-unused-vars
+
+C:\Users\joel.abraham\Downloads\SquadLogic\tests\e2e\steps\scheduling_and_overrides.ts
+  115:50  error    Unexpected any. Specify a different type                                  @typescript-eslint/no-explicit-any
+  141:26  error    Unexpected any. Specify a different type                                  @typescript-eslint/no-explicit-any
+  240:51  error    Unexpected any. Specify a different type                                  @typescript-eslint/no-explicit-any
+  278:60  error    Unexpected any. Specify a different type                                  @typescript-eslint/no-explicit-any
+  286:60  error    Unexpected any. Specify a different type                                  @typescript-eslint/no-explicit-any
+  294:60  error    Unexpected any. Specify a different type                                  @typescript-eslint/no-explicit-any
+  310:30  error    Unexpected any. Specify a different type                                  @typescript-eslint/no-explicit-any
+  328:11  warning  'now' is assigned a value but never used                                  @typescript-eslint/no-unused-vars
+  442:14  error    Unexpected any. Specify a different type                                  @typescript-eslint/no-explicit-any
+  456:31  error    Unexpected any. Specify a different type                                  @typescript-eslint/no-explicit-any
+  463:31  error    Unexpected any. Specify a different type                                  @typescript-eslint/no-explicit-any
+  577:20  warning  'flag' is defined but never used. Allowed unused args must match /^_/u    @typescript-eslint/no-unused-vars
+  607:28  error    Unexpected any. Specify a different type                                  @typescript-eslint/no-explicit-any
+  642:29  error    Unexpected any. Specify a different type                                  @typescript-eslint/no-explicit-any
+  652:29  error    Unexpected any. Specify a different type                                  @typescript-eslint/no-explicit-any
+  733:62  error    Unexpected any. Specify a different type                                  @typescript-eslint/no-explicit-any
+  801:44  error    Unexpected any. Specify a different type                                  @typescript-eslint/no-explicit-any
+  887:38  warning  'status' is defined but never used. Allowed unused args must match /^_/u  @typescript-eslint/no-unused-vars
+
+C:\Users\joel.abraham\Downloads\SquadLogic\tests\e2e\steps\team_and_roster.ts
+    9:42  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+    9:55  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   14:46  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   28:65  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   60:28  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  168:63  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  213:32  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  241:63  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  244:43  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  288:32  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  313:63  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  316:43  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  423:30  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\joel.abraham\Downloads\SquadLogic\tests\e2e\steps\team_communication.ts
+    2:10  warning  'test' is defined but never used                                        @typescript-eslint/no-unused-vars
+    6:62  warning  'page' is defined but never used. Allowed unused args must match /^_/u  @typescript-eslint/no-unused-vars
+   45:41  error    Unexpected any. Specify a different type                                @typescript-eslint/no-explicit-any
+   48:57  error    Unexpected any. Specify a different type                                @typescript-eslint/no-explicit-any
+   49:53  error    Unexpected any. Specify a different type                                @typescript-eslint/no-explicit-any
+   53:44  error    Unexpected any. Specify a different type                                @typescript-eslint/no-explicit-any
+   62:55  error    Unexpected any. Specify a different type                                @typescript-eslint/no-explicit-any
+   66:61  error    Unexpected any. Specify a different type                                @typescript-eslint/no-explicit-any
+   89:44  error    Unexpected any. Specify a different type                                @typescript-eslint/no-explicit-any
+   98:55  error    Unexpected any. Specify a different type                                @typescript-eslint/no-explicit-any
+  102:61  error    Unexpected any. Specify a different type                                @typescript-eslint/no-explicit-any
+  133:37  error    Unexpected any. Specify a different type                                @typescript-eslint/no-explicit-any
+  142:44  error    Unexpected any. Specify a different type                                @typescript-eslint/no-explicit-any
+  230:36  error    Unexpected any. Specify a different type                                @typescript-eslint/no-explicit-any
+
+Γ£û 47 problems (41 errors, 6 warnings)
+

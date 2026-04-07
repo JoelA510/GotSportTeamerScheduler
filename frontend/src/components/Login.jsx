@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { supabase } from '../lib/supabaseClient.js';
 import { useAuth } from '../contexts/AuthContext.jsx';
-// @ts-ignore
 import logo from '../assets/logo_draft_modern.png';
 
 export default function Login() {
@@ -185,7 +184,9 @@ export default function Login() {
 
           {!isForgotPassword && (
             <div className="form-group">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div
+                style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+              >
                 <label
                   htmlFor="password"
                   style={{

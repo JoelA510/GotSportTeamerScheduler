@@ -5,7 +5,7 @@ export {};
 
 declare global {
   interface Window {
-    __MOCK_DB__: any;
+    __MOCK_DB__: Record<string, unknown>;
     __FORCE_ERROR__: boolean | undefined;
   }
 }

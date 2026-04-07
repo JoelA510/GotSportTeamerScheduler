@@ -7,6 +7,8 @@ import { usePracticeAssignments } from '../hooks/usePracticeAssignments.js';
 import { useTheme } from '../contexts/ThemeContext.jsx';
 import Button from '../components/ui/Button.jsx';
 import { Edit2, Save } from 'lucide-react';
+import EvaluationPanel from '../components/EvaluationPanel.jsx';
+import { supabase } from '../lib/supabaseClient.js';
 
 export default function PracticeSchedulingPage() {
   const { practice, team, loading: dashboardLoading } = useDashboardData();
@@ -38,13 +40,25 @@ export default function PracticeSchedulingPage() {
       </div>
 
       {!isEditMode && (
-        <PracticeReadinessPanel
-          practiceReadinessSnapshot={practice.snapshot}
-          practiceSummary={practice.summary}
-          generatedAt={practice.generatedAt}
-          timezone={timezone}
-          scheduleEvaluation={practice.scheduleEvaluation}
-        />
+        <div className="space-y-6">
+          <EvaluationPanel
+            practiceData={{
+              assignments: assignments,
+              teams: team?.teams || [],
+              slots: practice.snapshot?.baseSlotDistribution || [],
+              unassigned: practice.snapshot?.unassignedByReason || [],
+            }}
+            supabaseClient={supabase}
+          />
+
+          <PracticeReadinessPanel
+            practiceReadinessSnapshot={practice.snapshot}
+            practiceSummary={practice.summary}
+            generatedAt={practice.generatedAt}
+            timezone={timezone}
+            scheduleEvaluation={practice.scheduleEvaluation}
+          />
+        </div>
       )}
 
       {isEditMode ? (

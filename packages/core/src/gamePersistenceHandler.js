@@ -47,7 +47,6 @@ export async function persistGameSnapshotTransactional(params) {
     runMetadata: effectiveRunMetadata,
     runType: 'game',
     rpcName: 'persist_game_schedule',
-    // @ts-ignore
     transformPayload: ({ snapshot, runData }) => ({
       run_data: runData,
       assignments: snapshot.payload.assignmentRows,

@@ -96,7 +96,6 @@ export function runScheduleEvaluations({ practice, games, schoolDayEnd, timezone
           teams: games.teams,
           byes: games.byes ?? [],
           unscheduled: games.unscheduled ?? [],
-          // @ts-ignore - sharedSlotUsage is supported by evaluateGameSchedule
           sharedSlotUsage: games.sharedSlotUsage ?? [],
         });
 

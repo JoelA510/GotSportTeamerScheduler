@@ -358,7 +358,7 @@ export function useTeamPortal(teamId) {
  * expandPractices
  * Expands a practice assignment range into individual dates based on day_of_week.
  */
-function expandPractices(assignments, timezone) {
+function expandPractices(assignments, _timezone) {
   const expanded = [];
   const daysMap = {
     mon: 1,
@@ -375,7 +375,7 @@ function expandPractices(assignments, timezone) {
     if (!slot) return;
 
     // Parse daterange string: [2025-01-01,2025-03-01)
-    const range = assignment.effective_date_range.replace(/[\[\)\(]/g, '').split(',');
+    const range = assignment.effective_date_range.replace(/[()[\]]/g, '').split(',');
     const startDate = new Date(range[0]);
     const endDate = new Date(range[1]);
     const targetDay = daysMap[slot.day_of_week];

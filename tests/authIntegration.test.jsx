@@ -123,7 +123,7 @@ describe('Auth & Organization Integration', () => {
       }),
     });
 
-    // @ts-ignore — partial mock for test isolation
+    // @ts-expect-error [MOCK] - partial mock for test isolation; Supabase from() requires more comprehensive type mapping for full coverage
     vi.mocked(supabase.from).mockImplementation((table) => {
       if (table === 'organization_members') {
         return {

@@ -25,8 +25,8 @@ Given('I have an organization labeled {string}', async ({ page }, orgName: strin
       organizations: db.organizations.find((o) => o.id === uniqueOrgId),
     });
 
-    db.locations = (db.locations || []).filter((l: any) => l.organization_id !== uniqueOrgId);
-    db.fields = (db.fields || []).filter((f: any) => f.organization_id !== uniqueOrgId);
+    db.locations = (db.locations || []).filter((l: Record<string, unknown>) => l.organization_id !== uniqueOrgId);
+    db.fields = (db.fields || []).filter((f: Record<string, unknown>) => f.organization_id !== uniqueOrgId);
 
     window.__MOCK_DB__ = db;
     sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
@@ -96,7 +96,7 @@ When('I ensure {string} is disabled', async ({ page }, label: string) => {
 
 Then(
   'I should see {string} listed under {string} on the Field Management grid',
-  async ({ page }, fieldName: string, locName: string) => {
+  async ({ page }, fieldName: string, _locName: string) => {
     const card = page.locator('div.bg-bg-surface', { hasText: fieldName }).first();
     await expect(card).toBeVisible({ timeout: 10000 });
     await expect(card).toContainText(fieldName);
@@ -105,7 +105,7 @@ Then(
 
 Then(
   '{string} should display {string}, {string}, and Priority {string}',
-  async ({ page }, fieldName: string, type: string, size: string, priority: string) => {
+  async ({ page }, fieldName: string, type: string, size: string, _priority: string) => {
     const card = page
       .locator('div.bg-bg-surface')
       .filter({ has: page.getByRole('heading', { name: fieldName, exact: true }) })
@@ -133,7 +133,7 @@ Given(
         );
         const uniqueOrgId = localStorage.getItem('squadlogic_active_org') || 'org-1';
         const fieldId = 'field-1-test';
-        db.fields = (db.fields || []).filter((f: any) => f.id !== fieldId);
+        db.fields = (db.fields || []).filter((f: Record<string, unknown>) => f.id !== fieldId);
         db.locations = db.locations || [];
         db.fields = db.fields || [];
         let loc = db.locations.find(
@@ -240,7 +240,7 @@ When('I toggle {string} to OFF', async ({ page }, label: string) => {
 
 Then(
   '{string} should display a subunit indicator like {string}',
-  async ({ page }, fieldName: string, indicator: string) => {
+  async ({ page }, fieldName: string, _indicator: string) => {
     await page.waitForTimeout(2000);
     const card = page.locator('div.bg-bg-surface', { hasText: fieldName }).first();
     await expect(card.getByText(/Sub-units:/).first()).toBeVisible({ timeout: 10000 });
@@ -266,7 +266,7 @@ Given(
         );
         const uniqueOrgId = localStorage.getItem('squadlogic_active_org') || 'org-1';
         const fieldId = 'field-2-test';
-        db.fields = (db.fields || []).filter((f: any) => f.id !== fieldId);
+        db.fields = (db.fields || []).filter((f: Record<string, unknown>) => f.id !== fieldId);
         db.locations = db.locations || [];
         db.fields = db.fields || [];
         let loc = db.locations.find(
@@ -300,7 +300,7 @@ Given(
           label: 'B',
           organization_id: uniqueOrgId,
         });
-        window.__MOCK_DB__ = db;
+        (window as { __MOCK_DB__?: unknown }).__MOCK_DB__ = db;
         sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
       },
       { fName: f, lName: l }

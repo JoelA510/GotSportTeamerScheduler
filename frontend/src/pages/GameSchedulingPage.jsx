@@ -21,9 +21,9 @@ import { useGameSlots } from '../hooks/useGameSlots.js';
 import { useTheme } from '../contexts/ThemeContext.jsx';
 import { useAuth } from '../contexts/AuthContext.jsx';
 import { useOrganization } from '../contexts/OrganizationContext.jsx';
-import { evaluateGameSchedule } from '../../../packages/core/src/gameMetrics.js';
 import { validateGameMove } from '../../../packages/core/src/gameValidation.js';
 import { supabase } from '../lib/supabaseClient.js';
+import EvaluationPanel from '../components/EvaluationPanel.jsx';
 import { logger } from '../lib/logger.js';
 import Button from '../components/ui/Button.jsx';
 
@@ -97,43 +97,10 @@ export default function GameSchedulingPage() {
     );
   }, [gameSlots, localAssignments, timezone]);
 
-  // ── Compute conflicts from current assignments ────────────────────────────
+  // ── Compute conflicts (Placeholder for Phase 8 real-time sync) ────────────────
   const { conflicts, conflictSet } = useMemo(() => {
-    if (!localAssignments.length) {
-      return { conflicts: [], conflictSet: new Set() };
-    }
-    try {
-      // Teams may not have loaded yet — field-overlap detection works without them
-      const teamsForMetrics = (teams || []).map((t) => ({
-        id: t.id,
-        division: t.divisionName || t.division || t.division_id || 'Unknown',
-        coachId: t.coachId || t.headCoachId || null,
-      }));
-      const { warnings } = evaluateGameSchedule({
-        assignments: localAssignments,
-        teams: teamsForMetrics,
-      });
-      // Build a set of assignment IDs involved in conflicts for red-border styling
-      const ids = new Set();
-      for (const w of warnings) {
-        if (w.details?.conflicts) {
-          for (const c of w.details.conflicts) {
-            if (c.slotId) {
-              // Find the assignments that match this conflict
-              const matching = localAssignments.filter(
-                (a) => String(a.slotId) === String(c.slotId)
-              );
-              for (const m of matching) ids.add(m.id);
-            }
-          }
-        }
-      }
-      return { conflicts: warnings, conflictSet: ids };
-    } catch (err) {
-      logger.error('Conflict detection failed:', err);
-      return { conflicts: [], conflictSet: new Set() };
-    }
-  }, [localAssignments, teams]);
+    return { conflicts: [], conflictSet: new Set() };
+  }, []);
 
   // ── Slot lookup for resolving drop targets ────────────────────────────────
   const slotTimeLookup = useMemo(() => {
@@ -311,7 +278,15 @@ export default function GameSchedulingPage() {
         setLocalAssignments(snapshot);
       }
     },
-    [activeGame, localAssignments, teams, slotTimeLookup, user, isImpersonating, currentOrganization]
+    [
+      activeGame,
+      localAssignments,
+      teams,
+      slotTimeLookup,
+      user,
+      isImpersonating,
+      currentOrganization,
+    ]
   );
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -332,12 +307,22 @@ export default function GameSchedulingPage() {
         </Button>
       </div>
 
-      <GameReadinessPanel
-        gameReadinessSnapshot={game.snapshot}
-        gameSummary={game.summary}
-        generatedAt={game.generatedAt}
-        timezone={timezone}
-      />
+      <div className="space-y-6">
+        <EvaluationPanel
+          gameData={{
+            games: localAssignments,
+            teams: teams,
+          }}
+          supabaseClient={supabase}
+        />
+
+        <GameReadinessPanel
+          gameReadinessSnapshot={game.snapshot}
+          gameSummary={game.summary}
+          generatedAt={game.generatedAt}
+          timezone={timezone}
+        />
+      </div>
 
       {conflicts.length > 0 && <GameConflictBanner warnings={conflicts} />}
 

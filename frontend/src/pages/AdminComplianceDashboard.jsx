@@ -93,9 +93,9 @@ export default function AdminComplianceDashboard() {
           ...(isImpersonating && {
             target_user_id: user.profile.id,
             impersonated_by: user.id,
-            admin_email: user.email
-          })
-        }
+            admin_email: user.email,
+          }),
+        },
       });
     } catch (err) {
       logger.error(err);
@@ -179,9 +179,7 @@ export default function AdminComplianceDashboard() {
                   <th className="px-6 py-4 font-semibold tracking-wider text-center">
                     Medical Clearance
                   </th>
-                  <th className="px-6 py-4 font-semibold tracking-wider text-right">
-                    Actions
-                  </th>
+                  <th className="px-6 py-4 font-semibold tracking-wider text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border-subtle">

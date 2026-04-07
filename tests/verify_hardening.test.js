@@ -3,26 +3,26 @@ import { mockSupabase as supabase } from '../frontend/src/lib/mockSupabaseClient
 
 describe('Supabase Hardening Verification', () => {
   it('should enforce 12-character password minimum on signUp', async () => {
-    const { data, error } = await supabase.auth.signUp({ 
-      email: 'test@example.com', 
-      password: 'short' 
+    const { data, error } = await supabase.auth.signUp({
+      email: 'test@example.com',
+      password: 'short',
     });
     expect(data.user).toBeNull();
     expect(error.message).toContain('Password must be at least 12 characters long');
   });
 
   it('should allow 12-character password on signUp', async () => {
-    const { data, error } = await supabase.auth.signUp({ 
-      email: 'test@example.com', 
-      password: 'longenough123' 
+    const { data, error } = await supabase.auth.signUp({
+      email: 'test@example.com',
+      password: 'longenough123',
     });
     expect(error).toBeNull();
     expect(data.user).toBeDefined();
   });
 
   it('should enforce 12-character password minimum on updateUser', async () => {
-    const { data, error } = await supabase.auth.updateUser({ 
-      password: 'short' 
+    const { data, error } = await supabase.auth.updateUser({
+      password: 'short',
     });
     expect(data.user).toBeNull();
     expect(error.message).toContain('Password must be at least 12 characters long');
@@ -31,9 +31,9 @@ describe('Supabase Hardening Verification', () => {
   it('should record audit events via record_audit_event RPC', async () => {
     const params = {
       p_action: 'auth.password_updated',
-      p_metadata: { user_id: 'test-user' }
+      p_metadata: { user_id: 'test-user' },
     };
-    
+
     const { error: rpcError } = await supabase.rpc('record_audit_event', params);
     expect(rpcError).toBeNull();
 
@@ -41,7 +41,7 @@ describe('Supabase Hardening Verification', () => {
       .from('audit_log')
       .select('*')
       .eq('action', 'auth.password_updated');
-    
+
     expect(queryError).toBeNull();
     expect(logs.length).toBeGreaterThan(0);
     expect(logs[logs.length - 1].action).toBe('auth.password_updated');
@@ -53,13 +53,13 @@ describe('Supabase Hardening Verification', () => {
       target_user_id: 'target-user-id',
       impersonated_by: 'admin-id',
       admin_email: 'admin@squadlogic.demo',
-      flags: { ADVANCED_FAIRNESS: true }
+      flags: { ADVANCED_FAIRNESS: true },
     };
 
     const { error: rpcError } = await supabase.rpc('record_audit_event', {
       p_organization_id: 'demo-org',
       p_action: 'settings.flags_updated',
-      p_metadata: impersonationMetadata
+      p_metadata: impersonationMetadata,
     });
     expect(rpcError).toBeNull();
 

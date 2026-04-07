@@ -59,7 +59,6 @@ export const ThemeProvider = ({ children }) => {
     return localStorage.getItem('squadlogic-timezone') || 'UTC';
   });
 
-
   const updateClubColors = (colors) => {
     const newColors = { ...clubColors, ...colors };
     setClubColors(newColors);
@@ -244,7 +243,6 @@ export const ThemeProvider = ({ children }) => {
   }, [theme, clubColors, clubMode]);
 
   return (
-
     <ThemeContext.Provider
       value={{
         theme,

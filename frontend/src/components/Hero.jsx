@@ -9,8 +9,8 @@ function Hero() {
         </span>
       </h1>
       <p className="text-lg md:text-xl text-text-secondary max-w-2xl mx-auto leading-relaxed animate-slideUp">
-        Manage your league's season from start to finish. Import data, build teams, and generate
-        schedules in one place.
+        Manage your league&apos;s season from start to finish. Import data, build teams, and
+        generate schedules in one place.
       </p>
     </section>
   );

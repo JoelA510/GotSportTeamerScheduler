@@ -66,7 +66,7 @@ Then('the resulting teams summary should reflect the new constraints', async ({ 
   await page.evaluate(() => {
     const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
     const orgId = localStorage.getItem('squadlogic_active_org') || 'org-1';
-    const run = db.scheduler_runs.find((r: any) => r.run_type === 'team' && r.status === 'running');
+    const run = db.scheduler_runs.find((r: Record<string, unknown>) => r.run_type === 'team' && r.status === 'running');
     if (run) {
       run.status = 'completed';
       run.organization_id = orgId; // CRITICAL FIX: Ensure the polling hook finds this run
@@ -78,8 +78,8 @@ Then('the resulting teams summary should reflect the new constraints', async ({ 
       };
     }
     sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
-    if ((window as any).__MOCK_DB__) {
-      (window as any).__MOCK_DB__ = db;
+    if ((window as { __MOCK_DB__?: unknown }).__MOCK_DB__) {
+      (window as { __MOCK_DB__?: unknown }).__MOCK_DB__ = db;
     }
   });
 
@@ -200,7 +200,7 @@ Given('I am on the {string} workflow step on Dashboard', async ({ page }, step: 
   // CRITICAL FIX: Go to root first to set origin, then set localStorage, then reload
   await page.goto('/');
   await page.evaluate((s) => {
-    const map: any = { Outcome: '6', Teaming: '2' };
+    const map: Record<string, string> = { Outcome: '6', Teaming: '2' };
     localStorage.setItem('dashboardActiveStep', map[s] || '6');
 
     // Seed data so the Output Generation panel has something to export
@@ -243,8 +243,8 @@ Given('I am on the {string} workflow step on Dashboard', async ({ page }, step: 
 
     sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
   }, step);
-  await page.reload();
-  const label = step.includes('Outcome') ? 'output' : step.toLowerCase().replace(/\s+/g, '-');
+  await page.goto('/');
+  const _label = step.includes('Outcome') ? 'output' : step.toLowerCase().replace(/\s+/g, '-');
   await page
     .locator(`[data-testid*="workflow-step-"]`)
     .filter({ hasText: '6. Output & Communication' })
@@ -252,7 +252,7 @@ Given('I am on the {string} workflow step on Dashboard', async ({ page }, step: 
     .click({ force: true });
 });
 
-Then('the status text should pulse orange saying {string}', async ({ page }, text: string) => {
+Then('the status text should pulse orange saying {string}', async ({ page }, _text: string) => {
   // In mock mode, the upload is instant, so it might skip straight to success.
   // We will accept either the pulsing text OR the final success text to prevent flakiness.
   const el = page.locator('.text-orange-400.animate-pulse, .text-emerald-400').first();
@@ -266,7 +266,7 @@ Then('eventually display a green success message confirming completion', async (
 });
 
 // --- Recharts ---
-When('I hover my mouse over the {string} chart', async ({ page }, chartName: string) => {
+When('I hover my mouse over the {string} chart', async ({ page }, _chartName: string) => {
   await page.goto('/');
   await page.evaluate(() => {
     const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
@@ -330,7 +330,7 @@ Given('I have generated a new set of teams', async ({ page }) => {
   await expect(page.locator('text=Drafting Summary').first()).toBeVisible({ timeout: 15000 });
 });
 
-Then('the button should disable and show {string}', async ({ page }, text: string) => {
+Then('the button should disable and show {string}', async ({ page }, _text: string) => {
   // In mock mode, generation is nearly instant (50ms). We might miss the "Generating..." state.
   // We verify the pipeline advanced by checking for the Upload button instead.
   const uploadBtn = page.getByRole('button', { name: 'Upload to Storage' }).first();

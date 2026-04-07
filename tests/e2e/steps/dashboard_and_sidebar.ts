@@ -197,7 +197,7 @@ Given('I have generated teams', async ({ page }) => {
     const orgId = localStorage.getItem('squadlogic_active_org') || 'org-test-e2e';
     const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
     db.scheduler_runs = db.scheduler_runs || [];
-    if (!db.scheduler_runs.find((r: any) => r.run_type === 'team' && r.status === 'completed')) {
+    if (!db.scheduler_runs.find((r: Record<string, unknown>) => r.run_type === 'team' && r.status === 'completed')) {
       const now = new Date().toISOString();
       db.scheduler_runs.push({
         id: 'run-t',
@@ -245,7 +245,7 @@ Given('I have generated a practice schedule', async ({ page }) => {
     db.scheduler_runs = db.scheduler_runs || [];
     const now = new Date().toISOString();
     ['team', 'practice', 'game'].forEach((type) => {
-      if (!db.scheduler_runs.find((r: any) => r.run_type === type && r.status === 'completed')) {
+      if (!db.scheduler_runs.find((r: Record<string, unknown>) => r.run_type === type && r.status === 'completed')) {
         db.scheduler_runs.push({
           id: `run-${type}`,
           organization_id: orgId,
@@ -374,10 +374,10 @@ Given(
   async ({ page }, orgName: string) => {
     await page.evaluate((name) => {
       const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
-      const org = (db.organizations || []).find((o: any) => o.name === name);
+      const org = (db.organizations || []).find((o: Record<string, unknown>) => o.name === name);
       if (org) {
-        localStorage.setItem('squadlogic_active_org', org.id);
-        const seasons = (db.season_settings || []).filter((s: any) => s.organization_id === org.id);
+        localStorage.setItem('squadlogic_active_org', (org as { id: string }).id);
+        const seasons = (db.season_settings || []).filter((s: Record<string, unknown>) => s.organization_id === (org as { id: string }).id);
         if (seasons.length > 0) {
           localStorage.setItem('squadlogic-current-season', seasons[0].name);
         }
@@ -413,7 +413,7 @@ Then('the sidebar header should display {string}', async ({ page }, orgName: str
 
 Then(
   'the {string} dropdown should update to show seasons for {string}',
-  async ({ page }, dropdown: string, orgName: string) => {
+  async ({ page }, _dropdown: string, _orgName: string) => {
     const seasonButton = page.getByText('Active Season').locator('..').getByRole('button');
     await expect(seasonButton).toBeVisible();
     await expect(seasonButton).not.toContainText('No seasons');
@@ -460,7 +460,7 @@ Then('the dashboard data should refresh to show data for the selected season', a
 
 Given(
   'the localStorage contains a season ID that does not exist for {string}',
-  async ({ page }, orgName: string) => {
+  async ({ page }, _orgName: string) => {
     await page.evaluate(() => localStorage.setItem('squadlogic-current-season', 'invalid-id'));
   }
 );
@@ -507,9 +507,9 @@ Then('localStorage should be updated with the valid season', async ({ page }) =>
 Given('I have selected {string} as the active organization', async ({ page }, orgName: string) => {
   await page.evaluate((name) => {
     const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
-    const org = (db.organizations || []).find((o: any) => o.name === name);
+    const org = (db.organizations || []).find((o: Record<string, unknown>) => o.name === name);
     if (org) {
-      localStorage.setItem('squadlogic_active_org', org.id);
+      localStorage.setItem('squadlogic_active_org', (org as { id: string }).id);
     }
   }, orgName);
   if (page.url() !== 'about:blank') await page.reload();

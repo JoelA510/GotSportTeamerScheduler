@@ -41,11 +41,9 @@ export async function processTeamPersistenceRequest({
     return authResult;
   }
 
-  // @ts-ignore
   const { snapshot, overrides = [], runMetadata = {} } = requestBody || {};
 
   try {
-    // @ts-ignore
     const validationResult = handleTeamPersistence({ snapshot, overrides, now });
     if (validationResult.status !== 'success') {
       return validationResult;
@@ -67,7 +65,6 @@ export async function processTeamPersistenceRequest({
   } catch (error) {
     return {
       status: 'error',
-      // @ts-ignore
       message: error?.message || 'Failed to persist team snapshot.',
     };
   }

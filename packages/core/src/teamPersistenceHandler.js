@@ -26,7 +26,6 @@ import { evaluateOverrides } from './utils/snapshot.js';
  * @returns {Object}
  */
 export function authorizeTeamPersistenceRequest(params) {
-  // @ts-ignore
   return authorizePersistenceRequest({ ...params, runType: 'team' });
 }
 
@@ -46,7 +45,6 @@ function normalizeSnapshot(snapshot) {
     throw new TypeError('snapshot.payload must be an object');
   }
 
-  // @ts-ignore - payload structure dynamic validation
   const { teamRows, teamPlayerRows } = payload;
 
   if (!Array.isArray(teamRows)) {
@@ -60,7 +58,6 @@ function normalizeSnapshot(snapshot) {
     if (!row || typeof row !== 'object') {
       throw new TypeError(`teamRows[${index}] must be an object`);
     }
-    // @ts-ignore
     if (typeof row.id !== 'string' || !row.id.trim()) {
       throw new Error(`teamRows[${index}] requires an id`);
     }
@@ -70,11 +67,9 @@ function normalizeSnapshot(snapshot) {
     if (!row || typeof row !== 'object') {
       throw new TypeError(`teamPlayerRows[${index}] must be an object`);
     }
-    // @ts-ignore
     if (typeof row.team_id !== 'string' || !row.team_id.trim()) {
       throw new Error(`teamPlayerRows[${index}] requires a team_id`);
     }
-    // @ts-ignore
     if (typeof row.player_id !== 'string' || !row.player_id.trim()) {
       throw new Error(`teamPlayerRows[${index}] requires a player_id`);
     }
@@ -84,7 +79,6 @@ function normalizeSnapshot(snapshot) {
     ...snapshot,
     payload: {
       ...snapshot.payload,
-      // @ts-ignore
       assignmentRows: undefined, // Clear incompatible assignments if any
     },
     teamRows,
@@ -156,9 +150,7 @@ export async function persistTeamSnapshotTransactional({
   runMetadata = {},
   now = new Date(),
 }) {
-  // @ts-ignore - Validated by normalizeSnapshot
   const { teamRows, teamPlayerRows, runId: snapshotRunId } = normalizeSnapshot(snapshot);
-  // @ts-ignore
   const effectiveRunId = runMetadata.runId ?? snapshotRunId;
   const effectiveRunMetadata = { ...runMetadata, runId: effectiveRunId };
 
@@ -169,7 +161,6 @@ export async function persistTeamSnapshotTransactional({
     runType: 'team',
     runMetadata: effectiveRunMetadata,
     now,
-    // @ts-ignore
     transformPayload: ({ snapshot, runMetadata, nowIso, runId }) => {
       // Prepare run data for the RPC
       const runData = buildSchedulerRunRow({
@@ -204,7 +195,6 @@ export async function persistTeamSnapshotTransactional({
  * @returns {Object}
  */
 export function handleTeamPersistence({ snapshot, overrides = [], now = new Date() }) {
-  // @ts-ignore
   return handlePersistenceRequest({
     snapshot,
     overrides,

@@ -30,7 +30,7 @@ export function useSchedulerRun(runType, mapper, emptyState) {
           .order('completed_at', { ascending: false })
           .limit(1)
           .single()
-          // @ts-ignore - abortSignal exists on the builder but may not be in the type definitions
+          // @ts-expect-error [SUP] abortSignal present but untyped in PostgREST builder
           .abortSignal(controller.signal);
 
         if (queryError) {

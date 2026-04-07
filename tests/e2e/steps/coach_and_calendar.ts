@@ -20,7 +20,7 @@ Given('I have been assigned to the {string}', async ({ page }, teamName: string)
 
     db.teams = db.teams || [];
     const teamId = name.toLowerCase().replace(/\s+/g, '-');
-    if (!db.teams.find((t: any) => t.id === teamId)) {
+    if (!db.teams.find((t: Record<string, unknown>) => t.id === teamId)) {
       db.teams.push({ id: teamId, name: name, organization_id: orgId });
     }
     db.team_members = db.team_members || [];
@@ -29,7 +29,7 @@ Given('I have been assigned to the {string}', async ({ page }, teamName: string)
     // CRITICAL FIX: Save teamId for direct navigation
     localStorage.setItem('test_target_team_id', teamId);
 
-    (window as any).__MOCK_DB__ = db;
+    (window as { __MOCK_DB__?: unknown }).__MOCK_DB__ = db;
     sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
   }, teamName);
 });
@@ -53,7 +53,7 @@ Given('my team has {int} players assigned', async ({ page }, count: number) => {
         medical_cleared: i % 2 === 0,
       });
     }
-    (window as any).__MOCK_DB__ = db;
+    (window as { __MOCK_DB__?: unknown }).__MOCK_DB__ = db;
     sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
   }, count);
 });
@@ -82,7 +82,7 @@ Then('I should be flagged if any player is currently non-compliant', async ({ pa
   await expect(page.locator('.bg-status-warning-bg').first()).toBeVisible();
 });
 
-Given('my team has practices on Tuesdays and games on Saturdays', async ({ page }) => {
+Given('my team has practices on Tuesdays and games on Saturdays', async ({ page: _page }) => {
   // Mock schedule data
 });
 
@@ -101,7 +101,7 @@ When('I access my personalized calendar feed URL', async ({ page }) => {
     );
     return await res.text();
   });
-  (page as any).icsResponse = responseText;
+  (page as { icsResponse?: string } & typeof page).icsResponse = responseText;
 });
 
 Then('a modal should appear displaying a subscription link', async ({ page }) => {
@@ -129,14 +129,14 @@ Then('I should be able to click a button to copy the link to my clipboard', asyn
 });
 
 Then('I should see all my team events in my external calendar application', async ({ page }) => {
-  const text = (page as any).icsResponse || 'BEGIN:VCALENDAR';
+  const text = (page as { icsResponse?: string } & typeof page).icsResponse || 'BEGIN:VCALENDAR';
   expect(text).toContain('BEGIN:VCALENDAR');
 });
 
 Then(
   /the feed should only contain data for my authorized team \(no data leakage\)/,
   async ({ page }) => {
-    const text = (page as any).icsResponse || 'END:VCALENDAR';
+    const text = (page as { icsResponse?: string } & typeof page).icsResponse || 'END:VCALENDAR';
     expect(text).toContain('END:VCALENDAR');
   }
 );
@@ -157,7 +157,7 @@ Then('I should see a {string} button in the sidebar', async ({ page }, btnLabel:
 
 Then(
   'I should see a list of players with their {string} status',
-  async ({ page }, statusType: string) => {
+  async ({ page }, _statusType: string) => {
     await expect(page.locator('.bg-bg-surface').first()).toBeVisible();
     await expect(page.getByText(/Cleared|Pending/i).first()).toBeVisible();
   }

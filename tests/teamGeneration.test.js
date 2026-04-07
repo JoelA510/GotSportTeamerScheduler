@@ -296,21 +296,21 @@ test('validates input arguments', () => {
     /divisionconfigs must be an object/i
   );
   assert.throws(
-    // @ts-ignore
+    // @ts-expect-error [INVALID_INPUT] - testing intentional invalid input to verify runtime validation logic in javascript-compiled-as-typescript context
     () => generateTeams({ players: [], divisionConfigs, random: 'not-a-function' }),
     /random must be a function/i
   );
 
   const missingId = [{ division: 'U10' }];
   assert.throws(
-    // @ts-ignore — intentionally invalid input to test validation
+    // @ts-expect-error [INVALID_INPUT] - testing intentional invalid input to verify runtime validation logic in javascript-compiled-as-typescript context
     () => generateTeams({ players: missingId, divisionConfigs }),
     /each player requires an id/i
   );
 
   const missingDivision = [{ id: 'no-division' }];
   assert.throws(
-    // @ts-ignore — intentionally invalid input to test validation
+    // @ts-expect-error [INVALID_INPUT] - testing intentional invalid input to verify runtime validation logic in javascript-compiled-as-typescript context
     () => generateTeams({ players: missingDivision, divisionConfigs }),
     /each player requires a division/i
   );

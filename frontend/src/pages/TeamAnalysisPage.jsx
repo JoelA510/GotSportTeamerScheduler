@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useTheme } from '../contexts/ThemeContext.jsx';
 import { useAuth } from '../contexts/AuthContext.jsx';
 import { supabase } from '../lib/supabaseClient.js';
@@ -42,7 +42,7 @@ export default function TeamAnalysisPage() {
     setSelectedProgramId,
   } = useTeamAnalysis();
 
-  const handleGenerateTeams = async () => {
+  const handleGenerateTeams = useCallback(async () => {
     setIsGenerating(true);
 
     try {
@@ -63,7 +63,7 @@ export default function TeamAnalysisPage() {
           })),
         };
 
-        await supabase.from('scheduler_runs').insert({
+        const { error: insertError } = await supabase.from('scheduler_runs').insert({
           season_settings_id: settings.id,
           run_type: 'team',
           status: 'running',
@@ -71,6 +71,8 @@ export default function TeamAnalysisPage() {
           metrics: { progress: 0 },
           started_at: new Date().toISOString(),
         });
+
+        if (insertError) throw insertError;
 
         // Audit teaming generation
         await supabase.rpc('record_audit_event', {
@@ -81,30 +83,39 @@ export default function TeamAnalysisPage() {
             ...(isImpersonating && {
               target_user_id: user.profile.id,
               impersonated_by: user.id,
-              admin_email: user.email
-            })
-          }
+              admin_email: user.email,
+            }),
+          },
         });
       } else {
         logger.warn('No season settings found.');
+        setIsGenerating(false);
       }
     } catch (e) {
       logger.error('Backend insert failed', e);
+      setIsGenerating(false);
     }
-  };
+  }, [programs, configs, currentOrganization?.id, isImpersonating, user]);
 
   const selectedProgram = programs.find((p) => p.id === selectedProgramId);
 
-  // Clear generating state when the polling hook detects completion
+  // Derive generating status to avoid synchronous state synchronization in Effects
+  const isActuallyGenerating = useMemo(() => {
+    if (team?.status === 'running') return true;
+    if (team?.status === 'completed' || team?.status === 'error') return false;
+    return isGenerating;
+  }, [team?.status, isGenerating]);
+
+  // Reset local trigger state when polling confirms processing started or failed
   useEffect(() => {
-    if (
-      team?.status === 'completed' ||
-      team?.status === 'completed_with_warnings' ||
-      team?.status === 'error'
-    ) {
-      setIsGenerating(false);
+    if (isGenerating && (team?.status === 'running' || team?.status === 'error')) {
+      // This is still a set state in effect, but it's gated and handles the transition
+      // To fully remove it, we'd need to manage the transition state in the hook itself.
+      // However, making it asynchronous or using a ref for the transition is cleaner.
+      const timer = setTimeout(() => setIsGenerating(false), 0);
+      return () => clearTimeout(timer);
     }
-  }, [team?.status]);
+  }, [team?.status, isGenerating]);
 
   // Map persistence snapshot to nested structure for RosterManager
   const mappedTeams = useMemo(() => {
@@ -200,18 +211,18 @@ export default function TeamAnalysisPage() {
         )}
       </div>
 
-      {loading?.team || isGenerating ? (
+      {loading?.team || isActuallyGenerating ? (
         <div className="p-12 text-center animate-fadeIn">
           <div className="max-w-md mx-auto">
             <h3 className="text-xl font-bold text-text-primary mb-4">
-              {team?.status === 'running' || isGenerating
+              {team?.status === 'running' || isActuallyGenerating
                 ? 'Generating Teams...'
                 : 'Loading Team Data...'}
             </h3>
             <ProgressBar
               progress={team?.progress || 0}
               label={
-                team?.status === 'running' || isGenerating
+                team?.status === 'running' || isActuallyGenerating
                   ? 'Processing roster rules and division caps...'
                   : 'Fetching data...'
               }
@@ -250,7 +261,7 @@ export default function TeamAnalysisPage() {
               variant="primary"
               size="lg"
               onClick={handleGenerateTeams}
-              disabled={isGenerating || validationErrors.length > 0}
+              disabled={isActuallyGenerating || validationErrors.length > 0}
               className="flex items-center gap-2"
             >
               Generate Teams <ArrowRight size={18} />

@@ -286,17 +286,17 @@ export default function RosterManager({ initialTeams }) {
         await supabase.rpc('record_audit_event', {
           p_organization_id: currentOrganization?.id,
           p_action: 'player.reassigned',
-            p_metadata: {
-              player_id: activeId,
-              from_team_id: sourceTeam.id,
-              to_team_id: destTeam.id,
-              trigger: 'roster_drag_drop',
-              ...(isImpersonating && {
-                target_user_id: user.profile.id,
-                impersonated_by: user.id,
-                admin_email: user.email
-              })
-            }
+          p_metadata: {
+            player_id: activeId,
+            from_team_id: sourceTeam.id,
+            to_team_id: destTeam.id,
+            trigger: 'roster_drag_drop',
+            ...(isImpersonating && {
+              target_user_id: user.profile.id,
+              impersonated_by: user.id,
+              admin_email: user.email,
+            }),
+          },
         });
       } catch (e) {
         logger.error('Failed to persist player assignment override', e);

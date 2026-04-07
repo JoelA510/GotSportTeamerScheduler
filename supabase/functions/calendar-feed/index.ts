@@ -124,7 +124,7 @@ serve(async (req) => {
     };
 
     practices?.forEach((p) => {
-      const [startStr, endStr] = p.effective_date_range.replace(/[\[\]()]/g, '').split(',');
+      const [startStr, endStr] = p.effective_date_range.replace(/[[]()]/g, '').split(',');
       if (!startStr || !endStr) return;
 
       const slot = p.practice_slots;
@@ -212,7 +212,7 @@ serve(async (req) => {
     return new Response(icsString, {
       headers: {
         'Content-Type': 'text/calendar; charset=utf-8',
-        'Content-Disposition': `attachment; filename="${team.name.replace(/[^a-zA-Z0-9_\-]/g, '_')}_Schedule.ics"`,
+        'Content-Disposition': `attachment; filename="${team.name.replace(/[^a-zA-Z0-9_-]/g, '_')}_Schedule.ics"`,
       },
       status: 200,
     });

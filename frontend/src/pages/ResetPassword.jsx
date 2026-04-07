@@ -12,13 +12,9 @@ export default function ResetPassword() {
   const { updatePassword, session } = useAuth();
   const navigate = useNavigate();
 
-  useEffect(() => {
-    // Basic check: if we're here, we should have a session (recovery type)
-    // or the user should be coming from a valid email link.
-    if (!session && !window.location.hash.includes('type=recovery')) {
-      setError('Invalid or expired reset link. Please request a new one.');
-    }
-  }, [session]);
+  const isInvalidLink = !session && !window.location.hash.includes('type=recovery');
+  const displayedError =
+    error || (isInvalidLink ? 'Invalid or expired reset link. Please request a new one.' : null);
 
   const handleReset = async (e) => {
     e.preventDefault();
@@ -38,7 +34,7 @@ export default function ResetPassword() {
 
     setLoading(true);
     const { error: resetError } = await updatePassword(password);
-    
+
     if (resetError) {
       setError(resetError.message);
     } else {
@@ -98,7 +94,7 @@ export default function ResetPassword() {
           </p>
         </header>
 
-        {error && (
+        {displayedError && (
           <div
             className="alert-banner"
             role="alert"
@@ -112,7 +108,7 @@ export default function ResetPassword() {
               fontSize: '0.9rem',
             }}
           >
-            {error}
+            {displayedError}
           </div>
         )}
 

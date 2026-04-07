@@ -103,9 +103,9 @@ export default function RegistrationForms() {
           ...(isImpersonating && {
             target_user_id: user.profile.id,
             impersonated_by: user.id,
-            admin_email: user.email
-          })
-        }
+            admin_email: user.email,
+          }),
+        },
       });
 
       setMessage({ type: 'success', text: 'Form saved successfully!' });

@@ -380,7 +380,7 @@ describe('buildPracticeAssignmentRows', () => {
   });
 
   it('rejects non-array assignments', () => {
-    // @ts-ignore - testing intentional invalid input
+    // @ts-expect-error [INVALID_INPUT] - testing intentional invalid input to verify runtime validation logic in javascript-compiled-as-typescript context
     assert.throws(() => buildPracticeAssignmentRows({ assignments: 'bad', slots: [] }), {
       name: 'TypeError',
       message: /assignments must be an array/i,

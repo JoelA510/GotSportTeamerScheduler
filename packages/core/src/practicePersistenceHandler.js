@@ -47,7 +47,6 @@ export async function persistPracticeSnapshotTransactional(params) {
     runMetadata: effectiveRunMetadata,
     runType: 'practice',
     rpcName: 'persist_practice_schedule',
-    // @ts-ignore
     transformPayload: ({ snapshot, runData }) => ({
       run_data: runData,
       assignments: snapshot.payload.assignmentRows,

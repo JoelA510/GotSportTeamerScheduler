@@ -68,7 +68,6 @@ export function validateSnapshot({ snapshot } = {}) {
   if (!snapshot || typeof snapshot !== 'object') {
     return { status: 'error', message: 'Invalid snapshot payload.' };
   }
-  // @ts-ignore
   if (!snapshot.payload || typeof snapshot.payload !== 'object') {
     return {
       status: 'error',
@@ -91,7 +90,6 @@ export function validateSnapshot({ snapshot } = {}) {
  * @returns {Object} Response object.
  */
 export function handlePersistenceRequest({
-  // @ts-ignore
   snapshot,
   overrides = [],
   now = new Date(),
@@ -103,7 +101,6 @@ export function handlePersistenceRequest({
     return { status: 'error', message: 'Invalid server time configuration.' };
   }
 
-  // @ts-ignore
   const structureValidation = validateSnapshot({ snapshot });
   if (structureValidation.status !== 'success') {
     return structureValidation;
@@ -111,10 +108,8 @@ export function handlePersistenceRequest({
 
   let normalizedSnapshot;
   try {
-    // @ts-ignore
     normalizedSnapshot = snapshotNormalizer(snapshot); // Throws if invalid
   } catch (err) {
-    // @ts-ignore
     return { status: 'validation_error', message: err.message };
   }
 
@@ -196,7 +191,6 @@ export async function persistSnapshotTransactional({
     : { snapshot, run_data: runData };
 
   // Call the RPC function
-  // @ts-ignore
   const { data, error } = await supabaseClient.rpc(rpcName, rpcPayload);
 
   if (error) {

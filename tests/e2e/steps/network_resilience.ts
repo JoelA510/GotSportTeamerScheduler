@@ -22,7 +22,7 @@ Given('the user has modified the {string} roster', async ({ page }, teamName: st
 
     // Remove any existing 'team' runs for this mock org to ensure this one is picked up
     db.scheduler_runs = db.scheduler_runs.filter(
-      (r: any) => !(r.organization_id === orgId && r.run_type === 'team')
+      (r: Record<string, unknown>) => !(r.organization_id === orgId && r.run_type === 'team')
     );
 
     db.scheduler_runs.push({
@@ -38,7 +38,7 @@ Given('the user has modified the {string} roster', async ({ page }, teamName: st
       created_at: new Date().toISOString(),
     });
     sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
-    window.__MOCK_DB__ = db;
+    (window as { __MOCK_DB__?: unknown }).__MOCK_DB__ = db;
   }, teamName);
 
   await page.goto('/teams');
@@ -53,7 +53,7 @@ When('the application attempts to sync the changes', async ({ page }) => {
   await syncBtn.click({ force: true });
 });
 
-When('the network connection drops or the API returns a 504 Timeout', async ({ page, context }) => {
+When('the network connection drops or the API returns a 504 Timeout', async ({ page: _page, context }) => {
   // CRITICAL FIX: Use Playwright's native offline simulation to truly kill the browser's network
   await context.setOffline(true);
 });

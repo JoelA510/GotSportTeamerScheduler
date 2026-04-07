@@ -142,7 +142,7 @@ describe('buildOverridesFromSupabaseRows', () => {
   });
 
   it('throws when rows are malformed', () => {
-    // @ts-ignore - testing intentional invalid input
+    // @ts-expect-error [INVALID_INPUT] - testing intentional invalid input to verify runtime validation logic in javascript-compiled-as-typescript context
     assert.throws(() => buildOverridesFromSupabaseRows('oops'));
     assert.throws(() => buildOverridesFromSupabaseRows([{}]));
     assert.throws(() => buildOverridesFromSupabaseRows([{ divisionId: 'U8', maxRosterSize: 0 }]));

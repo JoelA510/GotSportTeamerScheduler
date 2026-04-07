@@ -34,6 +34,7 @@ const SetupWizard = lazy(() => import('./pages/SetupWizard.jsx'));
 const ThemeToggle = lazy(() => import('./components/ThemeToggle.jsx'));
 const ResetPassword = lazy(() => import('./pages/ResetPassword.jsx'));
 const AuditLogPage = lazy(() => import('./pages/AuditLogPage.jsx'));
+const AnalyticalDashboard = lazy(() => import('./pages/AnalyticalDashboard.jsx'));
 import ShadowBanner from './components/auth/ShadowBanner.jsx';
 
 function AppContent() {
@@ -116,6 +117,14 @@ function AppContent() {
             element={
               <ProtectedRoute requiredPermission={PERMISSIONS.MANAGE_GLOBAL_SETTINGS}>
                 <AuditLogPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/analytics"
+            element={
+              <ProtectedRoute requiredPermission={PERMISSIONS.MANAGE_ORGANIZATION}>
+                <AnalyticalDashboard />
               </ProtectedRoute>
             }
           />

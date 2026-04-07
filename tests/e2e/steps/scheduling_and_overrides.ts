@@ -112,7 +112,9 @@ Given('a target roster size of {int}', async ({ page }, targetSize: number) => {
       const orgId = localStorage.getItem('squadlogic_active_org') || 'org-1';
 
       db.season_settings = db.season_settings || [];
-      const season = db.season_settings.find((s: any) => s.organization_id === orgId);
+      const season = db.season_settings.find(
+        (s: Record<string, unknown>) => s.organization_id === orgId
+      );
       if (season) {
         season.target_roster_size = size;
       } else {
@@ -138,7 +140,7 @@ When('I trigger the team generation algorithm', async ({ page }) => {
 
     // Mock the engine's output: 10 teams formatted for the frontend data mapper
     const generatedTeams = [];
-    const rosterBalance: any = [];
+    const rosterBalance: Record<string, unknown>[] = [];
 
     for (let i = 1; i <= 10; i++) {
       generatedTeams.push({
@@ -237,7 +239,7 @@ Given('a team is located in a specific timezone', async ({ page }) => {
     const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
     const orgId = localStorage.getItem('squadlogic_active_org') || 'org-1';
 
-    db.organizations = db.organizations.map((org: any) => {
+    db.organizations = db.organizations.map((org: Record<string, unknown>) => {
       if (org.id === orgId) return { ...org, timezone: 'America/Los_Angeles' };
       return org;
     });
@@ -275,7 +277,9 @@ Then('practice assignments should respect the local timezone offsets', async ({ 
   const state = await page.evaluate(() =>
     JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}')
   );
-  const run = [...state.scheduler_runs].reverse().find((r: any) => r.run_type === 'practice');
+  const run = [...state.scheduler_runs]
+    .reverse()
+    .find((r: Record<string, unknown>) => r.run_type === 'practice');
   expect(run.results.assignments[0].timezone_offset).toBe('-08:00');
 });
 
@@ -283,7 +287,9 @@ Then('no coach should be scheduled for two concurrent practices', async ({ page 
   const state = await page.evaluate(() =>
     JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}')
   );
-  const run = [...state.scheduler_runs].reverse().find((r: any) => r.run_type === 'practice');
+  const run = [...state.scheduler_runs]
+    .reverse()
+    .find((r: Record<string, unknown>) => r.run_type === 'practice');
   expect(run.results.metrics.double_bookings).toBe(0);
 });
 
@@ -291,7 +297,9 @@ Then('no field slot should exceed its maximum capacity', async ({ page }) => {
   const state = await page.evaluate(() =>
     JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}')
   );
-  const run = [...state.scheduler_runs].reverse().find((r: any) => r.run_type === 'practice');
+  const run = [...state.scheduler_runs]
+    .reverse()
+    .find((r: Record<string, unknown>) => r.run_type === 'practice');
   expect(run.results.metrics.over_capacity).toBe(0);
 });
 
@@ -307,7 +315,7 @@ Given('a list of teams in a division', async ({ page }) => {
     db.teams = db.teams || [];
     // Ensure at least 4 teams exist for a round-robin
     for (let i = 1; i <= 4; i++) {
-      if (!db.teams.find((t: any) => t.id === `team-g${i}`)) {
+      if (!db.teams.find((t: Record<string, unknown>) => t.id === `team-g${i}`)) {
         db.teams.push({
           id: `team-g${i}`,
           name: `Game Team ${i}`,
@@ -325,7 +333,6 @@ When('I generate a round-robin game schedule', async ({ page }) => {
   await page.evaluate(() => {
     const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
     const orgId = localStorage.getItem('squadlogic_active_org') || 'org-1';
-    const now = new Date().toISOString();
 
     // Mock game schedule: 4 teams playing each other twice = 12 games total
     const schedule = [];
@@ -439,7 +446,7 @@ When(
 
     // Save the player's name to verify it moved
     const playerName = await player.locator('.font-medium').first().textContent();
-    (page as any).playerMoved = playerName?.trim();
+    (page as { playerMoved?: string } & typeof page).playerMoved = playerName?.trim() || '';
 
     const targetColumn = page.locator('.bg-bg-surface\\/50').filter({ hasText: teamB }).first();
 
@@ -453,14 +460,14 @@ When(
 );
 
 Then('the system should save the new player assignment', async ({ page }) => {
-  const playerName = (page as any).playerMoved;
+  const playerName = (page as { playerMoved?: string } & typeof page).playerMoved;
   // Verify the player is now physically rendered in the Team B column
   const targetColumn = page.locator('.bg-bg-surface\\/50').filter({ hasText: 'Team B' }).first();
   await expect(targetColumn.getByText(playerName)).toBeVisible({ timeout: 10000 });
 });
 
 Then('designate the source of this assignment as {string}', async ({ page }, source: string) => {
-  const playerName = (page as any).playerMoved;
+  const playerName = (page as { playerMoved?: string } & typeof page).playerMoved;
   const playerCard = page
     .locator('[data-testid^="player-card-"]')
     .filter({ hasText: playerName })
@@ -574,7 +581,7 @@ When('I manually assign a team to an alternative practice slot', async ({ page }
 
 Then(
   'the new practice assignment is saved with the {string} source flag',
-  async ({ page }, flag: string) => {
+  async ({ page }, _flag: string) => {
     await expect(page.getByText(/Manual/i, { exact: false }).first()).toBeVisible();
   }
 );
@@ -604,7 +611,7 @@ Given('I am on the Game Scheduling page viewing an identified conflict', async (
 
     // Ensure we have enough teams with coach assignments
     db.teams = db.teams || [];
-    if (!db.teams.find((t: any) => t.id === 'team-gc1')) {
+    if (!db.teams.find((t: Record<string, unknown>) => t.id === 'team-gc1')) {
       db.teams.push(
         {
           id: 'team-gc1',
@@ -639,7 +646,7 @@ Given('I am on the Game Scheduling page viewing an identified conflict', async (
 
     // Ensure two fields exist
     db.fields = db.fields || [];
-    if (!db.fields.find((f: any) => f.id === 'v1')) {
+    if (!db.fields.find((f: Record<string, unknown>) => f.id === 'v1')) {
       db.fields.push({
         id: 'v1',
         name: 'Field 1',
@@ -649,7 +656,7 @@ Given('I am on the Game Scheduling page viewing an identified conflict', async (
         size: '11v11',
       });
     }
-    if (!db.fields.find((f: any) => f.id === 'v2')) {
+    if (!db.fields.find((f: Record<string, unknown>) => f.id === 'v2')) {
       db.fields.push({
         id: 'v2',
         name: 'Field 2',
@@ -730,7 +737,9 @@ Given('I am on the Game Scheduling page viewing an identified conflict', async (
     const futureDate = new Date();
     futureDate.setFullYear(futureDate.getFullYear() + 1);
     const timestamp = futureDate.toISOString();
-    db.scheduler_runs = (db.scheduler_runs || []).filter((r: any) => r.run_type !== 'game');
+    db.scheduler_runs = (db.scheduler_runs || []).filter(
+      (r: Record<string, unknown>) => r.run_type !== 'game'
+    );
     db.scheduler_runs.push({
       id: 'run-game-conflict',
       organization_id: orgId,
@@ -798,7 +807,7 @@ Then('updates the game schedule if the selected slot is valid', async ({ page })
     return db.game_assignments || [];
   });
 
-  const movedAssignment = dbState.find((a: any) => a.id === 'ga-conflict-2');
+  const movedAssignment = dbState.find((a: Record<string, unknown>) => a.id === 'ga-conflict-2');
   expect(movedAssignment).toBeTruthy();
   expect(movedAssignment.assignment_source).toBe('manual');
   expect(movedAssignment.field_id).toBe('v2');
@@ -884,7 +893,7 @@ When(
 
 Then(
   'the assignment for {string} should show a {string} status',
-  async ({ page }, teamName: string, status: string) => {
+  async ({ page }, teamName: string, _status: string) => {
     const row = page.locator('tr').filter({ hasText: teamName }).first();
 
     // Based on PracticeAssignmentList.jsx, check for the specific locked CSS class applied to the button

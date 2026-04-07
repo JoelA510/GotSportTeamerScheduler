@@ -157,7 +157,7 @@ test('normalizeManualOverrides validates structure and status', () => {
     ]
   );
 
-  // @ts-ignore
+  // @ts-expect-error [INVALID_INPUT] - testing intentional invalid input to verify runtime validation logic in javascript-compiled-as-typescript context
   assert.throws(() => normalizeManualOverrides('bad'), /manualOverrides must be an array/);
   assert.throws(() => normalizeManualOverrides([{}]), /requires a teamId/);
   assert.throws(

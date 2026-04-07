@@ -1,9 +1,9 @@
 import { createBdd } from 'playwright-bdd';
-import { test, expect } from '@playwright/test';
+import { expect } from '@playwright/test';
 
 const { Given, When, Then } = createBdd();
 
-Given('I need to announce a practice cancellation', async ({ page }) => {
+Given('I need to announce a practice cancellation', async ({ page: _page }) => {
   // Context step, no action needed
 });
 
@@ -42,15 +42,19 @@ Given(
 
         db.teams = db.teams || [];
         // CRITICAL FIX: Aggressively clear previous state to prevent cross-worker contamination
-        db.teams = db.teams?.filter((t: any) => t.organization_id !== orgId) || [];
+        db.teams =
+          db.teams?.filter((t: Record<string, unknown>) => t.organization_id !== orgId) || [];
         db.teams.push({ id: teamId, name: team, organization_id: orgId });
 
-        db.team_messages = db.team_messages?.filter((m: any) => m.organization_id !== orgId) || [];
-        db.event_rsvps = db.event_rsvps?.filter((r: any) => r.organization_id !== orgId) || [];
+        db.team_messages =
+          db.team_messages?.filter((m: Record<string, unknown>) => m.organization_id !== orgId) ||
+          [];
+        db.event_rsvps =
+          db.event_rsvps?.filter((r: Record<string, unknown>) => r.organization_id !== orgId) || [];
 
         db.players = db.players || [];
         // CRITICAL FIX: Remove existing player to prevent duplicate keys
-        db.players = db.players.filter((p: any) => p.id !== playerId);
+        db.players = db.players.filter((p: Record<string, unknown>) => p.id !== playerId);
         db.players.push({
           id: playerId,
           first_name: child,
@@ -59,11 +63,15 @@ Given(
         });
 
         db.team_players = db.team_players || [];
-        db.team_players = db.team_players.filter((tp: any) => tp.player_id !== playerId);
+        db.team_players = db.team_players.filter(
+          (tp: Record<string, unknown>) => tp.player_id !== playerId
+        );
         db.team_players.push({ team_id: teamId, player_id: playerId });
 
         db.profile_players = db.profile_players || [];
-        db.profile_players = db.profile_players.filter((pp: any) => pp.player_id !== playerId);
+        db.profile_players = db.profile_players.filter(
+          (pp: Record<string, unknown>) => pp.player_id !== playerId
+        );
         db.profile_players.push({ profile_id: 'mock-parent-id', player_id: playerId });
 
         localStorage.setItem('test_target_team_id', teamId);
@@ -86,7 +94,7 @@ Given(
 
         db.players = db.players || [];
         // CRITICAL FIX: Remove existing player to prevent duplicate keys
-        db.players = db.players.filter((p: any) => p.id !== playerId);
+        db.players = db.players.filter((p: Record<string, unknown>) => p.id !== playerId);
         db.players.push({
           id: playerId,
           first_name: child,
@@ -95,11 +103,15 @@ Given(
         });
 
         db.team_players = db.team_players || [];
-        db.team_players = db.team_players.filter((tp: any) => tp.player_id !== playerId);
+        db.team_players = db.team_players.filter(
+          (tp: Record<string, unknown>) => tp.player_id !== playerId
+        );
         db.team_players.push({ team_id: teamId, player_id: playerId });
 
         db.profile_players = db.profile_players || [];
-        db.profile_players = db.profile_players.filter((pp: any) => pp.player_id !== playerId);
+        db.profile_players = db.profile_players.filter(
+          (pp: Record<string, unknown>) => pp.player_id !== playerId
+        );
         db.profile_players.push({ profile_id: 'mock-parent-id', player_id: playerId });
 
         localStorage.setItem('test_target_team_id', teamId);
@@ -130,7 +142,7 @@ Given('there is an upcoming practice on {string}', async ({ page }, day: string)
     db.practice_slots = db.practice_slots || [];
 
     const slotId = `slot-${d.toLowerCase()}`;
-    if (!db.practice_slots.find((s: any) => s.id === slotId)) {
+    if (!db.practice_slots.find((s: Record<string, unknown>) => s.id === slotId)) {
       db.practice_slots.push({
         id: slotId,
         day_of_week: d.substring(0, 3).toLowerCase(),
@@ -139,7 +151,9 @@ Given('there is an upcoming practice on {string}', async ({ page }, day: string)
       });
     }
 
-    if (!db.practice_assignments.find((pa: any) => pa.practice_slot_id === slotId)) {
+    if (
+      !db.practice_assignments.find((pa: Record<string, unknown>) => pa.practice_slot_id === slotId)
+    ) {
       db.practice_assignments.push({
         id: `pa-${d.toLowerCase()}`,
         team_id: 'tigers',
@@ -227,7 +241,7 @@ Then("the RSVP timestamps should align with the league's official timezone", asy
   });
 
   // Find the specific RSVP we just created for Jamie
-  const jamieRsvp = rsvps.find((r: any) => r.status === 'declined');
+  const jamieRsvp = rsvps.find((r: Record<string, unknown>) => r.status === 'declined');
   expect(jamieRsvp).toBeDefined();
   expect(jamieRsvp.updated_at).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
 });

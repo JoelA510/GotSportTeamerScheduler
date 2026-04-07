@@ -38,6 +38,12 @@ const navItems = [
     path: '/admin/compliance',
   },
   { id: 'forms', label: 'Registration Forms', icon: ClipboardList, path: '/admin/forms' },
+  {
+    id: 'analytics',
+    label: 'Analytical Insights',
+    icon: LayoutDashboard,
+    path: '/admin/analytics',
+  },
   { id: 'audit', label: 'Audit Explorer', icon: History, path: '/admin/audit-logs' },
   { id: 'settings', label: 'Settings', icon: Settings, path: '/settings' },
 ];

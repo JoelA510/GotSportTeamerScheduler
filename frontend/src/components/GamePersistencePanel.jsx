@@ -61,7 +61,7 @@ export default function GamePersistencePanel({ assignments = [], runMetadata = {
       colorTheme="green"
       stats={[{ label: 'Assignments', value: snapshot.preparedAssignmentRows }]}
       onSync={handleSync}
-      // @ts-expect-error
+      // @ts-expect-error [PROPS] - Status string type mismatch with PersistencePanel component requirements
       status={status}
       message={message}
     />

@@ -18,12 +18,11 @@ test('normalizeSnapshot validates structure', () => {
 });
 
 test('normalizeSnapshot throws on missing payload', () => {
-  // @ts-ignore
+  // @ts-expect-error [INVALID_INPUT] - testing intentional invalid input to verify runtime validation logic in javascript-compiled-as-typescript context
   assert.throws(() => normalizeSnapshot({}), /snapshot.payload must be an object/);
 });
 
 test('normalizeSnapshot throws on invalid teamRows', () => {
-  // @ts-ignore
   assert.throws(
     () => normalizeSnapshot(/** @type {any} */ ({ payload: { teamRows: 'not-array' } })),
     /teamRows must be an array/
