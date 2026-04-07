@@ -1,6 +1,6 @@
 import React from 'react';
 import PropTypes from 'prop-types';
-import { Zap, CheckCircle, AlertTriangle, Loader2, RotateCcw } from 'lucide-react';
+import { Zap, CheckCircle, AlertTriangle, Loader2, RotateCcw, XCircle } from 'lucide-react';
 import Button from '../ui/Button.jsx';
 
 /**
@@ -16,6 +16,7 @@ export default function AutoSchedulerPanel({
   result,
   error,
   onTrigger,
+  onCancel,
   onReset,
   disabled = false,
 }) {
@@ -51,6 +52,18 @@ export default function AutoSchedulerPanel({
             >
               <RotateCcw size={14} aria-hidden="true" />
               Reset
+            </Button>
+          )}
+          {isRunning && onCancel && (
+            <Button
+              variant="danger"
+              size="sm"
+              onClick={onCancel}
+              className="flex items-center gap-1"
+              aria-label="Cancel the running optimization"
+            >
+              <XCircle size={14} aria-hidden="true" />
+              Cancel
             </Button>
           )}
           <Button
@@ -189,6 +202,7 @@ AutoSchedulerPanel.propTypes = {
   }),
   error: PropTypes.string,
   onTrigger: PropTypes.func.isRequired,
+  onCancel: PropTypes.func,
   onReset: PropTypes.func.isRequired,
   disabled: PropTypes.bool,
 };

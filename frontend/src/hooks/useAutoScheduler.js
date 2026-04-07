@@ -17,12 +17,13 @@ import { supabase } from '../lib/supabaseClient.js';
 /**
  * Hook to trigger and track auto-scheduler runs.
  *
- * Calls the auto-scheduler Edge Function, then polls evaluation_runs
- * for status updates until completion.
+ * Calls the auto-scheduler Edge Function and subscribes to Supabase Realtime
+ * on the audit_log table for live progress events (scheduler.auto_progress).
+ * The subscription is cleaned up on completion, failure, or manual cancel/reset.
  *
  * @param {Object} options
  * @param {string} options.organizationId
- * @returns {{ trigger: Function, status: AutoSchedulerStatus, result: AutoSchedulerResult|null, error: string|null, progress: { iteration: number, bestScore: number, elapsedMs: number }|null, reset: Function }}
+ * @returns {{ trigger: Function, cancel: Function, status: AutoSchedulerStatus, result: AutoSchedulerResult|null, error: string|null, progress: { iteration: number, bestScore: number, elapsedMs: number }|null, reset: Function }}
  */
 export function useAutoScheduler({ organizationId }) {
   /** @type {[AutoSchedulerStatus, Function]} */
@@ -31,17 +32,42 @@ export function useAutoScheduler({ organizationId }) {
   const [error, setError] = useState(null);
   const [progress, setProgress] = useState(null);
   const abortRef = useRef(null);
+  const channelRef = useRef(null);
+
+  /** Remove the Realtime channel subscription if active. */
+  const teardownChannel = useCallback(() => {
+    if (channelRef.current) {
+      supabase.removeChannel(channelRef.current);
+      channelRef.current = null;
+    }
+  }, []);
 
   const reset = useCallback(() => {
     if (abortRef.current) {
       abortRef.current.abort();
       abortRef.current = null;
     }
+    teardownChannel();
     setStatus('idle');
     setResult(null);
     setError(null);
     setProgress(null);
-  }, []);
+  }, [teardownChannel]);
+
+  /**
+   * Cancel a running optimization.
+   * Aborting the fetch causes the Deno Edge Function to terminate
+   * (Deno handles client disconnects by ending the handler).
+   */
+  const cancel = useCallback(() => {
+    if (abortRef.current) {
+      abortRef.current.abort();
+      abortRef.current = null;
+    }
+    teardownChannel();
+    setStatus('idle');
+    setProgress(null);
+  }, [teardownChannel]);
 
   const trigger = useCallback(
     async ({
@@ -69,6 +95,37 @@ export function useAutoScheduler({ organizationId }) {
       setResult(null);
       setProgress({ iteration: 0, bestScore: 0, elapsedMs: 0 });
 
+      // --- Realtime subscription for live progress ---
+      teardownChannel();
+
+      const channel = supabase
+        .channel('auto-scheduler-progress')
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'audit_log',
+            filter: `organization_id=eq.${organizationId}`,
+          },
+          (payload) => {
+            const row = payload.new;
+            if (row?.action === 'scheduler.auto_progress' && row?.metadata) {
+              const meta =
+                typeof row.metadata === 'string' ? JSON.parse(row.metadata) : row.metadata;
+              setProgress({
+                iteration: meta.iteration ?? 0,
+                bestScore: meta.bestScore ?? 0,
+                elapsedMs: meta.elapsedMs ?? 0,
+              });
+            }
+          }
+        )
+        .subscribe();
+
+      channelRef.current = channel;
+
+      // --- Edge Function call ---
       try {
         const { data: sessionData } = await supabase.auth.getSession();
         const token = sessionData?.session?.access_token;
@@ -126,10 +183,12 @@ export function useAutoScheduler({ organizationId }) {
         }
         setError(err.message || 'Auto-scheduler failed');
         setStatus('failed');
+      } finally {
+        teardownChannel();
       }
     },
-    [organizationId]
+    [organizationId, teardownChannel]
   );
 
-  return { trigger, status, result, error, progress, reset };
+  return { trigger, cancel, status, result, error, progress, reset };
 }

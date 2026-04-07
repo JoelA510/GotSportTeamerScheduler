@@ -26,6 +26,7 @@ export default function PracticeSchedulingPage() {
 
   const {
     trigger: triggerAutoScheduler,
+    cancel: cancelAutoScheduler,
     status: autoSchedulerStatus,
     result: autoSchedulerResult,
     error: autoSchedulerError,
@@ -80,6 +81,7 @@ export default function PracticeSchedulingPage() {
             result={autoSchedulerResult}
             error={autoSchedulerError}
             onTrigger={handleAutoGenerate}
+            onCancel={cancelAutoScheduler}
             onReset={resetAutoScheduler}
             disabled={dashboardLoading.practice || !team?.teams?.length}
           />
