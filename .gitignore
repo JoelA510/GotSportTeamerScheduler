@@ -37,3 +37,4 @@ tmp/
 
 # Backup directories
 test-results-backup/
+dist.old/
