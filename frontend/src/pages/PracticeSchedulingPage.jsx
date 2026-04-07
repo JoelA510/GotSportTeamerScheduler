@@ -1,9 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import PracticeReadinessPanel from '../components/PracticeReadinessPanel.jsx';
 import PracticeOverridePanel from '../components/PracticeOverridePanel.jsx';
 import PracticeAssignmentList from '../components/PracticeAssignmentList.jsx';
+import AutoSchedulerPanel from '../components/scheduling/AutoSchedulerPanel.jsx';
 import { useDashboardData } from '../hooks/useDashboardData.js';
 import { usePracticeAssignments } from '../hooks/usePracticeAssignments.js';
+import { useAutoScheduler } from '../hooks/useAutoScheduler.js';
+import { useOrganization } from '../contexts/OrganizationContext.jsx';
 import { useTheme } from '../contexts/ThemeContext.jsx';
 import Button from '../components/ui/Button.jsx';
 import { Edit2, Save } from 'lucide-react';
@@ -18,7 +21,37 @@ export default function PracticeSchedulingPage() {
     updateAssignmentSource,
   } = usePracticeAssignments(practice.runId);
   const { timezone } = useTheme();
+  const { currentOrganization } = useOrganization();
   const [isEditMode, setIsEditMode] = useState(false);
+
+  const {
+    trigger: triggerAutoScheduler,
+    status: autoSchedulerStatus,
+    result: autoSchedulerResult,
+    error: autoSchedulerError,
+    progress: autoSchedulerProgress,
+    reset: resetAutoScheduler,
+  } = useAutoScheduler({ organizationId: currentOrganization?.id });
+
+  const handleAutoGenerate = useCallback(() => {
+    const lockedAssignments = (assignments ?? [])
+      .filter((a) => a.source === 'manual' || a.source === 'locked')
+      .map((a) => ({ teamId: a.teamId, slotId: a.slotId }));
+
+    triggerAutoScheduler({
+      teams: team?.teams || [],
+      slots: practice.snapshot?.baseSlotDistribution || [],
+      lockedAssignments,
+      schoolDayEnd: practice.snapshot?.schoolDayEnd,
+      timezone,
+    });
+  }, [assignments, team, practice, timezone, triggerAutoScheduler]);
+
+  // Use optimized assignments if auto-scheduler completed, otherwise use current
+  const displayAssignments =
+    autoSchedulerStatus === 'completed' && autoSchedulerResult?.assignments
+      ? autoSchedulerResult.assignments
+      : assignments;
 
   return (
     <div className="animate-fadeIn space-y-8">
@@ -41,9 +74,19 @@ export default function PracticeSchedulingPage() {
 
       {!isEditMode && (
         <div className="space-y-6">
+          <AutoSchedulerPanel
+            status={autoSchedulerStatus}
+            progress={autoSchedulerProgress}
+            result={autoSchedulerResult}
+            error={autoSchedulerError}
+            onTrigger={handleAutoGenerate}
+            onReset={resetAutoScheduler}
+            disabled={dashboardLoading.practice || !team?.teams?.length}
+          />
+
           <EvaluationPanel
             practiceData={{
-              assignments: assignments,
+              assignments: displayAssignments,
               teams: team?.teams || [],
               slots: practice.snapshot?.baseSlotDistribution || [],
               unassigned: practice.snapshot?.unassignedByReason || [],
@@ -68,7 +111,7 @@ export default function PracticeSchedulingPage() {
         />
       ) : (
         <PracticeAssignmentList
-          assignments={assignments}
+          assignments={displayAssignments}
           loading={dashboardLoading.practice || assignmentsLoading}
           onToggleLock={updateAssignmentSource}
         />

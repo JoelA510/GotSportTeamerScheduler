@@ -1,0 +1,194 @@
+import React from 'react';
+import PropTypes from 'prop-types';
+import { Zap, CheckCircle, AlertTriangle, Loader2, RotateCcw } from 'lucide-react';
+import Button from '../ui/Button.jsx';
+
+/**
+ * AutoSchedulerPanel — WCAG 2.2 AA compliant panel for triggering and
+ * displaying the status of the Hill Climbing auto-scheduler.
+ *
+ * Renders an "Auto-Generate" button, progress indicator during optimization,
+ * and a summary of results on completion.
+ */
+export default function AutoSchedulerPanel({
+  status,
+  progress,
+  result,
+  error,
+  onTrigger,
+  onReset,
+  disabled = false,
+}) {
+  const isRunning = status === 'running' || status === 'polling';
+  const isCompleted = status === 'completed';
+  const isFailed = status === 'failed';
+
+  return (
+    <section className="glass-panel p-6" aria-label="Auto-Scheduler" role="region">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-3">
+          <div className="p-2 rounded-lg bg-gradient-to-br from-blue-500/20 to-cyan-400/20">
+            <Zap size={20} className="text-cyan-400" aria-hidden="true" />
+          </div>
+          <div>
+            <h3 className="text-lg font-display font-bold text-white">
+              Intelligent Auto-Scheduler
+            </h3>
+            <p className="text-sm text-white/50">
+              Optimize practice assignments for maximum fairness
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          {isCompleted && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onReset}
+              className="flex items-center gap-1"
+              aria-label="Reset auto-scheduler and start over"
+            >
+              <RotateCcw size={14} aria-hidden="true" />
+              Reset
+            </Button>
+          )}
+          <Button
+            variant="primary"
+            onClick={onTrigger}
+            disabled={disabled || isRunning}
+            loading={isRunning}
+            aria-label={isRunning ? 'Optimization in progress' : 'Run auto-scheduler optimization'}
+            aria-busy={isRunning}
+          >
+            <Zap size={16} aria-hidden="true" />
+            {isRunning ? 'Optimizing…' : 'Auto-Generate'}
+          </Button>
+        </div>
+      </div>
+
+      {/* Progress indicator */}
+      {isRunning && progress && (
+        <div
+          className="mt-4 p-4 rounded-lg bg-white/5 border border-white/10"
+          role="status"
+          aria-live="polite"
+          aria-label="Optimization progress"
+        >
+          <div className="flex items-center gap-3 mb-2">
+            <Loader2 size={16} className="text-cyan-400 animate-spin" aria-hidden="true" />
+            <span className="text-sm text-white/70">Running Hill Climbing optimization…</span>
+          </div>
+          <div className="grid grid-cols-3 gap-4 text-center">
+            <div>
+              <div className="text-xs text-white/40 uppercase tracking-wider">Iterations</div>
+              <div className="text-lg font-display font-bold text-white">
+                {progress.iteration?.toLocaleString() ?? '—'}
+              </div>
+            </div>
+            <div>
+              <div className="text-xs text-white/40 uppercase tracking-wider">Best Score</div>
+              <div className="text-lg font-display font-bold text-cyan-400">
+                {progress.bestScore != null ? `${(progress.bestScore * 100).toFixed(1)}%` : '—'}
+              </div>
+            </div>
+            <div>
+              <div className="text-xs text-white/40 uppercase tracking-wider">Elapsed</div>
+              <div className="text-lg font-display font-bold text-white">
+                {progress.elapsedMs != null ? `${(progress.elapsedMs / 1000).toFixed(1)}s` : '—'}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Completed results */}
+      {isCompleted && result && (
+        <div
+          className="mt-4 p-4 rounded-lg bg-emerald-500/10 border border-emerald-500/20"
+          role="status"
+          aria-live="polite"
+        >
+          <div className="flex items-center gap-2 mb-3">
+            <CheckCircle size={16} className="text-emerald-400" aria-hidden="true" />
+            <span className="text-sm font-semibold text-emerald-400">Optimization Complete</span>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-center">
+            <div>
+              <div className="text-xs text-white/40 uppercase tracking-wider">Assigned</div>
+              <div className="text-lg font-display font-bold text-white">
+                {result.assignments?.length ?? 0}
+              </div>
+            </div>
+            <div>
+              <div className="text-xs text-white/40 uppercase tracking-wider">Unassigned</div>
+              <div className="text-lg font-display font-bold text-white">
+                {result.unassigned?.length ?? 0}
+              </div>
+            </div>
+            <div>
+              <div className="text-xs text-white/40 uppercase tracking-wider">Score</div>
+              <div className="text-lg font-display font-bold text-cyan-400">
+                {result.optimization?.bestScore != null
+                  ? `${(result.optimization.bestScore * 100).toFixed(1)}%`
+                  : '—'}
+              </div>
+            </div>
+            <div>
+              <div className="text-xs text-white/40 uppercase tracking-wider">Improvement</div>
+              <div className="text-lg font-display font-bold text-emerald-400">
+                {result.optimization?.improvement != null
+                  ? `+${(result.optimization.improvement * 100).toFixed(1)}%`
+                  : '—'}
+              </div>
+            </div>
+          </div>
+          {result.optimization && (
+            <p className="mt-3 text-xs text-white/40">
+              {result.optimization.iterations?.toLocaleString()} iterations in{' '}
+              {(result.optimization.elapsedMs / 1000).toFixed(1)}s
+              {result.optimization.restarts > 0 &&
+                ` (${result.optimization.restarts} restart${result.optimization.restarts > 1 ? 's' : ''})`}
+              {' · '}
+              Terminated: {result.optimization.terminationReason}
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Error state */}
+      {isFailed && error && (
+        <div
+          className="mt-4 p-4 rounded-lg bg-red-500/10 border border-red-500/20"
+          role="alert"
+          aria-live="assertive"
+        >
+          <div className="flex items-center gap-2">
+            <AlertTriangle size={16} className="text-red-400" aria-hidden="true" />
+            <span className="text-sm text-red-400">{error}</span>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
+AutoSchedulerPanel.propTypes = {
+  status: PropTypes.oneOf(['idle', 'running', 'polling', 'completed', 'failed']).isRequired,
+  progress: PropTypes.shape({
+    iteration: PropTypes.number,
+    bestScore: PropTypes.number,
+    elapsedMs: PropTypes.number,
+  }),
+  result: PropTypes.shape({
+    assignments: PropTypes.array,
+    unassigned: PropTypes.array,
+    evaluation: PropTypes.object,
+    optimization: PropTypes.object,
+    runId: PropTypes.string,
+  }),
+  error: PropTypes.string,
+  onTrigger: PropTypes.func.isRequired,
+  onReset: PropTypes.func.isRequired,
+  disabled: PropTypes.bool,
+};
