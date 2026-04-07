@@ -3,7 +3,7 @@ import { useImport } from '../../contexts/ImportContext.jsx';
 import { Activity, CheckCircle, AlertCircle, X, ChevronRight, BarChart3 } from 'lucide-react';
 
 export function IngestionOverlay() {
-  const { isImporting, progress, activeJob, importStatus, resetImport } = useImport();
+  const { isImporting, progress, activeJob, importStatus } = useImport();
   const [isVisible, setIsVisible] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
 

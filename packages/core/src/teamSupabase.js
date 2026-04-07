@@ -156,7 +156,7 @@ export function buildTeamPlayerRows(
     throw new TypeError('manualAssignments must be an array');
   }
 
-  const rows = [];
+  const _rows = [];
   const rowByKey = new Map();
 
   const addRow = ({ teamId, playerId, role, source }) => {

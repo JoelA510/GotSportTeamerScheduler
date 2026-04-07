@@ -77,7 +77,8 @@ async function runVerification() {
     // Create Admin User (using service key to promote)
     const adminEmail = `admin_test_${Date.now()}@example.com`;
     const coachEmail = `coach_test_${Date.now()}@example.com`;
-    const password = 'test-password-123';
+    const password =
+      process.env.TEST_PASSWORD || process.env.VITE_TEST_PASSWORD || 'test-password-123';
 
     // Admin Setup
     console.log(`   - Creating Admin User: ${adminEmail}`);

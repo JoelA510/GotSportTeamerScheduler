@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState } from 'react';
 import Papa from 'papaparse';
 import {
   UploadCloud,
@@ -16,7 +16,6 @@ import { matchHeaders } from '../utils/telemetryUtils.js';
 import { supabase } from '../lib/supabaseClient.js';
 import Button from './ui/Button.jsx';
 import ProgressBar from './ui/ProgressBar.jsx';
-import DataValidationPanel from './teaming/DataValidationPanel.jsx';
 import { logger } from '../lib/logger.js';
 
 /**
@@ -59,7 +58,6 @@ export default function ImportPanel({ onImport }) {
     isImporting,
     progress,
     importStatus,
-    importLogs,
     startImport,
     resetImport,
     notifyOnComplete,

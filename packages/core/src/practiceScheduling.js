@@ -122,7 +122,7 @@ export function schedulePractices({
           if (localHour < endHour || (localHour === endHour && localMinute < endMinute)) {
             return false;
           }
-        } catch (e) {
+        } catch {
           console.error(
             `Invalid timezone provided: ${timezone}. Skipping schoolDayEnd filter for slot ${slot.id}.`
           );
@@ -566,7 +566,7 @@ function attemptResolveUnassignedTeams({
   coachPreferences,
   divisionPreferences,
   coachAssignments,
-  assignmentByTeamId,
+  _assignmentByTeamId,
   assignmentSources,
   divisionLoadByBaseSlot,
   divisionLoadByDay,

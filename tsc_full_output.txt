@@ -1,0 +1,54 @@
+tests/autoScheduler.test.js(145,7): error TS2322: Type '{ id: string; division: string; coachId: string; }[]' is not assignable to type 'Team[]'.
+  Property 'name' is missing in type '{ id: string; division: string; coachId: string; }' but required in type 'Team'.
+tests/autoScheduler.test.js(146,7): error TS2322: Type '{ id: any; day: any; start: Date; end: Date; capacity: number; baseSlotId: any; }[]' is not assignable to type 'PracticeSlot[]'.
+  Type '{ id: any; day: any; start: Date; end: Date; capacity: number; baseSlotId: any; }' is not assignable to type 'PracticeSlot'.
+    Types of property 'start' are incompatible.
+      Type 'Date' is not assignable to type 'string'.
+tests/autoScheduler.test.js(178,7): error TS2322: Type '{ id: string; division: string; coachId: string; }[]' is not assignable to type 'Team[]'.
+  Property 'name' is missing in type '{ id: string; division: string; coachId: string; }' but required in type 'Team'.
+tests/autoScheduler.test.js(179,7): error TS2322: Type '{ id: any; day: any; start: Date; end: Date; capacity: number; baseSlotId: any; }[]' is not assignable to type 'PracticeSlot[]'.
+  Type '{ id: any; day: any; start: Date; end: Date; capacity: number; baseSlotId: any; }' is not assignable to type 'PracticeSlot'.
+    Types of property 'start' are incompatible.
+      Type 'Date' is not assignable to type 'string'.
+tests/autoScheduler.test.js(200,48): error TS2322: Type '{ id: string; division: string; coachId: string; }[]' is not assignable to type 'Team[]'.
+  Property 'name' is missing in type '{ id: string; division: string; coachId: string; }' but required in type 'Team'.
+tests/autoScheduler.test.js(200,55): error TS2322: Type '{ id: any; day: any; start: Date; end: Date; capacity: number; baseSlotId: any; }[]' is not assignable to type 'PracticeSlot[]'.
+  Type '{ id: any; day: any; start: Date; end: Date; capacity: number; baseSlotId: any; }' is not assignable to type 'PracticeSlot'.
+    Types of property 'start' are incompatible.
+      Type 'Date' is not assignable to type 'string'.
+tests/autoScheduler.test.js(201,48): error TS2322: Type '{ id: string; division: string; coachId: string; }[]' is not assignable to type 'Team[]'.
+  Property 'name' is missing in type '{ id: string; division: string; coachId: string; }' but required in type 'Team'.
+tests/autoScheduler.test.js(201,55): error TS2322: Type '{ id: any; day: any; start: Date; end: Date; capacity: number; baseSlotId: any; }[]' is not assignable to type 'PracticeSlot[]'.
+  Type '{ id: any; day: any; start: Date; end: Date; capacity: number; baseSlotId: any; }' is not assignable to type 'PracticeSlot'.
+    Types of property 'start' are incompatible.
+      Type 'Date' is not assignable to type 'string'.
+tests/autoScheduler.test.js(216,7): error TS2322: Type '{ id: string; division: string; coachId: string; }[]' is not assignable to type 'Team[]'.
+  Property 'name' is missing in type '{ id: string; division: string; coachId: string; }' but required in type 'Team'.
+tests/autoScheduler.test.js(217,7): error TS2322: Type '{ id: any; day: any; start: Date; end: Date; capacity: number; baseSlotId: any; }[]' is not assignable to type 'PracticeSlot[]'.
+  Type '{ id: any; day: any; start: Date; end: Date; capacity: number; baseSlotId: any; }' is not assignable to type 'PracticeSlot'.
+    Types of property 'start' are incompatible.
+      Type 'Date' is not assignable to type 'string'.
+tests/autoScheduler.test.js(244,7): error TS2322: Type '{ id: string; division: string; coachId: string; }[]' is not assignable to type 'Team[]'.
+  Property 'name' is missing in type '{ id: string; division: string; coachId: string; }' but required in type 'Team'.
+tests/autoScheduler.test.js(245,7): error TS2322: Type '{ id: any; day: any; start: Date; end: Date; capacity: number; baseSlotId: any; }[]' is not assignable to type 'PracticeSlot[]'.
+  Type '{ id: any; day: any; start: Date; end: Date; capacity: number; baseSlotId: any; }' is not assignable to type 'PracticeSlot'.
+    Types of property 'start' are incompatible.
+      Type 'Date' is not assignable to type 'string'.
+tests/autoScheduler.test.js(260,7): error TS2322: Type '{ id: string; division: string; coachId: string; }[]' is not assignable to type 'Team[]'.
+  Property 'name' is missing in type '{ id: string; division: string; coachId: string; }' but required in type 'Team'.
+tests/autoScheduler.test.js(261,7): error TS2322: Type '{ id: any; day: any; start: Date; end: Date; capacity: number; baseSlotId: any; }[]' is not assignable to type 'PracticeSlot[]'.
+  Type '{ id: any; day: any; start: Date; end: Date; capacity: number; baseSlotId: any; }' is not assignable to type 'PracticeSlot'.
+    Types of property 'start' are incompatible.
+      Type 'Date' is not assignable to type 'string'.
+tests/autoScheduler.test.js(297,7): error TS2322: Type '{ id: string; division: string; coachId: string; }[]' is not assignable to type 'Team[]'.
+  Property 'name' is missing in type '{ id: string; division: string; coachId: string; }' but required in type 'Team'.
+tests/autoScheduler.test.js(298,7): error TS2322: Type '{ id: string; day: string; start: Date; end: Date; capacity: number; }[]' is not assignable to type 'PracticeSlot[]'.
+  Type '{ id: string; day: string; start: Date; end: Date; capacity: number; }' is not assignable to type 'PracticeSlot'.
+    Types of property 'start' are incompatible.
+      Type 'Date' is not assignable to type 'string'.
+tests/autoScheduler.test.js(321,7): error TS2322: Type '{ id: string; division: string; coachId: string; }[]' is not assignable to type 'Team[]'.
+  Property 'name' is missing in type '{ id: string; division: string; coachId: string; }' but required in type 'Team'.
+tests/autoScheduler.test.js(322,7): error TS2322: Type '{ id: any; day: any; start: Date; end: Date; capacity: number; baseSlotId: any; }[]' is not assignable to type 'PracticeSlot[]'.
+  Type '{ id: any; day: any; start: Date; end: Date; capacity: number; baseSlotId: any; }' is not assignable to type 'PracticeSlot'.
+    Types of property 'start' are incompatible.
+      Type 'Date' is not assignable to type 'string'.

@@ -105,7 +105,7 @@ export default function RegistrationFlow() {
     setError(null);
     try {
       // Use the new atomic RPC for registration
-      const { data: regId, error: rpcErr } = await supabase.rpc('submit_registration', {
+      const { data: _regId, error: rpcErr } = await supabase.rpc('submit_registration', {
         p_organization_id: form.organization_id,
         p_form_id: form.id,
         p_profile_id: userId,

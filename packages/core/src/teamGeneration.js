@@ -7,7 +7,7 @@
  */
 
 import { TEAM_GENERATION } from './constants.js';
-import { PlayerSchema, TeamSchema } from './schemas/index.js';
+import { PlayerSchema } from './schemas/index.js';
 import { EVALUATOR_REGISTRY } from './evaluators/index.js';
 
 /** @typedef {import('./types.js').Player} Player */
@@ -83,7 +83,7 @@ export function generateTeams({
   random = Math.random,
   seed,
   featureFlags = {},
-  dryRun = false,
+  dryRun: _dryRun = false,
   customWeights = {},
 }) {
   if (!Array.isArray(players)) {
@@ -617,7 +617,7 @@ function createAssignmentUnits(players) {
  * @param {string} params.reason - Description for assignment diagnostics.
  * @returns {boolean} True if assignment was successful.
  */
-function assignUnitToTeam({ unit, unitSkillTotal, team, maxRosterSize, reason }) {
+function assignUnitToTeam({ unit, unitSkillTotal, team, maxRosterSize, reason: _reason }) {
   if (team.players.length + unit.length > maxRosterSize) {
     return false;
   }
@@ -649,7 +649,7 @@ function assignUnitToTeam({ unit, unitSkillTotal, team, maxRosterSize, reason })
 function pickTeamWithMostCapacity({
   teams,
   unit,
-  unitSkillTotal,
+  unitSkillTotal: _unitSkillTotal,
   maxRosterSize,
   random,
   featureFlags,

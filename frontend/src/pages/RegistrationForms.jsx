@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabaseClient.js';
 import { useOrganization } from '../contexts/OrganizationContext.jsx';
 import { useAuth } from '../contexts/AuthContext.jsx';
@@ -24,11 +24,7 @@ export default function RegistrationForms() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState(null);
 
-  useEffect(() => {
-    loadForms();
-  }, [currentOrganization?.id]);
-
-  async function loadForms() {
+  const loadForms = useCallback(async () => {
     if (!currentOrganization?.id) return;
     setLoading(true);
     try {
@@ -44,7 +40,11 @@ export default function RegistrationForms() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [currentOrganization?.id]);
+
+  useEffect(() => {
+    loadForms();
+  }, [loadForms]);
 
   const handleCreateNew = () => {
     setEditingForm({

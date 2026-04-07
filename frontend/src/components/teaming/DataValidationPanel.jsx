@@ -1,5 +1,5 @@
 import React from 'react';
-import { AlertTriangle, CheckCircle, XCircle } from 'lucide-react';
+import { AlertTriangle, CheckCircle } from 'lucide-react';
 
 export default function DataValidationPanel({ errors }) {
   if (!errors || errors.length === 0) {

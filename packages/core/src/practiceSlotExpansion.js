@@ -120,7 +120,12 @@ export function expandPracticeSlotsForSeason({ slots, seasonPhases }) {
       const startDateTime = applyMinutesToDate(firstOccurrence, startMinutes);
       const endDateTime = applyMinutesToDate(firstOccurrence, endMinutes);
 
-      const { seasonOverrides, validFrom, validUntil, ...metadata } = slot;
+      const {
+        seasonOverrides: _seasonOverrides,
+        validFrom: _validFrom,
+        validUntil: _validUntil,
+        ...metadata
+      } = slot;
 
       expanded.push({
         ...metadata,

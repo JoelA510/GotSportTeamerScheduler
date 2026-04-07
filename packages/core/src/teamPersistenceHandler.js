@@ -161,7 +161,7 @@ export async function persistTeamSnapshotTransactional({
     runType: 'team',
     runMetadata: effectiveRunMetadata,
     now,
-    transformPayload: ({ snapshot, runMetadata, nowIso, runId }) => {
+    transformPayload: ({ snapshot: _snapshot, runMetadata, nowIso, runId }) => {
       // Prepare run data for the RPC
       const runData = buildSchedulerRunRow({
         ...runMetadata,

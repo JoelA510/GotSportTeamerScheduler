@@ -62,7 +62,10 @@ test('distributes players evenly across teams', () => {
   assert.equal(balanceSummary.totalPlayers, players.length);
   assert.equal(balanceSummary.totalCapacity, 12);
   assert.equal(balanceSummary.averageFillRate, 0.75);
-  assert.ok(Array.isArray(balanceSummary.teamsNeedingPlayers), 'teamsNeedingPlayers should be an array');
+  assert.ok(
+    Array.isArray(balanceSummary.teamsNeedingPlayers),
+    'teamsNeedingPlayers should be an array'
+  );
   // Each team stat should reference a valid team ID with consistent fill math
   rosterBalanceByDivision.U10.teamStats.forEach((entry) => {
     assert.ok(entry.teamId.startsWith('U10-T'), 'teamId format correct');

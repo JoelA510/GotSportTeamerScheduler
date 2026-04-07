@@ -13,10 +13,12 @@ import {
   ClipboardCheck,
   ClipboardList,
   History,
+  FlaskConical,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext.jsx';
 import { useOrganization } from '../contexts/OrganizationContext.jsx';
 import { NavLink } from 'react-router-dom';
+import { IS_MOCK_MODE } from '../config.js';
 
 const navItems = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, path: '/' },
@@ -254,6 +256,26 @@ export default function Sidebar({ isOpen, toggleSidebar }) {
             <span className="font-medium">Sign Out</span>
           </button>
         </div>
+
+        {/* Mock Mode Dev Indicator */}
+        {IS_MOCK_MODE && (
+          <div className="absolute bottom-20 left-4 right-4">
+            <a
+              href="https://github.com/JoelA510/SquadLogic/blob/main/docs/operations/ENVIRONMENT.md"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold backdrop-blur-xl border transition-colors hover:border-amber-400/50"
+              style={{
+                color: '#fbbf24',
+                background: 'rgba(251, 191, 36, 0.08)',
+                borderColor: 'rgba(251, 191, 36, 0.2)',
+              }}
+            >
+              <FlaskConical size={14} />
+              <span>Mock Mode Active</span>
+            </a>
+          </div>
+        )}
       </aside>
     </>
   );

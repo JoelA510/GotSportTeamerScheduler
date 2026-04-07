@@ -25,7 +25,7 @@ export function useTeamSummary() {
   const { currentOrganization } = useOrganization();
   const [summary, setSummary] = useState(null); // null triggers loading state
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [error, _setError] = useState(null);
   const [status, setStatus] = useState('idle'); // idle, running, completed, error
   const [progress, setProgress] = useState(0);
 

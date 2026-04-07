@@ -526,7 +526,7 @@ if (typeof window !== 'undefined') {
   logger.log(
     '[Mock Supabase] DB Initialized. Tables:',
     Object.keys(/** @type {Object} */ (window.__MOCK_DB__))
-      .map((k) => `${k}(${(/** @type {any} */ (window.__MOCK_DB__))[k]?.length || 0})`)
+      .map((k) => `${k}(${/** @type {any} */ (window.__MOCK_DB__)[k]?.length || 0})`)
       .join(', ')
   );
 }
@@ -791,7 +791,7 @@ export const mockSupabase = {
   auth: {
     signInWithPassword: async ({ email, password }) => {
       logger.log('[Mock Supabase] Login attempt:', email);
-      const testPassword = import.meta.env.VITE_TEST_PASSWORD || 'test-password-fallback';
+      const testPassword = import.meta.env.VITE_TEST_PASSWORD || 'test-password-123';
       if (password === testPassword) {
         const role = email.split('@')[0];
         const userId = `mock-${role}-id`;
@@ -877,7 +877,7 @@ export const mockSupabase = {
       }
       return { data: { user: session?.user || null }, error: null };
     },
-    signUp: async ({ email, password, options }) => {
+    signUp: async ({ email, password, options: _options }) => {
       if (password.length < 12) {
         return {
           data: { user: null, session: null },
@@ -890,7 +890,7 @@ export const mockSupabase = {
       // Simple mock signup
       return { data: { user: { id: 'new-user', email }, session: null }, error: null };
     },
-    updateUser: async ({ password, data }) => {
+    updateUser: async ({ password, data: _data }) => {
       if (password && password.length < 12) {
         return {
           data: { user: null },

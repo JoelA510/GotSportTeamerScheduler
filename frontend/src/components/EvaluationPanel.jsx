@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { logger } from '../lib/logger.js';
-import { Loader2, AlertCircle, CheckCircle2, Save, Activity, ShieldCheck, Zap } from 'lucide-react';
+import { Loader2, AlertCircle, Save, Activity, ShieldCheck, Zap } from 'lucide-react';
 
 /**
  * EvaluationPanel - Enterprise Glass component for real-time fairness scoring.
@@ -72,7 +72,7 @@ export default function EvaluationPanel({ practiceData = null, gameData = null, 
     setMessage('Hardening results in audit trail...');
 
     try {
-      const { data, error } = await supabaseClient.functions.invoke('fairness-scoring', {
+      const { error } = await supabaseClient.functions.invoke('fairness-scoring', {
         body: {
           practice: practiceData,
           games: gameData,

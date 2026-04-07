@@ -53,10 +53,13 @@ When('the application attempts to sync the changes', async ({ page }) => {
   await syncBtn.click({ force: true });
 });
 
-When('the network connection drops or the API returns a 504 Timeout', async ({ page: _page, context }) => {
-  // CRITICAL FIX: Use Playwright's native offline simulation to truly kill the browser's network
-  await context.setOffline(true);
-});
+When(
+  'the network connection drops or the API returns a 504 Timeout',
+  async ({ page: _page, context }) => {
+    // CRITICAL FIX: Use Playwright's native offline simulation to truly kill the browser's network
+    await context.setOffline(true);
+  }
+);
 
 Then('the user should see a {string} banner', async ({ page }, expectedBanner: string) => {
   // Map feature file text to actual app text

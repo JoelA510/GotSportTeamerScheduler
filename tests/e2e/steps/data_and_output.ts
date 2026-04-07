@@ -7,7 +7,9 @@ Given('I have navigated to the Data Import page', async ({ page }) => {
   await page.goto('/import');
 });
 Given('a valid GotSport player CSV file exists', async ({ page }) => {
-  (page as { mockCsv?: Buffer } & typeof page).mockCsv = Buffer.from('First Name,Last Name,Skill Level\nAlex,Smith,advanced');
+  (page as { mockCsv?: Buffer } & typeof page).mockCsv = Buffer.from(
+    'First Name,Last Name,Skill Level\nAlex,Smith,advanced'
+  );
 });
 Given('I upload the GotSport player CSV file', async ({ page }) => {
   const fileInput = page.locator('input[type="file"]');
@@ -15,7 +17,9 @@ Given('I upload the GotSport player CSV file', async ({ page }) => {
     await fileInput.setInputFiles({
       name: 'players.csv',
       mimeType: 'text/csv',
-      buffer: (page as { mockCsv?: Buffer } & typeof page).mockCsv || Buffer.from('First Name,Last Name\nAlex,Smith'),
+      buffer:
+        (page as { mockCsv?: Buffer } & typeof page).mockCsv ||
+        Buffer.from('First Name,Last Name\nAlex,Smith'),
     });
   }
 });

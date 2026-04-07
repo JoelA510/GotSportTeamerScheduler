@@ -156,10 +156,10 @@ export function evaluateGameSchedule({
     fieldAssignments.set(fieldKey, fieldBucket);
   }
 
-  for (const [division, record] of Object.entries(summary.assignmentsByDivision)) {
+  for (const [_division, record] of Object.entries(summary.assignmentsByDivision)) {
     record.teams = Array.from(record.teams).sort((a, b) => a.localeCompare(b));
   }
-  for (const [fieldKey, record] of Object.entries(summary.fieldUsage)) {
+  for (const [_fieldKey, record] of Object.entries(summary.fieldUsage)) {
     record.divisions = Array.from(record.divisions).sort((a, b) => a.localeCompare(b));
   }
   summary.teamGameLoad = formatTeamGameLoad(teamGameLoad);

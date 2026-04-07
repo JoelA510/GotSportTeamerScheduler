@@ -140,7 +140,7 @@ export default function TeamPersistencePanel({ teamPersistenceSnapshot }) {
       setPersistenceActionMessage(
         `Supabase upsert completed for ${result.updatedTeams} teams and ${result.updatedPlayers} players at ${formatDateTime(result.syncedAt)}.`
       );
-    } catch (error) {
+    } catch {
       setPersistenceActionState('error');
       setPersistenceActionMessage('Supabase sync failed. Please retry.');
     } finally {

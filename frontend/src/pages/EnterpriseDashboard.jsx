@@ -15,12 +15,9 @@ import {
   Tooltip,
   ResponsiveContainer,
   CartesianGrid,
-  PieChart,
-  Pie,
   Cell,
-  Legend,
 } from 'recharts';
-import { Download, Users, ShieldCheck, Activity, BarChart2, Lock } from 'lucide-react';
+import { Download, Users, ShieldCheck, Activity, Lock } from 'lucide-react';
 import { logger } from '../lib/logger.js';
 
 /**
@@ -57,7 +54,7 @@ const AccessibleDataTable = ({ title, data, columns }) => (
 export default function EnterpriseDashboard() {
   const { currentOrganization } = useOrganization();
   const [players, setPlayers] = useState([]);
-  const [teamsData, setTeamsData] = useState([]);
+  const [_teamsData, _setTeamsData] = useState([]);
   const [metrics, setMetrics] = useState({
     teams: 0,
     users: 0,
@@ -66,7 +63,7 @@ export default function EnterpriseDashboard() {
     compliance_total: 0,
   });
   const [loading, setLoading] = useState(true);
-  const [exporting, setExporting] = useState(false);
+  const [exporting, _setExporting] = useState(false);
   const [selectedMapping, setSelectedMapping] = useState('');
 
   const orgSchema = currentOrganization?.settings?.custom_schema || {};

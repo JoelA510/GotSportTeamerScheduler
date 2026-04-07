@@ -34,7 +34,9 @@ async function setupIsolatedTenant(page: Page, role: string = 'admin') {
         const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
 
         db.organizations = db.organizations || [];
-        if (!db.organizations.find((o: Record<string, unknown>) => (o as { id: string }).id === orgId)) {
+        if (
+          !db.organizations.find((o: Record<string, unknown>) => (o as { id: string }).id === orgId)
+        ) {
           db.organizations.push({ id: orgId, name: `E2E-Isolation-${orgId}`, status: 'active' });
         }
 
@@ -106,6 +108,7 @@ Given(
     const email = roleMap[cleanRole] || roleMap.admin;
     const password = process.env.TEST_PASSWORD || 'test-password-123';
 
+    console.log(`[AUTH DEBUG] Attempting Mock Login for ${email}`);
     console.log(
       `[DEBUG][auth_setup] rawRole="${role}", cleanRole="${cleanRole}", email="${email}"`
     );
@@ -122,12 +125,16 @@ Given(
           const profiles = db.profiles || [];
 
           // Check if this specific user was pre-seeded (e.g., "Coach Alice")
-          const seededUser = profiles.find((p: Record<string, unknown>) => p.full_name === rawRoleName);
+          const seededUser = profiles.find(
+            (p: Record<string, unknown>) => p.full_name === rawRoleName
+          );
 
           if (seededUser) {
             // User is pre-seeded. Find their assigned organization.
             const members = db.organization_members || [];
-            const membership = members.find((m: Record<string, unknown>) => m.profile_id === seededUser.id);
+            const membership = members.find(
+              (m: Record<string, unknown>) => m.profile_id === seededUser.id
+            );
             const orgId = membership ? (membership.organization_id as string) : null;
 
             if (orgId) {
@@ -240,6 +247,6 @@ After(async ({ page }) => {
       await supabase.from('organizations').delete().eq('id', activeOrgId);
     }
   } catch (error) {
-    console.error('Failed to cleanup tenant in After hook:', error);
+    console.error('[Teardown] Failed to purge isolated tenant:', error);
   }
 });

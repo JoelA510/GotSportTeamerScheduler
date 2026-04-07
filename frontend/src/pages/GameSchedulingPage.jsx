@@ -52,7 +52,7 @@ export default function GameSchedulingPage() {
   const [activeGame, setActiveGame] = useState(null);
   const [validationResult, setValidationResult] = useState(null);
 
-  const teams = team.teams || [];
+  const teams = useMemo(() => team.teams || [], [team.teams]);
 
   // ── Sensors (same config as RosterManager) ────────────────────────────────
   const sensors = useSensors(

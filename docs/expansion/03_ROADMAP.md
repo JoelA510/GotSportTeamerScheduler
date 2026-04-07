@@ -67,7 +67,7 @@ Additionally, a comprehensive **4-phase security audit** was completed in March 
 - **Governance**: Full evaluation_run persistence with findings and metrics.
 - **Retention**: Reduced default retention from 365 → 180 days for free-tier storage protection.
 
-## Phase 9: Production Hardening & Global Deployment (Completed — Prime)
+## Phase 9: Production Hardening & Global Deployment (Certified — Prime)
 
 **Goal**: Transition Phase 8 into a production-ready, globally resilient system optimized for Supabase Free Account.
 
@@ -76,3 +76,13 @@ Additionally, a comprehensive **4-phase security audit** was completed in March 
 - **Resilience & Failover**: `OfflineGuard` glassmorphic overlay with adaptive connectivity monitoring (30s/10s polling). `useMaintenanceMode` hook with Supabase Realtime subscription to `organizations.settings.maintenance_mode` flag.
 - **Performance**: In-memory TTL cache with stale-while-revalidate for 200ms dashboard interaction ceiling.
 - **Data Governance**: `audit_log` 180-day retention pruning function + composite index. `maintenance_mode` flag backfilled to all organizations.
+
+## Phase 10: Pre-Flight Certification (Completed)
+
+**Goal**: Final lockdown, operational documentation, and production seal for v1.0 GA.
+
+- **Production Gating**: `config.js` safety guard prevents mock mode from running on production domains — throws a user-friendly Configuration Error screen with remediation steps.
+- **Dev Mode Indicator**: Glassmorphic "Mock Mode Active" badge in the sidebar, only visible when `IS_MOCK_MODE` is true. Links to `ENVIRONMENT.md` for setup context.
+- **Operational Documentation**: Comprehensive [`ENVIRONMENT.md`](../operations/ENVIRONMENT.md) cataloging every environment variable for Vercel, Supabase Edge Functions, and GitHub Actions CI/CD.
+- **Code Cleanup**: Codebase scanned for hardcoded credentials, debug endpoints, and leftover `console.*` noise. All sensitive values abstracted to `.env`.
+- **Quality Seal**: Full lint, typecheck, production build, Vitest, and Playwright E2E suites passing at 100%.

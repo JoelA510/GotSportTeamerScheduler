@@ -1,9 +1,4 @@
-import {
-  normalizeString,
-  normalizeId,
-  normalizeTimestamp,
-  normalizeOptionalString,
-} from './utils/normalization.js';
+import { normalizeId, normalizeTimestamp, normalizeOptionalString } from './utils/normalization.js';
 
 function normalizeWeekIndex(value, index) {
   if (!Number.isFinite(value) || value <= 0) {

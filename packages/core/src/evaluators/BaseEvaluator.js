@@ -23,7 +23,7 @@ export class BaseEvaluator {
    * @param {Object} [context.globalStats] - Normalized globals & mins/maxes
    * @returns {number} A score representing the "fit" (0 to 100, where 100 is perfect).
    */
-  evaluate(context) {
+  evaluate(_context) {
     throw new Error('Method "evaluate" must be implemented by subclasses.');
   }
 

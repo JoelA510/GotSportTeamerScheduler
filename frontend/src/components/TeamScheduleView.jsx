@@ -21,7 +21,6 @@ export default function TeamScheduleView({ assignments, teamId, timezone }) {
       {teamGames.map((game, index) => {
         const isHome = game.homeTeamId === teamId;
         const opponent = isHome ? game.awayTeamId : game.homeTeamId;
-        const date = new Date(game.start);
 
         // Format date as "Sat, Oct 14"
         const dateStr = formatDate(game.start, timezone);

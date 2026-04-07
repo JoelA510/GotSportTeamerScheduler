@@ -24,7 +24,9 @@ const seedDatabase = async (page: { addInitScript: (fn: () => void) => Promise<v
     }
 
     db.registration_forms = db.registration_forms || [];
-    if (!db.registration_forms.find((f: Record<string, unknown>) => f.title === 'Fall Registration')) {
+    if (
+      !db.registration_forms.find((f: Record<string, unknown>) => f.title === 'Fall Registration')
+    ) {
       db.registration_forms.push({
         id: 'f-fall',
         title: 'Fall Registration',

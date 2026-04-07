@@ -47,7 +47,7 @@ export class ApiClient {
       let data;
       try {
         data = await response.json();
-      } catch (ignore) {
+      } catch {
         // Non-JSON response
       }
 

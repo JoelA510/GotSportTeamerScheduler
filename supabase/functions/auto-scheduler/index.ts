@@ -29,26 +29,32 @@ import { edgeLogger } from '../_shared/logtail.ts';
 // Input schema
 // ---------------------------------------------------------------------------
 
-const TeamSchema = z.object({
-  id: z.string(),
-  division: z.string(),
-  coachId: z.string().nullable().optional(),
-}).passthrough();
+const TeamSchema = z
+  .object({
+    id: z.string(),
+    division: z.string(),
+    coachId: z.string().nullable().optional(),
+  })
+  .passthrough();
 
-const SlotSchema = z.object({
-  id: z.string(),
-  day: z.string().nullable().optional(),
-  start: z.string().or(z.date()),
-  end: z.string().or(z.date()),
-  capacity: z.number().int().min(0),
-  baseSlotId: z.string().optional(),
-}).passthrough();
+const SlotSchema = z
+  .object({
+    id: z.string(),
+    day: z.string().nullable().optional(),
+    start: z.string().or(z.date()),
+    end: z.string().or(z.date()),
+    capacity: z.number().int().min(0),
+    baseSlotId: z.string().optional(),
+  })
+  .passthrough();
 
-const CoachPreferenceSchema = z.object({
-  preferredDays: z.array(z.string()).optional(),
-  preferredSlotIds: z.array(z.string()).optional(),
-  unavailableSlotIds: z.array(z.string()).optional(),
-}).passthrough();
+const CoachPreferenceSchema = z
+  .object({
+    preferredDays: z.array(z.string()).optional(),
+    preferredSlotIds: z.array(z.string()).optional(),
+    unavailableSlotIds: z.array(z.string()).optional(),
+  })
+  .passthrough();
 
 const AutoSchedulerInputSchema = z.object({
   organizationId: z.string().uuid(),
@@ -56,21 +62,37 @@ const AutoSchedulerInputSchema = z.object({
   teams: z.array(TeamSchema).min(1),
   slots: z.array(SlotSchema).min(1),
   coachPreferences: z.record(z.string(), CoachPreferenceSchema).optional().default({}),
-  divisionPreferences: z.record(z.string(), z.object({
-    preferredDays: z.array(z.string()).optional(),
-  }).passthrough()).optional().default({}),
-  lockedAssignments: z.array(z.object({
-    teamId: z.string(),
-    slotId: z.string(),
-  })).optional().default([]),
+  divisionPreferences: z
+    .record(
+      z.string(),
+      z
+        .object({
+          preferredDays: z.array(z.string()).optional(),
+        })
+        .passthrough()
+    )
+    .optional()
+    .default({}),
+  lockedAssignments: z
+    .array(
+      z.object({
+        teamId: z.string(),
+        slotId: z.string(),
+      })
+    )
+    .optional()
+    .default([]),
   scoringWeights: z.record(z.string(), z.number()).optional().default({}),
   schoolDayEnd: z.string().optional(),
   timezone: z.string().optional(),
-  config: z.object({
-    timeBudgetMs: z.number().int().min(1000).max(25000).optional().default(25000),
-    maxIterations: z.number().int().min(10).max(5000).optional().default(2000),
-    seed: z.number().int().optional().default(42),
-  }).optional().default({}),
+  config: z
+    .object({
+      timeBudgetMs: z.number().int().min(1000).max(25000).optional().default(25000),
+      maxIterations: z.number().int().min(10).max(5000).optional().default(2000),
+      seed: z.number().int().optional().default(42),
+    })
+    .optional()
+    .default({}),
 });
 
 // ---------------------------------------------------------------------------
@@ -103,7 +125,7 @@ function checkHardConstraints(
   slot: { id: string; start: Date; end: Date },
   coachAssignments: Map<string, TimeWindow[]>,
   slotCapacity: Map<string, number>,
-  coachPreferences: Record<string, { unavailableSlotIds?: string[] }>,
+  coachPreferences: Record<string, { unavailableSlotIds?: string[] }>
 ): boolean {
   if ((slotCapacity.get(slot.id) ?? 0) <= 0) return false;
   if (!team.coachId) return true;
@@ -129,7 +151,7 @@ function scoreSchedule(
   assignments: Array<{ teamId: string; slotId: string; source: string }>,
   unassigned: Array<{ teamId: string; reason: string }>,
   teams: Array<{ id: string; division: string; coachId?: string | null }>,
-  slots: Array<{ id: string; day?: string | null; start: Date; end: Date; capacity: number }>,
+  slots: Array<{ id: string; day?: string | null; start: Date; end: Date; capacity: number }>
 ): ScoringResult {
   const evaluation = evaluatePracticeSchedule({
     assignments,
@@ -157,7 +179,10 @@ interface OptimizerState {
   assignmentMap: Map<string, string>;
   lockedTeams: Set<string>;
   autoTeams: string[];
-  slotsById: Map<string, { id: string; start: Date; end: Date; capacity: number; day?: string | null }>;
+  slotsById: Map<
+    string,
+    { id: string; start: Date; end: Date; capacity: number; day?: string | null }
+  >;
   teamsById: Map<string, { id: string; division: string; coachId?: string | null }>;
   slotCapacity: Map<string, number>;
   coachAssignments: Map<string, TimeWindow[]>;
@@ -170,7 +195,7 @@ function buildState(
   unassigned: Array<{ teamId: string }>,
   teams: Array<{ id: string; division: string; coachId?: string | null }>,
   slots: Array<{ id: string; start: Date; end: Date; capacity: number; day?: string | null }>,
-  coachPreferences: Record<string, { unavailableSlotIds?: string[] }>,
+  coachPreferences: Record<string, { unavailableSlotIds?: string[] }>
 ): OptimizerState {
   const assignmentMap = new Map<string, string>();
   const lockedTeams = new Set<string>();
@@ -219,8 +244,12 @@ function buildState(
 
 function tryMutate(
   state: OptimizerState,
-  rand: () => number,
-): { assignments: Array<{ teamId: string; slotId: string; source: string }>; unassigned: Array<{ teamId: string; reason: string }>; type: string } | null {
+  rand: () => number
+): {
+  assignments: Array<{ teamId: string; slotId: string; source: string }>;
+  unassigned: Array<{ teamId: string; reason: string }>;
+  type: string;
+} | null {
   const { autoTeams, unassignedTeamIds, slotsById, teamsById, coachPreferences } = state;
   const hasUnassigned = unassignedTeamIds.length > 0;
   const hasMultipleAuto = autoTeams.length >= 2;
@@ -246,7 +275,10 @@ function tryMutate(
     const team = teamsById.get(teamId);
     if (team?.coachId) {
       const entries = newCoach.get(team.coachId) ?? [];
-      newCoach.set(team.coachId, entries.filter((e) => e.teamId !== teamId));
+      newCoach.set(
+        team.coachId,
+        entries.filter((e) => e.teamId !== teamId)
+      );
     }
   };
 
@@ -303,11 +335,13 @@ function tryMutate(
     if (!add(autoTeams[iA], sB) || !add(autoTeams[iB], sC) || !add(autoTeams[iC], sA)) return null;
   }
 
-  const assignments = [...newMap.entries()].map(([teamId, slotId]) => ({
-    teamId,
-    slotId,
-    source: state.lockedTeams.has(teamId) ? 'locked' : 'auto',
-  })).sort((a, b) => a.teamId.localeCompare(b.teamId));
+  const assignments = [...newMap.entries()]
+    .map(([teamId, slotId]) => ({
+      teamId,
+      slotId,
+      source: state.lockedTeams.has(teamId) ? 'locked' : 'auto',
+    }))
+    .sort((a, b) => a.teamId.localeCompare(b.teamId));
 
   const assignedSet = new Set(newMap.keys());
   const unassigned = [...teamsById.keys()]
@@ -325,8 +359,11 @@ function generateGreedySeed(
   teams: Array<{ id: string; division: string; coachId?: string | null }>,
   slots: Array<{ id: string; start: Date; end: Date; capacity: number; day?: string | null }>,
   lockedAssignments: Array<{ teamId: string; slotId: string }>,
-  coachPreferences: Record<string, { unavailableSlotIds?: string[] }>,
-): { assignments: Array<{ teamId: string; slotId: string; source: string }>; unassigned: Array<{ teamId: string; reason: string }> } {
+  coachPreferences: Record<string, { unavailableSlotIds?: string[] }>
+): {
+  assignments: Array<{ teamId: string; slotId: string; source: string }>;
+  unassigned: Array<{ teamId: string; reason: string }>;
+} {
   const slotsById = new Map(slots.map((s) => [s.id, s]));
   const teamsById = new Map(teams.map((t) => [t.id, t]));
   const slotCapacity = new Map(slots.map((s) => [s.id, s.capacity]));
@@ -417,10 +454,7 @@ serve(async (req) => {
       windowMs: 60_000,
     });
     if (!allowed) {
-      return jsonResponse(
-        { error: 'Rate limit exceeded', retryAfterMs },
-        429,
-      );
+      return jsonResponse({ error: 'Rate limit exceeded', retryAfterMs }, 429);
     }
 
     // 4. Parse & validate body
@@ -529,7 +563,13 @@ serve(async (req) => {
 
       iteration++;
 
-      const state = buildState(currentAssignments, currentUnassigned, teams, slots, input.coachPreferences);
+      const state = buildState(
+        currentAssignments,
+        currentUnassigned,
+        teams,
+        slots,
+        input.coachPreferences
+      );
       const mutated = tryMutate(state, rand);
 
       if (!mutated) {
@@ -537,7 +577,12 @@ serve(async (req) => {
         if (stallCount >= stallLimit && restartCount < maxRestarts) {
           restartCount++;
           stallCount = 0;
-          const restart = generateGreedySeed(teams, slots, input.lockedAssignments, input.coachPreferences);
+          const restart = generateGreedySeed(
+            teams,
+            slots,
+            input.lockedAssignments,
+            input.coachPreferences
+          );
           currentAssignments = restart.assignments;
           currentUnassigned = restart.unassigned;
           currentScore = scoreSchedule(currentAssignments, currentUnassigned, teams, slots).score;
@@ -598,10 +643,13 @@ serve(async (req) => {
 
     const totalElapsedMs = Date.now() - startTime;
     const terminationReason =
-      totalElapsedMs >= WALL_CLOCK_LIMIT_MS ? 'wall-clock-safety'
-      : totalElapsedMs >= cfg.timeBudgetMs ? 'time-budget'
-      : iteration >= cfg.maxIterations ? 'max-iterations'
-      : 'converged';
+      totalElapsedMs >= WALL_CLOCK_LIMIT_MS
+        ? 'wall-clock-safety'
+        : totalElapsedMs >= cfg.timeBudgetMs
+          ? 'time-budget'
+          : iteration >= cfg.maxIterations
+            ? 'max-iterations'
+            : 'converged';
 
     // 10. Persist evaluation run via RPC
     const runData = {
@@ -699,23 +747,29 @@ serve(async (req) => {
     await edgeLogger.flush();
 
     // 13. Response
-    return jsonResponse({
-      runId,
-      assignments: bestAssignments,
-      unassigned: bestUnassigned,
-      evaluation: bestEvaluation,
-      optimization: {
-        seedScore: seedScoring.score,
-        bestScore,
-        improvement: bestScore - seedScoring.score,
-        iterations: iteration,
-        restarts: restartCount,
-        elapsedMs: totalElapsedMs,
-        terminationReason,
+    return jsonResponse(
+      {
+        runId,
+        assignments: bestAssignments,
+        unassigned: bestUnassigned,
+        evaluation: bestEvaluation,
+        optimization: {
+          seedScore: seedScoring.score,
+          bestScore,
+          improvement: bestScore - seedScoring.score,
+          iterations: iteration,
+          restarts: restartCount,
+          elapsedMs: totalElapsedMs,
+          terminationReason,
+        },
       },
-    }, 200);
+      200
+    );
   } catch (error) {
-    edgeLogger.error('Auto-scheduler failed', { error: (error as Error).message, stack: (error as Error).stack });
+    edgeLogger.error('Auto-scheduler failed', {
+      error: (error as Error).message,
+      stack: (error as Error).stack,
+    });
     await edgeLogger.flush();
 
     // Attempt to audit the failure
@@ -735,9 +789,6 @@ serve(async (req) => {
       // Swallow — best effort audit on failure
     }
 
-    return jsonResponse(
-      { error: 'Internal server error', message: (error as Error).message },
-      500,
-    );
+    return jsonResponse({ error: 'Internal server error', message: (error as Error).message }, 500);
   }
 });

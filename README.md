@@ -82,6 +82,7 @@ The application is structured around the following core admin workflows (see `Ap
 
 3. **Environment Setup:**
    Copy `.env.example` to `.env.local` and populate your Supabase credentials.
+   For a full list of all environment variables (frontend, Edge Functions, CI/CD), see [**Environment Variables Reference**](docs/operations/ENVIRONMENT.md).
 
 4. **Start the development server:**
    ```bash

@@ -197,7 +197,11 @@ Given('I have generated teams', async ({ page }) => {
     const orgId = localStorage.getItem('squadlogic_active_org') || 'org-test-e2e';
     const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
     db.scheduler_runs = db.scheduler_runs || [];
-    if (!db.scheduler_runs.find((r: Record<string, unknown>) => r.run_type === 'team' && r.status === 'completed')) {
+    if (
+      !db.scheduler_runs.find(
+        (r: Record<string, unknown>) => r.run_type === 'team' && r.status === 'completed'
+      )
+    ) {
       const now = new Date().toISOString();
       db.scheduler_runs.push({
         id: 'run-t',
@@ -245,7 +249,11 @@ Given('I have generated a practice schedule', async ({ page }) => {
     db.scheduler_runs = db.scheduler_runs || [];
     const now = new Date().toISOString();
     ['team', 'practice', 'game'].forEach((type) => {
-      if (!db.scheduler_runs.find((r: Record<string, unknown>) => r.run_type === type && r.status === 'completed')) {
+      if (
+        !db.scheduler_runs.find(
+          (r: Record<string, unknown>) => r.run_type === type && r.status === 'completed'
+        )
+      ) {
         db.scheduler_runs.push({
           id: `run-${type}`,
           organization_id: orgId,
@@ -377,7 +385,9 @@ Given(
       const org = (db.organizations || []).find((o: Record<string, unknown>) => o.name === name);
       if (org) {
         localStorage.setItem('squadlogic_active_org', (org as { id: string }).id);
-        const seasons = (db.season_settings || []).filter((s: Record<string, unknown>) => s.organization_id === (org as { id: string }).id);
+        const seasons = (db.season_settings || []).filter(
+          (s: Record<string, unknown>) => s.organization_id === (org as { id: string }).id
+        );
         if (seasons.length > 0) {
           localStorage.setItem('squadlogic-current-season', seasons[0].name);
         }

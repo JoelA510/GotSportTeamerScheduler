@@ -66,7 +66,9 @@ Then('the resulting teams summary should reflect the new constraints', async ({ 
   await page.evaluate(() => {
     const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
     const orgId = localStorage.getItem('squadlogic_active_org') || 'org-1';
-    const run = db.scheduler_runs.find((r: Record<string, unknown>) => r.run_type === 'team' && r.status === 'running');
+    const run = db.scheduler_runs.find(
+      (r: Record<string, unknown>) => r.run_type === 'team' && r.status === 'running'
+    );
     if (run) {
       run.status = 'completed';
       run.organization_id = orgId; // CRITICAL FIX: Ensure the polling hook finds this run

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   DndContext,
   DragOverlay,
@@ -16,7 +16,7 @@ import {
   useSortable,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { GripVertical, User, ShieldAlert, Zap, ArrowRight, Eye } from 'lucide-react';
+import { GripVertical, User, ShieldAlert, Zap, ArrowRight } from 'lucide-react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useConflicts } from '../../hooks/useConflicts.js';
 import { supabase } from '../../lib/supabaseClient.js';

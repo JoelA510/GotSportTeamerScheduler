@@ -1,7 +1,6 @@
 import { buildGameAssignmentRows } from './gameSupabase.js';
 import {
   normalizeRunHistory,
-  normalizeRunMetadata,
   normalizeSchedulerRuns,
   buildRunHistoryFromSchedulerRuns,
   deriveRunMetadataFromNormalizedSchedulerRuns,

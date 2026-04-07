@@ -52,7 +52,7 @@ export function createTeamPersistenceHttpHandler({
       let body;
       try {
         body = await request.json();
-      } catch (error) {
+      } catch {
         return responseWithJson({ status: 'error', message: 'Invalid JSON payload' }, 400);
       }
 

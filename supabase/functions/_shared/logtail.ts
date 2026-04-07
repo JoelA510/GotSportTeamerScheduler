@@ -39,7 +39,8 @@ function log(level: LogLevel, message: string, context: Record<string, unknown> 
   };
 
   // Always emit to console (visible in Supabase Dashboard logs)
-  const consoleFn = level === 'error' ? console.error : level === 'warn' ? console.warn : console.log;
+  const consoleFn =
+    level === 'error' ? console.error : level === 'warn' ? console.warn : console.log;
   consoleFn(`[${level.toUpperCase()}] ${message}`, context);
 
   // Buffer for batch flush to BetterStack

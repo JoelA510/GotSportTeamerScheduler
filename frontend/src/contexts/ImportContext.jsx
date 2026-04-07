@@ -23,17 +23,17 @@ const ImportContext = createContext({
   importStatus: 'idle',
   importLogs: [],
   notifyOnComplete: false,
-  setNotifyOnComplete: (val) => {},
-  startImport: async (file, type) => {},
-  resetImport: async (type) => {},
+  setNotifyOnComplete: (_val) => {},
+  startImport: async (_file, _type) => {},
+  resetImport: async (_type) => {},
   importedData: null,
-  setImportedData: (data) => {},
+  setImportedData: (_data) => {},
   importedPlayers: null,
-  setImportedPlayers: (data) => {},
+  setImportedPlayers: (_data) => {},
   importedCoaches: null,
-  setImportedCoaches: (data) => {},
+  setImportedCoaches: (_data) => {},
   importedFields: null,
-  setImportedFields: (data) => {},
+  setImportedFields: (_data) => {},
   telemetryLogs: [],
   organizationSchemas: {},
   activeJobId: null,
@@ -182,7 +182,7 @@ export function ImportProvider({ children }) {
         logger.log('[ImportContext] Loading imports for user:', user.id);
 
         // Check for active/recent jobs for re-hydration
-        const { data: activeJobs, error: jobError } = await supabase
+        const { data: activeJobs } = await supabase
           .from('import_jobs')
           .select('*')
           .eq('organization_id', currentOrganization.id)
@@ -278,7 +278,7 @@ export function ImportProvider({ children }) {
   }, []);
 
   const completeImport = useCallback(
-    (type, previewData) => {
+    (type, _previewData) => {
       setIsImporting(false);
       setImportStatus('completed');
       localStorage.setItem('importStatus', 'completed');

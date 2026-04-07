@@ -19,7 +19,7 @@ export default function GameScheduleGrid({
   assignments = [],
   fields = [],
   timeSlots = [],
-  teams = [],
+  _teams = [],
   conflictSet = undefined,
   validationResult = undefined,
   activeGameId = undefined,

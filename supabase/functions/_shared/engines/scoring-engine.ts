@@ -242,7 +242,7 @@ export function evaluateGameSchedule(params: { assignments: GameAssignment[]; te
   const detectConflicts = (
     map: Map<string, TimedGameAssignment[]>,
     type: string,
-    severity: Severity,
+    severity: Severity
   ) => {
     map.forEach((events, id) => {
       events.sort((a, b) => a.start.getTime() - b.start.getTime());

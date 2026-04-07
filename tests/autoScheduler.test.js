@@ -12,14 +12,17 @@ import {
 // ---------------------------------------------------------------------------
 
 function createSlot({ id, day, startHour, endHour, capacity = 1, baseSlotId = undefined }) {
-  const start = new Date(`2024-08-05T${String(startHour).padStart(2, '0')}:00:00.000Z`);
-  const end = new Date(`2024-08-05T${String(endHour).padStart(2, '0')}:00:00.000Z`);
+  const start = new Date(
+    `2024-08-05T${String(startHour).padStart(2, '0')}:00:00.000Z`
+  ).toISOString();
+  const end = new Date(`2024-08-05T${String(endHour).padStart(2, '0')}:00:00.000Z`).toISOString();
   return { id, day, start, end, capacity, baseSlotId };
 }
 
 function makeTeams(count, division = 'U10') {
   return Array.from({ length: count }, (_, i) => ({
     id: `T${i + 1}`,
+    name: `Team ${i + 1}`,
     division,
     coachId: `c${i + 1}`,
   }));
@@ -251,7 +254,7 @@ describe('optimizePracticeSchedule', () => {
   });
 
   test('handles edge case: single team single slot', () => {
-    const teams = [{ id: 'T1', division: 'U10', coachId: 'c1' }];
+    const teams = [{ id: 'T1', name: 'Team 1', division: 'U10', coachId: 'c1' }];
     const slots = [
       createSlot({ id: 's1', day: 'Monday', startHour: 17, endHour: 18, capacity: 1 }),
     ];
@@ -271,24 +274,24 @@ describe('optimizePracticeSchedule', () => {
     // Two teams share a coach — they cannot occupy overlapping slots.
     // Use different dates so time windows don't overlap (day label alone isn't enough).
     const teams = [
-      { id: 'T1', division: 'U10', coachId: 'shared-coach' },
-      { id: 'T2', division: 'U10', coachId: 'shared-coach' },
-      { id: 'T3', division: 'U10', coachId: 'c3' },
+      { id: 'T1', name: 'Team 1', division: 'U10', coachId: 'shared-coach' },
+      { id: 'T2', name: 'Team 2', division: 'U10', coachId: 'shared-coach' },
+      { id: 'T3', name: 'Team 3', division: 'U10', coachId: 'c3' },
     ];
 
     const slots = [
       {
         id: 's1',
         day: 'Monday',
-        start: new Date('2024-08-05T17:00:00.000Z'),
-        end: new Date('2024-08-05T18:00:00.000Z'),
+        start: new Date('2024-08-05T17:00:00.000Z').toISOString(),
+        end: new Date('2024-08-05T18:00:00.000Z').toISOString(),
         capacity: 2,
       },
       {
         id: 's2',
         day: 'Tuesday',
-        start: new Date('2024-08-06T17:00:00.000Z'),
-        end: new Date('2024-08-06T18:00:00.000Z'),
+        start: new Date('2024-08-06T17:00:00.000Z').toISOString(),
+        end: new Date('2024-08-06T18:00:00.000Z').toISOString(),
         capacity: 2,
       },
     ];

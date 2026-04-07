@@ -137,9 +137,11 @@ Then(
     if (source === 'locked') {
       const badge = page.locator('text=locked').first();
       // This will be in the PracticeAssignmentList — just ensure it exists
-      await expect(badge).toBeVisible({ timeout: 5000 }).catch(() => {
-        // In mock mode, assignment list rendering may differ — pass if panel shows complete
-      });
+      await expect(badge)
+        .toBeVisible({ timeout: 5000 })
+        .catch(() => {
+          // In mock mode, assignment list rendering may differ — pass if panel shows complete
+        });
     }
   }
 );
@@ -152,12 +154,15 @@ Then('the {string} button should be keyboard focusable', async ({ page }, button
   await expect(button).toBeFocused();
 });
 
-Then('the {string} button should have an accessible label', async ({ page }, buttonText: string) => {
-  const button = page.getByRole('button', { name: buttonText });
-  const ariaLabel = await button.getAttribute('aria-label');
-  const textContent = await button.textContent();
-  expect(ariaLabel || textContent).toBeTruthy();
-});
+Then(
+  'the {string} button should have an accessible label',
+  async ({ page }, buttonText: string) => {
+    const button = page.getByRole('button', { name: buttonText });
+    const ariaLabel = await button.getAttribute('aria-label');
+    const textContent = await button.textContent();
+    expect(ariaLabel || textContent).toBeTruthy();
+  }
+);
 
 Then('the auto-scheduler panel should use proper ARIA landmarks', async ({ page }) => {
   const panel = page.locator('section[aria-label="Auto-Scheduler"]');

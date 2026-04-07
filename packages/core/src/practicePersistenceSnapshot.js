@@ -1,10 +1,8 @@
 import { buildPracticeAssignmentRows } from './practiceSupabase.js';
 import {
   normalizeRunHistory,
-  normalizeRunMetadata,
   normalizeSchedulerRuns,
   buildRunHistoryFromSchedulerRuns,
-  deriveRunMetadataFromSchedulerRuns,
   deriveRunMetadataFromNormalizedSchedulerRuns,
   mergeRunMetadata,
 } from './utils/snapshot.js';

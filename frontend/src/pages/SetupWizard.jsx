@@ -115,7 +115,7 @@ export default function SetupWizard() {
     if (leagueName && !localLeagueName) {
       setLocalLeagueName(leagueName);
     }
-  }, [featureFlags, leagueName]);
+  }, [featureFlags, leagueName, localFlags, localLeagueName]);
 
   useEffect(() => {
     if (permissions.length > 0 && !isTenantAdmin && currentOrganization) {

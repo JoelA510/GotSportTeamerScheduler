@@ -21,6 +21,9 @@ docs/sql/real-samples/*
 coverage/
 test-results/
 
+# Supabase temp files
+supabase/.temp/
+
 # Misc
 tmp/
 *.log

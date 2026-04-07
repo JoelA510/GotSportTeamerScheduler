@@ -25,8 +25,12 @@ Given('I have an organization labeled {string}', async ({ page }, orgName: strin
       organizations: db.organizations.find((o) => o.id === uniqueOrgId),
     });
 
-    db.locations = (db.locations || []).filter((l: Record<string, unknown>) => l.organization_id !== uniqueOrgId);
-    db.fields = (db.fields || []).filter((f: Record<string, unknown>) => f.organization_id !== uniqueOrgId);
+    db.locations = (db.locations || []).filter(
+      (l: Record<string, unknown>) => l.organization_id !== uniqueOrgId
+    );
+    db.fields = (db.fields || []).filter(
+      (f: Record<string, unknown>) => f.organization_id !== uniqueOrgId
+    );
 
     window.__MOCK_DB__ = db;
     sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));

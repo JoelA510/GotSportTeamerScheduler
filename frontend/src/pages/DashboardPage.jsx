@@ -46,7 +46,7 @@ export default function DashboardPage() {
     }
   }, [location]);
 
-  const { loading, roadmap, team, practice, game } = useDashboardData();
+  const { loading, _roadmap, team, practice, game } = useDashboardData();
   const { persistenceSnapshot } = useTeamPersistence();
   const { importedData, setImportedData } = useImport();
   const { timezone } = useTheme();
