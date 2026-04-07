@@ -36,6 +36,7 @@ const ResetPassword = lazy(() => import('./pages/ResetPassword.jsx'));
 const AuditLogPage = lazy(() => import('./pages/AuditLogPage.jsx'));
 const AnalyticalDashboard = lazy(() => import('./pages/AnalyticalDashboard.jsx'));
 import ShadowBanner from './components/auth/ShadowBanner.jsx';
+import OfflineGuard from './components/OfflineGuard.jsx';
 
 function AppContent() {
   const { session, loading } = useAuth();
@@ -164,7 +165,9 @@ function App() {
           <ImportProvider>
             <ThemeProvider>
               <ErrorBoundary>
-                <AppContent />
+                <OfflineGuard>
+                  <AppContent />
+                </OfflineGuard>
               </ErrorBoundary>
             </ThemeProvider>
           </ImportProvider>

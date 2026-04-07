@@ -1,6 +1,5 @@
 import React from 'react';
-import { ShieldAlert, RotateCcw } from 'lucide-react';
-import Button from './ui/Button.jsx';
+import { ShieldAlert } from 'lucide-react';
 import { logger } from '../lib/logger.js';
 
 class ErrorBoundary extends React.Component {
@@ -14,7 +13,10 @@ class ErrorBoundary extends React.Component {
   }
 
   componentDidCatch(error, errorInfo) {
-    logger.error('ErrorBoundary caught an error', error, errorInfo);
+    logger.captureException(error, {
+      extra: { componentStack: errorInfo?.componentStack },
+      tags: { boundary: 'root' },
+    });
   }
 
   render() {

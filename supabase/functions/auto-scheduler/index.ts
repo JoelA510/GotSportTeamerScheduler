@@ -23,6 +23,7 @@ import {
   recordAudit,
 } from '../_shared/auth.ts';
 import { checkRateLimit } from '../_shared/rateLimit.ts';
+import { edgeLogger } from '../_shared/logtail.ts';
 
 // ---------------------------------------------------------------------------
 // Input schema
@@ -443,7 +444,15 @@ serve(async (req) => {
       return jsonResponse({ error: 'Not authorized for this organization' }, 403);
     }
 
-    // 6. Audit: scheduler started
+    // 6. Audit + structured logging: scheduler started
+    edgeLogger.info('Auto-scheduler invoked', {
+      userId: user.id,
+      orgId: input.organizationId,
+      teamCount: input.teams.length,
+      slotCount: input.slots.length,
+      maxIterations: input.config.maxIterations,
+      timeBudgetMs: input.config.timeBudgetMs,
+    });
     await recordAudit(supabase, {
       organizationId: input.organizationId,
       action: 'scheduler.auto_started',
@@ -476,6 +485,15 @@ serve(async (req) => {
     const cfg = input.config;
     const rand = createPRNG(cfg.seed);
 
+    // --- Phase 9: Production hardening constants ---
+    // Yield every N iterations to avoid 2s CPU limit on Supabase free tier.
+    // The free tier enforces a 2s CPU ceiling per isolate burst but allows
+    // up to 150s wall-clock time; yielding lets the event loop breathe.
+    const YIELD_EVERY = 100;
+    // Safety wall-clock cutoff (140s) — leave 10s headroom before the
+    // hard 150s isolate timeout on the free tier.
+    const WALL_CLOCK_LIMIT_MS = 140_000;
+
     // 8. Generate greedy seed
     const seed = generateGreedySeed(teams, slots, input.lockedAssignments, input.coachPreferences);
     const seedScoring = scoreSchedule(seed.assignments, seed.unassigned, teams, slots);
@@ -494,9 +512,19 @@ serve(async (req) => {
     const stallLimit = 80;
     const maxRestarts = 5;
 
-    // 9. Hill Climbing loop
+    // 9. Hill Climbing loop (with CPU yield + wall-clock guard)
     while (iteration < cfg.maxIterations) {
       const elapsed = Date.now() - startTime;
+
+      // Phase 9: Wall-clock safety cutoff (140s)
+      if (elapsed >= WALL_CLOCK_LIMIT_MS) {
+        console.warn(
+          `[auto-scheduler] Wall-clock safety cutoff at ${elapsed}ms / ${iteration} iterations`
+        );
+        break;
+      }
+
+      // Original time-budget check (user-configurable, shorter)
       if (elapsed >= cfg.timeBudgetMs) break;
 
       iteration++;
@@ -513,6 +541,10 @@ serve(async (req) => {
           currentAssignments = restart.assignments;
           currentUnassigned = restart.unassigned;
           currentScore = scoreSchedule(currentAssignments, currentUnassigned, teams, slots).score;
+        }
+        // Phase 9: yield on stall iterations too (every YIELD_EVERY)
+        if (iteration % YIELD_EVERY === 0) {
+          await new Promise((r) => setTimeout(r, 0));
         }
         continue;
       }
@@ -542,8 +574,14 @@ serve(async (req) => {
         }
       }
 
-      // Emit progress audit every 100 iterations
-      if (iteration % 100 === 0) {
+      // Phase 9: Yield CPU every YIELD_EVERY iterations to stay under
+      // the Supabase free-tier 2s CPU burst limit while using up to
+      // 140s of wall-clock time. The yield also allows the progress
+      // audit promise to flush.
+      if (iteration % YIELD_EVERY === 0) {
+        await new Promise((r) => setTimeout(r, 0));
+
+        // Emit progress audit (fire-and-forget)
         recordAudit(supabase, {
           organizationId: input.organizationId,
           action: 'scheduler.auto_progress',
@@ -554,13 +592,14 @@ serve(async (req) => {
             elapsedMs: Date.now() - startTime,
             restartCount,
           },
-        }).catch(() => {}); // Fire and forget
+        }).catch(() => {});
       }
     }
 
     const totalElapsedMs = Date.now() - startTime;
     const terminationReason =
-      totalElapsedMs >= cfg.timeBudgetMs ? 'time-budget'
+      totalElapsedMs >= WALL_CLOCK_LIMIT_MS ? 'wall-clock-safety'
+      : totalElapsedMs >= cfg.timeBudgetMs ? 'time-budget'
       : iteration >= cfg.maxIterations ? 'max-iterations'
       : 'converged';
 
@@ -647,7 +686,19 @@ serve(async (req) => {
       },
     });
 
-    // 12. Response
+    // 12. Structured logging: completion
+    edgeLogger.info('Auto-scheduler completed', {
+      bestScore,
+      iterations: iteration,
+      elapsedMs: totalElapsedMs,
+      terminationReason,
+      assignedCount: bestAssignments.length,
+      unassignedCount: bestUnassigned.length,
+      runId,
+    });
+    await edgeLogger.flush();
+
+    // 13. Response
     return jsonResponse({
       runId,
       assignments: bestAssignments,
@@ -664,7 +715,8 @@ serve(async (req) => {
       },
     }, 200);
   } catch (error) {
-    console.error('Auto-scheduler error:', error);
+    edgeLogger.error('Auto-scheduler failed', { error: (error as Error).message, stack: (error as Error).stack });
+    await edgeLogger.flush();
 
     // Attempt to audit the failure
     try {
