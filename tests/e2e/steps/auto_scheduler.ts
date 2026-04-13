@@ -1,11 +1,63 @@
 import { createBdd } from 'playwright-bdd';
-import { expect } from '@playwright/test';
+import { expect, Page } from '@playwright/test';
 
 const { Given, When, Then } = createBdd();
 
+// Extend Page type to carry test-scoped state between steps
+interface AutoSchedulerPage extends Page {
+  __autoSchedulerResolve?: (value: unknown) => void;
+  __autoSchedulerUnavailable?: boolean;
+}
+
 // --- Navigation ---
 
+const MOCK_AUTO_SCHEDULER_RESPONSE = {
+  runId: 'mock-run-auto-1',
+  assignments: [
+    { teamId: 't1', slotId: 'ps-1', source: 'auto' },
+    { teamId: 't2', slotId: 'ps-1', source: 'auto' },
+  ],
+  unassigned: [],
+  evaluation: { overallScore: 95 },
+  optimization: {
+    iterations: 250,
+    bestScore: 95,
+    elapsedMs: 1200,
+    improvement: 15,
+    terminationReason: 'max_iterations',
+    status: 'Optimization Complete',
+  },
+};
+
 When('I navigate to the Practice Scheduling page', async ({ page }) => {
+  if ((page as AutoSchedulerPage).__autoSchedulerUnavailable) {
+    // Error scenario: return 503
+    await page.route('**/functions/v1/auto-scheduler', (route) => {
+      route.fulfill({
+        status: 503,
+        contentType: 'application/json',
+        body: JSON.stringify({ error: 'Service unavailable' }),
+      });
+    });
+  } else {
+    // Normal scenario: deferred response so progress tests can observe running state
+    let resolveRoute: ((value: unknown) => void) | null = null;
+    const routePromise = new Promise((resolve) => {
+      resolveRoute = resolve;
+    });
+    (page as AutoSchedulerPage).__autoSchedulerResolve = resolveRoute;
+
+    await page.route('**/functions/v1/auto-scheduler', async (route) => {
+      const timeout = new Promise((r) => setTimeout(r, 8000));
+      await Promise.race([routePromise, timeout]);
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(MOCK_AUTO_SCHEDULER_RESPONSE),
+      });
+    });
+  }
+
   await page.goto('/schedule/practice');
   await page.waitForLoadState('networkidle');
 });
@@ -18,12 +70,15 @@ Then('I should see the {string} panel', async ({ page }, panelName: string) => {
 });
 
 Then('I should see an {string} button', async ({ page }, buttonText: string) => {
-  const button = page.getByRole('button', { name: buttonText });
-  await expect(button).toBeVisible();
+  // Match by role name OR by visible text (aria-label may override visible text)
+  const button = page
+    .getByRole('button', { name: new RegExp(buttonText, 'i') })
+    .or(page.locator(`button:has-text("${buttonText}")`));
+  await expect(button.first()).toBeVisible();
 });
 
 Then('the Auto-Generate button should be enabled', async ({ page }) => {
-  const button = page.getByRole('button', { name: /Auto-Generate/i });
+  const button = page.locator('button:has-text("Auto-Generate")');
   await expect(button).toBeEnabled();
 });
 
@@ -45,13 +100,17 @@ Then('the progress indicator should show a best score percentage', async ({ page
 });
 
 Then('the Auto-Generate button should be disabled during optimization', async ({ page }) => {
-  const button = page.getByRole('button', { name: /Optimizing/i });
+  // Button aria-label is "Optimization in progress" when running
+  const button = page.getByRole('button', { name: /Optimization in progress/i });
   await expect(button).toBeDisabled();
 });
 
 // --- Completion ---
 
 When('the auto-scheduler completes', async ({ page }) => {
+  // Signal the mock route handler to send the response
+  const resolve = (page as AutoSchedulerPage).__autoSchedulerResolve;
+  if (resolve) resolve(true);
   // Wait for the completion status message
   const completionMessage = page.locator('text=Optimization Complete');
   await expect(completionMessage).toBeVisible({ timeout: 35000 });
@@ -66,7 +125,9 @@ Then(
 );
 
 Then('I should see the number of assigned teams', async ({ page }) => {
-  const label = page.locator('section[aria-label="Auto-Scheduler"]').locator('text=Assigned');
+  const label = page
+    .locator('section[aria-label="Auto-Scheduler"]')
+    .getByText('Assigned', { exact: true });
   await expect(label).toBeVisible();
 });
 
@@ -83,13 +144,45 @@ Then('I should see a {string} button', async ({ page }, buttonText: string) => {
 // --- Error ---
 
 Given('the auto-scheduler service is unavailable', async ({ page }) => {
-  // Intercept the auto-scheduler Edge Function and return a 503
-  await page.route('**/functions/v1/auto-scheduler', (route) => {
-    route.fulfill({
-      status: 503,
-      contentType: 'application/json',
-      body: JSON.stringify({ error: 'Service unavailable' }),
-    });
+  // Flag so the navigation step knows to return 503 instead of deferred response
+  (page as AutoSchedulerPage).__autoSchedulerUnavailable = true;
+
+  // Ensure a completed team run exists so the Auto-Generate button is enabled
+  // (the button is disabled when !team?.teams?.length)
+  await page.evaluate(() => {
+    const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
+    const orgId = localStorage.getItem('squadlogic_active_org') || 'org-1';
+    const now = new Date().toISOString();
+
+    db.scheduler_runs = db.scheduler_runs || [];
+    // Push a separate team run to guarantee the button is enabled
+    if (
+      !db.scheduler_runs.find(
+        (r: Record<string, unknown>) =>
+          r.organization_id === orgId && r.run_type === 'team' && r.status === 'completed'
+      )
+    ) {
+      db.scheduler_runs.push({
+        id: 'run-error-teams',
+        organization_id: orgId,
+        run_type: 'team',
+        status: 'completed',
+        created_at: now,
+        completed_at: now,
+        results: {
+          teamsByDivision: {
+            U10: [
+              { id: 'et1', name: 'Error Test Team', division_id: 'U10' },
+            ],
+          },
+          team_players: [],
+          rosterBalanceByDivision: {
+            U10: { summary: { totalPlayers: 10, totalCapacity: 12, averageFillRate: 0.83 }, teamStats: [] },
+          },
+        },
+      });
+    }
+    sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
   });
 });
 
@@ -149,7 +242,8 @@ Then(
 // --- Accessibility ---
 
 Then('the {string} button should be keyboard focusable', async ({ page }, buttonText: string) => {
-  const button = page.getByRole('button', { name: buttonText });
+  // aria-label may differ from visible text; match by text content as fallback
+  const button = page.locator(`button:has-text("${buttonText}")`).first();
   await button.focus();
   await expect(button).toBeFocused();
 });
@@ -157,7 +251,7 @@ Then('the {string} button should be keyboard focusable', async ({ page }, button
 Then(
   'the {string} button should have an accessible label',
   async ({ page }, buttonText: string) => {
-    const button = page.getByRole('button', { name: buttonText });
+    const button = page.locator(`button:has-text("${buttonText}")`).first();
     const ariaLabel = await button.getAttribute('aria-label');
     const textContent = await button.textContent();
     expect(ariaLabel || textContent).toBeTruthy();

@@ -9,9 +9,12 @@ const supabaseUrl = process.env.VITE_SUPABASE_URL || '';
 const supabaseKey =
   process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || '';
 const supabase = supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabaseKey) : null;
+const isMockMode = !supabaseUrl || !supabaseKey || process.env.VITE_USE_MOCK_SUPABASE === 'true';
 
 async function setupIsolatedTenant(page: Page, role: string = 'admin') {
-  const dynamicOrgId = randomUUID();
+  // In mock mode, use 'org-1' to align with pre-seeded initialMockData.
+  // Random UUIDs cause org ID fragmentation — hooks filter by active org and find nothing.
+  const dynamicOrgId = isMockMode ? 'org-1' : randomUUID();
   const _email =
     role === 'coach'
       ? 'coach@squadlogic.app'
@@ -114,7 +117,7 @@ Given(
     );
 
     // CRITICAL FIX: Bypass UI login in mock mode and respect pre-seeded RBAC users
-    if (process.env.VITE_USE_MOCK_SUPABASE === 'true') {
+    if (isMockMode) {
       await page.goto('/');
 
       const isPreSeeded = await page.evaluate(

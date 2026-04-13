@@ -109,6 +109,8 @@ const initialMockData = {
       name: 'Tigers',
       division_id: 'u8-div-id',
       organization_id: 'org-1',
+      calendar_token: 'mock-calendar-token-tigers',
+      calendar_token_expires_at: new Date(Date.now() + 90 * 86400000).toISOString(),
     },
   ],
   team_players: [
@@ -169,6 +171,17 @@ const initialMockData = {
       event_type: 'practice',
       occurrence_date: '2025-01-07',
       status: 'attending',
+      updated_at: new Date().toISOString(),
+    },
+    {
+      id: 'rsvp-2',
+      organization_id: 'org-1',
+      team_id: '00000000-0000-0000-0000-000000000001',
+      player_id: 'player-2',
+      reference_id: 'pa-1',
+      event_type: 'practice',
+      occurrence_date: '2025-01-07',
+      status: 'pending',
       updated_at: new Date().toISOString(),
     },
   ],
@@ -366,6 +379,7 @@ const initialMockData = {
     {
       id: 'import-1',
       user_id: 'mock-admin-id',
+      organization_id: 'org-1',
       import_type: 'players',
       data: {
         totalRows: 2,
@@ -443,7 +457,8 @@ const triggerRealtimeEvent = (table, event, payload) => {
   logger.log(`[Mock Supabase] Triggering Realtime ${event} for ${table}`, payload);
   realtimeCallbacks.forEach((cb) => {
     if (cb.table === table && (cb.event === '*' || cb.event === event)) {
-      cb.callback(payload);
+      // Include eventType in payload so Supabase Realtime subscription handlers can read it
+      cb.callback({ ...payload, eventType: event });
     }
   });
 };
@@ -1259,6 +1274,61 @@ export const mockSupabase = {
       return { data: true, error: null };
     }
 
-    return { data: null, error: { message: `Mock RPC ${name} not implemented` } };
+    if (name === 'rotate_calendar_token') {
+      const newToken = 'mock-calendar-token-' + Math.random().toString(36).substr(2, 8);
+      const teamId = params?.p_team_id;
+      if (teamId) {
+        const teams = db.teams || [];
+        const team = teams.find((t) => String(t.id) === String(teamId));
+        if (team) {
+          team.calendar_token = newToken;
+          team.calendar_token_expires_at = new Date(Date.now() + 90 * 86400000).toISOString();
+          saveDB(db);
+        }
+      }
+      return {
+        data: { status: 'ok', calendar_token: newToken, message: 'Token rotated' },
+        error: null,
+      };
+    }
+
+    if (name === 'update_org_feature_flags') {
+      return { data: true, error: null };
+    }
+
+    if (name === 'log_telemetry_event') {
+      return { data: true, error: null };
+    }
+
+    if (name === 'finalize_onboarding') {
+      return { data: true, error: null };
+    }
+
+    if (name === 'get_settings_audit_log') {
+      const logs = (db.audit_log || [])
+        .filter((e) => String(e.organization_id) === String(params?.p_organization_id))
+        .map((e) => ({
+          actor_name: 'Mock Admin',
+          actor_email: 'admin@example.com',
+          action: e.action,
+          metadata: e.metadata,
+          created_at: e.created_at,
+        }));
+      return { data: logs, error: null };
+    }
+
+    if (name === 'persist_evaluation_run') {
+      return { data: { id: 'eval-' + Math.random().toString(36).substr(2, 6) }, error: null };
+    }
+
+    logger.warn(`[Mock Supabase] RPC "${name}" not implemented — returning empty success`);
+    return { data: null, error: null };
+  },
+  functions: {
+    invoke: async (name, options) => {
+      logger.log(`[Mock Supabase] functions.invoke("${name}")`, options?.body);
+      // Return a plausible empty success for any edge function call
+      return { data: null, error: null };
+    },
   },
 };

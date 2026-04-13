@@ -17,17 +17,23 @@ export default defineConfig({
   reporter: 'html',
   fullyParallel: true,
   workers: process.env.CI ? '100%' : '50%',
+  // Give Vite dev server time to lazily compile route chunks on first access
+  timeout: 60000,
+  expect: {
+    timeout: 10000,
+  },
   use: {
     // CRITICAL: Allows step definitions to use relative paths like page.goto('/teams')
     baseURL: 'http://localhost:5173',
     trace: 'on',
     screenshot: 'only-on-failure', // Highly recommended for vision-agent debugging
+    actionTimeout: 10000,
   },
   // CRITICAL: Auto-start the Vite dev server before running tests
   webServer: {
     command: 'npm run frontend:dev',
     url: 'http://localhost:5173',
-    reuseExistingServer: false,
+    reuseExistingServer: !process.env.CI,
     timeout: 120 * 1000,
     env: {
       VITE_USE_MOCK_SUPABASE: 'true',

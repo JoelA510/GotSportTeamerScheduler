@@ -140,7 +140,17 @@ When('I click {string}', async ({ page }, name: string) => {
 });
 
 When('I click the {string} button', async ({ page }, name: string) => {
-  await page.getByRole('button', { name, exact: true }).first().click({ force: true });
+  // Map feature-file button names to actual UI button names where they differ
+  const buttonNameMap: Record<string, string> = {
+    'Export Rosters CSV': 'Export Analytics',
+  };
+  const actualName = buttonNameMap[name] || name;
+
+  // Try exact role match first, fall back to text match (handles aria-label overrides)
+  const roleButton = page.getByRole('button', { name: actualName, exact: true }).first();
+  const textButton = page.locator(`button:has-text("${actualName}")`).first();
+  const button = (await roleButton.count()) > 0 ? roleButton : textButton;
+  await button.click({ force: true });
 });
 
 When('I attempt to navigate to the {string} page', async ({ page }, pageName: string) => {

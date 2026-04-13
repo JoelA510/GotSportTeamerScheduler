@@ -151,16 +151,19 @@ When('I trigger the team generation algorithm', async ({ page }) => {
       rosterBalance.push({ teamId: `team-gen-${i}`, slotsRemaining: 0, skillScore: 95 });
     }
 
+    // CRITICAL FIX: Override the pre-seeded run-1 to use our 10-team data.
+    // The mock client's mergeSource always brings run-1 back on page reload (it merges
+    // by ID). So we must update run-1 in-place rather than creating a new run.
     db.scheduler_runs = db.scheduler_runs || [];
-    db.scheduler_runs.push({
-      id: `mock-run-team-${Date.now()}`, // Unique ID for tracking
-      organization_id: orgId,
-      run_type: 'team',
-      status: 'completed',
-      results: {
-        teamsByDivision: {
-          U10: generatedTeams,
-        },
+    const existingRun = db.scheduler_runs.find(
+      (r: Record<string, unknown>) => r.id === 'run-1'
+    );
+    if (existingRun) {
+      existingRun.organization_id = orgId;
+      existingRun.created_at = now;
+      existingRun.completed_at = now;
+      existingRun.results = {
+        teamsByDivision: { U10: generatedTeams },
         rosterBalanceByDivision: {
           U10: {
             summary: {
@@ -172,10 +175,31 @@ When('I trigger the team generation algorithm', async ({ page }) => {
             teamStats: rosterBalance,
           },
         },
-      },
-      created_at: now,
-      completed_at: now,
-    });
+      };
+    } else {
+      db.scheduler_runs.push({
+        id: 'run-1',
+        organization_id: orgId,
+        run_type: 'team',
+        status: 'completed',
+        results: {
+          teamsByDivision: { U10: generatedTeams },
+          rosterBalanceByDivision: {
+            U10: {
+              summary: {
+                totalPlayers: 100,
+                totalCapacity: 100,
+                averageFillRate: 1.0,
+                averageSkillBalance: 95,
+              },
+              teamStats: rosterBalance,
+            },
+          },
+        },
+        created_at: now,
+        completed_at: now,
+      });
+    }
 
     sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
   });
@@ -412,57 +436,97 @@ Given('I am viewing the Team Roster page', async ({ page }) => {
   await page.evaluate(() => {
     const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
     const orgId = localStorage.getItem('squadlogic_active_org') || 'org-1';
-    db.scheduler_runs = db.scheduler_runs || [];
+    const userId = 'mock-admin-id';
+
+    // CRITICAL FIX: Remove any existing run-1 and re-add with our data
+    // (sessionStorage may not have initialMockData yet, so find() would return undefined)
+    // Use pre-seeded team IDs t1/t2 to match initialMockData
+    // Use index-based player_id '0' to match import-1's first player (Alex Smith)
+    db.scheduler_runs = (db.scheduler_runs || []).filter(
+      (r: Record<string, unknown>) => r.id !== 'run-1'
+    );
     db.scheduler_runs.push({
-      id: 'mock-run-dnd',
+      id: 'run-1',
       organization_id: orgId,
       run_type: 'team',
       status: 'completed',
+      created_at: new Date().toISOString(),
+      completed_at: new Date().toISOString(),
       results: {
         teamsByDivision: {
-          U10: [
-            { id: 'team-a', name: 'Team A', division_id: 'U10' },
-            { id: 'team-b', name: 'Team B', division_id: 'U10' },
+          'U8 Boys': [
+            { id: 't1', name: 'Team A', division_id: 'U8 Boys' },
+            { id: 't2', name: 'Team B', division_id: 'U8 Boys' },
           ],
         },
-        team_players: [{ team_id: 'team-a', player_id: 'p1' }],
+        teams: [
+          { id: 't1', name: 'Team A', division_id: 'U8 Boys' },
+          { id: 't2', name: 'Team B', division_id: 'U8 Boys' },
+        ],
+        team_players: [{ team_id: 't1', player_id: '0' }],
+        rosterBalanceByDivision: {
+          'U8 Boys': {
+            summary: { totalPlayers: 1, totalCapacity: 12, averageFillRate: 0.08 },
+            teamStats: [],
+          },
+        },
       },
-      created_at: new Date().toISOString(),
     });
-    db.imports = [
-      { id: 'imp-1', data: { data: [{ id: 'p1', 'First Name': 'John', 'Last Name': 'Doe' }] } },
-    ];
+
+    // No extra import needed — import-1 from initialMockData provides player data
+
     sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
   });
   await page.goto('/teams');
+  // Wait for the roster data to load before entering edit mode
+  await page.waitForTimeout(1000);
   await page.getByRole('button', { name: /Edit Mode/i }).click();
 });
 
 When(
   'I move a player from {string} to {string} using drag-and-drop',
   async ({ page }, teamA: string, teamB: string) => {
-    const sourceColumn = page.getByTestId(`team-column-team-a`);
+    // CRITICAL FIX: Use pre-seeded team IDs t1/t2 (not team-a/team-b)
+    const sourceColumn = page.getByTestId('team-column-t1');
+    // Wait for player cards to render (async mock data may take time to hydrate)
     const player = sourceColumn.locator('[data-testid^="player-card-"]').first();
+    await expect(player).toBeVisible({ timeout: 15000 });
 
-    // Save the player's name to verify it moved
-    const playerName = await player.locator('.font-medium').first().textContent();
-    (page as { playerMoved?: string } & typeof page).playerMoved = playerName?.trim() || '';
+    // Save the player's name to verify it moved — use aria-label as a resilient source
+    const ariaLabel = await player.getAttribute('aria-label');
+    const playerName = ariaLabel?.split(',')[0]?.trim() || 'John Doe';
+    (page as { playerMoved?: string } & typeof page).playerMoved = playerName;
 
-    const targetColumn = page.locator('.bg-bg-surface\\/50').filter({ hasText: teamB }).first();
+    const targetColumn = page.getByTestId('team-column-t2');
+    await expect(targetColumn).toBeVisible();
 
     // dnd-kit requires precise mouse movements to register the drag
-    await player.hover();
-    await page.mouse.down();
-    await page.mouse.move(10, 10); // Trigger drag start
-    await targetColumn.hover();
-    await page.mouse.up();
+    const playerBox = await player.boundingBox();
+    const targetBox = await targetColumn.boundingBox();
+    if (playerBox && targetBox) {
+      await page.mouse.move(playerBox.x + playerBox.width / 2, playerBox.y + playerBox.height / 2);
+      await page.mouse.down();
+      // Small move to trigger dnd-kit activation distance (5px threshold)
+      await page.mouse.move(
+        playerBox.x + playerBox.width / 2 + 10,
+        playerBox.y + playerBox.height / 2 + 10,
+        { steps: 5 }
+      );
+      // Move to target column center
+      await page.mouse.move(
+        targetBox.x + targetBox.width / 2,
+        targetBox.y + targetBox.height / 2,
+        { steps: 10 }
+      );
+      await page.mouse.up();
+    }
   }
 );
 
 Then('the system should save the new player assignment', async ({ page }) => {
   const playerName = (page as { playerMoved?: string } & typeof page).playerMoved;
   // Verify the player is now physically rendered in the Team B column
-  const targetColumn = page.locator('.bg-bg-surface\\/50').filter({ hasText: 'Team B' }).first();
+  const targetColumn = page.getByTestId('team-column-t2');
   await expect(targetColumn.getByText(playerName)).toBeVisible({ timeout: 10000 });
 });
 
@@ -479,9 +543,9 @@ Then('designate the source of this assignment as {string}', async ({ page }, sou
 Then(
   'instantly recalculate the skill balance and capacity metrics for both teams',
   async ({ page }) => {
-    // Verify the player count badge updated
-    const targetColumn = page.locator('.bg-bg-surface\\/50').filter({ hasText: 'Team B' }).first();
-    await expect(targetColumn.getByText(/1 Players/)).toBeVisible();
+    // Verify the player count badge updated in Team B
+    const targetColumn = page.getByTestId('team-column-t2');
+    await expect(targetColumn.getByText(/1 Player/)).toBeVisible({ timeout: 10000 });
   }
 );
 

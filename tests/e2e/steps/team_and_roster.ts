@@ -16,10 +16,12 @@ async function syncPlayerToImports(page: Page, player: Record<string, unknown>) 
       );
 
       if (!playerImport) {
+        const activeOrg = localStorage.getItem('squadlogic_active_org') || 'org-1';
         playerImport = {
           id: 'import-players-1',
           import_type: 'players',
           user_id: 'mock-admin-id',
+          organization_id: activeOrg,
           data: { data: [] },
           created_at: new Date().toISOString(),
         };
@@ -60,55 +62,47 @@ Given('teams have been generated for the current season', async ({ page }) => {
     const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
     const orgId = localStorage.getItem('squadlogic_active_org') || 'org-1';
 
-    db.teams = db.teams || [];
-    if (!db.teams.find((t: Record<string, unknown>) => t.id === 'team-alpha')) {
-      db.teams.push(
-        {
-          id: 'team-alpha',
-          name: 'Team Alpha',
-          division: 'U10',
-          organization_id: orgId,
-          gender_policy: null,
-          age_range: null,
-        },
-        {
-          id: 'team-beta',
-          name: 'Team Beta',
-          division: 'U10',
-          organization_id: orgId,
-          gender_policy: null,
-          age_range: null,
-        }
-      );
-    }
-
-    const now = new Date().toISOString();
+    // CRITICAL: Use pre-seeded run-1 teams (t1='Team A', t2='Team B') rather than
+    // creating new teams. The mock client's mergeSource always merges initialMockData
+    // back in on page reload, so we can't remove pre-seeded records — we must work with them.
+    // Update run-1 to ensure it has team_players and created_at for proper sorting.
     db.scheduler_runs = db.scheduler_runs || [];
-    db.scheduler_runs.push({
-      id: `mock-run-roster-${Date.now()}`,
-      organization_id: orgId,
-      run_type: 'team',
-      status: 'completed',
-      created_at: now,
-      completed_at: now,
-      results: {
-        teamsByDivision: {
-          U10: [
-            { id: 'team-alpha', name: 'Team Alpha', division_id: 'U10', organization_id: orgId },
-            { id: 'team-beta', name: 'Team Beta', division_id: 'U10', organization_id: orgId },
-          ],
-        },
-        rosterBalanceByDivision: {
-          U10: {
-            summary: { totalPlayers: 20, totalCapacity: 24, averageFillRate: 0.8 },
-            teamStats: [],
+    const existingRun = db.scheduler_runs.find(
+      (r: Record<string, unknown>) => r.id === 'run-1'
+    );
+    if (existingRun) {
+      existingRun.created_at = new Date().toISOString();
+      existingRun.completed_at = new Date().toISOString();
+      existingRun.results = existingRun.results || {};
+      existingRun.results.team_players = existingRun.results.team_players || [];
+    } else {
+      db.scheduler_runs.push({
+        id: 'run-1',
+        organization_id: orgId,
+        run_type: 'team',
+        status: 'completed',
+        created_at: new Date().toISOString(),
+        completed_at: new Date().toISOString(),
+        results: {
+          teamsByDivision: {
+            U10: [
+              { id: 't1', name: 'Team A', division_id: 'U10', organization_id: orgId },
+              { id: 't2', name: 'Team B', division_id: 'U10', organization_id: orgId },
+            ],
+          },
+          team_players: [],
+          rosterBalanceByDivision: {
+            U10: {
+              summary: { totalPlayers: 20, totalCapacity: 24, averageFillRate: 0.8 },
+              teamStats: [],
+            },
+          },
+          coachCoverageByDivision: {
+            U10: { totalTeams: 2, teamsWithCoach: 2, coverageRate: 1.0 },
           },
         },
-        coachCoverageByDivision: {
-          U10: { totalTeams: 2, teamsWithCoach: 2, coverageRate: 1.0 },
-        },
-      },
-    });
+      });
+    }
 
     sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
   });
@@ -133,50 +127,19 @@ Given(
         const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
         const orgId = localStorage.getItem('squadlogic_active_org') || 'org-1';
 
-        db.players = db.players || [];
         const id1 = `player-${name1.toLowerCase()}`;
         const id2 = `player-${name2.toLowerCase()}`;
 
+        // Use pre-seeded teams t1 (Team A) and t2 (Team B) from run-1
         // Assign to DIFFERENT teams to trigger buddy separation conflict
-        db.players.push(
-          {
-            id: id1,
-            first_name: name1,
-            last_name: '',
-            name: name1,
-            age: 10,
-            gender: 'M',
-            organization_id: orgId,
-            buddyId: id2,
-            team_id: 'team-alpha',
-          },
-          {
-            id: id2,
-            first_name: name2,
-            last_name: '',
-            name: name2,
-            age: 10,
-            gender: 'M',
-            organization_id: orgId,
-            buddyId: id1,
-            team_id: 'team-beta',
-          }
+        const run = (db.scheduler_runs || []).find(
+          (r: Record<string, unknown>) => r.id === 'run-1'
         );
-
-        db.team_players = db.team_players || [];
-        db.team_players.push(
-          { team_id: 'team-alpha', player_id: id1 },
-          { team_id: 'team-beta', player_id: id2 }
-        );
-
-        const run = [...db.scheduler_runs]
-          .reverse()
-          .find((r: Record<string, unknown>) => r.run_type === 'team');
         if (run && run.results) {
           run.results.team_players = run.results.team_players || [];
           run.results.team_players.push(
-            { team_id: 'team-alpha', player_id: id1 },
-            { team_id: 'team-beta', player_id: id2 }
+            { team_id: 't1', player_id: id1 },
+            { team_id: 't2', player_id: id2 }
           );
         }
 
@@ -185,7 +148,7 @@ Given(
       { name1: p1, name2: p2 }
     );
 
-    // Sync to imports for hydration
+    // Sync to imports for hydration — buddyId must be mutual
     await syncPlayerToImports(page, {
       id: `player-${p1.toLowerCase()}`,
       first_name: p1,
@@ -211,58 +174,23 @@ Given(
     await page.evaluate(
       ({ pName, tGender }) => {
         const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
-        const orgId = localStorage.getItem('squadlogic_active_org') || 'org-1';
         const playerId = `player-${pName.toLowerCase()}`;
-        const teamId = `team-${tGender.toLowerCase()}`;
 
-        db.teams = db.teams || [];
-        if (!db.teams.find((t: Record<string, unknown>) => t.id === teamId)) {
-          db.teams.push({
-            id: teamId,
-            name: `${tGender} Team`,
-            gender: tGender === 'Boys' ? 'M' : 'F',
-            organization_id: orgId,
-            min_age: 5,
-            max_age: 15,
-          });
-        }
-
-        // Create player with opposite gender for the mismatch
-        const playerGender = tGender === 'Boys' ? 'F' : 'M';
-        db.players = db.players || [];
-        db.players.push({
-          id: playerId,
-          first_name: pName,
-          last_name: '',
-          name: pName,
-          age: 10,
-          gender: playerGender,
-          organization_id: orgId,
-          team_id: teamId,
-        });
-
-        db.team_players = db.team_players || [];
-        db.team_players.push({ team_id: teamId, player_id: playerId });
-
-        const run = [...db.scheduler_runs]
-          .reverse()
-          .find((r: Record<string, unknown>) => r.run_type === 'team');
+        // Use pre-seeded run-1's Team A (t1). Set gender on it to trigger mismatch.
+        const run = (db.scheduler_runs || []).find(
+          (r: Record<string, unknown>) => r.id === 'run-1'
+        );
         if (run && run.results) {
-          run.results.teams = run.results.teams || [];
-          if (!run.results.teams.find((t: Record<string, unknown>) => t.id === teamId)) {
-            const teamObj = {
-              id: teamId,
-              name: `${tGender} Team`,
-              division_id: 'U10',
-              gender: tGender === 'Boys' ? 'M' : 'F',
-            };
-            run.results.teams.push(teamObj);
-            run.results.teamsByDivision = run.results.teamsByDivision || {};
-            run.results.teamsByDivision['U10'] = run.results.teamsByDivision['U10'] || [];
-            run.results.teamsByDivision['U10'].push(teamObj);
+          // Set gender policy on Team A in teamsByDivision
+          const divisions = run.results.teamsByDivision || {};
+          for (const teams of Object.values(divisions) as Record<string, unknown>[][]) {
+            const teamA = teams.find((t: Record<string, unknown>) => t.id === 't1');
+            if (teamA) {
+              teamA.gender = tGender === 'Boys' ? 'M' : 'F';
+            }
           }
           run.results.team_players = run.results.team_players || [];
-          run.results.team_players.push({ team_id: teamId, player_id: playerId });
+          run.results.team_players.push({ team_id: 't1', player_id: playerId });
         }
 
         sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
@@ -270,7 +198,7 @@ Given(
       { pName: player, tGender: teamGender }
     );
 
-    // Sync to imports for hydration
+    // Sync to imports — player has opposite gender for the mismatch
     const playerGender = teamGender === 'Boys' ? 'F' : 'M';
     await syncPlayerToImports(page, {
       id: `player-${player.toLowerCase()}`,
@@ -288,56 +216,30 @@ Given(
     await page.evaluate(
       ({ pName, pAge, div }) => {
         const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
-        const orgId = localStorage.getItem('squadlogic_active_org') || 'org-1';
         const playerId = `player-${pName.toLowerCase()}`;
-        const teamId = `team-${div.toLowerCase()}`;
 
-        db.teams = db.teams || [];
-        if (!db.teams.find((t: Record<string, unknown>) => t.id === teamId)) {
-          db.teams.push({
-            id: teamId,
-            name: `${div} Team`,
-            min_age: 6,
-            max_age: 8,
-            organization_id: orgId,
-          });
-        }
-
-        db.players = db.players || [];
-        db.players.push({
-          id: playerId,
-          first_name: pName,
-          last_name: '',
-          name: pName,
-          age: pAge,
-          gender: 'M',
-          organization_id: orgId,
-          team_id: teamId,
-        });
-
-        db.team_players = db.team_players || [];
-        db.team_players.push({ team_id: teamId, player_id: playerId });
-
-        const run = [...db.scheduler_runs]
-          .reverse()
-          .find((r: Record<string, unknown>) => r.run_type === 'team');
+        // Use pre-seeded run-1's Team A (t1). Set age range to trigger mismatch.
+        // e.g., "U8" team with min_age=6, max_age=8, but player age=11.
+        const run = (db.scheduler_runs || []).find(
+          (r: Record<string, unknown>) => r.id === 'run-1'
+        );
         if (run && run.results) {
-          run.results.teams = run.results.teams || [];
-          if (!run.results.teams.find((t: Record<string, unknown>) => t.id === teamId)) {
-            const teamObj = {
-              id: teamId,
-              name: `${div} Team`,
-              division_id: div,
-              min_age: 6,
-              max_age: 8,
-            };
-            run.results.teams.push(teamObj);
-            run.results.teamsByDivision = run.results.teamsByDivision || {};
-            run.results.teamsByDivision[div] = run.results.teamsByDivision[div] || [];
-            run.results.teamsByDivision[div].push(teamObj);
+          const divisions = run.results.teamsByDivision || {};
+          for (const teams of Object.values(divisions) as Record<string, unknown>[][]) {
+            const teamA = teams.find((t: Record<string, unknown>) => t.id === 't1');
+            if (teamA) {
+              // Set age range based on division name (e.g., U8 → 6-8)
+              // Use both snake_case (for mappedTeams path) and camelCase (for fallback path)
+              const maxAgeVal = parseInt(div.replace('U', ''), 10) || 8;
+              teamA.min_age = maxAgeVal - 2;
+              teamA.max_age = maxAgeVal;
+              teamA.minAge = maxAgeVal - 2;
+              teamA.maxAge = maxAgeVal;
+              teamA.name = `${div} Team`;
+            }
           }
           run.results.team_players = run.results.team_players || [];
-          run.results.team_players.push({ team_id: teamId, player_id: playerId });
+          run.results.team_players.push({ team_id: 't1', player_id: playerId });
         }
 
         sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));

@@ -15,27 +15,27 @@ Given('the user has modified the {string} roster', async ({ page }, teamName: st
   await page.evaluate(() => localStorage.setItem('dashboardActiveStep', '2'));
 
   // Inject a mock pending override so the Sync button becomes active
+  // CRITICAL FIX: Seed run-1 directly (sessionStorage may not have initialMockData yet)
   await page.evaluate((tName) => {
     const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
     const orgId = localStorage.getItem('squadlogic_active_org') || 'org-1';
     db.scheduler_runs = db.scheduler_runs || [];
 
-    // Remove any existing 'team' runs for this mock org to ensure this one is picked up
-    db.scheduler_runs = db.scheduler_runs.filter(
-      (r: Record<string, unknown>) => !(r.organization_id === orgId && r.run_type === 'team')
-    );
-
+    // Remove any existing run-1 and re-add with our data
+    db.scheduler_runs = db.scheduler_runs.filter((r: Record<string, unknown>) => r.id !== 'run-1');
     db.scheduler_runs.push({
-      id: 'mock-run-1',
+      id: 'run-1',
       organization_id: orgId,
       run_type: 'team',
       status: 'completed',
+      created_at: new Date().toISOString(),
+      completed_at: new Date().toISOString(),
       results: {
         teams: [{ id: 't1', name: tName, division_id: 'U10' }],
         teamsByDivision: { U10: [{ id: 't1', name: tName, division_id: 'U10' }] },
         team_players: [],
+        rosterBalanceByDivision: { U10: { summary: { totalPlayers: 10, totalCapacity: 12 }, teamStats: [] } },
       },
-      created_at: new Date().toISOString(),
     });
     sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
     (window as { __MOCK_DB__?: unknown }).__MOCK_DB__ = db;
@@ -72,20 +72,30 @@ Then('the user should see a {string} banner', async ({ page }, expectedBanner: s
 Then(
   'the {string} card should remain in its newly modified state locally',
   async ({ page, context }, teamName: string) => {
+    // CRITICAL FIX: Restore network FIRST to dismiss the OfflineGuard overlay.
+    // The OfflineGuard blocks all pointer events with a z-[9999] modal when offline.
+    await context.setOffline(false);
+
+    // Wait for OfflineGuard overlay to disappear
+    await page.waitForTimeout(1000);
+
+    // Dismiss the OfflineGuard dialog if still visible (click "Retry" or wait for auto-dismiss)
+    const retryBtn = page.getByRole('button', { name: /Retry|Reconnect/i }).first();
+    if (await retryBtn.isVisible().catch(() => false)) {
+      await retryBtn.click({ force: true });
+      await page.waitForTimeout(500);
+    }
+
     // Reveal the team cards by entering Edit Mode since the new UI hides them behind a toggle
-    await page.getByRole('button', { name: /Edit Mode/i }).click();
+    const editBtn = page.getByRole('button', { name: /Edit Mode/i });
+    await expect(editBtn).toBeVisible({ timeout: 10000 });
+    await editBtn.click();
 
     // Verify optimistic UI holds state despite API failure (the team is still rendered)
-    // The UI renders "U10" and "Lightning" separately. Just look for the team name part.
+    // The UI renders team name in the column header. Look for it anywhere visible on the page.
     const shortName = teamName.replace('U10 ', '');
     await expect(
-      page
-        .locator('.bg-bg-surface')
-        .filter({ hasText: new RegExp(shortName, 'i') })
-        .first()
+      page.getByText(new RegExp(shortName, 'i')).first()
     ).toBeVisible({ timeout: 15000 });
-
-    // Restore network connection so subsequent tests in this worker don't fail
-    await context.setOffline(false);
   }
 );

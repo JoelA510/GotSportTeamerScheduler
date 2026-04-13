@@ -7,7 +7,7 @@ Given('an organization and season are active', async ({ page }) => {
   await page.goto('/');
   await page.evaluate(() => {
     const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
-    const orgId = 'org-test-e2e';
+    const orgId = 'org-1';
     db.organizations = [{ id: orgId, name: 'SquadLogic FC', status: 'active' }];
     db.organization_members = [
       {
@@ -54,10 +54,12 @@ Given('I have imported player data', async ({ page }) => {
   await page.goto('/');
   await page.evaluate(() => {
     const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
+    const activeOrg = localStorage.getItem('squadlogic_active_org') || 'org-1';
     db.imports = [
       {
         id: 'imp-1',
         user_id: 'mock-admin-id',
+        organization_id: activeOrg,
         import_type: 'players',
         status: 'completed',
         created_at: new Date().toISOString(),
@@ -120,12 +122,13 @@ Given('all setup steps are complete', async ({ page }) => {
   await page.goto('/');
   await page.evaluate(() => {
     const now = new Date().toISOString();
-    const orgId = localStorage.getItem('squadlogic_active_org') || 'org-test-e2e';
+    const orgId = localStorage.getItem('squadlogic_active_org') || 'org-1';
     const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
     db.imports = [
       {
         id: 'imp-full',
         user_id: 'mock-admin-id',
+        organization_id: orgId,
         import_type: 'players',
         status: 'completed',
         created_at: now,
@@ -194,7 +197,7 @@ Given('all setup steps are complete', async ({ page }) => {
 Given('I have generated teams', async ({ page }) => {
   await page.goto('/');
   await page.evaluate(() => {
-    const orgId = localStorage.getItem('squadlogic_active_org') || 'org-test-e2e';
+    const orgId = localStorage.getItem('squadlogic_active_org') || 'org-1';
     const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
     db.scheduler_runs = db.scheduler_runs || [];
     if (
@@ -244,7 +247,7 @@ Given('I have generated teams', async ({ page }) => {
 Given('I have generated a practice schedule', async ({ page }) => {
   await page.goto('/');
   await page.evaluate(() => {
-    const orgId = localStorage.getItem('squadlogic_active_org') || 'org-test-e2e';
+    const orgId = localStorage.getItem('squadlogic_active_org') || 'org-1';
     const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
     db.scheduler_runs = db.scheduler_runs || [];
     const now = new Date().toISOString();
@@ -273,7 +276,7 @@ Given('I have generated a practice schedule', async ({ page }) => {
 Given('I have generated a game schedule', async ({ page }) => {
   await page.goto('/');
   await page.evaluate(() => {
-    const orgId = localStorage.getItem('squadlogic_active_org') || 'org-test-e2e';
+    const orgId = localStorage.getItem('squadlogic_active_org') || 'org-1';
     const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
     db.scheduler_runs = db.scheduler_runs || [];
     db.scheduler_runs.push({
@@ -344,7 +347,7 @@ Given(
     await page.evaluate(
       ({ o1, o2 }) => {
         const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
-        const org1Id = 'org-test-e2e';
+        const org1Id = 'org-1';
         const org2Id = 'org-2';
         db.organizations = [
           { id: org1Id, name: o1, status: 'active' },

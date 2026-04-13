@@ -97,10 +97,30 @@ export default function GameSchedulingPage() {
     );
   }, [gameSlots, localAssignments, timezone]);
 
-  // ── Compute conflicts (Placeholder for Phase 8 real-time sync) ────────────────
+  // ── Compute conflicts (field-overlap detection) ────────────────
   const { conflicts, conflictSet } = useMemo(() => {
-    return { conflicts: [], conflictSet: new Set() };
-  }, []);
+    const found = [];
+    const cSet = new Set();
+    // Detect field-overlap: multiple games assigned to the same field + overlapping time
+    const byFieldSlot = {};
+    for (const ga of localAssignments) {
+      const key = `${ga.field_id}:${ga.slot_id}`;
+      if (!byFieldSlot[key]) byFieldSlot[key] = [];
+      byFieldSlot[key].push(ga);
+    }
+    for (const [key, games] of Object.entries(byFieldSlot)) {
+      if (games.length > 1) {
+        const ids = games.map((g) => g.id);
+        ids.forEach((id) => cSet.add(id));
+        found.push({
+          type: 'field-overlap',
+          message: `${games.length} games assigned to the same field/slot (${key})`,
+          details: { assignmentIds: ids },
+        });
+      }
+    }
+    return { conflicts: found, conflictSet: cSet };
+  }, [localAssignments]);
 
   // ── Slot lookup for resolving drop targets ────────────────────────────────
   const slotTimeLookup = useMemo(() => {
