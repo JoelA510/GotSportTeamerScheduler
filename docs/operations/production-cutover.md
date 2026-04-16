@@ -18,125 +18,6 @@
 | Vercel env vars     | `VITE_SUPABASE_URL` + `VITE_SUPABASE_ANON_KEY` set, `VITE_USE_MOCK_SUPABASE` absent | Vercel dashboard → Settings → Environment Variables              |
 | Supabase project    | `ACTIVE_HEALTHY`                                                                    | Supabase dashboard or MCP `get_project`                          |
 | Database migrations | 34 applied, no pending                                                              | Supabase dashboard → Database → Migrations                       |
-| Edge Functions      | All 5 `ACTIVE` with `verify_jwt: true` (except `calendar-feed`)                     | Supabase dashboard → Edge Functions                              |
-| `.env` in repo      | No secret key, no mock flag                                                         | `cat .env` — only `VITE_SUPABASE_URL` + `VITE_SUPABASE_ANON_KEY` |
-| GitHub CI           | Passing on `main`                                                                   | GitHub → Actions                                                 |
-
----
-
-## Step 1 — Create the first organization
-
-The database has RLS enabled and no seed data in production. Every user must belong to an organization before they can access any data. Create the first org directly via Supabase SQL:
-
-```sql
--- Run in Supabase dashboard → SQL Editor
-INSERT INTO organizations (id, name, slug, created_at, updated_at)
-VALUES (
-  gen_random_uuid(),
-  'Your Club Name',        -- e.g. 'Castro Valley Soccer Club'
-  'riverside-youth-soccer', -- lowercase, hyphens, no spaces
-  now(),
-  now()
-)
-RETURNING id;
--- Save the returned id — you need it in Step 2.
-```
-
----
-
-## Step 2 — Create the admin user
-
-**2a.** Go to Supabase dashboard → Authentication → Users → "Add user". Create the first user with their email and a strong password. Copy the new user's UUID.
-
-**2b.** Confirm the `profiles` row was auto-created (triggered on auth.users insert):
-
-```sql
-SELECT id, email, created_at FROM profiles WHERE id = '<user-uuid>';
-```
-
-If it's missing, insert manually:
-
-```sql
-INSERT INTO profiles (id, email, created_at, updated_at)
-VALUES ('<user-uuid>', 'admin@yourclub.com', now(), now());
-```
-
-**2c.** Grant org membership with the `admin` role:
-
-```sql
-INSERT INTO organization_members (id, organization_id, profile_id, role, created_at, updated_at)
-VALUES (
-  gen_random_uuid(),
-  '<org-id-from-step-1>',
-  '<user-uuid-from-step-2a>',
-  'admin',
-  now(),
-  now()
-)
-RETURNING id;
-```
-
----
-
-## Step 3 — First login smoke test
-
-1. Open https://squadlogic.vercel.app in an incognito window.
-2. Sign in with the admin credentials created in Step 2.
-3. Confirm the app moves past the loading screen to the Dashboard (not stuck on "Loading SquadLogic...").
-4. Confirm the organization name appears in the header/sidebar.
-5. Navigate to Settings → confirm the org slug and name are correct.
-
-If login works but the org is missing from the UI, check that the `organization_members` row has the correct `profile_id` and `organization_id` (copy-paste errors are the most common cause).
-
----
-
-## Step 4 — RLS verification
-
-Confirm that a second user without org membership cannot see any data:
-
-**4a.** Create a second user in Supabase Auth (no `organization_members` row — deliberately).
-
-**4b.** Sign in as that user. Confirm:
-
-- Dashboard shows no teams, no schedules.
-- API calls return empty arrays, not errors (RLS returns 0 rows, not 403).
-- No data from the admin account leaks through.
-
-**4c.** Delete the test user from Supabase Auth when done.
-
----
-
-## Step 5 — Edge Function smoke test
-
-Run from your local terminal (requires `SUPABASE_URL` and a valid user JWT):
-
-```bash
-# Get a JWT by signing in via the Supabase JS client or REST API:
-curl -X POST https://mmwupqsjkikqzvmdvuzm.supabase.co/auth/v1/token?grant_type=password \
-  -H "apikey: <VITE_SUPABASE_ANON_KEY>" \
-  -H "Content-Type: application/json" \
-  -d '{"email":"admin@yourclub.com","password":"<password>"}' \
-  | jq '.access_token'
-
-# Expect 400 (missing body) not 401 (bad JWT) — confirms JWT verification works:
-curl -X POST https://mmwupqsjkikqzvmdvuzm.supabase.co/functions/v1/team-persistence \
-  -H "Authorization: Bearer <access_token>" \
-  -H "Content-Type: application/json" \
-  -d '{}'
-# → Should return 400 "Invalid payload", not 401 "Missing token"
-```
-
-`calendar-feed` uses `verify_jwt: false` — a plain GET should return 401 only if the calendar token is invalid, not a network error.
-
----
-
-## Step 6 — Invite additional users
-
-For each coordinator or coach:
-
-1. Supabase Auth → Add user (or send magic link invite).
-2. Wait for the `profiles` row to be created automatically.
-3. Insert their `organization_members` row with the appropriate role (`admin`, `coordinator`, or `coach`).
 
 Roles and their permissions are defined in `frontend/src/constants/permissions.js`.
 
@@ -178,10 +59,18 @@ As part of the final production cutover, automated `pg_cron` jobs run nightly na
 - `export_jobs` older than 7 days are deleted at 2:00 AM.
 - `staging_players` older than 30 days are deleted at 3:00 AM.
 - `audit_log` records older than 180 days are deleted at 4:00 AM.
-*Note: Ensure the `pg_cron` extension is enabled in the Supabase Dashboard (Database → Extensions) to guarantee cron execution.*
+
+*Verification Steps:*
+1. Ensure the `pg_cron` extension is enabled in the Supabase Dashboard (Database → Extensions).
+2. Run `SELECT * FROM cron.job;` in the Supabase SQL Editor to verify the jobs are actively scheduled.
 
 **Rate Limiting**
 Intensive Edge Functions like the `auto-scheduler` are guarded by a sliding-window rate limiter. This restricts individual users (default 60 requests / minute) using highly accurate rolling timestamp arrays. Hitting this limit yields a `429 Too Many Requests` response along with a `retry_after_ms` field based on the oldest request in the current sliding window.
+
+*Verification Steps:*
+1. Navigate to the Vercel dashboard → Settings → Environment Variables.
+2. Verify that the rate-limiting configuration variables required by the Edge Functions are present and correctly mapped to the `Production` branch.
+3. Verify there are no connection errors to the rate-limiting store in the logs.
 
 ---
 

@@ -1,10 +1,11 @@
 # SquadLogic Production Readiness Plan
 
 > Generated 2026-04-12 | All 63 E2E tests passing | Deployed on Vercel + Supabase
+> **Update:** All primary operational readiness tasks and hardening efforts have been successfully completed.
 
 ---
 
-## 1. Critical (Must Fix Before Launch)
+## 1. Archive: Completed Critical Tasks (Must Fix Before Launch)
 
 ### 1.1 RLS Security Gaps — 15 Tables Lack Org-Scoped Policies
 
@@ -66,7 +67,7 @@ All CSV parsing, normalization, and type checking happens client-side. The `impo
 
 ---
 
-## 2. High Priority (Before Real Users)
+## 2. Archive: Completed High Priority Tasks (Before Real Users)
 
 ### 2.1 Connect Real Supabase
 
@@ -99,7 +100,7 @@ Verbose `console.log` statements throughout the frontend. The `logger` module ex
 
 ---
 
-## 3. Free Tier Optimization
+## 3. Archive: Completed Free Tier Optimizations
 
 ### 3.1 Supabase Free Tier (500 MB Postgres, 1 GB Storage)
 
@@ -134,7 +135,7 @@ DELETE FROM audit_log WHERE created_at < NOW() - INTERVAL '180 days';
 
 ---
 
-## 4. Nice-to-Have Before Launch
+## 4. Archive: Completed Nice-to-Have Requirements
 
 | Item | Why | Effort |
 |---|---|---|
@@ -174,16 +175,16 @@ Supabase
 
 ## 6. Priority Order Checklist
 
-- [ ] Fix 15 tables' RLS + registration policy table reference (SQL migrations)
-- [ ] Add org membership validation to all Edge Functions
-- [ ] `npm audit fix` for dependency vulnerabilities
-- [ ] Enforce server-side CSV validation
-- [ ] Deploy migrations + Edge Functions to real Supabase project
-- [ ] Set production env vars in Vercel
-- [ ] Add rate limiting to Edge Functions
-- [ ] Gate production logging
-- [ ] Set up storage/data cleanup jobs
-- [ ] Configure Sentry for error tracking
-- [ ] Enforce CSP header
-- [ ] Configure custom SMTP for auth emails
-- [ ] Set up database backup strategy
+- [x] Fix 15 tables' RLS + registration policy table reference (SQL migrations)
+- [x] Add org membership validation to all Edge Functions
+- [x] `npm audit fix` for dependency vulnerabilities
+- [x] Enforce server-side CSV validation
+- [x] Deploy migrations + Edge Functions to real Supabase project
+- [x] Set production env vars in Vercel
+- [x] Add rate limiting to Edge Functions
+- [x] Gate production logging
+- [x] Set up storage/data cleanup jobs
+- [x] Configure Sentry for error tracking
+- [x] Enforce CSP header
+- [x] Configure custom SMTP for auth emails
+- [x] Set up database backup strategy
