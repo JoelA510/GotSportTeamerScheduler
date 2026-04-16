@@ -36,7 +36,7 @@ export const OrganizationProvider = ({ children }) => {
   const [orgMember, setOrgMember] = useState(null);
   const [availableSeasons, setAvailableSeasons] = useState([]);
   const [currentSeasonSetting, setCurrentSeasonSetting] = useState(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   // Fetch season_settings for a given organization
   const fetchSeasonsForOrg = useCallback(async (orgId) => {
@@ -88,7 +88,15 @@ export const OrganizationProvider = ({ children }) => {
       try {
         const { data, error } = await supabase
           .from('organization_members')
-          .select('*, organizations(*)')
+          .select(`
+            *,
+            organizations (
+              id,
+              name,
+              url_slug,
+              is_onboarded
+            )
+          `)
           .eq('profile_id', user.id);
 
         if (error) throw error;

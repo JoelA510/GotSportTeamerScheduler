@@ -1,232 +1,83 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { useLocation } from 'react-router-dom';
-import DashboardWorkflow from '../components/DashboardWorkflow.jsx';
-import { useDashboardData } from '../hooks/useDashboardData.js';
-import { useTeamPersistence } from '../hooks/useTeamPersistence.js';
-import { useImport } from '../contexts/ImportContext.jsx';
-import { useTheme } from '../contexts/ThemeContext.jsx';
-import { useOrganization } from '../contexts/OrganizationContext.jsx';
-import LoadingScreen from '../components/LoadingScreen.jsx';
-import { Building2, Calendar, Users, Trophy, ArrowRight, Sparkles } from 'lucide-react';
-import { FeatureGuard } from '../components/ui/FeatureGuard.jsx';
-import { FEATURE_FLAGS } from '../constants/featureFlags.js';
-import { IngestionOverlay } from '../components/ui/IngestionOverlay.jsx';
-import Button from '../components/ui/Button.jsx';
+import React, { useEffect, useState } from 'react';
+import { useOrganization } from '../contexts/OrganizationContext';
+import { useDashboardData } from '../hooks/useDashboardData';
+import LeagueMetrics from '../components/Dashboard/LeagueMetrics';
+import TeamGenerationStatus from '../components/Dashboard/TeamGenerationStatus';
+import SchedulingConflictAlerts from '../components/Dashboard/SchedulingConflictAlerts';
+import ComplianceSnapshot from '../components/Dashboard/ComplianceSnapshot';
+import ActivityFeed from '../components/Dashboard/ActivityFeed';
+import { LoadingScreen } from '../components/LoadingScreen';
+import { logger } from '../lib/logger.js';
 
-export default function DashboardPage() {
-  // E2E Testing Error Trigger
-  if (
-    typeof window !== 'undefined' &&
-    (window.__FORCE_ERROR__ === true || localStorage.getItem('__FORCE_ERROR__') === 'true')
-  ) {
-    throw new Error('E2E forced error for resilience testing.');
-  }
-
-  const {
-    team,
-    practice,
-    game,
-    loading,
-    error: dataError,
-    timezone,
-  } = useDashboardData();
-  const { snapshot: persistenceSnapshot, loading: persistenceLoading } = useTeamPersistence();
-  const { importedData, setImportedData } = useImport();
-  const { theme } = useTheme();
-  const { organization } = useOrganization();
-  const [error, setError] = useState(dataError);
-  const [activeStep, setActiveStep] = useState(0);
-
-  const location = useLocation();
+/**
+ * DashboardPage component.
+ * Displays various metrics and statuses for the organization.
+ */
+const DashboardPage = () => {
+  const { currentOrganization, loading: orgLoading } = useOrganization();
+  const { metrics, teams, schedRun, games, registrations, loading: dataLoading, error } = useDashboardData();
+  const [isInitializing, setIsInitializing] = useState(true);
 
   useEffect(() => {
-    if (dataError) setError(dataError);
-  }, [dataError]);
-
-  // Handle cross-page navigation from setup wizard
-  useEffect(() => {
-    const searchParams = new URLSearchParams(location.search);
-    const step = searchParams.get('step');
-    if (step) {
-      setActiveStep(parseInt(step, 10));
+    if (!orgLoading) {
+      setIsInitializing(false);
     }
-  }, [location]);
+  }, [orgLoading]);
 
-  // Calculate high-level status metrics
-  const readinessScore = useMemo(() => {
-    let score = 0;
-    if (team?.generatedAt) score += 40;
-    if (practice?.lastCalculated) score += 30;
-    if (game?.generatedAt) score += 30;
-    return score;
-  }, [team, practice, game]);
-
-  if (loading && !team) {
-    return <LoadingScreen message="Aggregating league status..." />;
+  // Show loading screen during initial organization context fetch or data aggregation
+  if (isInitializing || dataLoading) {
+    return <LoadingScreen message="Loading Dashboard..." />;
   }
 
-  const handleImport = (data) => {
-    setImportedData(data);
-  };
+  if (error) {
+    logger.error('Dashboard failed to load:', error);
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-bg-primary">
+        <div className="text-center p-8 bg-bg-secondary rounded-xl border border-border-primary">
+          <h2 className="text-xl font-bold text-text-primary mb-4">Dashboard Unavailable</h2>
+          <p className="text-text-secondary">{error}</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="animate-fadeIn">
-      {error && (
-        <div className="bg-red-500/10 border border-red-500 text-red-500 p-4 rounded-md mb-4 flex justify-between items-center">
-          <span>{error}</span>
-          <button
-            onClick={() => setError(null)}
-            className="text-red-500 hover:text-red-700 font-bold"
-          >
-            ✕
-          </button>
+    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
+      {/* Header Section */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-text-primary tracking-tight">
+            League Management
+          </h1>
+          <p className="text-text-secondary">
+            {currentOrganization?.name || 'Your Organization'} Dashboard
+          </p>
         </div>
-      )}
-
-      {/* Page Header */}
-      <header className="mb-8">
-        <h1 className="text-3xl font-display font-bold text-text-primary tracking-tight mb-1">
-          Season Setup Workflow
-        </h1>
-        <p className="text-text-secondary">
-          Follow these steps to configure and generate your league schedule.
-        </p>
-      </header>
-
-      {readinessScore === 0 && (
-        <div className="glass-panel p-12 text-center mb-12 animate-fadeIn border-brand-400/20 relative overflow-hidden">
-          <div className="absolute top-0 right-0 p-8 opacity-10 pointer-events-none">
-            <Sparkles size={120} className="text-brand-400" />
-          </div>
-          <div className="max-w-md mx-auto relative z-10">
-            <h2 className="text-2xl font-display font-bold text-text-primary mb-4">
-              Welcome to the SquadLogic Command Center
-            </h2>
-            <p className="text-text-secondary mb-8">
-              Your season hasn't started yet. Let's get your organization up and running by importing your player data.
-            </p>
-            <Button
-              variant="primary"
-              size="lg"
-              className="flex items-center gap-2 mx-auto"
-              onClick={() => setActiveStep(1)}
-            >
-              Begin Season Import <ArrowRight size={18} />
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {/* 2/3 + 1/3 Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Left: Workflow Steps (2/3) */}
-        <div className="lg:col-span-2">
-          <DashboardWorkflow
-            loading={loading}
-            teamData={team}
-            practiceData={practice}
-            gameData={game}
-            persistenceSnapshot={persistenceSnapshot}
-            onImport={handleImport}
-            importedData={importedData}
-            controlledActiveStep={activeStep}
-            onStepChange={setActiveStep}
-            timezone={timezone}
-          />
-        </div>
-
-        {/* Right: League Status (1/3) */}
-        <div className="lg:col-span-1">
-          <div className="glass-panel sticky top-8 p-6">
-            <h3 className="text-lg font-bold text-text-primary mb-4 border-b border-border-subtle pb-4">
-              League Status
-            </h3>
-
-            <div className="space-y-6">
-              {/* Overall Readiness */}
-              <div className="bg-bg-surface-hover/50 p-4 rounded-lg border border-border-subtle">
-                <div className="flex justify-between items-center mb-2">
-                  <span className="text-sm font-medium text-text-secondary">Overall Readiness</span>
-                  <span className={`text-sm font-bold ${readinessScore >= 70 ? 'text-green-400' : 'text-amber-400'}`}>
-                    {readinessScore}%
-                  </span>
-                </div>
-                <div className="w-full bg-white/5 h-2 rounded-full overflow-hidden">
-                  <div
-                    className={`h-full transition-all duration-500 ${readinessScore >= 70 ? 'bg-green-500' : 'bg-amber-500'}`}
-                    style={{ width: `${readinessScore}%` }}
-                  />
-                </div>
-              </div>
-
-              {/* Status List */}
-              <div className="space-y-4">
-                <StatusItem
-                  icon={<Users size={18} />}
-                  label="Team Rosters"
-                  status={team?.generatedAt ? 'Complete' : 'Pending'}
-                  isReady={!!team?.generatedAt}
-                />
-                <StatusItem
-                  icon={<Calendar size={18} />}
-                  label="Practice Slots"
-                  status={practice?.lastCalculated ? 'Optimized' : 'Unscheduled'}
-                  isReady={!!practice?.lastCalculated}
-                />
-                <StatusItem
-                  icon={<Trophy size={18} />}
-                  label="Game Schedule"
-                  status={game?.generatedAt ? 'Finalized' : 'In Progress'}
-                  isReady={!!game?.generatedAt}
-                />
-              </div>
-
-              {/* Org Context */}
-              <FeatureGuard feature={FEATURE_FLAGS.MULTI_TENANCY}>
-                <div className="pt-6 border-t border-border-subtle">
-                  <div className="flex items-center gap-3 text-text-muted">
-                    <Building2 size={16} />
-                    <span className="text-xs uppercase tracking-wider font-semibold">
-                      Organization
-                    </span>
-                  </div>
-                  <p className="mt-1 text-sm font-medium text-text-primary">
-                    {organization?.name || 'Local Environment'}
-                  </p>
-                </div>
-              </FeatureGuard>
-            </div>
-          </div>
+        <div className="flex items-center gap-3">
+          <span className="px-3 py-1 bg-primary-500/10 text-primary-400 text-xs font-medium rounded-full border border-primary-500/20">
+            Season: Fall 2024
+          </span>
         </div>
       </div>
 
-      {loading && <IngestionOverlay message="Syncing league data..." />}
-    </div>
-  );
-}
-
-function StatusItem({ icon, label, status, isReady }) {
-  return (
-    <div className="flex items-center justify-between group">
-      <div className="flex items-center gap-3">
-        <div
-          className={`p-2 rounded-md transition-colors ${
-            isReady ? 'bg-green-500/10 text-green-400' : 'bg-white/5 text-text-muted'
-          }`}
-        >
-          {icon}
-        </div>
-        <span className="text-sm font-medium text-text-secondary group-hover:text-text-primary transition-colors">
-          {label}
-        </span>
+      {/* Primary Metrics Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <LeagueMetrics metrics={metrics} />
       </div>
-      <span
-        className={`text-xs font-semibold px-2 py-1 rounded-full ${
-          isReady ? 'bg-green-500/10 text-green-400' : 'bg-white/5 text-text-muted'
-        }`}
-      >
-        {status}
-      </span>
+
+      {/* Status & Alerts Row */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2 space-y-6">
+          <TeamGenerationStatus run={schedRun} teams={teams} />
+          <SchedulingConflictAlerts games={games} />
+        </div>
+        <div className="space-y-6">
+          <ComplianceSnapshot registrations={registrations} />
+          <ActivityFeed />
+        </div>
+      </div>
     </div>
   );
-}
+};
+
+export default DashboardPage;

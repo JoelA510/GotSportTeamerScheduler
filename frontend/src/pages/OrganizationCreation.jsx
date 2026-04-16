@@ -1,233 +1,180 @@
-import React, { useState, useEffect } from 'react';
-import {
-  Rocket,
-  Building,
-  Globe,
-  Calendar,
-  Clock,
-  ChevronRight,
-  AlertCircle,
-  CheckCircle,
-} from 'lucide-react';
-import { supabase } from '../lib/supabaseClient.js';
-import { logger } from '../lib/logger.js';
-import Button from '../components/ui/Button.jsx';
+import React, { useState } from 'react';
+import { ShieldCheck, ArrowRight, Building2, Globe, Globe2, Loader2 } from 'lucide-react';
+import { supabase } from '../lib/supabaseClient';
+import { logger } from '../lib/logger';
 
 /**
- * OrganizationCreation Page
- * Features Deep Space Glass design for a premium onboarding experience.
+ * OrganizationCreation view.
+ * The entry point for users who are authenticated but do not yet belong to an organization.
+ * Focuses on Phase 1 of onboarding: Identity Establishment.
  */
-export default function OrganizationCreation() {
-  const [formData, setFormData] = useState({
-    name: '',
-    slug: '',
-    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
-    seasonYear: new Date().getFullYear(),
-  });
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [success, setSuccess] = useState(false);
+const OrganizationCreation = () => {
+    const [name, setName] = useState('');
+    const [slug, setSlug] = useState('');
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState(null);
+    const [success, setSuccess] = useState(false);
 
-  // Auto-generate slug from name
-  useEffect(() => {
-    if (formData.name && !formData.slugEdited) {
-      const generatedSlug = formData.name
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-+|-+$/g, '');
-      setFormData((prev) => ({ ...prev, slug: generatedSlug }));
+    // Validation Regex: lowercase letters, numbers, and hyphens only
+    const SLUG_REGEX = /^[a-z0-9-]+$/;
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        setLoading(true);
+        setError(null);
+
+        // Client-side validation
+        if (!SLUG_REGEX.test(slug)) {
+            setError('URL Slug is invalid. Only lowercase letters, numbers, and hyphens are allowed.');
+            setLoading(false);
+            return;
+        }
+
+        try {
+            logger.info('Initializing new tenant:', { name, slug });
+            
+            // Invoke the SECURITY DEFINER RPC to establish the organization and admin membership
+            const { data, error: rpcError } = await supabase.rpc('initialize_new_tenant', {
+                p_name: name,
+                p_slug: slug,
+                p_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
+            });
+
+            if (rpcError) throw rpcError;
+
+            setSuccess(true);
+            logger.info('Tenant successfully initialized:', data);
+
+            // Trigger a hard reload to refresh the OrganizationContext and session
+            setTimeout(() => {
+                window.location.href = '/';
+            }, 2000);
+
+        } catch (err) {
+            logger.error('Failed to initialize tenant:', err);
+            setError(err.message || 'An unexpected error occurred during setup.');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    if (success) {
+        return (
+            <div className="min-h-screen bg-bg-primary flex items-center justify-center p-4">
+                <div className="max-w-md w-full glass-card p-8 text-center animate-in zoom-in duration-500">
+                    <div className="w-16 h-16 bg-success-500/10 rounded-full flex items-center justify-center mx-auto mb-6">
+                        <ShieldCheck className="w-8 h-8 text-success-500" />
+                    </div>
+                    <h1 className="text-2xl font-bold text-text-primary mb-2">Identity Locked</h1>
+                    <p className="text-text-secondary mb-6">
+                        {name} has been established. Preparing your command center...
+                    </p>
+                    <div className="flex justify-center">
+                        <Loader2 className="w-6 h-6 text-primary-500 animate-spin" />
+                    </div>
+                </div>
+            </div>
+        );
     }
-  }, [formData.name, formData.slugEdited]);
 
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    setFormData((prev) => ({
-      ...prev,
-      [name]: value,
-      ...(name === 'slug' ? { slugEdited: true } : {}),
-    }));
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    setError(null);
-
-    try {
-      const { data, error: rpcError } = await supabase.rpc('initialize_new_tenant', {
-        p_name: formData.name,
-        p_slug: formData.slug,
-        p_timezone: formData.timezone,
-        p_season_year: parseInt(formData.seasonYear, 10),
-      });
-
-      if (rpcError) throw rpcError;
-
-      setSuccess(true);
-      logger.info('Organization initialized successfully', { orgId: data });
-
-      // Force reload to pick up new session/org context
-      setTimeout(() => {
-        window.location.href = '/?new_org=true';
-      }, 1500);
-    } catch (err) {
-      logger.error('Failed to initialize organization', err);
-      setError(err.message || 'Failed to create organization. Please try a different slug.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const majorTimezones = [
-    'America/New_York',
-    'America/Chicago',
-    'America/Denver',
-    'America/Los_Angeles',
-    'Europe/London',
-    'Europe/Paris',
-    'Asia/Tokyo',
-    'Australia/Sydney',
-    'UTC',
-  ];
-
-  if (success) {
     return (
-      <div className="min-h-screen bg-bg-main flex items-center justify-center p-6 animate-fadeIn">
-        <div className="max-w-md w-full glass-panel-premium p-10 text-center space-y-6">
-          <div className="w-20 h-20 bg-green-500/20 text-green-400 rounded-full flex items-center justify-center mx-auto animate-bounce">
-            <CheckCircle size={48} />
-          </div>
-          <h2 className="text-3xl font-bold text-text-primary uppercase tracking-tight">
-            Identity Locked
-          </h2>
-          <p className="text-text-muted">
-            Your organization has been digitized. Launching neural dashboard...
-          </p>
+        <div className="min-h-screen bg-bg-primary flex items-center justify-center p-4">
+            <div className="max-w-2xl w-full grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
+                
+                {/* Visual Context */}
+                <div className="hidden md:block space-y-6">
+                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary-500/10 border border-primary-500/20 text-primary-400 text-xs font-medium">
+                        <Globe2 className="w-3 h-3" />
+                        Next Generation Teaming
+                    </div>
+                    <h1 className="text-4xl font-bold text-text-primary tracking-tight">
+                        New Frontier.
+                    </h1>
+                    <p className="text-text-secondary text-lg leading-relaxed">
+                        Initialize your organization's digital core. Our AI-driven engine will handle the teaming and scheduling while you focus on the game.
+                    </p>
+                    <div className="space-y-4 pt-4">
+                        <div className="flex items-start gap-3">
+                            <div className="w-6 h-6 rounded bg-bg-secondary border border-border-primary flex items-center justify-center text-xs text-text-primary">1</div>
+                            <p className="text-sm text-text-secondary">Identify your organization</p>
+                        </div>
+                        <div className="flex items-start gap-3 opacity-50">
+                            <div className="w-6 h-6 rounded bg-bg-secondary border border-border-primary flex items-center justify-center text-xs text-text-primary">2</div>
+                            <p className="text-sm text-text-secondary">Configure season logistics</p>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Setup Form */}
+                <div className="glass-card p-8 border border-white/10">
+                    <div className="mb-8">
+                        <h2 className="text-xl font-bold text-text-primary mb-2">Organization Identity</h2>
+                        <p className="text-sm text-text-secondary">Establish your unique presence in the network.</p>
+                    </div>
+
+                    <form onSubmit={handleSubmit} className="space-y-6">
+                        <div>
+                            <label className="block text-sm font-medium text-text-secondary mb-2 flex items-center gap-2">
+                                <Building2 className="w-4 h-4" />
+                                Organization Name
+                            </label>
+                            <input
+                                required
+                                type="text"
+                                name="name"
+                                value={name}
+                                onChange={(e) => setName(e.target.value)}
+                                className="w-full bg-bg-primary/50 border border-border-primary rounded-lg px-4 py-3 text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-2 focus:ring-primary-500/50 transition-all"
+                                placeholder="e.g. Galaxy Strikers"
+                            />
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-medium text-text-secondary mb-2 flex items-center gap-2">
+                                <Globe className="w-4 h-4" />
+                                URL Slug
+                            </label>
+                            <div className="relative">
+                                <input
+                                    required
+                                    type="text"
+                                    name="slug"
+                                    value={slug}
+                                    onChange={(e) => setSlug(e.target.value.toLowerCase())}
+                                    className="w-full bg-bg-primary/50 border border-border-primary rounded-lg px-4 py-3 pl-4 text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-2 focus:ring-primary-500/50 transition-all"
+                                    placeholder="galaxy-strikers"
+                                />
+                                <div className="mt-2 text-[10px] text-text-tertiary uppercase tracking-wider font-semibold">
+                                    squadlogic.app/{slug || '...'}
+                                </div>
+                            </div>
+                        </div>
+
+                        {error && (
+                            <div className="p-4 bg-danger-500/10 border border-danger-500/20 rounded-lg text-sm text-danger-400 animate-in fade-in slide-in-from-top-2">
+                                {error}
+                            </div>
+                        )}
+
+                        <button
+                            disabled={loading || !name || !slug}
+                            type="submit"
+                            className="w-full group relative flex items-center justify-center gap-2 bg-primary-600 hover:bg-primary-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-4 px-6 rounded-lg transition-all duration-300 shadow-lg shadow-primary-600/20"
+                        >
+                            {loading ? (
+                                <Loader2 className="w-5 h-5 animate-spin" />
+                            ) : (
+                                <>
+                                    Establish Organization
+                                    <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                                </>
+                            )}
+                        </button>
+                    </form>
+                </div>
+            </div>
         </div>
-      </div>
     );
-  }
+};
 
-  return (
-    <div className="min-h-screen bg-bg-main flex items-center justify-center p-6 animate-fadeIn">
-      <div className="max-w-2xl w-full glass-panel-premium overflow-hidden flex flex-col shadow-2xl">
-        {/* Header */}
-        <div className="p-8 border-b border-white/5 bg-white/5 flex items-center gap-4">
-          <div className="w-12 h-12 bg-brand-500/20 text-brand-400 rounded-2xl flex items-center justify-center shadow-glow-brand">
-            <Rocket size={24} />
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold text-text-primary tracking-tight uppercase">
-              New Frontier
-            </h1>
-            <p className="text-text-muted text-sm">
-              Initialize your organization&apos;s digital core.
-            </p>
-          </div>
-        </div>
-
-        {/* Form Body */}
-        <form onSubmit={handleSubmit} className="p-8 space-y-8">
-          {error && (
-            <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl flex items-center gap-3 text-red-400 animate-slideUp">
-              <AlertCircle size={20} className="shrink-0" />
-              <p className="text-xs font-medium">{error}</p>
-            </div>
-          )}
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Org Name */}
-            <div className="space-y-2">
-              <label className="flex items-center gap-2 text-xs font-bold text-text-muted uppercase tracking-widest pl-1">
-                <Building size={14} /> Organization Name
-              </label>
-              <input
-                required
-                name="name"
-                value={formData.name}
-                onChange={handleChange}
-                placeholder="e.g. Galaxy Strikers"
-                className="w-full glass-input"
-              />
-            </div>
-
-            {/* URL Slug */}
-            <div className="space-y-2">
-              <label className="flex items-center gap-2 text-xs font-bold text-text-muted uppercase tracking-widest pl-1">
-                <Globe size={14} /> URL Identifier (Slug)
-              </label>
-              <input
-                required
-                name="slug"
-                value={formData.slug}
-                onChange={handleChange}
-                placeholder="galaxy-strikers"
-                className="w-full glass-input font-mono text-sm"
-              />
-            </div>
-
-            {/* Timezone */}
-            <div className="space-y-2">
-              <label className="flex items-center gap-2 text-xs font-bold text-text-muted uppercase tracking-widest pl-1">
-                <Clock size={14} /> Operations Timezone
-              </label>
-              <select
-                name="timezone"
-                value={formData.timezone}
-                onChange={handleChange}
-                className="w-full glass-input"
-              >
-                {!majorTimezones.includes(formData.timezone) && (
-                  <option value={formData.timezone}>{formData.timezone}</option>
-                )}
-                {majorTimezones.map((tz) => (
-                  <option key={tz} value={tz}>
-                    {tz}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Season Year */}
-            <div className="space-y-2">
-              <label className="flex items-center gap-2 text-xs font-bold text-text-muted uppercase tracking-widest pl-1">
-                <Calendar size={14} /> Launch Season Year
-              </label>
-              <input
-                required
-                type="number"
-                name="seasonYear"
-                min="2020"
-                max="2100"
-                value={formData.seasonYear}
-                onChange={handleChange}
-                className="w-full glass-input"
-              />
-            </div>
-          </div>
-
-          <div className="pt-6 border-t border-white/5 flex justify-end">
-            <Button
-              type="submit"
-              variant="primary"
-              disabled={loading}
-              className="px-8 flex items-center gap-3 transition-all transform hover:scale-105"
-            >
-              {loading ? (
-                'Initializing Core...'
-              ) : (
-                <>
-                  Establish Organization <ChevronRight size={18} />
-                </>
-              )}
-            </Button>
-          </div>
-        </form>
-
-        <div className="px-8 py-4 bg-brand-500/5 border-t border-white/5 text-[10px] text-text-muted uppercase tracking-widest text-center italic">
-          Neural link established. All fields recorded in the central audit log.
-        </div>
-      </div>
-    </div>
-  );
-}
+export default OrganizationCreation;

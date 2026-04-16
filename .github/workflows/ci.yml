@@ -49,6 +49,16 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Start Supabase and Run DB Tests
+        run: |
+          supabase start
+          npm run test:db
+
       - name: Unit & Integration Tests
         run: npm run test
 
