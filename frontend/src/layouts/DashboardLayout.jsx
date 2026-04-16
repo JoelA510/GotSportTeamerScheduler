@@ -5,7 +5,7 @@ import { Menu, X } from 'lucide-react';
 import { useState } from 'react';
 import { Outlet } from 'react-router-dom';
 
-export default function DashboardLayout({ _activeSection }) {
+export default function DashboardLayout({ activeSection }) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const { isImpersonating } = useAuth();
 

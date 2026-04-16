@@ -566,7 +566,7 @@ function attemptResolveUnassignedTeams({
   coachPreferences,
   divisionPreferences,
   coachAssignments,
-  _assignmentByTeamId,
+  assignmentByTeamId,
   assignmentSources,
   divisionLoadByBaseSlot,
   divisionLoadByDay,

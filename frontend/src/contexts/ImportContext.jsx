@@ -453,57 +453,66 @@ export function ImportProvider({ children }) {
             });
             const rowSchema = z.object(schemaShape).passthrough();
 
-            const CHUNK_SIZE = 500;
+            const CHUNK_SIZE = 5000;
             let currentIndex = 0;
 
             const processChunk = async () => {
               const endIndex = Math.min(currentIndex + CHUNK_SIZE, data.length);
+              const chunkRows = data.slice(currentIndex, endIndex);
 
-              for (let i = currentIndex; i < endIndex; i++) {
-                const row = data[i];
-                const newRow = {};
+              addLog(`Validating batch ${Math.floor(currentIndex / CHUNK_SIZE) + 1} (${chunkRows.length} rows)...`);
 
-                Object.keys(row).forEach((key) => {
-                  const mapped = normalizeHeader(key);
-                  if (shouldGoToCustomAttributes(mapped)) {
-                    if (!newRow.custom_attributes) newRow.custom_attributes = {};
-                    newRow.custom_attributes[mapped] = row[key];
-                  } else {
-                    newRow[mapped] = row[key];
+              try {
+                const { data: efResult, error: efError } = await supabase.functions.invoke(
+                  'import-validation',
+                  {
+                    body: {
+                      import_type: type,
+                      organization_id: currentOrganization.id,
+                      rows: chunkRows,
+                      file_name: file.name,
+                    },
                   }
-                });
+                );
 
-                // Zod Execution (Validating dynamically mapped row) //
-                const zodResult = rowSchema.safeParse(newRow);
-                let isRowValid = zodResult.success;
-                let rowErrors = [];
-
-                if (!isRowValid) {
-                  rowErrors = zodResult.error.issues.map((e) => e.message);
+                if (efError || efResult.status === 'error') {
+                  throw new Error(efError?.message || efResult.message || 'Validation failed');
                 }
 
-                if (isRowValid) normalizedData.push(newRow);
-                else validationErrors.push({ row: i + 2, data: newRow, errors: rowErrors });
+                // Add validated/sanitized rows
+                normalizedData.push(...efResult.validated_data);
 
-                // Throttled progress update
-                if (i % 100 === 0 || i === endIndex - 1) {
-                  const currentProgress = Math.floor(((i + 1) / data.length) * 100);
-                  await updateJobProgress(job.id, currentProgress);
+                // Add errors (adjusting row index since EF uses relative index)
+                const adjustedErrors = efResult.validation_errors.map(err => ({
+                  ...err,
+                  row: err.row + currentIndex // EF offset was relative to chunk
+                }));
+                validationErrors.push(...adjustedErrors);
+
+                // Update progress
+                const currentProgress = Math.floor((endIndex / data.length) * 100);
+                await updateJobProgress(job.id, currentProgress);
+
+                currentIndex = endIndex;
+                if (currentIndex < data.length) {
+                  setTimeout(processChunk, 100); // Small breath for UI
+                } else {
+                  await finalizeImport();
                 }
-              }
-
-              currentIndex = endIndex;
-
-              if (currentIndex < data.length) {
-                // Yield thread to avoid DoS/locking
-                setTimeout(processChunk, 0);
-              } else {
-                finalizeImport();
+              } catch (err) {
+                logger.error('Edge Function validation failed:', err);
+                addLog(`Server Validation Error: ${err.message}`);
+                await supabase.from('import_jobs').update({
+                  status: 'failed',
+                  error_summary: { message: err.message }
+                }).eq('id', job.id);
+                setImportStatus('error');
+                setIsImporting(false);
               }
             };
 
             const finalizeImport = async () => {
-              addLog(`Processed ${normalizedData.length} valid rows.`);
+              addLog(`Validation complete. ${normalizedData.length} valid rows, ${validationErrors.length} errors.`);
 
               const importData = {
                 fileName: file.name,
@@ -515,7 +524,6 @@ export function ImportProvider({ children }) {
                 validationErrors,
               };
 
-              addLog('Finalizing ingest...');
               await supabase
                 .from('import_jobs')
                 .update({
@@ -534,7 +542,7 @@ export function ImportProvider({ children }) {
               completeImport(type, importData);
             };
 
-            processChunk();
+            await processChunk();
           },
           error: (err) => {
             addLog(`Error parsing CSV: ${err.message}`);

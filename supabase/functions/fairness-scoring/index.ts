@@ -31,18 +31,24 @@ serve(async (req) => {
       return jsonResponse({ error: 'Unauthorized' }, 401);
     }
 
-    const orgIds = await getUserOrgIds(supabase, user.id);
-    if (orgIds.length === 0) {
-      return jsonResponse({ error: 'User is not a member of any organization' }, 403);
-    }
-    const organizationId = orgIds[0];
-
     // 3. Payload Validation (Zod)
     let body;
     try {
       body = await req.json();
     } catch {
       return jsonResponse({ error: 'Invalid JSON body' }, 400);
+    }
+
+    // Phase 1 Security: Extract and verify specific organization membership
+    const organizationId = body.organizationId;
+    if (!organizationId) {
+      return jsonResponse({ error: 'organizationId is required' }, 400);
+    }
+
+    const { verifyOrgMembership } = await import('../_shared/auth.ts');
+    const isMember = await verifyOrgMembership(supabase, user.id, organizationId);
+    if (!isMember) {
+      return jsonResponse({ error: 'Not authorized for this organization' }, 403);
     }
 
     const parseResult = ScoringInputSchema.safeParse(body);

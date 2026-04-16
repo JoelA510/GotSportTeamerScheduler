@@ -44,7 +44,7 @@ serve(async (req) => {
     // 1. Validate Token and Fetch Team (Phase 2.3: includes expiry check)
     const { data: team, error: teamErr } = await supabase
       .from('teams')
-      .select('id, name, division_id, calendar_token_expires_at, organizations(name)')
+      .select('id, name, organization_id, division_id, calendar_token_expires_at, organizations(name)')
       .eq('calendar_token', token)
       .single();
 
@@ -64,22 +64,17 @@ serve(async (req) => {
     }
 
     const teamId = team.id;
+    const organizationId = team.organization_id;
     const orgName = team.organizations?.name || 'SquadLogic';
 
     // 2. Fetch Timezone Settings
     // We need to resolve the timezone for practice expansion
-    const { data: orgData } = await supabase
-      .from('organizations')
-      .select('id')
-      .eq('name', team.organizations?.name || '')
-      .single();
-
     let timezone = 'America/New_York';
-    if (orgData?.id) {
+    if (organizationId) {
       const { data: settings } = await supabase
         .from('season_settings')
         .select('timezone')
-        .eq('organization_id', orgData.id)
+        .eq('organization_id', organizationId)
         .single();
       if (settings?.timezone) timezone = settings.timezone;
     }

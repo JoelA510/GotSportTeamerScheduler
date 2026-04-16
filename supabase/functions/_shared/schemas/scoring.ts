@@ -44,6 +44,7 @@ export const GameAssignmentSchema = z
   .passthrough();
 
 export const ScoringInputSchema = z.object({
+  organizationId: z.string().uuid(),
   practice: z
     .object({
       teams: z.array(TeamSchema),

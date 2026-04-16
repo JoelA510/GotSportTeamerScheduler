@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { logger } from '../lib/logger.js';
 import { Loader2, AlertCircle, Save, Activity, ShieldCheck, Zap } from 'lucide-react';
+import { useOrganization } from '../contexts/OrganizationContext.jsx';
 
 /**
  * EvaluationPanel - Enterprise Glass component for real-time fairness scoring.
  * Refined for Phase 7 with composite Deno-based engine support.
  */
 export default function EvaluationPanel({ practiceData = null, gameData = null, supabaseClient }) {
+  const { currentOrganization } = useOrganization();
   const [evaluation, setEvaluation] = useState(null);
   const [loading, setLoading] = useState(false);
   const [persisting, setPersisting] = useState(false);
@@ -27,6 +29,7 @@ export default function EvaluationPanel({ practiceData = null, gameData = null, 
       try {
         const { data, error } = await supabaseClient.functions.invoke('fairness-scoring', {
           body: {
+            organizationId: currentOrganization?.id,
             // Refined Payload: Pass null if missing, or the expected object structure
             practice: practiceData
               ? {
@@ -63,7 +66,7 @@ export default function EvaluationPanel({ practiceData = null, gameData = null, 
       active = false;
       clearTimeout(debounceTimer);
     };
-  }, [practiceData, gameData, supabaseClient]);
+  }, [practiceData, gameData, supabaseClient, currentOrganization?.id]);
 
   const handleSave = async () => {
     if (!evaluation || !supabaseClient) return;
@@ -74,6 +77,7 @@ export default function EvaluationPanel({ practiceData = null, gameData = null, 
     try {
       const { error } = await supabaseClient.functions.invoke('fairness-scoring', {
         body: {
+          organizationId: currentOrganization?.id,
           practice: practiceData,
           games: gameData,
           persist: true,
