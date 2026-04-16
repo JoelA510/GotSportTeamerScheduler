@@ -18,12 +18,7 @@
 
 import * as Sentry from '@sentry/react';
 
-const isDev =
-  typeof import.meta !== 'undefined' && import.meta.env
-    ? import.meta.env.DEV
-    : typeof process !== 'undefined' && process.env
-      ? process.env.NODE_ENV !== 'production'
-      : true;
+
 
 // ---------------------------------------------------------------------------
 // Logger API
@@ -31,11 +26,11 @@ const isDev =
 
 export const logger = {
   log: (...args) => {
-    if (isDev) console.log(...args);
+    if (!import.meta.env.PROD) console.log(...args);
   },
 
   warn: (...args) => {
-    if (isDev) console.warn(...args);
+    if (!import.meta.env.PROD) console.warn(...args);
   },
 
   error: (...args) => {

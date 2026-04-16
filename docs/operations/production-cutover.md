@@ -171,6 +171,20 @@ jobs:
 
 ---
 
+## Operational Policies (Data Retention & Rate Limiting)
+
+**Data Retention (`pg_cron`)**
+As part of the final production cutover, automated `pg_cron` jobs run nightly natively inside the Supabase Postgres instance to prune outdated records and conserve database space:
+- `export_jobs` older than 7 days are deleted at 2:00 AM.
+- `staging_players` older than 30 days are deleted at 3:00 AM.
+- `audit_log` records older than 180 days are deleted at 4:00 AM.
+*Note: Ensure the `pg_cron` extension is enabled in the Supabase Dashboard (Database → Extensions) to guarantee cron execution.*
+
+**Rate Limiting**
+Intensive Edge Functions like the `auto-scheduler` are guarded by a sliding-window rate limiter. This restricts individual users (default 60 requests / minute) using highly accurate rolling timestamp arrays. Hitting this limit yields a `429 Too Many Requests` response along with a `retry_after_ms` field based on the oldest request in the current sliding window.
+
+---
+
 ## Rollback procedure
 
 If a critical issue is discovered post-launch, the app can be rolled back to mock mode in under 5 minutes — no database changes required.

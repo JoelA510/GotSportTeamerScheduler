@@ -15,8 +15,7 @@
  */
 
 interface RateLimitEntry {
-  count: number;
-  windowStart: number;
+  requests: number[];
 }
 
 const store = new Map<string, RateLimitEntry>();
@@ -31,8 +30,11 @@ function cleanup(windowMs: number): void {
   lastCleanup = now;
 
   for (const [key, entry] of store.entries()) {
-    if (now - entry.windowStart > windowMs * 2) {
+    const validRequests = entry.requests.filter(timestamp => now - timestamp <= windowMs);
+    if (validRequests.length === 0) {
       store.delete(key);
+    } else {
+      store.set(key, { requests: validRequests });
     }
   }
 }
@@ -64,19 +66,23 @@ export function checkRateLimit(userId: string, config: RateLimitConfig = {}): Ra
   const key = userId;
   const entry = store.get(key);
 
-  if (!entry || now - entry.windowStart > windowMs) {
-    // New window
-    store.set(key, { count: 1, windowStart: now });
+  if (!entry) {
+    store.set(key, { requests: [now] });
     return { allowed: true, remaining: maxRequests - 1, retryAfterMs: 0 };
   }
 
-  if (entry.count >= maxRequests) {
-    const retryAfterMs = windowMs - (now - entry.windowStart);
+  const validRequests = entry.requests.filter(timestamp => now - timestamp <= windowMs);
+
+  if (validRequests.length >= maxRequests) {
+    const oldestRequest = validRequests[0];
+    const retryAfterMs = windowMs - (now - oldestRequest);
+    store.set(key, { requests: validRequests });
     return { allowed: false, remaining: 0, retryAfterMs };
   }
 
-  entry.count++;
-  return { allowed: true, remaining: maxRequests - entry.count, retryAfterMs: 0 };
+  validRequests.push(now);
+  store.set(key, { requests: validRequests });
+  return { allowed: true, remaining: maxRequests - validRequests.length, retryAfterMs: 0 };
 }
 
 /**
