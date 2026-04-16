@@ -52,3 +52,11 @@ Users who belong to multiple organizations can switch between them via the sideb
 - **Audit Logging**: All admin actions are recorded in the `audit_log` table with `organization_id` for traceability
 
 See `docs/security/rls-policies.md` for the complete RLS policy reference and `docs/security/audit_and_remediation_plan.md` for the security audit that hardened this system.
+
+## Zero-to-One Onboarding Flow
+
+To support self-serve registration, organizations can be initialized dynamically via the `initialize_new_tenant` RPC. 
+
+- **Frontend Interception**: When a user logs in and the `OrganizationContext` determines they have an empty `organizations` array, the frontend router (`App.jsx`) intercepts the navigation and renders the `OrganizationCreation` component.
+- **RPC `initialize_new_tenant`**: A single transaction creating a new record in `organizations`, assigning the calling user (`auth.uid()`) as an `admin`, and initialized the first `season_settings` entry.
+- **Security**: The RPC is defined with `SECURITY DEFINER` constraints but explicitly checks `auth.uid()` to ensure safe self-provisioning. Upon successful initialization, the application reloads context to seamlessly authenticate the user within their new tenant. This mechanism provides a frictionless zero-to-one organization assignment.

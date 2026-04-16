@@ -35,12 +35,18 @@ const ThemeToggle = lazy(() => import('./components/ThemeToggle.jsx'));
 const ResetPassword = lazy(() => import('./pages/ResetPassword.jsx'));
 const AuditLogPage = lazy(() => import('./pages/AuditLogPage.jsx'));
 const AnalyticalDashboard = lazy(() => import('./pages/AnalyticalDashboard.jsx'));
+const OrganizationCreation = lazy(() => import('./pages/OrganizationCreation.jsx'));
 import ShadowBanner from './components/auth/ShadowBanner.jsx';
 import OfflineGuard from './components/OfflineGuard.jsx';
 
 function AppContent() {
   const { session, loading } = useAuth();
-  const { currentOrganization, permissions } = useOrganization();
+  const {
+    currentOrganization,
+    permissions,
+    organizations,
+    loading: orgLoading,
+  } = useOrganization();
 
   if (loading) {
     return <LoadingScreen />;
@@ -53,6 +59,18 @@ function AppContent() {
       </Suspense>
     );
   }
+
+  const hasNoOrgs = !orgLoading && organizations.length === 0;
+
+  if (hasNoOrgs) {
+    return (
+      <Suspense fallback={<LoadingScreen />}>
+        <ShadowBanner />
+        <OrganizationCreation />
+      </Suspense>
+    );
+  }
+
   const isOnboarded = currentOrganization?.is_onboarded;
   const isTenantAdmin = permissions.includes(PERMISSIONS.MANAGE_GLOBAL_SETTINGS);
 

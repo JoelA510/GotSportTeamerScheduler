@@ -123,6 +123,13 @@ export default function SetupWizard() {
     }
   }, [isTenantAdmin, currentOrganization, navigate, permissions]);
 
+  const { loading: orgLoading, organizations } = useOrganization();
+  useEffect(() => {
+    if (!orgLoading && organizations.length === 0) {
+      navigate('/');
+    }
+  }, [organizations, orgLoading, navigate]);
+
   const logTelemetry = async (eventType, payload = {}) => {
     try {
       await supabase.from('telemetry_log').insert({
