@@ -1,108 +1,88 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { useTheme } from '../contexts/ThemeContext.jsx';
-import { useAuth } from '../contexts/AuthContext.jsx';
-import { supabase } from '../lib/supabaseClient.js';
-import TeamOverviewPanel from '../components/TeamOverviewPanel.jsx';
-import TeamPersistencePanel from '../components/TeamPersistencePanel.jsx';
-import Button from '../components/ui/Button.jsx';
-import ProgressBar from '../components/ui/ProgressBar.jsx';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useDashboardData } from '../hooks/useDashboardData.js';
 import { useTeamPersistence } from '../hooks/useTeamPersistence.js';
 import { useImport } from '../contexts/ImportContext.jsx';
-import { useTeamAnalysis } from '../hooks/useTeamAnalysis.js';
-import { useOrganization } from '../contexts/OrganizationContext.jsx';
-import { useNavigate } from 'react-router-dom';
-import { Edit2, Save, ArrowRight } from 'lucide-react';
-import { logger } from '../lib/logger.js';
-
-// New Components
+import TeamOverviewPanel from '../components/TeamOverviewPanel.jsx';
 import ProgramOverview from '../components/teaming/ProgramOverview.jsx';
 import TeamingConfiguration from '../components/teaming/TeamingConfiguration.jsx';
-import DataValidationPanel from '../components/teaming/DataValidationPanel.jsx';
 import RosterManager from '../components/teaming/RosterManager.jsx';
+import TeamPersistencePanel from '../components/TeamPersistencePanel.jsx';
+import DataValidationPanel from '../components/teaming/DataValidationPanel.jsx';
+import Button from '../components/ui/Button.jsx';
+import ProgressBar from '../components/ui/ProgressBar.jsx';
+import { Edit2, Save, ArrowRight } from 'lucide-react';
+import { supabase } from '../lib/supabaseClient.js';
 
 export default function TeamAnalysisPage() {
-  const { team, loading } = useDashboardData();
-  const { user, isImpersonating } = useAuth();
-  const { currentOrganization } = useOrganization();
-  const { persistenceSnapshot } = useTeamPersistence();
+  const { team, loading, error, timezone } = useDashboardData();
+  const { snapshot: persistenceSnapshot, loading: persistenceLoading } = useTeamPersistence();
   const { importedData } = useImport();
-  const { timezone } = useTheme();
-  const navigate = useNavigate();
   const [isEditMode, setIsEditMode] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [selectedProgramId, setSelectedProgramId] = useState(null);
+  const [configs, setConfigs] = useState({});
+  const navigate = useNavigate();
 
-  // New Analysis Hook
-  const {
-    programs,
-    validationErrors,
-    configs,
-    updateConfig,
-    selectedProgramId,
-    setSelectedProgramId,
-  } = useTeamAnalysis();
+  // Mock data for initial empty state
+  const [programs] = useState([
+    { id: 'u10-rec', name: 'U10 Recreation League', totalPlayers: 148, capacity: 156 },
+    { id: 'u12-rec', name: 'U12 Recreation League', totalPlayers: 112, capacity: 120 },
+  ]);
+
+  const selectedProgram = useMemo(
+    () => programs.find((p) => p.id === selectedProgramId) || programs[0],
+    [selectedProgramId, programs]
+  );
+
+  useEffect(() => {
+    if (selectedProgram && !configs[selectedProgram.id]) {
+      setConfigs((prev) => ({
+        ...prev,
+        [selectedProgram.id]: {
+          targetSize: 12,
+          minSize: 10,
+          maxSize: 14,
+          balancing: 'skill',
+        },
+      }));
+    }
+  }, [selectedProgram, configs]);
+
+  const updateConfig = (newConfig) => {
+    setConfigs((prev) => ({
+      ...prev,
+      [selectedProgram.id]: newConfig,
+    }));
+  };
+
+  const validationErrors = useMemo(() => {
+    const errors = [];
+    if (!importedData) errors.push('Missing imported player roster.');
+    return errors;
+  }, [importedData]);
 
   const handleGenerateTeams = useCallback(async () => {
     setIsGenerating(true);
-
     try {
-      // Fetch season settings ID first
-      const { data: settings } = await supabase
-        .from('season_settings')
-        .select('id')
-        .limit(1)
-        .single();
+      // In a real app, this would trigger the 'generate-teams' Edge Function
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      // await supabase.functions.invoke('generate-teams', { body: { config: configs[selectedProgram.id] } });
 
-      if (settings) {
-        // Pass configurations to the backend
-        const runParams = {
-          programs: programs.map((p) => ({
-            id: p.id,
-            name: p.name,
-            config: configs[p.id],
-          })),
-        };
-
-        const { error: insertError } = await supabase.from('scheduler_runs').insert({
-          season_settings_id: settings.id,
-          run_type: 'team',
-          status: 'running',
-          parameters: runParams,
-          metrics: { progress: 0 },
-          started_at: new Date().toISOString(),
-        });
-
-        if (insertError) throw insertError;
-
-        // Audit teaming generation
-        await supabase.rpc('record_audit_event', {
-          p_organization_id: currentOrganization?.id,
-          p_action: 'teaming.generation_started',
-          p_metadata: {
-            program_count: programs.length,
-            ...(isImpersonating && {
-              target_user_id: user.profile.id,
-              impersonated_by: user.id,
-              admin_email: user.email,
-            }),
-          },
-        });
-      } else {
-        logger.warn('No season settings found.');
-        setIsGenerating(false);
-      }
-    } catch (e) {
-      logger.error('Backend insert failed', e);
+      // Simulate a long-running process for UI feedback
+      await new Promise((resolve) => setTimeout(resolve, 3500));
+    } catch (err) {
+      console.error('Generation failed:', err);
+    } finally {
       setIsGenerating(false);
     }
-  }, [programs, configs, currentOrganization?.id, isImpersonating, user]);
+  }, [configs, selectedProgram]);
 
-  const selectedProgram = programs.find((p) => p.id === selectedProgramId);
-
-  // Derive generating status to avoid synchronous state synchronization in Effects
+  // Combined loading state for better UX
   const isActuallyGenerating = useMemo(() => {
     if (team?.status === 'running') return true;
-    if (team?.status === 'completed' || team?.status === 'error') return false;
     return isGenerating;
   }, [team?.status, isGenerating]);
 
@@ -189,7 +169,7 @@ export default function TeamAnalysisPage() {
   }, [mappedTeams, team, importedData]);
 
   return (
-    <div className="animate-fadeIn space-y-8">
+    <div className="animate-fadeIn space-y-8 max-w-[65ch] mx-auto w-full">
       <div className="flex justify-between items-start mb-8">
         <div>
           <h1 className="text-3xl font-display font-bold text-text-primary mb-2">

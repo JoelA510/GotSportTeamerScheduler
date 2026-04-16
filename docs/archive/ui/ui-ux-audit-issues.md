@@ -54,8 +54,8 @@ During an audit, update this section with:
 
 - **Files**: `src/App.jsx` (Team Overview section)
 - **Issues**:
-  - [ ] `layout_density` (P1): "Team formation snapshot" header text is quite wide (`max-width: 460px` might be too narrow for the available space on desktop).
-    - _Fix_: Adjust max-width or layout for better desktop utilization.
+  - [x] `layout_density` (P1): "Team formation snapshot" header text is quite wide (`max-width: 460px` might be too narrow).
+    - _Fix_: Resolved by implementing `max-w-[65ch]` desktop constraint.
 
 ### Surface: Team Persistence Panel
 

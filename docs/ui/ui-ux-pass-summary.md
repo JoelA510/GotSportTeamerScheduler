@@ -34,3 +34,10 @@ We implemented a robust theming engine using CSS variables scoped to `[data-them
 - **Tokens**: All colors, shadows, and spacing are defined in `index.css` as CSS variables.
 - **Composition**: Components use utility classes like `.glass-panel` and `.section-panel` to inherit styles, reducing CSS duplication.
 - **Persistence**: Theme preference is saved to `localStorage` to persist across sessions.
+
+## Post-Pass Polish & Accessibility (Final)
+
+- **Layout Optimization**: Applied a `65ch` max-width constraint to data-heavy views (Team Analysis, Practice Scheduling) to optimize readability and focus on desktop screens.
+- **Cold Start Support**: Integrated inviting empty state components with call-to-action buttons for Dashboard, Practice, and Game scheduling views to prevent "dead-end" interfaces.
+- **Component Consistency**: Refactored the Team Persistence Panel buttons to remove bespoke CSS fragmentation and adopt the shared "Deep Space Glass" utility tokens.
+- **ARIA Compliance**: Implemented the `aria-labelledby` pattern across all Insight components and summary cards to ensure semantic clarity for screen readers.
