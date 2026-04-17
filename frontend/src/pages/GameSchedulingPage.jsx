@@ -1,27 +1,17 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useDashboardData } from '../hooks/useDashboardData.js';
-import GameScheduleView from '../components/GameScheduleView.jsx';
 import TeamScheduleView from '../components/TeamScheduleView.jsx';
-import AutoSchedulerPanel from '../components/AutoSchedulerPanel.jsx';
+import AutoSchedulerPanel from '../components/scheduling/AutoSchedulerPanel.jsx';
 import Button from '../components/ui/Button.jsx';
 import ProgressBar from '../components/ui/ProgressBar.jsx';
-import {
-  DndContext,
-  closestCenter,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-} from '@dnd-kit/core';
-import { sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import { Edit2, Save, Trophy, Sparkles } from 'lucide-react';
 import GameReadinessPanel from '../components/GameReadinessPanel.jsx';
-import TeamScheduleView from '../components/TeamScheduleView.jsx';
 import GameConflictBanner from '../components/scheduling/GameConflictBanner.jsx';
+import { formatDateTime } from '../utils/formatters.js';
 
 export default function GameSchedulingPage() {
-  const { game, loading, error, timezone } = useDashboardData();
-  const [localAssignments, setLocalAssignments] = useState([]);
+  const { game, loading, timezone } = useDashboardData();
+  const [localAssignments, setLocalAssignments] = useState(game?.assignments ?? []);
   const [selectedTeamId, setSelectedTeamId] = useState(null);
   const [isEditMode, setIsEditMode] = useState(false);
   const [activeTab, setActiveTab] = useState('full'); // 'full' or 'team'
@@ -29,34 +19,66 @@ export default function GameSchedulingPage() {
   // Auto-scheduler states
   const [autoSchedulerStatus, setAutoSchedulerStatus] = useState('idle');
   const [autoSchedulerProgress, setAutoSchedulerProgress] = useState(0);
-
-  const sensors = useSensors(
-    useSensor(PointerSensor),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
-  );
+  const [autoSchedulerResult, setAutoSchedulerResult] = useState(null);
+  const [autoSchedulerError, setAutoSchedulerError] = useState(null);
+  const autoSchedulerIntervalRef = useRef(null);
 
   useEffect(() => {
     if (game?.assignments) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setLocalAssignments(game.assignments);
     }
-  }, [game]);
+    // Depend on stable signals — useDashboardData returns a fresh `game` object
+    // every render, so `[game?.assignments]` alone would loop.
+  }, [game?.assignments?.length, game?.generatedAt]);
+
+  // Ensure the simulation timer can't outlive the component.
+  useEffect(() => {
+    return () => {
+      if (autoSchedulerIntervalRef.current) {
+        clearInterval(autoSchedulerIntervalRef.current);
+        autoSchedulerIntervalRef.current = null;
+      }
+    };
+  }, []);
+
+  const stopAutoSchedulerInterval = () => {
+    if (autoSchedulerIntervalRef.current) {
+      clearInterval(autoSchedulerIntervalRef.current);
+      autoSchedulerIntervalRef.current = null;
+    }
+  };
 
   const handleAutoGenerate = () => {
+    stopAutoSchedulerInterval();
     setAutoSchedulerStatus('running');
     setAutoSchedulerProgress(0);
+    setAutoSchedulerError(null);
 
-    const interval = setInterval(() => {
+    autoSchedulerIntervalRef.current = setInterval(() => {
       setAutoSchedulerProgress((prev) => {
         if (prev >= 100) {
-          clearInterval(interval);
-          setAutoSchedulerStatus('success');
+          stopAutoSchedulerInterval();
+          setAutoSchedulerStatus('completed');
+          setAutoSchedulerResult({ assignments: localAssignments });
           return 100;
         }
         return prev + 5;
       });
     }, 150);
+  };
+
+  const handleCancelAutoScheduler = () => {
+    stopAutoSchedulerInterval();
+    setAutoSchedulerStatus('idle');
+    setAutoSchedulerProgress(0);
+  };
+
+  const handleResetAutoScheduler = () => {
+    stopAutoSchedulerInterval();
+    setAutoSchedulerStatus('idle');
+    setAutoSchedulerResult(null);
+    setAutoSchedulerProgress(0);
   };
 
   if (loading && !game) {
@@ -86,7 +108,7 @@ export default function GameSchedulingPage() {
         </div>
       </div>
 
-      <GameConflictBanner assignments={localAssignments} />
+      <GameConflictBanner warnings={game?.warnings ?? []} />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2">
@@ -115,12 +137,17 @@ export default function GameSchedulingPage() {
 
             <div className="p-0">
               {activeTab === 'full' ? (
-                <GameScheduleView assignments={localAssignments} timezone={timezone} />
+                <GameScheduleList
+                  assignments={localAssignments}
+                  timezone={timezone}
+                  onEditSchedule={() => setIsEditMode(true)}
+                />
               ) : (
                 <TeamScheduleSelector
                   assignments={localAssignments}
                   selectedTeamId={selectedTeamId}
                   onSelectTeam={setSelectedTeamId}
+                  onEditSchedule={() => setIsEditMode(true)}
                   timezone={timezone}
                 />
               )}
@@ -132,17 +159,21 @@ export default function GameSchedulingPage() {
           <AutoSchedulerPanel
             status={autoSchedulerStatus}
             progress={autoSchedulerProgress}
+            result={autoSchedulerResult}
+            error={autoSchedulerError}
             onTrigger={handleAutoGenerate}
-            label="Game Auto-Scheduler"
-            description="Use AI to generate a conflict-free match chart based on team proximity and field availability."
+            onCancel={handleCancelAutoScheduler}
+            onReset={handleResetAutoScheduler}
+            disabled={Boolean(loading)}
           />
 
           <GameReadinessPanel
-            gameSnapshot={{
-              conflicts: 0,
-              coverage: 100,
-              lastCalculated: game?.generatedAt,
-            }}
+            gameReadinessSnapshot={game?.snapshot ?? {}}
+            gameSummary={
+              game?.summary ?? { scheduledRate: 0, unscheduledMatchups: 0, teamsWithByes: 0 }
+            }
+            generatedAt={game?.generatedAt}
+            timezone={timezone}
           />
         </div>
       </div>
@@ -150,7 +181,78 @@ export default function GameSchedulingPage() {
   );
 }
 
-function TeamScheduleSelector({ assignments, selectedTeamId, onSelectTeam, timezone }) {
+function GameScheduleList({ assignments, timezone, onEditSchedule }) {
+  if (!assignments || assignments.length === 0) {
+    return (
+      <div className="glass-panel p-12 text-center animate-fadeIn border-brand-400/20 relative overflow-hidden">
+        <div className="absolute top-0 right-0 p-8 opacity-10 pointer-events-none">
+          <Trophy size={120} className="text-brand-400" />
+        </div>
+        <div className="max-w-md mx-auto relative z-10">
+          <h2 className="text-2xl font-display font-bold text-white mb-4">No Game Schedule Yet</h2>
+          <p className="text-white/60 mb-8">
+            The game schedule has not been generated for the current season. Run the auto-scheduler
+            on the right once teams and field availability are finalized.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            <Button
+              variant="primary"
+              size="lg"
+              className="flex items-center gap-2"
+              onClick={onEditSchedule}
+            >
+              Generate Schedule <Sparkles size={18} />
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-left border-collapse" data-testid="game-schedule-list">
+        <thead>
+          <tr className="bg-bg-app/50 border-b border-border-subtle">
+            <th className="p-4 text-xs font-semibold text-text-muted uppercase tracking-wider">
+              Matchup
+            </th>
+            <th className="p-4 text-xs font-semibold text-text-muted uppercase tracking-wider">
+              Field
+            </th>
+            <th className="p-4 text-xs font-semibold text-text-muted uppercase tracking-wider">
+              Kickoff
+            </th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-border-subtle/30">
+          {assignments.map((a) => (
+            <tr
+              key={a.id ?? `${a.homeTeamId}-${a.awayTeamId}-${a.slotId}`}
+              className="hover:bg-white/5"
+            >
+              <td className="p-4 text-text-primary font-medium">
+                {a.homeTeamName ?? 'Home'} vs {a.awayTeamName ?? 'Away'}
+              </td>
+              <td className="p-4 text-text-secondary">{a.fieldName ?? a.fieldId ?? '—'}</td>
+              <td className="p-4 text-text-secondary">
+                {a.kickoff ? formatDateTime(a.kickoff, timezone) : '—'}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function TeamScheduleSelector({
+  assignments,
+  selectedTeamId,
+  onSelectTeam,
+  onEditSchedule,
+  timezone,
+}) {
   // Extract unique team IDs/Names
   const teams = useMemo(() => {
     const teamSet = new Map();
@@ -186,12 +288,8 @@ function TeamScheduleSelector({ assignments, selectedTeamId, onSelectTeam, timez
 
       <div className="mt-8 border-t border-white/5 pt-8">
         {selectedTeamId ? (
-          <TeamScheduleView
-            assignments={localAssignments}
-            teamId={selectedTeamId}
-            timezone={timezone}
-          />
-        ) : localAssignments.length === 0 ? (
+          <TeamScheduleView assignments={assignments} teamId={selectedTeamId} timezone={timezone} />
+        ) : assignments.length === 0 ? (
           <div className="glass-panel p-12 text-center animate-fadeIn border-brand-400/20 relative overflow-hidden">
             <div className="absolute top-0 right-0 p-8 opacity-10 pointer-events-none">
               <Trophy size={120} className="text-brand-400" />
@@ -201,14 +299,15 @@ function TeamScheduleSelector({ assignments, selectedTeamId, onSelectTeam, timez
                 No Game Schedule Yet
               </h2>
               <p className="text-white/60 mb-8">
-                The game schedule has not been generated for the current season. You can generate a new schedule once teams and field availability are finalized.
+                The game schedule has not been generated for the current season. You can generate a
+                new schedule once teams and field availability are finalized.
               </p>
               <div className="flex flex-col sm:flex-row gap-4 justify-center">
                 <Button
                   variant="primary"
                   size="lg"
                   className="flex items-center gap-2"
-                  onClick={() => setIsEditMode(true)}
+                  onClick={onEditSchedule}
                 >
                   Generate Schedule <Sparkles size={18} />
                 </Button>

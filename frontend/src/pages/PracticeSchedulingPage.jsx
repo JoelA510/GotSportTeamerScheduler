@@ -1,51 +1,76 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useDashboardData } from '../hooks/useDashboardData.js';
-import PracticeScheduleView from '../components/PracticeScheduleView.jsx';
-import AutoSchedulerPanel from '../components/AutoSchedulerPanel.jsx';
+import PracticeAssignmentList from '../components/PracticeAssignmentList.jsx';
+import AutoSchedulerPanel from '../components/scheduling/AutoSchedulerPanel.jsx';
 import PracticeReadinessPanel from '../components/PracticeReadinessPanel.jsx';
 import Button from '../components/ui/Button.jsx';
-import ProgressBar from '../components/ui/ProgressBar.jsx';
-import { Edit2, Save } from 'lucide-react';
+import { Edit2, Save, Sparkles, Calendar } from 'lucide-react';
 import EvaluationPanel from '../components/EvaluationPanel.jsx';
 import { supabase } from '../lib/supabaseClient.js';
-import { Sparkles, Calendar } from 'lucide-react';
 
 export default function PracticeSchedulingPage() {
   const { practice, team, loading: dashboardLoading } = useDashboardData();
-  const [assignments, setAssignments] = useState([]);
+  const [assignments, setAssignments] = useState(practice?.assignments ?? []);
   const [isEditMode, setIsEditMode] = useState(false);
-  const [timezone, setTimezone] = useState(null);
 
   // Auto-scheduler status
   const [autoSchedulerStatus, setAutoSchedulerStatus] = useState('idle');
   const [autoSchedulerProgress, setAutoSchedulerProgress] = useState(0);
   const [autoSchedulerResult, setAutoSchedulerResult] = useState(null);
   const [autoSchedulerError, setAutoSchedulerError] = useState(null);
+  const autoSchedulerIntervalRef = useRef(null);
+  const autoSchedulerTimeoutRef = useRef(null);
 
   useEffect(() => {
     if (practice?.assignments) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setAssignments(practice.assignments);
     }
-  }, [practice]);
+    // Depend on stable signals — useDashboardData returns a fresh `practice` object
+    // every render, so `[practice?.assignments]` alone would loop.
+  }, [practice?.assignments?.length, practice?.snapshot?.lastCalculated]);
+
+  // Ensure simulation timers can't outlive the component.
+  useEffect(() => {
+    return () => {
+      if (autoSchedulerIntervalRef.current) clearInterval(autoSchedulerIntervalRef.current);
+      if (autoSchedulerTimeoutRef.current) clearTimeout(autoSchedulerTimeoutRef.current);
+      autoSchedulerIntervalRef.current = null;
+      autoSchedulerTimeoutRef.current = null;
+    };
+  }, []);
+
+  const stopAutoSchedulerTimers = useCallback(() => {
+    if (autoSchedulerIntervalRef.current) {
+      clearInterval(autoSchedulerIntervalRef.current);
+      autoSchedulerIntervalRef.current = null;
+    }
+    if (autoSchedulerTimeoutRef.current) {
+      clearTimeout(autoSchedulerTimeoutRef.current);
+      autoSchedulerTimeoutRef.current = null;
+    }
+  }, []);
 
   // Handle auto-scheduler trigger
   const handleAutoGenerate = useCallback(async () => {
+    stopAutoSchedulerTimers();
     setAutoSchedulerStatus('running');
     setAutoSchedulerProgress(0);
     setAutoSchedulerError(null);
 
     try {
-      // 1. Get current tenant/org context
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      // Ensure we have a signed-in session before kicking off the mock progress loop.
+      await supabase.auth.getUser();
 
-      // 2. Mock call to edge function (scheduling-engine)
-      // In a real app, this would be: await supabase.functions.invoke('schedule-practices', { body: { teamId: team.id } });
-      const interval = setInterval(() => {
+      // Mock call to edge function (scheduling-engine).
+      // In production this would be: await supabase.functions.invoke('schedule-practices', { body: { teamId: team.id } });
+      autoSchedulerIntervalRef.current = setInterval(() => {
         setAutoSchedulerProgress((prev) => {
           if (prev >= 100) {
-            clearInterval(interval);
+            if (autoSchedulerIntervalRef.current) {
+              clearInterval(autoSchedulerIntervalRef.current);
+              autoSchedulerIntervalRef.current = null;
+            }
             return 100;
           }
           return prev + 5;
@@ -53,37 +78,46 @@ export default function PracticeSchedulingPage() {
       }, 100);
 
       // Simulate network delay and processing
-      setTimeout(() => {
-        clearInterval(interval);
+      autoSchedulerTimeoutRef.current = setTimeout(() => {
+        stopAutoSchedulerTimers();
         setAutoSchedulerProgress(100);
-        setAutoSchedulerStatus('success');
+        setAutoSchedulerStatus('completed');
         setAutoSchedulerResult({
           assignments: assignments, // Mocking unchanged for now
           summary: { conflictFree: 100, fieldUtilization: 88 },
         });
       }, 3000);
     } catch (err) {
-      setAutoSchedulerStatus('error');
+      stopAutoSchedulerTimers();
+      setAutoSchedulerStatus('failed');
       setAutoSchedulerError(err.message);
     }
-  }, [assignments, team]);
+  }, [assignments, stopAutoSchedulerTimers]);
 
-  const cancelAutoScheduler = () => {
+  const cancelAutoScheduler = useCallback(() => {
+    stopAutoSchedulerTimers();
     setAutoSchedulerStatus('idle');
     setAutoSchedulerProgress(0);
-  };
+  }, [stopAutoSchedulerTimers]);
 
-  const resetAutoScheduler = () => {
+  const resetAutoScheduler = useCallback(() => {
+    stopAutoSchedulerTimers();
     setAutoSchedulerStatus('idle');
     setAutoSchedulerResult(null);
-  };
+  }, [stopAutoSchedulerTimers]);
 
   const localAssignments =
-    autoSchedulerStatus === 'success' && autoSchedulerResult
+    autoSchedulerStatus === 'completed' && autoSchedulerResult
       ? autoSchedulerResult.assignments
       : assignments;
 
   const isColdStart = !team?.teams?.length;
+
+  const handleToggleLock = useCallback((assignmentId, nextSource) => {
+    setAssignments((current) =>
+      current.map((a) => (a.id === assignmentId ? { ...a, source: nextSource } : a))
+    );
+  }, []);
 
   return (
     <div className="animate-fadeIn space-y-8 max-w-[65ch] mx-auto w-full">
@@ -127,7 +161,8 @@ export default function PracticeSchedulingPage() {
                   Ready to Schedule Practices?
                 </h2>
                 <p className="text-white/60 mb-8">
-                  You haven't generated any teams yet. Practice scheduling requires assigned teams to calculate field availability and distribution.
+                  You haven&apos;t generated any teams yet. Practice scheduling requires assigned
+                  teams to calculate field availability and distribution.
                 </p>
                 <div className="flex flex-col sm:flex-row gap-4 justify-center">
                   <Button
@@ -150,15 +185,18 @@ export default function PracticeSchedulingPage() {
           />
 
           <div className="bg-white/5 border border-white/10 rounded-xl overflow-hidden shadow-2xl backdrop-blur-sm mt-8">
-            <PracticeScheduleView assignments={localAssignments} isEditMode={isEditMode} />
+            <PracticeAssignmentList
+              assignments={localAssignments}
+              onToggleLock={isEditMode ? handleToggleLock : undefined}
+              loading={dashboardLoading?.practice}
+            />
           </div>
         </div>
 
         <div className="lg:col-span-1 space-y-6">
           <PracticeReadinessPanel
-            practiceReadinessSnapshot={practice || {}}
-            dashboardLoading={dashboardLoading}
-            timezone={timezone}
+            practiceReadinessSnapshot={practice?.snapshot || {}}
+            dashboardLoading={dashboardLoading || {}}
           />
         </div>
       </div>

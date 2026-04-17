@@ -1,0 +1,13 @@
+# Enforce LF line endings repo-wide so prettier and CI stay consistent on Windows checkouts.
+* text=auto eol=lf
+
+# Treat known binaries as-is.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.zip binary
+*.woff binary
+*.woff2 binary

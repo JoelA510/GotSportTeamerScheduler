@@ -22,18 +22,11 @@ export default function DashboardPage() {
     throw new Error('E2E forced error for resilience testing.');
   }
 
-  const {
-    team,
-    practice,
-    game,
-    loading,
-    error: dataError,
-    timezone,
-  } = useDashboardData();
+  const { team, practice, game, loading, error: dataError, timezone } = useDashboardData();
   const { snapshot: persistenceSnapshot, loading: persistenceLoading } = useTeamPersistence();
   const { importedData, setImportedData } = useImport();
   const { theme } = useTheme();
-  const { organization } = useOrganization();
+  const { currentOrganization } = useOrganization();
   const [error, setError] = useState(dataError);
   const [activeStep, setActiveStep] = useState(0);
 
@@ -43,14 +36,15 @@ export default function DashboardPage() {
     if (dataError) setError(dataError);
   }, [dataError]);
 
-  // Handle cross-page navigation from setup wizard
+  // Consume ?step=N from setup-wizard redirect exactly once on mount.
+  // Re-running on later location changes would revert user-driven step changes.
   useEffect(() => {
-    const searchParams = new URLSearchParams(location.search);
-    const step = searchParams.get('step');
+    const step = new URLSearchParams(location.search).get('step');
     if (step) {
       setActiveStep(parseInt(step, 10));
     }
-  }, [location]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Calculate high-level status metrics
   const readinessScore = useMemo(() => {
@@ -103,7 +97,8 @@ export default function DashboardPage() {
               Welcome to the SquadLogic Command Center
             </h2>
             <p className="text-text-secondary mb-8">
-              Your season hasn't started yet. Let's get your organization up and running by importing your player data.
+              Your season hasn&apos;t started yet. Let&apos;s get your organization up and running
+              by importing your player data.
             </p>
             <Button
               variant="primary"
@@ -147,7 +142,9 @@ export default function DashboardPage() {
               <div className="bg-bg-surface-hover/50 p-4 rounded-lg border border-border-subtle">
                 <div className="flex justify-between items-center mb-2">
                   <span className="text-sm font-medium text-text-secondary">Overall Readiness</span>
-                  <span className={`text-sm font-bold ${readinessScore >= 70 ? 'text-green-400' : 'text-amber-400'}`}>
+                  <span
+                    className={`text-sm font-bold ${readinessScore >= 70 ? 'text-green-400' : 'text-amber-400'}`}
+                  >
                     {readinessScore}%
                   </span>
                 </div>
@@ -182,7 +179,7 @@ export default function DashboardPage() {
               </div>
 
               {/* Org Context */}
-              <FeatureGuard feature={FEATURE_FLAGS.MULTI_TENANCY}>
+              <FeatureGuard flag={FEATURE_FLAGS.MULTI_TENANCY}>
                 <div className="pt-6 border-t border-border-subtle">
                   <div className="flex items-center gap-3 text-text-muted">
                     <Building2 size={16} />
@@ -191,7 +188,7 @@ export default function DashboardPage() {
                     </span>
                   </div>
                   <p className="mt-1 text-sm font-medium text-text-primary">
-                    {organization?.name || 'Local Environment'}
+                    {currentOrganization?.name || 'Local Environment'}
                   </p>
                 </div>
               </FeatureGuard>
@@ -200,7 +197,7 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {loading && <IngestionOverlay message="Syncing league data..." />}
+      {loading && <IngestionOverlay />}
     </div>
   );
 }

@@ -2,12 +2,21 @@ import React, { useState, useEffect } from 'react';
 import { logger } from '../lib/logger.js';
 import { Loader2, AlertCircle, Save, Activity, ShieldCheck, Zap } from 'lucide-react';
 import { useOrganization } from '../contexts/OrganizationContext.jsx';
+import { supabase as defaultSupabaseClient } from '../lib/supabaseClient.js';
 
 /**
  * EvaluationPanel - Enterprise Glass component for real-time fairness scoring.
  * Refined for Phase 7 with composite Deno-based engine support.
+ *
+ * `supabaseClient` is injected for tests; in normal use the component pulls
+ * the shared client from `lib/supabaseClient.js` (which auto-switches between
+ * real and mock per CLAUDE.md §7).
  */
-export default function EvaluationPanel({ practiceData = null, gameData = null, supabaseClient }) {
+export default function EvaluationPanel({
+  practiceData = null,
+  gameData = null,
+  supabaseClient = defaultSupabaseClient,
+}) {
   const { currentOrganization } = useOrganization();
   const [evaluation, setEvaluation] = useState(null);
   const [loading, setLoading] = useState(false);

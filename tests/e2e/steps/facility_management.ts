@@ -141,7 +141,8 @@ Given(
         db.locations = db.locations || [];
         db.fields = db.fields || [];
         let loc = db.locations.find(
-          (loc: any) => loc.name === lName && loc.organization_id === uniqueOrgId
+          (loc: Record<string, unknown>) =>
+            loc.name === lName && loc.organization_id === uniqueOrgId
         );
         if (!loc) {
           loc = { id: 'loc-1-test', name: lName, organization_id: uniqueOrgId };
@@ -274,7 +275,8 @@ Given(
         db.locations = db.locations || [];
         db.fields = db.fields || [];
         let loc = db.locations.find(
-          (loc: any) => loc.name === lName && loc.organization_id === uniqueOrgId
+          (loc: Record<string, unknown>) =>
+            loc.name === lName && loc.organization_id === uniqueOrgId
         );
         if (!loc) {
           loc = { id: 'loc-2-test', name: lName, organization_id: uniqueOrgId };
@@ -333,11 +335,12 @@ Given(
         );
         const uniqueOrgId = localStorage.getItem('squadlogic_active_org') || 'org-1';
         const fieldId = 'field-3-test';
-        db.fields = (db.fields || []).filter((f: any) => f.id !== fieldId);
+        db.fields = (db.fields || []).filter((f: Record<string, unknown>) => f.id !== fieldId);
         db.locations = db.locations || [];
         db.fields = db.fields || [];
         let loc = db.locations.find(
-          (loc: any) => loc.name === lName && loc.organization_id === uniqueOrgId
+          (loc: Record<string, unknown>) =>
+            loc.name === lName && loc.organization_id === uniqueOrgId
         );
         if (!loc) {
           loc = { id: 'loc-3-test', name: lName, organization_id: uniqueOrgId };
@@ -391,12 +394,14 @@ Given(
         const db = JSON.parse(
           sessionStorage.getItem('__MOCK_DB__') || JSON.stringify(window.__MOCK_DB__ || {})
         );
-        const org = db.organizations.find((o: any) => o.name === oName);
+        const org = db.organizations.find((o: Record<string, unknown>) => o.name === oName);
         if (org) {
           db.locations = db.locations || [];
           db.fields = db.fields || [];
           const locId = `loc-${org.id}`;
-          let loc = db.locations.find((l: any) => l.name === lName && l.organization_id === org.id);
+          let loc = db.locations.find(
+            (l: Record<string, unknown>) => l.name === lName && l.organization_id === org.id
+          );
           if (!loc) {
             loc = { id: locId, name: lName, organization_id: org.id };
             db.locations.push(loc);

@@ -30,7 +30,7 @@ function cleanup(windowMs: number): void {
   lastCleanup = now;
 
   for (const [key, entry] of store.entries()) {
-    const validRequests = entry.requests.filter(timestamp => now - timestamp <= windowMs);
+    const validRequests = entry.requests.filter((timestamp) => now - timestamp <= windowMs);
     if (validRequests.length === 0) {
       store.delete(key);
     } else {
@@ -71,7 +71,7 @@ export function checkRateLimit(userId: string, config: RateLimitConfig = {}): Ra
     return { allowed: true, remaining: maxRequests - 1, retryAfterMs: 0 };
   }
 
-  const validRequests = entry.requests.filter(timestamp => now - timestamp <= windowMs);
+  const validRequests = entry.requests.filter((timestamp) => now - timestamp <= windowMs);
 
   if (validRequests.length >= maxRequests) {
     const oldestRequest = validRequests[0];

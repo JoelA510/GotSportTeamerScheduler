@@ -11,18 +11,21 @@ test('schedulePractices filters slots before school day end', async (t) => {
   // Wait, my logic requires schoolDayEnd to split by ':' and check against Date object.
   // I need to be careful with Date construction in test.
 
-  const baseDate = '2025-01-01T'; // A Wednesday
+  // Build slot Date objects in America/Los_Angeles absolute terms so the test is
+  // independent of the runner's TZ env (Windows-local passes; Ubuntu-CI at UTC
+  // was misinterpreting the naive ISO strings as UTC and filtering both slots).
+  // 2025-01-01 is a Wednesday. PST = UTC−8 in January, so 14:00 PST = 22:00 UTC.
   const earlySlot = {
     id: 's1',
-    start: new Date(`${baseDate}14:00:00`), // 2 PM
-    end: new Date(`${baseDate}15:00:00`),
+    start: new Date('2025-01-01T22:00:00Z'), // 14:00 America/Los_Angeles
+    end: new Date('2025-01-01T23:00:00Z'),
     capacity: 1,
     day: 'Wednesday',
   };
   const lateSlot = {
     id: 's2',
-    start: new Date(`${baseDate}17:00:00`), // 5 PM
-    end: new Date(`${baseDate}18:00:00`),
+    start: new Date('2025-01-02T01:00:00Z'), // 17:00 America/Los_Angeles
+    end: new Date('2025-01-02T02:00:00Z'),
     capacity: 1,
     day: 'Wednesday',
   };

@@ -85,12 +85,16 @@ Then('the system should flag the row as an error', async ({ page }) => {
 Then('load the remaining valid rows into the staging table', async ({ page }) => {
   // The valid rows were imported — the "Import Complete!" screen confirms this.
   // The "Continue" button proves the import completed and data is ready to proceed.
-  await expect(page.getByRole('button', { name: 'Continue' }).first()).toBeVisible({ timeout: 10000 });
+  await expect(page.getByRole('button', { name: 'Continue' }).first()).toBeVisible({
+    timeout: 10000,
+  });
 });
 
 Then('present an interface to manually correct the malformed row', async ({ page }) => {
   // The "Upload Another File" button allows re-uploading corrected data.
-  await expect(page.getByRole('button', { name: 'Upload Another File' }).first()).toBeVisible({ timeout: 10000 });
+  await expect(page.getByRole('button', { name: 'Upload Another File' }).first()).toBeVisible({
+    timeout: 10000,
+  });
 });
 
 When('I click to export the team rosters or schedules', async ({ page }) => {

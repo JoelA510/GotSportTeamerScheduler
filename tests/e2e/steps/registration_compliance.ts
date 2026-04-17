@@ -5,7 +5,9 @@ const { Given, When, Then } = createBdd();
 
 const seedDatabase = async (page: { addInitScript: (fn: () => void) => Promise<void> }) => {
   await page.addInitScript(() => {
-    const db = (window as { __MOCK_DB__?: any }).__MOCK_DB__ || {};
+    type MockTable = Array<Record<string, unknown>>;
+    type MockDb = Record<string, MockTable>;
+    const db = ((window as { __MOCK_DB__?: MockDb }).__MOCK_DB__ || {}) as MockDb;
     const orgId = localStorage.getItem('squadlogic_active_org') || 'org-1';
     db.organizations = db.organizations || [];
     if (!db.organizations.find((o: Record<string, unknown>) => o.id === orgId)) {

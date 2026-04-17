@@ -8,8 +8,13 @@ export default function PersistenceOverridesList({
   onMarkReviewed,
 }) {
   return (
-    <article className="bg-white/5 border border-white/10 rounded-lg p-5 flex flex-col gap-2" aria-labelledby="manual-overrides-heading">
-      <h3 className="text-base font-semibold text-blue-300 m-0" id="manual-overrides-heading">Manual Overrides</h3>
+    <article
+      className="bg-white/5 border border-white/10 rounded-lg p-5 flex flex-col gap-2"
+      aria-labelledby="manual-overrides-heading"
+    >
+      <h3 className="text-base font-semibold text-blue-300 m-0" id="manual-overrides-heading">
+        Manual Overrides
+      </h3>
       <p className="text-sm text-white/50 mt-auto pt-3 border-t border-white/10">
         {pendingCount} of {totalCount} pending review.
       </p>
@@ -21,9 +26,7 @@ export default function PersistenceOverridesList({
               className="p-3 rounded-md bg-white/5 flex justify-between items-center border border-white/5"
             >
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-white/90 truncate">
-                  {override.playerName}
-                </p>
+                <p className="text-sm font-medium text-white/90 truncate">{override.playerName}</p>
                 <p className="text-xs text-white/50 truncate">
                   {override.divisionId} · {override.type}
                 </p>

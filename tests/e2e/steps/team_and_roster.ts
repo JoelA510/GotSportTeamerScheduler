@@ -67,9 +67,7 @@ Given('teams have been generated for the current season', async ({ page }) => {
     // back in on page reload, so we can't remove pre-seeded records — we must work with them.
     // Update run-1 to ensure it has team_players and created_at for proper sorting.
     db.scheduler_runs = db.scheduler_runs || [];
-    const existingRun = db.scheduler_runs.find(
-      (r: Record<string, unknown>) => r.id === 'run-1'
-    );
+    const existingRun = db.scheduler_runs.find((r: Record<string, unknown>) => r.id === 'run-1');
     if (existingRun) {
       existingRun.created_at = new Date().toISOString();
       existingRun.completed_at = new Date().toISOString();

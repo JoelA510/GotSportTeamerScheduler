@@ -21,8 +21,9 @@ export default function OrganizationCreation() {
   const [formData, setFormData] = useState({
     name: '',
     slug: '',
+    slugEdited: false,
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
-    seasonYear: new Date().getFullYear(),
+    seasonYear: String(new Date().getFullYear()),
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
