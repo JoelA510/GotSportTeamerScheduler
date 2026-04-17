@@ -4,7 +4,8 @@
 # SquadLogic v1.0 — Production Cutover Runbook
 
 **Date written:** 2026-04-01
-**Status at writing:** All systems green — 34 migrations applied, 5 Edge Functions ACTIVE, Vercel live
+**Last refreshed:** 2026-04-16
+**Status at writing:** All systems green — 37 migrations applied, 7 Edge Functions ACTIVE, Vercel live
 **Supabase project:** `mmwupqsjkikqzvmdvuzm` (us-west-2)
 **Production URL:** https://squadlogic.vercel.app
 
@@ -17,7 +18,7 @@
 | Vercel deployment   | `READY` on `main`                                                                   | https://vercel.com/secureyourtech/squadlogic                     |
 | Vercel env vars     | `VITE_SUPABASE_URL` + `VITE_SUPABASE_ANON_KEY` set, `VITE_USE_MOCK_SUPABASE` absent | Vercel dashboard → Settings → Environment Variables              |
 | Supabase project    | `ACTIVE_HEALTHY`                                                                    | Supabase dashboard or MCP `get_project`                          |
-| Database migrations | 34 applied, no pending                                                              | Supabase dashboard → Database → Migrations                       |
+| Database migrations | 37 applied, no pending                                                              | Supabase dashboard → Database → Migrations                       |
 
 Roles and their permissions are defined in `frontend/src/constants/permissions.js`.
 
@@ -95,8 +96,8 @@ Users will see the mock client with seed data. No real data is lost. The Supabas
 
 ## What does NOT need a runbook step
 
-- **Migrations** — all 34 are already applied to the production database.
-- **Edge Functions** — all 5 are already deployed and ACTIVE.
+- **Migrations** — all 37 are already applied to the production database (including the three 2026-04-16 entries: `20260416000000_security_hardening`, `20260416000001_initialize_new_tenant`, `20260416000002_data_retention_cron`).
+- **Edge Functions** — all 7 are already deployed and ACTIVE (`auto-scheduler`, `calendar-feed`, `fairness-scoring`, `game-persistence`, `import-validation`, `practice-persistence`, `team-persistence`).
 - **Vercel connection** — already connected to GitHub; auto-deploys on every push to `main`.
 - **SSL/TLS** — handled by Vercel and Supabase automatically.
 - **CORS** — the Supabase project's allowed origins are managed in the Supabase dashboard → Settings → API → CORS. Add `https://squadlogic.vercel.app` if not already present.

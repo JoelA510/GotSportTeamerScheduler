@@ -17,6 +17,8 @@
 
 SquadLogic is a comprehensive tool for youth sports administrators. It simplifies the complex logistics of organizing leagues by automating team generation, practice scheduling, and game scheduling. Built with a modern tech stack and a "Deep Space Glass" design system, it offers a premium, intuitive user experience.
 
+> **Status:** v1.0 GA — Phase 10 pre-flight certification complete, post-launch monitoring in effect. See [`docs/operations/production-cutover.md`](docs/operations/production-cutover.md) for launch runbook.
+
 ## ✨ Implemented Features (v1.0 MVP Complete)
 
 SquadLogic v1.0 is feature-complete, providing a full-suite operational platform for youth sports management.
