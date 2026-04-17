@@ -252,10 +252,8 @@ const DashboardWorkflow = ({
         >
           <PracticeReadinessPanel
             practiceReadinessSnapshot={practiceData.snapshot}
-            practiceSummary={practiceData.summary}
-            generatedAt={practiceData.generatedAt}
+            dashboardLoading={{ practice: false }}
             timezone={timezone}
-            scheduleEvaluation={scheduleEvaluation}
           />
         </WorkflowStep>
 

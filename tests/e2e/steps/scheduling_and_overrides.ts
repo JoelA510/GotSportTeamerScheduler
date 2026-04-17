@@ -155,9 +155,7 @@ When('I trigger the team generation algorithm', async ({ page }) => {
     // The mock client's mergeSource always brings run-1 back on page reload (it merges
     // by ID). So we must update run-1 in-place rather than creating a new run.
     db.scheduler_runs = db.scheduler_runs || [];
-    const existingRun = db.scheduler_runs.find(
-      (r: Record<string, unknown>) => r.id === 'run-1'
-    );
+    const existingRun = db.scheduler_runs.find((r: Record<string, unknown>) => r.id === 'run-1');
     if (existingRun) {
       existingRun.organization_id = orgId;
       existingRun.created_at = now;
@@ -513,11 +511,9 @@ When(
         { steps: 5 }
       );
       // Move to target column center
-      await page.mouse.move(
-        targetBox.x + targetBox.width / 2,
-        targetBox.y + targetBox.height / 2,
-        { steps: 10 }
-      );
+      await page.mouse.move(targetBox.x + targetBox.width / 2, targetBox.y + targetBox.height / 2, {
+        steps: 10,
+      });
       await page.mouse.up();
     }
   }

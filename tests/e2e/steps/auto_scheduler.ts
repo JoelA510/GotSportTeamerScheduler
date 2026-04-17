@@ -171,13 +171,14 @@ Given('the auto-scheduler service is unavailable', async ({ page }) => {
         completed_at: now,
         results: {
           teamsByDivision: {
-            U10: [
-              { id: 'et1', name: 'Error Test Team', division_id: 'U10' },
-            ],
+            U10: [{ id: 'et1', name: 'Error Test Team', division_id: 'U10' }],
           },
           team_players: [],
           rosterBalanceByDivision: {
-            U10: { summary: { totalPlayers: 10, totalCapacity: 12, averageFillRate: 0.83 }, teamStats: [] },
+            U10: {
+              summary: { totalPlayers: 10, totalCapacity: 12, averageFillRate: 0.83 },
+              teamStats: [],
+            },
           },
         },
       });

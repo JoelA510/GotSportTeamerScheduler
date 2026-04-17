@@ -44,7 +44,9 @@ serve(async (req) => {
     // 1. Validate Token and Fetch Team (Phase 2.3: includes expiry check)
     const { data: team, error: teamErr } = await supabase
       .from('teams')
-      .select('id, name, organization_id, division_id, calendar_token_expires_at, organizations(name)')
+      .select(
+        'id, name, organization_id, division_id, calendar_token_expires_at, organizations(name)'
+      )
       .eq('calendar_token', token)
       .single();
 

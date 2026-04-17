@@ -156,8 +156,8 @@ function scoreSchedule(
   const evaluation = evaluatePracticeSchedule({
     assignments,
     unassigned,
-    teams: teams as any,
-    slots: slots as any,
+    teams: teams as unknown as Parameters<typeof evaluatePracticeSchedule>[0]['teams'],
+    slots: slots as unknown as Parameters<typeof evaluatePracticeSchedule>[0]['slots'],
   });
 
   // Compute fitness from scoring-engine metrics

@@ -283,9 +283,7 @@ When('I hover my mouse over the {string} chart', async ({ page }, _chartName: st
       },
     ];
 
-    db.view_org_metrics = [
-      { organization_id: orgId, total_teams: 6, total_users: 15 },
-    ];
+    db.view_org_metrics = [{ organization_id: orgId, total_teams: 6, total_users: 15 }];
 
     // Seed players with custom_attributes so the bar chart renders
     db.players = db.players || [];
@@ -353,11 +351,13 @@ Then('a dark-themed tooltip should appear showing exact counts', async ({ page }
   }
 
   // Final assertion — if still hidden, the chart may just not support tooltips in this render
-  await expect(tooltip).toBeVisible({ timeout: 5000 }).catch(() => {
-    // Tooltip rendering is inherently fragile with Recharts in test environments.
-    // Verify the tooltip wrapper at least exists in the DOM (it does — just hidden).
-    expect(tooltip).toBeTruthy();
-  });
+  await expect(tooltip)
+    .toBeVisible({ timeout: 5000 })
+    .catch(() => {
+      // Tooltip rendering is inherently fragile with Recharts in test environments.
+      // Verify the tooltip wrapper at least exists in the DOM (it does — just hidden).
+      expect(tooltip).toBeTruthy();
+    });
 });
 
 Given('I have generated a new set of teams', async ({ page }) => {

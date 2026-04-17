@@ -34,7 +34,9 @@ Given('the user has modified the {string} roster', async ({ page }, teamName: st
         teams: [{ id: 't1', name: tName, division_id: 'U10' }],
         teamsByDivision: { U10: [{ id: 't1', name: tName, division_id: 'U10' }] },
         team_players: [],
-        rosterBalanceByDivision: { U10: { summary: { totalPlayers: 10, totalCapacity: 12 }, teamStats: [] } },
+        rosterBalanceByDivision: {
+          U10: { summary: { totalPlayers: 10, totalCapacity: 12 }, teamStats: [] },
+        },
       },
     });
     sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
@@ -94,8 +96,8 @@ Then(
     // Verify optimistic UI holds state despite API failure (the team is still rendered)
     // The UI renders team name in the column header. Look for it anywhere visible on the page.
     const shortName = teamName.replace('U10 ', '');
-    await expect(
-      page.getByText(new RegExp(shortName, 'i')).first()
-    ).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText(new RegExp(shortName, 'i')).first()).toBeVisible({
+      timeout: 15000,
+    });
   }
 );

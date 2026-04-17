@@ -54,8 +54,6 @@ const ErrorBanner = ({ message, onRetry, onClose }) => (
   </div>
 );
 
-
-
 export default function SetupWizard() {
   const navigate = useNavigate();
   const { currentOrganization, featureFlags, permissions } = useOrganization();

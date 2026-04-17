@@ -4,8 +4,13 @@ import { formatDateTime } from '../utils/formatters.js';
 
 export default function PersistenceHistoryList({ history }) {
   return (
-    <article className="bg-white/5 border border-white/10 rounded-lg p-5 flex flex-col gap-2" aria-labelledby="persistence-history-heading">
-      <h3 className="text-base font-semibold text-blue-300 m-0" id="persistence-history-heading">Recent Supabase Syncs</h3>
+    <article
+      className="bg-white/5 border border-white/10 rounded-lg p-5 flex flex-col gap-2"
+      aria-labelledby="persistence-history-heading"
+    >
+      <h3 className="text-base font-semibold text-blue-300 m-0" id="persistence-history-heading">
+        Recent Supabase Syncs
+      </h3>
       {history.length > 0 ? (
         <ul className="list-none p-0 m-2 grid gap-2">
           {history.map((run) => (

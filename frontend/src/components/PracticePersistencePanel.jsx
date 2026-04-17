@@ -73,7 +73,6 @@ export default function PracticePersistencePanel({
         { label: 'Overrides', value: snapshot.manualOverrides.length },
       ]}
       onSync={handleSync}
-      // @ts-expect-error [PROPS] - Status string type mismatch with PersistencePanel component requirements
       status={status}
       message={message}
     />

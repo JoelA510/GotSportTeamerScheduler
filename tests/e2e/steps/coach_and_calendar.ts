@@ -9,7 +9,8 @@ Given('I have been assigned to the {string}', async ({ page }, teamName: string)
   await page.evaluate((name) => {
     // CRITICAL FIX: Aggressively clear state to prevent parallel worker contamination
     const db = JSON.parse(
-      sessionStorage.getItem('__MOCK_DB__') || JSON.stringify((window as any).__MOCK_DB__ || {})
+      sessionStorage.getItem('__MOCK_DB__') ||
+        JSON.stringify((window as { __MOCK_DB__?: unknown }).__MOCK_DB__ || {})
     );
     const orgId = localStorage.getItem('squadlogic_active_org') || 'org-1';
 
@@ -37,7 +38,8 @@ Given('I have been assigned to the {string}', async ({ page }, teamName: string)
 Given('my team has {int} players assigned', async ({ page }, count: number) => {
   await page.evaluate((num) => {
     const db = JSON.parse(
-      sessionStorage.getItem('__MOCK_DB__') || JSON.stringify((window as any).__MOCK_DB__ || {})
+      sessionStorage.getItem('__MOCK_DB__') ||
+        JSON.stringify((window as { __MOCK_DB__?: unknown }).__MOCK_DB__ || {})
     );
     const team = db.teams?.[0] || { id: 'team-1' };
     db.team_players = db.team_players || [];

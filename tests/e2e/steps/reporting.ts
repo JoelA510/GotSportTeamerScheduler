@@ -1,5 +1,5 @@
 import { createBdd } from 'playwright-bdd';
-import { expect } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
 
 const { Given, When, Then } = createBdd();
 
@@ -8,7 +8,7 @@ const { Given, When, Then } = createBdd();
  * to the org that has data in initialMockData. Must be called BEFORE
  * any page.goto() / page.reload() so the fresh context picks it up.
  */
-const pinToOrg1 = async (page: any) => {
+const pinToOrg1 = async (page: Page) => {
   await page.evaluate(() => {
     localStorage.setItem('squadlogic_active_org', 'org-1');
   });

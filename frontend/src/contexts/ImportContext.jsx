@@ -460,7 +460,9 @@ export function ImportProvider({ children }) {
               const endIndex = Math.min(currentIndex + CHUNK_SIZE, data.length);
               const chunkRows = data.slice(currentIndex, endIndex);
 
-              addLog(`Validating batch ${Math.floor(currentIndex / CHUNK_SIZE) + 1} (${chunkRows.length} rows)...`);
+              addLog(
+                `Validating batch ${Math.floor(currentIndex / CHUNK_SIZE) + 1} (${chunkRows.length} rows)...`
+              );
 
               try {
                 const { data: efResult, error: efError } = await supabase.functions.invoke(
@@ -483,9 +485,9 @@ export function ImportProvider({ children }) {
                 normalizedData.push(...efResult.validated_data);
 
                 // Add errors (adjusting row index since EF uses relative index)
-                const adjustedErrors = efResult.validation_errors.map(err => ({
+                const adjustedErrors = efResult.validation_errors.map((err) => ({
                   ...err,
-                  row: err.row + currentIndex // EF offset was relative to chunk
+                  row: err.row + currentIndex, // EF offset was relative to chunk
                 }));
                 validationErrors.push(...adjustedErrors);
 
@@ -502,17 +504,22 @@ export function ImportProvider({ children }) {
               } catch (err) {
                 logger.error('Edge Function validation failed:', err);
                 addLog(`Server Validation Error: ${err.message}`);
-                await supabase.from('import_jobs').update({
-                  status: 'failed',
-                  error_summary: { message: err.message }
-                }).eq('id', job.id);
+                await supabase
+                  .from('import_jobs')
+                  .update({
+                    status: 'failed',
+                    error_summary: { message: err.message },
+                  })
+                  .eq('id', job.id);
                 setImportStatus('error');
                 setIsImporting(false);
               }
             };
 
             const finalizeImport = async () => {
-              addLog(`Validation complete. ${normalizedData.length} valid rows, ${validationErrors.length} errors.`);
+              addLog(
+                `Validation complete. ${normalizedData.length} valid rows, ${validationErrors.length} errors.`
+              );
 
               const importData = {
                 fileName: file.name,

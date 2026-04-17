@@ -1,12 +1,46 @@
 import React from 'react';
 import PropTypes from 'prop-types';
-import InsightSection from './InsightSection.jsx';
 import { formatDateTime } from '../utils/formatters.js';
 
+function KpiCard({ label, value, status, description }) {
+  const toneClass =
+    status === 'good'
+      ? 'text-status-success border-status-success/30 bg-status-success/5'
+      : 'text-status-warning border-status-warning/30 bg-status-warning/5';
+  return (
+    <article className={`card-glass border ${toneClass} rounded-lg p-4`} aria-label={label}>
+      <div className="text-[10px] uppercase tracking-widest text-text-muted">{label}</div>
+      <div className="text-2xl font-display font-bold mt-1">{value}</div>
+      <div className="text-xs text-text-secondary mt-1">{description}</div>
+    </article>
+  );
+}
+
+KpiCard.propTypes = {
+  label: PropTypes.string.isRequired,
+  value: PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired,
+  status: PropTypes.oneOf(['good', 'warning']),
+  description: PropTypes.string,
+};
+
+/**
+ * @param {{
+ *   practiceReadinessSnapshot?: {
+ *     balancedScore?: number,
+ *     manualActionRequiredCount?: number,
+ *     venueSaturation?: string,
+ *     conflictFreeTeams?: number,
+ *     lastCalculated?: string,
+ *     unassignedByReason?: Array<{ reason: string, count: number }>,
+ *   },
+ *   dashboardLoading?: { practice?: boolean },
+ *   timezone?: string,
+ * }} props
+ */
 export default function PracticeReadinessPanel({
-  practiceReadinessSnapshot,
-  dashboardLoading,
-  timezone,
+  practiceReadinessSnapshot = {},
+  dashboardLoading = {},
+  timezone: _timezone = undefined,
 }) {
   if (dashboardLoading.practice) {
     return (
@@ -33,45 +67,46 @@ export default function PracticeReadinessPanel({
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        <InsightSection
+        <KpiCard
           label="Field Distribution"
-          value={`${practiceReadinessSnapshot.balancedScore}%`}
-          status={practiceReadinessSnapshot.balancedScore > 85 ? 'good' : 'warning'}
+          value={`${practiceReadinessSnapshot.balancedScore ?? 0}%`}
+          status={(practiceReadinessSnapshot.balancedScore ?? 0) > 85 ? 'good' : 'warning'}
           description="Evenness of primary vs secondary fields"
         />
-        <InsightSection
+        <KpiCard
           label="Manual Actions"
-          value={practiceReadinessSnapshot.manualActionRequiredCount}
+          value={practiceReadinessSnapshot.manualActionRequiredCount ?? 0}
           status={
-            practiceReadinessSnapshot.manualActionRequiredCount === 0 ? 'good' : 'warning'
+            (practiceReadinessSnapshot.manualActionRequiredCount ?? 0) === 0 ? 'good' : 'warning'
           }
           description="Teams requiring manual slot assignment"
         />
-        <InsightSection
+        <KpiCard
           label="Venue Saturation"
-          value={practiceReadinessSnapshot.venueSaturation}
+          value={practiceReadinessSnapshot.venueSaturation ?? 'Unknown'}
           status={practiceReadinessSnapshot.venueSaturation === 'Low' ? 'good' : 'warning'}
           description="Current capacity utilization"
         />
-        <InsightSection
+        <KpiCard
           label="Conflict Free"
-          value={`${practiceReadinessSnapshot.conflictFreeTeams}%`}
-          status={practiceReadinessSnapshot.conflictFreeTeams > 95 ? 'good' : 'warning'}
+          value={`${practiceReadinessSnapshot.conflictFreeTeams ?? 0}%`}
+          status={(practiceReadinessSnapshot.conflictFreeTeams ?? 0) > 95 ? 'good' : 'warning'}
           description="Teams without schedule overlapping"
         />
       </div>
 
       <div className="insights-grid">
         <article className="insight-card" aria-labelledby="manual-follow-ups">
-          <h3 className="insight-card__title" id="manual-follow-ups">Manual follow-up reasons</h3>
+          <h3 className="insight-card__title" id="manual-follow-ups">
+            Manual follow-up reasons
+          </h3>
           {!practiceReadinessSnapshot.unassignedByReason?.length ? (
             <p className="insight-card__empty">All teams assigned automatically.</p>
           ) : (
             <ul className="insight-card__list">
               {practiceReadinessSnapshot.unassignedByReason.map((reason, idx) => (
                 <li key={idx} className="insight-card__list-item">
-                  <span className="font-medium">{reason.reason}:</span>{' '}
-                  {reason.count} teams
+                  <span className="font-medium">{reason.reason}:</span> {reason.count} teams
                 </li>
               ))}
             </ul>
@@ -83,7 +118,7 @@ export default function PracticeReadinessPanel({
 }
 
 PracticeReadinessPanel.propTypes = {
-  practiceReadinessSnapshot: PropTypes.object.isRequired,
-  dashboardLoading: PropTypes.object.isRequired,
+  practiceReadinessSnapshot: PropTypes.object,
+  dashboardLoading: PropTypes.object,
   timezone: PropTypes.string,
 };
