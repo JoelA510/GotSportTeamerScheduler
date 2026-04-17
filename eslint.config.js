@@ -16,6 +16,7 @@ export default tseslint.config(
       '**/playwright-report/**',
       '**/test-results/**',
       '**/.features-gen/**',
+      '**/.features-gen-local/**',
       '**/.features-gen-backup/**',
       '**/trace/**',
       '**/.gemini/**',

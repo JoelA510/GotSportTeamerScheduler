@@ -99,7 +99,7 @@ export default function TeamAnalysisPage() {
 
   // Map persistence snapshot to nested structure for RosterManager
   const mappedTeams = useMemo(() => {
-    const { teamRows = [], teamPlayerRows = [] } = persistenceSnapshot.payload || {};
+    const { teamRows = [], teamPlayerRows = [] } = persistenceSnapshot?.payload || {};
     const rawPlayers = importedData?.data || [];
 
     return teamRows.map((teamRow) => {
@@ -134,7 +134,7 @@ export default function TeamAnalysisPage() {
         players,
       };
     });
-  }, [persistenceSnapshot.payload, importedData]);
+  }, [persistenceSnapshot?.payload, importedData]);
 
   // Use real data from the dashboard hook if available, otherwise empty array
   // Map automated results if persistence is empty

@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useDashboardData } from '../hooks/useDashboardData.js';
 import PracticeAssignmentList from '../components/PracticeAssignmentList.jsx';
 import AutoSchedulerPanel from '../components/scheduling/AutoSchedulerPanel.jsx';
@@ -12,7 +12,6 @@ export default function PracticeSchedulingPage() {
   const { practice, team, loading: dashboardLoading } = useDashboardData();
   const [assignments, setAssignments] = useState(practice?.assignments ?? []);
   const [isEditMode, setIsEditMode] = useState(false);
-  const [syncedPractice, setSyncedPractice] = useState(practice);
 
   // Auto-scheduler status
   const [autoSchedulerStatus, setAutoSchedulerStatus] = useState('idle');
@@ -20,13 +19,12 @@ export default function PracticeSchedulingPage() {
   const [autoSchedulerResult, setAutoSchedulerResult] = useState(null);
   const [autoSchedulerError, setAutoSchedulerError] = useState(null);
 
-  // Sync fresh assignments from the data hook without an effect-triggered re-render cascade.
-  if (practice !== syncedPractice) {
-    setSyncedPractice(practice);
+  useEffect(() => {
     if (practice?.assignments) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setAssignments(practice.assignments);
     }
-  }
+  }, [practice?.assignments]);
 
   // Handle auto-scheduler trigger
   const handleAutoGenerate = useCallback(async () => {

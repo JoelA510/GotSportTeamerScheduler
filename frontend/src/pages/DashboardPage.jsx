@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useLocation } from 'react-router-dom';
 import DashboardWorkflow from '../components/DashboardWorkflow.jsx';
 import { useDashboardData } from '../hooks/useDashboardData.js';
@@ -29,26 +29,22 @@ export default function DashboardPage() {
   const { currentOrganization } = useOrganization();
   const [error, setError] = useState(dataError);
   const [activeStep, setActiveStep] = useState(0);
-  const [syncedDataError, setSyncedDataError] = useState(dataError);
-  const [syncedLocationSearch, setSyncedLocationSearch] = useState(null);
 
   const location = useLocation();
 
-  // Sync dataError → local dismissible error state via render-phase setState
-  // (React allows this pattern; useEffect would trigger cascading renders).
-  if (dataError !== syncedDataError) {
-    setSyncedDataError(dataError);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (dataError) setError(dataError);
-  }
+  }, [dataError]);
 
-  // Pick up ?step=N from setup-wizard cross-page navigation on each location change.
-  if (location.search !== syncedLocationSearch) {
-    setSyncedLocationSearch(location.search);
+  // Pick up ?step=N from setup-wizard cross-page navigation.
+  useEffect(() => {
     const step = new URLSearchParams(location.search).get('step');
     if (step) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setActiveStep(parseInt(step, 10));
     }
-  }
+  }, [location]);
 
   // Calculate high-level status metrics
   const readinessScore = useMemo(() => {

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useDashboardData } from '../hooks/useDashboardData.js';
 import TeamScheduleView from '../components/TeamScheduleView.jsx';
 import AutoSchedulerPanel from '../components/scheduling/AutoSchedulerPanel.jsx';
@@ -15,7 +15,6 @@ export default function GameSchedulingPage() {
   const [selectedTeamId, setSelectedTeamId] = useState(null);
   const [isEditMode, setIsEditMode] = useState(false);
   const [activeTab, setActiveTab] = useState('full'); // 'full' or 'team'
-  const [syncedGame, setSyncedGame] = useState(game);
 
   // Auto-scheduler states
   const [autoSchedulerStatus, setAutoSchedulerStatus] = useState('idle');
@@ -23,13 +22,12 @@ export default function GameSchedulingPage() {
   const [autoSchedulerResult, setAutoSchedulerResult] = useState(null);
   const [autoSchedulerError, setAutoSchedulerError] = useState(null);
 
-  // Sync fresh assignments from the data hook without an effect-triggered re-render cascade.
-  if (game !== syncedGame) {
-    setSyncedGame(game);
+  useEffect(() => {
     if (game?.assignments) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setLocalAssignments(game.assignments);
     }
-  }
+  }, [game?.assignments]);
 
   const handleAutoGenerate = () => {
     setAutoSchedulerStatus('running');

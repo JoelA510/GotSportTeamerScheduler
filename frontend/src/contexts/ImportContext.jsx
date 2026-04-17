@@ -477,8 +477,10 @@ export function ImportProvider({ children }) {
                   }
                 );
 
-                if (efError || efResult.status === 'error') {
-                  throw new Error(efError?.message || efResult.message || 'Validation failed');
+                if (efError || !efResult || efResult.status === 'error') {
+                  throw new Error(
+                    efError?.message || efResult?.message || 'Validation failed'
+                  );
                 }
 
                 // Add validated/sanitized rows
