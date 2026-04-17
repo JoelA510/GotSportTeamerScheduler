@@ -109,7 +109,7 @@ npm run test:e2e:ui
 ```
 
 > [!TIP]
-> **Remediation Status**: As of March 2026, the E2E suite is stabilized (57/57 passing). To maintain this, ensure all mock data injections include a valid `organization_id` matching the org in `localStorage`, or React hooks will filter the data into an empty state.
+> **Remediation Status (2026-04-16):** the E2E suite has grown to 63 scenarios. The April §1 verification baseline is **40/63 passing** after the pre-flight build repair; 23 pre-existing stability failures (readiness-score selector drift, "Drafting Summary" / "Upload to Storage" / "Import Complete!" text expectations, calendar subscription modal, twins-RSVP, team real-time chat) are tracked as follow-ups in `docs/expansion/98_PROGRESS_LOG.md` and do not block the production bundle. To keep the passing half green, ensure every mock data injection includes a valid `organization_id` matching the org in `localStorage`, or React hooks filter the data into an empty state.
 
 ### Feature files (BDD scenarios)
 

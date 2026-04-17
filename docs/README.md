@@ -1,5 +1,6 @@
 # SquadLogic Documentation
 
+> **v1.0 GA** — see [`operations/production-cutover.md`](operations/production-cutover.md) for launch status.
 > **Last restructured**: April 6, 2026
 > **Documentation standard**: All active docs maintained in categorized subdirectories; historical content archived with full audit traceability.
 
@@ -7,6 +8,9 @@
 
 | Need | Go To |
 |---|---|
+| Production deployment runbook | [`operations/production-cutover.md`](operations/production-cutover.md) |
+| Environment variables reference | [`operations/ENVIRONMENT.md`](operations/ENVIRONMENT.md) |
+| Data ingestion pipeline | [`operations/ingestion-pipeline.md`](operations/ingestion-pipeline.md) |
 | System architecture & tech stack | [`architecture/system-overview.md`](architecture/system-overview.md) |
 | Frontend routing, hooks & components | [`architecture/frontend-architecture.md`](architecture/frontend-architecture.md) |
 | Database schema & data model | [`architecture/data-modeling.md`](architecture/data-modeling.md) |
@@ -25,8 +29,6 @@
 | Governance — Accessibility (Phase 5) | [`governance/governance-framework-phase-5.md`](governance/governance-framework-phase-5.md) |
 | Modularity transition plan | [`governance/modularity-transition.md`](governance/modularity-transition.md) |
 | Accessibility compliance log | [`governance/accessibility-compliance.md`](governance/accessibility-compliance.md) |
-| Production deployment runbook | [`operations/production-cutover.md`](operations/production-cutover.md) |
-| Data ingestion pipeline | [`operations/ingestion-pipeline.md`](operations/ingestion-pipeline.md) |
 | UI/UX guidelines & checklist | [`ui/ui-ux-pass.md`](ui/ui-ux-pass.md) |
 | Project roadmap & milestones | [`expansion/03_ROADMAP.md`](expansion/03_ROADMAP.md) |
 | Execution progress log | [`expansion/98_PROGRESS_LOG.md`](expansion/98_PROGRESS_LOG.md) |
