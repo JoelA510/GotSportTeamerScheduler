@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useDashboardData } from '../hooks/useDashboardData.js';
 import PracticeAssignmentList from '../components/PracticeAssignmentList.jsx';
 import AutoSchedulerPanel from '../components/scheduling/AutoSchedulerPanel.jsx';
@@ -18,16 +18,42 @@ export default function PracticeSchedulingPage() {
   const [autoSchedulerProgress, setAutoSchedulerProgress] = useState(0);
   const [autoSchedulerResult, setAutoSchedulerResult] = useState(null);
   const [autoSchedulerError, setAutoSchedulerError] = useState(null);
+  const autoSchedulerIntervalRef = useRef(null);
+  const autoSchedulerTimeoutRef = useRef(null);
 
   useEffect(() => {
     if (practice?.assignments) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setAssignments(practice.assignments);
     }
-  }, [practice?.assignments]);
+    // Depend on stable signals — useDashboardData returns a fresh `practice` object
+    // every render, so `[practice?.assignments]` alone would loop.
+  }, [practice?.assignments?.length, practice?.snapshot?.lastCalculated]);
+
+  // Ensure simulation timers can't outlive the component.
+  useEffect(() => {
+    return () => {
+      if (autoSchedulerIntervalRef.current) clearInterval(autoSchedulerIntervalRef.current);
+      if (autoSchedulerTimeoutRef.current) clearTimeout(autoSchedulerTimeoutRef.current);
+      autoSchedulerIntervalRef.current = null;
+      autoSchedulerTimeoutRef.current = null;
+    };
+  }, []);
+
+  const stopAutoSchedulerTimers = useCallback(() => {
+    if (autoSchedulerIntervalRef.current) {
+      clearInterval(autoSchedulerIntervalRef.current);
+      autoSchedulerIntervalRef.current = null;
+    }
+    if (autoSchedulerTimeoutRef.current) {
+      clearTimeout(autoSchedulerTimeoutRef.current);
+      autoSchedulerTimeoutRef.current = null;
+    }
+  }, []);
 
   // Handle auto-scheduler trigger
   const handleAutoGenerate = useCallback(async () => {
+    stopAutoSchedulerTimers();
     setAutoSchedulerStatus('running');
     setAutoSchedulerProgress(0);
     setAutoSchedulerError(null);
@@ -38,10 +64,13 @@ export default function PracticeSchedulingPage() {
 
       // Mock call to edge function (scheduling-engine).
       // In production this would be: await supabase.functions.invoke('schedule-practices', { body: { teamId: team.id } });
-      const interval = setInterval(() => {
+      autoSchedulerIntervalRef.current = setInterval(() => {
         setAutoSchedulerProgress((prev) => {
           if (prev >= 100) {
-            clearInterval(interval);
+            if (autoSchedulerIntervalRef.current) {
+              clearInterval(autoSchedulerIntervalRef.current);
+              autoSchedulerIntervalRef.current = null;
+            }
             return 100;
           }
           return prev + 5;
@@ -49,8 +78,8 @@ export default function PracticeSchedulingPage() {
       }, 100);
 
       // Simulate network delay and processing
-      setTimeout(() => {
-        clearInterval(interval);
+      autoSchedulerTimeoutRef.current = setTimeout(() => {
+        stopAutoSchedulerTimers();
         setAutoSchedulerProgress(100);
         setAutoSchedulerStatus('completed');
         setAutoSchedulerResult({
@@ -59,20 +88,23 @@ export default function PracticeSchedulingPage() {
         });
       }, 3000);
     } catch (err) {
+      stopAutoSchedulerTimers();
       setAutoSchedulerStatus('failed');
       setAutoSchedulerError(err.message);
     }
-  }, [assignments]);
+  }, [assignments, stopAutoSchedulerTimers]);
 
-  const cancelAutoScheduler = () => {
+  const cancelAutoScheduler = useCallback(() => {
+    stopAutoSchedulerTimers();
     setAutoSchedulerStatus('idle');
     setAutoSchedulerProgress(0);
-  };
+  }, [stopAutoSchedulerTimers]);
 
-  const resetAutoScheduler = () => {
+  const resetAutoScheduler = useCallback(() => {
+    stopAutoSchedulerTimers();
     setAutoSchedulerStatus('idle');
     setAutoSchedulerResult(null);
-  };
+  }, [stopAutoSchedulerTimers]);
 
   const localAssignments =
     autoSchedulerStatus === 'completed' && autoSchedulerResult

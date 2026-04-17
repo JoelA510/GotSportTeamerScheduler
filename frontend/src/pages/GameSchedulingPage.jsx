@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useDashboardData } from '../hooks/useDashboardData.js';
 import TeamScheduleView from '../components/TeamScheduleView.jsx';
 import AutoSchedulerPanel from '../components/scheduling/AutoSchedulerPanel.jsx';
@@ -21,23 +21,44 @@ export default function GameSchedulingPage() {
   const [autoSchedulerProgress, setAutoSchedulerProgress] = useState(0);
   const [autoSchedulerResult, setAutoSchedulerResult] = useState(null);
   const [autoSchedulerError, setAutoSchedulerError] = useState(null);
+  const autoSchedulerIntervalRef = useRef(null);
 
   useEffect(() => {
     if (game?.assignments) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setLocalAssignments(game.assignments);
     }
-  }, [game?.assignments]);
+    // Depend on stable signals — useDashboardData returns a fresh `game` object
+    // every render, so `[game?.assignments]` alone would loop.
+  }, [game?.assignments?.length, game?.generatedAt]);
+
+  // Ensure the simulation timer can't outlive the component.
+  useEffect(() => {
+    return () => {
+      if (autoSchedulerIntervalRef.current) {
+        clearInterval(autoSchedulerIntervalRef.current);
+        autoSchedulerIntervalRef.current = null;
+      }
+    };
+  }, []);
+
+  const stopAutoSchedulerInterval = () => {
+    if (autoSchedulerIntervalRef.current) {
+      clearInterval(autoSchedulerIntervalRef.current);
+      autoSchedulerIntervalRef.current = null;
+    }
+  };
 
   const handleAutoGenerate = () => {
+    stopAutoSchedulerInterval();
     setAutoSchedulerStatus('running');
     setAutoSchedulerProgress(0);
     setAutoSchedulerError(null);
 
-    const interval = setInterval(() => {
+    autoSchedulerIntervalRef.current = setInterval(() => {
       setAutoSchedulerProgress((prev) => {
         if (prev >= 100) {
-          clearInterval(interval);
+          stopAutoSchedulerInterval();
           setAutoSchedulerStatus('completed');
           setAutoSchedulerResult({ assignments: localAssignments });
           return 100;
@@ -48,11 +69,13 @@ export default function GameSchedulingPage() {
   };
 
   const handleCancelAutoScheduler = () => {
+    stopAutoSchedulerInterval();
     setAutoSchedulerStatus('idle');
     setAutoSchedulerProgress(0);
   };
 
   const handleResetAutoScheduler = () => {
+    stopAutoSchedulerInterval();
     setAutoSchedulerStatus('idle');
     setAutoSchedulerResult(null);
     setAutoSchedulerProgress(0);

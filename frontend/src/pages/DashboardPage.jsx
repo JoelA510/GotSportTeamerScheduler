@@ -33,18 +33,18 @@ export default function DashboardPage() {
   const location = useLocation();
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (dataError) setError(dataError);
   }, [dataError]);
 
-  // Pick up ?step=N from setup-wizard cross-page navigation.
+  // Consume ?step=N from setup-wizard redirect exactly once on mount.
+  // Re-running on later location changes would revert user-driven step changes.
   useEffect(() => {
     const step = new URLSearchParams(location.search).get('step');
     if (step) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setActiveStep(parseInt(step, 10));
     }
-  }, [location]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Calculate high-level status metrics
   const readinessScore = useMemo(() => {
