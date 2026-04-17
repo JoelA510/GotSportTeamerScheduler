@@ -4,10 +4,12 @@
 # SquadLogic v1.0 — Production Cutover Runbook
 
 **Date written:** 2026-04-01
-**Last refreshed:** 2026-04-16
+**Last refreshed:** 2026-04-17
 **Status at writing:** All systems green — 37 migrations applied, 7 Edge Functions ACTIVE, Vercel live
 **Supabase project:** `mmwupqsjkikqzvmdvuzm` (us-west-2)
 **Production URL:** https://squadlogic.vercel.app
+
+> **2026-04-17 reconciliation note:** Smoke checks on 2026-04-17 surfaced that prod was ~10 days behind disk — the three 2026-04-16 migrations (`security_hardening`, `initialize_new_tenant`, `data_retention_cron`) were pending, `rotate_calendar_token(uuid)` was missing (prod had a stale `refresh_calendar_token` body against a non-existent `integrations` table), and the `auto-scheduler` + `fairness-scoring` Edge Functions were undeployed. All five gaps were closed during that session via MCP (see `docs/expansion/98_PROGRESS_LOG.md` row `PROD-RECONCILE`). Open advisor items at that time: 1 ERROR (`public.import_efficiency_metrics` as `SECURITY DEFINER` view) + 4 WARN categories; see `docs/expansion/NEXT_SESSION_PLAN.md` for the cleanup plan. `VITE_SENTRY_DSN` is still not set in Vercel prod — production errors are not flowing to Sentry until that's wired and a redeploy is triggered.
 
 ---
 

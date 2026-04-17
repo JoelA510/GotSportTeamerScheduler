@@ -1,230 +1,207 @@
-# Next Dev Session: Final Production Push
+[← Back to Documentation Index](../README.md)
+
+---
+
+# Next Dev Session: Security Advisor Cleanup + Deferred Items
+
+**Session date TBD.** Written 2026-04-17, after the §1–§4 production push landed ([#156](https://github.com/JoelA510/SquadLogic/pull/156), [#157](https://github.com/JoelA510/SquadLogic/pull/157), [#158](https://github.com/JoelA510/SquadLogic/pull/158)) and the prod Supabase state was reconciled with the repo (three 2026-04-16 migrations applied, `rotate_calendar_token` re-created, `auto-scheduler` + `fairness-scoring` deployed). The previous plan is archived at [`docs/archive/expansion/next-session-plan-2026-04-16.md`](../archive/expansion/next-session-plan-2026-04-16.md).
 
 ## Context
 
-SquadLogic v1.0 is ~95% production-ready. Three commits landed today (2026-04-16)
-closed most of the `push-to-prod.md` checklist — security hardening migration,
-`initialize_new_tenant` onboarding RPC, UI/UX polish, and the
-`data_retention_cron` pg_cron migration. **The inherited docs are inconsistent
-with the code**: `push-to-prod.md` still lists 20 open tasks that the migrations
-and commits show are already shipped, and `TEST_CERTIFICATION_PHASE_10.md`
-(Apr 7) reports an E2E failure that commit `b4675e3` (Apr 8) claims to have
-fixed. The progress log stops at Phase 9 (Apr 9), so today's work is unlogged.
-
-This session finishes the push to prod by (1) verifying the gaps the audit
-actually found, (2) building the cold-start UX that zero-to-one onboarding
-needs to feel finished, (3) flipping CSP to enforcing, and (4) rationalizing
-the docs so they match reality before launch.
+`mcp get_advisors --type=security` now flags one ERROR + four distinct WARN categories against the production database, plus one deferred platform item. None block operation, but each is a concrete security or hardening gap with a bounded fix. The work below plus the three gap items from the prior session's follow-ups compose this session's scope.
 
 ---
 
-## What's already done (no action needed)
+## 1. Security Advisor — ERROR
 
-Verified against `supabase/migrations/`, `supabase/functions/`,
-`frontend/src/`, and `vercel.json`:
+### 1.1 `public.import_efficiency_metrics` is a `SECURITY DEFINER` view
 
-- RLS org-scoping on all 15 tables (`20260309000000_rls_remediation.sql`,
-  `20260324000000_phase1_rls_unification.sql`)
-- Registration policy fix (`20260324000001_fix_registration_policies.sql`)
-- Edge Function org membership checks via `supabase/functions/_shared/auth.ts`
-  `getUserOrgIds()` on all 7 functions
-- Server-side CSV validation — `frontend/src/contexts/ImportContext.jsx` routes
-  through the `import-validation` Edge Function before writing staging rows
-- Onboarding RPC + wizard — `20260416000001_initialize_new_tenant.sql` +
-  `frontend/src/pages/OrganizationCreation.jsx`
-- Rate limiting — `supabase/functions/_shared/rateLimit.ts` (sliding window)
-- Logger gated on `import.meta.env.PROD` — `frontend/src/lib/logger.js:29`
-- Sentry init gated on `VITE_SENTRY_DSN` — `frontend/src/main.jsx:14`
-- pg_cron retention jobs — `20260416000002_data_retention_cron.sql`
-  (export_jobs/7d, staging_players/30d, audit_log/180d)
-- Security headers in `vercel.json` (X-Frame-Options, X-Content-Type-Options,
-  Referrer-Policy, Permissions-Policy)
+A `SECURITY DEFINER` view enforces the **creator's** RLS/permissions when queried, not the caller's. In a multi-tenant schema where RLS on the underlying tables is the primary org-isolation gate, this means any querying user bypasses the caller-scoped `is_org_member(...)` policies on those tables.
 
----
+**Fix.** Drop and recreate the view with `security_invoker = on` (Postgres 15+ supports this as a view option):
 
-## Remaining work
-
-### 1. Verify & measure (do this first — may short-circuit later steps)
-
-1.1 Run the verification sequence from `TEST_CHECKLIST.md`:
-```
-npm run lint && npm run typecheck && npm run test && npm run test:e2e
-```
-Expected: 63/63 E2E passing per `b4675e3`. If `auth_setup.ts` still hangs at
-login in mock mode (the Phase 10 symptom), fix it before anything else —
-check `tests/e2e/steps/auth_setup.ts:31-74` and
-`frontend/src/lib/mockSupabaseClient.js` auth seeding.
-
-1.2 `npm audit --production` — confirm the 6 CVEs from
-`PRODUCTION_READINESS_PLAN.md §1.4` are resolved or documented as accepted.
-If any remain, `npm audit fix` and re-run the test suite.
-
-1.3 `npm run frontend:build` — confirm clean production bundle.
-
-### 2. CSP enforcement
-
-Flip `vercel.json:13` from `Content-Security-Policy-Report-Only` to
-`Content-Security-Policy`. Keep the exact same policy string. After deploy,
-exercise the golden paths (import, team gen, practice schedule, game
-schedule, team portal, calendar token) in the browser and watch the console
-for violations; if any fire, add the offending source to `connect-src` /
-`img-src` rather than loosening `script-src`.
-
-**File:** `vercel.json`
-
-### 3. Cold-start empty states
-
-Build empty-state UI for users who just created an org and have no data.
-Reuse the `glass-panel` / `glass-panel-premium` tokens from `index.css` —
-do not introduce new colors or shadows.
-
-Three surfaces need them:
-
-- **Dashboard** — `frontend/src/pages/DashboardPage.jsx`. When
-  `useDashboardData` returns zero players / teams / schedules, render a
-  single glass panel with three stacked CTAs: "Import registrations"
-  (→ `/import`), "Generate teams" (disabled until import), "Schedule
-  practices" (disabled until teams). Hide existing metric tiles instead of
-  showing 0/0/0.
-- **Team Management** — `frontend/src/pages/TeamAnalysisPage.jsx`. When
-  `teams.length === 0`, show a panel prompting either auto-draft or import
-  first.
-- **Practice Scheduler** — `frontend/src/pages/PracticeSchedulePage.jsx`
-  (and `GameSchedulePage.jsx`). When there are no field subunits or no
-  teams, show the blocker upstream instead of an empty grid.
-
-Accessibility: each empty-state container gets `role="region"` +
-`aria-labelledby` pointing at its heading (matches the pattern flagged in
-`push-to-prod.md §3`). Keyboard-navigable CTAs, visible focus ring.
-
-**Files:**
-- `frontend/src/pages/DashboardPage.jsx`
-- `frontend/src/pages/TeamAnalysisPage.jsx`
-- `frontend/src/pages/PracticeSchedulePage.jsx`
-- `frontend/src/pages/GameSchedulePage.jsx`
-- Reusable: consider a single
-  `frontend/src/components/ui/EmptyState.jsx` if two+ surfaces share the
-  exact same layout — otherwise inline per page.
-
-### 4. Documentation cleanup
-
-**Delete (stale, contradicted by code):**
-- `push-to-prod.md` — superseded by the "already done" list above; commit
-  `bf91710` already started doc cleanup.
-- `TEST_CERTIFICATION_PHASE_10.md` — documents a FAIL that `b4675e3`
-  resolved.
-- `tsc_full_output.txt` — 6 KB of stale `tsc` errors from
-  `tests/autoScheduler.test.js`; `npm run typecheck` is the source of truth.
-- `implementation_plan_phase_7_remediation.md` — work landed in
-  `20260406180000_phase_7_analytics_persistence.sql` and is summarized in
-  the roadmap.
-
-**Archive (keep content, mark superseded):**
-- `PRODUCTION_READINESS_PLAN.md` — move to
-  `docs/archive/operations/production-readiness-plan-2026-04-12.md`.
-  `docs/operations/production-cutover.md` is the active runbook.
-
-**Update:**
-- `docs/operations/production-cutover.md` — says "34 migrations / 5 Edge
-  Functions deployed". Disk now has 37 migrations / 7 Edge Functions. Update
-  the counts, and add a line in §"What does NOT need a runbook step"
-  saying the newest migrations
-  (`20260416000000_security_hardening`,
-  `20260416000001_initialize_new_tenant`,
-  `20260416000002_data_retention_cron`) plus the
-  `import-validation` and `fairness-scoring` Edge Functions still need to
-  be applied/deployed — or confirm they were.
-- `docs/expansion/98_PROGRESS_LOG.md` — append Phase 10 (Apr 7 pre-flight
-  cert) + today's rows: `SECURITY-HARDEN` (Apr 16 — migration + code),
-  `ONBOARDING-10` (Apr 16 — initialize_new_tenant + wizard),
-  `UI-POLISH` (Apr 16 — a11y + density pass),
-  `OPS-CUTOVER` (Apr 16 — pg_cron retention + doc sync),
-  `DOC-CLEANUP` (Apr 16 — this session).
-- `docs/README.md` — prepend a Quick Navigation row for
-  `docs/operations/ENVIRONMENT.md` (it's missing from the index) and
-  reorder the table so Ops / Runbook sits above per-phase governance docs.
-  Add one-liner at the top: "v1.0 GA — see
-  `docs/operations/production-cutover.md` for launch status."
-- `README.md` — the "Phase 10 pre-flight complete, post-launch monitoring
-  in effect" status sentence is missing from the Overview.
-- `TEST_CHECKLIST.md` — line 112 still says "57/57 passing". Update to
-  63/63 once §1.1 verification passes.
-
-### 5. Post-deploy smoke tests (run after merge to `main`)
-
-Per `TEST_CHECKLIST.md §5`:
-
-- Audit log smoke test (one save + one import → verify rows)
-- Cross-org RLS smoke (two admin accounts, confirm zero cross-reads on
-  `game_slots`, `practice_assignments`, `team_players`)
-- Calendar token rotate (`rotate_calendar_token` RPC returns new
-  `expires_at` ~90 days out)
-- Sentry DSN: confirm `VITE_SENTRY_DSN` is set in Vercel prod env and the
-  first synthetic error lands in the Sentry project.
-
----
-
-## Critical files
-
-| File | Purpose in this session |
-|---|---|
-| `vercel.json` | Flip CSP to enforcing |
-| `frontend/src/pages/DashboardPage.jsx` | Cold-start empty state |
-| `frontend/src/pages/TeamAnalysisPage.jsx` | Cold-start empty state |
-| `frontend/src/pages/PracticeSchedulePage.jsx` | Cold-start empty state |
-| `frontend/src/pages/GameSchedulePage.jsx` | Cold-start empty state |
-| `frontend/src/hooks/useDashboardData.js` | Source of truth for "empty" signal |
-| `frontend/src/index.css` | Reuse `glass-panel`, `glass-button`, tokens — no new colors |
-| `docs/operations/production-cutover.md` | Update migration + EF counts |
-| `docs/expansion/98_PROGRESS_LOG.md` | Append Phase 10 + Apr 16 entries |
-| `docs/README.md` | Add ENVIRONMENT.md to index, reorder |
-| `TEST_CHECKLIST.md` | Update E2E count 57 → 63 |
-
----
-
-## Reusable patterns to lean on
-
-- **Empty-state container** — use `glass-panel-premium` wrapper, the
-  `text-display` heading class, and `animate-fadeIn` for the entry. See
-  `frontend/src/components/teaming/TeamPersistencePanel.jsx` for an
-  existing glass-panel layout to mirror.
-- **RBAC gating in CTAs** — `usePermission` hook (see
-  `frontend/src/hooks/usePermission.js`) for hiding "Import" CTA from
-  non-admin roles.
-- **Data hooks for empty signal** — `useDashboardData`,
-  `useTeamSummary`, `usePracticeAssignments` already return zero-friendly
-  shapes; treat `counts.players === 0 && counts.teams === 0` as the
-  cold-start trigger.
-
----
-
-## Verification
-
-Per-step:
-
-1. **CSP** — Deploy preview on Vercel, open DevTools Console on all main
-   routes, confirm zero CSP violations. Then promote to prod.
-2. **Empty states** — Create a fresh org via the onboarding wizard in mock
-   mode (`VITE_USE_MOCK_SUPABASE=true npm run frontend:dev`); confirm
-   Dashboard / Team / Practice / Game pages render the empty state, not
-   a blank grid. Tab through with keyboard — focus ring visible on every
-   CTA. Run `npm run test:e2e -- --grep "dashboard_workflow"` to confirm
-   no regression in the existing empty-dashboard assertions.
-3. **Docs** — `git grep -l "push-to-prod\|PHASE_10\|tsc_full_output"`
-   should return zero cross-references after deletes. Open
-   `docs/README.md` and confirm every linked path exists.
-4. **Progress log** — `docs/expansion/98_PROGRESS_LOG.md` final row
-   dates matches `git log --format=%cd --date=short -1` for today.
-
-Full sequence before PR:
-
-```
-npm run lint
-npm run typecheck
-npm run test
-npm run test:e2e -- --workers=1
-npm run frontend:build
-npm audit --production
+```sql
+alter view public.import_efficiency_metrics set (security_invoker = on);
 ```
 
-All six must pass. Then commit on `claude/plan-next-steps-4vKXj` and push.
+Or, if the view needs to aggregate across orgs for a legitimate admin-facing report:
+- Keep `SECURITY DEFINER` but wrap the aggregation in a dedicated function that checks `is_global_admin(auth.uid())` before returning rows.
+- Or recreate as a `MATERIALIZED VIEW` that's refreshed server-side by a service-role job and grant SELECT only to an admin role.
+
+**Verification.**
+1. `select reloptions from pg_class where relname = 'import_efficiency_metrics';` shows `{security_invoker=true}`.
+2. `mcp get_advisors --type=security` no longer flags the view.
+3. Exercise the import pipeline from two different orgs and confirm rows don't bleed across.
+
+**Files to touch.**
+- New migration `supabase/migrations/202604XXXXXXXX_security_invoker_for_efficiency_view.sql`.
+
+**Remediation guide.** https://supabase.com/docs/guides/database/database-linter?lint=0010_security_definer_view
+
+---
+
+## 2. Security Advisor — WARN
+
+### 2.1 `public.raw-imports` storage bucket is public with broad SELECT
+
+Bucket is marked public AND has a `Public Access` SELECT policy on `storage.objects`. Combined, this lets any client list every file in the bucket — not just access a known-URL object. If the ingestion pipeline stores raw CSVs (with PII) in `raw-imports`, that's a data exposure path.
+
+**Decision needed first.** Is `raw-imports` genuinely meant to serve public object URLs (e.g. logos, static assets), or is it storing user-uploaded CSVs? Confirm via Supabase dashboard → Storage → raw-imports before writing the fix.
+
+**Fix (path A — private CSV bucket).** Flip the bucket to private and scope SELECT by org membership:
+
+```sql
+update storage.buckets set public = false where id = 'raw-imports';
+
+drop policy if exists "Public Access" on storage.objects;
+
+create policy "raw-imports read by org member"
+  on storage.objects for select to authenticated
+  using (
+    bucket_id = 'raw-imports'
+    and is_org_member((storage.foldername(name))[1]::uuid)
+  );
+```
+
+(This assumes uploads are keyed by `{organization_id}/{filename}`; adjust the folder parse if the path shape is different.)
+
+**Fix (path B — legitimate public bucket).** Keep `public = true`, but remove the list policy so clients can only fetch known URLs:
+
+```sql
+drop policy if exists "Public Access" on storage.objects;
+
+create policy "raw-imports read public urls"
+  on storage.objects for select to anon, authenticated
+  using (bucket_id = 'raw-imports');
+```
+
+(Note: this is subtly different from the current policy — the bucket is still listable via the admin API with the service-role key, but clients can't enumerate via a bare SELECT.)
+
+**Verification.** `mcp get_advisors --type=security` drops the `public_bucket_allows_listing` entry.
+
+**Remediation guide.** https://supabase.com/docs/guides/database/database-linter?lint=0025_public_bucket_allows_listing
+
+### 2.2 Six functions with mutable `search_path`
+
+Flagged:
+- `public.get_reserved_keys`
+- `public.log_schema_change`
+- `public.validate_custom_attributes`
+- `public.check_password_length_on_auth_users`
+- `public.persist_evaluation_run` (two overloads)
+- `public.prune_old_evaluation_runs`
+
+A function without an explicit `SET search_path` resolves names against the caller's `search_path`, which an attacker-controlled search path can hijack to point at a malicious schema. The repo's newer functions (`initialize_new_tenant`, `rotate_calendar_token`, `record_audit_event`, `is_org_member`) already pin this; these six haven't been touched.
+
+**Fix.** One migration that uses `ALTER FUNCTION` to set `search_path = public`:
+
+```sql
+alter function public.get_reserved_keys() set search_path = public;
+alter function public.log_schema_change() set search_path = public;
+alter function public.validate_custom_attributes() set search_path = public;
+alter function public.check_password_length_on_auth_users() set search_path = public;
+-- persist_evaluation_run has two overloads; alter each by signature:
+alter function public.persist_evaluation_run(jsonb, jsonb[], jsonb[]) set search_path = public;
+alter function public.persist_evaluation_run(jsonb, jsonb, jsonb) set search_path = public;
+alter function public.prune_old_evaluation_runs(integer) set search_path = public;
+```
+
+Grab the exact arg signatures from prod first:
+
+```sql
+select n.nspname, p.proname, pg_get_function_identity_arguments(p.oid)
+  from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+  where n.nspname = 'public'
+    and p.proname in (
+      'get_reserved_keys', 'log_schema_change', 'validate_custom_attributes',
+      'check_password_length_on_auth_users', 'persist_evaluation_run', 'prune_old_evaluation_runs'
+    );
+```
+
+**Verification.** `mcp get_advisors --type=security` no longer lists any `function_search_path_mutable` warnings.
+
+**Remediation guide.** https://supabase.com/docs/guides/database/database-linter?lint=0011_function_search_path_mutable
+
+### 2.3 Leaked-password protection disabled
+
+Supabase Auth can reject passwords that appear in HaveIBeenPwned. Currently off.
+
+**Fix.** Dashboard-only toggle:
+- Supabase Dashboard → Authentication → Password Security → enable "Leaked password protection".
+- No migration, no code change.
+
+**Verification.** Try signing up with `password` or `qwerty`; expect rejection. `mcp get_advisors` drops the `auth_leaked_password_protection` entry.
+
+**Remediation guide.** https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection
+
+---
+
+## 3. Deferred from the previous session
+
+### 3.1 Sentry DSN
+
+`frontend/src/main.jsx:14` gates `Sentry.init(...)` on `import.meta.env.VITE_SENTRY_DSN`. The env var is currently **not set** in Vercel prod, so the production bundle (fetched 2026-04-17) contains no `ingest.sentry.io` URL and no errors flow to Sentry.
+
+**Fix.**
+1. Create (or locate) the Sentry project for SquadLogic — Frontend → React.
+2. Copy the DSN (format: `https://<publicKey>@<host>.ingest.sentry.io/<projectId>`).
+3. Set `VITE_SENTRY_DSN = <dsn>` in Vercel → squadlogic → Settings → Environment Variables → **Production** scope (and **Preview** if you want preview deploys to emit).
+4. Trigger a production redeploy (push a trivial commit, or use Vercel's "Redeploy" button — the value is only baked into the bundle at build time, so a redeploy is mandatory).
+
+**Verification.**
+1. After redeploy, `curl https://squadlogic.vercel.app/assets/index-*.js | grep ingest.sentry.io` returns the DSN host.
+2. In DevTools Console, type `throw new Error('synthetic sentry ping')` on any page and confirm the event lands in Sentry's Issues list within ~60s.
+3. Confirm the [`@sentry/react`](https://www.npmjs.com/package/@sentry/react) `ErrorBoundary` catch-all still renders the Deep Space Glass fallback — Sentry init should not swap the boundary's UI.
+
+### 3.2 Onboarding test coverage
+
+Unchanged from the 2026-04-16 plan:
+- `initialize_new_tenant` needs pgTAP tests. **Blocker:** no pgTAP runner is configured in CI. PR #155's `supabase/setup-cli@v1 → supabase start → npm run test:db` scaffold is a reasonable starting point — it was closed unmerged but the branch (`feature/onboarding-testing-suite`) is preserved on origin.
+- `OrganizationCreation` lacks E2E coverage. **Blocker:** the mock Supabase client doesn't implement the `initialize_new_tenant` RPC, and the page is rendered inline by [`App.jsx:65`](../../frontend/src/App.jsx#L65) rather than under a `/organizations/new` route — Playwright can't navigate to it without refactoring the app's routing.
+
+**Suggested approach.** Solve the routing first: extract `OrganizationCreation` to `/organizations/new` and gate the App.jsx inline render behind a `needsOnboarding` predicate that no longer short-circuits the router. Then wire the mock client's `rpc()` dispatcher to handle `initialize_new_tenant`. Then add the pgTAP harness + an E2E scenario.
+
+### 3.3 E2E stability gap (23 of 63)
+
+The §1 repair moved the suite from 0/63 (build broken) to 40/63. The remaining 23 failures are stability drift on selectors and text expectations, not regressions from any of the four 2026-04-16 PRs. From the run logged on #156, the categories are:
+
+- **Readiness-score selector drift** — `[data-testid="readiness-score"]` not found on `dashboard_workflow.feature`. Likely the testid was renamed or removed during the UI polish pass and the feature file wasn't updated.
+- **"Drafting Summary" text** — `async_and_optimistic_ui.feature` expects this string; the rendered page uses different copy.
+- **"Upload to Storage" button** — `output_operationalization.feature` expects a button with this label on the output page.
+- **"Import Complete!" toast** — `ingestion_hardening.feature` expects this toast text.
+- **Calendar subscription modal** — `calendar_sync.feature` doesn't see the subscription modal open.
+- **Twins RSVP edge case + real-time chat** — `team_communication.feature` two scenarios time out.
+- **Practice schedule locking (Locked status)** — `practice_schedule_locking.feature` doesn't see the Locked status badge.
+- **Roster conflict detection + Admin overrides** — all scenarios fail the initial "Team Roster page" nav; needs a closer look at `TeamAnalysisPage` post-fix.
+
+**Suggested approach.** Per-test loop: open the Playwright trace (`test-results/*-chromium/trace.zip`) via `npx playwright show-trace`, confirm what the page is actually rendering at the failing assertion, decide whether the feature file or the component is the source of truth, patch the smaller surface.
+
+---
+
+## 4. Other advisor-flagged follow-ups (not in get_advisors)
+
+### 4.1 Nonce-based `style-src` tightening
+
+The production CSP serves `style-src 'self' 'unsafe-inline'`. `'unsafe-inline'` was retained for Tailwind 4's inline `<style>` blocks, but long-term the tighter posture is a nonce. When the inline-style surface is smaller (e.g. after finishing the Deep Space Glass class migration), revisit this and flip to `style-src 'self' 'nonce-<nonce>'` with a per-response nonce injected by a Vercel edge function.
+
+### 4.2 pgTAP / `supabase test db` in CI
+
+Even outside the onboarding tests, the repo has a `supabase/tests/database/` directory that the current CI never runs. Wire `supabase start` + `supabase test db` into `.github/workflows/ci.yml` — the PR #155 scaffold is a fine starting point — so pgTAP failures block merges.
+
+---
+
+## Verification checklist for this session
+
+- [ ] Migration for 1.1 applied; view advisor clears.
+- [ ] Storage bucket fix (2.1) chosen between path A/B; advisor clears.
+- [ ] One migration for 2.2 alters all 6 flagged functions; advisor clears.
+- [ ] Leaked-password protection toggled on in dashboard (2.3); advisor clears.
+- [ ] `VITE_SENTRY_DSN` set in Vercel prod; synthetic error lands in Sentry.
+- [ ] `mcp get_advisors --type=security` returns an empty `lints` list (or only non-blocking informational entries).
+
+## Verification checklist for stretch items
+
+- [ ] pgTAP runner wired into CI; `npm run test:db` runs on every PR.
+- [ ] `OrganizationCreation` moved under a `/organizations/new` route; mock client handles `initialize_new_tenant`; at least one E2E scenario covers the cold-start.
+- [ ] E2E suite at 63/63 (or failing tests have per-issue GitHub issues with traces attached).
+- [ ] CSP `style-src` hardened with a nonce; Deep Space Glass renders identically.
