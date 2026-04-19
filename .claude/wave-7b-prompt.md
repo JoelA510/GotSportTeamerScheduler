@@ -1,33 +1,35 @@
-# Wave 7b — CSP `script-src` Nonce via Vercel Edge Middleware
+# Wave 7b — CSP Refinement (connect-src + documentation)
 
 ## Session Context
 
-**Prior waves**: 1a, 1b, 2, 3a, 3b, 4, 5, 6a, 6b, 7a shipped. Wave 2 flipped the CSP from Report-Only to enforcing (commit `cb720a9`); Wave 7b tightens it by removing `'unsafe-inline'` from `script-src` in favor of a per-request nonce.
+**Prior waves**: 1a, 1b, 2, 3a, 3b, 4, 5, 6a, 6b, 7a shipped. Wave 2 flipped the CSP from Report-Only to enforcing (commit `cb720a9`).
 
-**Audit backlog**: `docs/audits/wave-1a/index.md` `### Wave 7-csp` (or similar CSP-tagged findings in the Wave 7 section — confirm in Task 1 pre-flight).
+**Plan pivot (from review)**: original Wave 7b draft proposed a Vercel Edge Middleware approach to remove `'unsafe-inline'` from `script-src` via per-request nonce. Review surfaced two blockers:
+1. Current `vercel.json` already has `script-src 'self'` with NO `'unsafe-inline'` — the stated premise was wrong.
+2. The middleware template had a body-modification bug (returned a null-body `Response` that would blank the page) and the body-rewrite pattern on Vercel Edge is non-trivial for a static SPA.
 
-**Scope decision**: `script-src` only. `style-src 'unsafe-inline'` stays in place as a documented waiver — Tailwind 4 runtime + React inline-style props need inline styles, and a style-src nonce is a substantially bigger lift (build-time hash pass OR per-component style extraction) that doesn't fit v1.0.1. The waiver is honest: `docs/security/csp.md` lists a concrete v1.1 follow-up plan.
+**Revised scope** — tighten what's ACTUALLY loose and document the full policy:
+1. **`connect-src` gap**: Wave 2 set `VITE_SENTRY_DSN` but did NOT update CSP. Sentry ingest requests (`https://*.ingest.sentry.io`) are currently blocked by `connect-src`. This is a real bug: production Sentry errors are silently dropped.
+2. **`connect-src` hardcoded Supabase host** is fragile — project-specific string. Switch to `*.supabase.co` wildcard for resilience.
+3. **`style-src 'unsafe-inline'` waiver** — Tailwind 4 runtime + React inline-style props need it; style-src nonce is v1.1+ work. Document the waiver with a concrete follow-up plan.
+4. **`'strict-dynamic'` + script-src hash** — the "modern hardening" path (nonce OR build-time hash on the bootstrap script) is deferred to v1.1. Current `'self'` on script-src is a reasonable SPA baseline.
 
-**Chosen mechanism**: Vercel Edge Middleware generates a nonce per request. The middleware adds the CSP header with `'nonce-<hex>'` on `script-src`; the nonce is consumed by the single bootstrap `<script>` tag in `frontend/index.html`; `'strict-dynamic'` trusts everything the bootstrap dynamically imports.
-
-**Free-tier budget**: Vercel Hobby includes generous middleware invocations (confirm current spec at execution time). Projection at 100-org steady state: ~30 K middleware invocations/mo on HTML responses (static assets bypass the matcher). Well within free tier; documented in `docs/security/csp.md`.
+**Audit backlog**: `docs/audits/wave-1a/index.md` CSP-tagged findings (likely in the Wave-7 section).
 
 **Wave 7b is**:
-- `middleware.js` (or `.ts`) at the Vercel root emitting per-request CSP + nonce.
-- `vercel.json` baseline CSP updated — `'unsafe-inline'` removed from `script-src`.
-- `frontend/index.html` script tag accepts the nonce (via Vite plugin transform OR build-time placeholder + middleware replace).
+- Fix `connect-src` in `vercel.json` (Sentry ingest + `*.supabase.co` wildcard).
+- New `docs/security/csp.md` documenting directives, waivers, follow-ups.
 - 3 E2E CSP regression scenarios.
-- `docs/security/csp.md` (new) documenting directives + style-src waiver + follow-up plan.
-- Closure: audit index + progress log update.
+- Closure.
 
 **Wave 7b is NOT**:
-- `style-src` nonce migration (waived, with follow-up plan).
+- Adding Vercel Edge Middleware (original draft; abandoned after review).
+- `script-src` nonce or `'strict-dynamic'` migration (v1.1).
+- `style-src` nonce migration (v1.1+; waived with plan).
 - CSP `report-uri` / violation reporting telemetry.
 - HSTS header (separate concern).
-- Subresource integrity (SRI).
-- CSP Level 3 features beyond `strict-dynamic`.
-- `vercel dev` integration for local middleware testing.
-- pgTAP work (Wave 7a).
+- SRI.
+- pgTAP (Wave 7a).
 
 ---
 
@@ -37,10 +39,10 @@ HALT on any false claim.
 
 1. `git status` on `main` is clean.
 2. Wave 7a shipped — `supabase/tests/` exists with harness + 5 RLS tests.
-3. `vercel.json` has an enforcing `Content-Security-Policy` header (NOT Report-Only). Current `script-src` contains `'unsafe-inline'`. Record the full directive list as the "before" state.
-4. `frontend/index.html` has ONE main bootstrap script — likely `<script type="module" src="/src/main.jsx"></script>`. Record the exact element.
-5. No `middleware.js` or `middleware.ts` at the repo root. If one exists, Task 1 extends it rather than creates.
-6. Vercel project configuration (per `vercel.json`) is the SPA pattern (no Next.js). Middleware conventions follow the Vercel-core docs rather than Next.js-specific ones — confirm at execution time.
+3. `vercel.json` has an enforcing `Content-Security-Policy` header (NOT Report-Only). `script-src` currently has `'self'` ONLY — no `'unsafe-inline'`. (If it DOES have `'unsafe-inline'`, someone regressed Wave 2's work; HALT and reconcile.)
+4. `connect-src` currently lists ONE specific Supabase host (`https://<ref>.supabase.co` + `wss://<ref>.supabase.co`) and does NOT list `https://*.ingest.sentry.io`. Confirm by reading the current value.
+5. `style-src` currently has `'unsafe-inline'`. Wave 7b preserves this with a documented waiver.
+6. `VITE_SENTRY_DSN` is set in Vercel Production (per Wave 2 closure). If the DSN is empty on prod, the connect-src fix is still correct but inert.
 7. Baselines: `npm run lint` / `typecheck` / `test` / `frontend:build` / `check:bundle` / `check:advisors` all green. `npm run test:e2e` baseline from post-Wave-5.
 
 ---
@@ -48,7 +50,7 @@ HALT on any false claim.
 ## Branch Conventions
 
 - One branch per task:
-  - `claude/wave-7b-csp-middleware` → Task 1
+  - `claude/wave-7b-csp-refine` → Task 1
   - `claude/wave-7b-csp-e2e` → Task 2 (depends on Task 1)
   - `claude/wave-7b-closure` → Task 3 (depends on 1 + 2)
 
@@ -56,150 +58,126 @@ PR per task. Wave 6a + 7a gates stay green.
 
 ---
 
-## Task 1 — Vercel Edge Middleware + CSP Nonce
+## Task 1 — `vercel.json` CSP Refinement + `docs/security/csp.md`
 
-**Commit**: `feat(security): csp script-src nonce via vercel edge middleware`
+**Commit**: `fix(security): csp connect-src fix (sentry ingest + supabase wildcard)`
 
-**Branch**: `claude/wave-7b-csp-middleware`
+**Branch**: `claude/wave-7b-csp-refine`
 
 ### Steps
 
-1. Checkout `claude/wave-7b-csp-middleware` from latest `main`.
+1. Checkout `claude/wave-7b-csp-refine` from latest `main`.
 
-2. **Snapshot current CSP** — read `vercel.json`'s `headers` section. Record every directive. This becomes the "before" state in the PR body.
+2. **Snapshot current CSP** — read `vercel.json`'s `headers` section. Record every directive as the "before" state in the PR body.
 
-3. **Create `middleware.js`** at the Vercel-expected path (likely `middleware.js` at repo root; Vercel docs authoritative at execution time):
-   ```js
-   // Vercel Edge Middleware — runs at the edge on every matched request.
-   // Generates a per-request nonce, injects it into the CSP header,
-   // and exposes it for frontend/index.html to consume.
-   //
-   // Runs in Edge Runtime (Web APIs only; no Node).
-   // Free-tier invocation budget documented in docs/security/csp.md.
+3. **Update `connect-src` in `vercel.json`**:
+   - **Add** `https://*.ingest.sentry.io` so Sentry errors reach the ingest endpoint. Without this, `VITE_SENTRY_DSN` is set but all captures are blocked by CSP silently.
+   - **Replace** hardcoded Supabase hostname with `https://*.supabase.co` + `wss://*.supabase.co` wildcards. The hardcoded ref becomes stale if the project migrates; wildcard scoped to `supabase.co` is as tight as the original plus resilient.
+   - Preserve `'self'`.
 
-   export const config = {
-     // HTML responses only; static assets bypass.
-     matcher: ['/', '/:path((?!_next|_vercel|.*\\..*).*)'],
-   };
-
-   export default function middleware(request) {
-     const nonce = crypto.randomUUID().replace(/-/g, '');
-
-     const csp = [
-       "default-src 'self'",
-       `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'`,
-       "style-src 'self' 'unsafe-inline'",  // WAIVED — see docs/security/csp.md
-       "img-src 'self' data: https:",
-       "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.ingest.sentry.io",
-       "font-src 'self' data:",
-       "object-src 'none'",
-       "frame-ancestors 'none'",
-       'upgrade-insecure-requests',
-     ].join('; ');
-
-     // Pass nonce through a response header; Vite transform consumes at
-     // build time OR a serverless transform consumes per request.
-     return new Response(null, {
-       headers: {
-         'Content-Security-Policy': csp,
-         'x-nonce': nonce,
-       },
-     });
-   }
+   Before:
    ```
-   The EXACT Edge-middleware API shape varies by Vercel runtime version. Agent verifies at execution time via Vercel docs and adjusts (may need `NextResponse.next()` + header passthrough OR a different matcher). The pattern is: generate nonce, set CSP header with `'nonce-<value>'`, expose nonce for `index.html` to consume.
+   connect-src 'self' https://<ref>.supabase.co wss://<ref>.supabase.co;
+   ```
+   After:
+   ```
+   connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.ingest.sentry.io;
+   ```
 
-4. **Consume the nonce in `frontend/index.html`** — Option C (simplest + modern):
-   - Add a build-time placeholder to the single bootstrap script tag: `<script type="module" src="/src/main.jsx" nonce="__CSP_NONCE__"></script>`.
-   - The middleware replaces `__CSP_NONCE__` with the actual nonce in the HTML response body before sending. (Vercel Edge middleware can transform response bodies; confirm API at execution time.)
-   - `'strict-dynamic'` in `script-src` trusts anything the bootstrap dynamically imports — no per-script nonce needed on Vite's code-split chunks.
+4. **Preserve the rest of the directives verbatim** — `script-src 'self'`, `style-src 'self' 'unsafe-inline'`, `img-src`, `font-src`, `frame-ancestors`, `object-src`, `base-uri`, `form-action`, `upgrade-insecure-requests`. Do NOT tighten other directives in this task; scope creep risk.
 
-   Alternatives if Option C isn't feasible on the Vercel runtime:
-   - **Option A**: Vite `transformIndexHtml` plugin reads nonce from a request header and injects at render. Requires a Vite plugin; more code; similar outcome.
-   - **Option B**: build with `__CSP_NONCE__` placeholder; hand-roll a middleware body-replace step.
-
-   Agent picks the option that works against the current Vercel version. Document the choice in PR body.
-
-5. **Update `vercel.json` baseline CSP** — remove `'unsafe-inline'` from `script-src`. This baseline is the fallback for paths the middleware doesn't match. For those paths, `script-src 'none'` is safest (they're static assets, not HTML).
-
-6. **Write `docs/security/csp.md`** (new):
+5. **Write `docs/security/csp.md`** (new):
    ```markdown
    # Content Security Policy
+
+   Policy lives in `vercel.json`. No runtime middleware — CSP is static.
 
    ## Directives (as of Wave 7b)
 
    | Directive | Value | Rationale |
    | --- | --- | --- |
    | default-src | 'self' | Deny-by-default baseline. |
-   | script-src | 'self' 'nonce-<per-req>' 'strict-dynamic' | Per-request nonce via Vercel Edge Middleware; strict-dynamic trusts dynamically-imported chunks. |
-   | style-src | 'self' 'unsafe-inline' | **WAIVED** — Tailwind 4 runtime + React inline styles. v1.1 follow-up: build-time hash pass OR component-level style extraction. |
-   | img-src | 'self' data: https: | data: for generated avatars; https: for Supabase storage. |
-   | connect-src | 'self' https://*.supabase.co wss://*.supabase.co https://*.ingest.sentry.io | Supabase REST + realtime; Sentry ingest. |
-   | font-src | 'self' data: | Bundled fonts only. |
-   | object-src | 'none' | No plugins. |
+   | script-src | 'self' | Same-origin scripts only. No unsafe-inline. |
+   | style-src | 'self' 'unsafe-inline' | **WAIVED** — Tailwind 4 runtime + React inline styles. See waiver section. |
+   | img-src | 'self' data: blob: | data: for generated avatars; blob: for in-memory images. |
+   | font-src | 'self' | Bundled fonts only. |
+   | connect-src | 'self' https://*.supabase.co wss://*.supabase.co https://*.ingest.sentry.io | Supabase REST + realtime; Sentry ingest (Wave 7b fix). |
    | frame-ancestors | 'none' | Anti-clickjacking. |
+   | object-src | 'none' | No plugins. |
+   | base-uri | 'self' | Prevent base-URI injection. |
+   | form-action | 'self' | Only same-origin form posts. |
    | upgrade-insecure-requests | — | Force HTTPS for mixed content. |
 
-   ## Middleware
+   ## style-src 'unsafe-inline' waiver
 
-   `middleware.js` at repo root generates a per-request nonce + injects
-   into the CSP header. The nonce is consumed by `frontend/index.html`'s
-   single bootstrap `<script>` tag; `'strict-dynamic'` trusts everything
-   it dynamically imports.
-
-   ## Free-tier budget
-
-   Vercel Hobby middleware invocation allowance applies. Projection at
-   100-org steady state: ~30 K invocations/month (1 per unique HTML page
-   view; cached assets bypass the matcher). Monitor via Vercel dashboard.
-
-   ## style-src waiver
-
-   `'unsafe-inline'` on `style-src` is currently WAIVED. Rationale:
+   `'unsafe-inline'` on `style-src` is currently accepted. Rationale:
    - Tailwind 4 runtime emits some inline styles for CSS-variable overrides.
    - React's `style={{...}}` prop renders inline `style=""` attributes.
    - A nonce-based style-src would require either a build-time hash pass
      OR refactoring every React inline-style usage — a v1.1-scale effort.
 
    Follow-up plan (v1.1+):
-   - Audit inline-style usage across `frontend/src/`.
-   - Extract hot paths to Tailwind utilities or CSS modules.
-   - Add a build-time hash step for the remaining inline styles.
-   - Re-evaluate nonce vs hash CSP once inline-style count drops below a
-     manageable bar.
+   1. Audit `frontend/src/**/*.jsx` for `style={{...}}` prop usage.
+   2. Extract hot paths to Tailwind utilities or CSS modules.
+   3. Add a build-time hash step for the remaining inline styles.
+   4. Re-evaluate nonce vs hash CSP once the inline-style count drops
+      below a manageable bar.
+
+   ## script-src hardening plan (v1.1+)
+
+   Current `script-src 'self'` is a reasonable SPA baseline but doesn't
+   use `'strict-dynamic'` or hash/nonce. Future hardening options:
+   - Add `'strict-dynamic'` + build-time SHA-256 hash of the bootstrap
+     script (static CSP; no middleware).
+   - Add a Vercel Edge Middleware that generates a per-request nonce.
+     (Was explored in Wave 7b's original draft; deferred due to SPA
+     body-rewrite complexity.)
+
+   Neither is gating for v1.0.1 — same-origin + no inline-script is a
+   solid baseline.
+
+   ## Reporting (not configured)
+
+   No `report-uri` / `report-to` directive. If violation telemetry
+   becomes valuable (e.g., to catch accidental inline-script usage),
+   wire a Sentry-backed endpoint in a future wave.
 
    ## Manual prod smoke (post-deploy)
 
-   - Load prod; DevTools → Network → response `Content-Security-Policy`
-     header contains `'nonce-<hex>'`, NOT `'unsafe-inline'` on script-src.
-   - DevTools → Console: zero CSP violations during golden-path flows.
-   - Reload → nonce value CHANGES each request.
+   After Task 1 merges and Vercel redeploys:
+   1. Load prod; DevTools → Network → response `Content-Security-Policy`
+      header shows the new `connect-src` with `*.ingest.sentry.io`.
+   2. DevTools → Console → trigger a test error
+      (`throw new Error('wave-7b csp smoke')`). Confirm the error appears
+      in the Sentry dashboard with `environment: production`.
+   3. DevTools → Console during golden-path flows: ZERO CSP violations.
    ```
 
-7. Verification gate:
+6. Verification gate:
    ```bash
    npm run lint && npm run typecheck && npm run test
    npm run check:advisors && npm run check:bundle
    npm run frontend:build
    git status
    ```
-   Middleware behavior can't be fully verified locally (Vercel Edge isn't emulated by `vercel dev` identically). Manual prod smoke follows the Task 1 PR body's checklist post-deploy.
+   CSP behavior can be partially validated locally via `npm run frontend:dev` (Vite applies its own CSP) — primary validation is manual prod smoke post-deploy.
 
-8. Commit, push, open PR. PR body documents: before/after CSP directives, middleware option chosen (A/B/C), style-src waiver rationale, post-deploy smoke checklist.
+7. Commit, push, open PR. PR body documents: before/after directives table, Sentry-ingest rationale, Supabase-wildcard rationale, style-src waiver pointer, post-deploy smoke checklist.
 
 ### Tests to add (Task 1)
 
-- None in Vitest (middleware runs on Vercel Edge; local unit tests diverge from prod).
+- None in Vitest. `vercel.json` is static config; CSP behavior is edge-enforced.
 - Task 2 adds E2E coverage.
 
 ### Out of scope (Task 1)
 
-- `style-src` nonce migration.
+- Vercel Edge Middleware (original draft; abandoned).
+- `script-src` nonce / hash / `'strict-dynamic'` migration (v1.1).
+- `style-src` nonce migration (v1.1; waived).
 - CSP reporting / telemetry.
 - HSTS header.
 - SRI.
-- Non-nonce directive changes (scope creep).
-- `vercel dev` local emulation.
+- Tightening directives beyond `connect-src` (scope creep).
 
 ---
 
@@ -209,7 +187,7 @@ PR per task. Wave 6a + 7a gates stay green.
 
 **Branch**: `claude/wave-7b-csp-e2e`
 
-**Depends on**: Task 1 merged. E2E runs in dev-mode (Vite), not Vercel Edge — tests the developer-time contract ("no inline-script patterns introduced"), not prod nonce behavior. Manual prod smoke from Task 1 complements this.
+**Depends on**: Task 1 merged. E2E runs in dev-mode (Vite), not against the Vercel CSP header — tests the developer-time contract ("no CSP-violating patterns introduced"). Prod CSP is validated via Task 1's manual smoke.
 
 ### Steps
 
@@ -219,8 +197,8 @@ PR per task. Wave 6a + 7a gates stay green.
    ```gherkin
    Feature: Content Security Policy regression
      The app must not emit CSP violations during golden-path flows.
-     A violation in the console OR a securitypolicyviolation event
-     means the middleware or index.html nonce contract is broken.
+     A violation indicates the vercel.json CSP blocks something the
+     app needs — surfaces drift before it reaches production.
 
      Scenario: Login and dashboard load produces zero CSP violations
        Given I open an instrumented browser that captures CSP violations
@@ -275,7 +253,7 @@ PR per task. Wave 6a + 7a gates stay green.
    });
    ```
 
-4. **Scope caveat**: E2E runs against the Vite dev server in CI, NOT the Vercel Edge + middleware. The test validates the DEVELOPER-TIME contract (no inline-script patterns snuck in). Prod-deploy nonce behavior is validated via Task 1's manual smoke. Document in the feature-file comments.
+4. **Scope caveat**: E2E runs against the Vite dev server in CI, which applies its own CSP; Vite's dev CSP is more permissive than the prod Vercel CSP. The test validates the DEVELOPER-TIME contract (no scripts firing CSP violations in the tested flows). Prod CSP is validated via Task 1's manual smoke. Document in the feature-file comments.
 
 5. **Regenerate `.features-gen-local/`** via `bddgen`. Run locally:
    ```bash
@@ -319,30 +297,31 @@ PR per task. Wave 6a + 7a gates stay green.
 
 1. Checkout `claude/wave-7b-closure` from latest `main` AFTER Tasks 1 + 2 merge.
 
-2. **Update `docs/audits/wave-1a/index.md`** — Wave-7-csp findings (or whatever CSP-tagged subset in the Wave 7 section): prepend `✅`, set `Proposed wave` to `7b (shipped)`. Append a `## Wave 7b closure` section summarizing:
-   - Vercel Edge Middleware generates per-request nonce.
-   - `script-src 'unsafe-inline'` removed; `strict-dynamic` + nonce.
-   - `style-src 'unsafe-inline'` WAIVED with concrete v1.1 follow-up plan.
+2. **Update `docs/audits/wave-1a/index.md`** — Wave-7-csp findings: prepend `✅`, set `Proposed wave` to `7b (shipped)`. Append a `## Wave 7b closure` section summarizing:
+   - `connect-src` updated: Sentry ingest (`*.ingest.sentry.io`) added + Supabase host switched to `*.supabase.co` wildcard.
+   - `docs/security/csp.md` published: full directive table + style-src waiver with v1.1 plan + script-src hardening plan for v1.1.
    - 3 E2E CSP regression scenarios (baseline +3 passing).
    - Manual prod-smoke checklist documented.
+   - Middleware-based nonce approach deferred to v1.1; rationale logged in `csp.md`.
 
 3. **Append to `docs/expansion/98_PROGRESS_LOG.md`**:
    ```
-   ## 2026-MM-DD — Wave 7b CSP script-src nonce
+   ## 2026-MM-DD — Wave 7b CSP refinement
 
    Three PRs shipped:
-   - Task 1: Vercel Edge Middleware (middleware.js) generates per-request
-     nonce; vercel.json baseline tightened; frontend/index.html consumes
-     nonce via <option chosen>; docs/security/csp.md published.
+   - Task 1: vercel.json connect-src updated (Sentry ingest + Supabase
+     wildcard); docs/security/csp.md published.
    - Task 2: 3 E2E CSP regression scenarios (dev-mode contract; prod
-     validated by manual smoke).
+     validated via manual smoke in Task 1).
    - Task 3: closure.
 
-   Style-src 'unsafe-inline' WAIVED with v1.1 follow-up documented in
-   docs/security/csp.md (Tailwind 4 runtime + React inline-style props).
+   Bug fix: Sentry error ingestion was silently blocked by CSP
+   connect-src (Wave 2 shipped VITE_SENTRY_DSN but didn't update CSP).
 
-   Free-tier budget: ~30 K Vercel middleware invocations/mo at 100-org
-   projection; well inside Hobby limits.
+   Waivers: style-src 'unsafe-inline' (Tailwind 4 + React inline
+   styles); script-src hardening via strict-dynamic/nonce/hash
+   (deferred to v1.1). Both documented with concrete follow-ups in
+   docs/security/csp.md.
    ```
 
 4. Verification:
@@ -384,21 +363,21 @@ Do NOT touch: `claude.md`, `docs/architecture/**`, `docs/operations/**`, `docs/t
 Any "no" blocks push.
 
 1. All 3 tasks merged with CI green (Wave 6a + 7a gates stay green).
-2. `middleware.js` (or `.ts`) exists at the Vercel-expected path.
-3. `vercel.json` `script-src` no longer contains `'unsafe-inline'` (baseline fallback tightened).
-4. `frontend/index.html` consumes the nonce (via the option Task 1 chose).
-5. `docs/security/csp.md` exists with directive table + style-src waiver + follow-up plan.
+2. `vercel.json` `connect-src` contains `https://*.ingest.sentry.io`, `https://*.supabase.co`, `wss://*.supabase.co`.
+3. `vercel.json` `script-src` unchanged (still `'self'`).
+4. `vercel.json` `style-src` unchanged (still `'self' 'unsafe-inline'` — intentional waiver).
+5. `docs/security/csp.md` exists with full directive table + style-src waiver + script-src v1.1 hardening plan.
 6. `tests/e2e/features/csp_regression.feature` + `tests/e2e/steps/csp.ts` exist.
 7. `npm run lint` ≤ baseline.
 8. `npm run typecheck`: 0 errors.
-9. `npm run test`: 100 % pass; case count unchanged.
+9. `npm run test`: 100 % pass; case count unchanged (no Vitest additions).
 10. `npm run test:e2e -- --workers=1`: passing count = post-Wave-7a baseline + 3.
-11. `npm run frontend:build`: bundle sizes unchanged (middleware runs at edge; no bundle impact).
+11. `npm run frontend:build`: bundle sizes unchanged (static CSP; no bundle impact).
 12. `npm run check:advisors` + `npm run check:bundle`: green.
 13. No new npm dep.
-14. No new Edge Function (Vercel Middleware is NOT a Supabase Edge Function; don't conflate).
-15. No new `pg_cron` job.
-16. Manual prod-smoke checklist documented in Task 1 PR body — operator performs post-deploy.
+14. No middleware file created (original draft abandoned).
+15. No new `pg_cron` job, no new Supabase Edge Function, no new GitHub Actions workflow.
+16. Manual prod-smoke checklist documented in Task 1 PR body — operator performs post-deploy; Sentry test-error lands in dashboard.
 17. **Test-impact reconciled**: only new tests are the 3 E2E scenarios. Vitest unchanged.
 
 ---
@@ -438,7 +417,6 @@ Each `FAIL → HALT`.
 - `docs/audits/wave-1a/index.md` § Wave 7-csp.
 - `vercel.json` — CSP SSoT.
 - `frontend/index.html` — script tag consumes nonce.
-- Vercel Edge Middleware docs (authoritative at execution time).
 - Wave 7a's `docs/security/rls-policies.md` — CSP is the HTTP-layer complement to RLS.
 
 ---
@@ -446,14 +424,12 @@ Each `FAIL → HALT`.
 ## Critical Files
 
 **Will create**:
-- `middleware.js` (Task 1 — Vercel root)
 - `docs/security/csp.md` (Task 1)
 - `tests/e2e/features/csp_regression.feature` (Task 2)
 - `tests/e2e/steps/csp.ts` (Task 2)
 
 **Will edit**:
-- `vercel.json` (Task 1 — baseline tightened)
-- `frontend/index.html` (Task 1 — nonce consumption pattern)
+- `vercel.json` (Task 1 — `connect-src` only)
 - `docs/audits/wave-1a/index.md` (Task 3 — CSP findings only)
 - `docs/expansion/98_PROGRESS_LOG.md` (Task 3)
 
@@ -474,18 +450,19 @@ Each `FAIL → HALT`.
 - HSTS.
 - SRI.
 - pgTAP (Wave 7a).
-- `vercel dev` integration for local middleware testing.
 - Any production UI change.
 - Paid tiers.
+- Adding a `middleware.js` (deferred; original draft abandoned).
 
 ---
 
 ## Ground Rules
 
-- **Middleware is the chosen path**. Static-hash alternatives are documented but not built.
-- **`strict-dynamic` + ONE bootstrap nonce**. Do NOT nonce every Vite code-split chunk; `strict-dynamic` trusts them.
-- **Style-src waiver is honest**. Documented in `docs/security/csp.md` with a concrete v1.1 follow-up.
-- **Manual prod smoke is mandatory**. E2E in dev-mode validates the developer-time contract; operator validates the prod nonce contract post-deploy.
+- **Static CSP is the chosen path**. Middleware-based nonce is deferred to v1.1 with a documented follow-up; do NOT build it in this wave.
+- **Scope-bounded directive edits**. Only `connect-src` changes. `script-src`, `style-src`, and everything else in `vercel.json` stays verbatim.
+- **Style-src waiver is honest**. Documented in `docs/security/csp.md` with a concrete v1.1 follow-up plan.
+- **Script-src v1.1 plan is honest too**. Hardening options documented but not built.
+- **Manual prod smoke is mandatory**. E2E validates dev-mode contract; operator confirms Sentry errors land in dashboard post-deploy (the connect-src fix is only observable there).
 - **No new deps, no new Edge Functions, no new `pg_cron` jobs**.
 - **No `--no-verify`, no `--force-push`, no direct commits to `main`**.
 - **5-attempt debugging cap** per task.

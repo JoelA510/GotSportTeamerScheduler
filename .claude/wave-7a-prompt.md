@@ -192,7 +192,19 @@ PR per task; CI + Wave 6a gates stay green.
 
 1. Checkout `claude/wave-7a-pgtap-rls-tests` from latest `main` AFTER Task 1 merges.
 
-2. **Write shared fixtures** at `supabase/tests/_fixtures.sql` — org/user/team seed data reused across tests. Deterministic UUIDs (`11111111-...`, `22222222-...`, etc.), no random values. Included by each test via `\i supabase/tests/_fixtures.sql`.
+2. **Write shared fixtures** at `supabase/tests/_fixtures.sql` — org/user/team seed data reused across tests. Deterministic UUIDs only; no random values. Included by each test via `\i supabase/tests/_fixtures.sql`. Canonical fixture identities (use verbatim throughout Task 2 — no placeholder substitutions):
+
+   | Entity | UUID |
+   | --- | --- |
+   | Alice (admin of Org A) | `11111111-1111-1111-1111-111111111111` |
+   | Bob (admin of Org B) | `22222222-2222-2222-2222-222222222222` |
+   | Charlie (coach of Org A) | `33333333-3333-3333-3333-333333333333` |
+   | Org A | `a1111111-1111-1111-1111-111111111111` |
+   | Org B | `b2222222-2222-2222-2222-222222222222` |
+   | A-Team (Org A) | `aaaaaaaa-0000-0000-0000-000000000001` |
+   | B-Team (Org B) | `bbbbbbbb-0000-0000-0000-000000000002` |
+
+   Fixture inserts into `auth.users`, `public.organizations`, `public.organization_members`, `public.teams`. Add `public.audit_log` + `public.imports` rows for tests (c) and (e).
 
 3. **Write 5 canonical tests** covering the multi-tenancy invariants that matter most:
 
@@ -231,18 +243,20 @@ PR per task; CI + Wave 6a gates stay green.
    ROLLBACK;
    ```
 
-   **(c) `supabase/tests/rls_admin_vs_coach.sql`** — admin reads `audit_log`; coach does not:
+   **(c) `supabase/tests/rls_admin_vs_coach.sql`** — admin reads `audit_log`; coach does not.
+   - Fixture UUIDs (declared in `_fixtures.sql`, used verbatim here — do NOT substitute placeholders at agent-execution time):
+     - `11111111-1111-1111-1111-111111111111` — Alice, admin of Org A.
+     - `33333333-3333-3333-3333-333333333333` — Charlie, coach of Org A.
    ```sql
    BEGIN;
    \i supabase/tests/_fixtures.sql
-   -- Fixtures include one admin + one coach in the same org.
    SELECT plan(2);
    SET LOCAL role = 'authenticated';
 
-   SET LOCAL request.jwt.claims TO '{"sub":"<admin-uuid>"}';
+   SET LOCAL request.jwt.claims TO '{"sub":"11111111-1111-1111-1111-111111111111"}';
    SELECT ok((SELECT COUNT(*) FROM public.audit_log) > 0, 'admin reads audit_log');
 
-   SET LOCAL request.jwt.claims TO '{"sub":"<coach-uuid>"}';
+   SET LOCAL request.jwt.claims TO '{"sub":"33333333-3333-3333-3333-333333333333"}';
    SELECT is((SELECT COUNT(*) FROM public.audit_log)::int, 0, 'coach cannot read audit_log');
 
    SELECT finish();
