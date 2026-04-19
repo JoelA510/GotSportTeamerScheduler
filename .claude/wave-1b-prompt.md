@@ -102,18 +102,18 @@ Each fix-task operates from a single source of truth: the corresponding `### Wav
    - Keep each finding's fix as a distinct logical chunk in the diff (but all commits roll into a single `chore(triage):` commit — no per-finding commits in this wave; splitting happens in later waves).
    - Common Task 1 categories and their trivial mechanics:
      - **Unused imports**: delete the import line only. If the name is used via side effect (`import 'foo/style.css'`), this is not an unused import — skip.
-     - **Unused variables**: delete the variable if truly unreferenced. If it's a destructured prop, prefer `_name` prefix over removal (preserves callsite shape).
+     - **Unused variables**: delete the variable if truly unreferenced. If it's a destructured prop, prefer renaming via alias (e.g., `{ name: _name }`) over removal to preserve the callsite shape. Do NOT write `{ _name }` — that destructures a property literally named `_name`.
      - **Stale comments / dead links**: fix the text.
      - **Typos**: fix the character(s).
      - **Small whitespace / formatter drift**: `npm run format` on the affected file (do NOT run `npm run format` across the whole repo — scope the command with a path argument).
      - **Redundant early-return branches**: only if zero control-flow risk.
-     - **`console.log` that should be `logger.info`**: swap the call; keep the arg list identical.
    - **Do NOT**:
      - Rename anything exported.
      - Move code between files.
      - Refactor function bodies.
      - Touch `packages/core/src/**` domain invariants.
      - Modify JSDoc parameter types (re-file as `2-security` or `3-test-infra` depending on scope).
+     - Swap `console.log` / `console.warn` / `console.error` with `logger.*` equivalents. Although `frontend/src/lib/logger.js` is variadic, `logger.log` / `logger.warn` are prod-silenced and `logger.error` forwards to Sentry — the behavior differs from `console.*` in ways that disqualify this from the trivial bar. Re-file any log-call audit to Wave 3 (test-infra) or Wave 9 (release).
 
 5. **Verification between batches** (every ~5 findings):
    ```bash
@@ -222,7 +222,7 @@ None.
 **Trivial a11y fixes** (this is the canonical list — anything NOT here is not trivial):
 - `<img alt="">` add where alt is clearly decorative.
 - `<img alt="<descriptive text>">` where the surrounding copy gives an obvious descriptive value.
-- `aria-label="<icon name>"` add to icon-only `<button>` wrapping a lucide-react `<Icon />` where the icon's semantic is clear from context (e.g., `<X />` → `"Close"`, `<Trash2 />` → `"Delete"`, `<Plus />` → `"Add"`).
+- `aria-label="<action description>"` add to icon-only `<button>` wrapping a lucide-react `<Icon />` where the icon's semantic is clear from context. The label must describe the button's **function**, not the icon's component name (e.g., `<X />` → `"Close"`, `<Trash2 />` → `"Delete"`, `<Plus />` → `"Add"` — NOT `"X"`, `"Trash2"`, `"Plus"`).
 - `type="button"` add to `<button>` elements in forms that are NOT submit/reset.
 - `role="status"` / `aria-live="polite"` add to a toast container that clearly has that role.
 - `htmlFor=` attribute wiring on a `<label>` that already sits next to an `<input id="...">`.
