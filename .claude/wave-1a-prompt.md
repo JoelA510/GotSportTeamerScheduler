@@ -427,7 +427,7 @@ Commit with the exact `Commit:` line above. Push branch. Open PR titled `chore(a
    - Focus-return on modal close (focus should return to the triggering element).
    - `tabIndex="-1"` on focusable content (trap risk).
    - Skip-to-content link on `DashboardLayout` or app-root.
-   - Keyboard-only path through the import wizard and team-save flow.
+   - Static focus-order audit of the import wizard and team-save flow (read the JSX in `frontend/src/pages/`/`components/` and trace the tab-order from source — runtime keyboard walks are out of scope).
 
 6. **Color contrast audit** — read `frontend/src/index.css`:
    - For each theme (`[data-theme=dark]`, `[data-theme=light]`, `[data-theme=party]`, `[data-theme=club]`):
@@ -435,7 +435,7 @@ Commit with the exact `Commit:` line above. Push branch. Open PR titled `chore(a
      - Resolve `--color-bg-app`, `--color-bg-surface`, `--color-bg-glass`.
      - Compute text-over-bg contrast ratios.
    - Flag any ratio below **4.5:1** for body text or **3:1** for large text / UI component boundaries (WCAG 2.2 AA).
-   - `.glass-panel` / `.glass-panel-premium` overlays blur + tint the underlying layer; flag any panel-rendered text that drops below threshold after accounting for the glass effect.
+   - `.glass-panel` / `.glass-panel-premium`: measure against the panel's **base background color** only. (The actual rendered contrast depends on `backdrop-filter` compositing against whatever sits under the panel, which can't be computed statically — call that out as a known static-audit limitation in the finding and defer runtime measurement to Wave 5's `@axe-core/playwright` integration.)
 
 7. **Motion + reduced-motion audit**:
    - Grep `@media (prefers-reduced-motion)` across `frontend/src/`.
@@ -555,7 +555,7 @@ Required edits at wave close (Task 5 or a standalone finalize PR):
 Walk the checklist. Any "no" blocks push.
 
 1. All 6 tasks merged with verification gates green (Tasks 1, 2, 3, 4, 4.5, 5).
-2. `docs/audits/wave-1a/` contains exactly 6 sub-reports: `code-quality.md`, `security.md`, `supabase-performance.md`, `free-tier-usage.md`, `accessibility.md`, `index.md`, plus `README.md` (= 7 files total). No stray files.
+2. `docs/audits/wave-1a/` contains exactly 5 sub-reports (`code-quality.md`, `security.md`, `supabase-performance.md`, `free-tier-usage.md`, `accessibility.md`), plus `index.md` (consolidated) and `README.md` (= 7 files total). No stray files.
 3. Every finding in every sub-report uses the Finding format with all 8 fields.
 4. Every `Proposed wave` value is a valid wave in the current plan.
 5. `index.md` distribution table includes every finding from every sub-report exactly once.
