@@ -16,13 +16,19 @@
 
 The branch is **preserved on origin** so the useful scaffolding is salvageable — pre-flight Task 1 confirms the branch still exists and catalogs what's recoverable.
 
-**Wave purpose**: ship a production-ready cold-start org-creation flow: a cold-logged-in user with zero orgs lands on `/organizations/new`, completes a form, the mock or real `initialize_new_tenant` RPC fires, and they arrive at the admin dashboard for their new org. End-to-end covered by a new E2E scenario.
+**Current state on main** (verify in pre-flight; prior commit `7116f46 feat(multi-tenant): introduce self-serve zero-to-one onboarding architecture` shipped the skeleton):
+- `frontend/src/pages/OrganizationCreation.jsx` EXISTS with all 4 form fields + correct 4-arg RPC call.
+- `App.jsx` mounts it as a **blocking conditional render** (lines 63–72), NOT a route. URL never becomes `/organizations/new`; logged-out zero-org users can shadow `/auth/reset-password`.
+- No Zod validation (uses HTML `required` only — violates `claude.md` §3 mandate); no hook extraction; success path uses `window.location.href` (full reload); no unit tests.
+- `mockSupabaseClient.js` does NOT implement `initialize_new_tenant` — works only against real Supabase.
+
+**Wave purpose**: harden + route-wire the existing cold-start flow. A cold-logged-in user with zero orgs lands on `/organizations/new` via a proper route, form validates through Zod, mock or real `initialize_new_tenant` RPC fires, they arrive at the admin dashboard via SPA navigation. End-to-end covered by a new E2E scenario.
 
 **Wave is**:
-- Auditing PR #155 for salvageable pieces.
-- Implementing the `initialize_new_tenant` RPC stub in `frontend/src/lib/mockSupabaseClient.js`.
-- Building the `OrganizationCreation` component + `useOrganizationCreation` hook.
-- Adding `/organizations/new` to the router.
+- Auditing PR #155 + current main state for salvage gaps.
+- Implementing `initialize_new_tenant` in `frontend/src/lib/mockSupabaseClient.js` (new).
+- **Refactoring** (not creating) `OrganizationCreation` — extract `useOrganizationCreation` hook, add Zod validation, switch to React Router `navigate`, add unit tests.
+- **Refactoring** `App.jsx` — add `/organizations/new` route, remove the `hasNoOrgs` blocking render, add a route-based redirect for authenticated users with zero orgs.
 - A new E2E feature file exercising the cold-start flow.
 - Closure: audit index + progress log + architecture doc sync.
 
@@ -225,21 +231,23 @@ Six tasks: one design audit, three implementation, one E2E, one closure. End-to-
 
 1. Checkout `claude/wave-4-org-creation-ui` from latest `main` AFTER Task 1 merges.
 
-2. **Build `frontend/src/hooks/useOrganizationCreation.js`**:
-   - Accepts form values (org name, slug, any other required fields from the RPC signature).
-   - Internally uses `supabase.rpc('initialize_new_tenant', args)`.
+2. **Build `frontend/src/hooks/useOrganizationCreation.js`** (new) by extracting the submission logic from the existing `frontend/src/pages/OrganizationCreation.jsx`:
+   - Accepts all four RPC fields: `name`, `slug`, `timezone` (default `Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'`), `seasonYear` (default `new Date().getFullYear()`).
+   - Internally uses `supabase.rpc('initialize_new_tenant', { p_name, p_slug, p_timezone, p_season_year })`.
    - Returns `{ createOrganization, loading, error, newOrgId }`.
-   - On success, sets `newOrgId`; caller navigates.
-   - Zod schema gates the inputs BEFORE the RPC call (per `claude.md` §3 "Schema Rigidity"): org name 3–100 chars; slug matches `/^[a-z0-9-]+$/` 3–50 chars; required user context.
-   - Surface validation errors per field for the component to display.
+   - On success, sets `newOrgId`; caller navigates via React Router `useNavigate()` (replace the existing `window.location.href` full-page reload).
+   - **Zod schema gates all four inputs BEFORE the RPC call** (per `claude.md` §3 "Schema Rigidity"): `name` 3–100 chars; `slug` matches `/^[a-z0-9-]+$/`, 3–50 chars; `timezone` non-empty string (validate against IANA with `Intl.DateTimeFormat` round-trip if feasible, otherwise non-empty check); `seasonYear` integer between 2020 and 2100 (matches the HTML `min`/`max` bounds in the existing component); required user context.
+   - Surface per-field validation errors for the component to display.
 
-3. **Build `frontend/src/components/OrganizationCreation.jsx`** (placement follows existing component-directory convention; if there's a `onboarding/` subdir use it, else top-level):
-   - Controlled form with inputs for org name + slug (auto-generated from name with user-override).
-   - Uses existing design tokens — `.glass-panel`, `.glass-input`, `.glass-button` (per `claude.md` §6).
-   - a11y: `<label>` + `htmlFor` + `aria-describedby` for error messaging; `<form>` submit via button with explicit `type="submit"`; `role="status"` / `aria-live="polite"` for loading state.
-   - Submit flow: validates → calls `createOrganization` → on success, `navigate('/')` (default dashboard).
-   - No toast / router push boilerplate that PR #155 tried to add via missing components — inline minimal flow.
-   - Handles the duplicate-slug error shape from Task 2's mock by showing an inline field error.
+3. **Refactor `frontend/src/pages/OrganizationCreation.jsx`** (exists on main; keep at this path — pages live under `pages/` per `claude.md` §5):
+   - Keep the existing form inputs (name, slug, timezone, seasonYear) + the auto-slug-generation effect.
+   - Keep the existing design-system classes (`.glass-panel-premium`, `.glass-input`, `.glass-button`, etc.).
+   - **Extract submission logic** to the new `useOrganizationCreation` hook (Step 2). Component becomes a controlled form that calls `createOrganization(formValues)` and reads `{ loading, error, newOrgId }` from the hook.
+   - **Replace `window.location.href = '/?new_org=true'`** with React Router's `useNavigate()` + `navigate('/?new_org=true')`. Full-page reload was a workaround; React Router navigation preserves SPA state and avoids a re-bootstrap.
+   - **Add a11y**: `<label htmlFor>` + `<input id>` pairing; `aria-describedby` + `role="alert"` on field errors; `role="status"` + `aria-live="polite"` on loading + success; explicit `type="submit"` / `type="button"` on every `<button>` (confirm design-system `Button`'s `type` prop handling).
+   - **Preserve** the success animation + audit-log footer text. These are existing UX, not in scope to change.
+   - **Handle duplicate-slug error** from Task 2's mock (and the real function) by surfacing an inline field error under the slug input, not just the banner — the error shape from the RPC should be pattern-matched.
+   - **Do NOT** introduce any of PR #155's ghost components. The current skeleton doesn't have them; keep it that way.
 
 4. **Do NOT**:
    - Add a new navigation entry in the sidebar — cold-start users have no active org, so sidebar isn't rendered anyway.
@@ -306,40 +314,47 @@ Six tasks: one design audit, three implementation, one E2E, one closure. End-to-
 
 1. Checkout `claude/wave-4-route-wiring` from latest `main` AFTER Task 3 merges.
 
-2. **Edit `frontend/src/App.jsx`**:
-   - Add a `React.lazy()` import for `OrganizationCreation` (match existing lazy-load pattern).
-   - Add `<Route path="/organizations/new" element={<OrganizationCreation />} />` inside the current `<Routes>` block.
-   - The route sits OUTSIDE `<DashboardLayout>` if the dashboard layout expects an active org (cold-start users don't have one). Follow the existing nested-routing pattern — if there's a layout splitter, put `/organizations/new` at the same level as `/login`.
-   - Keep the route behind `<ProtectedRoute>` with a permission gate of "any authenticated user" (not an org-role gate). If no existing `authenticatedOnly` pattern exists, use the most permissive `<ProtectedRoute>` variant — do NOT create a new wrapper component.
+2. **Refactor `frontend/src/App.jsx`** — the existing `AppContent` conditionally renders `<OrganizationCreation />` at lines 65–72 when `hasNoOrgs` is true, which (a) never updates the URL to `/organizations/new`, (b) makes any dashboard-level redirect unreachable, and (c) can shadow public routes like `/auth/reset-password` for logged-out users (because `organizations.length === 0` when no session exists). Fix by replacing the conditional return with a proper route + route-based redirect:
 
-3. **Cold-start redirect** (optional — only if the current `/` dashboard blows up when a user has zero orgs):
-   - Check the current dashboard for a zero-org-guard. If it crashes or shows a blank page, add a redirect: when `useOrganization().organizations.length === 0`, navigate to `/organizations/new`.
-   - The redirect lives in the dashboard page (NOT in App.jsx router), so routes stay simple.
-   - If the dashboard already handles zero-org gracefully, SKIP this sub-step.
+   a. The `React.lazy()` import for `OrganizationCreation` already exists (line 38). Keep it; no new lazy import needed.
 
-4. **Do NOT**:
-   - Restructure the router layout.
+   b. **Delete the `hasNoOrgs` conditional block** (lines 63–72 — the `const hasNoOrgs = …` declaration AND the `if (hasNoOrgs) return …` render).
+
+   c. **Add a new `<Route>`** inside the existing `<Routes>` block:
+      ```jsx
+      <Route path="/organizations/new" element={<OrganizationCreation />} />
+      ```
+      Place it at the same level as the other public-ish routes (e.g., next to `/auth/reset-password` at line 81). Do NOT wrap it in `<ProtectedRoute>` with an org-role permission — authenticated-but-no-org is the intended user here. If the existing session gate (lines 55–61) already requires a session, that's sufficient gating.
+
+   d. **Add a route-based redirect** for authenticated users with zero orgs. Preferred: a top-of-`AppContent` guard AFTER the session gate — `if (session && !orgLoading && organizations.length === 0 && location.pathname !== '/organizations/new') return <Navigate to="/organizations/new" replace />;`. Alternative: a wrapper inside the `/` `<Route>` element. Whichever path: logged-out users navigating to `/auth/reset-password` must still reach the reset page — verify in Step 5.
+
+   e. **Preserve `DashboardPage` exports** (PR #155's Blocker 4): do NOT rewrite any page component, only the routing glue in `App.jsx`.
+
+3. **Do NOT**:
+   - Restructure the router layout beyond the surgical changes above.
    - Add new ProtectedRoute variants.
    - Change the sidebar navigation.
    - Introduce a landing page separate from `/login`.
+   - Rename or move `OrganizationCreation.jsx` (it stays at `frontend/src/pages/`).
 
-5. **Update unit tests** for `App.jsx` if they exist (grep `tests/App.test.*` — may not exist). Only if they do: ensure the new route resolves correctly.
+4. **Update unit tests** for `App.jsx` if they exist (grep `tests/App.test.*` — may not exist). Only if they do: ensure both the new route resolves AND the public-route-when-logged-out path (`/auth/reset-password`) still works.
 
-6. **Smoke test manually** in `npm run frontend:dev`:
-   - Navigate to `http://localhost:5173/organizations/new` while logged in → form renders.
-   - Navigate while logged out → redirected to `/login`.
-   - Document the smoke in the PR body with screenshot descriptions (no actual screenshots required; prose description is fine).
+5. **Smoke test manually** in mock mode (`VITE_USE_MOCK_SUPABASE=true` via `npm run frontend:dev`). Document the 4 paths in the PR body:
+   - Logged in + 0 orgs: `/` → redirects to `/organizations/new` (URL updates; form renders).
+   - Logged in + 1+ orgs: `/` → dashboard.
+   - Logged out: `/auth/reset-password` → reset page (NOT shadowed by `<OrganizationCreation>`).
+   - Logged out: `/organizations/new` → redirected to `/login` via existing session gate.
 
-7. Verification gate:
+6. Verification gate:
    ```bash
    npm run lint
    npm run typecheck
    npm run test
-   npm run frontend:build         # lazy chunk for /organizations/new appears; document its size
+   npm run frontend:build         # lazy chunk for /organizations/new appears in its own file; document size
    git status
    ```
 
-8. Commit, push, open PR.
+7. Commit, push, open PR.
 
 ### Tests to add (Task 4)
 
@@ -478,9 +493,11 @@ Six tasks: one design audit, three implementation, one E2E, one closure. End-to-
    Six PRs shipped:
    - Task 1: PR #155 salvage design doc.
    - Task 2: mock initialize_new_tenant RPC with 6+ unit tests.
-   - Task 3: OrganizationCreation component + useOrganizationCreation
-     hook with 13+ unit tests.
-   - Task 4: /organizations/new route wired via React.lazy.
+   - Task 3: OrganizationCreation REFACTORED (Zod validation, hook
+     extraction, SPA navigation, a11y) + useOrganizationCreation hook
+     with 13+ unit tests.
+   - Task 4: /organizations/new route wired; App.jsx hasNoOrgs
+     blocking render removed in favor of route-based redirect.
    - Task 5: 3 E2E cold-start scenarios (baseline + 3 passing).
    - Task 6: closure.
 
@@ -618,14 +635,15 @@ Do NOT run `npm run test:e2e` per-task for Tasks 1–4 (cost). CI runs it on mer
 - `tests/mockInitializeNewTenant.test.js`
 
 **Will create (Task 3)**:
-- `frontend/src/hooks/useOrganizationCreation.js`
-- `frontend/src/components/OrganizationCreation.jsx`
+- `frontend/src/hooks/useOrganizationCreation.js` (new — extracted from existing page)
 - `tests/OrganizationCreation.test.jsx`
 - `tests/useOrganizationCreation.test.js`
 
+**Will edit (Task 3)**:
+- `frontend/src/pages/OrganizationCreation.jsx` (EXISTS — refactor: extract logic to hook, add Zod, switch from `window.location.href` to `navigate`, a11y wiring)
+
 **Will edit (Task 4)**:
-- `frontend/src/App.jsx`
-- Possibly `frontend/src/pages/DashboardPage.jsx` (only if zero-org guard needed)
+- `frontend/src/App.jsx` (delete `hasNoOrgs` conditional return at lines 63–72; add `<Route path="/organizations/new">`; add route-based redirect for zero-org users)
 
 **Will create (Task 5)**:
 - `tests/e2e/features/onboarding_cold_start.feature`
