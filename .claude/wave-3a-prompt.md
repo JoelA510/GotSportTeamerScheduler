@@ -179,10 +179,11 @@ Three parallel infrastructure-creation tasks. Every task is purely additive — 
    ├── index.js                      # barrel
    ├── createChainMock.js            # Supabase chainable query-builder mock
    ├── renderWithProviders.jsx       # RTL render + provider wrapping
-   ├── installAuthMock.js            # Auth context mock with hoisted state
    ├── seedMockDb.js                 # sessionStorage mock-DB seeder (E2E-friendly)
    └── mockSupabaseShape.js          # default object shape for vi.mock('supabaseClient')
    ```
+
+   **Not a helper — documented as a template**: the auth-context hoisted-mock pattern (`vi.hoisted` + `vi.mock('@/contexts/AuthContext', ...)`) can NOT be safely extracted into a reusable function. Vitest hoists `vi.mock()` factories above all imports, so a helper function called at runtime cannot install a mock that will be in effect when the mocked module is first imported. The pattern lives in `docs/testing/test-helpers.md` (Wave 3b) as a copy-paste idiom that tests paste at the top of their file. Do NOT ship an `installAuthMock.js` helper.
 
 3. **`createChainMock.js`** — chainable builder mirroring `supabase.from(...).select(...).eq(...).single()`:
 
@@ -196,12 +197,22 @@ Three parallel infrastructure-creation tasks. Every task is purely additive — 
    export function createChainMock(resolvedValue) {
      const target = {
        ...resolvedValue,
-       then: (onResolve) => Promise.resolve(resolvedValue).then(onResolve),
+       // Forward BOTH promise handlers (onFulfilled, onRejected) and any
+       // future args. A single-arg signature breaks Vitest/JSDOM internals
+       // that rely on the standard Promise shape.
+       then: (...args) => Promise.resolve(resolvedValue).then(...args),
      };
      const proxy = new Proxy(target, {
        get(t, prop) {
          if (prop === 'then') return t.then;
          if (prop === 'data' || prop === 'error') return t[prop];
+         // Let symbols (Symbol.toStringTag, Symbol.iterator, …) and common
+         // introspection properties (toJSON, constructor) fall through to
+         // the target. Without this, JSON.stringify, console.log, and test-
+         // runner diffing can infinite-recurse or throw.
+         if (typeof prop === 'symbol' || prop === 'toJSON' || prop === 'constructor') {
+           return t[prop];
+         }
          return () => proxy;
        },
      });
@@ -253,32 +264,7 @@ Three parallel infrastructure-creation tasks. Every task is purely additive — 
 
    Note: `<BrowserRouter>` in `App.jsx` becomes `<MemoryRouter>` for tests (avoids jsdom URL issues). `<ErrorBoundary>` is omitted intentionally — tests that need to assert error boundaries wrap manually.
 
-5. **`installAuthMock.js`** — hoisted-state auth mock for tests that need mid-test login transitions:
-
-   ```js
-   import { vi } from 'vitest';
-
-   // Usage (top of test file):
-   //   const authState = installAuthMock();
-   //   // Later:
-   //   authState.user = makeUser({ role: 'admin' });
-   //   rerender(<MyComponent />);
-
-   export function installAuthMock() {
-     const state = {
-       user: null,
-       loading: false,
-       signIn: vi.fn(),
-       signOut: vi.fn(),
-     };
-     vi.mock('@/contexts/AuthContext', () => ({
-       useAuth: () => state,
-     }));
-     return state;
-   }
-   ```
-
-6. **`seedMockDb.js`** — E2E-facing seeder callable via `page.evaluate(seedMockDb, tables)`:
+5. **`seedMockDb.js`** — E2E-facing seeder callable via `page.evaluate(seedMockDb, tables)`:
 
    ```js
    // Pure function; MUST serialize to the browser context.
@@ -295,7 +281,7 @@ Three parallel infrastructure-creation tasks. Every task is purely additive — 
 
    No imports — `page.evaluate` serializes the function body and runs it in the browser. Factories resolve in the node test context; their plain-object outputs pass into `page.evaluate` as JSON-safe args.
 
-7. **`mockSupabaseShape.js`** — default shape for `vi.mock('@/lib/supabaseClient')`:
+6. **`mockSupabaseShape.js`** — default shape for `vi.mock('@/lib/supabaseClient')`:
 
    ```js
    import { vi } from 'vitest';
@@ -329,22 +315,20 @@ Three parallel infrastructure-creation tasks. Every task is purely additive — 
    });
    ```
 
-8. **Write helper self-tests** at `tests/helpers/__tests__/<name>.test.{js,jsx}`:
-   - `createChainMock`: chain `.select().eq().single()` resolves; `await chain` returns `resolvedValue`; `.data` + `.error` accessible directly on the proxy.
+7. **Write helper self-tests** at `tests/helpers/__tests__/<name>.test.{js,jsx}`:
+   - `createChainMock`: chain `.select().eq().single()` resolves; `await chain` returns `resolvedValue`; `.data` + `.error` accessible directly on the proxy; `JSON.stringify(chain)` and `console.log(chain)` do not infinite-recurse or throw; a `.then()` call with both `onFulfilled` and `onRejected` forwards both.
    - `renderWithProviders`: renders a child without error; localStorage active-org matches the passed `organization.id`; memoryRouter initial route matches.
-   - `installAuthMock`: mutating `state.user` is observable via `useAuth()`.
    - `seedMockDb`: appends rows to the mock DB; doesn't clobber existing tables.
    - `mockSupabaseShape`: every expected method is a `vi.fn()` (spy).
 
-9. Verification gate (same as Task 1).
+8. Verification gate (same as Task 1).
 
-10. Commit, push, open PR.
+9. Commit, push, open PR.
 
 ### Tests to add (Task 2)
 
 - `tests/helpers/__tests__/createChainMock.test.js`
 - `tests/helpers/__tests__/renderWithProviders.test.jsx`
-- `tests/helpers/__tests__/installAuthMock.test.js`
 - `tests/helpers/__tests__/seedMockDb.test.js`
 - `tests/helpers/__tests__/mockSupabaseShape.test.js`
 
@@ -474,7 +458,7 @@ Any "no" blocks the Wave 3b kickoff.
 6. `npm run test:coverage`: thresholds unchanged; no regression.
 7. `npm run frontend:build`: bundle sizes unchanged. Factories + helpers live under `tests/` and MUST NOT leak into production.
 8. `tests/factories/` has 9 source modules + 8 `__tests__/` files.
-9. `tests/helpers/` has 6 source modules + 5 `__tests__/` files.
+9. `tests/helpers/` has 5 source modules + 4 `__tests__/` files.
 10. `tests/setup.js` extended additively (no deletions).
 11. No new dependency in `package.json`.
 12. No change to `vitest.config.js`, `playwright.config.ts`, `vite.config.js`, `eslint.config.js`, `tsconfig.json`, `.prettierrc`.
@@ -542,10 +526,9 @@ Each `FAIL → HALT`. Do NOT run `npm run test:e2e` per-task (cost).
 - `tests/helpers/index.js`
 - `tests/helpers/createChainMock.js`
 - `tests/helpers/renderWithProviders.jsx`
-- `tests/helpers/installAuthMock.js`
 - `tests/helpers/seedMockDb.js`
 - `tests/helpers/mockSupabaseShape.js`
-- `tests/helpers/__tests__/*.test.{js,jsx}` (5 files)
+- `tests/helpers/__tests__/*.test.{js,jsx}` (4 files)
 
 **Will edit (Task 3)**:
 - `tests/setup.js` — additive polyfills only.

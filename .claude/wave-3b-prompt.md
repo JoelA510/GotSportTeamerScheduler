@@ -4,7 +4,7 @@
 
 **Prior waves**: 1a + 1b + 2 + 3a shipped. Wave 3a created:
 - `tests/factories/` — 9 modules with deterministic factory functions + self-tests.
-- `tests/helpers/` — `createChainMock`, `renderWithProviders`, `installAuthMock`, `seedMockDb`, `mockSupabaseShape` + self-tests.
+- `tests/helpers/` — `createChainMock`, `renderWithProviders`, `seedMockDb`, `mockSupabaseShape` + self-tests. (No `installAuthMock` helper: Vitest hoists `vi.mock` factories above imports, so the pattern cannot be safely extracted into a runtime function — it lives as a copy-paste idiom in `test-helpers.md` instead.)
 - `tests/setup.js` extended with jsdom polyfills (`ResizeObserver`, `IntersectionObserver`, `matchMedia`, `scrollIntoView`).
 
 **This wave's purpose**: validate Wave 3a's infra by migrating 5 representative existing tests, then publish the usage doc and close the audit-index findings.
@@ -88,7 +88,7 @@ The 5 targets are chosen to maximize pattern breadth (adjust if any has been del
       - **Inline object literals** → replace with factory calls.
       - **Inline Supabase mock chains** → replace with `createChainMock`.
       - **Inline `<Provider>` wrapping** → replace with `renderWithProviders`.
-      - **Hoisted auth state scaffolding** → replace with `installAuthMock`.
+      - **Hoisted auth state scaffolding** → replace with the `vi.hoisted` + `vi.mock` idiom documented in `test-helpers.md` (see Task 2 Step 2). The idiom is pasted at the TOP of the test file (above all imports of the component under test) because Vitest hoists `vi.mock()` factories — a runtime helper function cannot install a mock that affects already-imported modules.
    b. Apply replacements. Run `npm run test -- tests/<file>` after EACH micro-change to confirm the file still passes.
    c. **Every assertion must survive unchanged.** If an assertion would need to change, the factory default is wrong — HALT, fix the factory in a hotfix PR to Wave 3a's work, OR add an explicit `overrides` in the test.
    d. Delete replaced inline definitions. Do NOT leave dead code behind (unused imports, orphan helpers).
@@ -159,7 +159,7 @@ The 5 targets are chosen to maximize pattern breadth (adjust if any has been del
    ## tests/helpers/
    - `createChainMock`: when to use, proxy semantics, per-call vs reused.
    - `renderWithProviders`: options object, provider order mirroring `App.jsx`.
-   - `installAuthMock`: hoisted-state pattern, mid-test login transitions.
+   - **Auth-context hoisted-mock idiom** (not a helper): copy-paste template using `vi.hoisted` + `vi.mock('@/contexts/AuthContext', …)` placed at the top of a test file. Document WHY Vitest mock hoisting forbids extraction into a runtime helper. Include an example showing mid-test login transitions via mutating the hoisted state object.
    - `seedMockDb`: E2E step-def usage via `page.evaluate`.
    - `mockSupabaseShape`: default shape for `vi.mock('@/lib/supabaseClient')`.
 
