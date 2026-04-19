@@ -51,16 +51,17 @@ If a migration file, Edge Function, or script has been renamed since this plan w
   - `claude/wave-1a-security` → Task 2
   - `claude/wave-1a-supabase-performance` → Task 3
   - `claude/wave-1a-free-tier-usage` → Task 4
-  - `claude/wave-1a-consolidate` → Task 5 (lands LAST — depends on 1–4)
+  - `claude/wave-1a-accessibility` → Task 4.5
+  - `claude/wave-1a-consolidate` → Task 5 (lands LAST — depends on 1–4.5)
 
 - Open a PR to `main` after each task's verification gate passes.
-- **Do not push directly to `main`.** Task 5 lands after 1–4 are merged.
+- **Do not push directly to `main`.** Task 5 lands after 1–4.5 are merged.
 
 ---
 
 ## Wave Scope
 
-Audit the repo across four orthogonal domains and produce a consolidated severity-tagged findings index. Each of Tasks 1–4 contributes one sub-report under `docs/audits/wave-1a/`. Task 5 assembles the index and assigns each non-trivial finding to a target wave (2–9).
+Audit the repo across five orthogonal domains and produce a consolidated severity-tagged findings index. Each of Tasks 1–4.5 contributes one sub-report under `docs/audits/wave-1a/`. Task 5 assembles the index and assigns each non-trivial finding to a target wave (2–9).
 
 **No code changes. No migration changes. No test additions or modifications.** Wave 1b is the acting wave.
 
@@ -383,6 +384,98 @@ Commit with the exact `Commit:` line above. Push branch. Open PR titled `chore(a
 
 ---
 
+## Task 4.5 — Accessibility Audit (WCAG 2.2 AA)
+
+**Commit**: `chore(audit): wave-1a accessibility findings (task 4.5)`
+
+**Branch**: `claude/wave-1a-accessibility`
+
+**Output**: `docs/audits/wave-1a/accessibility.md` (new file)
+
+### Steps
+
+1. Checkout `claude/wave-1a-accessibility` from latest `main`.
+
+2. **Baseline review** — read these existing docs to avoid re-filing closed work:
+   - `docs/ui/agent-ui-ux-guidelines.md` (canonical rules)
+   - `docs/ui/ui-ux-pass.md` (P0/P1 checklist)
+   - `docs/ui/ui-ux-pass-summary.md` (historical closure summary)
+   - `docs/ui/ui-ux-polish.md` (P2 visual polish)
+   - `docs/ui/ui-ux-rules.json` (rule IDs + severities)
+
+   Record each rule ID's current baseline status at the top of the sub-report. Findings in this task flag **regressions against the baseline** or **gaps not previously surfaced** — not items the historical pass already closed.
+
+3. **Static a11y scan of `frontend/src/**/*.jsx`** — flag:
+   - `<img>` tags missing `alt`.
+   - Icon-only `<button>` / `<Link>` wrapping a lucide-react `<Icon />` without `aria-label`, `title`, or `sr-only` text.
+   - `<input>` / `<select>` / `<textarea>` without an associated `<label>` (wrapped or `htmlFor`).
+   - Click handlers on non-interactive elements (`<div onClick>`, `<span onClick>`) lacking `role="button"` + `tabIndex` + keyboard handlers.
+   - Custom interactive widgets missing `role` / `aria-expanded` / `aria-selected` / `aria-pressed` attributes.
+   - Page components missing semantic landmarks (`<header>`, `<main>`, `<nav>`, `<footer>`).
+   - Heading-level skips (`<h1>` then `<h3>` with no `<h2>`).
+   - Error text not linked via `aria-describedby` on the offending field.
+   - Missing `aria-live` region (`role="status"` / `role="alert"`) for async result announcements (toasts, loading states).
+   - `<button>` elements without explicit `type=` (defaults to `submit` inside forms; footgun).
+
+4. **Drag-and-drop keyboard fallback audit** — per `claude.md` §9.3:
+   - Grep `useDraggable`, `useSortable`, `DndContext` in `frontend/src/`.
+   - For every drop target, cite whether a non-drag alternative exists (context menu, "move to" selector, button, keyboard command palette). Missing fallback = P1.
+   - @dnd-kit provides `screenReaderInstructions` + `announcements` props. For every `<DndContext>`, note whether these are configured. Missing announcements = P1.
+
+5. **Focus management audit**:
+   - Modals / dialogs without a focus trap (search for `<Dialog>`, `<Modal>`, custom overlay wrappers).
+   - Focus-return on modal close (focus should return to the triggering element).
+   - `tabIndex="-1"` on focusable content (trap risk).
+   - Skip-to-content link on `DashboardLayout` or app-root.
+   - Keyboard-only path through the import wizard and team-save flow.
+
+6. **Color contrast audit** — read `frontend/src/index.css`:
+   - For each theme (`[data-theme=dark]`, `[data-theme=light]`, `[data-theme=party]`, `[data-theme=club]`):
+     - Resolve `--color-text-primary`, `--color-text-secondary`, `--color-text-muted`, `--color-text-accent`.
+     - Resolve `--color-bg-app`, `--color-bg-surface`, `--color-bg-glass`.
+     - Compute text-over-bg contrast ratios.
+   - Flag any ratio below **4.5:1** for body text or **3:1** for large text / UI component boundaries (WCAG 2.2 AA).
+   - `.glass-panel` / `.glass-panel-premium` overlays blur + tint the underlying layer; flag any panel-rendered text that drops below threshold after accounting for the glass effect.
+
+7. **Motion + reduced-motion audit**:
+   - Grep `@media (prefers-reduced-motion)` across `frontend/src/`.
+   - For each `@keyframes` / `animation:` / `transition:` rule, verify it respects `prefers-reduced-motion: reduce` OR is <5s AND non-essential.
+   - Explicitly flag `.animate-pulseGlow`, `.animate-fadeIn`, `.animate-slideUp` if they lack a reduced-motion override.
+
+8. **Document structure**:
+   - Confirm `frontend/index.html` sets `<html lang="en">`.
+   - Confirm route-specific `<title>` is set (grep `document.title =` or `useEffect` title setters — per-route titles improve screen-reader orientation).
+
+9. **Form validation a11y** — for the top 3 forms (CSV upload, team save, admin override):
+   - Validation errors render with `role="alert"` or `aria-live="polite"`.
+   - Error text is programmatically linked to the field (`aria-describedby`).
+   - Success states announce via `role="status"` (toast) or inline text.
+
+10. **Cross-reference with `docs/ui/ui-ux-rules.json`** — for each rule where the current code drifts from the baseline status captured in Step 2, file a finding that cites the rule ID.
+
+11. **Draft `docs/audits/wave-1a/accessibility.md`** using the Finding format. Structure:
+    - `## Baseline (from docs/ui/)` — short summary of closed UI/UX work.
+    - `## Scan results by category` — sub-headings for Semantic HTML / ARIA, DnD fallbacks, Focus management, Color contrast (per-theme table), Motion, Forms, Document structure.
+    - `## Findings` — Finding format entries, grouped by category.
+    - Aim for 10–25 findings.
+
+12. Self-review: every contrast finding shows computed ratios; every DnD finding cites its fallback (or lack thereof); every `Proposed wave` is valid (most will be `5-e2e` for axe-core integration, `6-free-tier` if an asset optimization fixes it, `8-docs` for rule-doc refreshes, or `1b-trivial` for a comment/attribute add).
+
+### Verification (Task 4.5)
+
+- `npm run lint`, `npm run typecheck`, `npm run test` — unchanged.
+- `git status` — only `docs/audits/wave-1a/accessibility.md` added.
+
+### Out of scope (Task 4.5)
+
+- Running `@axe-core/playwright` dynamically (Wave 5 integrates axe-core).
+- Running a browser-driven keyboard walk (requires running the app).
+- Running Lighthouse a11y scores (Wave 6 or 9).
+- Fixing any a11y issue inline.
+- Re-litigating items already closed in `docs/ui/ui-ux-pass-summary.md` — those are baseline.
+
+---
+
 ## Task 5 — Consolidate + Prioritize Findings
 
 **Commit**: `chore(audit): wave-1a consolidated findings index (task 5)`
@@ -391,11 +484,11 @@ Commit with the exact `Commit:` line above. Push branch. Open PR titled `chore(a
 
 **Output**: `docs/audits/wave-1a/index.md` (new file) + `docs/audits/wave-1a/README.md` (new file; points readers at the index)
 
-**Depends on**: Tasks 1–4 merged to `main`.
+**Depends on**: Tasks 1–4.5 merged to `main`.
 
 ### Steps
 
-1. Checkout `claude/wave-1a-consolidate` from latest `main` AFTER Tasks 1–4 have merged. Verify all four sub-reports exist under `docs/audits/wave-1a/`.
+1. Checkout `claude/wave-1a-consolidate` from latest `main` AFTER Tasks 1–4.5 have merged. Verify all five sub-reports exist under `docs/audits/wave-1a/`: `code-quality.md`, `security.md`, `supabase-performance.md`, `free-tier-usage.md`, `accessibility.md`.
 
 2. **Re-read each sub-report.** For every finding:
    - Assign a stable finding ID: `F-<task>-<NN>` (e.g., `F-1-03`, `F-2-07`). Preserve the IDs from the sub-reports where set.
@@ -461,8 +554,8 @@ Required edits at wave close (Task 5 or a standalone finalize PR):
 
 Walk the checklist. Any "no" blocks push.
 
-1. All 5 tasks merged with verification gates green.
-2. `docs/audits/wave-1a/` contains exactly 5 files: `code-quality.md`, `security.md`, `supabase-performance.md`, `free-tier-usage.md`, `index.md`, plus `README.md` (= 6 files total). No stray files.
+1. All 6 tasks merged with verification gates green (Tasks 1, 2, 3, 4, 4.5, 5).
+2. `docs/audits/wave-1a/` contains exactly 6 sub-reports: `code-quality.md`, `security.md`, `supabase-performance.md`, `free-tier-usage.md`, `accessibility.md`, `index.md`, plus `README.md` (= 7 files total). No stray files.
 3. Every finding in every sub-report uses the Finding format with all 8 fields.
 4. Every `Proposed wave` value is a valid wave in the current plan.
 5. `index.md` distribution table includes every finding from every sub-report exactly once.
@@ -478,13 +571,13 @@ Walk the checklist. Any "no" blocks push.
 
 ## Commit & Push to Main
 
-1. Tasks 1–4 PRs can merge in any order (each is a single new file).
+1. Tasks 1–4.5 PRs can merge in any order (each is a single new file).
 2. Task 5 PR merges last.
-3. After all 5 merge:
+3. After all 6 merge:
    - `git checkout main && git pull`
    - `npm install`
    - `npm run lint && npm run typecheck && npm run test && npm run frontend:build` — all green.
-   - `ls docs/audits/wave-1a/` — exactly 6 files.
+   - `ls docs/audits/wave-1a/` — exactly 7 files.
    - If CI is green, wave is shipped.
 
 ---
@@ -534,6 +627,7 @@ Do NOT run `npm run test:e2e` — it's expensive and not gated on for audit-only
 - `docs/audits/wave-1a/security.md` (Task 2)
 - `docs/audits/wave-1a/supabase-performance.md` (Task 3)
 - `docs/audits/wave-1a/free-tier-usage.md` (Task 4)
+- `docs/audits/wave-1a/accessibility.md` (Task 4.5)
 - `docs/audits/wave-1a/index.md` (Task 5)
 - `docs/audits/wave-1a/README.md` (Task 5)
 
