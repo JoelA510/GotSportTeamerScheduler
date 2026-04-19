@@ -109,8 +109,18 @@ Two parallel guard tasks + one closure. Each guard produces: (a) a CLI-runnable 
 4. **Script at `scripts/check-bundle-size.js`** (or `.mjs`):
    - Runs after `npm run frontend:build`.
    - Walks `dist/assets/`, gzips each `.js` in memory (use Node's `zlib` — no new deps).
-   - Compares against the budgets (hard-coded in the script; source of truth is `bundle-budget.md` but the script needs literal numbers).
-   - Fails with exit code 1 + clear message on overshoot: `BUDGET FAIL: dist/assets/foo.js = 85 KB gzipped > budget 80 KB`.
+   - **Reads budgets from a single shared JSON config** at `config/bundle-budget.json` — the script does NOT hardcode numbers. The markdown doc is HUMAN-READABLE reference; the JSON is machine-readable source of truth; the script reads JSON. Adding a budget = edit JSON + update markdown. The two never drift because markdown links to the JSON and the script imports it.
+   - `config/bundle-budget.json` shape:
+     ```json
+     {
+       "main": { "gzippedKb": 300 },
+       "perRouteLazy": { "gzippedKb": 80 },
+       "totalFirstPaint": { "gzippedKb": 500 },
+       "totalDist": { "rawMb": 5 }
+     }
+     ```
+   - The markdown file (`docs/operations/bundle-budget.md`) references `config/bundle-budget.json` as the canonical source and explains each key's meaning. A drift check in the doc: "If you edit the JSON, update the rationale table in this file — CI does not enforce that the two match semantically, only that the JSON is valid."
+   - Fails with exit code 1 + clear message on overshoot: `BUDGET FAIL: dist/assets/foo.js = 85 KB gzipped > budget 80 KB (perRouteLazy)`.
    - Reports all chunks + their status (pass/fail) in a table for humans.
 
 5. **Add npm script** to `package.json`:
@@ -187,7 +197,10 @@ Two parallel guard tasks + one closure. Each guard produces: (a) a CLI-runnable 
 1. Checkout `claude/wave-6a-advisor-lint` from latest `main`.
 
 2. **Identify the advisor patterns worth catching statically** — Wave 2 fixed these specific patterns; the lint's job is to PREVENT regression. From `docs/audits/wave-1a/supabase-performance.md` + Wave 2 closure, the high-confidence patterns are:
-   - **`SECURITY DEFINER` function without `SET search_path`**: grep `SECURITY DEFINER` → any match must be followed (within the same function body) by `SET search_path`.
+   - **`SECURITY DEFINER` function without `SET search_path`** — **block-level check**. A naive sequential grep for `SECURITY DEFINER` followed by `SET search_path` is UNSAFE for files that contain multiple functions: a `SET search_path` in function B would spuriously satisfy the check for function A declared earlier. The lint MUST parse each function definition as a discrete block and check each block in isolation.
+     - Block detection regex (adjust as needed): match `CREATE\s+(OR\s+REPLACE\s+)?FUNCTION\s+[^(]+\([^)]*\)` followed by everything up to the closing `LANGUAGE \w+;` on its own line OR the next top-level `CREATE` / end-of-file.
+     - Inside each matched block: if the block contains `SECURITY DEFINER` (outside comments and strings) AND does NOT contain `SET search_path` (also outside comments), report a violation with file path + function name + line number.
+     - Comment-stripping: strip `--...` line comments and `/* ... */` block comments before checking presence-patterns to avoid false positives / false negatives.
    - **View declaration missing `security_invoker`**: `CREATE VIEW public.foo AS ...` OR `CREATE OR REPLACE VIEW public.foo AS ...` without `WITH (security_invoker = on)` OR without a `SECURITY INVOKER` modifier.
    - **Table declared without RLS enabled**: `CREATE TABLE public.foo (...)` without a corresponding `ALTER TABLE public.foo ENABLE ROW LEVEL SECURITY;` within the same migration file.
    - **`VITE_*` prefix on secret-ish env var names**: grep `.env.example` + `.env.test.example` for `VITE_*SECRET*` / `VITE_*PRIVATE*` / `VITE_*TOKEN*` / `VITE_SERVICE_ROLE*`.
@@ -244,12 +257,14 @@ Two parallel guard tasks + one closure. Each guard produces: (a) a CLI-runnable 
 
 - `tests/advisorLint.test.js` — unit tests for each pattern's detection logic:
   - A fixture SQL file with `SECURITY DEFINER` + no `SET search_path` → lint reports it.
-  - A fixture with `SECURITY DEFINER` + `SET search_path = public` → lint passes.
+  - A fixture with `SECURITY DEFINER` + `SET search_path = public` in the same function block → lint passes.
+  - **Multi-function block regression case**: a fixture where function A is `SECURITY DEFINER` with NO `SET search_path`, and function B in the SAME FILE has both `SECURITY DEFINER` AND `SET search_path`. Lint MUST report function A specifically (naive grep would false-pass).
+  - Comment-stripping case: `SECURITY DEFINER` inside a `-- line comment` or `/* block comment */` does NOT trigger the rule.
   - A fixture `CREATE VIEW` without `security_invoker` → reports.
   - A fixture `CREATE TABLE` without matching `ENABLE ROW LEVEL SECURITY` → reports.
   - A fixture `USING (true)` → reports.
   - A fixture `.env.example` with `VITE_SERVICE_ROLE_KEY` → reports.
-  - ≥ 8 test cases covering both detection AND negative (should-not-fire) cases.
+  - ≥ 10 test cases covering both detection AND negative (should-not-fire) cases.
 
 ### Out of scope (Task 2)
 
@@ -415,8 +430,9 @@ Each `FAIL → HALT`.
 
 **Will create**:
 - `scripts/check-bundle-size.js` (Task 1)
+- `config/bundle-budget.json` (Task 1 — SSOT for the budget numbers)
 - `scripts/advisor-lint.js` (Task 2)
-- `docs/operations/bundle-budget.md` (Task 1)
+- `docs/operations/bundle-budget.md` (Task 1 — references the JSON)
 - `docs/operations/advisor-lint.md` (Task 2)
 - `tests/checkBundleSize.test.js` (Task 1)
 - `tests/advisorLint.test.js` (Task 2)

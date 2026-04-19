@@ -255,11 +255,13 @@ Three cost-reducing tasks + one closure. Each cost-reducing task quantifies its 
 
 ---
 
-## Task 3 — Storage Retention Cron (`raw-imports`)
+## Task 3 — Storage Retention via GitHub Actions (`raw-imports`)
 
-**Commit**: `feat(storage): add raw-imports retention cron (30-day)`
+**Commit**: `feat(storage): add raw-imports 30-day retention via github actions`
 
 **Branch**: `claude/wave-6b-storage-retention`
+
+**Why GitHub Actions, not `pg_cron`**: a plain `DELETE FROM storage.objects` executed in `pg_cron` removes the metadata row but leaves the physical file in the S3-backed storage tier — orphaned bytes that continue to count against the 1 GB free-tier quota. To actually free storage we must call the Supabase Storage API (`supabase.storage.from('raw-imports').remove(paths)`), which cascades through to the S3 backend AND deletes the metadata row. That API call needs a service-role credential, which is unsafe to stash in the database. GitHub Actions (free ~2,000 min/mo for private repos; this job will use < 20 min/mo) is the simplest free-tier-compatible host.
 
 ### Steps
 
@@ -271,96 +273,129 @@ Three cost-reducing tasks + one closure. Each cost-reducing task quantifies its 
    - Confirm RLS policy present.
    - If state differs from Wave 2 close, stop — reconcile first.
 
-3. **Choose the retention window** — Wave 1a Task 4 suggested bounded retention. Recommended: **30 days** (imports older than 30 days are operational history; users re-upload if needed). Document the choice rationale in the migration header.
+3. **Choose the retention window** — Wave 1a Task 4 suggested bounded retention. Recommended: **30 days**. Imports older than 30 days are operational history; users re-upload if needed. Document the choice rationale in `storage-retention.md`.
 
-4. **Write the migration** at `supabase/migrations/<YYYYMMDDHHMMSS>_raw_imports_retention_cron.sql`:
-   ```sql
-   -- Forward: schedule a daily cron that deletes raw-imports objects
-   -- older than 30 days. Free-tier storage cap: 1 GB; at 100-org
-   -- projection without retention, the bucket trends unbounded.
-   --
-   -- pg_cron extension already enabled per migration
-   -- 20260416000002_data_retention_cron.sql.
+4. **Write the cleanup script** at `scripts/cleanup-raw-imports.js`:
+   - Uses `@supabase/supabase-js` (already a dep; no new install).
+   - Reads `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` from env.
+   - Lists objects in `raw-imports` via the Storage API (paginate if > 1000 rows per listing).
+   - Filters for `created_at < NOW() - 30 days`.
+   - Calls `supabase.storage.from('raw-imports').remove(pathsToDelete)` in batches of ≤ 100.
+   - Logs the deleted count + any errors. Exits 0 on success, 1 on API error.
+   - **Dry-run mode**: `--dry-run` flag lists what would be deleted without calling `.remove()`.
+   - **Safety cap**: if the list of to-delete paths exceeds some sanity threshold (e.g., 10,000) — exit 1 with a clear message. Prevents a runaway deletion if bucket state is unexpected.
 
-   -- Schedule: daily at 02:00 UTC (low-traffic window).
-   SELECT cron.schedule(
-     'cleanup-raw-imports',
-     '0 2 * * *',
-     $$
-     DELETE FROM storage.objects
-     WHERE bucket_id = 'raw-imports'
-       AND created_at < NOW() - INTERVAL '30 days';
-     $$
-   );
+5. **Write the GitHub Actions workflow** at `.github/workflows/cleanup-raw-imports.yml`:
+   ```yaml
+   name: Cleanup raw-imports (30-day retention)
 
-   COMMENT ON SCHEMA cron IS
-     'Wave 6b: raw-imports retention cron added. See migration for rationale.';
+   on:
+     schedule:
+       - cron: '0 5 * * *'   # Daily 05:00 UTC (staggered from other retention jobs)
+     workflow_dispatch:
+       inputs:
+         dry_run:
+           description: 'Dry run (list only, do not delete)'
+           required: false
+           default: 'false'
+
+   jobs:
+     cleanup:
+       runs-on: ubuntu-latest
+       timeout-minutes: 10
+       steps:
+         - uses: actions/checkout@v4
+         - uses: actions/setup-node@v4
+           with:
+             node-version: '20'
+             cache: 'npm'
+         - run: npm ci
+         - name: Run cleanup
+           env:
+             SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+             SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+           run: node scripts/cleanup-raw-imports.js ${{ github.event.inputs.dry_run == 'true' && '--dry-run' || '' }}
    ```
 
-5. **Write the revert** at `docs/sql/reverts/<YYYYMMDDHHMMSS>_unschedule_raw_imports_cleanup.sql`:
-   ```sql
-   SELECT cron.unschedule('cleanup-raw-imports');
-   ```
-
-6. **Smoke test** at `docs/sql/tests/raw_imports_cron_scheduled.sql`:
-   ```sql
-   -- Confirm the cron is scheduled.
-   SELECT jobname, schedule, command
-   FROM cron.job
-   WHERE jobname = 'cleanup-raw-imports';
-   -- Expect 1 row.
-   ```
-
-7. **Document in `docs/operations/storage-retention.md`** (new — or extend existing ops doc if one exists):
+6. **Document in `docs/operations/storage-retention.md`** (new):
    ```markdown
    # Storage Retention
 
    ## raw-imports bucket
-   - Retention: 30 days.
-   - Enforcement: pg_cron job `cleanup-raw-imports` (daily 02:00 UTC).
-   - Rationale: free-tier cap 1 GB; at 100-org projection without retention,
-     unbounded growth.
-   - User impact: operational history; users re-upload if data needed.
-   - Recovery: deleted objects are not restorable at free tier. Document in
-     any UI that lets users "retrieve past imports" that the window is 30d.
+   - **Retention**: 30 days.
+   - **Enforcement**: `.github/workflows/cleanup-raw-imports.yml` runs
+     `scripts/cleanup-raw-imports.js` daily at 05:00 UTC (staggered from
+     the existing `cleanup-export-jobs` pg_cron at 02:00 UTC).
+   - **Why GitHub Actions, not `pg_cron`**: a plain `DELETE FROM
+     storage.objects` only removes the metadata row, leaving orphaned
+     physical bytes in the S3 backend. The Storage API call
+     (`supabase.storage.from(...).remove([...])`) cascades to the S3
+     tier AND the metadata row.
+   - **Required secrets** (set in GitHub repo settings):
+     - `SUPABASE_URL` (already exists for CI).
+     - `SUPABASE_SERVICE_ROLE_KEY` (new — add as a repository secret;
+       never commit; never expose via `VITE_*` prefix per claude.md §2).
+   - **Monthly Actions minutes budget**: job runs ~30s × 31 days ≈ 16 min/mo.
+     Well inside the 2,000 min/mo free-tier budget for private repos.
+   - **User impact**: operational history; users re-upload if data needed.
+   - **Recovery**: deleted objects are not restorable at free tier.
+   - **Dry-run**: manual `workflow_dispatch` with `dry_run=true` lists
+     what would be deleted without calling `.remove()`. Use to validate
+     changes to the retention window or filter logic.
+   - **Safety cap**: if a run would delete > 10,000 paths, the script
+     exits 1 and notifies via the Actions failure channel — investigate
+     before bypassing.
    ```
 
-8. **Free-tier guardrail**: this task ADDS a pg_cron job. Per `claude.md` §11, the weekly Supabase keepalive is already a cron. pg_cron at free tier allows multiple jobs; document the count in `storage-retention.md`. Confirm the combined cron count stays reasonable (target ≤ 5 at any time).
+7. **Free-tier guardrail**: this task adds NO `pg_cron` job, NO Edge Function, NO new npm dependency (uses `@supabase/supabase-js` already in deps). The GitHub Actions workflow's cost (~16 min/mo) is the only additional consumption.
+
+8. **Secret onboarding**: document in PR body that the operator must add `SUPABASE_SERVICE_ROLE_KEY` as a repository secret BEFORE the workflow can run. Until then, the scheduled job will fail visibly in the Actions UI. Include a one-line pre-merge checklist for the operator.
 
 9. Verification gate:
    ```bash
    npm run lint
    npm run typecheck
-   npm run test
-   npm run check:advisors           # from Wave 6a
+   npm run test                   # includes new unit tests for cleanup script's filter logic
+   npm run check:advisors
    npm run check:bundle
    npm run frontend:build
    git status
    ```
+   Note: the workflow itself can't be "run" in a PR (no secrets in fork builds); manual `workflow_dispatch` after merge verifies.
 
 10. Commit, push, open PR. PR body includes:
-    - Retention window rationale.
-    - Migration + revert + smoke SQL.
-    - Current cron inventory (count + names; confirm ≤ 5).
+    - Why GitHub Actions over `pg_cron` (the orphaned-file problem).
+    - Secret-onboarding checklist.
+    - Dry-run instructions.
+    - Safety-cap threshold rationale.
 
 ### Tests to add (Task 3)
 
-- None in Vitest.
-- `docs/sql/tests/raw_imports_cron_scheduled.sql` is the operator smoke.
+- `tests/cleanupRawImports.test.js` — unit tests for the script's pure filter + batching logic:
+  - Given a list of mock `{ name, created_at }` rows, filter to those older than 30 days.
+  - Batches of > 100 paths split into multiple `.remove()` calls.
+  - Safety cap triggers above threshold.
+  - Dry-run flag suppresses `.remove()` calls.
+  - Supabase client factory uses env vars (not hardcoded).
+  - ≥ 6 test cases. Mock the Supabase client via `tests/helpers/createChainMock` pattern adapted for `.storage.from(...)`.
 
 ### Post-deploy verification (Task 3)
 
-- Run smoke script: expect 1 row.
-- Wait 24 h; confirm the cron fired at least once (Supabase dashboard → Cron jobs → Last run timestamp).
+- After merge: operator adds `SUPABASE_SERVICE_ROLE_KEY` secret.
+- Trigger workflow manually with `dry_run=true`. Review the list of paths.
+- Re-trigger without `dry_run`. Confirm deletion count matches the dry-run list.
+- After 24 h: confirm the scheduled run fired successfully in Actions UI.
 - Confirm storage dashboard shows stable or declining size over the first 31 days after cutover.
 
 ### Out of scope (Task 3)
 
 - Adding retention to OTHER buckets (scope creep).
-- Moving cleanup to an Edge Function (uses invocation budget; cron is free).
+- Moving cleanup to an Edge Function (uses invocation budget).
+- Moving cleanup to `pg_cron` (orphaned-file problem).
 - User-facing "download past imports" UI.
-- Notifying users of deletions (no email costs on free tier).
+- Notifying users of deletions.
 - Reducing the current `audit_log` retention (already 180 days per Wave 2).
+- Pre-commit secret scanning for the new secret name.
 
 ---
 
@@ -435,12 +470,12 @@ Handled across Tasks 1–4:
 1. `docs/operations/edge-function-budget.md` (new — Task 1).
 2. `docs/operations/storage-retention.md` (new — Task 3).
 3. `docs/sql/reverts/*_drop_free_tier_indexes.sql` (Task 2).
-4. `docs/sql/reverts/*_unschedule_raw_imports_cleanup.sql` (Task 3).
-5. `docs/sql/tests/free_tier_indexes_exist.sql` (Task 2).
-6. `docs/sql/tests/raw_imports_cron_scheduled.sql` (Task 3).
-7. `docs/audits/wave-1a/index.md` — Wave-6 findings shipped (Task 4).
-8. `docs/expansion/98_PROGRESS_LOG.md` — dated entry (Task 4).
-9. `docs/architecture/frontend-architecture.md` — brief cache mention (Task 4).
+4. `docs/sql/tests/free_tier_indexes_exist.sql` (Task 2).
+5. `docs/audits/wave-1a/index.md` — Wave-6 findings shipped (Task 4).
+6. `docs/expansion/98_PROGRESS_LOG.md` — dated entry (Task 4).
+7. `docs/architecture/frontend-architecture.md` — brief cache mention (Task 4).
+
+Task 3 ships no SQL migration, revert, or smoke (the cleanup is now a GitHub Actions + Node-script pairing, not a DB artifact).
 
 Do NOT touch: `claude.md`, `docs/security/**`, `docs/testing/**`, any `.claude/wave-*.md`.
 
@@ -452,18 +487,20 @@ Any "no" blocks push.
 
 1. All 4 tasks merged with CI green (including Wave 6a's new `check:bundle` + `check:advisors` steps).
 2. `docs/operations/edge-function-budget.md` + `docs/operations/storage-retention.md` exist.
-3. `supabase/migrations/` has exactly 2 new migrations (indexes + cron).
-4. `docs/sql/reverts/` has exactly 2 new revert scripts.
-5. `docs/sql/tests/` has exactly 2 new smoke scripts.
-6. No new dep in `package.json`.
-7. No new Edge Function.
-8. No change to `playwright.config.ts`, `vitest.config.js`, `vite.config.js`, `eslint.config.js`, `tsconfig.json`, `.prettierrc`.
-9. `npm run check:advisors` (Wave 6a) passes on `main` after Wave 6b merges — the new migrations respect the advisor patterns.
-10. `npm run check:bundle` (Wave 6a) passes on `main` — the Edge Function cache additions don't blow bundle.
-11. `npm run test:e2e -- --workers=1` passing count matches post-Wave-5 baseline.
-12. `docs/expansion/98_PROGRESS_LOG.md` entry documents the 100-org projection deltas for bundle / invocations / DB / storage.
-13. pg_cron job count ≤ 5 after Task 3 ships.
-14. **Test-impact reconciled**: only tests added are the edge-cache integration tests in Task 1 (~6 cases). Tasks 2 + 3 + 4 add 0 tests.
+3. `supabase/migrations/` has exactly 1 new migration (indexes only — Task 3 uses GitHub Actions, not `pg_cron`).
+4. `docs/sql/reverts/` has exactly 1 new revert script (index drop).
+5. `docs/sql/tests/` has exactly 1 new smoke script (index presence).
+6. `scripts/cleanup-raw-imports.js` + `.github/workflows/cleanup-raw-imports.yml` exist.
+7. `SUPABASE_SERVICE_ROLE_KEY` is added as a GitHub repository secret before Task 3 can run end-to-end (documented in Task 3 PR body).
+8. No new dep in `package.json`.
+9. No new Edge Function.
+10. **No new `pg_cron` job** (Task 3 now uses GitHub Actions). Existing `pg_cron` count unchanged.
+11. No change to `playwright.config.ts`, `vitest.config.js`, `vite.config.js`, `eslint.config.js`, `tsconfig.json`, `.prettierrc`.
+12. `npm run check:advisors` (Wave 6a) passes on `main` after Wave 6b merges — the new migration respects the advisor patterns.
+13. `npm run check:bundle` (Wave 6a) passes on `main` — the Edge Function cache additions don't blow bundle.
+14. `npm run test:e2e -- --workers=1` passing count matches post-Wave-5 baseline.
+15. `docs/expansion/98_PROGRESS_LOG.md` entry documents the 100-org projection deltas for bundle / invocations / DB / storage.
+16. **Test-impact reconciled**: tests added are Task 1's edge-cache integration tests (~6 cases) + Task 3's `cleanupRawImports.test.js` (~6 cases). Tasks 2 + 4 add 0 tests.
 
 ---
 
@@ -525,11 +562,11 @@ npm run format -- docs/audits/wave-1a/index.md docs/expansion/98_PROGRESS_LOG.md
 - `docs/operations/edge-function-budget.md` (Task 1)
 - `docs/operations/storage-retention.md` (Task 3)
 - `supabase/migrations/<YYYYMMDDHHMMSS>_add_free_tier_indexes.sql` (Task 2)
-- `supabase/migrations/<YYYYMMDDHHMMSS>_raw_imports_retention_cron.sql` (Task 3)
 - `docs/sql/reverts/<YYYYMMDDHHMMSS>_drop_free_tier_indexes.sql` (Task 2)
-- `docs/sql/reverts/<YYYYMMDDHHMMSS>_unschedule_raw_imports_cleanup.sql` (Task 3)
 - `docs/sql/tests/free_tier_indexes_exist.sql` (Task 2)
-- `docs/sql/tests/raw_imports_cron_scheduled.sql` (Task 3)
+- `scripts/cleanup-raw-imports.js` (Task 3)
+- `.github/workflows/cleanup-raw-imports.yml` (Task 3)
+- `tests/cleanupRawImports.test.js` (Task 3)
 
 **Will edit**:
 - `frontend/src/lib/cache.js` (Task 1 — extend if needed; keep minimal)
