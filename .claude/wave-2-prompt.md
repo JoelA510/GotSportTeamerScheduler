@@ -93,32 +93,27 @@ Five fix-tasks (DB migration × 3, external config × 1, dependency triage × 1)
    - Is it displayed on the admin dashboard? If so, note the component path.
    - If zero frontend callers, the view is DB-only (e.g., BetterStack / Grafana queries) and the fix is lower-risk.
 
-4. **Write the migration** at `supabase/migrations/<YYYYMMDDHHMMSS>_fix_import_efficiency_metrics_invoker.sql`. Use the current UTC datetime. Template:
+4. **Write the migration** at `supabase/migrations/<YYYYMMDDHHMMSS>_fix_import_efficiency_metrics_invoker.sql`. Use the current UTC datetime. Prefer `ALTER VIEW ... SET (security_invoker = on)` over `DROP VIEW ... CREATE VIEW`: Supabase runs Postgres 15+, and `ALTER VIEW` preserves dependent objects (downstream views, functions referencing this view) that a DROP+CREATE would cascade-break. Template:
 
    ```sql
    -- Forward: switch import_efficiency_metrics view to SECURITY INVOKER
    -- so it evaluates underlying table RLS for the querying user.
+   -- ALTER VIEW preserves any dependent objects that reference this view.
    
-   DROP VIEW IF EXISTS public.import_efficiency_metrics;
-   
-   CREATE VIEW public.import_efficiency_metrics
-   WITH (security_invoker = on) AS
-   SELECT -- copy the full column list from the prior CREATE verbatim
-       ...
-   FROM
-       ...
-   ;
+   ALTER VIEW public.import_efficiency_metrics SET (security_invoker = on);
    
    COMMENT ON VIEW public.import_efficiency_metrics IS
      'Aggregated import metrics. security_invoker=on ensures RLS on ' ||
      'underlying tables is honored for the querying user.';
    
-   -- Grant SELECT to authenticated only (no anon).
-   GRANT SELECT ON public.import_efficiency_metrics TO authenticated;
+   -- Tighten grants: authenticated only, no anon.
    REVOKE SELECT ON public.import_efficiency_metrics FROM anon, public;
+   GRANT SELECT ON public.import_efficiency_metrics TO authenticated;
    ```
+   
+   If pre-flight Step 2 showed the view was created WITHOUT an explicit `security_invoker` option (the old default = off), `ALTER VIEW` works identically. If the view does not exist under this name, HALT — the finding itself is stale.
 
-5. **Write the revert script** at `docs/sql/reverts/<YYYYMMDDHHMMSS>_revert_import_efficiency_metrics_invoker.sql`. Mirrors the forward but with `security_invoker = off` (the default SECURITY DEFINER behavior). Commit this alongside the migration as a NEW file — do NOT push it through `supabase db push`; it's a break-glass script only.
+5. **Write the revert script** at `docs/sql/reverts/<YYYYMMDDHHMMSS>_revert_import_efficiency_metrics_invoker.sql`. Mirrors the forward but with `ALTER VIEW public.import_efficiency_metrics SET (security_invoker = off)` and the inverse GRANT/REVOKE. Commit alongside the migration as a NEW file — do NOT push through `supabase db push`; it's a break-glass script only.
 
 6. **Write an RLS smoke test** at `docs/sql/tests/import_efficiency_metrics_rls.sql`:
    
@@ -281,34 +276,47 @@ After merge and migration applies to prod:
    - `log_schema_change`
    - `validate_custom_attributes`
    - `check_password_length_on_auth_users`
-   - `persist_evaluation_run` (note: there's an overload — migration `20260407000000_persist_evaluation_run_overload.sql`; both signatures may need the ALTER)
+   - `persist_evaluation_run` (note: there's an overload — migration `20260407000000_persist_evaluation_run_overload.sql`; both signatures need the ALTER)
    - `prune_old_evaluation_runs`
 
    For each, record the exact argument-type list (needed for `ALTER FUNCTION` signature). If a function was renamed or dropped in a later migration, adjust the task plan.
 
-3. **Write the migration** at `supabase/migrations/<YYYYMMDDHHMMSS>_lock_search_path_on_definer_functions.sql`:
+3. **Per-function temp-table audit** — for each function body, grep for `CREATE TEMP TABLE`, `CREATE TEMPORARY TABLE`, or references to `pg_temp.`. Record the result per function. This decides whether `pg_temp` is needed in each individual `search_path` clause.
+   
+   - **Default**: `search_path = public` only. Omitting `pg_temp` is the security-correct default for `SECURITY DEFINER` functions — leaving `pg_temp` on the search path lets an attacker create a temp table that shadows a real one and hijacks the definer's privileges.
+   - **Exception**: if a function genuinely creates or references temp tables, use `search_path = public, pg_temp` FOR THAT FUNCTION ONLY and add a comment explaining why. Based on function names above, `persist_evaluation_run` is the most likely candidate — audit its body carefully.
+
+4. **Write the migration** at `supabase/migrations/<YYYYMMDDHHMMSS>_lock_search_path_on_definer_functions.sql`:
    
    ```sql
-   -- Forward: set search_path=public on SECURITY DEFINER functions
-   -- to prevent search-path injection attacks.
+   -- Forward: lock search_path on SECURITY DEFINER functions to prevent
+   -- search-path injection attacks. pg_temp is omitted by default; a
+   -- malicious user could otherwise create a temp table that shadows
+   -- a real one and hijack the definer's privileges. Functions that
+   -- genuinely need temp tables (confirmed via body audit in Step 3)
+   -- get pg_temp added explicitly with a comment.
    
-   ALTER FUNCTION public.get_reserved_keys() SET search_path = public, pg_temp;
-   ALTER FUNCTION public.log_schema_change() SET search_path = public, pg_temp;
-   ALTER FUNCTION public.validate_custom_attributes(<args>) SET search_path = public, pg_temp;
-   ALTER FUNCTION public.check_password_length_on_auth_users() SET search_path = public, pg_temp;
-   ALTER FUNCTION public.persist_evaluation_run(<args_v1>) SET search_path = public, pg_temp;
-   ALTER FUNCTION public.persist_evaluation_run(<args_v2>) SET search_path = public, pg_temp;
-   ALTER FUNCTION public.prune_old_evaluation_runs() SET search_path = public, pg_temp;
+   ALTER FUNCTION public.get_reserved_keys() SET search_path = public;
+   ALTER FUNCTION public.log_schema_change() SET search_path = public;
+   ALTER FUNCTION public.validate_custom_attributes(<args>) SET search_path = public;
+   ALTER FUNCTION public.check_password_length_on_auth_users() SET search_path = public;
+   ALTER FUNCTION public.persist_evaluation_run(<args_v1>) SET search_path = public;
+   ALTER FUNCTION public.persist_evaluation_run(<args_v2>) SET search_path = public;
+   ALTER FUNCTION public.prune_old_evaluation_runs() SET search_path = public;
    
-   -- pg_temp included so temp-table functions still resolve (a pg_temp
-   -- omission would break any function that creates temp relations).
+   -- If Step 3 flagged a function as needing temp tables, REPLACE that
+   -- line with `SET search_path = public, pg_temp` AND add a comment
+   -- citing the specific temp-table usage that requires it. Example:
+   --
+   -- -- persist_evaluation_run creates tmp_eval_batch for batch upsert
+   -- ALTER FUNCTION public.persist_evaluation_run(<args_v2>) SET search_path = public, pg_temp;
    ```
 
-4. **Write the revert** at `docs/sql/reverts/<YYYYMMDDHHMMSS>_unlock_search_path.sql` that resets each function's `search_path` to default (`ALTER FUNCTION ... RESET search_path`).
+5. **Write the revert** at `docs/sql/reverts/<YYYYMMDDHHMMSS>_unlock_search_path.sql` that resets each function's `search_path` to default (`ALTER FUNCTION ... RESET search_path`).
 
-5. **Regression check**: run existing Vitest suite. If any persistence or trigger-adjacent test fails, the `search_path` lock likely broke a function that depends on a non-`public` schema being in scope. HALT and debug.
+6. **Regression check**: run existing Vitest suite. If any persistence or trigger-adjacent test fails, the `search_path` lock likely broke a function that depends on a non-`public` schema being in scope. HALT and debug.
 
-6. Commit, push, open PR with DDL + revert + per-function sanity log (confirming each function's signature was found via `\df`).
+7. Commit, push, open PR with DDL + revert + per-function temp-table audit log (confirming each function's signature was found via `\df` and whether `pg_temp` was retained or omitted).
 
 ### Tests to add (Task 3)
 
