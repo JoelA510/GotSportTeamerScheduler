@@ -119,11 +119,16 @@ Each production-side change is itemized in the PR body with justification.
    import AxeBuilder from '@axe-core/playwright';
 
    // Returns a summary of violations. Tests call it and assert .violations.length === 0.
+   // Distinguish:
+   //   - withTags(tags): rule-SETS like 'wcag2aa' / 'wcag21aa' / 'best-practice'
+   //   - withRules(ids): specific rule IDs like 'color-contrast' / 'label'
    export async function expectNoA11yViolations(page: Page, options: {
-     includeRules?: string[];   // optional: restrict to a rule-set (e.g., WCAG AA)
+     includeTags?: string[];      // optional: restrict to tagsets (e.g., ['wcag2aa'])
+     includeRules?: string[];     // optional: restrict to specific rule IDs
      excludeSelectors?: string[]; // optional: ignore known-problematic selectors
    } = {}) {
      const builder = new AxeBuilder({ page });
+     if (options.includeTags) builder.withTags(options.includeTags);
      if (options.includeRules) builder.withRules(options.includeRules);
      if (options.excludeSelectors) {
        for (const sel of options.excludeSelectors) builder.exclude(sel);
@@ -132,7 +137,7 @@ Each production-side change is itemized in the PR body with justification.
      return results;
    }
    ```
-   Default configuration: `@axe-core` runs its full rule set. Consumers filter via `options.includeRules`.
+   Default configuration: `@axe-core` runs its full rule set. Consumers narrow by tagset (`includeTags: ['wcag2aa']`) OR by specific rules (`includeRules: ['color-contrast']`) — the two options are composable.
 
 4. **Define the target scenarios** — apply `expectNoA11yViolations` at the final step of each of these 10 scenarios (edit `.feature` files to add an `And the page should have no accessibility violations` step):
    - Login flow (existing auth scenario).
@@ -149,11 +154,14 @@ Each production-side change is itemized in the PR body with justification.
 
    If any listed scenario is CURRENTLY failing (not passing baseline), skip the axe addition for that scenario until Tasks 2–5 stabilize it, then retroactively add the axe step. Document which scenarios deferred.
 
-5. **Wire the step definition** — extend `tests/e2e/steps/common_steps.ts` (or similar) with:
+5. **Wire the step definition** — extend `tests/e2e/steps/common_steps.ts` (or similar) with a standard static import at the TOP of the file and a synchronous reference inside the step body:
    ```ts
+   // Top of tests/e2e/steps/common_steps.ts (with the other imports)
+   import { expectNoA11yViolations } from '../fixtures/a11y';
+
+   // Step body (wherever step defs live)
    Then('the page should have no accessibility violations', async function () {
      const { page } = this;
-     const { expectNoA11yViolations } = await import('../fixtures/a11y');
      const results = await expectNoA11yViolations(page);
      if (results.violations.length > 0) {
        console.log('Axe violations:', JSON.stringify(results.violations, null, 2));
@@ -161,6 +169,7 @@ Each production-side change is itemized in the PR body with justification.
      expect(results.violations).toEqual([]);
    });
    ```
+   Do NOT use `await import('../fixtures/a11y')` inside the step body — static imports match the rest of the step-def file and avoid per-step module-resolution overhead.
 
 6. **Regenerate** `.features-gen-local/` via `bddgen`. Run the 10 axe-enriched scenarios locally: `npm run test:e2e -- --workers=1`.
 
@@ -368,7 +377,11 @@ Each production-side change is itemized in the PR body with justification.
 
    Prefer the single-tab approach. Rewrite cross-tab scenarios to single-tab or document as waivers.
 
-5. **Mock channel surgery**: if `supabase.channel(...)` calls from the team-chat component aren't handled by the mock, add a minimal channel mock that stores messages in `__MOCK_DB__.team_chat_messages` and allows `.on('postgres_changes', ...)` listeners to receive them on `.insert()`. This is the trickiest mock addition in Wave 5 — scope it carefully.
+5. **Mock surgery — reuse the existing realtime scaffolding**: `frontend/src/lib/mockSupabaseClient.js` ALREADY has (a) a `channel(name)` implementation around line 1168 with `.on(...)` / `.subscribe()` / `.send()` semantics AND (b) a `triggerRealtimeEvent(table, event, payload)` helper around line 456 that fans out to subscribed channel listeners. Existing code paths (e.g., the `upsert` and parts of `insert` for `field_subunits`) already call `triggerRealtimeEvent` after mutating `__MOCK_DB__`. The chat failure is almost certainly NOT a missing channel mock — it's that the chat-message insert path doesn't fire `triggerRealtimeEvent('team_chat_messages', 'INSERT', { new: row })`. Surgery:
+   - Grep the mock's `insert` branch for the table name the chat component writes to (`team_chat_messages` or similar — confirm via the chat component's source).
+   - Ensure that branch pushes an event into `eventsToFire` alongside existing inserts, matching the pattern at lines ~1033 where `eventsToFire.forEach((e) => triggerRealtimeEvent(e.table, e.event, e.payload))`.
+   - Do NOT add a new channel implementation — the existing one covers `.on('postgres_changes', { table }, cb)` subscriptions that the chat component uses.
+   - If the real product subscribes via `.on('broadcast', { event: 'new-message' }, cb)` rather than `postgres_changes`, the mock's `triggerRealtimeEvent` pathway may not match; in that case, extend the pattern minimally (one helper, no new channel shape) rather than forking the channel implementation.
 
 6. Verification gate.
 
@@ -376,7 +389,7 @@ Each production-side change is itemized in the PR body with justification.
 
 ### Tests to add (Task 5)
 
-- Unit tests for any mock-channel surgery at `tests/mockRealtimeChannel.test.js` (≥ 4 cases: subscribe, insert-fires-listener, unsubscribe, multiple-subscribers).
+- Unit tests for the chat-insert realtime wiring at `tests/mockChatRealtime.test.js` (≥ 4 cases): subscribe to `team_chat_messages` via `channel(...).on('postgres_changes', ...)`; insert a message row → subscribed listener receives the `INSERT` payload; unsubscribe → subsequent inserts do NOT reach the listener; multiple subscribers → all receive the event. Tests target the existing `channel` + `triggerRealtimeEvent` helpers in `mockSupabaseClient.js` — they do NOT construct a new channel abstraction.
 
 ### Out of scope (Task 5)
 
@@ -570,7 +583,7 @@ Each `FAIL → HALT`.
 - `tests/e2e/fixtures/a11y.ts` (Task 1)
 - `docs/testing/e2e-waivers.md` (Task 6 — possibly empty body)
 - `tests/mockRotateCalendarToken.test.js` (Task 3 — only if mock surgery required)
-- `tests/mockRealtimeChannel.test.js` (Task 5 — only if mock surgery required)
+- `tests/mockChatRealtime.test.js` (Task 5 — only if chat-insert wiring surgery required)
 
 **Will edit**:
 - `package.json`, `package-lock.json` (Task 1 — axe-core dep)
