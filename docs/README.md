@@ -61,6 +61,12 @@ docs/
 ## Audits
 
 - [Wave 0 — planning drift reconciliation](audits/wave-0/drift-report.md)
+- [Wave 1a — repo-wide audit (consolidated index)](audits/wave-1a/index.md)
+  - [Code quality](audits/wave-1a/code-quality.md)
+  - [Security](audits/wave-1a/security.md)
+  - [Supabase performance](audits/wave-1a/supabase-performance.md)
+  - [Free-tier usage](audits/wave-1a/free-tier.md)
+  - [Accessibility](audits/wave-1a/accessibility.md)
 
 ## Reading Path for New Contributors
 
