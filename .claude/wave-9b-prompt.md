@@ -33,13 +33,14 @@ HALT on any false claim. This is the final pre-flight before the tag.
 
 1. `git status` on `main` is clean.
 2. Wave 9a merged: `.lighthouserc.js`, `.github/workflows/lighthouse.yml`, `docs/operations/lighthouse.md`, `docs/security/owasp-audit.md`, `CHANGELOG.md` all present. `package.json` version is `1.0.1`. `README.md` status banner mentions v1.0.1.
-3. `docs/audits/wave-1a/index.md` distribution table: zero findings carry `Proposed wave: <any>` without a `✅` shipped marker OR a recorded waiver. Confirm via a full text scan of the index.
-4. `gh auth status` — authenticated GitHub CLI with push + release permissions on the repo.
-5. No existing `v1.0.1` tag: `git tag -l v1.0.1` returns empty locally AND `git ls-remote --tags origin v1.0.1` returns empty on origin.
-6. Vercel production deploy is healthy (operator confirms via dashboard + live URL 200 check).
-7. Supabase advisor dashboard: 0 ERROR + 0 high-severity WARN.
-8. `VITE_SENTRY_DSN` set in Vercel Production (Wave 2).
-9. All prior wave closure commits visible in `git log --oneline -30`.
+3. **All gate scripts defined in `package.json`**: `npm run | grep -E "lint|typecheck|test|test:e2e|check:advisors|check:bundle|frontend:build|lighthouse:local"` returns every script the seven gates invoke. `check:advisors` + `check:bundle` ship with Wave 6a; `lighthouse:local` ships with Wave 9a. If any is missing, a prior wave hasn't fully executed — HALT + resolve before running the cutover.
+4. `docs/audits/wave-1a/index.md` distribution table: zero findings carry `Proposed wave: <any>` without a `✅` shipped marker OR a recorded waiver. Confirm via a full text scan of the index.
+5. `gh auth status` — authenticated GitHub CLI with push + release permissions on the repo.
+6. No existing `v1.0.1` tag: `git tag -l v1.0.1` returns empty locally AND `git ls-remote --tags origin v1.0.1` returns empty on origin.
+7. Vercel production deploy is healthy (operator confirms via dashboard + live URL 200 check).
+8. Supabase advisor dashboard: 0 ERROR + 0 high-severity WARN.
+9. `VITE_SENTRY_DSN` set in Vercel Production (Wave 2).
+10. All prior wave closure commits visible in `git log --oneline -30`.
 
 ---
 

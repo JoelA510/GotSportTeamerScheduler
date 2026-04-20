@@ -44,8 +44,9 @@ HALT on any false claim.
 8. `package.json` version is `1.0.0` (not already bumped).
 9. No existing `CHANGELOG.md` at repo root.
 10. No `@lhci/cli` in `package.json`.
-11. Baselines: `npm run lint`, `npm run typecheck`, `npm run test`, `npm run check:advisors`, `npm run check:bundle`, `npm run frontend:build` all green on `main`.
-12. `npm run test:e2e -- --workers=1` passing count matches Wave 5 closure target (63/63 or documented N/63 with waivers).
+11. **Wave 6a CI scripts present**: `npm run | grep -E "check:advisors|check:bundle"` returns both. These scripts ship with Wave 6a (`scripts/check-bundle-size.js` + `scripts/advisor-lint.js`) — if either is missing, Wave 6a hasn't executed yet and Wave 9a must WAIT. HALT until Wave 6a merges.
+12. Baselines: `npm run lint`, `npm run typecheck`, `npm run test`, `npm run check:advisors`, `npm run check:bundle`, `npm run frontend:build` all green on `main`.
+13. `npm run test:e2e -- --workers=1` passing count matches Wave 5 closure target (63/63 or documented N/63 with waivers).
 
 ---
 
@@ -118,15 +119,15 @@ Three parallel tasks: Lighthouse + OWASP + release metadata. Each produces its a
          - run: npm ci
          - run: npm run frontend:build
          - run: npm run check:bundle
-         - run: npx lhci autorun --config=.lighthouserc.js
+         - run: npm run lighthouse:local
    ```
    Conditional trigger keeps Actions minutes in check: ~2–3 min × ~20 relevant PRs/mo ≈ 40–60 min/mo.
 
-5. **Add npm script**:
+5. **Add npm script** (add FIRST — the workflow in Step 4 calls this by name so the script must exist when the workflow runs):
    ```json
    "lighthouse:local": "lhci autorun --config=.lighthouserc.js"
    ```
-   Local workflow: `npm run frontend:build && npm run lighthouse:local`.
+   Local workflow: `npm run frontend:build && npm run lighthouse:local`. The CI workflow uses the same script for consistency; `.lighthouserc.js` is the single config source.
 
 6. **Baseline run + triage** — run Lighthouse locally after writing the config. For each failing assertion:
    - **Trivially fixable** (missing `<meta>`, non-descriptive `<title>`, missing `<html lang>` if not already, alt attributes): apply inline per Wave 1b trivial bar.
