@@ -218,12 +218,12 @@ Five tasks: two new docs, eight Known-Gaps additions, one rename, one index reor
 
 1. Checkout `claude/wave-8-rename-claude-md` from latest `main`.
 
-2. **Rename with a two-step `git mv`** to survive Windows's case-insensitive filesystem:
+2. **Rename with a two-step `git mv`** to survive Windows's case-insensitive filesystem. Use the FINAL target commit message from the start — `--amend --no-edit` preserves whatever message the first commit carried:
    ```bash
    git mv claude.md __rename_tmp_CLAUDE.md
-   git commit -m "chore(docs): intermediate rename step (case-insensitive FS workaround)"
+   git commit -m "chore(docs): rename claude.md to CLAUDE.md + sweep references"
    git mv __rename_tmp_CLAUDE.md CLAUDE.md
-   git commit --amend --no-edit  # fold both moves into one logical rename commit
+   git commit --amend --no-edit  # folds both moves into one logical rename commit
    ```
    (If the local git is configured with `core.ignoreCase = false`, a direct `git mv claude.md CLAUDE.md` works; use whichever the environment supports. The two-step pattern always works.)
 
@@ -242,11 +242,30 @@ Five tasks: two new docs, eight Known-Gaps additions, one rename, one index reor
    - If the file is source code (unlikely but possible): replace only if the reference is a doc link; if it's a code-level string used elsewhere, surface and decide.
    - If the file is in `docs/archive/**`: **DO NOT edit**. Archive is immutable history.
 
-   Practical one-liner (confirm pattern first; expect ~20–40 occurrences across the repo):
+   Practical one-liner (confirm pattern first; expect ~20–40 occurrences). **Preferred: cross-platform Node one-liner** — works on Windows PowerShell + Git Bash + macOS + Linux without quirks:
    ```bash
-   git grep -l "claude\.md" -- ':!docs/archive/**' | xargs sed -i 's/claude\.md/CLAUDE.md/g'
+   node -e "
+     const { execSync } = require('child_process');
+     const fs = require('fs');
+     const files = execSync('git grep -z -l \"claude\\.md\" -- \":!docs/archive/**\"')
+       .toString().split('\0').filter(Boolean);
+     for (const f of files) {
+       fs.writeFileSync(f, fs.readFileSync(f, 'utf8').replace(/claude\\.md/g, 'CLAUDE.md'));
+     }
+     console.log('Swept', files.length, 'files');
+   "
    ```
-   On Windows, adjust the sed invocation or use a Node script.
+
+   **Alternatives** (Bash environments only):
+   ```bash
+   # GNU sed (Linux + Git Bash on Windows):
+   git grep -z -l "claude\.md" -- ':!docs/archive/**' | xargs -0 sed -i 's/claude\.md/CLAUDE.md/g'
+
+   # BSD sed (macOS default — note the empty-string arg after -i):
+   git grep -z -l "claude\.md" -- ':!docs/archive/**' | xargs -0 sed -i '' 's/claude\.md/CLAUDE.md/g'
+   ```
+
+   `-z` / `-0` is load-bearing: it makes the pipeline tolerate filenames containing spaces or newlines.
 
 5. **Verify zero remaining lowercase references outside the archive**:
    ```bash
@@ -325,7 +344,7 @@ Five tasks: two new docs, eight Known-Gaps additions, one rename, one index reor
    - Ensure every `docs/**/*.md` is reachable within 2 clicks from `docs/README.md`.
    - Keep the file under ~120 lines — it's an index, not a manual.
 
-4. **Update every cross-reference** to the renamed `CLAUDE.md` — `docs/README.md` likely references it. Task 3 may have already swept, but Task 4 confirms.
+4. **Final repository-wide reference sweep** — Tasks 1 + 2 created / modified docs that may have introduced fresh `claude.md` references if they were drafted against an older version of Wave 8. Re-run the sweep (same command as Task 3 Step 4) across the whole repo excluding `docs/archive/**`. This is the belt-and-suspenders guarantee that NO `claude.md` (lowercase) survives outside the archive after Wave 8 closes. The sweep should find zero or handful of occurrences (Task 1/2 drift); if more than 10, something went wrong — HALT and investigate before Task 4 merges.
 
 5. **Do NOT**:
    - Move files between directories.
