@@ -18,9 +18,9 @@
 
 Verify each claim. **HALT** on any false or ambiguous claim; do NOT auto-fix — that's Wave 0's scope.
 
-1. `git status` on `claude/extend-wave-planning-sqaol` is clean.
-2. `git rev-parse --abbrev-ref HEAD` returns `claude/extend-wave-planning-sqaol`.
-3. `git log origin/main..HEAD --oneline` shows only the Phase-1/Phase-2 planning-doc commits from this session (no source-code commits).
+1. `git status` on the current Wave 0 execution branch (operator-supplied; was `claude/extend-wave-planning-sqaol` at authoring, but that branch merged via PR #171/#172 — replacement branch is supplied at session start) is clean. <!-- wave-0 2026-04-20: original branch decayed; verify against the actual branch in use. -->
+2. `git rev-parse --abbrev-ref HEAD` returns the current Wave 0 execution branch. <!-- wave-0 2026-04-20: original assertion named the now-merged authoring branch. -->
+3. `git log origin/main..HEAD --oneline` shows zero commits, OR only Wave 0 task commits from this session (no source-code commits). <!-- wave-0 2026-04-20: original assertion presupposed the merged authoring branch's commit history. -->
 4. Fourteen wave prompt files exist at `.claude/wave-{1a,1b,2,3a,3b,4,5,6a,6b,7a,7b,8,9a,9b}-prompt.md`.
 5. `.claude/wave-execution-protocol.md` exists.
 6. `.claude/wave-0-prompt.md` exists (this file).
@@ -38,7 +38,7 @@ Wave 0 is planning-doc-only. It executes on the authoring branch itself, not on 
 
 - **Single branch**: `claude/extend-wave-planning-sqaol` (already cut from `main`).
 - **One commit per task**: Tasks 1, 2, 3 each land as a separate commit on this branch, in order.
-- **Single PR**: close Wave 0 via the existing PR (`#171`) against `main` once all three commits are pushed.
+- **Single PR**: close Wave 0 via this wave's PR against `main` once all three commits are pushed. <!-- wave-0 2026-04-20: PR #171 (and #172) are already merged; the original "existing PR" no longer exists. Open a new PR from the current Wave 0 execution branch. -->
 - **Do NOT push directly to `main`.** Do NOT open new task branches — the scope does not justify branch-per-task overhead.
 - **No force-push, no `--no-verify`, no `--amend` on commits already pushed** (wave-execution-protocol §3).
 

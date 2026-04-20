@@ -36,7 +36,7 @@ Verify each fact assertion below. **HALT** on any false or ambiguous claim — d
 8. `supabase/functions/` exists and contains at least: `calendar-feed`, `game-persistence`, `auto-scheduler`, `fairness-scoring`.
 9. `docs/expansion/98_PROGRESS_LOG.md` exists; most recent entry is `2026-04-17`.
 10. `docs/expansion/NEXT_SESSION_PLAN.md` exists and lists items §1.1, §2.1, §2.2, §2.3, §3.1.
-11. `claude.md` (lowercase) exists at repo root. `git ls-files` shows it as `claude.md`. (Case-sensitive systems will see the lowercase form only; all references in this wave use the lowercase form.)
+11. `claude.md` (lowercase) exists at repo root. `git ls-files` shows it as `claude.md`. (Case-sensitive systems will see the lowercase form only; all references in this wave use the lowercase form.) <!-- wave-0 2026-04-20: drift — `CLAUDE.md` was added in commit 3e7888d before Wave 8 ran; both files currently coexist. Wave 1a is read-only so this does not block; Wave 8 still owns the cleanup. Re-verify at Wave 8 pre-flight. -->
 12. `tests/setup.js` exists and imports `@testing-library/jest-dom`.
 13. `docs/audits/` directory does NOT yet exist. (Task 1 creates it.)
 
