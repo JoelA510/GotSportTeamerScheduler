@@ -150,7 +150,7 @@ Per-task E2E is generally skipped (cost). CI runs E2E on merge; the Wave Review 
 
 - `npm run lint` goes UP from baseline → revert the offending change; re-file or fix within the task.
 - `npm run typecheck` fails → fix in the task; never bypass with `// @ts-ignore` except where the plan authorizes.
-- `npm run test` fails → fix the test or the code. If the failure is intermittent, run again; if still intermittent, that's a flake → re-file as a Wave-5 follow-up unless the wave plan explicitly owns flake-fixing.
+- `npm run test` fails → fix the test or the code. If the failure is intermittent, investigate per §10 before labeling it a flake. If the intermittent behavior correlates with your diff (new async path, new shared state, new timing), fix or revert in this PR. Only re-file as a Wave-5 follow-up when the flake is pre-existing AND the failing test is unrelated to your diff (confirmed via `git diff --name-only origin/main...HEAD -- <test-file>` returning empty) AND the wave plan does not explicitly own flake-fixing; if the wave plan does own flake-fixing, fix it in this PR rather than deferring.
 - `npm run frontend:build` fails → STOP. Broken build on main is unacceptable. Fix or revert.
 - `git status` shows unexpected files → diagnose. A stray `.env` in the diff is a security incident; a stray dist file is a gitignore miss.
 
@@ -305,9 +305,10 @@ Each threshold maps to a Wave 6 artifact. If you trip one, a Wave 6 guardrail li
 
 If `npm run typecheck` flags a newly-failing file you HAVEN'T edited this PR:
 
-- HALT. Don't auto-fix the file you didn't touch — it means a prior wave's change made a downstream assumption now invalid.
-- Diagnose: `git blame` the offending line; identify which PR introduced the drift.
-- Fix in a separate PR with the original PR's scope, not in the current wave.
+- HALT. Diagnose before touching anything — the fix path depends on the cause.
+- **Caused by your diff** (this PR modifies a shared type / exported signature — e.g. `src/types/**`, a re-exported module, a shared Supabase-generated type — and the failing file is a consumer): the current PR is the direct cause. Fix the consumer files in THIS PR. Breaking `main` because "I didn't edit that file" is not acceptable; merging would land a red build.
+- **Pre-existing (latent) drift** (your diff doesn't touch the shared type; `git blame` shows a prior wave introduced the mismatch): don't auto-fix here. Re-file as a separate PR scoped to the original introducer's wave.
+- Decision rule: if `git diff origin/main...HEAD -- <shared-type-path>` is non-empty AND the failing file imports from that path, treat as caused-by-your-diff.
 
 ### 9.11 Conditional-CI trigger regression
 
