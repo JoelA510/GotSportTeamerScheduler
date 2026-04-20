@@ -58,6 +58,10 @@ docs/
     └── ui/              # Completed UI/UX audit artifacts
 ```
 
+## Audits
+
+- [Wave 0 — planning drift reconciliation](audits/wave-0/drift-report.md)
+
 ## Reading Path for New Contributors
 
 1. Start with **[`architecture/system-overview.md`](architecture/system-overview.md)** for the full technology stack and system diagram.
