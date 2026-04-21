@@ -1,0 +1,145 @@
+[← Back to Documentation Index](../README.md)
+
+---
+
+# v1.1 Planning — Import Persistence, Teaming & Coach Leads
+
+**Status**: PLANNING (not yet scoped into executable waves).
+
+**Written**: 2026-04-21, after the C1 / C1.5 import-UX slice (PRs [#184](https://github.com/JoelA510/SquadLogic/pull/184), [#185](https://github.com/JoelA510/SquadLogic/pull/185)) surfaced a persistence gap while scoping the C1.6 coach-leads feature ([#186](https://github.com/JoelA510/SquadLogic/pull/186), parked WIP).
+
+This document names the feature area, records the gap, lists the constraints, and sketches a wave-style decomposition for v1.1 execution. It intentionally does **NOT** prescribe a task count or branch conventions — those are authored when a v1.1 wave is spun up.
+
+---
+
+## Context
+
+The SquadLogic v1.0 roadmap describes a "full-suite" platform where CSV imports populate players, coaches, and teams, teaming runs over that data, and the scheduler consumes the resulting teams. The remaining v1.0.1 waves (`.claude/wave-{3a,3b,4,5,7a,7b,8,9a,9b}-prompt.md`) are entirely hardening — CI gates, security advisors, E2E stability, documentation, release cutover. Per `wave-9b-prompt.md`:
+
+> Post-Wave-9b, the wave-by-wave loop ends. Hotfixes go to `v1.0.2` (patch releases); new features go into a v1.1 planning pass.
+
+So any work that adds new functionality belongs here, not in the existing wave specs.
+
+---
+
+## The Gap
+
+The CSV-import pipeline today **validates** but never **persists**. Specifically:
+
+| Surface | State |
+| :--- | :--- |
+| `supabase/functions/import-validation/index.ts` | Validates + sanitizes rows, returns them in `validated_data`. Does not insert. |
+| `frontend/src/contexts/ImportContext.jsx` — `startImport` | Writes an `import_jobs` row, invokes the validation Edge Function, stores validated rows in `import_jobs.error_summary` + React state via `setImportedPlayers` / `setImportedCoaches` / `setImportedFields`. Never calls `.insert` on `players`, `coaches`, or `teams`. |
+| `coaches` / `players` / `teams` tables | Exist with RLS, triggers, indexes — **no code path writes to them**. `grep -r "from('coaches').insert"` returns zero hits. |
+| `staging_players` table | Exists (`20251208000000_consolidated_schema.sql:345`) with RLS — **also never written to** by app code. |
+| `docs/expansion/03_ROADMAP.md` — M2.2 | Claims the ingestion pipeline is "finalized with robust validation and error recovery." True for validation; false for write-through. |
+
+Three downstream features stub around this:
+- `TeamAnalysisPage.jsx` reads `teams` and produces a visualization — the table is empty in a fresh org.
+- `useTeamPortal.js` expects team rows to exist for RSVP / chat / schedule views.
+- `EnterpriseDashboard.jsx:106` documents the gap inline: `coaches: Math.floor(orgData.total_users * 0.4), // Stub calculation for coaches`.
+
+Nothing in the wave plan currently owns closing this gap.
+
+---
+
+## Requirements Added in Planning
+
+User ask (2026-04-21, this session):
+
+1. **Min and max players per team**, configurable per program.
+2. **Min and max teams per program**, configurable per program.
+3. **Teaming runnable with placeholder coaches** — the algorithm shouldn't block on missing coach assignments; open slots become visible as "coaching needs" that admins can fill after the fact.
+4. **Admin-level coach swap on teams** — admins (the only intended user group for this UI, currently) can move a coach between teams or replace a placeholder with a real coach.
+5. **Coach-lead capture from player registrations** (previously scoped as C1.6). Guardians who checked "Head coach this player's team" on a GotSport player registration become `coaches.status = 'interested'` records linked to the division(s) their children are playing in. Coach-CSV imports promote matching leads to `'active'` automatically.
+
+Constraints worth naming explicitly:
+
+- `coaches.email` is globally `UNIQUE` today (not org-scoped). Whatever write path is built has to either tolerate that assumption or migrate the constraint.
+- `coaches.status` today accepts `'active' | 'pending-confirmation' | 'inactive'`. Adding `'interested'` is additive and backward-safe.
+- Division gender comes from `divisions.gender_policy` (`'coed' | 'girls' | 'boys'`). A "U12B" program is `(division_name='U12', gender_policy='boys')` — no separate gender column is needed on a coach-interest junction.
+- `players.coach_volunteer` already exists as a boolean column. A lead-capture pass should read this rather than inventing a new `coach_intent` field.
+- The wave-execution protocol (`.claude/wave-execution-protocol.md`) forbids modifying `.claude/wave-*-prompt.md` during execution. A v1.1 wave is a new file, not an edit to an existing one.
+
+---
+
+## Proposed Feature Areas
+
+Broken into plausible v1.1 waves. Names + numbers are tentative; a v1.1 planning PR will finalize the sequencing.
+
+### v1.1 Area A — Import Write Path
+
+**Why first**: every other area depends on it.
+
+- Promote `import_jobs.error_summary` JSON into real rows on `players` / `coaches` / `teams` at finalize time.
+- Decide staging model: direct insert from Edge Function vs. populate `staging_players` first then promote (migration `20251208000000` left room for this pattern — the table has `import_job_id`, `promoted_at`, `promoted_by` columns hinting at intent).
+- Idempotency per `import_jobs.id` (re-running an import shouldn't double-insert).
+- Conflict handling: GotSport player ID as the natural dedup key; email for coaches.
+- RLS-compatible write surface — either a new RPC (`finalize_import(p_job_id uuid)`) or expansion of the existing `import-validation` Edge Function to do the insert after validation clears.
+- UI signal: the Import panel's "Import Complete!" state today is a lie; it should actually say what landed where.
+
+**Touches**: `supabase/functions/import-validation/index.ts`, `frontend/src/contexts/ImportContext.jsx`, `supabase/migrations/**` (new RPC), `frontend/src/components/ImportPanel.jsx` (copy), `docs/architecture/data-modeling.md`.
+
+### v1.1 Area B — Division-Level Teaming Configuration
+
+**Why second**: once data lands, the teaming algorithm needs knobs.
+
+- Extend `divisions` (or a new `division_settings` table) with `min_players_per_team`, `max_players_per_team`, `min_teams_per_program`, `max_teams_per_program`.
+- Admin UI to edit those bounds per division. `FieldManagementPage` is the precedent for division-adjacent admin CRUD.
+- Validation: bounds sanity (max ≥ min ≥ 1), roster-cap compatibility with the existing `divisions.max_roster_size`.
+- Downstream: the teaming algorithm in `@squadlogic/core` reads these bounds (currently hardcoded or ad-hoc).
+- Backfill existing divisions with sensible defaults from `max_roster_size`.
+
+**Touches**: `supabase/migrations/**`, `@squadlogic/core/**`, a new `DivisionSettingsPage` (or section on an existing settings page), `docs/architecture/team-generation.md`.
+
+### v1.1 Area C — Placeholder Coaches + Admin Swap
+
+**Why third**: teaming can produce teams with open coach slots, admins fill them later.
+
+- Extend `teams` (or a `team_coaches` junction if one doesn't exist yet — check during scoping) with an explicit "placeholder" concept. Leading candidate: `team_coaches.coach_id NULL` means a placeholder; a display-only label lives on the row.
+- Admin page: team roster view with drag-and-drop OR select-based coach reassignment between teams. `RosterManager` from M2.3 is the precedent for this interaction pattern.
+- Permission: `usePermission('admin')` guard; hidden from coaches + players per the user's "admins only" note.
+- Visualization affordance: when teaming runs, the output summary shows "N teams with unfilled coach slots" and clicking navigates to the assignment UI.
+
+**Touches**: `supabase/migrations/**` (team_coaches if missing), `frontend/src/pages/TeamAnalysisPage.jsx` or new page, `frontend/src/components/RosterManager.jsx` adjacent, `docs/architecture/team-generation.md`.
+
+### v1.1 Area D — Coach Lead Capture (née C1.6)
+
+**Why fourth**: now there's an `active` coach space to promote into, and a team-coach surface to use the leads.
+
+- Land the parked migration from `claude/feat-coach-leads` (20260421060000), incorporating the Gemini/Codex feedback already recorded on [#186](https://github.com/JoelA510/SquadLogic/pull/186):
+  - Set-based RPC using `jsonb_to_recordset` (P2).
+  - `organization_id` constraint in the lead lookup (P1 — cross-tenant risk with global-unique email).
+  - `NULLS NOT DISTINCT` on the `coach_interested_programs` unique (P2 — re-imports create duplicates otherwise).
+  - Remove unused `v_existing_status`.
+- Inline inference during player import: match the enroller name against Guardian 1 / Guardian 2 by Levenshtein, pick the closer guardian's email.
+- Auto-promote matching leads when a coach CSV imports (coach-CSV wins; the parent may still be flagged as "interested" in other children's divisions, but the identity is now `'active'`).
+- `/coaches` page — doesn't exist today. Build minimal: status pills (All / Registered / Interested), program filter, search by name/email. Listed as interested = "here are people who volunteered on a registration form but haven't completed coach registration; reach out offline."
+
+**Touches**: `supabase/migrations/20260421060000_coach_leads.sql` (the parked migration), `frontend/src/components/ColumnMapper.jsx` (new canonical fields for enroller + guardian + division), `frontend/src/utils/telemetryUtils.js` (alias additions — must be kept in sync with `supabase/functions/import-validation/index.ts` per the Codex P1 on #186), `frontend/src/contexts/ImportContext.jsx` (call `upsert_coach_leads` after player finalize), new `frontend/src/pages/CoachesPage.jsx`, router wiring.
+
+### v1.1 Area E — Intent-Field Capture for Non-Coach Volunteers
+
+Out of scope for v1.1 per user ask (2026-04-21): referee-rep intent, PSA-training intent, and other volunteer flavors from the 2026 CVSC forms are captured as passthrough columns only. No lead record, no UI. Follow-up if / when the operator workflow changes.
+
+---
+
+## Related Artifacts
+
+| Artifact | State | Notes |
+| :--- | :--- | :--- |
+| PR [#185](https://github.com/JoelA510/SquadLogic/pull/185) — CSV template downloads | Open | Ready to merge once Gemini feedback applied. Prereq for Area A / D UX. |
+| PR [#184](https://github.com/JoelA510/SquadLogic/pull/184) — Column mapper | Open | Ready to merge once Gemini feedback applied. Foundation for Area D's new canonical fields. |
+| PR [#186](https://github.com/JoelA510/SquadLogic/pull/186) — Coach leads WIP | Open, marked "do not merge" | Migration + RPC salvageable under Area D; blocked on write-path (Area A). |
+| Branch `claude/feat-coach-leads` | Parked on origin | Contains the WIP migration `20260421060000_coach_leads.sql`. Don't delete until Area D is scoped. |
+| `supabase/migrations/20251208000000_consolidated_schema.sql:345` | Landed | `staging_players` table exists, hints at an intended promote-from-staging pattern. Area A should confirm or reject that pattern. |
+| `docs/expansion/03_ROADMAP.md` M2.2 | Landed | Reads as if ingestion is complete; reconcile after Area A lands. |
+| `frontend/src/pages/EnterpriseDashboard.jsx:106` | Landed | Stub calc `coaches: Math.floor(orgData.total_users * 0.4)` — remove after Area A. |
+
+---
+
+## What Next
+
+- **Do NOT** edit `.claude/wave-*-prompt.md` to shoehorn this work in. Wave specs are frozen during execution per `CLAUDE.md` hard rule.
+- **DO** treat this doc as the seed for a v1.1 planning session that cuts `.claude/wave-1.1a-prompt.md` (or similar numbering) once v1.0.1 tags via Wave 9b.
+- **For current sessions**: C3 (account portal) and any other work that doesn't depend on persistence can proceed independently on v1.0.1's hardening track.
