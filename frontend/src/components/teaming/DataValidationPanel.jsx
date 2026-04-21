@@ -45,7 +45,10 @@ export default function DataValidationPanel({ errors }) {
                 </td>
                 <td className="p-4 text-text-primary">{error.message}</td>
                 <td className="p-4">
-                  <button className="text-blue-400 hover:text-blue-300 text-xs font-medium">
+                  <button
+                    type="button"
+                    className="text-blue-400 hover:text-blue-300 text-xs font-medium"
+                  >
                     Review
                   </button>
                 </td>

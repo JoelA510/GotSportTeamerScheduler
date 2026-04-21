@@ -247,6 +247,8 @@ export default function FieldManagementPage() {
                 {editingField ? 'Edit Field' : 'Add New Field'}
               </h2>
               <button
+                type="button"
+                aria-label="Close modal"
                 onClick={() => setIsModalOpen(false)}
                 className="text-text-muted hover:text-text-primary"
               >
@@ -258,7 +260,10 @@ export default function FieldManagementPage() {
               {/* Location Select or Create */}
               <div className="bg-bg-surface p-3 rounded-lg border border-border-subtle space-y-3">
                 <div className="flex justify-between items-center">
-                  <label className="block text-sm font-medium text-text-secondary">
+                  <label
+                    htmlFor="field-location-input"
+                    className="block text-sm font-medium text-text-secondary"
+                  >
                     Venue / Location
                   </label>
                   {!isAddingLocation && (
@@ -281,7 +286,9 @@ export default function FieldManagementPage() {
 
                 {isAddingLocation ? (
                   <input
+                    id="field-location-input"
                     type="text"
+                    aria-label="New location name"
                     placeholder="e.g. Main Complex"
                     value={newLocationName}
                     onChange={(e) => setNewLocationName(e.target.value)}
@@ -289,6 +296,7 @@ export default function FieldManagementPage() {
                   />
                 ) : (
                   <select
+                    id="field-location-input"
                     value={formData.location_id}
                     onChange={(e) => setFormData({ ...formData, location_id: e.target.value })}
                     className="w-full bg-bg-app border border-border-subtle rounded-lg px-4 py-2 focus:border-brand-400 focus:outline-none text-text-primary"

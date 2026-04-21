@@ -301,6 +301,7 @@ export default function RegistrationFlow() {
                       <input
                         id={`custom-field-${idx}`}
                         type="text"
+                        aria-required={field.required ? 'true' : undefined}
                         value={responses[field.label] || ''}
                         onChange={(e) =>
                           setResponses({ ...responses, [field.label]: e.target.value })
@@ -313,6 +314,7 @@ export default function RegistrationFlow() {
                       <input
                         id={`custom-field-${idx}`}
                         type="text"
+                        aria-required={field.required ? 'true' : undefined}
                         value={responses[field.label] || ''}
                         onChange={(e) =>
                           setResponses({ ...responses, [field.label]: e.target.value })
