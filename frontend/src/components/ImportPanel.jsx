@@ -8,11 +8,13 @@ import {
   Bell,
   BrainCircuit,
   Info,
+  Download,
 } from 'lucide-react';
 import { PERSISTENCE_THEMES } from '../utils/themes.js';
 import { useImport } from '../contexts/ImportContext.jsx';
 import { useOrganization } from '../contexts/OrganizationContext.jsx';
 import { matchHeaders } from '../utils/telemetryUtils.js';
+import { downloadTemplate } from '../utils/csvTemplates.js';
 import { supabase } from '../lib/supabaseClient.js';
 import Button from './ui/Button.jsx';
 import ProgressBar from './ui/ProgressBar.jsx';
@@ -400,6 +402,38 @@ export default function ImportPanel({ onImport }) {
               </div>
             </button>
           ))}
+        </div>
+
+        {/* Template download + defer-field hint */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6 p-3 bg-bg-surface/50 border border-border-subtle rounded-lg">
+          <div className="text-xs text-text-secondary flex items-start gap-2">
+            <Info size={14} className="shrink-0 mt-0.5 text-blue-400" />
+            <span>
+              {importType === 'fields' ? (
+                <>
+                  No fields yet?{' '}
+                  <span className="text-text-primary">
+                    You can skip this step and add them later
+                  </span>{' '}
+                  at <span className="font-mono text-brand-400">/fields</span> — useful if your
+                  permits aren&apos;t finalized.
+                </>
+              ) : (
+                <>
+                  Not sure about the format? Download a template with the expected columns and an
+                  example row.
+                </>
+              )}
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => downloadTemplate(importType)}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-border-subtle bg-bg-surface hover:bg-bg-surface-hover text-text-primary text-xs font-medium transition-colors whitespace-nowrap"
+          >
+            <Download size={14} />
+            Download {importType} template
+          </button>
         </div>
 
         {!previewData ? (
