@@ -138,11 +138,10 @@ export default function ImportPanel({ onImport }) {
     const normalizeHeader = (h) => mappings[h] || h.toLowerCase().trim();
 
     const validationErrors = [];
-    const normalizedData = [];
+    const requiredForType = REQUIRED_HEADERS[importType] || [];
 
     data.forEach((row, index) => {
       const newRow = {};
-      let isRowValid = true;
       const rowErrors = [];
       const errorFields = [];
 
@@ -150,27 +149,14 @@ export default function ImportPanel({ onImport }) {
         newRow[normalizeHeader(key)] = row[key];
       });
 
-      if (importType === 'players') {
-        if (!newRow['first_name']) {
-          isRowValid = false;
-          rowErrors.push('Missing first name');
-          errorFields.push('first_name');
+      requiredForType.forEach((field) => {
+        if (!newRow[field]) {
+          rowErrors.push(`Missing ${field.replace(/_/g, ' ')}`);
+          errorFields.push(field);
         }
-        if (!newRow['last_name']) {
-          isRowValid = false;
-          rowErrors.push('Missing last name');
-          errorFields.push('last_name');
-        }
-        if (!newRow['date_of_birth']) {
-          isRowValid = false;
-          rowErrors.push('Missing date of birth');
-          errorFields.push('date_of_birth');
-        }
-      }
+      });
 
-      if (isRowValid) {
-        normalizedData.push(newRow);
-      } else {
+      if (rowErrors.length > 0) {
         validationErrors.push({ row: index + 2, data: newRow, errors: rowErrors, errorFields });
       }
     });

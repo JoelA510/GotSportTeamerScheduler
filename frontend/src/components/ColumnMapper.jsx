@@ -141,7 +141,10 @@ export function applyMapping(row, mapping) {
 export function serializeCanonicalCsv(rows, canonicalHeaders) {
   const escape = (val) => {
     const str = (val ?? '').toString();
-    if (/["\n,]/.test(str)) return `"${str.replace(/"/g, '""')}"`;
+    // RFC 4180: quote fields containing any quote, any part of a CRLF
+    // line break, or a comma. `\r` is needed for values carrying a
+    // bare CR (Gemini review on #184).
+    if (/["\n\r,]/.test(str)) return `"${str.replace(/"/g, '""')}"`;
     return str;
   };
   const headerRow = canonicalHeaders.map(escape).join(',');
