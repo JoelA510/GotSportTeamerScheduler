@@ -13,6 +13,8 @@ import { FeatureFlagSchema } from '../constants/featureFlags.js';
  * @property {any[]} availableSeasons - season_settings rows for the current org
  * @property {any} currentSeasonSetting - the active season_settings row
  * @property {boolean} loading
+ * @property {Error | null} fetchError - surfaces org-fetch failures to AppContent
+ * @property {() => void} refetchOrgs - re-runs the initial organization_members fetch
  * @property {function} switchOrganization
  * @property {function} switchSeason
  * @property {function} updateFeatureFlags - persistence via secure RPC
@@ -37,6 +39,12 @@ export const OrganizationProvider = ({ children }) => {
   const [availableSeasons, setAvailableSeasons] = useState([]);
   const [currentSeasonSetting, setCurrentSeasonSetting] = useState(null);
   const [loading, setLoading] = useState(false);
+  // Surfaced so AppContent can render a diagnostic instead of hanging on a
+  // stuck LoadingScreen when the initial org fetch fails (e.g. stale RLS
+  // policy returning 500 before the latest migration is applied).
+  const [fetchError, setFetchError] = useState(null);
+  const [refetchTick, setRefetchTick] = useState(0);
+  const refetchOrgs = useCallback(() => setRefetchTick((n) => n + 1), []);
 
   // Fetch season_settings for a given organization
   const fetchSeasonsForOrg = useCallback(async (orgId) => {
@@ -85,6 +93,7 @@ export const OrganizationProvider = ({ children }) => {
 
     const fetchOrgs = async () => {
       setLoading(true);
+      setFetchError(null);
       try {
         const { data, error } = await supabase
           .from('organization_members')
@@ -117,13 +126,14 @@ export const OrganizationProvider = ({ children }) => {
         }
       } catch (err) {
         logger.error('Error fetching organizations:', err);
+        setFetchError(err);
       } finally {
         setLoading(false);
       }
     };
 
     fetchOrgs();
-  }, [user, fetchSeasonsForOrg]);
+  }, [user, fetchSeasonsForOrg, refetchTick]);
 
   const switchOrganization = useCallback(
     async (orgId) => {
@@ -210,6 +220,8 @@ export const OrganizationProvider = ({ children }) => {
       availableSeasons,
       currentSeasonSetting,
       loading,
+      fetchError,
+      refetchOrgs,
       switchOrganization,
       switchSeason,
       updateFeatureFlags,
@@ -223,6 +235,8 @@ export const OrganizationProvider = ({ children }) => {
       availableSeasons,
       currentSeasonSetting,
       loading,
+      fetchError,
+      refetchOrgs,
       switchOrganization,
       switchSeason,
       updateFeatureFlags,

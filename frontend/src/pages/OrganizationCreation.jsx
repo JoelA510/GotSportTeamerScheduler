@@ -102,7 +102,7 @@ export default function OrganizationCreation() {
             Identity Locked
           </h2>
           <p className="text-text-muted">
-            Your organization has been digitized. Launching neural dashboard...
+            Your organization has been digitized. Launching admin dashboard...
           </p>
         </div>
       </div>
@@ -226,7 +226,7 @@ export default function OrganizationCreation() {
         </form>
 
         <div className="px-8 py-4 bg-brand-500/5 border-t border-white/5 text-[10px] text-text-muted uppercase tracking-widest text-center italic">
-          Neural link established. All fields recorded in the central audit log.
+          Admin session established. All fields recorded in the central audit log.
         </div>
       </div>
     </div>

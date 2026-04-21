@@ -8,6 +8,7 @@ import { ImportProvider } from './contexts/ImportContext.jsx';
 import { ThemeProvider } from './contexts/ThemeContext.jsx';
 import { OrganizationProvider, useOrganization } from './contexts/OrganizationContext.jsx';
 import LoadingScreen from './components/LoadingScreen.jsx';
+import OrganizationFetchError from './components/OrganizationFetchError.jsx';
 import ProtectedRoute from './components/ProtectedRoute.jsx';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
 import { PERMISSIONS } from './constants/permissions.js';
@@ -46,6 +47,8 @@ function AppContent() {
     permissions,
     organizations,
     loading: orgLoading,
+    fetchError: orgFetchError,
+    refetchOrgs,
   } = useOrganization();
 
   if (loading) {
@@ -58,6 +61,14 @@ function AppContent() {
         <Login />
       </Suspense>
     );
+  }
+
+  // The initial organization fetch errored out (typical cause: stale RLS
+  // policy returning 500, or network hiccup). Surface a diagnostic instead
+  // of either (a) hanging on LoadingScreen forever or (b) pushing the user
+  // back to OrganizationCreation as if they had no orgs.
+  if (orgFetchError && !orgLoading) {
+    return <OrganizationFetchError error={orgFetchError} onRetry={refetchOrgs} />;
   }
 
   const hasNoOrgs = !orgLoading && organizations.length === 0;

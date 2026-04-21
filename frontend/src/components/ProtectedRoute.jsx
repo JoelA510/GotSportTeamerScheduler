@@ -1,7 +1,9 @@
 import React from 'react';
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { usePermission } from '../hooks/usePermission.js';
+import { useOrganization } from '../contexts/OrganizationContext.jsx';
 import LoadingScreen from './LoadingScreen.jsx';
+import OrganizationFetchError from './OrganizationFetchError.jsx';
 
 /**
  * Phase 2 Security Fix (H-3): Removed 3-second delay before redirect.
@@ -13,11 +15,18 @@ import LoadingScreen from './LoadingScreen.jsx';
  */
 const ProtectedRoute = ({ requiredPermission, children }) => {
   const { can, role } = usePermission();
+  const { loading: orgLoading, fetchError, refetchOrgs } = useOrganization();
   const location = useLocation();
+
+  // If the org fetch errored, show the diagnostic instead of hanging on a
+  // LoadingScreen the user can't distinguish from the auth loader.
+  if (fetchError && !orgLoading) {
+    return <OrganizationFetchError error={fetchError} onRetry={refetchOrgs} />;
+  }
 
   // Still loading organization member data
   if (role === undefined) {
-    return <LoadingScreen />;
+    return <LoadingScreen message="Loading your organization..." />;
   }
 
   // Immediate redirect — no delay, no warning, no race condition
