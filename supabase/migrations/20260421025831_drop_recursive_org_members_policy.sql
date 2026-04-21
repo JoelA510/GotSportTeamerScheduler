@@ -38,7 +38,16 @@ BEGIN;
 DROP POLICY IF EXISTS "Users can view members of their organizations"
   ON public.organization_members;
 
--- 2. Re-assert the safe SELECT policy (no-op if definitive_schema already
+-- 2. Defensively pin search_path on the SECURITY DEFINER helpers this
+--    migration leans on. `20260421002500_lock_search_path_remaining_definers.sql`
+--    already covers them in a fully up-to-date DB; ALTER FUNCTION is idempotent
+--    so re-asserting here protects us if the migration is applied against a DB
+--    that is behind on Wave 2 / Wave 6a corrective migrations. Each overload
+--    (distinguished by signature) needs its own ALTER (Gemini PR #177 §1).
+ALTER FUNCTION public.is_org_member(uuid) SET search_path = public;
+ALTER FUNCTION public.is_org_admin(uuid)  SET search_path = public;
+
+-- 3. Re-assert the safe SELECT policy (no-op if definitive_schema already
 --    ran; creates it if the target DB was behind). is_org_member() is
 --    SECURITY DEFINER so its internal SELECT does not re-trigger RLS.
 DROP POLICY IF EXISTS "Org Members: view members"
@@ -48,7 +57,7 @@ CREATE POLICY "Org Members: view members"
   TO authenticated
   USING (public.is_org_member(organization_id));
 
--- 3. Re-assert the admin-manage policy. The original uses an EXISTS subquery
+-- 4. Re-assert the admin-manage policy. The original uses an EXISTS subquery
 --    into organization_members which, while guarded by the early is_org_member
 --    call, can still trigger recursion under some planner conditions. Replace
 --    the EXISTS with a call to public.is_org_admin(org_id) (defined in

@@ -27,8 +27,13 @@ WHERE n.nspname = 'public'
 --    the same query that was returning 500 now returns rows. Replace
 --    <USER_UUID> with a real user that is a member of at least one org.
 --
+--    Supabase's auth.uid() reads from the plural `request.jwt.claims` JSON
+--    GUC (not the older singular `request.jwt.claim.sub` — that form still
+--    works on some Supabase versions but is the second branch of the
+--    auth.uid() coalesce and is not the documented path).
+--
 --    SET LOCAL ROLE authenticated;
---    SET LOCAL request.jwt.claim.sub = '<USER_UUID>';
+--    SET LOCAL "request.jwt.claims" = '{"sub": "<USER_UUID>"}';
 --    SELECT om.*, o.*
 --    FROM public.organization_members om
 --    JOIN public.organizations o ON o.id = om.organization_id
