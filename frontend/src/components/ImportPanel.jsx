@@ -14,7 +14,7 @@ import {
 import { PERSISTENCE_THEMES } from '../utils/themes.js';
 import { useImport } from '../contexts/ImportContext.jsx';
 import { useOrganization } from '../contexts/OrganizationContext.jsx';
-import { matchHeaders } from '../utils/telemetryUtils.js';
+import { matchHeaders, HEADER_ALIASES } from '../utils/telemetryUtils.js';
 import { downloadTemplate } from '../utils/csvTemplates.js';
 import { supabase } from '../lib/supabaseClient.js';
 import Button from './ui/Button.jsx';
@@ -68,6 +68,12 @@ export default function ImportPanel({ onImport }) {
   // of the preview. The mapper re-emits a rewritten file that we thread
   // back through the preview path.
   const [mappingStage, setMappingStage] = useState(null);
+  // Snapshot of the first-ever parse for this upload (raw headers, raw
+  // rows, auto-match output). "Adjust mapping" re-opens the mapper
+  // against this — never against the post-confirmation rewritten data,
+  // which would present canonical headers as "raw" (Gemini review on
+  // #186).
+  const [originalParse, setOriginalParse] = useState(null);
 
   const {
     isImporting,
@@ -171,7 +177,7 @@ export default function ImportPanel({ onImport }) {
     });
   };
 
-  const parseCSV = (fileToParse) => {
+  const parseCSV = (fileToParse, { isRemapped = false } = {}) => {
     Papa.parse(fileToParse, {
       header: true,
       skipEmptyLines: true,
@@ -190,6 +196,19 @@ export default function ImportPanel({ onImport }) {
           telemetryLogs
         );
         const smartMetadata = { mappings, confidence, rationales, timing, isFallback };
+
+        // Snapshot the first-ever parse for this upload so "Adjust
+        // mapping" can reopen the mapper against the truly-raw data
+        // instead of the rewritten canonical CSV (Gemini review on
+        // #186).
+        if (!isRemapped) {
+          setOriginalParse({
+            file: fileToParse,
+            headers,
+            data,
+            mappings,
+          });
+        }
 
         const normalizeHeader = (h) => mappings[h] || h.toLowerCase().trim();
         const requiredForType = REQUIRED_HEADERS[importType] || [];
@@ -233,10 +252,20 @@ export default function ImportPanel({ onImport }) {
 
     const mappedRows = stage.rawData.map((row) => applyMapping(row, mapping));
 
-    // Canonical header set = all required + any optional mapped fields +
-    // the original raw headers that weren't shadowed by the mapping.
+    // Canonical header set = all explicitly mapped fields + any original
+    // raw headers that (a) weren't used directly as a mapped key AND
+    // (b) wouldn't be aliased to a mapped key by the downstream alias
+    // map. Without the second check, a raw header like "Coach Name"
+    // (alias → full_name) stays in the rewritten CSV alongside our
+    // explicit full_name column, and the downstream normalize step
+    // overwrites the user's mapping with the aliased raw value (Codex
+    // review on #186).
     const mappedKeys = new Set(Object.keys(mapping));
-    const canonicalHeaders = [...mappedKeys, ...stage.rawHeaders.filter((h) => !mappedKeys.has(h))];
+    const aliasOf = (h) => HEADER_ALIASES[h.toLowerCase().trim()] ?? h.toLowerCase().trim();
+    const canonicalHeaders = [
+      ...mappedKeys,
+      ...stage.rawHeaders.filter((h) => !mappedKeys.has(h) && !mappedKeys.has(aliasOf(h))),
+    ];
 
     const csv = serializeCanonicalCsv(mappedRows, canonicalHeaders);
     const rewritten = new File(
@@ -248,13 +277,16 @@ export default function ImportPanel({ onImport }) {
     setMappingStage(null);
     setFile(rewritten);
     setError(null);
-    parseCSV(rewritten);
+    // Pass isRemapped so the rewritten CSV doesn't overwrite our
+    // originalParse snapshot — "Adjust mapping" needs that original.
+    parseCSV(rewritten, { isRemapped: true });
   };
 
   const handleMappingCancel = () => {
     setMappingStage(null);
     setFile(null);
     setPreviewData(null);
+    setOriginalParse(null);
     setError(null);
   };
 
@@ -343,6 +375,7 @@ export default function ImportPanel({ onImport }) {
                   resetImport('all');
                   setFile(null);
                   setPreviewData(null);
+                  setOriginalParse(null);
                 }}
               >
                 Upload Another File
@@ -357,6 +390,7 @@ export default function ImportPanel({ onImport }) {
                   resetImport('all');
                   setFile(null);
                   setPreviewData(null);
+                  setOriginalParse(null);
                 }}
               >
                 Continue
@@ -421,6 +455,7 @@ export default function ImportPanel({ onImport }) {
                 setPreviewData(null);
                 setError(null);
                 setMappingStage(null);
+                setOriginalParse(null);
               }}
               className={`
                                  flex-1 p-4 rounded-xl border transition-all duration-200 text-left relative overflow-hidden group
@@ -564,33 +599,40 @@ export default function ImportPanel({ onImport }) {
                 </div>
               </div>
               <div className="flex gap-3">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    // Re-open the mapper against the already-parsed data
-                    // so the user can override auto-matches.
-                    setMappingStage({
-                      rawHeaders: previewData.headers,
-                      rawData: previewData.fullData,
-                      sampleRows: previewData.fullData.slice(0, 3),
-                      autoMatches: previewData.smartMetadata?.mappings || {},
-                      smartMetadata: previewData.smartMetadata,
-                      missingHeaders: [],
-                    });
-                    setPreviewData(null);
-                  }}
-                  title="Edit column mapping"
-                >
-                  <SlidersHorizontal size={14} className="mr-1" />
-                  Adjust mapping
-                </Button>
+                {originalParse && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      // Re-open the mapper against the ORIGINAL raw parse,
+                      // not against previewData — previewData may be the
+                      // post-confirmation rewritten CSV with canonical
+                      // headers, which would present the user with
+                      // canonical names as "raw" and prevent reverting to
+                      // real source columns (Gemini review on #186).
+                      setMappingStage({
+                        rawHeaders: originalParse.headers,
+                        rawData: originalParse.data,
+                        sampleRows: originalParse.data.slice(0, 3),
+                        autoMatches: originalParse.mappings,
+                        smartMetadata: previewData.smartMetadata,
+                        missingHeaders: [],
+                      });
+                      setPreviewData(null);
+                    }}
+                    title="Edit column mapping"
+                  >
+                    <SlidersHorizontal size={14} className="mr-1" />
+                    Adjust mapping
+                  </Button>
+                )}
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={() => {
                     setFile(null);
                     setPreviewData(null);
+                    setOriginalParse(null);
                   }}
                 >
                   Cancel

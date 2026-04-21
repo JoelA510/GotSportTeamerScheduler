@@ -9,14 +9,17 @@
 --      "who's interested in U12B?" and admins can trace leads back to the
 --      player registration that flagged them.
 --   3. public.upsert_coach_leads(p_leads jsonb) — SECURITY DEFINER RPC that
---      the client calls after a successful player import. Inserts coaches
---      with status='interested' ON CONFLICT DO NOTHING (never downgrades a
---      registered coach), then backfills coach_interested_programs.
+--      the client calls after a successful player import. Set-based
+--      implementation (Gemini review on #186) using jsonb_to_recordset and
+--      a CTE pipeline. Never downgrades a registered coach, never links
+--      programs across tenants (Codex P1 on #186).
 --
 -- Note on email uniqueness: coaches.email has a GLOBAL UNIQUE constraint
 -- today, not scoped by organization_id. That means two orgs can't have the
 -- same coach email. That's a pre-existing single-tenant assumption; C1.6
--- preserves it rather than reshaping it.
+-- preserves it rather than reshaping it. The RPC guards against cross-org
+-- linking by requiring the resolved coach row's organization_id to match
+-- the lead's requested organization_id.
 
 BEGIN;
 
@@ -40,8 +43,13 @@ COMMENT ON COLUMN public.coaches.status IS
 -- 2. coach_interested_programs junction
 -- ==================================================================================
 -- Tracks which divisions each coach lead has expressed interest in, with a
--- breadcrumb to the originating player row. UNIQUE guarantees idempotent
--- re-imports (same coach + same division + same source player = one row).
+-- breadcrumb to the originating player row.
+--
+-- UNIQUE NULLS NOT DISTINCT (PG 15+): `inferred_from_player_id` is nullable
+-- (player row may have been deleted later via ON DELETE SET NULL). Without
+-- NULLS NOT DISTINCT, Postgres treats each NULL as distinct and re-imports
+-- without a player_id create duplicates — the ON CONFLICT clause in the
+-- RPC never fires for those rows (Codex P2 on #186).
 
 CREATE TABLE IF NOT EXISTS public.coach_interested_programs (
     id                      uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -50,7 +58,7 @@ CREATE TABLE IF NOT EXISTS public.coach_interested_programs (
     inferred_from_player_id uuid REFERENCES public.players(id) ON DELETE SET NULL,
     organization_id         uuid NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
     created_at              timestamptz NOT NULL DEFAULT timezone('utc', now()),
-    UNIQUE (coach_id, division_id, inferred_from_player_id)
+    UNIQUE NULLS NOT DISTINCT (coach_id, division_id, inferred_from_player_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_coach_interested_programs_coach
@@ -70,18 +78,21 @@ CREATE POLICY "Coach Interested Programs: members access"
     USING (public.is_org_member(organization_id));
 
 -- ==================================================================================
--- 3. upsert_coach_leads RPC
+-- 3. upsert_coach_leads RPC (set-based)
 -- ==================================================================================
 -- Input payload: [{email, full_name, organization_id, division_id, player_id}, ...]
---   - organization_id is required and the caller must be a member.
---   - division_id and player_id may be null (the function still creates/updates
---     the coach lead but skips the program linkage for that row).
+--   - organization_id is required; caller must be a member of every
+--     referenced org (pre-validated in a tiny loop; the subsequent CTE
+--     pipeline runs as one statement).
+--   - division_id and player_id may be null. A null division_id means we
+--     create the lead coach record but skip the program linkage for that
+--     row.
 --
--- Behavior:
---   - For each input row, INSERT into coaches with status='interested'.
---     ON CONFLICT (email) DO NOTHING — we never downgrade an 'active' coach.
---   - Look up the coach_id (either newly created or pre-existing) and INSERT
---     into coach_interested_programs, skipping duplicates.
+-- Cross-org safety: if an email already exists under a DIFFERENT org (the
+-- global UNIQUE(email) constraint makes this possible), the ON CONFLICT
+-- on the coaches INSERT silently no-ops, AND the program-linkage lookup
+-- requires the coach's own `organization_id` to match the lead's requested
+-- one — so cross-tenant linkage can't be created (Codex P1 on #186).
 --
 -- Returns: { leads_created: int, programs_linked: int, skipped_existing: int }.
 
@@ -92,75 +103,106 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
-    v_lead           jsonb;
-    v_email          text;
-    v_full_name      text;
-    v_org_id         uuid;
-    v_division_id    uuid;
-    v_player_id      uuid;
-    v_coach_id       uuid;
-    v_existing_status text;
-    v_inserted       int := 0;
-    v_linked         int := 0;
-    v_skipped        int := 0;
+    v_org_id uuid;
+    v_result jsonb;
 BEGIN
     IF p_leads IS NULL OR jsonb_typeof(p_leads) <> 'array' THEN
         RAISE EXCEPTION 'p_leads must be a jsonb array';
     END IF;
 
-    FOR v_lead IN SELECT * FROM jsonb_array_elements(p_leads)
+    -- Up-front org-membership check. Runs once per distinct org in the
+    -- batch, so this is cheap even for large payloads — Gemini review on
+    -- #186 flagged per-row is_org_member calls as redundant.
+    FOR v_org_id IN
+        SELECT DISTINCT (elem->>'organization_id')::uuid
+        FROM jsonb_array_elements(p_leads) AS elem
+        WHERE elem->>'organization_id' IS NOT NULL
+          AND elem->>'organization_id' <> ''
     LOOP
-        v_email       := lower(trim(v_lead->>'email'));
-        v_full_name   := trim(v_lead->>'full_name');
-        v_org_id      := nullif(v_lead->>'organization_id', '')::uuid;
-        v_division_id := nullif(v_lead->>'division_id', '')::uuid;
-        v_player_id   := nullif(v_lead->>'player_id', '')::uuid;
-
-        -- Guard: caller must be a member of the org this lead is being inserted into.
-        IF v_org_id IS NULL OR NOT public.is_org_member(v_org_id) THEN
+        IF NOT public.is_org_member(v_org_id) THEN
             RAISE EXCEPTION 'Access denied: user is not a member of organization %', v_org_id;
-        END IF;
-
-        IF v_email IS NULL OR v_email = '' OR v_full_name IS NULL OR v_full_name = '' THEN
-            -- Incomplete payload — skip silently rather than aborting the batch.
-            CONTINUE;
-        END IF;
-
-        -- Check existing coach by (lower) email within this org. The global
-        -- UNIQUE(email) constraint means we can just look up by email.
-        SELECT id, status INTO v_coach_id, v_existing_status
-        FROM public.coaches
-        WHERE lower(email) = v_email
-        LIMIT 1;
-
-        IF v_coach_id IS NULL THEN
-            INSERT INTO public.coaches (organization_id, full_name, email, status, import_source, last_imported_at)
-            VALUES (v_org_id, v_full_name, v_email, 'interested', 'player_import_lead', timezone('utc', now()))
-            RETURNING id INTO v_coach_id;
-            v_inserted := v_inserted + 1;
-        ELSE
-            -- Already exists (any status) — don't downgrade 'active' to 'interested'.
-            v_skipped := v_skipped + 1;
-        END IF;
-
-        -- Link the program if we have one and the coach row is in this org.
-        IF v_division_id IS NOT NULL AND v_coach_id IS NOT NULL THEN
-            INSERT INTO public.coach_interested_programs
-                (coach_id, division_id, inferred_from_player_id, organization_id)
-            VALUES (v_coach_id, v_division_id, v_player_id, v_org_id)
-            ON CONFLICT (coach_id, division_id, inferred_from_player_id) DO NOTHING;
-
-            IF FOUND THEN
-                v_linked := v_linked + 1;
-            END IF;
         END IF;
     END LOOP;
 
-    RETURN jsonb_build_object(
-        'leads_created', v_inserted,
-        'programs_linked', v_linked,
-        'skipped_existing', v_skipped
-    );
+    WITH input_leads AS (
+        SELECT
+            lower(trim(coalesce(email, '')))    AS email,
+            trim(coalesce(full_name, ''))       AS full_name,
+            organization_id,
+            division_id,
+            player_id
+        FROM jsonb_to_recordset(p_leads) AS x(
+            email           text,
+            full_name       text,
+            organization_id uuid,
+            division_id     uuid,
+            player_id       uuid
+        )
+        WHERE organization_id IS NOT NULL
+    ),
+    valid_leads AS (
+        SELECT * FROM input_leads
+        WHERE email <> '' AND full_name <> ''
+    ),
+    -- Dedup by email for the coaches INSERT. If the same email appears
+    -- under multiple orgs in one batch, pick the lowest org_id
+    -- deterministically — the cross-org safety net below still holds.
+    coach_candidates AS (
+        SELECT DISTINCT ON (email)
+            email, full_name, organization_id
+        FROM valid_leads
+        ORDER BY email, organization_id
+    ),
+    inserted_coaches AS (
+        INSERT INTO public.coaches (
+            organization_id, full_name, email, status,
+            import_source, last_imported_at
+        )
+        SELECT
+            organization_id, full_name, email, 'interested',
+            'player_import_lead', timezone('utc', now())
+        FROM coach_candidates
+        ON CONFLICT (email) DO NOTHING
+        RETURNING id, organization_id, email
+    ),
+    -- For each valid lead, resolve coach_id via (a) the INSERT RETURNING
+    -- from this batch or (b) an existing coach in the SAME org. Cross-
+    -- org matches yield NULL coach_id and are dropped from the linkage
+    -- step.
+    resolved_leads AS (
+        SELECT
+            vl.division_id,
+            vl.player_id,
+            vl.organization_id,
+            COALESCE(ic.id, c.id) AS coach_id
+        FROM valid_leads vl
+        LEFT JOIN inserted_coaches ic
+            ON ic.email = vl.email
+           AND ic.organization_id = vl.organization_id
+        LEFT JOIN public.coaches c
+            ON lower(c.email) = vl.email
+           AND c.organization_id = vl.organization_id
+    ),
+    inserted_links AS (
+        INSERT INTO public.coach_interested_programs (
+            coach_id, division_id, inferred_from_player_id, organization_id
+        )
+        SELECT coach_id, division_id, player_id, organization_id
+        FROM resolved_leads
+        WHERE coach_id IS NOT NULL
+          AND division_id IS NOT NULL
+        ON CONFLICT (coach_id, division_id, inferred_from_player_id) DO NOTHING
+        RETURNING 1
+    )
+    SELECT jsonb_build_object(
+        'leads_created',    (SELECT count(*) FROM inserted_coaches),
+        'programs_linked',  (SELECT count(*) FROM inserted_links),
+        'skipped_existing', (SELECT count(*) FROM valid_leads)
+                            - (SELECT count(*) FROM inserted_coaches)
+    )
+    INTO v_result;
+
+    RETURN v_result;
 END;
 $$;
 
