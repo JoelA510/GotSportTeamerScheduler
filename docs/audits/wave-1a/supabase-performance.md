@@ -149,15 +149,44 @@ But `practice_assignments` and `game_assignments` **do not have a `run_id` colum
 
 **Impact**: Queries fail silently or return empty results, breaking practice/game assignment UI. Missing constraint means orphaned assignments accumulate after scheduler_run deletion.
 
-**Recommended Fix**:
+**Recommended Fix**: add the column NULLABLE first (step 1), backfill existing rows by joining to the most recent `scheduler_runs` row per `organization_id` (step 2), then promote to `NOT NULL` with the FK + index in a follow-up migration (step 3). Doing `ADD COLUMN ... NOT NULL REFERENCES ...` in one shot against a populated table would either fail (PostgreSQL default constraint check) or require a `DEFAULT` that lies about provenance.
+
 ```sql
-ALTER TABLE practice_assignments ADD COLUMN run_id uuid REFERENCES scheduler_runs(id) ON DELETE CASCADE;
-ALTER TABLE game_assignments ADD COLUMN run_id uuid REFERENCES scheduler_runs(id) ON DELETE CASCADE;
-CREATE INDEX idx_practice_assignments_run_id ON public.practice_assignments(run_id);
-CREATE INDEX idx_game_assignments_run_id ON public.game_assignments(run_id);
--- Add to schedule_evaluations:
-ALTER TABLE schedule_evaluations ADD COLUMN run_id uuid REFERENCES scheduler_runs(id) ON DELETE CASCADE;
-CREATE INDEX idx_schedule_evaluations_run_id ON public.schedule_evaluations(run_id);
+-- Step 1 — nullable column + FK + index (safe on populated tables).
+ALTER TABLE public.practice_assignments
+  ADD COLUMN run_id uuid REFERENCES public.scheduler_runs(id) ON DELETE CASCADE;
+ALTER TABLE public.game_assignments
+  ADD COLUMN run_id uuid REFERENCES public.scheduler_runs(id) ON DELETE CASCADE;
+ALTER TABLE public.schedule_evaluations
+  ADD COLUMN run_id uuid REFERENCES public.scheduler_runs(id) ON DELETE CASCADE;
+
+CREATE INDEX idx_practice_assignments_run_id   ON public.practice_assignments(run_id);
+CREATE INDEX idx_game_assignments_run_id       ON public.game_assignments(run_id);
+CREATE INDEX idx_schedule_evaluations_run_id   ON public.schedule_evaluations(run_id);
+
+-- Step 2 — backfill existing rows (if any). The heuristic: attribute each row
+-- to the MOST RECENT scheduler_runs row for the same organization_id + type.
+-- If the data model doesn't support a unique attribution, leave rows NULL and
+-- plan a data migration in Wave 4 / Wave 6b.
+UPDATE public.practice_assignments pa
+  SET run_id = sr.id
+  FROM public.scheduler_runs sr
+  WHERE sr.organization_id = pa.organization_id
+    AND sr.run_type = 'practice'
+    AND pa.run_id IS NULL
+    AND sr.id = (
+      SELECT id FROM public.scheduler_runs
+      WHERE organization_id = pa.organization_id AND run_type = 'practice'
+      ORDER BY created_at DESC LIMIT 1
+    );
+-- (repeat equivalent UPDATE for game_assignments / schedule_evaluations)
+
+-- Step 3 — promote to NOT NULL (separate migration; only after Step 2 leaves
+-- zero unbackfilled rows). If any rows remain NULL, decide per-row whether to
+-- delete as orphaned or leave the column nullable with a doc note.
+ALTER TABLE public.practice_assignments  ALTER COLUMN run_id SET NOT NULL;
+ALTER TABLE public.game_assignments      ALTER COLUMN run_id SET NOT NULL;
+ALTER TABLE public.schedule_evaluations  ALTER COLUMN run_id SET NOT NULL;
 ```
 
 **Proposed Wave**: 6-edge-critical (blocks feature)  

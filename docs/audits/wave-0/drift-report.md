@@ -12,7 +12,7 @@
 
 | Plan | ✅ holds | ⚠️ drifted | ❌ false | Refresh edits queued |
 | --- | --- | --- | --- | --- |
-| `wave-0-prompt.md` | 9 | 2 | 2 | 4 |
+| `wave-0-prompt.md` | 8 | 2 | 2 | 4 |
 | `wave-1a-prompt.md` | 12 | 1 | 0 | 1 |
 | `wave-1b-prompt.md` | n/a | 0 | 0 | 0 |
 | `wave-2-prompt.md` | n/a | 0 | 0 | 0 |
@@ -28,7 +28,7 @@
 | `wave-9a-prompt.md` | n/a | 0 | 0 | 0 |
 | `wave-9b-prompt.md` | n/a | 0 | 0 | 0 |
 | `wave-execution-protocol.md` | n/a | 0 | 0 | 0 |
-| **Total** | **21+** | **4** | **2** | **6** |
+| **Total** | **20+** | **4** | **2** | **6** |
 
 `n/a` rows: pre-flight assertions not individually verified in this audit pass — they reference repo state that hasn't shifted since `2026-04-17` (migration count, package.json, scripts list, audit-index template). They should be re-verified at each wave's own pre-flight gate per `wave-execution-protocol.md` §2.
 

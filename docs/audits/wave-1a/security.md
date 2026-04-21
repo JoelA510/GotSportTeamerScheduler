@@ -94,20 +94,22 @@ CREATE POLICY "raw-imports read by org member"
 2. `public.validate_custom_attributes()` — same file, line 62
 3. `public.log_schema_change()` — same file, line 137
 4. `public.check_password_length_on_auth_users()` — `/home/user/SquadLogic/supabase/migrations/20240405180000_password_hardening.sql:10`
-5. `public.persist_evaluation_run(jsonb, jsonb[], jsonb[])` — `/home/user/SquadLogic/supabase/migrations/20260406180000_phase_7_analytics_persistence.sql:38`
-6. `public.prune_old_evaluation_runs()` — same file, line 24 (also repeated in `/home/user/SquadLogic/supabase/migrations/20260408100000_retention_180_days.sql:18`)
+5. `public.persist_evaluation_run` has TWO overloads, both `SECURITY DEFINER`:
+   - `(uuid, text, jsonb, integer)` — `/home/user/SquadLogic/supabase/migrations/20260406180000_phase_7_analytics_persistence.sql` (original)
+   - `(jsonb, jsonb, jsonb)` — `/home/user/SquadLogic/supabase/migrations/20260407000000_persist_evaluation_run_overload.sql` (remediation overload)
+6. `public.prune_old_evaluation_runs()` — `/home/user/SquadLogic/supabase/migrations/20260406180000_phase_7_analytics_persistence.sql` (also redefined in `/home/user/SquadLogic/supabase/migrations/20260408100000_retention_180_days.sql`)
 
 Functions created with `SECURITY DEFINER` but without `SET search_path` can be hijacked via search_path injection: an attacker sets `search_path = attacker_schema, public` and the function resolves table/function calls to the attacker's objects first.
 
 **Impact**: Privilege escalation via search_path manipulation. For example, `validate_custom_attributes` could be tricked into writing to `attacker_schema.organization_schemas` instead of `public.organization_schemas`.
 
-**Recommended Fix**: One migration with:
+**Recommended Fix**: One migration with 7 ALTER statements (both persist_evaluation_run overloads must be handled separately — Postgres dispatches on signature):
 ```sql
 ALTER FUNCTION public.get_reserved_keys() SET search_path = public;
 ALTER FUNCTION public.validate_custom_attributes() SET search_path = public;
 ALTER FUNCTION public.log_schema_change() SET search_path = public;
 ALTER FUNCTION public.check_password_length_on_auth_users() SET search_path = public;
-ALTER FUNCTION public.persist_evaluation_run(jsonb, jsonb[], jsonb[]) SET search_path = public;
+ALTER FUNCTION public.persist_evaluation_run(uuid, text, jsonb, integer) SET search_path = public;
 ALTER FUNCTION public.persist_evaluation_run(jsonb, jsonb, jsonb) SET search_path = public;
 ALTER FUNCTION public.prune_old_evaluation_runs() SET search_path = public;
 ```
