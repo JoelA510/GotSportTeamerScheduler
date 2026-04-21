@@ -15,8 +15,8 @@ import { Edit2, Save, ArrowRight } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient.js';
 
 export default function TeamAnalysisPage() {
-  const { team, loading, error, timezone } = useDashboardData();
-  const { snapshot: persistenceSnapshot, loading: persistenceLoading } = useTeamPersistence();
+  const { team, loading, error: _error, timezone } = useDashboardData();
+  const { snapshot: persistenceSnapshot, loading: _persistenceLoading } = useTeamPersistence();
   const { importedData } = useImport();
   const [isEditMode, setIsEditMode] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -67,7 +67,7 @@ export default function TeamAnalysisPage() {
     try {
       // In a real app, this would trigger the 'generate-teams' Edge Function
       const {
-        data: { user },
+        data: { user: _user },
       } = await supabase.auth.getUser();
       // await supabase.functions.invoke('generate-teams', { body: { config: configs[selectedProgram.id] } });
 

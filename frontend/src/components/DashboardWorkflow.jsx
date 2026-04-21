@@ -26,7 +26,7 @@ const DashboardWorkflow = ({
   controlledActiveStep,
   onStepChange,
   timezone,
-  scheduleEvaluation = undefined,
+  scheduleEvaluation: _scheduleEvaluation = undefined,
 }) => {
   const totalSteps = 6;
   const [internalActiveStep, setInternalActiveStep] = useState(() => {

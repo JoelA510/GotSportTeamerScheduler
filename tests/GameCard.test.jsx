@@ -90,7 +90,7 @@ describe('GameCard', () => {
   });
 
   test('does not show grip handle when drag is disabled', () => {
-    const { container } = render(
+    const { container: _container } = render(
       <DndWrapper>
         <GameCard assignment={ASSIGNMENT} isDragDisabled={true} />
       </DndWrapper>

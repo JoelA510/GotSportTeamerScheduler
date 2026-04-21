@@ -29,10 +29,10 @@ export interface EvaluationResult {
  * Migrated from packages/core/src/practiceMetrics.js and gameMetrics.js
  */
 
-const FAIRNESS_DOMINANCE_THRESHOLD = 0.7;
-const UNDERUTILIZATION_THRESHOLD = 0.25;
-const DAY_CONCENTRATION_THRESHOLD = 0.65;
-const MIN_ASSIGNMENTS_FOR_CONCENTRATION = 3;
+const _FAIRNESS_DOMINANCE_THRESHOLD = 0.7;
+const _UNDERUTILIZATION_THRESHOLD = 0.25;
+const _DAY_CONCENTRATION_THRESHOLD = 0.65;
+const _MIN_ASSIGNMENTS_FOR_CONCENTRATION = 3;
 
 export const MANUAL_FOLLOW_UP_CATEGORIES = {
   CAPACITY: 'capacity',

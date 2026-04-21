@@ -407,7 +407,7 @@ export function ImportProvider({ children }) {
             const normalizeHeader = (h) => mappings[h] || h.toLowerCase().trim();
 
             // Phase 5 Vibe Audit: Detect if a key must go into JSONB vs root table
-            const shouldGoToCustomAttributes = (mappedKey) => {
+            const _shouldGoToCustomAttributes = (mappedKey) => {
               // If it's a known custom field, yes.
               if (organizationSchemas[entityType]?.[mappedKey]) return true;
               // If it's NOT a system column, yes (Fluid Schemas rule).
@@ -451,7 +451,7 @@ export function ImportProvider({ children }) {
             requiredForType.forEach((req) => {
               schemaShape[req] = z.string().min(1, `Missing ${req}`);
             });
-            const rowSchema = z.object(schemaShape).passthrough();
+            const _rowSchema = z.object(schemaShape).passthrough();
 
             const CHUNK_SIZE = 5000;
             let currentIndex = 0;

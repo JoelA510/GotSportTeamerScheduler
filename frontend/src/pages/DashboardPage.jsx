@@ -23,9 +23,9 @@ export default function DashboardPage() {
   }
 
   const { team, practice, game, loading, error: dataError, timezone } = useDashboardData();
-  const { snapshot: persistenceSnapshot, loading: persistenceLoading } = useTeamPersistence();
+  const { snapshot: persistenceSnapshot, loading: _persistenceLoading } = useTeamPersistence();
   const { importedData, setImportedData } = useImport();
-  const { theme } = useTheme();
+  const { theme: _theme } = useTheme();
   const { currentOrganization } = useOrganization();
   const [error, setError] = useState(dataError);
   const [activeStep, setActiveStep] = useState(0);

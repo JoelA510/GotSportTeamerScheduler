@@ -28,8 +28,8 @@ let teamId;
 let practiceSlotId;
 
 // Helper to create a client for a specific user (simulating login)
-async function createUserClient(email, password) {
-  const { data, error } = await adminClient.auth.signUp({
+async function _createUserClient(email, password) {
+  const { data: _data, error } = await adminClient.auth.signUp({
     email,
     password,
     options: {
@@ -195,7 +195,7 @@ async function runVerification() {
     if (divisionError) throw new Error(`Admin failed to create division: ${divisionError.message}`);
 
     // 2. Persist Team Run (Scheduler Run)
-    const { data: run, error: runError } = await authenticatedAdminClient
+    const { data: _run, error: runError } = await authenticatedAdminClient
       .from('scheduler_runs')
       .insert({
         season_settings_id: seasonId,

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { test, expect } from 'vitest';
+import { test } from 'vitest';
 import { formatCsv, generateScheduleExports } from '../packages/core/src/outputGeneration.js';
 
 test('generateScheduleExports builds master and per-team exports', () => {

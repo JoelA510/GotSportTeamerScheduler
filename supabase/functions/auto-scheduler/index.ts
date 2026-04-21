@@ -449,7 +449,11 @@ serve(async (req) => {
     }
 
     // 3. Rate limiting (10 req/min — optimizer is expensive)
-    const { allowed, remaining, retryAfterMs } = checkRateLimit(user.id, {
+    const {
+      allowed,
+      remaining: _remaining,
+      retryAfterMs,
+    } = checkRateLimit(user.id, {
       maxRequests: 10,
       windowMs: 60_000,
     });

@@ -2,7 +2,7 @@ import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import { schedulePractices } from '../packages/core/src/practiceScheduling.js';
 
-test('schedulePractices filters slots before school day end', async (t) => {
+test('schedulePractices filters slots before school day end', async (_t) => {
   const teams = [{ id: 't1', division: 'd1' }];
 
   // Create slots: one early (2 PM), one late (5 PM)
@@ -62,7 +62,7 @@ test('schedulePractices filters slots before school day end', async (t) => {
   assert.equal(assignment.slotId, 's2', 'Team should be assigned to late slot');
 });
 
-test('schedulePractices allow early slots on weekends', async (t) => {
+test('schedulePractices allow early slots on weekends', async (_t) => {
   const teams = [{ id: 't1', division: 'd1' }];
   const baseDate = '2025-01-04T'; // Saturday
   const earlySlot = {

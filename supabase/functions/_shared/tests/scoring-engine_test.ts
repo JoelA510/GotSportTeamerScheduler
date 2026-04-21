@@ -1,4 +1,4 @@
-import { assertEquals, assertNotEquals } from 'https://deno.land/std@0.203.0/assert/mod.ts';
+import { assertEquals } from 'https://deno.land/std@0.203.0/assert/mod.ts';
 import { evaluatePracticeSchedule } from '../engines/scoring-engine.ts';
 import { Team, Slot, PracticeAssignment } from '../schemas/scoring.ts';
 

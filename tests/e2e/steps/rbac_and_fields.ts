@@ -205,7 +205,7 @@ When('I request the list of teams, players, or schedules', async ({ page }) => {
     await editButton.click();
     // Wait for the RosterManager to actually appear
     await page.waitForSelector('h3', { state: 'visible', timeout: 5000 });
-  } catch (e) {
+  } catch {
     // Fallback: If no edit button or it fails, we continue and hope the data is there
   }
 });
@@ -340,7 +340,7 @@ Given('an organization has multiple fields configured', async ({ page }) => {
   });
 });
 
-When('I view the {string} page', async ({ page }, pageName: string) => {
+When('I view the {string} page', async ({ page }, _pageName: string) => {
   await page.goto('/fields');
 });
 

@@ -1,4 +1,4 @@
-import { matchHeaders, RESERVED_KEYS } from '../frontend/src/utils/telemetryUtils.js';
+import { matchHeaders } from '../frontend/src/utils/telemetryUtils.js';
 
 // Mock performance for Node.js
 const performance = {

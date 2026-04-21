@@ -19,7 +19,7 @@ const formatIcsDate = (dateOb: Date): string => {
 };
 
 // Generates a random UID for the ICS event
-const generateUid = () => crypto.randomUUID();
+const _generateUid = () => crypto.randomUUID();
 
 serve(async (req) => {
   try {
