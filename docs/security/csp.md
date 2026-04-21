@@ -16,7 +16,7 @@ script-src  'self';
 style-src   'self' 'unsafe-inline';
 img-src     'self' data: blob:;
 font-src    'self';
-connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.ingest.sentry.io;
+connect-src 'self' https://mmwupqsjkikqzvmdvuzm.supabase.co wss://mmwupqsjkikqzvmdvuzm.supabase.co https://*.ingest.sentry.io;
 frame-ancestors 'none';
 object-src  'none';
 base-uri    'self';
@@ -25,8 +25,8 @@ upgrade-insecure-requests;
 ```
 
 Served as `Content-Security-Policy: …` (enforcing). Wave 2 flipped it from
-Report-Only. Wave 7b refined `connect-src` to include Sentry ingest + widen
-Supabase to `*.supabase.co` (resilient to project-ref changes).
+Report-Only. Wave 7b added Sentry ingest to `connect-src` (Wave 2 gap — DSN
+was set but captures were CSP-blocked).
 
 ## Directive rationale
 
@@ -37,7 +37,7 @@ Supabase to `*.supabase.co` (resilient to project-ref changes).
 | `style-src` | `'self' 'unsafe-inline'` | **Waiver** — Tailwind 4 runtime injects classes via dynamic `<style>` tags and React's `style={{...}}` prop renders inline. Nonce migration requires Tailwind 4.x nonce-propagation (not yet stable) + audit of every inline style site. See §`Follow-ups`. |
 | `img-src` | `'self' data: blob:` | `data:` for small icons / placeholder SVGs in-bundle; `blob:` for the `OfflineGuard` Supabase-Storage-loaded brand assets. No third-party image CDNs. |
 | `font-src` | `'self'` | All fonts bundled via Vite (`index.css` imports). No Google Fonts / third-party font CDNs. |
-| `connect-src` | `'self' https://*.supabase.co wss://*.supabase.co https://*.ingest.sentry.io` | Allows (1) same-origin XHR, (2) any Supabase project host over HTTPS + WSS for Realtime, (3) Sentry ingest. The `*.supabase.co` wildcard replaces the hardcoded project ref (which would break when projects migrate). |
+| `connect-src` | `'self' https://mmwupqsjkikqzvmdvuzm.supabase.co wss://mmwupqsjkikqzvmdvuzm.supabase.co https://*.ingest.sentry.io` | Allows (1) same-origin XHR, (2) the SquadLogic-specific Supabase project over HTTPS + WSS for Realtime, (3) Sentry ingest. **Supabase host is pinned** to the specific project ref — an earlier draft used `*.supabase.co`; Gemini PR #175 review correctly flagged the wildcard as an XSS-exfiltration broadening. If the project ref ever changes, update this directive in the same PR that updates the Supabase env vars. **Sentry is wildcard-scoped** to `*.ingest.sentry.io` because the Sentry SDK dispatches to region/org-specific subdomains (`o<id>.ingest.sentry.io`) not known at deploy time; the apex `ingest.sentry.io` is Sentry-operated single-tenant and does not host guest content. |
 | `frame-ancestors` | `'none'` | Clickjacking defense. SquadLogic is never embedded. |
 | `object-src` | `'none'` | Legacy `<object>` / Flash blocker — zero legitimate use. |
 | `base-uri` | `'self'` | Prevents `<base>` tag injection that would rewrite all relative URLs. |
