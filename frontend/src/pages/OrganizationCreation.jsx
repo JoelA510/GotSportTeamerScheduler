@@ -145,13 +145,35 @@ function CreateOrganizationForm() {
     setLoading(true);
     setError(null);
 
+    // Hard 30-second timeout race. If the RPC hangs (network, server-side
+    // lock, silent Supabase proxy stall), surface a readable error instead
+    // of leaving the button pinned on "Creating organization..." forever.
+    const withTimeout = (promise, ms) =>
+      Promise.race([
+        promise,
+        new Promise((_, reject) =>
+          setTimeout(
+            () =>
+              reject(
+                new Error(
+                  `Request timed out after ${ms / 1000}s. Check your connection and try again.`
+                )
+              ),
+            ms
+          )
+        ),
+      ]);
+
     try {
-      const { data, error: rpcError } = await supabase.rpc('initialize_new_tenant', {
-        p_name: formData.name,
-        p_slug: formData.slug,
-        p_timezone: formData.timezone,
-        p_season_year: parseInt(formData.seasonYear, 10),
-      });
+      const { data, error: rpcError } = await withTimeout(
+        supabase.rpc('initialize_new_tenant', {
+          p_name: formData.name,
+          p_slug: formData.slug,
+          p_timezone: formData.timezone,
+          p_season_year: parseInt(formData.seasonYear, 10),
+        }),
+        30000
+      );
 
       if (rpcError) throw rpcError;
 
