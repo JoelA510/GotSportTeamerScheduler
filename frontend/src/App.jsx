@@ -36,6 +36,7 @@ const ResetPassword = lazy(() => import('./pages/ResetPassword.jsx'));
 const AuditLogPage = lazy(() => import('./pages/AuditLogPage.jsx'));
 const AnalyticalDashboard = lazy(() => import('./pages/AnalyticalDashboard.jsx'));
 const OrganizationCreation = lazy(() => import('./pages/OrganizationCreation.jsx'));
+const InvitePage = lazy(() => import('./pages/InvitePage.jsx'));
 import ShadowBanner from './components/auth/ShadowBanner.jsx';
 import OfflineGuard from './components/OfflineGuard.jsx';
 
@@ -50,6 +51,20 @@ function AppContent() {
 
   if (loading) {
     return <LoadingScreen />;
+  }
+
+  // /invite/:code is reachable regardless of session or org state. The page
+  // itself handles each auth/org combination (unauthenticated → stash + bounce
+  // to Login; authenticated → redeem immediately).
+  const isInvitePath = window.location.pathname.startsWith('/invite/');
+  if (isInvitePath) {
+    return (
+      <Suspense fallback={<LoadingScreen message="Validating invite..." />}>
+        <Routes>
+          <Route path="/invite/:code" element={<InvitePage />} />
+        </Routes>
+      </Suspense>
+    );
   }
 
   if (!session && window.location.pathname !== '/auth/reset-password') {

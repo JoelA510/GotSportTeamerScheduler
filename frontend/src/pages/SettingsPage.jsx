@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { Settings, Shield, History } from 'lucide-react';
+import { Settings, Shield, History, Ticket } from 'lucide-react';
 import GeneralSettings from '../components/settings/GeneralSettings.jsx';
 import FeatureFlagSettings from '../components/settings/FeatureFlagSettings.jsx';
 import AuditLogSettings from '../components/settings/AuditLogSettings.jsx';
+import InvitesSettings from '../components/settings/InvitesSettings.jsx';
 import { useOrganization } from '../contexts/OrganizationContext.jsx';
 import { PERMISSIONS } from '../constants/permissions.js';
 
@@ -17,9 +18,11 @@ export default function SettingsPage() {
 
   // RBAC check for architectural toggles
   const canManageFlags = permissions.includes(PERMISSIONS.MANAGE_GLOBAL_SETTINGS);
+  const canManageInvites = permissions.includes(PERMISSIONS.MANAGE_ORGANIZATION);
 
   const tabs = [
     { id: 'general', label: 'General', icon: Settings },
+    ...(canManageInvites ? [{ id: 'invites', label: 'Invites', icon: Ticket }] : []),
     ...(canManageFlags ? [{ id: 'flags', label: 'Feature Flags', icon: Shield }] : []),
     { id: 'audit', label: 'Audit Log', icon: History },
   ];
@@ -28,6 +31,8 @@ export default function SettingsPage() {
     switch (activeTab) {
       case 'general':
         return <GeneralSettings />;
+      case 'invites':
+        return <InvitesSettings />;
       case 'flags':
         return <FeatureFlagSettings />;
       case 'audit':
