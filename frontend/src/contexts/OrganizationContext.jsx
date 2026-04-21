@@ -46,8 +46,14 @@ export const OrganizationProvider = ({ children }) => {
   const [refetchTick, setRefetchTick] = useState(0);
   const refetchOrgs = useCallback(() => setRefetchTick((n) => n + 1), []);
 
-  // Fetch season_settings for a given organization
-  const fetchSeasonsForOrg = useCallback(async (orgId) => {
+  // Fetch season_settings for a given organization.
+  //
+  // Accepts an optional `isCancelled` predicate (default: always false) so the
+  // caller can propagate its own lifecycle signal — see the useEffect below.
+  // Every setState after the await is guarded, so a stale response (from a
+  // prior user / prior refetch / unmount) cannot clobber fresh state.
+  /** @type {(orgId: string, isCancelled?: () => boolean) => Promise<void>} */
+  const fetchSeasonsForOrg = useCallback(async (orgId, isCancelled = () => false) => {
     try {
       const { data, error } = await supabase
         .from('season_settings')
@@ -55,6 +61,7 @@ export const OrganizationProvider = ({ children }) => {
         .eq('organization_id', orgId)
         .order('created_at', { ascending: false });
 
+      if (isCancelled()) return;
       if (error) throw error;
 
       setAvailableSeasons(data || []);
@@ -75,6 +82,7 @@ export const OrganizationProvider = ({ children }) => {
         setCurrentSeasonSetting(null);
       }
     } catch (err) {
+      if (isCancelled()) return;
       logger.error('Error fetching season_settings:', err);
       setAvailableSeasons([]);
       setCurrentSeasonSetting(null);
@@ -91,6 +99,15 @@ export const OrganizationProvider = ({ children }) => {
       return;
     }
 
+    // Cancellation flag addresses the race documented in Gemini PR #178:
+    // if refetchOrgs is triggered multiple times OR the effect re-runs
+    // (user change, refetchTick bump) OR the provider unmounts while the
+    // fetch is in flight, responses can resolve out of order. Any setState
+    // after an await short-circuits when `cancelled` is true so a stale
+    // response can't overwrite fresher state.
+    let cancelled = false;
+    const isCancelled = () => cancelled;
+
     const fetchOrgs = async () => {
       setLoading(true);
       setFetchError(null);
@@ -100,6 +117,7 @@ export const OrganizationProvider = ({ children }) => {
           .select('*, organizations(*)')
           .eq('profile_id', user.id);
 
+        if (cancelled) return;
         if (error) throw error;
 
         if (data && data.length > 0) {
@@ -115,24 +133,29 @@ export const OrganizationProvider = ({ children }) => {
           if (matchedMember) {
             setCurrentOrganization(matchedMember.organizations);
             setOrgMember({ role: matchedMember.role, ...matchedMember });
-            await fetchSeasonsForOrg(matchedMember.organization_id);
+            await fetchSeasonsForOrg(matchedMember.organization_id, isCancelled);
           } else {
             const first = data[0];
             setCurrentOrganization(first.organizations);
             setOrgMember({ role: first.role, ...first });
             localStorage.setItem('squadlogic_active_org', first.organization_id);
-            await fetchSeasonsForOrg(first.organization_id);
+            await fetchSeasonsForOrg(first.organization_id, isCancelled);
           }
         }
       } catch (err) {
+        if (cancelled) return;
         logger.error('Error fetching organizations:', err);
         setFetchError(err);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
 
     fetchOrgs();
+
+    return () => {
+      cancelled = true;
+    };
   }, [user, fetchSeasonsForOrg, refetchTick]);
 
   const switchOrganization = useCallback(
