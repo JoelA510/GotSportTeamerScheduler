@@ -233,12 +233,16 @@ Wave 1b shipped on the same execution branch (`claude/wave-execution-plan-87XGq`
 
 | ID | Outcome | Note |
 | --- | --- | --- |
-| F-2-01..F-2-05 | 🟡 queued for Wave 2 | Migrations + operator config (Sentry DSN, leaked-password). |
+| F-2-01 | ✅ shipped Wave 2 (commit `7d56e92`) | `import_efficiency_metrics` view → SECURITY INVOKER (migration `20260421000833_*`). |
+| F-2-02 | ✅ shipped Wave 2 (commit `07ca5bd`) | `raw-imports` bucket → private + org-scoped RLS (migration `20260421001043_*`). |
+| F-2-03 | ✅ shipped Wave 2 (commit `9046c94`) | search_path pinned on 6 definer functions / 7 overloads (migration `20260421001209_*`). |
+| F-2-04 | ✅ documented Wave 2 (commit `15ff9ab`) | Operator runbook `docs/operations/leaked-password-protection.md`. |
+| F-2-05 | ✅ documented Wave 2 (commit `15ff9ab`) | Operator runbook `docs/operations/sentry-smoke.md`. |
 | F-2-06 | 🟡 queued for Wave 7b | CSP `connect-src` Sentry ingest fix. |
 | F-2-07, F-2-09, F-2-10, F-2-12 | 🔵 waived | Tailwind CSP compat / trigger overhead / rate-limit dashboard / calendar-token audit — defer or operator. |
 | F-2-08 | 🟡 queued for Wave 7a | Profiles cross-org pgTAP coverage. |
 | F-2-11 | ✅ shipped (commit `1c0c06e`) | Added warning comment to `.env.test.example`. |
-| F-2-13 | ✅ verified | npm audit clean. |
+| F-2-13 | ✅ verified | npm audit (prod) clean. Dev-only vitest/vite advisory waived in `docs/security/dependabot-waivers.md` (Wave 2 commit `1279c26`); re-evaluation gated on Wave 9 vitest upgrade. |
 
 **Supabase performance (SP)** — 12 findings: all `🟡 queued for Wave 2 (DDL fixes)` or `Wave 6b (indexes)` per the original assignments. No Wave 1b changes.
 
@@ -255,7 +259,7 @@ Wave 1b shipped on the same execution branch (`claude/wave-execution-plan-87XGq`
 
 ### Follow-ups to Waves 2–9 (rollup)
 
-- **Wave 2-security**: F-2-01, F-2-02, F-2-03, F-2-04, F-2-05; SP-03, SP-10, SP-11.
+- **Wave 2-security**: ~~F-2-01, F-2-02, F-2-03, F-2-04, F-2-05~~ (✅ all shipped 2026-04-21); SP-03, SP-10, SP-11 still queued (re-filed to Wave 6b — schema integrity DDL paired with the index migration).
 - **Wave 5-e2e**: F-4.5-04, F-4.5-05, F-4.5-08, F-4.5-09, F-4.5-10, F-4.5-12, F-4.5-13.
 - **Wave 6a-bundle**: F-4-01, F-4-02, F-4-03, F-4-06, F-4-07.
 - **Wave 6b-edge / 6b-storage**: F-4-04; F-4-05, F-4-08; SP-01, SP-02, SP-04, SP-05, SP-06, SP-07, SP-08, SP-09.
