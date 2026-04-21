@@ -36,47 +36,88 @@ export const AuthProvider = ({ children }) => {
       return;
     }
 
-    // Safety timeout — if onAuthStateChange never fires (network issues,
-    // misconfigured client, etc.), stop blocking the UI after 5 seconds.
+    let cancelled = false;
+
+    // Safety net: if nothing has resolved auth within 5 s, stop blocking the
+    // UI so the user sees either the app or the sign-in screen instead of a
+    // permanent loading spinner. Intentionally NOT cleared inside the auth
+    // handler — the only way to clear it is the finally block below, which
+    // also guarantees setLoading(false) runs.
     const safetyTimer = setTimeout(() => {
-      if (loading) {
-        console.warn(
-          '[Auth] Safety timeout — onAuthStateChange did not fire within 5 s. Clearing loading state.'
-        );
-        setLoading(false);
-      }
+      if (cancelled) return;
+      console.warn(
+        '[Auth] Safety timeout — auth resolution did not complete within 5 s. Clearing loading state.'
+      );
+      setLoading(false);
     }, 5000);
 
-    // Listen for changes
+    // Hydrate the profile for a given session. Resilient to fetch errors:
+    // any failure still yields a user object (so the app can render) and
+    // always flips loading=false.
+    const applySession = async (session) => {
+      if (cancelled) return;
+      setSession(session);
+      try {
+        if (session?.user) {
+          try {
+            const { data: profile } = await supabase
+              .from('profiles')
+              .select('*')
+              .eq('id', session.user.id)
+              .single();
+            if (cancelled) return;
+            setUser({ ...session.user, profile: profile || null });
+          } catch (err) {
+            // Profile fetch can fail on network blips, brief RLS gaps during
+            // migrations, or missing profiles row. Fall back to the bare
+            // session user so the rest of the app can keep rendering — any
+            // downstream feature that needs the profile will re-fetch.
+            console.warn('[Auth] Profile fetch failed; using session user only', err);
+            if (cancelled) return;
+            setUser({ ...session.user, profile: null });
+          }
+        } else {
+          setUser(null);
+        }
+      } finally {
+        if (!cancelled) {
+          clearTimeout(safetyTimer);
+          setLoading(false);
+        }
+      }
+    };
+
+    // Kick off an initial getSession() so we don't depend on
+    // onAuthStateChange firing — some supabase-js paths (corrupt localStorage,
+    // refresh-token errors, missing INITIAL_SESSION event in offline mode)
+    // can leave the subscriber without a synthetic initial event.
+    supabase.auth
+      .getSession()
+      .then(({ data: { session } }) => applySession(session))
+      .catch((err) => {
+        console.warn('[Auth] getSession() failed; proceeding unauthenticated', err);
+        if (!cancelled) {
+          clearTimeout(safetyTimer);
+          setLoading(false);
+        }
+      });
+
+    // Subscribe for future changes (sign in, sign out, token refresh, etc.).
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      clearTimeout(safetyTimer);
-      setSession(session);
-
-      if (session?.user) {
-        // Fetch profile
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', session.user.id)
-          .single();
-
-        // Merge profile data into user object for convenience, or keep separate
-        // Here we keep user object as is, but could add specific profile logic
-        setUser({ ...session.user, profile });
-      } else {
-        setUser(null);
-      }
-
-      setLoading(false);
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      applySession(session);
     });
 
     return () => {
+      cancelled = true;
       clearTimeout(safetyTimer);
       subscription.unsubscribe();
     };
-  }, [loading]);
+    // One-shot subscription — intentionally omit `loading` from deps to avoid
+    // tearing down and re-subscribing on every state flip, which caused
+    // races between old and new handlers on the old version of this effect.
+  }, []);
 
   const resetPasswordForEmail = async (email) => {
     try {
