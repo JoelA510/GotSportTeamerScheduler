@@ -17,6 +17,7 @@ import { supabase } from '../lib/supabaseClient.js';
 import { logger } from '../lib/logger.js';
 import Button from '../components/ui/Button.jsx';
 import { PENDING_INVITE_STORAGE_KEY } from '../lib/inviteStorage.js';
+import { withTimeout } from '../lib/withTimeout.js';
 
 /**
  * OrganizationCreation Page
@@ -145,26 +146,11 @@ function CreateOrganizationForm() {
     setLoading(true);
     setError(null);
 
-    // Hard 30-second timeout race. If the RPC hangs (network, server-side
-    // lock, silent Supabase proxy stall), surface a readable error instead
-    // of leaving the button pinned on "Creating organization..." forever.
-    const withTimeout = (promise, ms) =>
-      Promise.race([
-        promise,
-        new Promise((_, reject) =>
-          setTimeout(
-            () =>
-              reject(
-                new Error(
-                  `Request timed out after ${ms / 1000}s. Check your connection and try again.`
-                )
-              ),
-            ms
-          )
-        ),
-      ]);
-
     try {
+      // Hard 30-second timeout race. If the RPC hangs (network, server-side
+      // lock, silent Supabase proxy stall), surface a readable error instead
+      // of leaving the button pinned on "Creating organization..." forever.
+      // Timer clears itself when the RPC settles via withTimeout's finally.
       const { data, error: rpcError } = await withTimeout(
         supabase.rpc('initialize_new_tenant', {
           p_name: formData.name,
@@ -172,7 +158,8 @@ function CreateOrganizationForm() {
           p_timezone: formData.timezone,
           p_season_year: parseInt(formData.seasonYear, 10),
         }),
-        30000
+        30000,
+        'Create-organization request'
       );
 
       if (rpcError) throw rpcError;
@@ -350,9 +337,13 @@ function JoinWithInviteForm({ initialCode }) {
     setLoading(true);
     setError(null);
     try {
-      const { data, error: rpcError } = await supabase.rpc('redeem_org_invite', {
-        p_code: code.trim(),
-      });
+      // Same 30-second timeout defense as the Create flow — a silently
+      // stalled redeem RPC would otherwise pin this button indefinitely.
+      const { data, error: rpcError } = await withTimeout(
+        supabase.rpc('redeem_org_invite', { p_code: code.trim() }),
+        30000,
+        'Redeem-invite request'
+      );
       if (rpcError) throw rpcError;
 
       // Clear any stashed pending invite now that it's consumed.
