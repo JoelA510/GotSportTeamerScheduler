@@ -1,0 +1,26 @@
+-- Smoke test for migration 20260421001043_scope_raw_imports_bucket.sql
+--
+-- Manual operator verification (run against staging or a feature-branch DB):
+--
+-- 1. Confirm bucket is private:
+--    SELECT id, public FROM storage.buckets WHERE id = 'raw-imports';
+--    -- Expected: public = false
+--
+-- 2. Confirm policies exist with org-scoping:
+--    SELECT polname FROM pg_policies WHERE tablename = 'objects'
+--      AND polname LIKE 'raw-imports%';
+--    -- Expected rows:
+--    --   raw-imports org-member select
+--    --   raw-imports org-member insert
+--    --   raw-imports org-member delete
+--
+-- 3. Cross-org leak smoke (requires two test users, USER_A in ORG_A,
+--    USER_B in ORG_B, with at least one object at path '<ORG_A_uuid>/test.csv'):
+--    SET LOCAL ROLE authenticated;
+--    SET LOCAL request.jwt.claim.sub = '<USER_B-uuid>';
+--    SELECT count(*) FROM storage.objects
+--      WHERE bucket_id = 'raw-imports' AND name LIKE '<ORG_A_uuid>/%';
+--    -- Expected: 0 (USER_B should not see ORG_A's objects).
+--
+-- Post-deploy: run `mcp__supabase__get_advisors --type=security` and confirm
+-- the public-bucket warning for raw-imports is gone.
