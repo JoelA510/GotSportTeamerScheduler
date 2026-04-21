@@ -238,7 +238,7 @@ Wave 1b shipped on the same execution branch (`claude/wave-execution-plan-87XGq`
 | F-2-03 | ✅ shipped Wave 2 (commit `9046c94`) | search_path pinned on 6 definer functions / 7 overloads (migration `20260421001209_*`). |
 | F-2-04 | ✅ documented Wave 2 (commit `15ff9ab`) | Operator runbook `docs/operations/leaked-password-protection.md`. |
 | F-2-05 | ✅ documented Wave 2 (commit `15ff9ab`) | Operator runbook `docs/operations/sentry-smoke.md`. |
-| F-2-06 | 🟡 queued for Wave 7b | CSP `connect-src` Sentry ingest fix. |
+| F-2-06 | ✅ shipped Wave 7b | CSP `connect-src` includes `https://*.ingest.sentry.io`; Supabase ref replaced with `*.supabase.co` wildcard (`vercel.json`). Full policy + waivers documented in `docs/security/csp.md`. |
 | F-2-07, F-2-09, F-2-10, F-2-12 | 🔵 waived | Tailwind CSP compat / trigger overhead / rate-limit dashboard / calendar-token audit — defer or operator. |
 | F-2-08 | 🟡 queued for Wave 7a | Profiles cross-org pgTAP coverage. |
 | F-2-11 | ✅ shipped (commit `1c0c06e`) | Added warning comment to `.env.test.example`. |
