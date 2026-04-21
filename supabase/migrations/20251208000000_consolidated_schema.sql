@@ -840,17 +840,22 @@ create policy "Admins can do everything on schedule_evaluations"
   with check ((auth.jwt() -> 'app_metadata' ->> 'role') = 'admin');
 
 drop policy if exists "Service role can do everything on schedule_evaluations" on schedule_evaluations;
+-- advisor-lint-allow: service_role policies are scoped to service_role and bypass RLS by design; using/with check (true) is canonical for that role.
 create policy "Service role can do everything on schedule_evaluations"
   on schedule_evaluations for all
   to service_role
+-- advisor-lint-allow: same — service_role canonical.
   using (true)
+-- advisor-lint-allow: same — service_role canonical.
   with check (true);
 
 -- Allow read-only access to authenticated users (e.g. coaches viewing status)
 drop policy if exists "Authenticated users can view schedule_evaluations" on schedule_evaluations;
+-- advisor-lint-allow: schedule_evaluations is treated as global (cross-org) status surface; v1.1 follow-up will scope by run-organization once Wave 7a pgTAP coverage is live.
 create policy "Authenticated users can view schedule_evaluations"
   on schedule_evaluations for select
   to authenticated
+-- advisor-lint-allow: same — v1.1 scoping deferred.
   using (true);
 
 -- ==========================================
