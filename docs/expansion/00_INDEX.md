@@ -15,7 +15,8 @@ This folder contains the active roadmap, architectural decisions, and execution 
 2.  **[03_ROADMAP.md](./03_ROADMAP.md)** - Milestone-based roadmap with dependencies and current status.
 3.  **[19_EPIC_LAUNCH_AND_BEYOND_CLAUDE.md](./19_EPIC_LAUNCH_AND_BEYOND_CLAUDE.md)** - Detailed execution plan for CI/CD, Game Scheduler, and Live Backend.
 4.  **[20_GAME_SCHEDULE_GRID_ARCHITECTURE.md](./20_GAME_SCHEDULE_GRID_ARCHITECTURE.md)** - _(ADR)_ Game Schedule Grid component architecture design.
-5.  **[98_PROGRESS_LOG.md](./98_PROGRESS_LOG.md)** - Running log of execution progress.
+5.  **[21_V1_1_PLANNING.md](./21_V1_1_PLANNING.md)** - _(Planning seed)_ Import persistence, teaming & coach leads scope for the post-v1.0.1 v1.1 cycle.
+6.  **[98_PROGRESS_LOG.md](./98_PROGRESS_LOG.md)** - Running log of execution progress.
 
 ## Related Active Docs (Promoted)
 
