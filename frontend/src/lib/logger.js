@@ -27,6 +27,12 @@ export const logger = {
     if (!import.meta.env.PROD) console.log(...args);
   },
 
+  // `info` is an alias for `log` — matches the standard console API so call
+  // sites like `logger.info('event', payload)` don't silently crash.
+  info: (...args) => {
+    if (!import.meta.env.PROD) console.info(...args);
+  },
+
   warn: (...args) => {
     if (!import.meta.env.PROD) console.warn(...args);
   },
