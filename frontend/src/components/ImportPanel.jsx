@@ -9,6 +9,7 @@ import {
   BrainCircuit,
   Info,
   Download,
+  SlidersHorizontal,
 } from 'lucide-react';
 import { PERSISTENCE_THEMES } from '../utils/themes.js';
 import { useImport } from '../contexts/ImportContext.jsx';
@@ -18,7 +19,14 @@ import { downloadTemplate } from '../utils/csvTemplates.js';
 import { supabase } from '../lib/supabaseClient.js';
 import Button from './ui/Button.jsx';
 import ProgressBar from './ui/ProgressBar.jsx';
+import ColumnMapper, { applyMapping, serializeCanonicalCsv } from './ColumnMapper.jsx';
 import { logger } from '../lib/logger.js';
+
+const REQUIRED_HEADERS = {
+  players: ['first_name', 'last_name', 'date_of_birth'],
+  coaches: ['full_name', 'email'],
+  fields: ['name'],
+};
 
 /**
  * Smart Confidence Badge component for high-fidelity mapping indicators.
@@ -55,6 +63,11 @@ export default function ImportPanel({ onImport }) {
   const [error, setError] = useState(null);
   const [previewData, setPreviewData] = useState(null);
   const [importType, setImportType] = useState('players');
+  // When the required-headers check fails (or the user clicks "Adjust
+  // mapping"), we park the parsed CSV here and render ColumnMapper instead
+  // of the preview. The mapper re-emits a rewritten file that we thread
+  // back through the preview path.
+  const [mappingStage, setMappingStage] = useState(null);
 
   const {
     isImporting,
@@ -115,8 +128,51 @@ export default function ImportPanel({ onImport }) {
     parseCSV(file);
   };
 
-  const parseCSV = (file) => {
-    Papa.parse(file, {
+  /**
+   * Run validation + preview assembly on an already-parsed CSV payload.
+   * Called from both parseCSV (for happy-path imports) and from the
+   * ColumnMapper confirm handler (after we've rewritten headers).
+   */
+  const buildPreview = ({ data, headers, smartMetadata }) => {
+    const { mappings } = smartMetadata;
+    const normalizeHeader = (h) => mappings[h] || h.toLowerCase().trim();
+
+    const validationErrors = [];
+    const requiredForType = REQUIRED_HEADERS[importType] || [];
+
+    data.forEach((row, index) => {
+      const newRow = {};
+      const rowErrors = [];
+      const errorFields = [];
+
+      Object.keys(row).forEach((key) => {
+        newRow[normalizeHeader(key)] = row[key];
+      });
+
+      requiredForType.forEach((field) => {
+        if (!newRow[field]) {
+          rowErrors.push(`Missing ${field.replace(/_/g, ' ')}`);
+          errorFields.push(field);
+        }
+      });
+
+      if (rowErrors.length > 0) {
+        validationErrors.push({ row: index + 2, data: newRow, errors: rowErrors, errorFields });
+      }
+    });
+
+    setPreviewData({
+      headers,
+      rows: data.slice(0, 5),
+      totalRows: data.length,
+      fullData: data,
+      validationErrors,
+      smartMetadata,
+    });
+  };
+
+  const parseCSV = (fileToParse) => {
+    Papa.parse(fileToParse, {
       header: true,
       skipEmptyLines: true,
       complete: async (results) => {
@@ -127,85 +183,79 @@ export default function ImportPanel({ onImport }) {
         }
 
         const headers = meta.fields || [];
-        const previewRows = data.slice(0, 5);
 
         // Phase 3: Smart Header Mapping with Performance Gating
         const { mappings, confidence, rationales, timing, isFallback } = matchHeaders(
           headers,
           telemetryLogs
         );
+        const smartMetadata = { mappings, confidence, rationales, timing, isFallback };
 
         const normalizeHeader = (h) => mappings[h] || h.toLowerCase().trim();
-
-        const normalizedData = [];
-        const validationErrors = [];
-
-        const REQUIRED_HEADERS = {
-          players: ['first_name', 'last_name', 'date_of_birth'],
-          coaches: ['full_name', 'email'],
-          fields: ['name'],
-        };
-
         const requiredForType = REQUIRED_HEADERS[importType] || [];
         const normalizedFileHeaders = headers.map(normalizeHeader);
-
         const missingHeaders = requiredForType.filter(
           (req) => !normalizedFileHeaders.includes(req)
         );
+
         if (missingHeaders.length > 0) {
-          setError(`Import failed: Missing required columns: ${missingHeaders.join(', ')}`);
+          // Instead of hard-erroring, hand off to the ColumnMapper so the
+          // user can pick source columns (and optionally combine first/last
+          // into full_name for GotSport-style exports).
+          setMappingStage({
+            rawHeaders: headers,
+            rawData: data,
+            sampleRows: data.slice(0, 3),
+            autoMatches: mappings,
+            smartMetadata,
+            missingHeaders,
+          });
           return;
         }
 
-        data.forEach((row, index) => {
-          const newRow = {};
-          let isRowValid = true;
-          let rowErrors = [];
-          let errorFields = [];
-
-          Object.keys(row).forEach((key) => {
-            const mapped = normalizeHeader(key);
-            newRow[mapped] = row[key];
-          });
-
-          if (importType === 'players') {
-            if (!newRow['first_name']) {
-              isRowValid = false;
-              rowErrors.push('Missing first name');
-              errorFields.push('first_name');
-            }
-            if (!newRow['last_name']) {
-              isRowValid = false;
-              rowErrors.push('Missing last name');
-              errorFields.push('last_name');
-            }
-            if (!newRow['date_of_birth']) {
-              isRowValid = false;
-              rowErrors.push('Missing date of birth');
-              errorFields.push('date_of_birth');
-            }
-          }
-
-          if (isRowValid) {
-            normalizedData.push(newRow);
-          } else {
-            validationErrors.push({ row: index + 2, data: newRow, errors: rowErrors, errorFields });
-          }
-        });
-
-        setPreviewData({
-          headers,
-          rows: previewRows,
-          totalRows: data.length,
-          fullData: data,
-          validationErrors,
-          smartMetadata: { mappings, confidence, rationales, timing, isFallback },
-        });
+        buildPreview({ data, headers, smartMetadata });
       },
       error: (err) => {
         setError(`Error parsing CSV: ${err.message}`);
       },
     });
+  };
+
+  /**
+   * Called when the user confirms their column mapping. Apply the mapping
+   * to every row, build a new File object with canonical headers, then
+   * re-enter the normal parse/preview path so downstream startImport() sees
+   * a clean CSV without needing any mapping awareness itself.
+   */
+  const handleMappingConfirm = (mapping) => {
+    const stage = mappingStage;
+    if (!stage) return;
+
+    const mappedRows = stage.rawData.map((row) => applyMapping(row, mapping));
+
+    // Canonical header set = all required + any optional mapped fields +
+    // the original raw headers that weren't shadowed by the mapping.
+    const mappedKeys = new Set(Object.keys(mapping));
+    const canonicalHeaders = [...mappedKeys, ...stage.rawHeaders.filter((h) => !mappedKeys.has(h))];
+
+    const csv = serializeCanonicalCsv(mappedRows, canonicalHeaders);
+    const rewritten = new File(
+      ['﻿', csv],
+      file?.name?.replace(/\.csv$/i, '.mapped.csv') || 'mapped.csv',
+      { type: 'text/csv' }
+    );
+
+    setMappingStage(null);
+    setFile(rewritten);
+    setError(null);
+    parseCSV(rewritten);
+  };
+
+  const handleMappingCancel = () => {
+    setMappingStage(null);
+    setFile(null);
+    setPreviewData(null);
+    setError(null);
   };
 
   const handleStartImport = async () => {
@@ -370,6 +420,7 @@ export default function ImportPanel({ onImport }) {
                 setFile(null);
                 setPreviewData(null);
                 setError(null);
+                setMappingStage(null);
               }}
               className={`
                                  flex-1 p-4 rounded-xl border transition-all duration-200 text-left relative overflow-hidden group
@@ -436,7 +487,16 @@ export default function ImportPanel({ onImport }) {
           </button>
         </div>
 
-        {!previewData ? (
+        {mappingStage ? (
+          <ColumnMapper
+            importType={importType}
+            rawHeaders={mappingStage.rawHeaders}
+            sampleRows={mappingStage.sampleRows}
+            autoMatches={mappingStage.autoMatches}
+            onConfirm={handleMappingConfirm}
+            onCancel={handleMappingCancel}
+          />
+        ) : !previewData ? (
           <div
             className={`border-2 border-dashed rounded-xl p-12 text-center transition-all duration-300 ${
               isDragging
@@ -504,6 +564,27 @@ export default function ImportPanel({ onImport }) {
                 </div>
               </div>
               <div className="flex gap-3">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    // Re-open the mapper against the already-parsed data
+                    // so the user can override auto-matches.
+                    setMappingStage({
+                      rawHeaders: previewData.headers,
+                      rawData: previewData.fullData,
+                      sampleRows: previewData.fullData.slice(0, 3),
+                      autoMatches: previewData.smartMetadata?.mappings || {},
+                      smartMetadata: previewData.smartMetadata,
+                      missingHeaders: [],
+                    });
+                    setPreviewData(null);
+                  }}
+                  title="Edit column mapping"
+                >
+                  <SlidersHorizontal size={14} className="mr-1" />
+                  Adjust mapping
+                </Button>
                 <Button
                   variant="ghost"
                   size="sm"
