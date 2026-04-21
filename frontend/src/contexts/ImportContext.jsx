@@ -11,6 +11,7 @@ import { supabase } from '../lib/supabaseClient.js';
 import Papa from 'papaparse';
 import { z } from 'zod';
 import { logger } from '../lib/logger.js';
+import { withTimeout } from '../lib/withTimeout.js';
 import { useOrganization } from './OrganizationContext.jsx';
 import { matchHeaders, SYSTEM_COLUMNS } from '../utils/telemetryUtils.js';
 
@@ -465,16 +466,21 @@ export function ImportProvider({ children }) {
               );
 
               try {
-                const { data: efResult, error: efError } = await supabase.functions.invoke(
-                  'import-validation',
-                  {
+                // 60s timeout guards against the Edge Function hanging silently
+                // (e.g. after a successful CORS preflight when the POST never
+                // fires). Without this the UI stalls forever on "Importing
+                // Data..." with no diagnostic.
+                const { data: efResult, error: efError } = await withTimeout(
+                  supabase.functions.invoke('import-validation', {
                     body: {
                       import_type: type,
                       organization_id: currentOrganization.id,
                       rows: chunkRows,
                       file_name: file.name,
                     },
-                  }
+                  }),
+                  60000,
+                  'Import validation'
                 );
 
                 if (efError || !efResult || efResult.status === 'error') {
