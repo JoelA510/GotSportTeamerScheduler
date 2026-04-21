@@ -136,10 +136,17 @@ export function recordAudit(
 
 /**
  * Standard CORS headers for Edge Functions.
+ *
+ * Access-Control-Allow-Methods is listed explicitly because some browsers
+ * abort the main request after a successful preflight if the method isn't
+ * in the allow-list, even though POST is technically CORS-safelisted — the
+ * guarantee only holds when no preflight fires, and our JSON Content-Type
+ * always triggers one.
  */
 export const corsHeaders: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'GET, POST, PATCH, PUT, DELETE, OPTIONS',
 };
 
 /**
