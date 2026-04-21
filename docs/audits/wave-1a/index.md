@@ -199,7 +199,84 @@ Status legend (used in per-finding tables below):
 
 ---
 
-## Wave-1b execution backlog (snapshot for the next session)
+## Wave 1b closure (2026-04-21)
+
+Wave 1b shipped on the same execution branch (`claude/wave-execution-plan-87XGq`) as Wave 0/1a. The trivial sweep produced these outcomes:
+
+### Lint baseline delta
+
+| Metric | Before (Wave 1a) | After (Wave 1b) | Delta |
+| --- | --- | --- | --- |
+| Lint warnings | 66 | 4 | **−62** |
+| Lint errors | 0 | 0 | 0 |
+| Test files | 50 (49 pass + 1 skip) | 50 (49 pass + 1 skip) | 0 |
+| Tests | 326 pass + 34 skip | 326 pass + 34 skip | 0 |
+| Bundle (`index.js` gzip) | 115.67 KB | 115.68 KB | +0.01 KB |
+| Build | clean | clean | 0 |
+
+### Outcomes per finding
+
+**Code quality (CQ)** — 22 findings audited:
+
+| ID | Outcome | Note |
+| --- | --- | --- |
+| CQ-01..CQ-12 | 🔵 waived (false positive) | Audit agent hallucinated unused imports that don't exist in the live files. Real fix delivered as the 47→4 lint-warning sweep instead. |
+| CQ-13, CQ-14 | 🔄 re-filed → Wave 8/v1.1 | Hardcoded hex → design-token swap is a behavior change (color-token mismatch); above the trivial bar. |
+| CQ-15, CQ-16 | 🔵 waived (false positive) | No `@ts-ignore` comments exist in the codebase; only one `@ts-expect-error` (already correctly typed). |
+| CQ-17 | 🔵 waived (false alarm) | All hooks in TeamPersistencePanel.jsx ARE at top-level; the early return is on line 91 AFTER all hooks. No Rules-of-Hooks violation. |
+| CQ-18..CQ-20 | 🔵 waived | P2 architectural items: cascading setState, ImportPanel split, Login split. Re-file post-v1.0.1. |
+| CQ-21 | 🔄 re-filed → Wave 9 | console.* → logger.* sweep explicitly excluded from trivial bar by Wave 1b plan §4. |
+| CQ-22 | 🔵 waived | P3 type precision; defer to v1.1. |
+| **(real lint sweep)** | ✅ shipped (commit `71188df`) | Removed dead `expect` from 19 tests; underscore-prefixed unused vars across 25+ files. |
+
+**Security (F-2)** — 13 findings:
+
+| ID | Outcome | Note |
+| --- | --- | --- |
+| F-2-01..F-2-05 | 🟡 queued for Wave 2 | Migrations + operator config (Sentry DSN, leaked-password). |
+| F-2-06 | 🟡 queued for Wave 7b | CSP `connect-src` Sentry ingest fix. |
+| F-2-07, F-2-09, F-2-10, F-2-12 | 🔵 waived | Tailwind CSP compat / trigger overhead / rate-limit dashboard / calendar-token audit — defer or operator. |
+| F-2-08 | 🟡 queued for Wave 7a | Profiles cross-org pgTAP coverage. |
+| F-2-11 | ✅ shipped (commit `1c0c06e`) | Added warning comment to `.env.test.example`. |
+| F-2-13 | ✅ verified | npm audit clean. |
+
+**Supabase performance (SP)** — 12 findings: all `🟡 queued for Wave 2 (DDL fixes)` or `Wave 6b (indexes)` per the original assignments. No Wave 1b changes.
+
+**Free-tier (F-4)** — 11 findings: all `🟡 queued for Wave 6a/6b` per original assignments. No Wave 1b changes.
+
+**Accessibility (A / F-4.5)** — 15 findings:
+
+| ID | Outcome | Note |
+| --- | --- | --- |
+| F-4.5-01, F-4.5-02, F-4.5-03, F-4.5-07, F-4.5-11, F-4.5-15 | ✅ shipped (commit `5b2b092`) | type="button", aria-label, htmlFor, screenReaderInstructions, aria-required, aria-label on close. |
+| F-4.5-14 | 🔵 waived (false positive) | react-router-dom v7 NavLink already auto-applies `aria-current="page"`. |
+| F-4.5-10 | 🔄 re-filed → Wave 5 | aria-describedby across 4 form files exceeds ≤3-files trivial bar; ships with axe-core integration. |
+| F-4.5-04, F-4.5-05, F-4.5-06, F-4.5-08, F-4.5-09, F-4.5-12, F-4.5-13 | 🟡 queued for Wave 5 / Wave 8 | Skip-to-content, prefers-reduced-motion, page titles, drag fallback, focus trap, contrast runtime, heading hierarchy. |
+
+### Follow-ups to Waves 2–9 (rollup)
+
+- **Wave 2-security**: F-2-01, F-2-02, F-2-03, F-2-04, F-2-05; SP-03, SP-10, SP-11.
+- **Wave 5-e2e**: F-4.5-04, F-4.5-05, F-4.5-08, F-4.5-09, F-4.5-10, F-4.5-12, F-4.5-13.
+- **Wave 6a-bundle**: F-4-01, F-4-02, F-4-03, F-4-06, F-4-07.
+- **Wave 6b-edge / 6b-storage**: F-4-04; F-4-05, F-4-08; SP-01, SP-02, SP-04, SP-05, SP-06, SP-07, SP-08, SP-09.
+- **Wave 7a-pgtap**: F-2-08.
+- **Wave 7b-csp**: F-2-06.
+- **Wave 8-docs (or v1.1)**: CQ-13, CQ-14, F-4.5-06, A-13.
+- **Wave 9-release**: CQ-21 (console→logger sweep).
+- **Skip / v1.1 backlog**: CQ-01..CQ-12 (false positives — handled inline), CQ-15..CQ-22, F-2-07, F-2-09..F-2-12, F-4-10, F-4-11, F-4.5-14, SP-12.
+
+### Critical lint warnings remaining (re-filed)
+
+The 4 remaining lint warnings after Wave 1b are NOT trivial:
+
+1. `frontend/src/components/teaming/RosterManager.jsx:93` — react-compiler "incompatible library" (Compilation Skipped). **→ Wave 9-release** or v1.1.
+2. `frontend/src/pages/GameSchedulingPage.jsx:33` — react-hooks/exhaustive-deps (`game.assignments`). **→ Wave 5** (behavior-touching, needs E2E coverage to verify no regression).
+3. `frontend/src/pages/PracticeSchedulingPage.jsx:31` — same. **→ Wave 5**.
+4. `frontend/src/pages/TeamAnalysisPage.jsx:81` — react-hooks/exhaustive-deps unnecessary deps. **→ Wave 5**.
+
+---
+
+## Wave-1b execution backlog (snapshot — superseded by closure above)
 
 These are the 21 findings tagged `1b-trivial`. Wave 1b's 4 tasks pick them up:
 
