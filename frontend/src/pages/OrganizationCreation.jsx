@@ -1,4 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useOrganization } from '../contexts/OrganizationContext.jsx';
 import {
   Rocket,
   Building,
@@ -26,15 +28,28 @@ import { PENDING_INVITE_STORAGE_KEY } from '../lib/inviteStorage.js';
  * The tab defaults to "Join" if the URL has ?invite=<code> or a pending invite
  * was stashed in sessionStorage by the /invite/:code deep-link flow.
  */
+// Read the pending invite code from the URL (`?invite=`) or the
+// sessionStorage stash set by the /invite/:code deep-link. Kept outside the
+// component so the state initializer and the memoized value below use the
+// same logic; also guards for the non-browser path (SSR / unit test env).
+function readInitialInvite() {
+  if (typeof window === 'undefined') return '';
+  const urlInvite = new URLSearchParams(window.location.search).get('invite');
+  let pendingInvite = '';
+  try {
+    pendingInvite = sessionStorage.getItem(PENDING_INVITE_STORAGE_KEY) || '';
+  } catch {
+    /* storage unavailable — noop */
+  }
+  return urlInvite || pendingInvite || '';
+}
+
 export default function OrganizationCreation() {
-  const pendingInvite =
-    (typeof window !== 'undefined' && sessionStorage.getItem(PENDING_INVITE_STORAGE_KEY)) || '';
-  const urlInvite =
-    typeof window !== 'undefined'
-      ? new URLSearchParams(window.location.search).get('invite')
-      : null;
-  const initialInvite = urlInvite || pendingInvite || '';
-  const [tab, setTab] = useState(initialInvite ? 'join' : 'create');
+  // Run the lookup once, at mount, via the state initializer — prevents any
+  // re-reading of sessionStorage on re-render and keeps the first paint
+  // deterministic even if a consumer ever introduces SSR.
+  const initialInvite = useMemo(() => readInitialInvite(), []);
+  const [tab, setTab] = useState(() => (initialInvite ? 'join' : 'create'));
 
   return (
     <div className="min-h-screen bg-bg-main flex items-center justify-center p-6 animate-fadeIn">
@@ -302,6 +317,8 @@ function CreateOrganizationForm() {
 // Branch 2: Join with invite code
 // ─────────────────────────────────────────────────────────────
 function JoinWithInviteForm({ initialCode }) {
+  const { refetchOrgs } = useOrganization();
+  const navigate = useNavigate();
   const [code, setCode] = useState(initialCode || '');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -324,7 +341,12 @@ function JoinWithInviteForm({ initialCode }) {
       }
 
       logger.info('Invite code redeemed', { orgId: data });
-      window.location.href = '/?joined=true';
+      // Re-fetch OrganizationContext so the new membership is picked up, then
+      // SPA-navigate to the dashboard instead of a full-page reload. Prevents
+      // the app-state destruction Gemini PR #179 flagged on the /invite
+      // deep-link; same pattern applied here for consistency.
+      if (typeof refetchOrgs === 'function') refetchOrgs();
+      navigate('/?joined=true', { replace: true });
     } catch (err) {
       logger.error('Failed to redeem invite code', err);
       setError(err.message || 'Could not redeem invite code. Double-check the code and try again.');

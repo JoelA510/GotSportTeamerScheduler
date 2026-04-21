@@ -177,10 +177,14 @@ BEGIN
   END IF;
 
   -- Normalize input: strip whitespace, upper-case. Codes are case-insensitive
-  -- to the user but stored upper-case.
+  -- to the user but stored upper-case. `FOR UPDATE` locks the row for the
+  -- duration of this transaction so two concurrent redeems of the same code
+  -- can't both pass the used_at check — the second caller blocks until the
+  -- first commits/rolls back, then re-reads the updated used_at and rejects.
   SELECT * INTO v_invite
   FROM public.organization_invites
-  WHERE code = upper(btrim(p_code));
+  WHERE code = upper(btrim(p_code))
+  FOR UPDATE;
 
   IF v_invite.id IS NULL THEN
     RAISE EXCEPTION 'Invite code not found' USING ERRCODE = '22023';

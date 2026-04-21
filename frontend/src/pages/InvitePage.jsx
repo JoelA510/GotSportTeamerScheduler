@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, Navigate } from 'react-router-dom';
+import { useParams, Navigate, useNavigate } from 'react-router-dom';
 import { Ticket, AlertCircle, CheckCircle } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext.jsx';
+import { useOrganization } from '../contexts/OrganizationContext.jsx';
 import { supabase } from '../lib/supabaseClient.js';
 import { logger } from '../lib/logger.js';
 import LoadingScreen from '../components/LoadingScreen.jsx';
@@ -22,6 +23,8 @@ import { writePendingInvite, clearPendingInvite } from '../lib/inviteStorage.js'
 export default function InvitePage() {
   const { code } = useParams();
   const { session, loading: authLoading } = useAuth();
+  const { refetchOrgs } = useOrganization();
+  const navigate = useNavigate();
 
   const [state, setState] = useState({ status: 'idle', error: null, orgId: null });
 
@@ -44,8 +47,6 @@ export default function InvitePage() {
         if (error) throw error;
         if (cancelled) return;
         clearPendingInvite();
-        // Success state triggers a hard redirect below, which refreshes
-        // OrganizationContext so routing picks up the new membership.
         setState({ status: 'success', error: null, orgId: data });
       } catch (err) {
         logger.error('Invite redeem failed', err);
@@ -59,11 +60,23 @@ export default function InvitePage() {
     };
   }, [authLoading, session, code]);
 
+  // Success → refetch OrganizationContext so the new membership is picked up
+  // without a full-page reload, then SPA-navigate into the dashboard. This
+  // replaces the earlier `window.location.href = '/?joined=true'` which
+  // destroyed application state on every successful redeem (Gemini PR #179
+  // review).
+  useEffect(() => {
+    if (state.status !== 'success') return;
+    if (typeof refetchOrgs === 'function') refetchOrgs();
+    const t = setTimeout(() => {
+      navigate('/?joined=true', { replace: true });
+    }, 1200);
+    return () => clearTimeout(t);
+  }, [state.status, refetchOrgs, navigate]);
+
   if (authLoading) return <LoadingScreen message="Validating invite..." />;
 
-  // Unauthenticated — let AppContent's Login branch handle it. Storing a
-  // flag on window lets Login display a "you'll auto-join after sign-up"
-  // banner without another storage read.
+  // Unauthenticated — let AppContent's Login branch handle it.
   if (!session) return <Navigate to="/" replace />;
 
   if (state.status === 'redeeming' || state.status === 'idle') {
@@ -79,7 +92,6 @@ export default function InvitePage() {
           </div>
           <h2 className="text-2xl font-bold text-text-primary tracking-tight">You&apos;re in!</h2>
           <p className="text-text-muted text-sm">Loading your dashboard...</p>
-          <RedirectAfterShortPause to="/?joined=true" ms={1200} />
         </div>
       </div>
     );
@@ -104,7 +116,7 @@ export default function InvitePage() {
         <div className="flex gap-3 pt-2">
           <Button
             variant="primary"
-            onClick={() => (window.location.href = '/')}
+            onClick={() => navigate('/', { replace: true })}
             className="flex items-center gap-2"
           >
             <Ticket size={16} /> Back to onboarding
@@ -113,14 +125,4 @@ export default function InvitePage() {
       </div>
     </div>
   );
-}
-
-function RedirectAfterShortPause({ to, ms = 1200 }) {
-  useEffect(() => {
-    const t = setTimeout(() => {
-      window.location.href = to;
-    }, ms);
-    return () => clearTimeout(t);
-  }, [to, ms]);
-  return null;
 }
