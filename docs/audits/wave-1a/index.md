@@ -137,7 +137,7 @@ Status legend (used in per-finding tables below):
 | SP-03 | Missing FK + index on `practice_assignments(run_id)` and `game_assignments(run_id)` | P2 (blocking) | 2-security (schema integrity) | 🟡 queued — needs 3-step migration (add nullable → backfill → promote NOT NULL) per Gemini PR #173 review. Defer to operator-gated session. |
 | SP-04 | Unindexed `team_id` in `event_rsvps` RLS policy | P2 | 6b-storage | ✅ shipped Wave 6b (same migration) |
 | SP-05 | Unindexed `organization_id` on 8+ multi-tenancy tables | P2 | 6b-storage | ✅ shipped Wave 6b (same migration — 8 indexes: divisions, teams, players, coaches, locations, fields, field_subunits, practice_slots) |
-| SP-06 | Missing composite index `team_players(team_id, organization_id)` | P2 | 6b-storage | ✅ shipped Wave 6b (same migration) |
+| SP-06 | Missing composite index `team_players(team_id, organization_id)` | P2 | 6b-storage | ✅ shipped Wave 6b (same migration; final order is `(organization_id, team_id)` per Gemini PR #174 review — RLS-leading column for prefix match on both org-scoped and team-scoped queries) |
 | SP-07 | Missing indexes on `import_jobs(org_id, status)` + staging | P2 | 6b-storage | ✅ shipped Wave 6b (same migration; staging_players index deferred — minor) |
 | SP-08 | Missing indexes on `games(home_team_id, away_team_id)` | P2 | 6b-storage | ✅ shipped Wave 6b (same migration — 2 separate indexes since OR queries can't share a composite) |
 | SP-09 | Missing indexes on `practice_slots(org_id)` + facility joins | P2 | 6b-storage | ✅ shipped Wave 6b (covered by SP-05's practice_slots index; facility join indexes deferred — narrow benefit) |

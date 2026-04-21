@@ -13,7 +13,7 @@ where schemaname = 'public'
   and indexname in (
     'idx_scheduler_runs_org_type_status_created',
     'idx_scheduler_runs_org_status',
-    'idx_event_rsvps_team_id',
+    'idx_event_rsvps_org_team',
     'idx_divisions_organization_id',
     'idx_teams_organization_id',
     'idx_players_organization_id',
@@ -22,10 +22,10 @@ where schemaname = 'public'
     'idx_fields_organization_id',
     'idx_field_subunits_organization_id',
     'idx_practice_slots_organization_id',
-    'idx_team_players_team_org',
+    'idx_team_players_org_team',
     'idx_import_jobs_org_status',
-    'idx_games_home_team_id',
-    'idx_games_away_team_id'
+    'idx_games_org_home_team',
+    'idx_games_org_away_team'
   )
 order by tablename, indexname;
 

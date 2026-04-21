@@ -8,9 +8,12 @@
 --          — dashboard polls every 2s for the latest run; composite prefix
 --          (org, type, status) filters + created_at DESC sort.
 --   SP-02  scheduler_runs(organization_id, status)
---          — NOT strictly needed because SP-01's composite prefix covers it,
---          but Postgres' planner often prefers a narrower 2-column index for
---          bounded-result queries; kept as belt-and-suspenders.
+--          — complements SP-01 for queries that filter by status without
+--          specifying run_type. A 4-column composite `(org, run_type, status,
+--          created_at)` cannot serve `(org, status)` as a prefix because
+--          Postgres B-tree prefix matching is left-to-right with no skips
+--          (per Gemini review on PR #174); SP-02 is a legitimate separate
+--          index, not a subset of SP-01.
 --   SP-04  event_rsvps(team_id)
 --          — RLS policy joins event_rsvps on team_id; without the index each
 --          RSVP check does a seq scan.
@@ -54,11 +57,15 @@ create index if not exists idx_scheduler_runs_org_status
   on public.scheduler_runs (organization_id, status);
 
 -- ─────────────────────────────────────────────────────────────
--- SP-04: event_rsvps(team_id)
+-- SP-04: event_rsvps(organization_id, team_id)
 -- ─────────────────────────────────────────────────────────────
+-- Per Gemini PR #174 review: RLS on event_rsvps filters by organization_id.
+-- Lead with organization_id so the index serves both the RLS predicate AND
+-- the team_id join; a `(team_id)` solo index would force the planner to re-
+-- check organization_id post-fetch.
 
-create index if not exists idx_event_rsvps_team_id
-  on public.event_rsvps (team_id);
+create index if not exists idx_event_rsvps_org_team
+  on public.event_rsvps (organization_id, team_id);
 
 -- ─────────────────────────────────────────────────────────────
 -- SP-05 + SP-09: organization_id on 8 multi-tenancy tables
@@ -89,11 +96,15 @@ create index if not exists idx_practice_slots_organization_id
   on public.practice_slots (organization_id);
 
 -- ─────────────────────────────────────────────────────────────
--- SP-06: team_players(team_id, organization_id)
+-- SP-06: team_players(organization_id, team_id)
 -- ─────────────────────────────────────────────────────────────
+-- Per Gemini PR #174 review: RLS filters by organization_id first. Ordering
+-- the columns as (org, team) lets the index serve BOTH the RLS predicate
+-- AND team-scoped lookups via prefix match. The reverse order would only
+-- satisfy team lookups but not org-wide summaries.
 
-create index if not exists idx_team_players_team_org
-  on public.team_players (team_id, organization_id);
+create index if not exists idx_team_players_org_team
+  on public.team_players (organization_id, team_id);
 
 -- ─────────────────────────────────────────────────────────────
 -- SP-07: import_jobs(organization_id, status)
@@ -103,11 +114,16 @@ create index if not exists idx_import_jobs_org_status
   on public.import_jobs (organization_id, status);
 
 -- ─────────────────────────────────────────────────────────────
--- SP-08: games(home_team_id) + games(away_team_id)
+-- SP-08: games(organization_id, home_team_id) + games(organization_id, away_team_id)
 -- ─────────────────────────────────────────────────────────────
+-- Per Gemini PR #174 review: RLS filters by organization_id. With org_id
+-- leading, the OR query `WHERE home_team_id = X OR away_team_id = X` can
+-- still use a BitmapOr across both indices, AND each index separately
+-- satisfies the RLS predicate efficiently. Solo (home_team_id) / (away_team_id)
+-- indices would force the planner to re-check organization_id per row.
 
-create index if not exists idx_games_home_team_id
-  on public.games (home_team_id);
+create index if not exists idx_games_org_home_team
+  on public.games (organization_id, home_team_id);
 
-create index if not exists idx_games_away_team_id
-  on public.games (away_team_id);
+create index if not exists idx_games_org_away_team
+  on public.games (organization_id, away_team_id);
