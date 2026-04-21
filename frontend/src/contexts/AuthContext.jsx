@@ -37,6 +37,13 @@ export const AuthProvider = ({ children }) => {
     }
 
     let cancelled = false;
+    // Versioning counter: both getSession() and onAuthStateChange may resolve
+    // in either order (especially on pages that sign the user in and redirect
+    // within the same render cycle). If a stale `applySession` resolves after
+    // a fresh one has already landed, its setState calls would overwrite the
+    // correct session with outdated data. Each call captures its own version;
+    // setState only fires when myVersion === currentVersion.
+    let currentVersion = 0;
 
     // Safety net: if nothing has resolved auth within 5 s, stop blocking the
     // UI so the user sees either the app or the sign-in screen instead of a
@@ -56,16 +63,21 @@ export const AuthProvider = ({ children }) => {
     // always flips loading=false.
     const applySession = async (session) => {
       if (cancelled) return;
+      const myVersion = ++currentVersion;
       setSession(session);
       try {
         if (session?.user) {
           try {
-            const { data: profile } = await supabase
+            const { data: profile, error } = await supabase
               .from('profiles')
               .select('*')
               .eq('id', session.user.id)
               .single();
-            if (cancelled) return;
+            // supabase-js returns failures as `{ data: null, error }` rather
+            // than throwing — explicitly throw so the catch handles RLS
+            // violations, PGRST116 missing-row, network 5xx, etc. uniformly.
+            if (error) throw error;
+            if (cancelled || myVersion !== currentVersion) return;
             setUser({ ...session.user, profile: profile || null });
           } catch (err) {
             // Profile fetch can fail on network blips, brief RLS gaps during
@@ -73,14 +85,15 @@ export const AuthProvider = ({ children }) => {
             // session user so the rest of the app can keep rendering — any
             // downstream feature that needs the profile will re-fetch.
             console.warn('[Auth] Profile fetch failed; using session user only', err);
-            if (cancelled) return;
+            if (cancelled || myVersion !== currentVersion) return;
             setUser({ ...session.user, profile: null });
           }
         } else {
+          if (myVersion !== currentVersion) return;
           setUser(null);
         }
       } finally {
-        if (!cancelled) {
+        if (!cancelled && myVersion === currentVersion) {
           clearTimeout(safetyTimer);
           setLoading(false);
         }
