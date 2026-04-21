@@ -1,7 +1,7 @@
 import { createBdd } from 'playwright-bdd';
 import { expect } from '@playwright/test';
 
-const { Given, When, Then } = createBdd();
+const { Given: _Given, When, Then } = createBdd();
 
 // --- Sidebar RBAC ---
 When('I view the main navigation Sidebar', async ({ page }) => {

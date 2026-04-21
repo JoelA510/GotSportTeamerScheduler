@@ -217,7 +217,7 @@ Given(
 
 Then(
   'team {string} should remain assigned to slot {string}',
-  async ({ page }, teamId: string, slotId: string) => {
+  async ({ page }, _teamId: string, _slotId: string) => {
     // Verify in the displayed assignments table
     const panel = page.locator('section[aria-label="Auto-Scheduler"]');
     await expect(panel).toContainText('Optimization Complete');

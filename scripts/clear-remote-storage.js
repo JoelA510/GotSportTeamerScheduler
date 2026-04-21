@@ -125,7 +125,7 @@ async function getDynamicTableList() {
     console.warn('     ℹ️  Dynamic discovery (RPC) unavailable. Using internal registry.');
     console.warn('     💡 Tip: Deploy "get_public_tables()" RPC for automatic schema detection.');
     return TABLES_TO_CLEAR;
-  } catch (err) {
+  } catch {
     return TABLES_TO_CLEAR;
   }
 }

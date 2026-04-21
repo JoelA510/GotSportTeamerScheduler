@@ -123,7 +123,7 @@ Given(
     await page.evaluate(
       ({ name1, name2 }) => {
         const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
-        const orgId = localStorage.getItem('squadlogic_active_org') || 'org-1';
+        const _orgId = localStorage.getItem('squadlogic_active_org') || 'org-1';
 
         const id1 = `player-${name1.toLowerCase()}`;
         const id2 = `player-${name2.toLowerCase()}`;
@@ -212,7 +212,7 @@ Given(
   'a player {string} of age {int} is assigned to a {string} team',
   async ({ page }, player: string, age: number, division: string) => {
     await page.evaluate(
-      ({ pName, pAge, div }) => {
+      ({ pName, pAge: _pAge, div }) => {
         const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
         const playerId = `player-${pName.toLowerCase()}`;
 

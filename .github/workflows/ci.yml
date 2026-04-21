@@ -55,6 +55,12 @@ jobs:
       - name: Build Frontend
         run: npm run frontend:build
 
+      - name: Bundle-budget gate (Wave 6a)
+        run: npm run check:bundle
+
+      - name: Advisor-lint gate (Wave 6a)
+        run: npm run check:advisors
+
       - name: Install Playwright Browsers
         run: npx playwright install --with-deps chromium
 

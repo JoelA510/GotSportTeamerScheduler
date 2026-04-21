@@ -210,6 +210,8 @@ Five tasks: two new docs, eight Known-Gaps additions, one rename, one index reor
 
 ## Task 3 — `claude.md` → `CLAUDE.md` Rename + Reference Sweep
 
+<!-- wave-0 2026-04-20: drift — `CLAUDE.md` was created in commit 3e7888d on 2026-04-20 BEFORE Wave 8 ran. As of Wave 8 pre-flight, both `claude.md` and `CLAUDE.md` coexist. Adapt Task 3 as follows: (a) verify the two files have identical content (`diff claude.md CLAUDE.md`); (b) if identical, use `git rm claude.md` instead of `git mv claude.md CLAUDE.md`; (c) reference sweep proceeds as planned. If contents differ, HALT and reconcile before proceeding. Task count and scope are preserved. -->
+
 **Commit**: `chore(docs): rename claude.md to CLAUDE.md + sweep references`
 
 **Branch**: `claude/wave-8-rename-claude-md`

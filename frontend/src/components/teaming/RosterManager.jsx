@@ -382,6 +382,12 @@ export default function RosterManager({ initialTeams }) {
       <DndContext
         sensors={sensors}
         collisionDetection={closestCorners}
+        accessibility={{
+          screenReaderInstructions: {
+            draggable:
+              'Press space to start dragging. Use arrow keys to move between teams, enter to drop, escape to cancel.',
+          },
+        }}
         onDragStart={handleDragStart}
         onDragOver={handleDragOver}
         onDragEnd={handleDragEnd}

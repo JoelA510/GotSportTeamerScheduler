@@ -434,7 +434,7 @@ Given('I am viewing the Team Roster page', async ({ page }) => {
   await page.evaluate(() => {
     const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
     const orgId = localStorage.getItem('squadlogic_active_org') || 'org-1';
-    const userId = 'mock-admin-id';
+    const _userId = 'mock-admin-id';
 
     // CRITICAL FIX: Remove any existing run-1 and re-add with our data
     // (sessionStorage may not have initialMockData yet, so find() would return undefined)
@@ -483,7 +483,7 @@ Given('I am viewing the Team Roster page', async ({ page }) => {
 
 When(
   'I move a player from {string} to {string} using drag-and-drop',
-  async ({ page }, teamA: string, teamB: string) => {
+  async ({ page }, _teamA: string, _teamB: string) => {
     // CRITICAL FIX: Use pre-seeded team IDs t1/t2 (not team-a/team-b)
     const sourceColumn = page.getByTestId('team-column-t1');
     // Wait for player cards to render (async mock data may take time to hydrate)

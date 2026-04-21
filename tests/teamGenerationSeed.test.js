@@ -1,4 +1,4 @@
-import { test, expect } from 'vitest';
+import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import { generateTeams } from '../packages/core/src/teamGeneration.js';
 

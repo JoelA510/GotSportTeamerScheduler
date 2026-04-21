@@ -8,7 +8,7 @@ import {
 } from '../_shared/engines/scoring-engine.ts';
 import {
   getUserFromRequest,
-  getUserOrgIds,
+  getUserOrgIds as _getUserOrgIds,
   corsHeaders,
   jsonResponse,
   recordAudit,

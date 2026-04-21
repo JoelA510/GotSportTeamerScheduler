@@ -1,0 +1,49 @@
+{
+  "$schema-comment": "Wave 6a Task 1 bundle budgets. Sizes in BYTES (gzipped). Edited via PR with rationale per docs/operations/bundle-budget.md.",
+  "rules": [
+    {
+      "match": "^assets/index-.*\\.js$",
+      "label": "main entry",
+      "maxGzipBytes": 130000,
+      "rationale": "Current 115.68 KB; 130 KB cap leaves 14 KB headroom. Tighten in v1.1 once chart-vendor route-splits."
+    },
+    {
+      "match": "^assets/index-.*\\.css$",
+      "label": "main css",
+      "maxGzipBytes": 22000,
+      "rationale": "Current 17.82 KB; 22 KB cap leaves 4 KB for new components."
+    },
+    {
+      "match": "^assets/chart-vendor-.*\\.js$",
+      "label": "chart vendor",
+      "maxGzipBytes": 130000,
+      "rationale": "Current 119.92 KB; 130 KB cap. F-4-02 follow-up (route-split) targets <50 KB; tighten then."
+    },
+    {
+      "match": "^assets/supabase-vendor-.*\\.js$",
+      "label": "supabase vendor",
+      "maxGzipBytes": 60000,
+      "rationale": "Current 49.93 KB; 60 KB cap absorbs minor SDK growth."
+    },
+    {
+      "match": "^assets/react-vendor-.*\\.js$",
+      "label": "react vendor",
+      "maxGzipBytes": 25000,
+      "rationale": "Current 17.41 KB; 25 KB cap absorbs React 19.x patch growth."
+    },
+    {
+      "match": "^assets/dnd-vendor-.*\\.js$",
+      "label": "dnd vendor",
+      "maxGzipBytes": 25000,
+      "rationale": "Current 16.53 KB; 25 KB cap."
+    },
+    {
+      "match": "^assets/.*\\.png$",
+      "label": "images (any png)",
+      "maxRawBytes": 500000,
+      "rationale": "Logo PNG currently 452 KB unoptimized (F-4-03). Until WebP conversion, allow up to 500 KB; tighten to 100 KB after F-4-03 lands."
+    }
+  ],
+  "totalFirstPaintGzipBytes": 250000,
+  "totalFirstPaintRationale": "Sum of main + react-vendor + supabase-vendor + main-css gzip. Current ~201 KB; cap 250 KB."
+}

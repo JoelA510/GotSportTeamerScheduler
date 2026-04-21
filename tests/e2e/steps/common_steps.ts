@@ -15,7 +15,7 @@ Given(
   }
 );
 
-Given('the season {string} is active', async ({ page }, seasonName: string) => {
+Given('the season {string} is active', async ({ page }, _seasonName: string) => {
   await page.waitForLoadState('networkidle');
 });
 
@@ -188,7 +188,7 @@ Then('I should see the message {string}', async ({ page }, text: string) => {
   await expect(page.getByText(text).first()).toBeVisible();
 });
 
-Then(/the dashboard data should refresh to show (.*) data/, async ({ page }, orgName: string) => {
+Then(/the dashboard data should refresh to show (.*) data/, async ({ page }, _orgName: string) => {
   await expect(
     page.getByRole('heading', { name: /League Management|Dashboard/i }).first()
   ).toBeVisible();

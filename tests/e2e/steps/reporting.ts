@@ -157,7 +157,7 @@ When(
 
 Then(
   'the {string} table should reflect a win for the home team',
-  async ({ page }, tableName: string) => {
+  async ({ page }, _tableName: string) => {
     // After score entry (3-1 for Team A), Team A should now have 2 wins.
     // The standings table row for Team A should show the updated win count.
     const row = page.getByRole('row').filter({ hasText: 'Team A' }).first();

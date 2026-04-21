@@ -5,7 +5,7 @@
  */
 
 import {
-  createClient,
+  createClient as _createClient,
   type SupabaseClient,
   type User,
 } from 'https://esm.sh/@supabase/supabase-js@2.45.3';

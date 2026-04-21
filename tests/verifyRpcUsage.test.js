@@ -1,4 +1,4 @@
-import { test, expect } from 'vitest';
+import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import { persistTeamSnapshotTransactional } from '../packages/core/src/teamPersistenceHandler.js';
 import { persistPracticeSnapshotTransactional } from '../packages/core/src/practicePersistenceHandler.js';
@@ -8,7 +8,7 @@ function createMockClient() {
   let rpcCalled = false;
   let transactionCalled = false;
   return {
-    rpc: async (name, args) => {
+    rpc: async (_name, _args) => {
       rpcCalled = true;
       return { data: { success: true }, error: null };
     },
