@@ -38,7 +38,10 @@ export const CSV_TEMPLATES = {
  */
 function escapeCsvCell(cell) {
   const str = String(cell ?? '');
-  if (/["\n,]/.test(str)) {
+  // RFC 4180 requires quoting when the field contains any quote, any
+  // part of a CRLF line break, or a comma. Include `\r` explicitly so
+  // Windows-sourced values carrying the CR alone still quote correctly.
+  if (/["\n\r,]/.test(str)) {
     return `"${str.replace(/"/g, '""')}"`;
   }
   return str;
@@ -57,8 +60,11 @@ export function downloadTemplate(type) {
   if (!tmpl) return;
 
   const csv = toCsv([tmpl.headers, tmpl.example]);
-  // Prepend UTF-8 BOM so Excel opens it with the right encoding.
-  const blob = new Blob(['﻿', csv], { type: 'text/csv;charset=utf-8' });
+  // Prepend UTF-8 BOM (U+FEFF) so Excel opens it with the right
+  // encoding. The \uFEFF escape is preferred over a literal BOM so the
+  // character survives editor round-trips (Gemini review on #185) and
+  // so `no-irregular-whitespace` doesn't trip on the source file.
+  const blob = new Blob(['\uFEFF', csv], { type: 'text/csv;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
