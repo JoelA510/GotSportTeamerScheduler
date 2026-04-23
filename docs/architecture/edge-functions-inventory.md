@@ -22,7 +22,7 @@ Seven functions are deployed. Each has its own directory under `supabase/functio
 ### 2.1 `import-validation`
 
 - **Purpose**: Server-side validation gate for the GotSport CSV import flow (Phase 2.1, finding H-1). The browser parses the CSV with PapaParse client-side; rows are POSTed here *before* being inserted into `import_jobs`. The function validates headers (strict alias map, not fuzzy matching), required fields, data types, string length caps, and strips HTML/control characters.
-- **Invoked by**: `frontend/src/contexts/ImportContext.jsx` line 474 via `supabase.functions.invoke('import-validation', …)`.
+- **Invoked by**: `frontend/src/contexts/ImportContext.jsx` via `supabase.functions.invoke('import-validation', …)`.
 - **Authentication**: `getUserFromRequest()` → returns `401` on missing/invalid bearer. Does not invoke any RPC; writes validated rows directly to `import_jobs` via the service client after org membership check.
 - **Rate limit**: `checkRateLimit(user.id)` — default 60 req/min per user.
 - **Size caps**: 5000 rows, 500 char/field, 10 MB payload.
