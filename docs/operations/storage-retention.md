@@ -81,7 +81,8 @@ degrade to no-op.
 - **Safety cap.** If a single run would delete more than 10,000 objects,
   the job aborts with a clear error. Prevents a runaway deletion if bucket
   state is unexpected (clock skew, retention misconfig, orphaned
-  pseudo-folders, etc.).
+  pseudo-folders, etc.). To recover, manually delete a batch of objects or
+  temporarily increase the cap in the workflow file.
 - **Dry-run mode.** `workflow_dispatch` with `dry_run=true` exercises the
   list + filter path end-to-end without issuing any DELETE.
 
