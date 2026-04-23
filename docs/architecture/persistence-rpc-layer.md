@@ -53,7 +53,7 @@ Called by the `team-persistence`, `practice-persistence`, and `game-persistence`
 | --- | --- | --- |
 | `public.persist_team_schedule(run_data jsonb, teams jsonb, team_players jsonb) returns jsonb` | `20251208000000_consolidated_schema.sql` | Upserts the `scheduler_runs` row, bulk-upserts `teams`, bulk-upserts `team_players`. Returns a counts summary. |
 | `public.persist_practice_schedule(run_data jsonb, assignments jsonb) returns void` | `20251208000000_consolidated_schema.sql` | Upserts the `scheduler_runs` row and bulk-upserts `practice_assignments` (keyed by `team_id`, `practice_slot_id`, `effective_date_range`). |
-| Game persistence | `20251208000000_consolidated_schema.sql` (inline in the Edge Function) | Game rows are written by the `game-persistence` Edge Function directly against `games` under the service-role client; there is no standalone `persist_game_schedule` RPC today. |
+| Game persistence | N/A (Missing RPC) | Game rows are written by the game-persistence Edge Function directly against games under the service-role client; there is no standalone persist_game_schedule RPC today. |
 
 ### 2.5 Registration
 
