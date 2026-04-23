@@ -6,6 +6,10 @@
 >
 > SquadLogic converts raw GotSport registration data into actionable teaming and scheduling frameworks, designed specifically to support youth sports organizations.
 
+> **Release status**: v1.0.1 (2026-04-23) — see [`CHANGELOG.md`](CHANGELOG.md) for release notes.
+> **CI**: [![CI](https://github.com/JoelA510/SquadLogic/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/JoelA510/SquadLogic/actions/workflows/ci.yml)
+> **Deployment**: https://squadlogic.vercel.app/
+
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen)](https://github.com/JoelA510/SquadLogic/actions)
 [![License: ISC](https://img.shields.io/badge/License-ISC-blue.svg)](https://opensource.org/licenses/ISC)
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D20-green)](https://nodejs.org/)
