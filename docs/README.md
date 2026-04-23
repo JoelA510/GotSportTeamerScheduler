@@ -78,7 +78,7 @@
 - [UI/UX Pass Checklist (P0/P1)](ui/ui-ux-pass.md) — Prioritized checklist for UI/UX passes.
 - [UI/UX Pass Summary](ui/ui-ux-pass-summary.md) — Rolled-up status of the UI/UX pass.
 - [UI/UX Visual Polish (P2)](ui/ui-ux-polish.md) — P2 visual polish playbook.
-- Rule IDs: `ui/ui-ux-rules.json` (machine-readable rule identifiers).
+- Rule IDs: [`ui/ui-ux-rules.json`](ui/ui-ux-rules.json) (machine-readable rule identifiers).
 
 ## Expansion / Planning
 
