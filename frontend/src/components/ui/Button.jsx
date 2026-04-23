@@ -12,6 +12,7 @@ import PropTypes from 'prop-types';
  * @param {React.MouseEventHandler<HTMLButtonElement>} [props.onClick]
  * @param {'button' | 'submit' | 'reset'} [props.type]
  * @param {React.ElementType}[props.icon]
+ * @param {string} [props.title]
  */
 const Button = ({
   children,
@@ -94,6 +95,7 @@ Button.propTypes = {
   onClick: PropTypes.func,
   type: PropTypes.oneOf(['button', 'submit', 'reset']),
   icon: PropTypes.elementType,
+  title: PropTypes.string,
 };
 
 export default Button;

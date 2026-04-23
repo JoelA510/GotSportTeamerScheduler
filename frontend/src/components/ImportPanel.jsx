@@ -28,6 +28,10 @@ const REQUIRED_HEADERS = {
   fields: ['name'],
 };
 
+/** @typedef {'players' | 'coaches' | 'fields'} ImportType */
+/** @type {readonly ImportType[]} */
+const IMPORT_TYPES = Object.freeze(['players', 'coaches', 'fields']);
+
 /**
  * Smart Confidence Badge component for high-fidelity mapping indicators.
  */
@@ -62,7 +66,7 @@ export default function ImportPanel({ onImport }) {
   const [file, setFile] = useState(null);
   const [error, setError] = useState(null);
   const [previewData, setPreviewData] = useState(null);
-  const [importType, setImportType] = useState('players');
+  const [importType, setImportType] = useState(/** @type {ImportType} */ ('players'));
   // When the required-headers check fails (or the user clicks "Adjust
   // mapping"), we park the parsed CSV here and render ColumnMapper instead
   // of the preview. The mapper re-emits a rewritten file that we thread
@@ -446,7 +450,7 @@ export default function ImportPanel({ onImport }) {
         </div>
 
         <div className="flex gap-4 mb-8">
-          {['players', 'coaches', 'fields'].map((type) => (
+          {IMPORT_TYPES.map((type) => (
             <button
               key={type}
               onClick={() => {
