@@ -40,7 +40,7 @@ HALT on any false claim.
 3. `docs/audits/wave-1a/index.md` `### Wave 8-docs` section readable.
 4. `docs/architecture/` contains the 8 documented domains: `system-overview.md`, `frontend-architecture.md`, `data-modeling.md`, `game-scheduling.md`, `practice-scheduling.md`, `team-generation.md`, `evaluation-pipeline.md`, `output-generation.md` (plus `multi_tenancy.md` per Phase 1). Confirm the exact file set — if drift, reconcile the Task 2 list.
 5. `docs/README.md` exists (baseline for Task 4).
-6. `CLAUDE.md` (lowercase) is committed per `git ls-files CLAUDE.md CLAUDE.md`. The file appears as `CLAUDE.md` — git tracks the lowercase name even on Windows.
+6. `claude.md` (lowercase) is committed per `git ls-files claude.md CLAUDE.md`. The file appears as `claude.md` — git tracks the lowercase name even on Windows.
 7. No `CLAUDE.md` is separately committed (case-insensitive FS may show both names for the same file; `git ls-files` is authoritative).
 8. Wave 7 closed with no outstanding CSP or pgTAP doc debt — `docs/security/csp.md` + `docs/testing/pgtap.md` present.
 9. Wave 6 closed — `docs/operations/{bundle-budget,advisor-lint,edge-function-budget,storage-retention}.md` all present.
