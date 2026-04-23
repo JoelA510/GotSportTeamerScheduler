@@ -67,7 +67,7 @@ Seven functions are deployed. Each has its own directory under `supabase/functio
 ### 2.6 `auto-scheduler`
 
 - **Purpose**: Phase 8 Intelligent Auto-Scheduler. Runs a Hill Climbing optimization loop (seeded PRNG, greedy seed + swap/relocate/chain-swap mutations) on the edge isolate. Scores each candidate via the scoring engine. Publishes realtime progress via `scheduler.auto_progress` audit events that the frontend subscribes to. Hard-capped at 140 s wall-clock and yields periodically to avoid CPU-budget violations.
-- **Invoked by**: `frontend/src/hooks/useAutoScheduler.js` line 138 via a direct `fetch` to `/functions/v1/auto-scheduler` (not `supabase.functions.invoke`, to enable streaming progress).
+- **Invoked by**: `frontend/src/hooks/useAutoScheduler.js` via a direct `fetch` to `/functions/v1/auto-scheduler`.
 - **Authentication**: `getUserFromRequest()` + `verifyOrgMembership()` + `checkRateLimit()`.
 - **Rate limit**: Enforced via the shared `rateLimit.ts` helper.
 - **RPC used**: `persist_evaluation_run(p_run_data, p_findings, p_metrics)` for the final best result; `record_audit_event` directly for the `scheduler.auto_started` / `scheduler.auto_progress` / `scheduler.auto_completed` / `scheduler.auto_failed` stream.
