@@ -34,7 +34,7 @@ export function renderWithProviders(ui, options = {}) {
   } = options;
 
   sessionStorage.setItem('squadlogic_mock_user', JSON.stringify(user));
-  localStorage.setItem('squadlogic_active_org', organization.id);
+  if (organization?.id) localStorage.setItem('squadlogic_active_org', organization.id);
 
   function Wrapper({ children }) {
     return (
