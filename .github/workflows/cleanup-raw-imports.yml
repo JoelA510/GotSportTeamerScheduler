@@ -1,0 +1,181 @@
+name: Cleanup raw-imports bucket (30-day retention)
+permissions: {}
+
+# Wave 6b Task 3 — Storage retention for the raw-imports bucket.
+#
+# Why GitHub Actions, not pg_cron:
+#   A plain `DELETE FROM storage.objects` in pg_cron only removes the metadata
+#   row and leaves orphaned physical bytes in the S3-backed tier, which
+#   continue to count against the 1 GB free-tier quota. Calling the Supabase
+#   Storage REST API instead cascades through to the S3 backend AND deletes
+#   the metadata row. The service-role credential required for that call is
+#   unsafe to stash in the database, so GitHub Actions is the simplest
+#   free-tier-compatible host.
+#
+# Budget impact:
+#   One scheduled run per day at ~30 s each ≈ 16 minutes/month, well under
+#   the 2,000 minutes/month free-tier Actions budget for private repos.
+
+on:
+  schedule:
+    # Daily at 04:00 UTC — low-traffic hour, staggered from other retention jobs.
+    - cron: '0 4 * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run (list eligible paths without deleting)'
+        required: false
+        default: 'false'
+
+jobs:
+  cleanup:
+    name: Expire raw-imports older than retention window
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      BUCKET: raw-imports
+      RETENTION_DAYS: '30'
+      DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+    steps:
+      - name: Validate required secrets
+        run: |
+          if [ -z "${SUPABASE_URL}" ]; then
+            echo "::error::SUPABASE_URL secret is not configured."
+            exit 1
+          fi
+          if [ -z "${SUPABASE_SERVICE_ROLE_KEY}" ]; then
+            echo "::error::SUPABASE_SERVICE_ROLE_KEY secret is not configured."
+            exit 1
+          fi
+
+      - name: Enforce raw-imports retention
+        shell: bash
+        run: |
+          set -u
+          set -o pipefail
+
+          BASE_URL="${SUPABASE_URL%/}/storage/v1"
+          CUTOFF_EPOCH=$(date -u -d "${RETENTION_DAYS} days ago" +%s)
+          CUTOFF_ISO=$(date -u -d "${RETENTION_DAYS} days ago" --iso-8601=seconds)
+          echo "Bucket:       ${BUCKET}"
+          echo "Retention:    ${RETENTION_DAYS} days"
+          echo "Cutoff (UTC): ${CUTOFF_ISO}"
+          echo "Dry run:      ${DRY_RUN}"
+
+          deleted=0
+          skipped=0
+          scanned=0
+          offset=0
+          page_size=100
+          # Safety cap: if we would delete more than this in a single run,
+          # fail loudly rather than silently wiping a bucket whose state is
+          # unexpected (e.g. clock skew, retention misconfig).
+          safety_cap=10000
+
+          list_api="${BASE_URL}/object/list/${BUCKET}"
+          auth_header="Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}"
+          apikey_header="apikey: ${SUPABASE_SERVICE_ROLE_KEY}"
+
+          while : ; do
+            payload=$(printf '{"prefix":"","limit":%d,"offset":%d,"sortBy":{"column":"created_at","order":"asc"}}' "${page_size}" "${offset}")
+            response=$(mktemp)
+            status=$(curl --silent --show-error --output "${response}" --write-out '%{http_code}' \
+              -X POST "${list_api}" \
+              -H "${auth_header}" \
+              -H "${apikey_header}" \
+              -H 'Content-Type: application/json' \
+              --data "${payload}")
+
+            if [ "${status}" -ge 500 ]; then
+              echo "::error::Supabase list API returned HTTP ${status}. Aborting (non-destructive)."
+              cat "${response}" >&2 || true
+              rm -f "${response}"
+              exit 1
+            fi
+            if [ "${status}" -ge 400 ]; then
+              echo "::error::Supabase list API returned HTTP ${status}. Aborting."
+              cat "${response}" >&2 || true
+              rm -f "${response}"
+              exit 1
+            fi
+
+            count=$(jq 'length' "${response}")
+            if [ "${count}" -eq 0 ]; then
+              rm -f "${response}"
+              break
+            fi
+
+            # For each object whose created_at is older than CUTOFF, DELETE it.
+            # We iterate object-by-object so a per-path failure is attributable.
+            while IFS=$'\t' read -r name created_at; do
+              scanned=$((scanned + 1))
+              # Some bucket entries are pseudo-folders (name with no metadata
+              # and no created_at). Skip those — they have no bytes attached.
+              if [ -z "${created_at}" ] || [ "${created_at}" = "null" ]; then
+                skipped=$((skipped + 1))
+                continue
+              fi
+              created_epoch=$(date -u -d "${created_at}" +%s 2>/dev/null || echo "")
+              if [ -z "${created_epoch}" ]; then
+                skipped=$((skipped + 1))
+                continue
+              fi
+              if [ "${created_epoch}" -ge "${CUTOFF_EPOCH}" ]; then
+                skipped=$((skipped + 1))
+                continue
+              fi
+
+              if [ "${deleted}" -ge "${safety_cap}" ]; then
+                echo "::error::Safety cap of ${safety_cap} deletions reached in a single run; bucket state is unexpected. Aborting."
+                rm -f "${response}"
+                exit 1
+              fi
+
+              if [ "${DRY_RUN}" = "true" ]; then
+                echo "[dry-run] would delete ${name} (created ${created_at})"
+                deleted=$((deleted + 1))
+                continue
+              fi
+
+              # URL-encode the object path so slashes inside foldered keys
+              # are preserved as path segments (Storage REST accepts that).
+              encoded_name=$(jq -rn --arg v "${name}" '$v | @uri' | sed 's|%2F|/|g')
+              delete_url="${BASE_URL}/object/${BUCKET}/${encoded_name}"
+              del_body=$(mktemp)
+              del_status=$(curl --silent --show-error --output "${del_body}" --write-out '%{http_code}' \
+                -X DELETE "${delete_url}" \
+                -H "${auth_header}" \
+                -H "${apikey_header}")
+              if [ "${del_status}" -ge 500 ]; then
+                echo "::error::Delete API returned HTTP ${del_status} on ${name}. Aborting."
+                cat "${del_body}" >&2 || true
+                rm -f "${del_body}" "${response}"
+                exit 1
+              fi
+              if [ "${del_status}" -ge 400 ]; then
+                echo "::error::Delete API returned HTTP ${del_status} on ${name}. Aborting."
+                cat "${del_body}" >&2 || true
+                rm -f "${del_body}" "${response}"
+                exit 1
+              fi
+              echo "Deleted ${name} (created ${created_at})"
+              deleted=$((deleted + 1))
+              rm -f "${del_body}"
+            done < <(jq -r '.[] | [.name, (.created_at // "")] | @tsv' "${response}")
+
+            rm -f "${response}"
+
+            # Page boundary: if we got fewer items than requested, we're done.
+            if [ "${count}" -lt "${page_size}" ]; then
+              break
+            fi
+            offset=$((offset + page_size))
+          done
+
+          if [ "${DRY_RUN}" = "true" ]; then
+            echo "Dry-run summary: scanned=${scanned} would-delete=${deleted} skipped=${skipped}"
+          else
+            echo "Run summary:     scanned=${scanned} deleted=${deleted} skipped=${skipped}"
+          fi
