@@ -31,7 +31,7 @@ Seven functions are deployed. Each has its own directory under `supabase/functio
 ### 2.2 `team-persistence`
 
 - **Purpose**: Persist the output of the team-generation engine. Upserts a `scheduler_runs` row, the `teams` batch, and the `team_players` batch by calling the `persist_team_schedule` RPC. Blocks persistence if any `overrides` in the payload are still in `pending` status.
-- **Invoked by**: `frontend/src/utils/teamPersistenceClient.js` line 81 via the `apiClient.post('team-persistence', …)` helper (config in `frontend/src/config.js`).
+- **Invoked by**: `frontend/src/utils/teamPersistenceClient.js` via the `apiClient.post('team-persistence', …)` helper.
 - **Authentication**: JWT + role allow-list (`authenticated`, `service_role`, `admin`, `scheduler`; configurable via `TEAM_PERSISTENCE_ALLOWED_ROLES`). Validates Zod payload schema, then resolves team `division_id` → `organizations.id` and asserts each is in the caller's `getUserOrgIds()` (IDOR guard).
 - **Rate limit**: `checkRateLimit(user.id)` — default 60 req/min.
 - **RPC used**: `persist_team_schedule(run_data, teams, team_players)`.
