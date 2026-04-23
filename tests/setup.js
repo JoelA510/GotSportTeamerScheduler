@@ -4,6 +4,7 @@ import '@testing-library/jest-dom';
 globalThis.ResizeObserver =
   globalThis.ResizeObserver ||
   class {
+    constructor() {}
     observe() {}
     unobserve() {}
     disconnect() {}
