@@ -3,6 +3,15 @@ import { logger } from '../lib/logger.js';
 import { Loader2, AlertCircle, Save, Activity, ShieldCheck, Zap } from 'lucide-react';
 import { useOrganization } from '../contexts/OrganizationContext.jsx';
 import { supabase as defaultSupabaseClient } from '../lib/supabaseClient.js';
+import { cachedInvoke, edgeFunctionCache } from '../lib/cache.js';
+
+// Wave 6b Task 1: 60s TTL for fairness-scoring reads. Rationale: evaluations
+// are recomputed as soon as a user edits the schedule (the effect re-fires on
+// `practiceData`/`gameData` change — input change => cache key change => miss).
+// Within a 60s window with IDENTICAL inputs a repeat render is exactly the
+// duplicate call we want to collapse (e.g., brief re-mount, tab switch, or
+// double-render in StrictMode).
+const FAIRNESS_SCORING_TTL_MS = 60_000;
 
 /**
  * EvaluationPanel - Enterprise Glass component for real-time fairness scoring.
@@ -36,26 +45,35 @@ export default function EvaluationPanel({
 
       setLoading(true);
       try {
-        const { data, error } = await supabaseClient.functions.invoke('fairness-scoring', {
-          body: {
-            organizationId: currentOrganization?.id,
-            // Refined Payload: Pass null if missing, or the expected object structure
-            practice: practiceData
-              ? {
-                  assignments: practiceData.assignments || [],
-                  teams: practiceData.teams || [],
-                  slots: practiceData.slots || [],
-                  unassigned: practiceData.unassigned || [],
-                }
-              : null,
-            games: gameData
-              ? {
-                  games: gameData.games || [],
-                  teams: gameData.teams || [],
-                }
-              : null,
-            persist: false,
-          },
+        // Wave 6b Task 1: TTL-cached invoke. Cache key includes organization_id
+        // + all payload inputs, so different orgs + different payloads never
+        // share a cache entry.
+        const payload = {
+          // Use `organization_id` (snake) for the cache key — `organizationId`
+          // remains in the request body for Edge Function compatibility.
+          organization_id: currentOrganization?.id,
+          organizationId: currentOrganization?.id,
+          practice: practiceData
+            ? {
+                assignments: practiceData.assignments || [],
+                teams: practiceData.teams || [],
+                slots: practiceData.slots || [],
+                unassigned: practiceData.unassigned || [],
+              }
+            : null,
+          games: gameData
+            ? {
+                games: gameData.games || [],
+                teams: gameData.teams || [],
+              }
+            : null,
+          persist: false,
+        };
+        const { data, error } = await cachedInvoke({
+          functionName: 'fairness-scoring',
+          params: payload,
+          invoker: (name, opts) => supabaseClient.functions.invoke(name, opts),
+          ttlMs: FAIRNESS_SCORING_TTL_MS,
         });
 
         if (error) throw error;
@@ -98,6 +116,13 @@ export default function EvaluationPanel({
       });
 
       if (error) throw error;
+
+      // Wave 6b Task 1: invalidate this org's cached fairness-scoring reads
+      // after a persist — the server-side side-effect means prior cached
+      // "persist: false" scores may be stale against a new audit trail.
+      edgeFunctionCache.invalidateByPrefix(
+        `fairness-scoring:${currentOrganization?.id ?? 'no-org'}:`
+      );
 
       setMessage('A-1 Audit: Evaluation persisted successfully.');
       setTimeout(() => setMessage(''), 4000);
