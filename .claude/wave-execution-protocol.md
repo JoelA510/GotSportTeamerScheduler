@@ -373,7 +373,7 @@ ls .claude/wave-1a-prompt.md .claude/wave-1b-prompt.md \
 
 # 2. The agent-instructions file is CLAUDE.md (uppercase) post-Wave-8.
 git ls-files CLAUDE.md         # returns CLAUDE.md
-git ls-files CLAUDE.md         # returns nothing (or archive references only)
+git ls-files claude.md         # returns nothing (or archive references only)
 
 # 3. Baseline scripts exist at whatever wave point the protocol is being read.
 # Before Wave 6a ships, check:advisors/check:bundle are absent; after, present.
