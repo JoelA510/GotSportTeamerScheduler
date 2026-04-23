@@ -232,7 +232,7 @@ Five tasks: two new docs, eight Known-Gaps additions, one rename, one index reor
 3. **Verify git tracks the new name**:
    ```bash
    git ls-files CLAUDE.md           # returns CLAUDE.md
-   git ls-files CLAUDE.md           # returns nothing
+   git ls-files claude.md           # returns nothing
    ```
 
 4. **Sweep all references** across the tracked files:
