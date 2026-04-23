@@ -1,4 +1,4 @@
-# Wave 8 — Docs Gap Closure + `claude.md` → `CLAUDE.md` Rename
+# Wave 8 — Docs Gap Closure + `CLAUDE.md` → `CLAUDE.md` Rename
 
 ## Session Context
 
@@ -10,13 +10,13 @@
 - `docs/architecture/` covers 8 domains but has NO dedicated page for the persistence-RPC layer (governance-mandatory; documented only inline across `data-modeling.md` + `system-overview.md`).
 - `docs/architecture/` has NO Edge-Functions inventory (functions exist in code but the "what exists, what it costs, when to add another" reference doesn't).
 - None of the 8 existing architecture docs carry a "Known Gaps" section — readers can't tell what's in-flight vs deferred without spelunking the audit.
-- `claude.md` is committed lowercase; Anthropic's convention is `CLAUDE.md`. Rename is safe with a two-step `git mv` that survives Windows' case-insensitive FS.
+- `CLAUDE.md` is committed lowercase; Anthropic's convention is `CLAUDE.md`. Rename is safe with a two-step `git mv` that survives Windows' case-insensitive FS.
 - `docs/README.md` pre-dates Waves 2–7 and doesn't index: `docs/operations/{bundle-budget,advisor-lint,edge-function-budget,storage-retention}.md`, `docs/testing/{test-helpers,pgtap,e2e-waivers}.md`, `docs/security/csp.md`, `docs/audits/wave-1a/**`, `docs/audits/wave-4-salvage/**`, etc.
 
 **Wave 8 is**:
 - Two new architecture docs (`persistence-rpc-layer.md`, `edge-functions-inventory.md`).
 - "Known Gaps" sections on 8 existing architecture docs.
-- Rename `claude.md` → `CLAUDE.md` + sweep all references across the repo.
+- Rename `CLAUDE.md` → `CLAUDE.md` + sweep all references across the repo.
 - Reorganize `docs/README.md` so everything added in Waves 2–7 is discoverable.
 - Closure: audit index + progress log.
 
@@ -82,7 +82,7 @@ Five tasks: two new docs, eight Known-Gaps additions, one rename, one index reor
 
 1. Checkout `claude/wave-8-new-arch-docs` from latest `main`.
 
-2. **Write `docs/architecture/persistence-rpc-layer.md`** — canonical reference for the RPC-based persistence model mandated by `claude.md` §3.
+2. **Write `docs/architecture/persistence-rpc-layer.md`** — canonical reference for the RPC-based persistence model mandated by `CLAUDE.md` §3.
 
    Structure:
    - `## Purpose` — why RPCs, not direct `.upsert()` / `.update()` from the frontend: transactional integrity, audit-log append, multi-table writes, Zod-validated payloads.
@@ -111,7 +111,7 @@ Five tasks: two new docs, eight Known-Gaps additions, one rename, one index reor
 
    Target length: ~100–150 lines. Inventory tables are compact.
 
-4. **Cross-reference the two docs** — `persistence-rpc-layer.md` mentions Edge Functions that WRAP RPCs (if any), and `edge-functions-inventory.md` mentions which functions are thin RPC wrappers vs. independent logic. Both link to `docs/operations/edge-function-budget.md` for cost context and to `claude.md` §3 for the RPC mandate.
+4. **Cross-reference the two docs** — `persistence-rpc-layer.md` mentions Edge Functions that WRAP RPCs (if any), and `edge-functions-inventory.md` mentions which functions are thin RPC wrappers vs. independent logic. Both link to `docs/operations/edge-function-budget.md` for cost context and to `CLAUDE.md` §3 for the RPC mandate.
 
 5. Verification gate:
    ```bash
@@ -208,11 +208,11 @@ Five tasks: two new docs, eight Known-Gaps additions, one rename, one index reor
 
 ---
 
-## Task 3 — `claude.md` → `CLAUDE.md` Rename + Reference Sweep
+## Task 3 — `CLAUDE.md` → `CLAUDE.md` Rename + Reference Sweep
 
-<!-- wave-0 2026-04-20: drift — `CLAUDE.md` was created in commit 3e7888d on 2026-04-20 BEFORE Wave 8 ran. As of Wave 8 pre-flight, both `claude.md` and `CLAUDE.md` coexist. Adapt Task 3 as follows: (a) verify the two files have identical content (`diff claude.md CLAUDE.md`); (b) if identical, use `git rm claude.md` instead of `git mv claude.md CLAUDE.md`; (c) reference sweep proceeds as planned. If contents differ, HALT and reconcile before proceeding. Task count and scope are preserved. -->
+<!-- wave-0 2026-04-20: drift — `CLAUDE.md` was created in commit 3e7888d on 2026-04-20 BEFORE Wave 8 ran. As of Wave 8 pre-flight, both `claude.md` and `CLAUDE.md` coexist. Adapt Task 3 as follows: (a) verify the two files have identical content (operator: `diff claude.md CLAUDE.md`); (b) if identical, use `git rm claude.md` instead of `git mv claude.md CLAUDE.md`; (c) reference sweep proceeds as planned. If contents differ, HALT and reconcile before proceeding. Task count and scope are preserved. -->
 
-**Commit**: `chore(docs): rename claude.md to CLAUDE.md + sweep references`
+**Commit**: `chore(docs): rename CLAUDE.md to CLAUDE.md + sweep references`
 
 **Branch**: `claude/wave-8-rename-claude-md`
 
@@ -227,7 +227,7 @@ Five tasks: two new docs, eight Known-Gaps additions, one rename, one index reor
    git mv __rename_tmp_CLAUDE.md CLAUDE.md
    git commit --amend --no-edit  # folds both moves into one logical rename commit
    ```
-   (If the local git is configured with `core.ignoreCase = false`, a direct `git mv claude.md CLAUDE.md` works; use whichever the environment supports. The two-step pattern always works.)
+   (If the local git is configured with `core.ignoreCase = false`, a direct `git mv CLAUDE.md CLAUDE.md` works; use whichever the environment supports. The two-step pattern always works.)
 
 3. **Verify git tracks the new name**:
    ```bash
@@ -278,16 +278,16 @@ Five tasks: two new docs, eight Known-Gaps additions, one rename, one index reor
 6. **Explicitly exempt**:
    - `docs/archive/**` (history).
    - Any non-tracked file (`node_modules/`, `dist/`, etc. — git grep already excludes these).
-   - Your own `.claude/wave-8-prompt.md` file if it's the one being edited right now — the meta-reference in "Task 3 renames `claude.md` → `CLAUDE.md`" can stay as-is, OR update for consistency (both are defensible; prefer update for uniformity).
+   - Your own `.claude/wave-8-prompt.md` file if it's the one being edited right now — the meta-reference in "Task 3 renames `CLAUDE.md` → `CLAUDE.md`" can stay as-is, OR update for consistency (both are defensible; prefer update for uniformity).
 
-7. **Reference-sweep scope confirmation** — the wave plans in `.claude/` DO get updated in this sweep. They refer to `claude.md` as an instruction-file path; after the rename, that path is `CLAUDE.md`. Future agents executing those plans find the file correctly.
+7. **Reference-sweep scope confirmation** — the wave plans in `.claude/` DO get updated in this sweep. They refer to `CLAUDE.md` as an instruction-file path; after the rename, that path is `CLAUDE.md`. Future agents executing those plans find the file correctly.
 
 8. **Do NOT**:
    - Update `docs/archive/**` (history).
    - Update `CHANGELOG.md` (Wave 9 handles release notes).
    - Rewrite the content of `CLAUDE.md` itself beyond the filename (Wave 9 may update content; Wave 8 just renames).
    - Edit `package.json` (no references expected; verify with grep).
-   - Create a `claude.md` redirect / placeholder.
+   - Create a `CLAUDE.md` redirect / placeholder.
 
 9. **CI + lint must stay green** — the rename doesn't change content; only filename. Lint + tests should pass unchanged.
 
@@ -346,7 +346,7 @@ Five tasks: two new docs, eight Known-Gaps additions, one rename, one index reor
    - Ensure every `docs/**/*.md` is reachable within 2 clicks from `docs/README.md`.
    - Keep the file under ~120 lines — it's an index, not a manual.
 
-4. **Final repository-wide reference sweep** — Tasks 1 + 2 created / modified docs that may have introduced fresh `claude.md` references if they were drafted against an older version of Wave 8. Re-run the sweep (same command as Task 3 Step 4) across the whole repo excluding `docs/archive/**`. This is the belt-and-suspenders guarantee that NO `claude.md` (lowercase) survives outside the archive after Wave 8 closes. The sweep should find zero or handful of occurrences (Task 1/2 drift); if more than 10, something went wrong — HALT and investigate before Task 4 merges.
+4. **Final repository-wide reference sweep** — Tasks 1 + 2 created / modified docs that may have introduced fresh `CLAUDE.md` references if they were drafted against an older version of Wave 8. Re-run the sweep (same command as Task 3 Step 4) across the whole repo excluding `docs/archive/**`. This is the belt-and-suspenders guarantee that NO `CLAUDE.md` (lowercase) survives outside the archive after Wave 8 closes. The sweep should find zero or handful of occurrences (Task 1/2 drift); if more than 10, something went wrong — HALT and investigate before Task 4 merges.
 
 5. **Do NOT**:
    - Move files between directories.
@@ -398,7 +398,7 @@ Five tasks: two new docs, eight Known-Gaps additions, one rename, one index reor
    Five PRs shipped:
    - Task 1: docs/architecture/persistence-rpc-layer.md + docs/architecture/edge-functions-inventory.md.
    - Task 2: Known Gaps sections added to <N> existing architecture docs.
-   - Task 3: claude.md → CLAUDE.md rename + <M>-file reference sweep (archive/** skipped).
+   - Task 3: CLAUDE.md → CLAUDE.md rename + <M>-file reference sweep (archive/** skipped).
    - Task 4: docs/README.md reorganized — every docs/** file reachable in ≤ 2 clicks.
    - Task 5: closure.
    ```
@@ -431,13 +431,13 @@ Handled across Tasks 1–5:
 1. `docs/architecture/persistence-rpc-layer.md` (new — Task 1).
 2. `docs/architecture/edge-functions-inventory.md` (new — Task 1).
 3. `docs/architecture/*.md` — Known Gaps sections (Task 2).
-4. `CLAUDE.md` (renamed from `claude.md` — Task 3).
-5. All tracked files with `claude.md` references swept to `CLAUDE.md` (Task 3; archive skipped).
+4. `CLAUDE.md` (renamed from `CLAUDE.md` — Task 3).
+5. All tracked files with `CLAUDE.md` references swept to `CLAUDE.md` (Task 3; archive skipped).
 6. `docs/README.md` — reorg (Task 4).
 7. `docs/audits/wave-1a/index.md` — Wave-8-docs findings shipped (Task 5).
 8. `docs/expansion/98_PROGRESS_LOG.md` — dated entry (Task 5).
 
-Do NOT touch: `docs/archive/**` (immutable), `claude.md` (doesn't exist post-Task-3), source code.
+Do NOT touch: `docs/archive/**` (immutable), `CLAUDE.md` (doesn't exist post-Task-3), source code.
 
 ---
 
@@ -448,7 +448,7 @@ Any "no" blocks push.
 1. All 5 tasks merged with CI green.
 2. `docs/architecture/persistence-rpc-layer.md` + `docs/architecture/edge-functions-inventory.md` exist.
 3. Every doc in `docs/architecture/` has a `## Known Gaps` section.
-4. `git ls-files CLAUDE.md` returns the file; `git ls-files claude.md` returns nothing.
+4. `git ls-files CLAUDE.md` returns the file; `git ls-files CLAUDE.md` returns nothing.
 5. `git grep "claude\.md" -- ':!docs/archive/**'` returns zero matches.
 6. `docs/README.md` links every doc shipped in Waves 2–8 that should be in the index.
 7. `npm run lint` warning count ≤ baseline.
@@ -492,7 +492,7 @@ git status
 For Task 3 additionally:
 ```bash
 git ls-files CLAUDE.md           # CLAUDE.md appears
-git ls-files claude.md           # empty
+git ls-files CLAUDE.md           # empty
 git grep "claude\.md" -- ':!docs/archive/**'   # empty
 ```
 
@@ -517,8 +517,8 @@ Each `FAIL → HALT`.
 
 **Will edit**:
 - `docs/architecture/{system-overview,frontend-architecture,data-modeling,game-scheduling,practice-scheduling,team-generation,evaluation-pipeline,output-generation,multi_tenancy}.md` — append Known Gaps (Task 2)
-- `CLAUDE.md` (renamed from `claude.md` — Task 3; content itself unchanged)
-- Every tracked file with a `claude.md` reference outside `docs/archive/**` (Task 3 sweep) — includes `.claude/wave-*.md`, `docs/**/*.md`, `README.md` if applicable
+- `CLAUDE.md` (renamed from `CLAUDE.md` — Task 3; content itself unchanged)
+- Every tracked file with a `CLAUDE.md` reference outside `docs/archive/**` (Task 3 sweep) — includes `.claude/wave-*.md`, `docs/**/*.md`, `README.md` if applicable
 - `docs/README.md` (Task 4)
 - `docs/audits/wave-1a/index.md` (Task 5)
 - `docs/expansion/98_PROGRESS_LOG.md` (Task 5)
@@ -545,17 +545,17 @@ Each `FAIL → HALT`.
 - Version bump (Wave 9).
 - Any production code change.
 - Any test change.
-- Renaming other files beyond `claude.md` → `CLAUDE.md`.
+- Renaming other files beyond `CLAUDE.md` → `CLAUDE.md`.
 
 ---
 
 ## Ground Rules
 
 - **Additive everywhere**. New arch docs, new Known Gaps sections, renamed file, expanded README index. No rewrites of existing content.
-- **Archive is immutable**. `docs/archive/**` keeps its historical `claude.md` references as a record of that era; Task 3's sweep explicitly skips it.
+- **Archive is immutable**. `docs/archive/**` keeps its historical `CLAUDE.md` references as a record of that era; Task 3's sweep explicitly skips it.
 - **Two-step rename is mandatory on Windows**. `git mv` through a temp filename avoids case-insensitive FS bugs. Even on Linux the pattern is harmless.
 - **Known Gaps are reference-linked**. Every row in a Known Gaps table cites a finding ID from `docs/audits/wave-1a/`. No free-form gap claims.
 - **No source-code changes**. This is strictly a docs + filename wave.
-- **Rename sweep includes `.claude/wave-*.md`**. This is the ONE wave that edits prior wave plans; the edits are find-replace only (`claude.md` → `CLAUDE.md`), no content change.
+- **Rename sweep includes `.claude/wave-*.md`**. This is the ONE wave that edits prior wave plans; the edits are find-replace only (`CLAUDE.md` → `CLAUDE.md`), no content change.
 - **No `--no-verify`, no `--force-push`, no direct commits to `main`**.
 - **5-attempt debugging cap** per task.

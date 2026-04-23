@@ -24,7 +24,7 @@ If during execution any "trivial" fix violates the bar, **re-file it** (update t
 - The 23 pre-existing E2E failures (Wave 5).
 - Bundle-size or DB-index changes (Wave 6).
 - Onboarding refactor (Wave 4).
-- Architecture doc rewrites or the `claude.md` → `CLAUDE.md` rename (Wave 8).
+- Architecture doc rewrites or the `CLAUDE.md` → `CLAUDE.md` rename (Wave 8).
 - Version bumps or CHANGELOG entries (Wave 9).
 
 ---
@@ -165,7 +165,7 @@ None. Trivial fixes do not add tests. If a fix requires a test, it's not trivial
 
 **Branch**: `claude/wave-1b-security-docs`
 
-**Source**: All findings in `docs/audits/wave-1a/index.md` tagged `Proposed wave: 1b-trivial` that originate from `docs/audits/wave-1a/security.md` OR `docs/audits/wave-1a/code-quality.md` where the `Location` is `docs/**`, `.env.*.example`, `README.md`, `claude.md`, `vercel.json`, or `.github/workflows/*.yml`.
+**Source**: All findings in `docs/audits/wave-1a/index.md` tagged `Proposed wave: 1b-trivial` that originate from `docs/audits/wave-1a/security.md` OR `docs/audits/wave-1a/code-quality.md` where the `Location` is `docs/**`, `.env.*.example`, `README.md`, `CLAUDE.md`, `vercel.json`, or `.github/workflows/*.yml`.
 
 Typical items here:
 - Stale doc links.
@@ -205,7 +205,7 @@ None.
 ### Out of scope (Task 2)
 
 - Everything listed under "NOT in scope for this task" above.
-- `claude.md` rename or restructure (Wave 8).
+- `CLAUDE.md` rename or restructure (Wave 8).
 - `docs/architecture/*.md` content edits (Wave 8).
 - Doc gap closure (Wave 8).
 
@@ -341,7 +341,7 @@ Handled by Task 4:
 1. `docs/audits/wave-1a/index.md` — updated per Task 4 Step 3.
 2. `docs/expansion/98_PROGRESS_LOG.md` — dated entry per Task 4 Step 4.
 
-No other docs change. **Do NOT** touch `claude.md`, `docs/README.md`, `docs/architecture/*.md`, `docs/expansion/03_ROADMAP.md`, or `docs/expansion/NEXT_SESSION_PLAN.md` in this wave (Wave 8 covers architecture docs; Wave 2 updates NEXT_SESSION_PLAN closure).
+No other docs change. **Do NOT** touch `CLAUDE.md`, `docs/README.md`, `docs/architecture/*.md`, `docs/expansion/03_ROADMAP.md`, or `docs/expansion/NEXT_SESSION_PLAN.md` in this wave (Wave 8 covers architecture docs; Wave 2 updates NEXT_SESSION_PLAN closure).
 
 ---
 
@@ -406,7 +406,7 @@ Do NOT run `npm run test:e2e` per-task (cost). CI runs it on merge; Wave Review 
 
 ## Key References
 
-- `claude.md` — project conventions, especially §5 (Coding Conventions) and §3 (Workflow).
+- `CLAUDE.md` — project conventions, especially §5 (Coding Conventions) and §3 (Workflow).
 - `docs/audits/wave-1a/index.md` — the authoritative findings source.
 - `docs/audits/wave-1a/code-quality.md` / `security.md` / `accessibility.md` — per-finding detail.
 - `docs/expansion/98_PROGRESS_LOG.md` — append target at wave close.
@@ -441,7 +441,7 @@ Do NOT run `npm run test:e2e` per-task (cost). CI runs it on merge; Wave Review 
 - `package.json`, `package-lock.json` (dependency changes forbidden here).
 - `vitest.config.js`, `playwright.config.ts`, `vite.config.js`, `eslint.config.js`, `tsconfig.json`, `.prettierrc`.
 - `vercel.json` (directive edits).
-- `claude.md` (Wave 8 rename).
+- `CLAUDE.md` (Wave 8 rename).
 - `docs/architecture/*.md` (Wave 8 gap-closure).
 - `docs/expansion/03_ROADMAP.md` (Wave 8 or 9).
 - `docs/expansion/NEXT_SESSION_PLAN.md` (Wave 2 closure).
@@ -458,7 +458,7 @@ Do NOT run `npm run test:e2e` per-task (cost). CI runs it on merge; Wave Review 
 - Onboarding refactor / PR #155 salvage (Wave 4).
 - Bundle-size / DB-index / storage-retention work (Wave 6).
 - pgTAP CI runner / CSP nonce hardening (Wave 7).
-- `claude.md` → `CLAUDE.md` rename (Wave 8).
+- `CLAUDE.md` → `CLAUDE.md` rename (Wave 8).
 - Architecture doc gap-closure (Wave 8).
 - v1.0.1 version bump + CHANGELOG + release tag (Wave 9).
 - Any test file modification.

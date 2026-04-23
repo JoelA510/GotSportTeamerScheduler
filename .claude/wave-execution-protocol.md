@@ -320,7 +320,7 @@ If a wave's conditional-trigger workflow (`pgtap.yml` on `supabase/**`; `lightho
 
 ### 9.12 `CLAUDE.md` case drift
 
-Post-Wave-8, the file is `CLAUDE.md` (uppercase). If a PR introduces a `claude.md` (lowercase) reference outside `docs/archive/**`:
+Post-Wave-8, the file is `CLAUDE.md` (uppercase). If a PR introduces a `CLAUDE.md` (lowercase) reference outside `docs/archive/**`:
 
 - Wave 8's sweep should have caught it at the time; if something reintroduces the lowercase form, treat it as a regression.
 - `git grep "claude\.md" -- ':!docs/archive/**'` returns ZERO on healthy `main`.
@@ -386,7 +386,7 @@ test -f docs/audits/wave-1a/index.md && grep -q "## Distribution table" docs/aud
 # 5. Progress log is append-only (confirm structure).
 head -5 docs/expansion/98_PROGRESS_LOG.md
 
-# 6. No lowercase `claude.md` references outside archive post-Wave-8.
+# 6. No lowercase `CLAUDE.md` references outside archive post-Wave-8.
 git grep "claude\.md" -- ':!docs/archive/**' ; echo "(empty is good post-Wave-8)"
 
 # 7. Wave 6a CI gates are green on main (post-Wave-6a).

@@ -239,7 +239,7 @@ Handled by Task 2:
 3. `docs/audits/wave-1a/index.md` — Wave-3 findings marked shipped.
 4. `docs/expansion/98_PROGRESS_LOG.md` — dated entry.
 
-Do NOT touch: `claude.md`, `docs/architecture/**`, `docs/security/**`, `docs/expansion/03_ROADMAP.md`, any `.claude/wave-*.md` file.
+Do NOT touch: `CLAUDE.md`, `docs/architecture/**`, `docs/security/**`, `docs/expansion/03_ROADMAP.md`, any `.claude/wave-*.md` file.
 
 ---
 
@@ -302,7 +302,7 @@ Do NOT run `npm run test:e2e` per-task (cost). CI runs it.
 
 ## Key References
 
-- `claude.md` — §5 (Coding Conventions), §8 (Testing).
+- `CLAUDE.md` — §5 (Coding Conventions), §8 (Testing).
 - `docs/audits/wave-1a/index.md` — Wave-3-test-infra findings section.
 - `tests/factories/index.js` — factory barrel (post-Wave-3a).
 - `tests/helpers/index.js` — helper barrel (post-Wave-3a).
@@ -329,7 +329,7 @@ Do NOT run `npm run test:e2e` per-task (cost). CI runs it.
 - `docs/expansion/98_PROGRESS_LOG.md` — append dated entry
 
 **Will NOT edit**:
-- `claude.md`, any `.claude/wave-*.md`.
+- `CLAUDE.md`, any `.claude/wave-*.md`.
 - Any file under `frontend/src/`, `packages/core/src/`, `supabase/`.
 - Any other test file (only the 5 migration targets).
 - `tests/factories/**`, `tests/helpers/**`, `tests/setup.js` (Wave 3a froze these).
@@ -350,7 +350,7 @@ Do NOT run `npm run test:e2e` per-task (cost). CI runs it.
 - pgTAP (Wave 7).
 - TypeScript conversion of tests.
 - Lighthouse / perf infra (Wave 9).
-- `claude.md` → `CLAUDE.md` rename (Wave 8).
+- `CLAUDE.md` → `CLAUDE.md` rename (Wave 8).
 - Any production code change.
 
 ---

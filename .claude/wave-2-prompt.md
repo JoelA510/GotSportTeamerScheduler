@@ -529,7 +529,7 @@ Handled by Task 6 (annotations) plus per-task doc edits:
 8. `docs/audits/wave-1a/index.md` — Wave-2-security findings marked shipped (Task 6).
 9. `docs/expansion/98_PROGRESS_LOG.md` — dated wave-close entry (Task 6).
 
-**Do NOT** touch `claude.md`, `docs/architecture/*.md`, `docs/expansion/03_ROADMAP.md`, or any `.claude/wave-*.md` file in this wave.
+**Do NOT** touch `CLAUDE.md`, `docs/architecture/*.md`, `docs/expansion/03_ROADMAP.md`, or any `.claude/wave-*.md` file in this wave.
 
 ---
 
@@ -618,7 +618,7 @@ Do NOT run `npm run test:e2e` locally per-task (cost). CI runs it on merge.
 
 ## Key References
 
-- `claude.md` — §2 scope guardrails, §7 Supabase/Mock client, §10 environment variables, §11 CI pipeline.
+- `CLAUDE.md` — §2 scope guardrails, §7 Supabase/Mock client, §10 environment variables, §11 CI pipeline.
 - `docs/expansion/NEXT_SESSION_PLAN.md` — the authoritative backlog this wave closes.
 - `docs/audits/wave-1a/index.md` — Wave-2-security findings section (read before Task 1).
 - `docs/audits/wave-1a/security.md` — full-context detail per finding.
@@ -656,7 +656,7 @@ Do NOT run `npm run test:e2e` locally per-task (cost). CI runs it on merge.
 - `docs/expansion/98_PROGRESS_LOG.md` (Task 6)
 
 **Will NOT edit**:
-- `claude.md`
+- `CLAUDE.md`
 - `docs/architecture/**`
 - `docs/expansion/03_ROADMAP.md`
 - Any `.claude/wave-*.md` file
@@ -681,7 +681,7 @@ Do NOT run `npm run test:e2e` locally per-task (cost). CI runs it on merge.
 - E2E scenario expansion beyond at most one negative-access test in Task 2.
 - Sentry release tagging / source-map upload (Wave 9).
 - Log-call audit (re-filed from Wave 1b; handled in Wave 3 or Wave 9).
-- `claude.md` → `CLAUDE.md` rename (Wave 8).
+- `CLAUDE.md` → `CLAUDE.md` rename (Wave 8).
 
 ---
 

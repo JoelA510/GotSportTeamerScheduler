@@ -85,7 +85,7 @@ Connect the repo to Vercel (the existing `vercel.json` already has security head
 - Verify the GitHub Actions workflow runs and passes
 - Verify Vercel preview deployment is accessible
 - Merge to `main`, verify production deployment
-- Document the CI/CD setup in [**`claude.md#11-ci-pipeline`**](../../claude.md#11-ci-pipeline)
+- Document the CI/CD setup in [**`CLAUDE.md#11-ci-pipeline`**](../../CLAUDE.md#11-ci-pipeline)
 
 ---
 

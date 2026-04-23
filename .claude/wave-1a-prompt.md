@@ -417,7 +417,7 @@ Commit with the exact `Commit:` line above. Push branch. Open PR titled `chore(a
    - Missing `aria-live` region (`role="status"` / `role="alert"`) for async result announcements (toasts, loading states).
    - `<button>` elements without explicit `type=` (defaults to `submit` inside forms; footgun).
 
-4. **Drag-and-drop keyboard fallback audit** — per `claude.md` §9.3:
+4. **Drag-and-drop keyboard fallback audit** — per `CLAUDE.md` §9.3:
    - Grep `useDraggable`, `useSortable`, `DndContext` in `frontend/src/`.
    - For every drop target, cite whether a non-drag alternative exists (context menu, "move to" selector, button, keyboard command palette). Missing fallback = P1.
    - @dnd-kit provides `screenReaderInstructions` + `announcements` props. For every `<DndContext>`, note whether these are configured. Missing announcements = P1.
@@ -546,7 +546,7 @@ Required edits at wave close (Task 5 or a standalone finalize PR):
 1. `docs/README.md` — add `### Audits` sub-heading with link to `docs/audits/wave-1a/`.
 2. `docs/expansion/98_PROGRESS_LOG.md` — append a `## 2026-04-<DD> — Wave 1a audit` entry that lists the 5 task PRs and the top-10 risk register.
 3. `.claude/wave-1a-prompt.md` — leave unchanged (it's the spec).
-4. **Do NOT** touch `claude.md`, architecture docs, or `NEXT_SESSION_PLAN.md` — Wave 1b and subsequent waves act on them.
+4. **Do NOT** touch `CLAUDE.md`, architecture docs, or `NEXT_SESSION_PLAN.md` — Wave 1b and subsequent waves act on them.
 
 ---
 
@@ -605,7 +605,7 @@ Do NOT run `npm run test:e2e` — it's expensive and not gated on for audit-only
 
 ## Key References
 
-- `claude.md` — project conventions (§2 scope guardrails, §3 workflow, §4 architecture, §8 testing).
+- `CLAUDE.md` — project conventions (§2 scope guardrails, §3 workflow, §4 architecture, §8 testing).
 - `docs/expansion/03_ROADMAP.md` — completed milestone inventory.
 - `docs/expansion/98_PROGRESS_LOG.md` — session log; append-only.
 - `docs/expansion/NEXT_SESSION_PLAN.md` — immediate security backlog (Task 2 re-verifies).
@@ -634,7 +634,7 @@ Do NOT run `npm run test:e2e` — it's expensive and not gated on for audit-only
 **Will NOT edit**:
 - Any file under `frontend/src/`, `packages/core/src/`, `supabase/`, `scripts/`, `tests/`.
 - `package.json`, `package-lock.json`, `vite.config.js`, `vitest.config.js`, `playwright.config.ts`, `tsconfig.json`, `eslint.config.js`, `.prettierrc`.
-- `.env.*`, `vercel.json`, `claude.md`, `README.md`, any `docs/architecture/*.md`.
+- `.env.*`, `vercel.json`, `CLAUDE.md`, `README.md`, any `docs/architecture/*.md`.
 
 ---
 
@@ -644,7 +644,7 @@ Do NOT run `npm run test:e2e` — it's expensive and not gated on for audit-only
 - Any migration.
 - Any test addition, modification, or deletion.
 - Any dependency update.
-- Rewriting `claude.md` or rerouting the `CLAUDE.md`-vs-`claude.md` question (Wave 8).
+- Rewriting `CLAUDE.md` or rerouting the `CLAUDE.md`-vs-`CLAUDE.md` question (Wave 8).
 - Running `npm audit fix`.
 - Running `supabase db push` / `supabase functions deploy`.
 - Wave 1b's action items.

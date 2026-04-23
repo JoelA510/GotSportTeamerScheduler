@@ -343,7 +343,7 @@ Handled across Tasks 1–3:
 3. `docs/audits/wave-1a/index.md` — findings marked shipped (Task 3).
 4. `docs/expansion/98_PROGRESS_LOG.md` — dated entry (Task 3).
 
-Do NOT touch: `claude.md`, `docs/architecture/**`, `docs/security/**`, `docs/testing/**`, any `.claude/wave-*.md`.
+Do NOT touch: `CLAUDE.md`, `docs/architecture/**`, `docs/security/**`, `docs/testing/**`, any `.claude/wave-*.md`.
 
 ---
 
@@ -417,7 +417,7 @@ Each `FAIL → HALT`.
 
 ## Key References
 
-- `claude.md` — §11 CI pipeline.
+- `CLAUDE.md` — §11 CI pipeline.
 - `docs/audits/wave-1a/free-tier-usage.md` — budget baselines.
 - `docs/audits/wave-1a/supabase-performance.md` — advisor-pattern source.
 - `.github/workflows/ci.yml` — where new steps insert.
@@ -445,7 +445,7 @@ Each `FAIL → HALT`.
 - `docs/expansion/98_PROGRESS_LOG.md` (Task 3)
 
 **Will NOT edit**:
-- `claude.md`, any `.claude/wave-*.md`.
+- `CLAUDE.md`, any `.claude/wave-*.md`.
 - `supabase/migrations/**`, `supabase/functions/**`.
 - `vite.config.js`, `vitest.config.js`, `playwright.config.ts`, `eslint.config.js`, `tsconfig.json`, `.prettierrc`.
 - `package-lock.json` beyond what `npm install` generates from script additions.

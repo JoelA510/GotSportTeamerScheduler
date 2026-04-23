@@ -52,7 +52,7 @@
 - **Migration count**: `37` (matches `OPS-CUTOVER` progress-log entry `2026-04-16`). Most recent: `20260416000002_data_retention_cron.sql`.
 - **Edge Functions** (`supabase/functions/`): `auto-scheduler`, `calendar-feed`, `fairness-scoring`, `game-persistence`, `import-validation`, `practice-persistence`, `team-persistence` (7 functions + `_shared/` + `import_map.json`).
 - **`docs/expansion/98_PROGRESS_LOG.md`** most-recent table row: `2026-04-17 PR-155-TRIAGE`.
-- **`git ls-files claude.md CLAUDE.md`**: returns BOTH `CLAUDE.md` AND `claude.md`. **This is the largest drift in the report** — Wave 8 was scoped to perform this rename, but `CLAUDE.md` was added independently in commit `3e7888d` on 2026-04-20 prior to Wave 8's execution.
+- **`git ls-files CLAUDE.md CLAUDE.md`**: returns BOTH `CLAUDE.md` AND `CLAUDE.md`. **This is the largest drift in the report** — Wave 8 was scoped to perform this rename, but `CLAUDE.md` was added independently in commit `3e7888d` on 2026-04-20 prior to Wave 8's execution.
 - **`docs/expansion/NEXT_SESSION_PLAN.md` mtime**: `2026-04-20 03:29:09 UTC` (matches Wave 0 authoring window; no operator edits since).
 - **`.claude/commands/`**: contains `wave.md` and `wave-status.md` (slash-command definitions added in commit `3e7888d`). Not referenced in any wave plan but doesn't conflict with any assertion.
 
@@ -83,9 +83,9 @@ Spot-check of pre-flight (lines 27–43):
 
 1–10: ✅ Hold (verified in `Repo snapshot` above; package.json scripts, vitest/playwright config, vercel.json, supabase migrations, supabase functions, progress log most-recent date, NEXT_SESSION_PLAN sections).
 
-11. ⚠️ **Item 11** (line 39): `claude.md` (lowercase) exists at repo root; `git ls-files` shows it as `claude.md`; case-sensitive systems will see the lowercase form only; all references in this wave use the lowercase form.
-   → Drift: `git ls-files claude.md CLAUDE.md` returns BOTH files. Commit `3e7888d` ("chore(agents): add /wave slash command, /wave-status, and CLAUDE.md") added `CLAUDE.md` separately from Wave 8.
-   → Both files presently exist; the project loads `CLAUDE.md` (per system context shown to agents). The lowercase `claude.md` is now the de-facto orphan.
+11. ⚠️ **Item 11** (line 39): `CLAUDE.md` (lowercase) exists at repo root; `git ls-files` shows it as `CLAUDE.md`; case-sensitive systems will see the lowercase form only; all references in this wave use the lowercase form.
+   → Drift: `git ls-files CLAUDE.md CLAUDE.md` returns BOTH files. Commit `3e7888d` ("chore(agents): add /wave slash command, /wave-status, and CLAUDE.md") added `CLAUDE.md` separately from Wave 8.
+   → Both files presently exist; the project loads `CLAUDE.md` (per system context shown to agents). The lowercase `CLAUDE.md` is now the de-facto orphan.
    → **Refresh edit (annotation only — no rescoping)**: append HTML comment `<!-- wave-0 2026-04-20: CLAUDE.md was added in commit 3e7888d before Wave 8 ran; both files currently exist. Wave 8 still owns the rename + cleanup; re-verify at Wave 8 pre-flight. -->` to item 11. Wave 8's plan body remains the canonical place to handle the cleanup.
 12. ✅ Item 12: `tests/setup.js` imports `@testing-library/jest-dom`. Holds (per `PR-155-TRIAGE` progress-log entry).
 13. ✅ Item 13: `docs/audits/` doesn't yet exist. Holds at Wave 1a pre-flight time (Wave 0 only adds `docs/audits/wave-0/`, not `wave-1a/`).
@@ -94,11 +94,11 @@ Spot-check of pre-flight (lines 27–43):
 
 ## `.claude/wave-8-prompt.md`
 
-Spot-check of the Task 3 ("`claude.md` → `CLAUDE.md` rename") preamble (lines 13, 43, 211–229):
+Spot-check of the Task 3 ("`CLAUDE.md` → `CLAUDE.md` rename") preamble (lines 13, 43, 211–229):
 
-⚠️ **Wave 8 partial-completion drift**: Wave 8 Task 3 assumes that on entry, only `claude.md` (lowercase) exists. As of `2026-04-20`, both files exist — the rename is partially done (the new file has been created; the old file has not been removed; the cross-repo reference sweep has not been run).
+⚠️ **Wave 8 partial-completion drift**: Wave 8 Task 3 assumes that on entry, only `CLAUDE.md` (lowercase) exists. As of `2026-04-20`, both files exist — the rename is partially done (the new file has been created; the old file has not been removed; the cross-repo reference sweep has not been run).
 
-- **Refresh edit (annotation only — no rescoping)**: append HTML comment `<!-- wave-0 2026-04-20: CLAUDE.md was created in commit 3e7888d before Wave 8 ran. As of Wave 8 pre-flight, the rename is partially done: both files coexist. Task 3 must adapt: (a) verify the two files have identical content (operator: `diff claude.md CLAUDE.md`); (b) if identical, `git rm claude.md` instead of `git mv`; (c) reference sweep proceeds as planned. If contents differ, HALT and reconcile before proceeding. -->` adjacent to the Wave 8 Task 3 commit-message line (line 213).
+- **Refresh edit (annotation only — no rescoping)**: append HTML comment `<!-- wave-0 2026-04-20: CLAUDE.md was created in commit 3e7888d before Wave 8 ran. As of Wave 8 pre-flight, the rename is partially done: both files coexist. Task 3 must adapt: (a) verify the two files have identical content (operator: `diff CLAUDE.md CLAUDE.md`); (b) if identical, `git rm CLAUDE.md` instead of `git mv`; (c) reference sweep proceeds as planned. If contents differ, HALT and reconcile before proceeding. -->` adjacent to the Wave 8 Task 3 commit-message line (line 213).
 - Task count and scope are preserved; Task 3 still ships rename + sweep.
 
 ---
@@ -125,13 +125,13 @@ The 14 wave plans + Wave 0 sequence is intact:
 Wave 0 (this) → 1a → 1b → 2 → 3a → 3b → 4 → 5 → 6a → 6b → 7a → 7b → 8 → 9a → 9b
 ```
 
-The `claude.md`/`CLAUDE.md` early-creation does NOT break the dependency graph. Wave 8 still owns the cleanup; Waves 1a–7b will see both files coexist (acceptable — the system loads `CLAUDE.md` already).
+The `CLAUDE.md`/`CLAUDE.md` early-creation does NOT break the dependency graph. Wave 8 still owns the cleanup; Waves 1a–7b will see both files coexist (acceptable — the system loads `CLAUDE.md` already).
 
 ---
 
 ## Deferred to later waves
 
-- **`claude.md` redundancy** (Wave 8 owns): both files exist; cleanup happens at Wave 8 Task 3. No earlier wave should attempt the cleanup.
+- **`CLAUDE.md` redundancy** (Wave 8 owns): both files exist; cleanup happens at Wave 8 Task 3. No earlier wave should attempt the cleanup.
 - **Live-DB advisor verification** (Wave 2 owns): `import_efficiency_metrics` view security mode, `raw-imports` bucket privacy, 6 search-path functions, leaked-password setting — all require Supabase dashboard or live-DB access. Wave 2's pre-flight re-verifies.
 - **Sentry DSN** (Wave 2 / Wave 9 owns): `VITE_SENTRY_DSN` Vercel env var presence — operator-action item, not auto-verifiable.
 - **CI baseline counts** (each wave's own Task 1 captures): test counts, lint warning counts, bundle sizes — captured at each wave's own pre-flight. Wave 0 does not snapshot these.

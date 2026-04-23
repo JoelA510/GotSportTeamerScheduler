@@ -41,7 +41,7 @@ HALT on any false claim.
 6. `tests/factories/` does NOT exist.
 7. `tests/helpers/` does NOT exist.
 8. `tests/setup.js` currently imports `@testing-library/jest-dom` only (confirm unchanged since Wave 1a).
-9. `frontend/src/App.jsx` provider order matches `claude.md` §5 — `BrowserRouter > AuthProvider > OrganizationProvider > ImportProvider > ThemeProvider > ErrorBoundary`. If drift, reconcile Task 2's `renderWithProviders` to the current order.
+9. `frontend/src/App.jsx` provider order matches `CLAUDE.md` §5 — `BrowserRouter > AuthProvider > OrganizationProvider > ImportProvider > ThemeProvider > ErrorBoundary`. If drift, reconcile Task 2's `renderWithProviders` to the current order.
 10. `frontend/src/lib/mockSupabaseClient.js` exists and exports an `initialMockData` object — factory field names must match that schema.
 
 ---
@@ -440,7 +440,7 @@ Do NOT edit:
 - `docs/**` — `docs/testing/test-helpers.md` ships in Wave 3b.
 - `docs/audits/wave-1a/index.md` — Wave 3b marks findings shipped.
 - `docs/expansion/98_PROGRESS_LOG.md` — Wave 3b appends.
-- `claude.md`.
+- `CLAUDE.md`.
 - Any `.claude/wave-*.md` file.
 - Any production source.
 
@@ -498,7 +498,7 @@ Each `FAIL → HALT`. Do NOT run `npm run test:e2e` per-task (cost).
 
 ## Key References
 
-- `claude.md` — §5 (Coding Conventions), §8 (Testing).
+- `CLAUDE.md` — §5 (Coding Conventions), §8 (Testing).
 - `docs/audits/wave-1a/index.md` — Wave-3-test-infra findings section.
 - `docs/audits/wave-1a/code-quality.md` — full finding context.
 - `frontend/src/App.jsx` — provider order SSoT for `renderWithProviders`.
@@ -534,7 +534,7 @@ Each `FAIL → HALT`. Do NOT run `npm run test:e2e` per-task (cost).
 - `tests/setup.js` — additive polyfills only.
 
 **Will NOT edit**:
-- `claude.md`, any `.claude/wave-*.md`.
+- `CLAUDE.md`, any `.claude/wave-*.md`.
 - Any file under `frontend/src/`, `packages/core/src/`, `supabase/`.
 - Any existing test file under `tests/`.
 - `package.json`, `package-lock.json`.

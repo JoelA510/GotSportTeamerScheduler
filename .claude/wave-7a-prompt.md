@@ -416,7 +416,7 @@ Handled across Tasks 1–3:
 5. `docs/audits/wave-1a/index.md` — Wave-7-db-test findings marked shipped (Task 3).
 6. `docs/expansion/98_PROGRESS_LOG.md` — dated entry (Task 3).
 
-Do NOT touch: `claude.md`, `docs/architecture/**`, `docs/operations/**`, `docs/testing/e2e_master_plan.md`, any `.claude/wave-*.md`.
+Do NOT touch: `CLAUDE.md`, `docs/architecture/**`, `docs/operations/**`, `docs/testing/e2e_master_plan.md`, any `.claude/wave-*.md`.
 
 ---
 
@@ -472,7 +472,7 @@ Each `FAIL → HALT`.
 
 ## Key References
 
-- `claude.md` — §7 Supabase, §8 Testing, §11 CI.
+- `CLAUDE.md` — §7 Supabase, §8 Testing, §11 CI.
 - `docs/audits/wave-1a/index.md` § Wave 7-db-test.
 - `docs/audits/wave-1a/security.md` — RLS invariant source.
 - `docs/security/rls-policies.md` — existing RLS documentation.
@@ -504,7 +504,7 @@ Each `FAIL → HALT`.
 - `docs/expansion/98_PROGRESS_LOG.md` (Task 3)
 
 **Will NOT edit**:
-- `claude.md`, any `.claude/wave-*.md`.
+- `CLAUDE.md`, any `.claude/wave-*.md`.
 - `vite.config.js`, `vitest.config.js`, `playwright.config.ts`, `eslint.config.js`, `tsconfig.json`, `.prettierrc`.
 - `tests/factories/**`, `tests/helpers/**`, `tests/setup.js`.
 - `frontend/src/**`, `packages/core/src/**`, `supabase/functions/**`.
