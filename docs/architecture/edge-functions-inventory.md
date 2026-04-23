@@ -76,7 +76,7 @@ Seven functions are deployed. Each has its own directory under `supabase/functio
 ### 2.7 `calendar-feed`
 
 - **Purpose**: Public ICS calendar feed for a single team. Generates an RFC 5545-compliant `.ics` body with team games and expanded practice occurrences.
-- **Invoked by**: External calendar clients (Google Calendar, Apple Calendar, Outlook) via `webcal://` URLs subscribed in `frontend/src/pages/TeamPortalPage.jsx` line 322. Not a frontend-invoked function.
+- **Invoked by**: External calendar clients via `webcal://` URLs subscribed in `frontend/src/pages/TeamPortalPage.jsx`.
 - **Authentication**: Token-based via `?token=<uuid>` query parameter. The token is a UUID stored on `teams.calendar_token` with a 90-day expiry (`teams.calendar_token_expires_at`). Expired tokens return `403`. No JWT or org-membership check — the token itself is the authorization grant. Rotated via the `rotate_calendar_token` RPC.
 - **Rate limit**: Not enforced (public read surface; protected by UUID-token unguessability).
 - **Service-role**: Yes. The function uses the service-role client specifically because there is no authenticated user session; RLS would otherwise block the read. The token validates the request instead.
