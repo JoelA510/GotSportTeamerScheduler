@@ -74,7 +74,7 @@ Three-task sequence, each producing a single artifact:
    - `ls docs/audits/ 2>/dev/null || echo "(absent)"`.
    - `ls supabase/migrations/ | wc -l` (migration count).
    - `head -1 docs/expansion/98_PROGRESS_LOG.md && head -30 docs/expansion/98_PROGRESS_LOG.md | grep -E "^## " | head -5` (most recent 5 progress-log entries).
-   - `git ls-files CLAUDE.md CLAUDE.md` (case-resolution state).
+   - `git ls-files claude.md CLAUDE.md` (case-resolution state).
    - `stat -c "%y %n" docs/expansion/NEXT_SESSION_PLAN.md` (mtime).
 
 3. **Per-plan drift scan** — for each of the 15 planning files (14 wave plans + `wave-execution-protocol.md`), create a `### <filename>` section in the drift report listing:
