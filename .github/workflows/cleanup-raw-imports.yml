@@ -1,4 +1,5 @@
 name: Cleanup raw-imports bucket (30-day retention)
+permissions: {}
 
 # Wave 6b Task 3 — Storage retention for the raw-imports bucket.
 #
