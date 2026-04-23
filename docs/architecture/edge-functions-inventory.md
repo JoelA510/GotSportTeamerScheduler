@@ -58,7 +58,7 @@ Seven functions are deployed. Each has its own directory under `supabase/functio
 ### 2.5 `fairness-scoring`
 
 - **Purpose**: Evaluate a practice and/or game schedule against the isomorphic scoring engine in `supabase/functions/_shared/engines/scoring-engine.ts`. Returns `metrics_summary` and structured `findings`. With `persist: true`, also writes an `evaluation_runs` row through the three-arg `persist_evaluation_run` overload.
-- **Invoked by**: `frontend/src/components/EvaluationPanel.jsx` lines 39 and 87 via `supabase.functions.invoke('fairness-scoring', …)`.
+- **Invoked by**: `frontend/src/components/EvaluationPanel.jsx` via `supabase.functions.invoke('fairness-scoring', …)`.
 - **Authentication**: `getUserFromRequest()` + `verifyOrgMembership(supabase, user.id, body.organizationId)`.
 - **Rate limit**: Not enforced directly in `fairness-scoring/index.ts` today (the other persistence functions do; flagged as a gap in §6).
 - **RPC used**: `persist_evaluation_run(p_run_data, p_findings, p_metrics)` when `persist: true`.
