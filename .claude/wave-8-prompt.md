@@ -296,7 +296,7 @@ Five tasks: two new docs, eight Known-Gaps additions, one rename, one index reor
     npm run lint && npm run typecheck && npm run test
     npm run check:advisors && npm run check:bundle
     npm run frontend:build
-    git ls-files CLAUDE.md && ! git ls-files CLAUDE.md  # file lookup confirms rename
+    git ls-files CLAUDE.md && ! git ls-files claude.md  # file lookup confirms rename
     git grep "claude\.md" -- ':!docs/archive/**'        # zero
     git status
     ```
