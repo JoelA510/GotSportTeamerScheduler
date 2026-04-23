@@ -13,6 +13,9 @@ on:
       - '.github/workflows/pgtap.yml'
   workflow_dispatch: {}
 
+permissions:
+  contents: read
+
 jobs:
   pgtap:
     name: Run pgTAP against local Supabase
