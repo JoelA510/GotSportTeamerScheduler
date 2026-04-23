@@ -240,7 +240,7 @@ Five tasks: two new docs, eight Known-Gaps additions, one rename, one index reor
    git grep -l "claude\.md"         # lists every tracked file containing the lowercase reference
    ```
    For each file in the list:
-   - If the file is a wave plan (`.claude/wave-*-prompt.md`) OR a doc (`docs/**/*.md`) OR a top-level doc (`README.md`, etc.): replace `CLAUDE.md` → `CLAUDE.md`.
+   - If the file is a wave plan (`.claude/wave-*-prompt.md`) OR a doc (`docs/**/*.md`) OR a top-level doc (`README.md`, etc.): replace `claude.md` → `CLAUDE.md`.
    - If the file is source code (unlikely but possible): replace only if the reference is a doc link; if it's a code-level string used elsewhere, surface and decide.
    - If the file is in `docs/archive/**`: **DO NOT edit**. Archive is immutable history.
 
