@@ -11,7 +11,7 @@
 // needing method-specific behavior override per-call by constructing
 // a fresh chain with `createChainMock(...)`.
 
-export function createChainMock(resolvedValue) {
+export function createChainMock(resolvedValue = { data: null, error: null }) {
   const target = {
     ...resolvedValue,
     // Forward BOTH promise handlers (onFulfilled, onRejected) and any
