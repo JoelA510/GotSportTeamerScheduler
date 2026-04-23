@@ -17,7 +17,7 @@ style-src   'self' 'unsafe-inline';
 img-src     'self' data: blob: https://vercel.live https://vercel.com;
 font-src    'self' https://vercel.live https://assets.vercel.com;
 connect-src 'self'
-            https://mmwupqsjkikqzvmdvuzm.supabase.co wss://mmwupqsjkikqzvmdvuzm.supabase.co
+            https://*.supabase.co wss://*.supabase.co
             https://*.ingest.sentry.io
             https://vercel.live wss://ws-us3.pusher.com;
 frame-src   'self' https://vercel.live;
@@ -30,9 +30,12 @@ upgrade-insecure-requests;
 
 Served as `Content-Security-Policy: …` (enforcing). Wave 2 flipped it from
 Report-Only. Wave 7b added Sentry ingest to `connect-src` (Wave 2 gap — DSN
-was set but captures were CSP-blocked). The `vercel.live` / `assets.vercel.com`
-/ Pusher entries were added to unblock Vercel's preview-only comments &
-feedback widget; they are inert on production deploys.
+was set but captures were CSP-blocked) and switched the Supabase entry from a
+pinned project ref to the `*.supabase.co` wildcard for resilience to
+project-host changes (see §`connect-src` rationale for the threat-model
+trade-off). The `vercel.live` / `assets.vercel.com` / Pusher entries were
+added to unblock Vercel's preview-only comments & feedback widget; they are
+inert on production deploys.
 
 ## Directive rationale
 
@@ -43,7 +46,7 @@ feedback widget; they are inert on production deploys.
 | `style-src` | `'self' 'unsafe-inline'` | **Waiver** — Tailwind 4 runtime injects classes via dynamic `<style>` tags and React's `style={{...}}` prop renders inline. Nonce migration requires Tailwind 4.x nonce-propagation (not yet stable) + audit of every inline style site. See §`Follow-ups`. |
 | `img-src` | `'self' data: blob: https://vercel.live https://vercel.com` | `data:` for small icons / placeholder SVGs in-bundle; `blob:` for the `OfflineGuard` Supabase-Storage-loaded brand assets. `vercel.live` + `vercel.com` for the preview feedback widget's avatars. No other third-party image CDNs. |
 | `font-src` | `'self' https://vercel.live https://assets.vercel.com` | All app fonts bundled via Vite (`index.css` imports). The Vercel domains serve the Inter webfont referenced by the preview feedback widget. No Google Fonts / other third-party font CDNs. |
-| `connect-src` | `'self' https://mmwupqsjkikqzvmdvuzm.supabase.co wss://mmwupqsjkikqzvmdvuzm.supabase.co https://*.ingest.sentry.io https://vercel.live wss://ws-us3.pusher.com` | Allows (1) same-origin XHR, (2) the SquadLogic-specific Supabase project over HTTPS + WSS for Realtime, (3) Sentry ingest, (4) Vercel Live + its Pusher realtime channel for the preview feedback widget. **Supabase host is pinned** to the specific project ref — an earlier draft used `*.supabase.co`; Gemini PR #175 review correctly flagged the wildcard as an XSS-exfiltration broadening. If the project ref ever changes, update this directive in the same PR that updates the Supabase env vars. **Sentry is wildcard-scoped** to `*.ingest.sentry.io` because the Sentry SDK dispatches to region/org-specific subdomains (`o<id>.ingest.sentry.io`) not known at deploy time; the apex `ingest.sentry.io` is Sentry-operated single-tenant and does not host guest content. |
+| `connect-src` | `'self' https://*.supabase.co wss://*.supabase.co https://*.ingest.sentry.io https://vercel.live wss://ws-us3.pusher.com` | Allows (1) same-origin XHR, (2) Supabase over HTTPS + WSS for Realtime, (3) Sentry ingest, (4) Vercel Live + its Pusher realtime channel for the preview feedback widget. **Supabase is wildcard-scoped** to `*.supabase.co` for resilience to project-host changes (Wave 7b decision — the prior pinned ref is too fragile across project migrations). Trade-off: a successful XSS could exfiltrate to any Supabase-hosted tenant rather than only ours; accepted because (a) `frontend/src/lib/supabaseClient.js` only ever dispatches to the env-configured ref and (b) Supabase tenants are isolated at the auth/RLS layer so cross-tenant exfil still fails token checks. Revisit if a tighter HSTS-style pinning option becomes available. **Sentry is wildcard-scoped** to `*.ingest.sentry.io` because the Sentry SDK dispatches to region/org-specific subdomains (`o<id>.ingest.sentry.io`) not known at deploy time; the apex `ingest.sentry.io` is Sentry-operated single-tenant and does not host guest content. |
 | `frame-src` | `'self' https://vercel.live` | The Vercel preview feedback widget mounts its UI inside an iframe that loads from `vercel.live`. Production traffic doesn't render the widget. No other embedded frames are permitted. |
 | `frame-ancestors` | `'none'` | Clickjacking defense. SquadLogic is never embedded. |
 | `object-src` | `'none'` | Legacy `<object>` / Flash blocker — zero legitimate use. |
