@@ -1,0 +1,41 @@
+name: pgTAP tests
+
+# Conditional trigger: only runs when a PR touches Supabase DB-layer files.
+# Keeps GitHub Actions minutes under the free-tier cap (~2000/mo) — a full
+# `supabase start` + test cycle costs ~3–5 min per run, so unconditional PR
+# triggering would consume ~300 min/mo at typical PR cadence. Limiting to
+# migrations + tests + this workflow itself caps it at ~40 min/mo.
+on:
+  pull_request:
+    paths:
+      - 'supabase/migrations/**'
+      - 'supabase/tests/**'
+      - '.github/workflows/pgtap.yml'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  pgtap:
+    name: Run pgTAP against local Supabase
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Start local Supabase (applies all migrations)
+        run: supabase start
+
+      - name: Run pgTAP tests
+        run: supabase test db
+
+      - name: Stop local Supabase
+        if: always()
+        run: supabase stop
