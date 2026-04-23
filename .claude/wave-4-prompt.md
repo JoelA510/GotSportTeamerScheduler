@@ -19,7 +19,7 @@ The branch is **preserved on origin** so the useful scaffolding is salvageable �
 **Current state on main** (verify in pre-flight; prior commit `7116f46 feat(multi-tenant): introduce self-serve zero-to-one onboarding architecture` shipped the skeleton):
 - `frontend/src/pages/OrganizationCreation.jsx` EXISTS with all 4 form fields + correct 4-arg RPC call.
 - `App.jsx` mounts it as a **blocking conditional render** (lines 63–72), NOT a route. URL never becomes `/organizations/new`; logged-out zero-org users can shadow `/auth/reset-password`.
-- No Zod validation (uses HTML `required` only — violates `claude.md` §3 mandate); no hook extraction; success path uses `window.location.href` (full reload); no unit tests.
+- No Zod validation (uses HTML `required` only — violates `CLAUDE.md` §3 mandate); no hook extraction; success path uses `window.location.href` (full reload); no unit tests.
 - `mockSupabaseClient.js` does NOT implement `initialize_new_tenant` — works only against real Supabase.
 
 **Wave purpose**: harden + route-wire the existing cold-start flow. A cold-logged-in user with zero orgs lands on `/organizations/new` via a proper route, form validates through Zod, mock or real `initialize_new_tenant` RPC fires, they arrive at the admin dashboard via SPA navigation. End-to-end covered by a new E2E scenario.
@@ -236,10 +236,10 @@ Six tasks: one design audit, three implementation, one E2E, one closure. End-to-
    - Internally uses `supabase.rpc('initialize_new_tenant', { p_name, p_slug, p_timezone, p_season_year })`.
    - Returns `{ createOrganization, loading, error, newOrgId }`.
    - On success, sets `newOrgId`; caller navigates via React Router `useNavigate()` (replace the existing `window.location.href` full-page reload).
-   - **Zod schema gates all four inputs BEFORE the RPC call** (per `claude.md` §3 "Schema Rigidity"): `name` 3–100 chars; `slug` matches `/^[a-z0-9-]+$/`, 3–50 chars; `timezone` non-empty string (validate against IANA with `Intl.DateTimeFormat` round-trip if feasible, otherwise non-empty check); `seasonYear` integer between 2020 and 2100 (matches the HTML `min`/`max` bounds in the existing component); required user context.
+   - **Zod schema gates all four inputs BEFORE the RPC call** (per `CLAUDE.md` §3 "Schema Rigidity"): `name` 3–100 chars; `slug` matches `/^[a-z0-9-]+$/`, 3–50 chars; `timezone` non-empty string (validate against IANA with `Intl.DateTimeFormat` round-trip if feasible, otherwise non-empty check); `seasonYear` integer between 2020 and 2100 (matches the HTML `min`/`max` bounds in the existing component); required user context.
    - Surface per-field validation errors for the component to display.
 
-3. **Refactor `frontend/src/pages/OrganizationCreation.jsx`** (exists on main; keep at this path — pages live under `pages/` per `claude.md` §5):
+3. **Refactor `frontend/src/pages/OrganizationCreation.jsx`** (exists on main; keep at this path — pages live under `pages/` per `CLAUDE.md` §5):
    - Keep the existing form inputs (name, slug, timezone, seasonYear) + the auto-slug-generation effect.
    - Keep the existing design-system classes (`.glass-panel-premium`, `.glass-input`, `.glass-button`, etc.).
    - **Extract submission logic** to the new `useOrganizationCreation` hook (Step 2). Component becomes a controlled form that calls `createOrganization(formValues)` and reads `{ loading, error, newOrgId }` from the hook.
@@ -545,7 +545,7 @@ Handled by Task 6:
 2. `docs/architecture/frontend-architecture.md` — route + component + hook added.
 3. `docs/expansion/98_PROGRESS_LOG.md` — dated entry.
 
-Do NOT touch: `claude.md`, `docs/expansion/03_ROADMAP.md`, `docs/testing/**`, `docs/security/**`, `docs/operations/**`, any `.claude/wave-*.md`.
+Do NOT touch: `CLAUDE.md`, `docs/expansion/03_ROADMAP.md`, `docs/testing/**`, `docs/security/**`, `docs/operations/**`, any `.claude/wave-*.md`.
 
 ---
 
@@ -612,7 +612,7 @@ Do NOT run `npm run test:e2e` per-task for Tasks 1–4 (cost). CI runs it on mer
 
 ## Key References
 
-- `claude.md` — §3 (workflow, RPC enforcement, Zod mandate), §5 (conventions), §6 (design system), §9 (a11y).
+- `CLAUDE.md` — §3 (workflow, RPC enforcement, Zod mandate), §5 (conventions), §6 (design system), §9 (a11y).
 - `docs/audits/wave-1a/index.md` — Wave-4-onboarding findings section.
 - `docs/audits/wave-4-salvage/pr-155-design.md` — salvage design (produced by Task 1).
 - `docs/testing/test-helpers.md` — hoisted-auth-mock idiom + factory / helper usage.
@@ -655,7 +655,7 @@ Do NOT run `npm run test:e2e` per-task for Tasks 1–4 (cost). CI runs it on mer
 - `docs/expansion/98_PROGRESS_LOG.md`
 
 **Will NOT edit**:
-- `claude.md`, any `.claude/wave-*.md`.
+- `CLAUDE.md`, any `.claude/wave-*.md`.
 - `supabase/migrations/**` (the real `initialize_new_tenant` stays).
 - `supabase/functions/**` (no Edge Function for this flow).
 - `package.json`, `package-lock.json` (restoration of the test dep REMOVED by PR #155 counts as "preserving main", not a change — main already has it).

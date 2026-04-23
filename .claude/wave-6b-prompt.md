@@ -334,7 +334,7 @@ Three cost-reducing tasks + one closure. Each cost-reducing task quantifies its 
    - **Required secrets** (set in GitHub repo settings):
      - `SUPABASE_URL` (already exists for CI).
      - `SUPABASE_SERVICE_ROLE_KEY` (new — add as a repository secret;
-       never commit; never expose via `VITE_*` prefix per claude.md §2).
+       never commit; never expose via `VITE_*` prefix per CLAUDE.md §2).
    - **Monthly Actions minutes budget**: job runs ~30s × 31 days ≈ 16 min/mo.
      Well inside the 2,000 min/mo free-tier budget for private repos.
    - **User impact**: operational history; users re-upload if data needed.
@@ -477,7 +477,7 @@ Handled across Tasks 1–4:
 
 Task 3 ships no SQL migration, revert, or smoke (the cleanup is now a GitHub Actions + Node-script pairing, not a DB artifact).
 
-Do NOT touch: `claude.md`, `docs/security/**`, `docs/testing/**`, any `.claude/wave-*.md`.
+Do NOT touch: `CLAUDE.md`, `docs/security/**`, `docs/testing/**`, any `.claude/wave-*.md`.
 
 ---
 
@@ -545,7 +545,7 @@ npm run format -- docs/audits/wave-1a/index.md docs/expansion/98_PROGRESS_LOG.md
 
 ## Key References
 
-- `claude.md` — §7 (Supabase), §11 (CI), §10 (Environment variables).
+- `CLAUDE.md` — §7 (Supabase), §11 (CI), §10 (Environment variables).
 - `docs/audits/wave-1a/supabase-performance.md` — index audit source.
 - `docs/audits/wave-1a/free-tier-usage.md` — budget projections source.
 - `docs/operations/bundle-budget.md` (Wave 6a).
@@ -577,7 +577,7 @@ npm run format -- docs/audits/wave-1a/index.md docs/expansion/98_PROGRESS_LOG.md
 - `docs/architecture/frontend-architecture.md` (Task 4 — brief mention)
 
 **Will NOT edit**:
-- `claude.md`, any `.claude/wave-*.md`.
+- `CLAUDE.md`, any `.claude/wave-*.md`.
 - `package.json`, `package-lock.json` (no new deps).
 - `supabase/functions/**` (no Edge Function code changes).
 - `vite.config.js`, `vitest.config.js`, `playwright.config.ts`, `eslint.config.js`, `tsconfig.json`, `.prettierrc`.

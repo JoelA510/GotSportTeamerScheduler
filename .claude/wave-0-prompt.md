@@ -4,7 +4,7 @@
 
 **Prior-wave recap**: No prior waves have executed. The 14 `.claude/wave-*-prompt.md` files for Waves 1a–9b were authored 2026-04-17/18 from `docs/expansion/NEXT_SESSION_PLAN.md`. Three calendar days have elapsed without execution.
 
-**Current state** (2026-04-20): SquadLogic v1.0.0 still at tag-free `main`; `package.json:3` declares `"version": "1.0.0"`; `README.md:20` status banner reads "v1.0 GA — Phase 10 pre-flight certification complete, post-launch monitoring in effect"; `CHANGELOG.md` absent; `docs/audits/wave-1a/` absent; `docs/expansion/98_PROGRESS_LOG.md` most-recent entry is 2026-04-17 `PR-155-TRIAGE`; `claude.md` (lowercase) still present (Wave 8 renames).
+**Current state** (2026-04-20): SquadLogic v1.0.0 still at tag-free `main`; `package.json:3` declares `"version": "1.0.0"`; `README.md:20` status banner reads "v1.0 GA — Phase 10 pre-flight certification complete, post-launch monitoring in effect"; `CHANGELOG.md` absent; `docs/audits/wave-1a/` absent; `docs/expansion/98_PROGRESS_LOG.md` most-recent entry is 2026-04-17 `PR-155-TRIAGE`; `CLAUDE.md` (lowercase) still present (Wave 8 renames).
 
 **Working tree**: Clean. Branch: `claude/extend-wave-planning-sqaol` (the Wave-0 authoring branch) cut from `main`. Origin: `github.com/JoelA510/SquadLogic`.
 
@@ -74,7 +74,7 @@ Three-task sequence, each producing a single artifact:
    - `ls docs/audits/ 2>/dev/null || echo "(absent)"`.
    - `ls supabase/migrations/ | wc -l` (migration count).
    - `head -1 docs/expansion/98_PROGRESS_LOG.md && head -30 docs/expansion/98_PROGRESS_LOG.md | grep -E "^## " | head -5` (most recent 5 progress-log entries).
-   - `git ls-files claude.md CLAUDE.md` (case-resolution state).
+   - `git ls-files CLAUDE.md CLAUDE.md` (case-resolution state).
    - `stat -c "%y %n" docs/expansion/NEXT_SESSION_PLAN.md` (mtime).
 
 3. **Per-plan drift scan** — for each of the 15 planning files (14 wave plans + `wave-execution-protocol.md`), create a `### <filename>` section in the drift report listing:
@@ -176,7 +176,7 @@ Three-task sequence, each producing a single artifact:
 
 2. **Update `docs/README.md`** — under an `### Audits` heading (create if missing), add `- [Wave 0 — planning drift reconciliation](audits/wave-0/drift-report.md)`.
 
-3. **Do NOT** edit `claude.md` / `CLAUDE.md`, any architecture doc, `NEXT_SESSION_PLAN.md`, `README.md` (repo root), or `package.json`.
+3. **Do NOT** edit `CLAUDE.md` / `CLAUDE.md`, any architecture doc, `NEXT_SESSION_PLAN.md`, `README.md` (repo root), or `package.json`.
 
 4. Self-review: `git diff --name-only` shows exactly `docs/expansion/98_PROGRESS_LOG.md` and `docs/README.md`. Nothing else.
 
@@ -195,7 +195,7 @@ Handled inline by Task 3. No separate pass. Specifically:
 1. `docs/expansion/98_PROGRESS_LOG.md` — appended in Task 3.
 2. `docs/README.md` — `### Audits` link added in Task 3.
 3. `.claude/wave-*-prompt.md` — in-place refreshes already applied in Task 2.
-4. **Do NOT** touch `claude.md` / `CLAUDE.md` casing (Wave 8 owns), architecture docs, `NEXT_SESSION_PLAN.md`, or `CHANGELOG.md` (Wave 9a owns).
+4. **Do NOT** touch `CLAUDE.md` / `CLAUDE.md` casing (Wave 8 owns), architecture docs, `NEXT_SESSION_PLAN.md`, or `CHANGELOG.md` (Wave 9a owns).
 
 ---
 
@@ -269,7 +269,7 @@ git rev-parse --abbrev-ref HEAD       # returns claude/extend-wave-planning-sqao
 **Will NOT edit**:
 - Any file under `frontend/`, `packages/`, `supabase/`, `tests/`, `scripts/`, `config/`.
 - `package.json`, `package-lock.json`, `README.md` (repo root), `CHANGELOG.md`, any `docs/architecture/*.md`.
-- `claude.md` / `CLAUDE.md`, `docs/expansion/NEXT_SESSION_PLAN.md`, any `docs/expansion/0*_*.md`.
+- `CLAUDE.md` / `CLAUDE.md`, `docs/expansion/NEXT_SESSION_PLAN.md`, any `docs/expansion/0*_*.md`.
 - Any `.env.*`, `vercel.json`, `vitest.config.js`, `playwright.config.ts`, `eslint.config.js`, `tsconfig.json`.
 
 ---
@@ -283,7 +283,7 @@ git rev-parse --abbrev-ref HEAD       # returns claude/extend-wave-planning-sqao
 - Fixing drift at its source (e.g., if a migration has the wrong name, Wave 0 updates the plan to match reality — it does NOT rename the migration).
 - Running the repo's test/lint/typecheck/build gates (Wave 1a captures those baselines; Wave 0 changes no code).
 - Dashboard-dependent verification (Supabase advisor, Vercel analytics, Sentry) — defer to the acting wave's pre-flight.
-- Editing `claude.md` → `CLAUDE.md` casing (Wave 8 owns).
+- Editing `CLAUDE.md` → `CLAUDE.md` casing (Wave 8 owns).
 
 ---
 

@@ -354,7 +354,7 @@ PR per task. Wave 6a + 7a gates stay green.
 2. `docs/audits/wave-1a/index.md` — Wave-7-csp findings shipped (Task 3).
 3. `docs/expansion/98_PROGRESS_LOG.md` — dated entry (Task 3).
 
-Do NOT touch: `claude.md`, `docs/architecture/**`, `docs/operations/**`, `docs/testing/**`, `docs/security/rls-policies.md` (Wave 7a owned), any `.claude/wave-*.md`.
+Do NOT touch: `CLAUDE.md`, `docs/architecture/**`, `docs/operations/**`, `docs/testing/**`, `docs/security/rls-policies.md` (Wave 7a owned), any `.claude/wave-*.md`.
 
 ---
 
@@ -413,7 +413,7 @@ Each `FAIL → HALT`.
 
 ## Key References
 
-- `claude.md` — §11 CI.
+- `CLAUDE.md` — §11 CI.
 - `docs/audits/wave-1a/index.md` § Wave 7-csp.
 - `vercel.json` — CSP SSoT.
 - `frontend/index.html` — script tag consumes nonce.
@@ -434,7 +434,7 @@ Each `FAIL → HALT`.
 - `docs/expansion/98_PROGRESS_LOG.md` (Task 3)
 
 **Will NOT edit**:
-- `claude.md`, any `.claude/wave-*.md`.
+- `CLAUDE.md`, any `.claude/wave-*.md`.
 - `vite.config.js`, `vitest.config.js`, `playwright.config.ts`, `eslint.config.js`, `tsconfig.json`, `.prettierrc`.
 - `tests/factories/**`, `tests/helpers/**`, `tests/setup.js`.
 - `frontend/src/**`, `packages/core/src/**`, `supabase/**`.

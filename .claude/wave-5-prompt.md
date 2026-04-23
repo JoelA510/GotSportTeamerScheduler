@@ -237,8 +237,8 @@ Each production-side change is itemized in the PR body with justification.
    d. Choose a fix path:
       - **Text drift** — update the expected text in the step def to match current copy. PREFERRED if the copy is intentional and stable.
       - **Selector brittleness** — if the production component uses a text-only selector and text is likely to drift again, add `data-testid` to the production component AND update the step def. Document the production change in PR body.
-      - **Race condition** — add an `await page.waitForSelector(...)` or `await expect(locator).toBeVisible()` before the interaction. Follows the existing pattern from `claude.md` §8 E2E rules.
-      - **Missing org_id seeding** — confirm the test seeds `__MOCK_DB__` entries with a valid `organization_id` matching `localStorage.squadlogic_active_org`. Per `claude.md` §8, this is the most common fix.
+      - **Race condition** — add an `await page.waitForSelector(...)` or `await expect(locator).toBeVisible()` before the interaction. Follows the existing pattern from `CLAUDE.md` §8 E2E rules.
+      - **Missing org_id seeding** — confirm the test seeds `__MOCK_DB__` entries with a valid `organization_id` matching `localStorage.squadlogic_active_org`. Per `CLAUDE.md` §8, this is the most common fix.
 
 4. **Use Wave 3 fixtures where possible** — `tests/helpers/seedMockDb.js` for seeding; `tests/factories/` for row data shapes. If a fix touches a step file that pre-dates the fixtures, migrate the seeding in that file (but ONLY the affected scenario's seeding — don't refactor the whole step file).
 
@@ -500,7 +500,7 @@ Handled by Task 6:
 3. `docs/audits/wave-1a/index.md` — Wave-5 findings marked shipped / waived.
 4. `docs/expansion/98_PROGRESS_LOG.md` — dated entry.
 
-Do NOT touch: `claude.md`, `docs/architecture/**`, `docs/security/**`, `docs/operations/**`, any `.claude/wave-*.md`.
+Do NOT touch: `CLAUDE.md`, `docs/architecture/**`, `docs/security/**`, `docs/operations/**`, any `.claude/wave-*.md`.
 
 ---
 
@@ -564,7 +564,7 @@ Each `FAIL → HALT`.
 
 ## Key References
 
-- `claude.md` — §8 Testing (E2E rules, especially the `organization_id` seeding rule).
+- `CLAUDE.md` — §8 Testing (E2E rules, especially the `organization_id` seeding rule).
 - `docs/audits/wave-1a/index.md` — Wave-5-e2e findings section.
 - `docs/audits/wave-1a/accessibility.md` — a11y findings feed Task 1's axe triage.
 - `docs/testing/test-helpers.md` — `seedMockDb`, `createChainMock`, factories.
@@ -598,7 +598,7 @@ Each `FAIL → HALT`.
 - `docs/expansion/98_PROGRESS_LOG.md` (Task 6)
 
 **Will NOT edit**:
-- `claude.md`, any `.claude/wave-*.md`.
+- `CLAUDE.md`, any `.claude/wave-*.md`.
 - `supabase/migrations/**` (no schema changes in this wave).
 - `supabase/functions/**` (no Edge Function changes).
 - `playwright.config.ts`, `vitest.config.js`, `vite.config.js`, `eslint.config.js`, `tsconfig.json`, `.prettierrc`.

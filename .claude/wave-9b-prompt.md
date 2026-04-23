@@ -147,7 +147,7 @@ One task — the cutover.
    - Free-tier guards (bundle budget, advisor-lint, edge-cache,
      DB indexes, storage retention via GitHub Actions).
    - pgTAP live-DB RLS tests + CSP connect-src Sentry fix.
-   - Docs gap closure + claude.md → CLAUDE.md rename.
+   - Docs gap closure + CLAUDE.md → CLAUDE.md rename.
    - Lighthouse CI + OWASP Top 10 audit.
 
    This tag marks the terminal v1.0.1 state. Post-1.0.1 work tracked

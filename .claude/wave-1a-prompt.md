@@ -36,7 +36,7 @@ Verify each fact assertion below. **HALT** on any false or ambiguous claim — d
 8. `supabase/functions/` exists and contains at least: `calendar-feed`, `game-persistence`, `auto-scheduler`, `fairness-scoring`.
 9. `docs/expansion/98_PROGRESS_LOG.md` exists; most recent entry is `2026-04-17`.
 10. `docs/expansion/NEXT_SESSION_PLAN.md` exists and lists items §1.1, §2.1, §2.2, §2.3, §3.1.
-11. `claude.md` (lowercase) exists at repo root. `git ls-files` shows it as `claude.md`. (Case-sensitive systems will see the lowercase form only; all references in this wave use the lowercase form.) <!-- wave-0 2026-04-20: drift — `CLAUDE.md` was added in commit 3e7888d before Wave 8 ran; both files currently coexist. Wave 1a is read-only so this does not block; Wave 8 still owns the cleanup. Re-verify at Wave 8 pre-flight. -->
+11. `CLAUDE.md` (lowercase) exists at repo root. `git ls-files` shows it as `CLAUDE.md`. (Case-sensitive systems will see the lowercase form only; all references in this wave use the lowercase form.) <!-- wave-0 2026-04-20: drift — `CLAUDE.md` was added in commit 3e7888d before Wave 8 ran; both files currently coexist. Wave 1a is read-only so this does not block; Wave 8 still owns the cleanup. Re-verify at Wave 8 pre-flight. -->
 12. `tests/setup.js` exists and imports `@testing-library/jest-dom`.
 13. `docs/audits/` directory does NOT yet exist. (Task 1 creates it.)
 
@@ -417,7 +417,7 @@ Commit with the exact `Commit:` line above. Push branch. Open PR titled `chore(a
    - Missing `aria-live` region (`role="status"` / `role="alert"`) for async result announcements (toasts, loading states).
    - `<button>` elements without explicit `type=` (defaults to `submit` inside forms; footgun).
 
-4. **Drag-and-drop keyboard fallback audit** — per `claude.md` §9.3:
+4. **Drag-and-drop keyboard fallback audit** — per `CLAUDE.md` §9.3:
    - Grep `useDraggable`, `useSortable`, `DndContext` in `frontend/src/`.
    - For every drop target, cite whether a non-drag alternative exists (context menu, "move to" selector, button, keyboard command palette). Missing fallback = P1.
    - @dnd-kit provides `screenReaderInstructions` + `announcements` props. For every `<DndContext>`, note whether these are configured. Missing announcements = P1.
@@ -546,7 +546,7 @@ Required edits at wave close (Task 5 or a standalone finalize PR):
 1. `docs/README.md` — add `### Audits` sub-heading with link to `docs/audits/wave-1a/`.
 2. `docs/expansion/98_PROGRESS_LOG.md` — append a `## 2026-04-<DD> — Wave 1a audit` entry that lists the 5 task PRs and the top-10 risk register.
 3. `.claude/wave-1a-prompt.md` — leave unchanged (it's the spec).
-4. **Do NOT** touch `claude.md`, architecture docs, or `NEXT_SESSION_PLAN.md` — Wave 1b and subsequent waves act on them.
+4. **Do NOT** touch `CLAUDE.md`, architecture docs, or `NEXT_SESSION_PLAN.md` — Wave 1b and subsequent waves act on them.
 
 ---
 
@@ -605,7 +605,7 @@ Do NOT run `npm run test:e2e` — it's expensive and not gated on for audit-only
 
 ## Key References
 
-- `claude.md` — project conventions (§2 scope guardrails, §3 workflow, §4 architecture, §8 testing).
+- `CLAUDE.md` — project conventions (§2 scope guardrails, §3 workflow, §4 architecture, §8 testing).
 - `docs/expansion/03_ROADMAP.md` — completed milestone inventory.
 - `docs/expansion/98_PROGRESS_LOG.md` — session log; append-only.
 - `docs/expansion/NEXT_SESSION_PLAN.md` — immediate security backlog (Task 2 re-verifies).
@@ -634,7 +634,7 @@ Do NOT run `npm run test:e2e` — it's expensive and not gated on for audit-only
 **Will NOT edit**:
 - Any file under `frontend/src/`, `packages/core/src/`, `supabase/`, `scripts/`, `tests/`.
 - `package.json`, `package-lock.json`, `vite.config.js`, `vitest.config.js`, `playwright.config.ts`, `tsconfig.json`, `eslint.config.js`, `.prettierrc`.
-- `.env.*`, `vercel.json`, `claude.md`, `README.md`, any `docs/architecture/*.md`.
+- `.env.*`, `vercel.json`, `CLAUDE.md`, `README.md`, any `docs/architecture/*.md`.
 
 ---
 
@@ -644,7 +644,7 @@ Do NOT run `npm run test:e2e` — it's expensive and not gated on for audit-only
 - Any migration.
 - Any test addition, modification, or deletion.
 - Any dependency update.
-- Rewriting `claude.md` or rerouting the `CLAUDE.md`-vs-`claude.md` question (Wave 8).
+- Rewriting `CLAUDE.md` or rerouting the `CLAUDE.md`-vs-`CLAUDE.md` question (Wave 8).
 - Running `npm audit fix`.
 - Running `supabase db push` / `supabase functions deploy`.
 - Wave 1b's action items.
