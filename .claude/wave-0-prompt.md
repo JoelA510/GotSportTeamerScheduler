@@ -283,7 +283,7 @@ git rev-parse --abbrev-ref HEAD       # returns claude/extend-wave-planning-sqao
 - Fixing drift at its source (e.g., if a migration has the wrong name, Wave 0 updates the plan to match reality — it does NOT rename the migration).
 - Running the repo's test/lint/typecheck/build gates (Wave 1a captures those baselines; Wave 0 changes no code).
 - Dashboard-dependent verification (Supabase advisor, Vercel analytics, Sentry) — defer to the acting wave's pre-flight.
-- Editing `CLAUDE.md` → `CLAUDE.md` casing (Wave 8 owns).
+- Editing `claude.md` → `CLAUDE.md` casing (Wave 8 owns).
 
 ---
 
