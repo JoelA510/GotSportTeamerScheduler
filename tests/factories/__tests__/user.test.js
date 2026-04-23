@@ -31,16 +31,32 @@ describe('makeAuthSession', () => {
     const s = makeAuthSession();
     expect(s.access_token).toBe('mock-access-token');
     expect(s.refresh_token).toBe('mock-refresh-token');
+    expect(s.expires_at).toBe(1767229200);
     expect(s.expires_in).toBe(3600);
     expect(s.token_type).toBe('bearer');
     expect(s.user.id).toBe('user-1');
+    expect(s.user.email).toBe('test@example.com');
     expect(s.user.aud).toBe('authenticated');
+    expect(s.user.role).toBe('authenticated');
   });
 
-  it('merges overrides, with override keys winning', () => {
+  it('defaults to a future expires_at so callers do not see a pre-expired session', () => {
+    const s = makeAuthSession();
+    expect(s.expires_at * 1000).toBeGreaterThan(Date.parse('2026-01-01T00:00:00Z'));
+  });
+
+  it('merges top-level overrides, with override keys winning', () => {
     const s = makeAuthSession({ access_token: 'custom-token' });
     expect(s.access_token).toBe('custom-token');
     expect(s.refresh_token).toBe('mock-refresh-token');
+  });
+
+  it('deep-merges the user object so partial user overrides preserve other fields', () => {
+    const s = makeAuthSession({ user: { id: 'user-2' } });
+    expect(s.user.id).toBe('user-2');
+    expect(s.user.email).toBe('test@example.com');
+    expect(s.user.aud).toBe('authenticated');
+    expect(s.user.role).toBe('authenticated');
   });
 
   it('respects explicit undefined overrides', () => {

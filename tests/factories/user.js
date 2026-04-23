@@ -11,10 +11,11 @@ export function makeUser(overrides = {}) {
 }
 
 export function makeAuthSession(overrides = {}) {
+  const { user: userOverride, ...rest } = overrides;
   return {
     access_token: 'mock-access-token',
     refresh_token: 'mock-refresh-token',
-    expires_at: 1767225600,
+    expires_at: 1767229200,
     expires_in: 3600,
     token_type: 'bearer',
     user: {
@@ -22,7 +23,8 @@ export function makeAuthSession(overrides = {}) {
       email: 'test@example.com',
       aud: 'authenticated',
       role: 'authenticated',
+      ...userOverride,
     },
-    ...overrides,
+    ...rest,
   };
 }
