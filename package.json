@@ -19,7 +19,9 @@
     "check:advisors": "node scripts/advisor-lint.js",
     "test:e2e": "bddgen && playwright test",
     "test:e2e:ui": "bddgen && playwright test --ui",
-    "test:e2e:codegen": "playwright codegen http://localhost:5173"
+    "test:e2e:codegen": "playwright codegen http://localhost:5173",
+    "test:db": "supabase test db",
+    "test:db:once": "supabase test db --file"
   },
   "directories": {
     "doc": "docs"
