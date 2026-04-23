@@ -222,8 +222,8 @@ Five tasks: two new docs, eight Known-Gaps additions, one rename, one index reor
 
 2. **Rename with a two-step `git mv`** to survive Windows's case-insensitive filesystem. Use the FINAL target commit message from the start — `--amend --no-edit` preserves whatever message the first commit carried:
    ```bash
-   git mv CLAUDE.md __rename_tmp_CLAUDE.md
-   git commit -m "chore(docs): rename CLAUDE.md to CLAUDE.md + sweep references"
+   git mv claude.md __rename_tmp_CLAUDE.md
+   git commit -m "chore(docs): rename claude.md to CLAUDE.md + sweep references"
    git mv __rename_tmp_CLAUDE.md CLAUDE.md
    git commit --amend --no-edit  # folds both moves into one logical rename commit
    ```
