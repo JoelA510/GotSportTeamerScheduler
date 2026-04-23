@@ -139,4 +139,73 @@ class TTLCache {
  */
 export const dashboardCache = new TTLCache({ defaultTtlMs: 30_000, maxEntries: 200 });
 
+/**
+ * Shared Edge Function invocation cache — Wave 6b Task 1.
+ * Default TTL: 60s (callers pass a per-call TTL). Isolated from `dashboardCache`
+ * so edge-function invocation reductions are observable independently.
+ *
+ * Key format: `<functionName>:<stable-json-of-org-scoped-params>`
+ * The `organization_id` MUST appear in the param object to prevent
+ * cross-tenant cache hits — treat any key without it as a security bug.
+ */
+export const edgeFunctionCache = new TTLCache({ defaultTtlMs: 60_000, maxEntries: 100 });
+
+/**
+ * Build a cache key for an Edge Function invocation.
+ * Includes `organization_id` in the key even when undefined so missing-org
+ * calls land in a distinct bucket instead of colliding with another tenant.
+ *
+ * @param {string} functionName
+ * @param {Record<string, unknown>} params  Must include `organization_id`.
+ * @returns {string}
+ */
+export function buildEdgeFunctionCacheKey(functionName, params) {
+  const organization_id = params?.organization_id ?? null;
+  // Stable stringify: sort keys so param order doesn't fragment the cache.
+  const sortedKeys = Object.keys(params ?? {}).sort();
+  const normalized = sortedKeys.reduce((acc, k) => {
+    acc[k] = params[k];
+    return acc;
+  }, {});
+  return `${functionName}:${organization_id ?? 'no-org'}:${JSON.stringify(normalized)}`;
+}
+
+/**
+ * Invoke an Edge Function via a caller-supplied invoker (e.g., `supabase.functions.invoke`),
+ * caching the response for `ttlMs`. On cache hit, the invoker is NOT called — that's the
+ * free-tier invocation reduction.
+ *
+ * Cache behavior:
+ *   - Miss or expired → invoke, then cache the `{ data, error }` tuple.
+ *   - Hit within TTL → return cached tuple without calling the invoker.
+ *   - Errors are NOT cached (so a transient failure doesn't poison the window).
+ *
+ * @param {object} args
+ * @param {string} args.functionName        Edge Function name (e.g., 'fairness-scoring').
+ * @param {Record<string, unknown>} args.params  Request body — MUST contain `organization_id`.
+ * @param {(name: string, opts: { body: unknown }) => Promise<{ data: any, error: any }>} args.invoker
+ *                                           Typically `supabase.functions.invoke.bind(supabase.functions)`.
+ * @param {number} args.ttlMs               Per-call TTL.
+ * @param {TTLCache} [args.cache]           Defaults to the shared `edgeFunctionCache`.
+ * @returns {Promise<{ data: any, error: any }>}
+ */
+export async function cachedInvoke({
+  functionName,
+  params,
+  invoker,
+  ttlMs,
+  cache = edgeFunctionCache,
+}) {
+  const key = buildEdgeFunctionCacheKey(functionName, params);
+  const hit = cache.get(key);
+  if (hit) return hit.data;
+
+  const result = await invoker(functionName, { body: params });
+  // Only cache successful responses — never cache an error, so retries work.
+  if (!result?.error) {
+    cache.set(key, result, { ttlMs });
+  }
+  return result;
+}
+
 export { TTLCache };
