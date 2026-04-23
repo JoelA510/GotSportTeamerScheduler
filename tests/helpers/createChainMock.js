@@ -27,7 +27,7 @@ export function createChainMock(resolvedValue = { data: null, error: null }) {
       // introspection properties (toJSON, constructor) fall through to
       // the target. Without this, JSON.stringify, console.log, and test-
       // runner diffing can infinite-recurse or throw.
-      if (typeof prop === 'symbol' || prop === 'toJSON' || prop === 'constructor') {
+      if (typeof prop === 'symbol' || ['toJSON', 'constructor', 'toString', 'valueOf'].includes(prop)) {
         return t[prop];
       }
       return () => proxy;
