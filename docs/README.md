@@ -48,6 +48,7 @@
 ## Testing
 
 - [E2E Master Plan](testing/e2e_master_plan.md) — Playwright-BDD scope, Gherkin feature map, mock/live split.
+- [Test Helpers & Factories](testing/test-helpers.md) — Shared test factory/helper usage, hoisted auth-mock idiom, and migration patterns.
 
 ## Governance
 
@@ -62,9 +63,11 @@
 ## Audits
 
 ### Wave 0
+
 - [Planning Drift Report](audits/wave-0/drift-report.md) — Drift audit between `.claude/wave-*-prompt.md` specs and repo state.
 
 ### Wave 1a
+
 - [Consolidated Index](audits/wave-1a/index.md) — Entry point linking all Wave 1a audit deliverables.
 - [Code Quality](audits/wave-1a/code-quality.md) — Repo-wide code-quality findings.
 - [Security](audits/wave-1a/security.md) — Security posture audit.

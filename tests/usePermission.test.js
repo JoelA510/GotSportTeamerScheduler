@@ -3,6 +3,7 @@ import { renderHook } from '@testing-library/react';
 import { usePermission } from '../frontend/src/hooks/usePermission.js';
 import { PERMISSIONS, ROLES } from '../frontend/src/constants/permissions.js';
 import * as OrgContext from '../frontend/src/contexts/OrganizationContext.jsx';
+import { makeOrganizationMember } from './factories/index.js';
 
 // Mock useOrganization
 vi.mock('../frontend/src/contexts/OrganizationContext.jsx', () => ({
@@ -18,7 +19,7 @@ describe('usePermission', () => {
 
   it('should allow Admin to manage organization', () => {
     /** @type {any} */ (OrgContext.useOrganization).mockReturnValue({
-      orgMember: { role: ROLES.ADMIN },
+      orgMember: makeOrganizationMember({ role: ROLES.ADMIN }),
     });
     const { result } = renderHook(() => usePermission());
     expect(result.current.can(PERMISSIONS.MANAGE_ORGANIZATION)).toBe(true);
@@ -26,7 +27,7 @@ describe('usePermission', () => {
 
   it('should deny Player from managing organization', () => {
     /** @type {any} */ (OrgContext.useOrganization).mockReturnValue({
-      orgMember: { role: ROLES.PLAYER },
+      orgMember: makeOrganizationMember({ role: ROLES.PLAYER }),
     });
     const { result } = renderHook(() => usePermission());
     expect(result.current.can(PERMISSIONS.MANAGE_ORGANIZATION)).toBe(false);
@@ -34,7 +35,7 @@ describe('usePermission', () => {
 
   it('should allow Player to view own team', () => {
     /** @type {any} */ (OrgContext.useOrganization).mockReturnValue({
-      orgMember: { role: ROLES.PLAYER },
+      orgMember: makeOrganizationMember({ role: ROLES.PLAYER }),
     });
     const { result } = renderHook(() => usePermission());
     expect(result.current.can(PERMISSIONS.VIEW_OWN_TEAM)).toBe(true);

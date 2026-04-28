@@ -6,6 +6,9 @@ import { usePracticeSummary } from '../frontend/src/hooks/usePracticeSummary.js'
 import { usePracticeAssignments } from '../frontend/src/hooks/usePracticeAssignments.js';
 import { useGameSummary } from '../frontend/src/hooks/useGameSummary.js';
 import { useGameAssignments } from '../frontend/src/hooks/useGameAssignments.js';
+import { makePracticeAssignment, makeTeam } from './factories/index.js';
+
+const idOnly = (entity) => ({ id: entity.id });
 
 // Mock all internal hooks
 vi.mock('../frontend/src/hooks/useTeamSummary.js');
@@ -29,7 +32,9 @@ describe('useDashboardData', () => {
       loading: false,
       runId: 'practice-run-123',
     });
-    /** @type {any} */ (usePracticeAssignments).mockReturnValue({ assignments: [{ id: 'pa1' }] });
+    /** @type {any} */ (usePracticeAssignments).mockReturnValue({
+      assignments: [idOnly(makePracticeAssignment({ id: 'pa1' }))],
+    });
     /** @type {any} */ (useGameSummary).mockReturnValue({
       gameSummary: { count: 8 },
       gameReadinessSnapshot: 'partial',
@@ -37,7 +42,9 @@ describe('useDashboardData', () => {
       loading: true,
       runId: 'game-run-456',
     });
-    /** @type {any} */ (useGameAssignments).mockReturnValue({ assignments: [{ id: 'ga1' }] });
+    /** @type {any} */ (useGameAssignments).mockReturnValue({
+      assignments: [idOnly(makeTeam({ id: 'ga1' }))],
+    });
 
     const { result } = renderHook(() => useDashboardData());
 

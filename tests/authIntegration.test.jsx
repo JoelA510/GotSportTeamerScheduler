@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, act } from '@testing-library/react';
 import React from 'react';
+import { makeOrganization, makeOrganizationMember, makeUser } from './factories/index.js';
+import { createChainMock } from './helpers/index.js';
 
 // ---------- Mocks ----------
 
@@ -89,23 +91,28 @@ const TestComponent = () => {
 };
 
 describe('Auth & Organization Integration', () => {
-  const mockUser = {
+  const mockUser = makeUser({
     id: 'user-123',
     email: 'test@example.com',
     app_metadata: {},
     user_metadata: {},
     aud: 'authenticated',
     created_at: '2025-01-01T00:00:00Z',
-  };
+  });
 
-  const mockOrgMember = {
+  const mockOrgMember = makeOrganizationMember({
     organization_id: 'org-1',
     role: 'admin',
-    organizations: { id: 'org-1', name: 'Test Club' },
-  };
+    organizations: makeOrganization({ id: 'org-1', name: 'Test Club' }),
+  });
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(supabase.auth.onAuthStateChange).mockReturnValue(
+      /** @type {any} */ ({
+        data: { subscription: { unsubscribe: vi.fn() } },
+      })
+    );
 
     // Provide a minimal localStorage stub — jsdom may not expose a working
     // localStorage when Node is started without --localstorage-file.
@@ -126,26 +133,12 @@ describe('Auth & Organization Integration', () => {
     // @ts-expect-error [MOCK] - partial mock for test isolation; Supabase from() requires more comprehensive type mapping for full coverage
     vi.mocked(supabase.from).mockImplementation((table) => {
       if (table === 'organization_members') {
-        return {
-          select: vi.fn().mockReturnValue({
-            eq: vi.fn().mockResolvedValue({ data: [mockOrgMember], error: null }),
-          }),
-        };
+        return createChainMock({ data: [mockOrgMember], error: null });
       }
       if (table === 'season_settings') {
-        return {
-          select: vi.fn().mockReturnValue({
-            eq: vi.fn().mockReturnValue({
-              order: vi.fn().mockResolvedValue({ data: [], error: null }),
-            }),
-          }),
-        };
+        return createChainMock({ data: [], error: null });
       }
-      return {
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockResolvedValue({ data: [], error: null }),
-        }),
-      };
+      return createChainMock({ data: [], error: null });
     });
   });
 

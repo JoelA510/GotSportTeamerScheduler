@@ -2,14 +2,20 @@ import assert from 'node:assert/strict';
 import { test } from 'vitest';
 
 import { applyOverridesToSnapshot } from '../frontend/src/features/teaming/applyOverridesToSnapshot.js';
+import { makeTeam } from './factories/index.js';
+
+const toSnapshotRow = (overrides = {}) => {
+  const team = makeTeam(overrides);
+  return { id: team.id, name: team.name, coach_id: team.coach_id };
+};
 
 test('applyOverridesToSnapshot resolves generator ids via teamIdMap and applies name/coach changes', () => {
   const snapshot = {
     preparedTeamRows: 2,
     payload: {
       teamRows: [
-        { id: 'supabase-1', name: 'Team One', coach_id: 'coach-1' },
-        { id: 'supabase-2', name: 'Team Two', coach_id: 'coach-2' },
+        toSnapshotRow({ id: 'supabase-1', name: 'Team One', coach_id: 'coach-1' }),
+        toSnapshotRow({ id: 'supabase-2', name: 'Team Two', coach_id: 'coach-2' }),
       ],
       teamIdMap: new Map([
         ['generator-1', 'supabase-1'],
@@ -49,7 +55,7 @@ test('applyOverridesToSnapshot updates coach_id when using plain object teamIdMa
   const snapshot = {
     preparedTeamRows: 1,
     payload: {
-      teamRows: [{ id: 'db-1', name: 'Original', coach_id: 'coach-a' }],
+      teamRows: [toSnapshotRow({ id: 'db-1', name: 'Original', coach_id: 'coach-a' })],
       teamIdMap: { 'generator-3': 'db-1' },
     },
   };
