@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, act } from '@testing-library/react';
 import React from 'react';
 import { makeOrganization, makeOrganizationMember, makeUser } from './factories/index.js';
-import { createChainMock } from './helpers/index.js';
 
 // ---------- Mocks ----------
 
@@ -133,12 +132,26 @@ describe('Auth & Organization Integration', () => {
     // @ts-expect-error [MOCK] - partial mock for test isolation; Supabase from() requires more comprehensive type mapping for full coverage
     vi.mocked(supabase.from).mockImplementation((table) => {
       if (table === 'organization_members') {
-        return createChainMock({ data: [mockOrgMember], error: null });
+        return {
+          select: vi.fn().mockReturnValue({
+            eq: vi.fn().mockResolvedValue({ data: [mockOrgMember], error: null }),
+          }),
+        };
       }
       if (table === 'season_settings') {
-        return createChainMock({ data: [], error: null });
+        return {
+          select: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({
+              order: vi.fn().mockResolvedValue({ data: [], error: null }),
+            }),
+          }),
+        };
       }
-      return createChainMock({ data: [], error: null });
+      return {
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockResolvedValue({ data: [], error: null }),
+        }),
+      };
     });
   });
 

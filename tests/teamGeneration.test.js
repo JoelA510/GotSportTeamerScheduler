@@ -8,9 +8,9 @@ const makeGenerationPlayer = ({ division = 'U10', ...overrides }) => {
   return {
     id: player.id,
     division,
-    ...(overrides.buddyId ? { buddyId: overrides.buddyId } : {}),
-    ...(overrides.coachId ? { coachId: overrides.coachId } : {}),
-    ...(overrides.skillRating ? { skillRating: overrides.skillRating } : {}),
+    ...(overrides.buddyId !== undefined ? { buddyId: overrides.buddyId } : {}),
+    ...(overrides.coachId !== undefined ? { coachId: overrides.coachId } : {}),
+    ...(overrides.skillRating !== undefined ? { skillRating: overrides.skillRating } : {}),
   };
 };
 
