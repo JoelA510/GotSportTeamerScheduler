@@ -19,7 +19,7 @@ describe('Core Engine Performance Benchmarks', () => {
 
     // Shared runners and coverage instrumentation can be much slower.
     const isCoverageRun = process.env.npm_lifecycle_event === 'test:coverage';
-    return process.env.CI || isCoverageRun ? 15000 : 3000;
+    return isCoverageRun ? 20000 : 3000;
   };
 
   it(
