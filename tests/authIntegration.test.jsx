@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, act } from '@testing-library/react';
 import React from 'react';
+import { makeOrganization, makeOrganizationMember, makeUser } from './factories/index.js';
 
 // ---------- Mocks ----------
 
@@ -89,23 +90,28 @@ const TestComponent = () => {
 };
 
 describe('Auth & Organization Integration', () => {
-  const mockUser = {
+  const mockUser = makeUser({
     id: 'user-123',
     email: 'test@example.com',
     app_metadata: {},
     user_metadata: {},
     aud: 'authenticated',
     created_at: '2025-01-01T00:00:00Z',
-  };
+  });
 
-  const mockOrgMember = {
+  const mockOrgMember = makeOrganizationMember({
     organization_id: 'org-1',
     role: 'admin',
-    organizations: { id: 'org-1', name: 'Test Club' },
-  };
+    organizations: makeOrganization({ id: 'org-1', name: 'Test Club' }),
+  });
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(supabase.auth.onAuthStateChange).mockReturnValue(
+      /** @type {any} */ ({
+        data: { subscription: { unsubscribe: vi.fn() } },
+      })
+    );
 
     // Provide a minimal localStorage stub — jsdom may not expose a working
     // localStorage when Node is started without --localstorage-file.

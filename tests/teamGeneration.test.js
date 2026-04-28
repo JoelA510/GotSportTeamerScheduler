@@ -1,6 +1,18 @@
 import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import { generateTeams } from '../packages/core/src/teamGeneration.js';
+import { makePlayer } from './factories/index.js';
+
+const makeGenerationPlayer = ({ division = 'U10', ...overrides }) => {
+  const player = makePlayer({ id: overrides.id });
+  return {
+    id: player.id,
+    division,
+    ...(overrides.buddyId !== undefined ? { buddyId: overrides.buddyId } : {}),
+    ...(overrides.coachId !== undefined ? { coachId: overrides.coachId } : {}),
+    ...(overrides.skillRating !== undefined ? { skillRating: overrides.skillRating } : {}),
+  };
+};
 
 const divisionConfigs = {
   U10: { id: 'U10', teamsCount: 3, slotsPerWeek: 4, maxRosterSize: 4 },
@@ -8,8 +20,7 @@ const divisionConfigs = {
 
 test('distributes players evenly across teams', () => {
   const players = Array.from({ length: 9 }).map((_, index) => ({
-    id: `player-${index + 1}`,
-    division: 'U10',
+    ...makeGenerationPlayer({ id: `player-${index + 1}` }),
   }));
 
   const {
@@ -75,10 +86,10 @@ test('distributes players evenly across teams', () => {
 
 test('keeps mutual buddies on the same team', () => {
   const players = [
-    { id: 'a', division: 'U10', buddyId: 'b' },
-    { id: 'b', division: 'U10', buddyId: 'a' },
-    { id: 'c', division: 'U10' },
-    { id: 'd', division: 'U10' },
+    makeGenerationPlayer({ id: 'a', buddyId: 'b' }),
+    makeGenerationPlayer({ id: 'b', buddyId: 'a' }),
+    makeGenerationPlayer({ id: 'c' }),
+    makeGenerationPlayer({ id: 'd' }),
   ];
 
   const {
@@ -106,10 +117,10 @@ test('keeps mutual buddies on the same team', () => {
 
 test('respects coach assignments when creating teams', () => {
   const players = [
-    { id: 'a', division: 'U10', coachId: 'coach-1' },
-    { id: 'b', division: 'U10', coachId: 'coach-1' },
-    { id: 'c', division: 'U10' },
-    { id: 'd', division: 'U10' },
+    makeGenerationPlayer({ id: 'a', coachId: 'coach-1' }),
+    makeGenerationPlayer({ id: 'b', coachId: 'coach-1' }),
+    makeGenerationPlayer({ id: 'c' }),
+    makeGenerationPlayer({ id: 'd' }),
   ];
 
   const {
@@ -158,12 +169,12 @@ test('respects coach assignments when creating teams', () => {
 
 test('applies custom team names with sensible fallbacks', () => {
   const players = [
-    { id: 'a', division: 'U10' },
-    { id: 'b', division: 'U10' },
-    { id: 'c', division: 'U10' },
-    { id: 'd', division: 'U10' },
-    { id: 'e', division: 'U10' },
-    { id: 'f', division: 'U10' },
+    makeGenerationPlayer({ id: 'a' }),
+    makeGenerationPlayer({ id: 'b' }),
+    makeGenerationPlayer({ id: 'c' }),
+    makeGenerationPlayer({ id: 'd' }),
+    makeGenerationPlayer({ id: 'e' }),
+    makeGenerationPlayer({ id: 'f' }),
   ];
 
   const { teamsByDivision } = generateTeams({
