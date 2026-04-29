@@ -4,7 +4,7 @@ import { expect } from '@playwright/test';
 const { Given, When, Then } = createBdd();
 
 Given('I am authenticated with zero organizations', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/login');
   await page.evaluate(() => {
     localStorage.removeItem('squadlogic_active_org');
     const session = {
@@ -24,7 +24,7 @@ Given('I am authenticated with zero organizations', async ({ page }) => {
 });
 
 Given('I am logged out', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/login');
   await page.evaluate(() => {
     sessionStorage.removeItem('__MOCK_SESSION__');
     localStorage.removeItem('squadlogic_active_org');
@@ -66,7 +66,7 @@ Then('I should remain on the onboarding organization creation route', async ({ p
   await expect(page).toHaveURL(/\/organizations\/new/);
 });
 Then('I should land on the dashboard', async ({ page }) => {
-  await expect(page).toHaveURL(/\/?(?:\?.*)?$/);
+  await expect(page).toHaveURL(/\/(\?.*)?$/);
 });
 Then('I should see an inline slug error on onboarding', async ({ page }) => {
   await expect(
