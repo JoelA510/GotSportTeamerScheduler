@@ -15,14 +15,16 @@ describe('useOrganizationCreation', () => {
     const { result } = renderHook(() => useOrganizationCreation());
     await act(async () => {
       await result.current.createOrganization({
-        name: '',
+        name: 'ab',
         slug: 'bad slug',
         timezone: '',
-        seasonYear: '',
+        seasonYear: 2019,
       });
     });
     expect(supabase.rpc).not.toHaveBeenCalled();
+    expect(result.current.fieldErrors?.name).toContain('at least 3');
     expect(result.current.fieldErrors?.slug).toBeTruthy();
+    expect(result.current.fieldErrors?.seasonYear).toContain('2020');
   });
 
   it('maps duplicate slug rpc error to slug field', async () => {
@@ -33,8 +35,8 @@ describe('useOrganizationCreation', () => {
     const { result } = renderHook(() => useOrganizationCreation());
     await act(async () => {
       await result.current.createOrganization({
-        name: 'Club',
-        slug: 'club',
+        name: 'Club Name',
+        slug: 'club-name',
         timezone: 'UTC',
         seasonYear: 2026,
       });

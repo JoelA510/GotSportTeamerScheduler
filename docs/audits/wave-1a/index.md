@@ -314,3 +314,9 @@ When each downstream wave starts, its pre-flight should:
 3. Append the wave's progress-log entry with finding-IDs closed.
 
 Per `wave-execution-protocol.md` §6, this index is the source of truth for closure markers.
+
+### Wave 4-onboarding
+
+- ✅ Shipped in PR #201 + follow-up closure PR: `/organizations/new` route, `OrganizationCreation`, `useOrganizationCreation`, mock `initialize_new_tenant` RPC.
+- ✅ Validation drift corrected to Wave 4 bounds: name 3-100, slug 3-50, season year 2020-2100.
+- ✅ Added onboarding cold-start E2E coverage, including duplicate slug inline error and reset-password/invite route reachability checks.

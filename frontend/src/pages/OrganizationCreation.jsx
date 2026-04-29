@@ -220,8 +220,14 @@ function CreateOrganizationForm() {
               value={formData.name}
               onChange={handleChange}
               placeholder="e.g. Galaxy Strikers"
+              aria-describedby={fieldErrors?.name ? 'org-name-error' : undefined}
               className="w-full glass-input"
             />
+            {fieldErrors?.name ? (
+              <p id="org-name-error" role="alert" className="text-xs text-red-400">
+                {fieldErrors?.name}
+              </p>
+            ) : null}
           </div>
 
           <div className="space-y-2">
@@ -289,8 +295,14 @@ function CreateOrganizationForm() {
               max="2100"
               value={formData.seasonYear}
               onChange={handleChange}
+              aria-describedby={fieldErrors?.seasonYear ? 'org-season-error' : undefined}
               className="w-full glass-input"
             />
+            {fieldErrors?.seasonYear ? (
+              <p id="org-season-error" role="alert" className="text-xs text-red-400">
+                {fieldErrors?.seasonYear}
+              </p>
+            ) : null}
           </div>
         </div>
 
