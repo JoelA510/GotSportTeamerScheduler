@@ -4,14 +4,23 @@ import { supabase } from '../lib/supabaseClient.js';
 import { withTimeout } from '../lib/withTimeout.js';
 
 const organizationSchema = z.object({
-  name: z.string().trim().min(1, 'Organization name is required'),
+  name: z
+    .string()
+    .trim()
+    .min(3, 'Organization name must be at least 3 characters')
+    .max(100, 'Organization name must be 100 characters or fewer'),
   slug: z
     .string()
     .trim()
-    .min(1, 'Slug is required')
+    .min(3, 'Slug must be at least 3 characters')
+    .max(50, 'Slug must be 50 characters or fewer')
     .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'Slug must be lowercase letters, numbers, and hyphens'),
   timezone: z.string().trim().min(1, 'Timezone is required'),
-  seasonYear: z.coerce.number().int().min(2000).max(3000),
+  seasonYear: z.coerce
+    .number()
+    .int()
+    .min(2020, 'Season year must be 2020 or later')
+    .max(2100, 'Season year must be 2100 or earlier'),
 });
 
 export function useOrganizationCreation() {

@@ -123,3 +123,11 @@ Both follow the same pattern: `DndContext` with `closestCorners` collision detec
 - Semantic HTML landmarks (`<header>`, `<main>`, `<nav>`, `<section>`, `<article>`, `<footer>`)
 - Non-drag alternatives for drag-and-drop interactions
 - Sufficient color contrast across all themes
+
+
+## Wave 4 Onboarding Route Flow
+
+- Route added: `/organizations/new` (renders `frontend/src/pages/OrganizationCreation.jsx`).
+- Hook added: `frontend/src/hooks/useOrganizationCreation.js` handles schema validation + `initialize_new_tenant` RPC.
+- Cold-start behavior: authenticated users with zero organizations who hit `/` are redirected to `/organizations/new`; successful creation navigates back to dashboard via SPA navigation.
+- Guardrails preserved: `/auth/reset-password` and `/invite/:code` remain directly reachable and are not shadowed by zero-org routing.

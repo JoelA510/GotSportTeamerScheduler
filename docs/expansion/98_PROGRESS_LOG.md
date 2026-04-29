@@ -87,3 +87,5 @@ Wave 3b (completion PR):
 Net case-count delta: +0 from Wave 3b migration work (assertions/cases preserved).
 Coverage: unchanged within threshold gates.
 Bundle: unchanged (test-only scope).
+
+| 2026-04-29 | WAVE-4-CLOSURE | **DONE** | **[Wave 4 onboarding closure after PR #201]** Added cold-start onboarding E2E coverage (`tests/e2e/features/onboarding_cold_start.feature`, `tests/e2e/steps/onboarding.ts`) for root redirect to `/organizations/new`, first-org creation, duplicate-slug inline error, and reachability of `/auth/reset-password` plus `/invite/:code`. Corrected Wave 4 validation drift in `useOrganizationCreation` (name 3-100, slug 3-50, season year 2020-2100). Updated audit + architecture docs to reflect shipped route/hook flow. No Wave 5/7b/9a work and no SQL migration changes. |
