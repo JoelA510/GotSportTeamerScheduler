@@ -15,9 +15,10 @@ import {
 } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient.js';
 import { logger } from '../lib/logger.js';
+import { withTimeout } from '../lib/withTimeout.js';
 import Button from '../components/ui/Button.jsx';
 import { PENDING_INVITE_STORAGE_KEY } from '../lib/inviteStorage.js';
-import { withTimeout } from '../lib/withTimeout.js';
+import { useOrganizationCreation } from '../hooks/useOrganizationCreation.js';
 
 /**
  * OrganizationCreation Page
@@ -111,6 +112,7 @@ function TabButton({ active, onClick, icon: Icon, children }) {
 // Branch 1: Create new organization (legacy behavior preserved)
 // ─────────────────────────────────────────────────────────────
 function CreateOrganizationForm() {
+  const navigate = useNavigate();
   const [formData, setFormData] = useState({
     name: '',
     slug: '',
@@ -118,9 +120,8 @@ function CreateOrganizationForm() {
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
     seasonYear: String(new Date().getFullYear()),
   });
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
   const [success, setSuccess] = useState(false);
+  const { createOrganization, loading, error, fieldErrors } = useOrganizationCreation();
 
   useEffect(() => {
     if (formData.name && !formData.slugEdited) {
@@ -143,39 +144,24 @@ function CreateOrganizationForm() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setLoading(true);
-    setError(null);
+    const { data, error: createError } = await createOrganization({
+      name: formData.name,
+      slug: formData.slug,
+      timezone: formData.timezone,
+      seasonYear: formData.seasonYear,
+    });
 
-    try {
-      // Hard 30-second timeout race. If the RPC hangs (network, server-side
-      // lock, silent Supabase proxy stall), surface a readable error instead
-      // of leaving the button pinned on "Creating organization..." forever.
-      // Timer clears itself when the RPC settles via withTimeout's finally.
-      const { data, error: rpcError } = await withTimeout(
-        supabase.rpc('initialize_new_tenant', {
-          p_name: formData.name,
-          p_slug: formData.slug,
-          p_timezone: formData.timezone,
-          p_season_year: parseInt(formData.seasonYear, 10),
-        }),
-        30000,
-        'Create-organization request'
-      );
-
-      if (rpcError) throw rpcError;
-
-      setSuccess(true);
-      logger.info('Organization initialized successfully', { orgId: data });
-
-      setTimeout(() => {
-        window.location.href = '/?new_org=true';
-      }, 1500);
-    } catch (err) {
-      logger.error('Failed to initialize organization', err);
-      setError(err.message || 'Failed to create organization. Please try a different slug.');
-    } finally {
-      setLoading(false);
+    if (createError) {
+      logger.error('Failed to initialize organization', createError);
+      return;
     }
+
+    setSuccess(true);
+    logger.info('Organization initialized successfully', { orgId: data });
+
+    setTimeout(() => {
+      navigate('/?new_org=true', { replace: true });
+    }, 1500);
   };
 
   const majorTimezones = [
@@ -192,7 +178,7 @@ function CreateOrganizationForm() {
 
   if (success) {
     return (
-      <div className="p-10 text-center space-y-6">
+      <div role="status" aria-live="polite" className="p-10 text-center space-y-6">
         <div className="w-20 h-20 bg-green-500/20 text-green-400 rounded-full flex items-center justify-center mx-auto animate-bounce">
           <CheckCircle size={48} />
         </div>
@@ -208,7 +194,10 @@ function CreateOrganizationForm() {
     <>
       <form onSubmit={handleSubmit} className="p-8 space-y-8">
         {error && (
-          <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl flex items-center gap-3 text-red-400 animate-slideUp">
+          <div
+            role="alert"
+            className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl flex items-center gap-3 text-red-400 animate-slideUp"
+          >
             <AlertCircle size={20} className="shrink-0" />
             <p className="text-xs font-medium">{error}</p>
           </div>
@@ -247,11 +236,17 @@ function CreateOrganizationForm() {
               value={formData.slug}
               onChange={handleChange}
               placeholder="galaxy-strikers"
+              aria-describedby={fieldErrors?.slug ? 'org-slug-error' : undefined}
               className="w-full glass-input font-mono text-sm"
             />
           </div>
 
           <div className="space-y-2">
+            {fieldErrors?.slug ? (
+              <p id="org-slug-error" role="alert" className="text-xs text-red-400">
+                {fieldErrors?.slug}
+              </p>
+            ) : null}
             <label
               htmlFor="org-timezone"
               className="flex items-center gap-2 text-xs font-bold text-text-muted uppercase tracking-widest pl-1"
@@ -370,7 +365,10 @@ function JoinWithInviteForm({ initialCode }) {
   return (
     <form onSubmit={handleSubmit} className="p-8 space-y-6">
       {error && (
-        <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl flex items-center gap-3 text-red-400 animate-slideUp">
+        <div
+          role="alert"
+          className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl flex items-center gap-3 text-red-400 animate-slideUp"
+        >
           <AlertCircle size={20} className="shrink-0" />
           <p className="text-xs font-medium">{error}</p>
         </div>

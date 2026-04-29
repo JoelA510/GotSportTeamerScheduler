@@ -48,7 +48,9 @@ describe('createChainMock', () => {
   });
 
   it('returns the proxy itself for arbitrary method calls (supports unlimited chain depth)', () => {
-    const chain = /** @type {Record<string, any> & PromiseLike<any>} */ (createChainMock({ data: [], error: null }));
+    const chain = /** @type {Record<string, any> & PromiseLike<any>} */ (
+      createChainMock({ data: [], error: null })
+    );
     const returned = chain.select().eq().gt().lt().order().limit().range();
     // Each method call returns the same proxy, so `returned` is awaitable.
     expect(typeof returned.then).toBe('function');

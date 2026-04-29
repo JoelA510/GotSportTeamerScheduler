@@ -1209,6 +1209,75 @@ export const mockSupabase = {
   rpc: async (name, params) => {
     const db = getDB();
 
+    if (name === 'initialize_new_tenant') {
+      const { p_name, p_slug, p_timezone, p_season_year } = params || {};
+      const storedSession =
+        typeof window !== 'undefined' ? sessionStorage.getItem('__MOCK_SESSION__') : null;
+      const userId = storedSession ? JSON.parse(storedSession)?.user?.id : 'mock-admin-id';
+
+      if (!userId) {
+        return { data: null, error: { message: 'Not authenticated' } };
+      }
+      if (!p_name || typeof p_name !== 'string' || !p_name.trim()) {
+        return { data: null, error: { message: 'Organization name is required' } };
+      }
+      if (
+        !p_slug ||
+        typeof p_slug !== 'string' ||
+        !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(p_slug.trim())
+      ) {
+        return { data: null, error: { message: 'Invalid slug format' } };
+      }
+      if (!p_timezone || typeof p_timezone !== 'string' || !p_timezone.trim()) {
+        return { data: null, error: { message: 'Timezone is required' } };
+      }
+      if (!Number.isInteger(p_season_year) || p_season_year < 2000 || p_season_year > 3000) {
+        return { data: null, error: { message: 'Invalid season year' } };
+      }
+
+      const normalizedSlug = p_slug.trim();
+      const existing = (db.organizations || []).some(
+        (org) => String(org.slug || '').toLowerCase() === normalizedSlug.toLowerCase()
+      );
+      if (existing) {
+        return { data: null, error: { message: 'duplicate key value violates unique constraint' } };
+      }
+
+      const orgId = crypto.randomUUID();
+      const seasonId = crypto.randomUUID();
+      db.organizations = db.organizations || [];
+      db.organization_members = db.organization_members || [];
+      db.season_settings = db.season_settings || [];
+      db.audit_log = db.audit_log || [];
+
+      db.organizations.push({
+        id: orgId,
+        name: p_name.trim(),
+        slug: normalizedSlug,
+        contact_info: { timezone: p_timezone.trim() },
+      });
+      db.organization_members.push({ organization_id: orgId, profile_id: userId, role: 'admin' });
+      db.season_settings.push({
+        id: seasonId,
+        organization_id: orgId,
+        name: `${p_season_year} Season`,
+        status: 'active',
+        season_year: p_season_year,
+        season_label: `${p_season_year} Season`,
+        created_at: new Date().toISOString(),
+      });
+      db.audit_log.push({
+        id: crypto.randomUUID(),
+        organization_id: orgId,
+        action: 'settings.updated',
+        user_id: userId,
+        metadata: { action: 'initialization', creator: userId },
+        created_at: new Date().toISOString(),
+      });
+      saveDB(db);
+      return { data: orgId, error: null };
+    }
+
     if (name === 'submit_registration') {
       const {
         p_organization_id,
