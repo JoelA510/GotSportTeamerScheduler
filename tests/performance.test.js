@@ -24,7 +24,7 @@ describe('Core Engine Performance Benchmarks', () => {
 
   it(
     'Team generation engine processes 1500 players within the configured budget',
-    { timeout: 20000 },
+    { timeout: getPerformanceBudgetMs() + 5000 },
     () => {
       const massivePlayerPool = createMockPlayers(1500);
 
