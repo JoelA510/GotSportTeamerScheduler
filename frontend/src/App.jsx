@@ -87,15 +87,10 @@ function AppContent() {
   }
 
   const hasNoOrgs = !orgLoading && organizations.length === 0;
-
-  if (hasNoOrgs) {
-    return (
-      <Suspense fallback={<LoadingScreen />}>
-        <ShadowBanner />
-        <OrganizationCreation />
-      </Suspense>
-    );
-  }
+  const shouldRedirectToOrgCreation =
+    hasNoOrgs &&
+    !window.location.pathname.startsWith('/organizations/new') &&
+    window.location.pathname === '/';
 
   const isOnboarded = currentOrganization?.is_onboarded;
   const isTenantAdmin = permissions.includes(PERMISSIONS.MANAGE_GLOBAL_SETTINGS);
@@ -105,6 +100,7 @@ function AppContent() {
       <ShadowBanner />
       <Routes>
         <Route path="/auth/reset-password" element={<ResetPassword />} />
+        <Route path="/organizations/new" element={<OrganizationCreation />} />
         <Route
           path="/setup"
           element={
@@ -115,7 +111,9 @@ function AppContent() {
         />
         <Route
           element={
-            !isOnboarded && isTenantAdmin ? (
+            shouldRedirectToOrgCreation ? (
+              <Navigate to="/organizations/new" replace />
+            ) : !isOnboarded && isTenantAdmin ? (
               <Navigate to="/setup" replace />
             ) : (
               <DashboardLayout activeSection="dashboard" />
