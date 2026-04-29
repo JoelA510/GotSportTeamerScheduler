@@ -87,6 +87,10 @@ function AppContent() {
   }
 
   const hasNoOrgs = !orgLoading && organizations.length === 0;
+  const shouldRedirectToOrgCreation =
+    hasNoOrgs &&
+    !window.location.pathname.startsWith('/organizations/new') &&
+    window.location.pathname === '/';
 
   const isOnboarded = currentOrganization?.is_onboarded;
   const isTenantAdmin = permissions.includes(PERMISSIONS.MANAGE_GLOBAL_SETTINGS);
@@ -107,7 +111,7 @@ function AppContent() {
         />
         <Route
           element={
-            hasNoOrgs ? (
+            shouldRedirectToOrgCreation ? (
               <Navigate to="/organizations/new" replace />
             ) : !isOnboarded && isTenantAdmin ? (
               <Navigate to="/setup" replace />

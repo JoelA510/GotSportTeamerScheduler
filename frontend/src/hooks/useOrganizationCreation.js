@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { z } from 'zod';
 import { supabase } from '../lib/supabaseClient.js';
+import { withTimeout } from '../lib/withTimeout.js';
 
 const organizationSchema = z.object({
   name: z.string().trim().min(1, 'Organization name is required'),
@@ -39,7 +40,11 @@ export function useOrganizationCreation() {
       p_timezone: parsed.data.timezone,
       p_season_year: parsed.data.seasonYear,
     };
-    const { data, error: rpcError } = await supabase.rpc('initialize_new_tenant', payload);
+    const { data, error: rpcError } = await withTimeout(
+      supabase.rpc('initialize_new_tenant', payload),
+      30000,
+      'Create-organization request'
+    );
     if (rpcError) {
       const message = rpcError.message || 'Failed to create organization.';
       if (message.toLowerCase().includes('duplicate') || message.toLowerCase().includes('unique')) {

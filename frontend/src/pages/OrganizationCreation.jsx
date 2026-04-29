@@ -112,6 +112,7 @@ function TabButton({ active, onClick, icon: Icon, children }) {
 // Branch 1: Create new organization (legacy behavior preserved)
 // ─────────────────────────────────────────────────────────────
 function CreateOrganizationForm() {
+  const { refetchOrgs } = useOrganization();
   const navigate = useNavigate();
   const [formData, setFormData] = useState({
     name: '',
@@ -160,6 +161,7 @@ function CreateOrganizationForm() {
     logger.info('Organization initialized successfully', { orgId: data });
 
     setTimeout(() => {
+      if (typeof refetchOrgs === 'function') refetchOrgs();
       navigate('/?new_org=true', { replace: true });
     }, 1500);
   };
@@ -239,14 +241,14 @@ function CreateOrganizationForm() {
               aria-describedby={fieldErrors?.slug ? 'org-slug-error' : undefined}
               className="w-full glass-input font-mono text-sm"
             />
-          </div>
-
-          <div className="space-y-2">
             {fieldErrors?.slug ? (
               <p id="org-slug-error" role="alert" className="text-xs text-red-400">
                 {fieldErrors?.slug}
               </p>
             ) : null}
+          </div>
+
+          <div className="space-y-2">
             <label
               htmlFor="org-timezone"
               className="flex items-center gap-2 text-xs font-bold text-text-muted uppercase tracking-widest pl-1"
