@@ -4,7 +4,7 @@ import { createChainMock } from '../createChainMock.js';
 describe('createChainMock', () => {
   it('resolves chained query-builder calls to the provided value', async () => {
     const resolved = { data: [{ id: '1' }], error: null };
-    const chain = /** @type {any} */ (createChainMock(resolved));
+    const chain = /** @type {Record<string, any> & PromiseLike<any>} */ (createChainMock(resolved));
     const result = await chain.select('*').eq('org_id', 'org-1').single();
     expect(result).toEqual(resolved);
   });
