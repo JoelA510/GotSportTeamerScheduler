@@ -4,14 +4,16 @@ import { createChainMock } from '../createChainMock.js';
 describe('createChainMock', () => {
   it('resolves chained query-builder calls to the provided value', async () => {
     const resolved = { data: [{ id: '1' }], error: null };
-    const chain = createChainMock(resolved);
+    const chain = /** @type {Record<string, any> & PromiseLike<any>} */ (createChainMock(resolved));
     const result = await chain.select('*').eq('org_id', 'org-1').single();
     expect(result).toEqual(resolved);
   });
 
   it('resolves when awaited directly (without any method calls)', async () => {
     const resolved = { data: null, error: { message: 'not found' } };
-    const chain = createChainMock(resolved);
+    const chain = /** @type {PromiseLike<{ data: null, error: { message: string } }>} */ (
+      createChainMock(resolved)
+    );
     const result = await chain;
     expect(result).toEqual(resolved);
   });
@@ -46,7 +48,7 @@ describe('createChainMock', () => {
   });
 
   it('returns the proxy itself for arbitrary method calls (supports unlimited chain depth)', () => {
-    const chain = createChainMock({ data: [], error: null });
+    const chain = /** @type {Record<string, any> & PromiseLike<any>} */ (createChainMock({ data: [], error: null }));
     const returned = chain.select().eq().gt().lt().order().limit().range();
     // Each method call returns the same proxy, so `returned` is awaitable.
     expect(typeof returned.then).toBe('function');
