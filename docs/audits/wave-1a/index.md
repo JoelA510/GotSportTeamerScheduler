@@ -114,7 +114,7 @@ Status legend (used in per-finding tables below):
 
 | ID     | Title                                                     | Severity | Wave                           | Status             |
 | ------ | --------------------------------------------------------- | -------- | ------------------------------ | ------------------ |
-| F-2-01 | `import_efficiency_metrics` view is SECURITY DEFINER      | P1       | 2-security                     | 🟡 queued          |
+| F-2-01 | `import_efficiency_metrics` view is SECURITY DEFINER      | P1       | 2-security                     | ✅ shipped (Wave 2; payload-based repair retained `security_invoker`) |
 | F-2-02 | `raw-imports` bucket public with broad SELECT             | P1       | 2-security                     | 🟡 queued          |
 | F-2-03 | Six functions missing `SET search_path`                   | P1       | 2-security                     | 🟡 queued          |
 | F-2-04 | Leaked-password protection disabled (Auth dashboard)      | P1       | 2-security (operator)          | 🟡 queued          |
