@@ -150,14 +150,29 @@ VALUES
      '22222222-2222-2222-2222-222222222222')
 ON CONFLICT (id) DO NOTHING;
 
--- The view groups by import_job_id; one telemetry row per org is enough.
+-- Seed deterministic suggestion_received/suggestion_applied ratios per org.
 INSERT INTO public.telemetry_log (id, org_id, session_id, event_type, payload, created_by)
 VALUES
     ('cafefade-1111-1111-1111-111111111111',
      'a1111111-1111-1111-1111-111111111111',
+     'session-a', 'import.suggestion_received',
+     jsonb_build_object('import_job_id', 'aaaabbbb-1111-1111-1111-111111111111'),
+     '11111111-1111-1111-1111-111111111111'),
+    ('cafefade-1111-1111-1111-111111111112',
+     'a1111111-1111-1111-1111-111111111111',
+     'session-a', 'import.suggestion_received',
+     jsonb_build_object('import_job_id', 'aaaabbbb-1111-1111-1111-111111111111'),
+     '11111111-1111-1111-1111-111111111111'),
+    ('cafefade-1111-1111-1111-111111111113',
+     'a1111111-1111-1111-1111-111111111111',
      'session-a', 'import.suggestion_applied',
      jsonb_build_object('import_job_id', 'aaaabbbb-1111-1111-1111-111111111111'),
      '11111111-1111-1111-1111-111111111111'),
+    ('cafefade-2222-2222-2222-222222222221',
+     'b2222222-2222-2222-2222-222222222222',
+     'session-b', 'import.suggestion_received',
+     jsonb_build_object('import_job_id', 'aaaabbbb-2222-2222-2222-222222222222'),
+     '22222222-2222-2222-2222-222222222222'),
     ('cafefade-2222-2222-2222-222222222222',
      'b2222222-2222-2222-2222-222222222222',
      'session-b', 'import.suggestion_applied',
