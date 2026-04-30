@@ -6,10 +6,12 @@ DROP VIEW IF EXISTS public.import_efficiency_metrics;
 CREATE VIEW public.import_efficiency_metrics AS
 WITH import_events AS (
   SELECT
-    (tl.payload->>'import_job_id')::uuid AS import_job_id,
+    CASE
+      WHEN tl.payload->>'import_job_id' ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+        THEN (tl.payload->>'import_job_id')::uuid
+    END AS import_job_id,
     tl.event_type
   FROM public.telemetry_log AS tl
-  WHERE tl.payload->>'import_job_id' ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
 )
 SELECT
   import_job_id,
@@ -24,6 +26,7 @@ SELECT
     ELSE 100
   END AS match_rate
 FROM import_events
+WHERE import_job_id IS NOT NULL
 GROUP BY import_job_id;
 
 ALTER VIEW public.import_efficiency_metrics
