@@ -1,14 +1,15 @@
 -- Smoke test for migration 20260430120000_recreate_import_efficiency_metrics_from_payload.sql
--- Goal: prove the recreated view resolves import_job_id from payload and remains SECURITY INVOKER.
+-- Goal: prove public.import_efficiency_metrics resolves payload import_job_id safely and remains SECURITY INVOKER.
 
--- 1) Resolution check: this should execute without
---    "column import_job_id does not exist" errors.
+BEGIN;
+
+-- 1) Resolution check: should execute without "column import_job_id does not exist".
 SELECT *
 FROM public.import_efficiency_metrics
 LIMIT 1;
 -- Expected: query succeeds (0+ rows).
 
--- 2) reloptions check: view should be security_invoker=true.
+-- 2) reloptions check: view should include security_invoker=true.
 SELECT
   c.relname,
   pg_catalog.array_to_string(c.reloptions, ', ') AS reloptions
@@ -17,52 +18,43 @@ WHERE c.relname = 'import_efficiency_metrics'
   AND c.relkind = 'v';
 -- Expected: reloptions contains "security_invoker=true".
 
--- 3) Deterministic aggregation probe over telemetry-shaped rows with payload.import_job_id.
---    This validates grouping/counting/match_rate semantics independent of live tenant data.
-WITH telemetry_probe AS (
-  SELECT *
-  FROM (
-    VALUES
-      ('import.suggestion_received'::text, jsonb_build_object('import_job_id', '11111111-1111-1111-1111-111111111111')),
-      ('import.suggestion_received'::text, jsonb_build_object('import_job_id', '11111111-1111-1111-1111-111111111111')),
-      ('import.suggestion_applied'::text, jsonb_build_object('import_job_id', '11111111-1111-1111-1111-111111111111')),
-      ('import.suggestion_received'::text, jsonb_build_object('import_job_id', '22222222-2222-2222-2222-222222222222')),
-      ('import.suggestion_applied'::text, jsonb_build_object('import_job_id', '22222222-2222-2222-2222-222222222222')),
-      ('import.suggestion_applied'::text, jsonb_build_object('import_job_id', '22222222-2222-2222-2222-222222222222')),
-      ('import.suggestion_applied'::text, jsonb_build_object('import_job_id', 'not-a-uuid')),
-      ('import.suggestion_received'::text, '{}'::jsonb)
-  ) AS t(event_type, payload)
-),
-aggregated AS (
-  SELECT
-    CASE
-      WHEN tp.payload->>'import_job_id' ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
-        THEN (tp.payload->>'import_job_id')::uuid
-    END AS import_job_id,
-    tp.event_type
-  FROM telemetry_probe AS tp
-),
-actual AS (
-  SELECT
-    import_job_id,
-    COUNT(*) FILTER (WHERE event_type = 'import.suggestion_applied') AS suggestions_applied,
-    COUNT(*) FILTER (WHERE event_type = 'import.suggestion_received') AS total_suggestions,
-    CASE
-      WHEN COUNT(*) FILTER (WHERE event_type = 'import.suggestion_received') > 0
-        THEN (
-          COUNT(*) FILTER (WHERE event_type = 'import.suggestion_applied')::float
-          / COUNT(*) FILTER (WHERE event_type = 'import.suggestion_received')::float
-        ) * 100
-      ELSE 100
-    END AS match_rate
-  FROM aggregated
-  WHERE import_job_id IS NOT NULL
-  GROUP BY import_job_id
-),
-expected AS (
+-- 3) Insert deterministic telemetry fixtures into real table.
+-- Job A expected: 2 received, 1 applied => 50%.
+-- Job B expected: 1 received, 2 applied => 200%.
+-- Malformed and missing import_job_id rows should be ignored and not break the view.
+INSERT INTO public.telemetry_log (session_id, event_type, payload)
+VALUES
+  ('smoke-20260430120000', 'import.suggestion_received', jsonb_build_object('import_job_id', '11111111-1111-1111-1111-111111111111')),
+  ('smoke-20260430120000', 'import.suggestion_received', jsonb_build_object('import_job_id', '11111111-1111-1111-1111-111111111111')),
+  ('smoke-20260430120000', 'import.suggestion_applied', jsonb_build_object('import_job_id', '11111111-1111-1111-1111-111111111111')),
+  ('smoke-20260430120000', 'import.suggestion_received', jsonb_build_object('import_job_id', '22222222-2222-2222-2222-222222222222')),
+  ('smoke-20260430120000', 'import.suggestion_applied', jsonb_build_object('import_job_id', '22222222-2222-2222-2222-222222222222')),
+  ('smoke-20260430120000', 'import.suggestion_applied', jsonb_build_object('import_job_id', '22222222-2222-2222-2222-222222222222')),
+  ('smoke-20260430120000', 'import.suggestion_applied', jsonb_build_object('import_job_id', 'not-a-uuid')),
+  ('smoke-20260430120000', 'import.suggestion_received', '{}'::jsonb);
+
+-- 4) Malformed UUID resilience check: querying the real view should not error.
+SELECT COUNT(*) AS metric_row_count
+FROM public.import_efficiency_metrics;
+-- Expected: query succeeds, malformed/missing import_job_id rows do not crash execution.
+
+-- 5) Deterministic aggregation probe against the actual view (not a local CTE clone).
+WITH expected AS (
   SELECT '11111111-1111-1111-1111-111111111111'::uuid AS import_job_id, 1::bigint AS suggestions_applied, 2::bigint AS total_suggestions,  50::float AS match_rate
   UNION ALL
   SELECT '22222222-2222-2222-2222-222222222222'::uuid AS import_job_id, 2::bigint AS suggestions_applied, 1::bigint AS total_suggestions, 200::float AS match_rate
+),
+actual AS (
+  SELECT
+    v.import_job_id,
+    v.suggestions_applied,
+    v.total_suggestions,
+    v.match_rate
+  FROM public.import_efficiency_metrics AS v
+  WHERE v.import_job_id IN (
+    '11111111-1111-1111-1111-111111111111'::uuid,
+    '22222222-2222-2222-2222-222222222222'::uuid
+  )
 )
 SELECT
   e.import_job_id,
@@ -81,3 +73,5 @@ FROM expected AS e
 JOIN actual AS a USING (import_job_id)
 ORDER BY e.import_job_id;
 -- Expected: exactly 2 rows, both with pass = true.
+
+ROLLBACK;
