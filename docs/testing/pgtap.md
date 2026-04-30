@@ -118,6 +118,10 @@ one of:
 - The invariant itself was renegotiated → amend
   `docs/security/rls-policies.md` and update the assertion in the same PR.
 
+There are no known/expected structural failures for
+`import_efficiency_metrics`; any structural or behavioral failure on that
+path should be treated as a regression and fixed.
+
 Fix-in-follow-up discipline: Wave 7a ships the tests and the CI harness;
 policy fixes land in their own PRs so the failing-test signal stays
 visible in git history.
