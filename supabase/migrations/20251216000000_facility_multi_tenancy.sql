@@ -31,14 +31,20 @@ create policy "Organizations can access their own locations"
   to authenticated
   using (
     organization_id is null -- Shared/Global facilities
-    or organization_id in (
-      select organization_id from public.organization_members where profile_id = auth.uid()
+    or exists (
+      select 1
+      from public.organization_members om
+      where om.profile_id = auth.uid()
+        and om.organization_id = locations.organization_id
     )
     or ((auth.jwt() -> 'app_metadata' ->> 'role') = 'admin')
   )
   with check (
-    organization_id in (
-      select organization_id from public.organization_members where profile_id = auth.uid()
+    exists (
+      select 1
+      from public.organization_members om
+      where om.profile_id = auth.uid()
+        and om.organization_id = locations.organization_id
     )
     or ((auth.jwt() -> 'app_metadata' ->> 'role') = 'admin')
   );
@@ -51,15 +57,21 @@ create policy "Organizations can access their own fields"
   for all
   to authenticated
   using (
-    organization_id is null 
-    or organization_id in (
-      select organization_id from public.organization_members where profile_id = auth.uid()
+    organization_id is null
+    or exists (
+      select 1
+      from public.organization_members om
+      where om.profile_id = auth.uid()
+        and om.organization_id = fields.organization_id
     )
     or ((auth.jwt() -> 'app_metadata' ->> 'role') = 'admin')
   )
   with check (
-    organization_id in (
-      select organization_id from public.organization_members where profile_id = auth.uid()
+    exists (
+      select 1
+      from public.organization_members om
+      where om.profile_id = auth.uid()
+        and om.organization_id = fields.organization_id
     )
     or ((auth.jwt() -> 'app_metadata' ->> 'role') = 'admin')
   );
@@ -73,20 +85,32 @@ create policy "Organizations can access their own field subunits"
   for all
   to authenticated
   using (
-    field_id in (
-      select id from fields 
-      where organization_id is null 
-         or organization_id in (
-           select organization_id from public.organization_members where profile_id = auth.uid()
-         )
+    exists (
+      select 1
+      from public.fields f
+      where f.id = field_subunits.field_id
+        and (
+          f.organization_id is null
+          or exists (
+            select 1
+            from public.organization_members om
+            where om.profile_id = auth.uid()
+              and om.organization_id = f.organization_id
+          )
+        )
     )
     or ((auth.jwt() -> 'app_metadata' ->> 'role') = 'admin')
   )
   with check (
-    field_id in (
-      select id from fields 
-      where organization_id in (
-        select organization_id from public.organization_members where profile_id = auth.uid()
+    exists (
+      select 1
+      from public.fields f
+      where f.id = field_subunits.field_id
+        and exists (
+          select 1
+          from public.organization_members om
+          where om.profile_id = auth.uid()
+            and om.organization_id = f.organization_id
       )
     )
     or ((auth.jwt() -> 'app_metadata' ->> 'role') = 'admin')

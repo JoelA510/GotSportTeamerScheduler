@@ -68,6 +68,9 @@ $$;
 -- the definitive schema. Existing environments that already recorded this
 -- migration do not re-run it.
 DO $$
+DECLARE
+    table_ident text;
+    table_has_rows boolean;
 BEGIN
     IF EXISTS (
         SELECT 1
@@ -77,6 +80,60 @@ BEGIN
           AND column_name = 'id'
           AND data_type = 'bigint'
     ) THEN
+        FOR table_ident IN
+            SELECT unnest(ARRAY[
+                'public.organizations',
+                'public.profiles',
+                'public.organization_members',
+                'public.season_settings',
+                'public.divisions',
+                'public.locations',
+                'public.fields',
+                'public.field_subunits',
+                'public.players',
+                'public.coaches',
+                'public.profile_players',
+                'public.teams',
+                'public.team_players',
+                'public.practice_slots',
+                'public.practice_assignments',
+                'public.game_slots',
+                'public.games',
+                'public.event_rsvps',
+                'public.team_messages',
+                'public.registration_forms',
+                'public.registrations',
+                'public.imports',
+                'public.import_jobs',
+                'public.staging_players',
+                'public.player_buddies',
+                'public.export_jobs',
+                'public.email_log',
+                'public.schedule_evaluations',
+                'public.scheduler_runs',
+                'public.evaluation_runs',
+                'public.evaluation_findings',
+                'public.evaluation_metrics',
+                'public.evaluation_run_events',
+                'public.audit_log'
+            ])
+        LOOP
+            IF to_regclass(table_ident) IS NOT NULL THEN
+                EXECUTE format(
+                    'SELECT EXISTS (SELECT 1 FROM %s LIMIT 1)',
+                    to_regclass(table_ident)
+                )
+                INTO table_has_rows;
+
+                IF table_has_rows THEN
+                    RAISE EXCEPTION
+                        'Refusing definitive schema replay reset because % contains data. Run this historical migration chain only against an empty local/CI database, or create a forward data-preserving migration.',
+                        table_ident
+                        USING ERRCODE = 'P0001';
+                END IF;
+            END IF;
+        END LOOP;
+
         DROP VIEW IF EXISTS
             public.coach_team_map,
             public.view_org_metrics,
