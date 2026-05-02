@@ -81,12 +81,25 @@ const initialMockData = {
     },
   ],
   divisions: [
-    { id: 'u8-div-id', name: 'U8 Coed', organization_id: 'org-1', season_settings_id: 'season-1' },
+    {
+      id: 'u8-div-id',
+      name: 'U8 Coed',
+      organization_id: 'org-1',
+      season_settings_id: 'season-1',
+      max_roster_size: 10,
+      min_roster_size: 7,
+      target_team_size: 9,
+      min_teams: 1,
+      max_teams: 4,
+    },
     {
       id: 'u10-div-id',
       name: 'U10 Girls',
       organization_id: 'org-1',
       season_settings_id: 'season-1',
+      max_roster_size: 14,
+      min_roster_size: 10,
+      target_team_size: 12,
     },
   ],
   teams: [

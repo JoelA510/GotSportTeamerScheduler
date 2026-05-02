@@ -38,7 +38,7 @@ RETURNS BOOLEAN AS $$
 $$ LANGUAGE sql SECURITY DEFINER STABLE;
 ```
 
-All table policies follow this pattern:
+Most table policies follow this organization-scoped member-access pattern:
 
 ```sql
 CREATE POLICY "org_scoped_access" ON public.<table_name>
@@ -46,6 +46,12 @@ CREATE POLICY "org_scoped_access" ON public.<table_name>
   USING (is_org_member(organization_id))
   WITH CHECK (is_org_member(organization_id));
 ```
+
+Admin-owned configuration tables may be narrower. `divisions` allow organization members to
+read division settings, but only organization admins can insert, update, or delete division
+rows because roster-size and team-count constraints control downstream generation behavior.
+The `enforce_division_season_org_match` trigger also requires each division row to match its
+season settings organization.
 
 ## Organization Scoping
 

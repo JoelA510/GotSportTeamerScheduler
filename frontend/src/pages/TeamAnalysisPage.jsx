@@ -15,6 +15,7 @@ import ProgressBar from '../components/ui/ProgressBar.jsx';
 import { Edit2, Save, ArrowRight } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient.js';
 import { generateTeams } from '../../../packages/core/src/teamGeneration.js';
+import { PERMISSIONS } from '../constants/permissions.js';
 
 const DEFAULT_MAX_ROSTER_SIZE = 14;
 const DEFAULT_MIN_ROSTER_SIZE = 10;
@@ -115,6 +116,68 @@ function deriveProgramStats(program, config = {}) {
   };
 }
 
+function findDivisionRowForProgram(program, divisionRows) {
+  if (!program) return null;
+  const rows = divisionRows || [];
+  const programId = String(program.id || '')
+    .trim()
+    .toLowerCase();
+  const programName = String(program.name || '')
+    .trim()
+    .toLowerCase();
+
+  return (
+    rows.find(
+      (row) =>
+        String(row.id || '')
+          .trim()
+          .toLowerCase() === programId
+    ) ||
+    rows.find(
+      (row) =>
+        String(row.name || '')
+          .trim()
+          .toLowerCase() === programName
+    ) ||
+    rows.find(
+      (row) =>
+        String(row.name || '')
+          .trim()
+          .toLowerCase() === programId
+    ) ||
+    null
+  );
+}
+
+function configFromDivisionRow(program, divisionRow) {
+  const defaults = createDefaultConfig(program);
+  if (!divisionRow) return defaults;
+
+  return {
+    ...defaults,
+    targetTeamSize: divisionRow.target_team_size ?? defaults.targetTeamSize,
+    minRosterSize: divisionRow.min_roster_size ?? defaults.minRosterSize,
+    maxRosterSize: divisionRow.max_roster_size ?? defaults.maxRosterSize,
+    minTeams: divisionRow.min_teams ?? defaults.minTeams,
+    maxTeams: divisionRow.max_teams ?? defaults.maxTeams,
+    teamCountOverride: divisionRow.team_count_override ?? defaults.teamCountOverride,
+  };
+}
+
+function toDivisionConfigPayload({ program, config, organizationId, seasonSettingsId }) {
+  return {
+    organization_id: organizationId,
+    season_settings_id: seasonSettingsId,
+    name: program.name || String(program.id),
+    max_roster_size: config.maxRosterSize ?? null,
+    min_roster_size: config.minRosterSize ?? null,
+    target_team_size: config.targetTeamSize ?? null,
+    team_count_override: config.teamCountOverride ?? null,
+    min_teams: config.minTeams ?? null,
+    max_teams: config.maxTeams ?? null,
+  };
+}
+
 function parseBooleanLike(value) {
   return ['true', 'yes', 'y', '1'].includes(
     String(value || '')
@@ -185,13 +248,20 @@ export default function TeamAnalysisPage() {
   const { team, loading, error: _error, timezone } = useDashboardData();
   const { persistenceSnapshot, loading: _persistenceLoading } = useTeamPersistence();
   const { importedData } = useImport();
-  const { currentOrganization, currentSeasonSetting } = useOrganization();
+  const { currentOrganization, currentSeasonSetting, permissions = [] } = useOrganization();
   const [isEditMode, setIsEditMode] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [selectedProgramId, setSelectedProgramId] = useState(null);
   const [configs, setConfigs] = useState({});
   const [generationError, setGenerationError] = useState(null);
+  const [divisionRows, setDivisionRows] = useState(null);
+  const [divisionSettingsError, setDivisionSettingsError] = useState(null);
+  const [savingConfigId, setSavingConfigId] = useState(null);
+  const [configSaveMessage, setConfigSaveMessage] = useState('');
   const navigate = useNavigate();
+  const canManageTeams =
+    permissions.includes(PERMISSIONS.MANAGE_ALL_TEAMS) ||
+    permissions.includes(PERMISSIONS.MANAGE_ORGANIZATION);
 
   const importedPlayerRows = useMemo(() => getImportedRows(importedData), [importedData]);
   const basePrograms = useMemo(() => derivePrograms(importedPlayerRows), [importedPlayerRows]);
@@ -203,22 +273,33 @@ export default function TeamAnalysisPage() {
     [basePrograms, configs]
   );
 
+  useEffect(() => {
+    setConfigs({});
+    setConfigSaveMessage('');
+  }, [currentOrganization?.id, currentSeasonSetting?.id]);
+
   const selectedProgram = useMemo(
     () => programs.find((p) => p.id === selectedProgramId) || programs[0],
     [selectedProgramId, programs]
   );
 
   useEffect(() => {
-    if (!selectedProgram?.id) return;
+    if (basePrograms.length === 0 || divisionRows === null) return;
 
     setConfigs((prev) => {
-      if (prev[selectedProgram.id]) return prev;
-      return {
-        ...prev,
-        [selectedProgram.id]: createDefaultConfig(selectedProgram),
-      };
+      let changed = false;
+      const next = { ...prev };
+
+      basePrograms.forEach((program) => {
+        if (next[program.id]) return;
+        const divisionRow = findDivisionRowForProgram(program, divisionRows);
+        next[program.id] = configFromDivisionRow(program, divisionRow);
+        changed = true;
+      });
+
+      return changed ? next : prev;
     });
-  }, [selectedProgram]);
+  }, [basePrograms, divisionRows]);
 
   useEffect(() => {
     const selectedExists = programs.some((program) => program.id === selectedProgramId);
@@ -227,7 +308,57 @@ export default function TeamAnalysisPage() {
     }
   }, [programs, selectedProgramId]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    const fetchDivisionRows = async () => {
+      if (!currentOrganization?.id || !currentSeasonSetting?.id) {
+        setDivisionRows([]);
+        setDivisionSettingsError(null);
+        return;
+      }
+
+      setDivisionRows(null);
+      const { data, error } = await supabase
+        .from('divisions')
+        .select(
+          `
+          id,
+          organization_id,
+          season_settings_id,
+          name,
+          max_roster_size,
+          min_roster_size,
+          target_team_size,
+          team_count_override,
+          min_teams,
+          max_teams
+        `
+        )
+        .eq('organization_id', currentOrganization.id)
+        .eq('season_settings_id', currentSeasonSetting.id)
+        .order('name', { ascending: true });
+
+      if (cancelled) return;
+      if (error) {
+        setDivisionRows([]);
+        setDivisionSettingsError(error.message || 'Could not load division settings.');
+        return;
+      }
+
+      setDivisionRows(data || []);
+      setDivisionSettingsError(null);
+    };
+
+    fetchDivisionRows();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentOrganization?.id, currentSeasonSetting?.id]);
+
   const updateConfig = (programId, patch) => {
+    setConfigSaveMessage('');
     setConfigs((prev) => ({
       ...prev,
       [programId]: {
@@ -236,6 +367,75 @@ export default function TeamAnalysisPage() {
       },
     }));
   };
+
+  const saveDivisionConfig = useCallback(
+    async (program, config, { silent = false } = {}) => {
+      if (!program) throw new Error('Select a program before saving rules.');
+      if (!currentOrganization?.id) throw new Error('Select an active organization.');
+      if (!currentSeasonSetting?.id) throw new Error('Select an active season.');
+      if (!canManageTeams) throw new Error('Admin team-management permission is required.');
+      if (divisionRows === null) throw new Error('Division settings are still loading.');
+
+      const payload = toDivisionConfigPayload({
+        program,
+        config,
+        organizationId: currentOrganization.id,
+        seasonSettingsId: currentSeasonSetting.id,
+      });
+      const existingRow = findDivisionRowForProgram(program, divisionRows);
+      if (existingRow?.id) payload.id = existingRow.id;
+
+      if (!silent) {
+        setSavingConfigId(program.id);
+        setConfigSaveMessage('');
+      }
+
+      try {
+        const { data, error } = await supabase
+          .from('divisions')
+          .upsert(payload, { onConflict: 'season_settings_id,name' })
+          .select(
+            `
+            id,
+            organization_id,
+            season_settings_id,
+            name,
+            max_roster_size,
+            min_roster_size,
+            target_team_size,
+            team_count_override,
+            min_teams,
+            max_teams
+          `
+          )
+          .single();
+
+        if (error) {
+          if (!silent) setConfigSaveMessage(`Save failed: ${error.message}`);
+          throw error;
+        }
+
+        setDivisionRows((prev) => {
+          const withoutCurrent = (prev || []).filter(
+            (row) =>
+              String(row.id) !== String(data.id) &&
+              !(
+                String(row.season_settings_id) === String(data.season_settings_id) &&
+                String(row.name).trim().toLowerCase() === String(data.name).trim().toLowerCase()
+              )
+          );
+          return [...withoutCurrent, data].sort((a, b) =>
+            String(a.name).localeCompare(String(b.name))
+          );
+        });
+        if (!silent) setConfigSaveMessage('Rules saved.');
+        return data;
+      } finally {
+        if (!silent) setSavingConfigId(null);
+      }
+    },
+    [canManageTeams, currentOrganization?.id, currentSeasonSetting?.id, divisionRows]
+  );
 
   const validationErrors = useMemo(() => {
     const errors = [];
@@ -246,6 +446,12 @@ export default function TeamAnalysisPage() {
     }
     if (!currentOrganization?.id) {
       errors.push({ type: 'organization', message: 'Select an active organization.' });
+    }
+    if (!canManageTeams) {
+      errors.push({ type: 'permission', message: 'Admin team-management permission is required.' });
+    }
+    if (divisionSettingsError) {
+      errors.push({ type: 'division-settings', message: divisionSettingsError });
     }
     if (!selectedProgram) {
       errors.push({ type: 'division', message: 'Select a program before generating teams.' });
@@ -288,7 +494,9 @@ export default function TeamAnalysisPage() {
     return errors;
   }, [
     configs,
+    canManageTeams,
     currentOrganization?.id,
+    divisionSettingsError,
     generationError,
     importedPlayerRows.length,
     selectedProgram,
@@ -309,6 +517,7 @@ export default function TeamAnalysisPage() {
 
       const selectedProgramKey = String(selectedProgram.id);
       const config = configs[selectedProgramKey] || createDefaultConfig(selectedProgram);
+      await saveDivisionConfig(selectedProgram, config, { silent: true });
       const rowsForProgram = importedPlayerRows
         .map((row, sourceIndex) => ({ row, sourceIndex }))
         .filter(({ row }) => resolveDivisionId(row) === selectedProgramKey);
@@ -382,6 +591,7 @@ export default function TeamAnalysisPage() {
     currentOrganization?.id,
     currentSeasonSetting?.id,
     importedPlayerRows,
+    saveDivisionConfig,
     selectedProgram,
   ]);
 
@@ -536,6 +746,23 @@ export default function TeamAnalysisPage() {
                 program={selectedProgram}
                 config={selectedProgram ? configs[selectedProgram.id] : null}
                 onUpdate={updateConfig}
+                onSave={() =>
+                  selectedProgram &&
+                  saveDivisionConfig(
+                    selectedProgram,
+                    configs[selectedProgram.id] || createDefaultConfig(selectedProgram)
+                  ).catch((err) => {
+                    console.error('Division rule save failed:', err);
+                  })
+                }
+                saving={selectedProgram ? savingConfigId === selectedProgram.id : false}
+                saveDisabled={
+                  !canManageTeams ||
+                  !selectedProgram ||
+                  divisionRows === null ||
+                  validationErrors.some((error) => error.type !== 'generation')
+                }
+                saveMessage={configSaveMessage}
               />
             </div>
           </div>
@@ -548,6 +775,7 @@ export default function TeamAnalysisPage() {
               onClick={handleGenerateTeams}
               disabled={
                 isActuallyGenerating ||
+                divisionRows === null ||
                 validationErrors.some((error) => error.type !== 'generation')
               }
               className="flex items-center gap-2"
