@@ -74,5 +74,6 @@ and pull-request review should remain required.
 
 ## Rollback
 
-Workflow changes roll back by reverting the narrow CI/CD PR. No database or
-runtime data rollback is needed for CI-only changes.
+Workflow changes are rolled back by reverting the pull request that introduced
+them. Since these changes are limited to CI/CD automation, no database or
+runtime data rollback is typically required.
