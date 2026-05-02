@@ -1,4 +1,4 @@
-[← Back to Documentation Index](docs/README.md)
+[← Back to Documentation Index](../README.md)
 ---
 
 # Production Roadmap: SquadLogic Expansion
@@ -43,9 +43,9 @@ Following v1.0 completion, additional work was executed under **Epic 19: Launch 
 
 - **Phase 1 (Completed with operator follow-up):** GitHub Actions CI/CD pipeline and Vercel production deployment. Branch protection remains an operator-owned setting to validate before release sign-off.
 - **Phase 2 (Completed):** Interactive Game Schedule Grid with drag-and-drop (`@dnd-kit`), real-time validation, and the final E2E test scenario
-- **Phase 3 (Completed):** Live Supabase backend transition, Edge Function deployment, production cutover (see `docs/operations/production-cutover.md`)
+- **Phase 3 (Completed):** Live Supabase backend transition, Edge Function deployment, production cutover (see [`production-cutover.md`](../operations/production-cutover.md))
 
-Additionally, a comprehensive **4-phase security audit** was completed in March 2026 (see `docs/security/audit_and_remediation_plan.md`).
+Additionally, a comprehensive **4-phase security audit** was completed in March 2026 (see [`audit_and_remediation_plan.md`](../security/audit_and_remediation_plan.md)).
 
 ---
 
