@@ -1,5 +1,4 @@
-[← Back to Documentation Index](../README.md)
----
+## [← Back to Documentation Index](../README.md)
 
 # Edge Functions Inventory
 
@@ -21,12 +20,12 @@ Seven functions are deployed. Each has its own directory under `supabase/functio
 
 ### 2.1 `import-validation`
 
-- **Purpose**: Server-side validation gate for the GotSport CSV import flow (Phase 2.1, finding H-1). The browser parses the CSV with PapaParse client-side; rows are POSTed here *before* being inserted into `import_jobs`. The function validates headers (strict alias map, not fuzzy matching), required fields, data types, string length caps, and strips HTML/control characters.
+- **Purpose**: Server-side validation and staging gate for the GotSport CSV import flow (Phase 2.1, finding H-1). The browser parses the CSV with PapaParse client-side; rows are POSTed here after an `import_jobs` row exists. The function validates headers (strict alias map, not fuzzy matching), required fields, data types, string length caps, strips HTML/control characters, and stages valid player rows in `staging_players`.
 - **Invoked by**: `frontend/src/contexts/ImportContext.jsx` via `supabase.functions.invoke('import-validation', …)`.
-- **Authentication**: `getUserFromRequest()` → returns `401` on missing/invalid bearer. Does not invoke any RPC; writes validated rows directly to `import_jobs` via the service client after org membership check.
-- **Rate limit**: `checkRateLimit(user.id)` — default 60 req/min per user.
+- **Authentication**: `getUserFromRequest()` → returns `401` on missing/invalid bearer. Requires admin/tenant-admin membership for the target organization before staging rows.
+- **Rate limit**: `checkRateLimit(user.id)` — 10 req/min per user.
 - **Size caps**: 5000 rows, 500 char/field, 10 MB payload.
-- **RLS interaction**: Uses the service-role client but gates every write on `getUserOrgIds()` first.
+- **RLS interaction**: Uses the service-role client for staging writes, but gates every write with `verifyOrgAdmin()` and verifies the `import_job_id` belongs to the requested organization. Final promotion uses the admin-only `finalize_import_job(uuid, jsonb)` RPC.
 
 ### 2.2 `team-persistence`
 
@@ -84,15 +83,15 @@ Seven functions are deployed. Each has its own directory under `supabase/functio
 
 ### Shared Summary
 
-| Function | Entry | Lines | Auth | Rate limit | RPC called | Service-role read? | Invoked by |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| `import-validation` | `import-validation/index.ts` | ~285 | JWT + org scope | Yes | — (writes directly) | — | `ImportContext.jsx` |
-| `team-persistence` | `team-persistence/index.ts` | ~285 | JWT + role allow-list + IDOR guard | Yes | `persist_team_schedule` | — | `teamPersistenceClient.js` |
-| `practice-persistence` | `practice-persistence/index.ts` | ~290 | JWT + role allow-list + IDOR guard | Yes | `persist_practice_schedule` | — | Frontend practice utils |
-| `game-persistence` | `game-persistence/index.ts` | ~275 | JWT + role allow-list + IDOR guard | Yes | — (direct writes) | — | Frontend game utils |
-| `fairness-scoring` | `fairness-scoring/index.ts` | ~230 | JWT + `verifyOrgMembership` | No (gap) | `persist_evaluation_run` (3-arg) | — | `EvaluationPanel.jsx` |
-| `auto-scheduler` | `auto-scheduler/index.ts` | ~800 | JWT + `verifyOrgMembership` | Yes | `persist_evaluation_run` (3-arg), `record_audit_event` | — | `useAutoScheduler.js` |
-| `calendar-feed` | `calendar-feed/index.ts` | ~220 | Token-based (`?token=`) | No | — | Yes | External ICS clients |
+| Function               | Entry                           | Lines | Auth                               | Rate limit | RPC called                                             | Service-role read? | Invoked by                 |
+| ---------------------- | ------------------------------- | ----- | ---------------------------------- | ---------- | ------------------------------------------------------ | ------------------ | -------------------------- |
+| `import-validation`    | `import-validation/index.ts`    | ~285  | JWT + org scope                    | Yes        | — (writes directly)                                    | —                  | `ImportContext.jsx`        |
+| `team-persistence`     | `team-persistence/index.ts`     | ~285  | JWT + role allow-list + IDOR guard | Yes        | `persist_team_schedule`                                | —                  | `teamPersistenceClient.js` |
+| `practice-persistence` | `practice-persistence/index.ts` | ~290  | JWT + role allow-list + IDOR guard | Yes        | `persist_practice_schedule`                            | —                  | Frontend practice utils    |
+| `game-persistence`     | `game-persistence/index.ts`     | ~275  | JWT + role allow-list + IDOR guard | Yes        | — (direct writes)                                      | —                  | Frontend game utils        |
+| `fairness-scoring`     | `fairness-scoring/index.ts`     | ~230  | JWT + `verifyOrgMembership`        | No (gap)   | `persist_evaluation_run` (3-arg)                       | —                  | `EvaluationPanel.jsx`      |
+| `auto-scheduler`       | `auto-scheduler/index.ts`       | ~800  | JWT + `verifyOrgMembership`        | Yes        | `persist_evaluation_run` (3-arg), `record_audit_event` | —                  | `useAutoScheduler.js`      |
+| `calendar-feed`        | `calendar-feed/index.ts`        | ~220  | Token-based (`?token=`)            | No         | —                                                      | Yes                | External ICS clients       |
 
 Line counts are approximate and drift as features evolve. The source of truth is `supabase/functions/<name>/index.ts`.
 
@@ -104,9 +103,9 @@ Located under `supabase/functions/_shared/`.
 
 Exports used by every function (except `calendar-feed`, which is token-based):
 
-- `getUserFromRequest(request, serviceClient)` — parses `Authorization: Bearer <jwt>`, calls `supabase.auth.getUser(token)`, returns `User` or `null`. Service-role client is used *only* for `auth.getUser()`, never for data reads.
+- `getUserFromRequest(request, serviceClient)` — parses `Authorization: Bearer <jwt>`, calls `supabase.auth.getUser(token)`, returns `User` or `null`. Service-role client is used _only_ for `auth.getUser()`, never for data reads.
 - `verifyOrgMembership(serviceClient, userId, organizationId)` — single-org membership check against `organization_members`.
-- `getUserOrgIds(serviceClient, userId)` — returns *all* organization IDs the user belongs to. Used for IDOR guards that must check each target org.
+- `getUserOrgIds(serviceClient, userId)` — returns _all_ organization IDs the user belongs to. Used for IDOR guards that must check each target org.
 - `resolveOrgIdsFromTeamIds(serviceClient, teamIds)` — returns the distinct `organization_id`s implied by a batch of `team_id`s. Used by `practice-persistence` and `game-persistence` to guard against cross-tenant payloads.
 - `recordAudit(serviceClient, {organizationId, action, resourceType, resourceId, metadata})` — fire-and-forget audit log write via the `record_audit_event` RPC. Failures are logged but never block the response.
 - `corsHeaders` — canonical `Access-Control-Allow-*` headers including `GET, POST, PATCH, PUT, DELETE, OPTIONS` in the methods list.
@@ -126,7 +125,7 @@ Zod schemas shared by `fairness-scoring` and `auto-scheduler`: `TeamSchema`, `Sl
 
 ### 3.5 `_shared/engines/scoring-engine.ts`
 
-The isomorphic scoring engine. Same file is imported by the browser (via `@squadlogic/core`) *and* by the Edge Functions under the `_shared` path. Exports `evaluatePracticeSchedule()` and `evaluateGameSchedule()`. No React or Deno-specific imports — the same bytes run in both places.
+The isomorphic scoring engine. Same file is imported by the browser (via `@squadlogic/core`) _and_ by the Edge Functions under the `_shared` path. Exports `evaluatePracticeSchedule()` and `evaluateGameSchedule()`. No React or Deno-specific imports — the same bytes run in both places.
 
 ### 3.6 `_shared/tests/scoring-engine_test.ts`
 
@@ -140,15 +139,15 @@ Shared dependency pinning. Lets individual function files import `'zod'` (and si
 
 Default to an RPC. Reach for an Edge Function only when at least one of the following holds:
 
-| Signal | Choose | Why |
-| --- | --- | --- |
-| Pure DB work (read, write, or transaction across tables all in one org) | **RPC** | Cheapest transport, strongest RLS story, no cold-start, free tier. |
-| Need to call an external API (BetterStack, Sentry, a partner service) | **Edge Function** | The database cannot make outbound HTTP calls on Supabase's free tier. |
-| Need to validate and sanitize a client payload before it touches tables | **Edge Function** | Keeps parsing, size caps, and string sanitization out of RPC bodies. See `import-validation`. |
-| Need to rate-limit per user for DoS protection | **Edge Function** | Postgres has no request context. The `_shared/rateLimit.ts` helper is isolate-scoped but sufficient for per-user abuse. |
-| Need CPU isolation for a long-running loop (scheduler, scoring, optimization) | **Edge Function** | An RPC blocks the Postgres connection; edge isolates have their own 140 s wall-clock budget. See `auto-scheduler`. |
-| Need to stream realtime progress to the caller | **Edge Function** | `audit_log` INSERT during long work triggers Supabase Realtime subscriptions; RPCs don't produce mid-transaction events. |
-| Need token-based public read without JWT | **Edge Function** | The token check lives in the function body; no authenticated session means no RLS context. See `calendar-feed`. |
+| Signal                                                                        | Choose            | Why                                                                                                                      |
+| ----------------------------------------------------------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Pure DB work (read, write, or transaction across tables all in one org)       | **RPC**           | Cheapest transport, strongest RLS story, no cold-start, free tier.                                                       |
+| Need to call an external API (BetterStack, Sentry, a partner service)         | **Edge Function** | The database cannot make outbound HTTP calls on Supabase's free tier.                                                    |
+| Need to validate and sanitize a client payload before it touches tables       | **Edge Function** | Keeps parsing, size caps, and string sanitization out of RPC bodies. See `import-validation`.                            |
+| Need to rate-limit per user for DoS protection                                | **Edge Function** | Postgres has no request context. The `_shared/rateLimit.ts` helper is isolate-scoped but sufficient for per-user abuse.  |
+| Need CPU isolation for a long-running loop (scheduler, scoring, optimization) | **Edge Function** | An RPC blocks the Postgres connection; edge isolates have their own 140 s wall-clock budget. See `auto-scheduler`.       |
+| Need to stream realtime progress to the caller                                | **Edge Function** | `audit_log` INSERT during long work triggers Supabase Realtime subscriptions; RPCs don't produce mid-transaction events. |
+| Need token-based public read without JWT                                      | **Edge Function** | The token check lives in the function body; no authenticated session means no RLS context. See `calendar-feed`.          |
 
 When the answer is "Edge Function," still keep the function thin: authenticate, validate, re-check org membership, then call an RPC to do the actual mutation. The current `team-persistence` / `practice-persistence` functions are the template. Long-lived business logic inside an Edge Function body (like the auto-scheduler's 800 lines) is the exception, not the rule — and only because the work is CPU-bound and inherently edge-shaped.
 

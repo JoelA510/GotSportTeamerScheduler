@@ -24,22 +24,26 @@ So any work that adds new functionality belongs here, not in the existing wave s
 
 ## The Gap
 
-The CSV-import pipeline today **validates** but never **persists**. Specifically:
+The CSV-import pipeline now has a durable player-promotion slice, but the
+remaining import work is not fully closed. Specifically:
 
-| Surface | State |
-| :--- | :--- |
-| `supabase/functions/import-validation/index.ts` | Validates + sanitizes rows, returns them in `validated_data`. Does not insert. |
-| `frontend/src/contexts/ImportContext.jsx` — `startImport` | Writes an `import_jobs` row, invokes the validation Edge Function, stores validated rows in `import_jobs.error_summary` + React state via `setImportedPlayers` / `setImportedCoaches` / `setImportedFields`. Never calls `.insert` on `players`, `coaches`, or `teams`. |
-| `coaches` / `players` / `teams` tables | Exist with RLS, triggers, indexes — **no code path writes to them**. `grep -r "from('coaches').insert"` returns zero hits. |
-| `staging_players` table | Exists (`20251208000000_consolidated_schema.sql:345`) with RLS — **also never written to** by app code. |
-| `docs/expansion/03_ROADMAP.md` — M2.2 | Claims the ingestion pipeline is "finalized with robust validation and error recovery." True for validation; false for write-through. |
+| Surface                                                   | State                                                                                                                                                            |
+| :-------------------------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `supabase/functions/import-validation/index.ts`           | Validates + sanitizes rows, returns them in `validated_data`, and stages valid player rows into `staging_players` when an `import_job_id` is supplied.           |
+| `frontend/src/contexts/ImportContext.jsx` — `startImport` | Writes an `import_jobs` row, invokes validation, then calls `finalize_import_job` for player imports. Coach and field imports still stop at validation/metadata. |
+| `players` table                                           | Player rows are promoted from `staging_players` by `finalize_import_job(uuid, jsonb)` with admin-only RBAC and per-job idempotency.                              |
+| `coaches` / `teams` tables                                | Exist with RLS, triggers, indexes — direct promotion from imports remains pending Task 8 / later teaming work.                                                   |
+| `staging_players` table                                   | Stores valid player rows with `source_row_number`, `promoted_at`, and `promoted_by`; promoted rows are skipped on finalize reruns.                               |
+| `docs/expansion/03_ROADMAP.md` — M2.2                     | Claims the ingestion pipeline is "finalized with robust validation and error recovery." True for validation; false for write-through.                            |
 
 Three downstream features stub around this:
+
 - `TeamAnalysisPage.jsx` reads `teams` and produces a visualization — the table is empty in a fresh org.
 - `useTeamPortal.js` expects team rows to exist for RSVP / chat / schedule views.
 - `EnterpriseDashboard.jsx:106` documents the gap inline: `coaches: Math.floor(orgData.total_users * 0.4), // Stub calculation for coaches`.
 
-Nothing in the wave plan currently owns closing this gap.
+Task 6 closed the player write-through gap; the coach/team/field slices remain
+owned by the later v1.1 tasks below.
 
 ---
 
@@ -71,9 +75,9 @@ Broken into plausible v1.1 waves. Names + numbers are tentative; a v1.1 planning
 
 **Why first**: every other area depends on it.
 
-- Promote `import_jobs.error_summary` JSON into real rows on `players` / `coaches` / `teams` at finalize time.
-- Decide staging model: direct insert from Edge Function vs. populate `staging_players` first then promote (migration `20251208000000` left room for this pattern — the table has `import_job_id`, `promoted_at`, `promoted_by` columns hinting at intent).
-- Idempotency per `import_jobs.id` (re-running an import shouldn't double-insert).
+- Promote staged player rows into `players` at finalize time. Coach/team promotion remains separate.
+- Use the staging model: the Edge Function populates `staging_players`, then `finalize_import_job` promotes.
+- Idempotency per `import_jobs.id` (re-running finalization does not double-insert).
 - Conflict handling: GotSport player ID as the natural dedup key; email for coaches.
 - RLS-compatible write surface — either a new RPC (`finalize_import(p_job_id uuid)`) or expansion of the existing `import-validation` Edge Function to do the insert after validation clears.
 - UI signal: the Import panel's "Import Complete!" state today is a lie; it should actually say what landed where.
@@ -126,15 +130,15 @@ Out of scope for v1.1 per user ask (2026-04-21): referee-rep intent, PSA-trainin
 
 ## Related Artifacts
 
-| Artifact | State | Notes |
-| :--- | :--- | :--- |
-| PR [#185](https://github.com/JoelA510/SquadLogic/pull/185) — CSV template downloads | Open | Ready to merge once Gemini feedback applied. Prereq for Area A / D UX. |
-| PR [#184](https://github.com/JoelA510/SquadLogic/pull/184) — Column mapper | Open | Ready to merge once Gemini feedback applied. Foundation for Area D's new canonical fields. |
-| PR [#186](https://github.com/JoelA510/SquadLogic/pull/186) — Coach leads WIP | Open, marked "do not merge" | Migration + RPC salvageable under Area D; blocked on write-path (Area A). |
-| Branch `claude/feat-coach-leads` | Parked on origin | Contains the WIP migration `20260421060000_coach_leads.sql`. Don't delete until Area D is scoped. |
-| `supabase/migrations/20251208000000_consolidated_schema.sql:345` | Landed | `staging_players` table exists, hints at an intended promote-from-staging pattern. Area A should confirm or reject that pattern. |
-| `docs/expansion/03_ROADMAP.md` M2.2 | Landed | Reads as if ingestion is complete; reconcile after Area A lands. |
-| `frontend/src/pages/EnterpriseDashboard.jsx:106` | Landed | Stub calc `coaches: Math.floor(orgData.total_users * 0.4)` — remove after Area A. |
+| Artifact                                                                            | State                       | Notes                                                                                                                            |
+| :---------------------------------------------------------------------------------- | :-------------------------- | :------------------------------------------------------------------------------------------------------------------------------- |
+| PR [#185](https://github.com/JoelA510/SquadLogic/pull/185) — CSV template downloads | Open                        | Ready to merge once Gemini feedback applied. Prereq for Area A / D UX.                                                           |
+| PR [#184](https://github.com/JoelA510/SquadLogic/pull/184) — Column mapper          | Open                        | Ready to merge once Gemini feedback applied. Foundation for Area D's new canonical fields.                                       |
+| PR [#186](https://github.com/JoelA510/SquadLogic/pull/186) — Coach leads WIP        | Open, marked "do not merge" | Migration + RPC salvageable under Area D; blocked on write-path (Area A).                                                        |
+| Branch `claude/feat-coach-leads`                                                    | Parked on origin            | Contains the WIP migration `20260421060000_coach_leads.sql`. Don't delete until Area D is scoped.                                |
+| `supabase/migrations/20251208000000_consolidated_schema.sql:345`                    | Landed                      | `staging_players` table exists, hints at an intended promote-from-staging pattern. Area A should confirm or reject that pattern. |
+| `docs/expansion/03_ROADMAP.md` M2.2                                                 | Landed                      | Reads as if ingestion is complete; reconcile after Area A lands.                                                                 |
+| `frontend/src/pages/EnterpriseDashboard.jsx:106`                                    | Landed                      | Stub calc `coaches: Math.floor(orgData.total_users * 0.4)` — remove after Area A.                                                |
 
 ---
 

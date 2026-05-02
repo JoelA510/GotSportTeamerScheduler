@@ -1,5 +1,4 @@
-[← Back to Documentation Index](docs/README.md)
----
+## [← Back to Documentation Index](docs/README.md)
 
 # Data Modeling & Storage Plan
 
@@ -17,7 +16,7 @@
   - `guardian_contacts` (JSONB array with name/email/phone)
   - `mutual_buddy_code` (text) – only honored when a matching code exists
   - `skill_tier` (enum: `novice`, `developing`, `advanced`) – optional balancing input
-  - `coach_volunteer` (boolean) and `notes`
+  - `coach_volunteer` (legacy registration volunteer flag), `willing_to_coach` (canonical import-normalized flag), and `notes`
 - **Indexes & constraints**:
   - Unique constraint on (`division_id`, `external_registration_id`).
   - Partial index on `mutual_buddy_code` where not null for faster lookup.
@@ -110,7 +109,8 @@
 ### Configuration & Metadata
 
 - `season_settings`: Single-row table for league-wide parameters (roster formulas, daylight change dates, export templates).
-- `import_jobs`: Tracks CSV uploads with status, source file references (Supabase Storage path), error logs, and user id.
+- `import_jobs`: Tracks CSV uploads with status, source file references (Supabase Storage path), error logs, finalize summaries, and user id.
+- `staging_players`: Durable buffer for validated GotSport player rows. Rows include source row numbers and promotion metadata (`promoted_at`, `promoted_by`) so `finalize_import_job` can safely retry without duplicating players.
 
 ### Scheduler Run History
 
@@ -134,7 +134,9 @@ Detailed ingestion workflows live in `docs/operations/ingestion-pipeline.md`. Hi
 
 1. **Registration Importer**
    - Parses GotSport CSV exports.
-   - Normalizes guardian contact information into structured JSON.
+   - Stages validated player rows, then promotes them into `players` with `finalize_import_job`.
+   - Normalizes guardian contact information into structured JSON where source columns are present.
+   - Normalizes GotSport coach-interest fields into `willing_to_coach` and mirrors the value to the legacy `coach_volunteer` flag for existing reports.
    - Validates mutual buddy codes by checking for reciprocal entries before linking pairs.
    - Flags duplicate registrations or missing division assignments for manual review.
 2. **Field Availability Importer**

@@ -75,7 +75,7 @@ export function ImportProvider({ children }) {
   const [progress, setProgress] = useState(0);
   const [importStatus, setImportStatus] = useState(() => {
     return localStorage.getItem('importStatus') || 'idle';
-  }); // idle, importing, completed, error
+  }); // idle, importing, completed, completed_with_warnings, error
   const [importLogs, setImportLogs] = useState([]);
   const [notifyOnComplete, setNotifyOnComplete] = useState(false);
   const [telemetryLogs, setTelemetryLogs] = useState([]);
@@ -279,11 +279,15 @@ export function ImportProvider({ children }) {
   }, []);
 
   const completeImport = useCallback(
-    (type, _previewData) => {
+    (type, _previewData, status = 'completed') => {
       setIsImporting(false);
-      setImportStatus('completed');
-      localStorage.setItem('importStatus', 'completed');
-      addLog(`Import for ${type} completed successfully.`);
+      setImportStatus(status);
+      localStorage.setItem('importStatus', status);
+      addLog(
+        status === 'completed_with_warnings'
+          ? `Import for ${type} applied with warnings.`
+          : `Import for ${type} applied successfully.`
+      );
 
       if (notifyOnComplete) {
         logger.log('Sending email notification...');
@@ -477,6 +481,8 @@ export function ImportProvider({ children }) {
                       organization_id: currentOrganization.id,
                       rows: chunkRows,
                       file_name: file.name,
+                      import_job_id: job.id,
+                      row_offset: currentIndex,
                     },
                   }),
                   60000,
@@ -526,6 +532,29 @@ export function ImportProvider({ children }) {
               addLog(
                 `Validation complete. ${normalizedData.length} valid rows, ${validationErrors.length} errors.`
               );
+              const finalStatus =
+                validationErrors.length > 0 ? 'completed_with_warnings' : 'completed';
+              let persistenceResult = null;
+
+              if (type === 'players') {
+                addLog('Applying validated players to the roster database...');
+                const { data: finalizeResult, error: finalizeError } = await supabase.rpc(
+                  'finalize_import_job',
+                  {
+                    p_import_job_id: job.id,
+                    p_validation_errors: validationErrors,
+                  }
+                );
+
+                if (finalizeError) {
+                  throw new Error(finalizeError.message || 'Import finalization failed');
+                }
+
+                persistenceResult = finalizeResult;
+                addLog(
+                  `Roster database updated: ${finalizeResult?.inserted_players ?? 0} inserted, ${finalizeResult?.updated_players ?? 0} updated.`
+                );
+              }
 
               const importData = {
                 fileName: file.name,
@@ -535,24 +564,30 @@ export function ImportProvider({ children }) {
                 timestamp: new Date(),
                 data: normalizedData,
                 validationErrors,
+                persistence: {
+                  durable: type === 'players',
+                  result: persistenceResult,
+                },
               };
 
-              await supabase
-                .from('import_jobs')
-                .update({
-                  status: validationErrors.length > 0 ? 'completed_with_warnings' : 'completed',
-                  processed_rows: normalizedData.length,
-                  progress_percent: 100,
-                  error_summary: { rowErrors: validationErrors },
-                })
-                .eq('id', job.id);
+              if (type !== 'players') {
+                await supabase
+                  .from('import_jobs')
+                  .update({
+                    status: finalStatus,
+                    processed_rows: normalizedData.length,
+                    progress_percent: 100,
+                    error_summary: { rowErrors: validationErrors },
+                  })
+                  .eq('id', job.id);
+              }
 
               if (type === 'players') setImportedPlayers(importData);
               if (type === 'coaches') setImportedCoaches(importData);
               if (type === 'fields') setImportedFields(importData);
               setImportedData(importData);
 
-              completeImport(type, importData);
+              completeImport(type, importData, persistenceResult?.status || finalStatus);
             };
 
             await processChunk();

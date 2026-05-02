@@ -405,6 +405,8 @@ const initialMockData = {
       created_at: new Date(Date.now() - 86400000).toISOString(),
     },
   ],
+  import_jobs: [],
+  staging_players: [],
   view_league_standings: [
     {
       organization_id: 'org-1',
@@ -950,12 +952,12 @@ export const mockSupabase = {
           select: () => chainable,
           single: () =>
             Promise.resolve({
-              data: Array.isArray(records) ? newRecords[0] : newRecords,
+              data: newRecords[0] || null,
               error: null,
             }),
           maybeSingle: () =>
             Promise.resolve({
-              data: Array.isArray(records) ? newRecords[0] : newRecords,
+              data: newRecords[0] || null,
               error: null,
             }),
           then: (onFulfilled, onRejected) => Promise.resolve(res).then(onFulfilled, onRejected),
@@ -1037,12 +1039,12 @@ export const mockSupabase = {
           select: () => chainable,
           single: () =>
             Promise.resolve({
-              data: Array.isArray(records) ? newRecords[0] : newRecords,
+              data: newRecords[0] || null,
               error: null,
             }),
           maybeSingle: () =>
             Promise.resolve({
-              data: Array.isArray(records) ? newRecords[0] : newRecords,
+              data: newRecords[0] || null,
               error: null,
             }),
           then: (onFulfilled, onRejected) => Promise.resolve(res).then(onFulfilled, onRejected),
@@ -1386,6 +1388,116 @@ export const mockSupabase = {
       return { data: logs, error: null };
     }
 
+    if (name === 'finalize_import_job') {
+      const { p_import_job_id, p_validation_errors } = params || {};
+      const job = (db.import_jobs || []).find(
+        (item) => String(item.id) === String(p_import_job_id)
+      );
+      if (!job) {
+        return { data: null, error: { message: 'Import job not found' } };
+      }
+
+      const validationErrors = Array.isArray(p_validation_errors) ? p_validation_errors : [];
+      const now = new Date().toISOString();
+      const stagedRows = (db.staging_players || []).filter(
+        (row) => String(row.import_job_id) === String(p_import_job_id) && !row.promoted_at
+      );
+
+      let insertedPlayers = 0;
+      let updatedPlayers = 0;
+      db.players = db.players || [];
+
+      stagedRows.forEach((row) => {
+        const payload = row.normalized_payload || {};
+        const externalId =
+          payload.external_registration_id ||
+          payload.gotsport_id ||
+          payload.registration_id ||
+          payload.player_id ||
+          null;
+        const division = (db.divisions || []).find(
+          (item) =>
+            String(item.organization_id) === String(job.organization_id) &&
+            String(item.name).toLowerCase() === String(payload.division_name || '').toLowerCase()
+        );
+        const existing =
+          externalId &&
+          db.players.find(
+            (player) =>
+              String(player.organization_id) === String(job.organization_id) &&
+              String(player.external_registration_id) === String(externalId)
+          );
+        const willingToCoach = ['true', 'yes', 'y', '1'].includes(
+          String(payload.willing_to_coach || '').toLowerCase()
+        );
+        const basePlayer = {
+          organization_id: job.organization_id,
+          division_id: division?.id || payload.division_id || existing?.division_id || null,
+          first_name: payload.first_name,
+          last_name: payload.last_name,
+          preferred_name: payload.preferred_name || payload.nickname || null,
+          external_registration_id: externalId,
+          date_of_birth: payload.date_of_birth,
+          grade: payload.grade || null,
+          gender: payload.gender || null,
+          birth_year: payload.date_of_birth
+            ? Number.parseInt(String(payload.date_of_birth).slice(0, 4), 10)
+            : null,
+          skill_tier: ['novice', 'developing', 'advanced'].includes(
+            String(payload.skill_tier || '').toLowerCase()
+          )
+            ? String(payload.skill_tier).toLowerCase()
+            : null,
+          coach_volunteer: willingToCoach,
+          willing_to_coach: willingToCoach,
+          import_source: 'gotsport',
+          last_imported_at: now,
+        };
+
+        if (existing) {
+          Object.assign(existing, basePlayer);
+          updatedPlayers += 1;
+        } else {
+          db.players.push({
+            id: Math.random().toString(36).substr(2, 9),
+            created_at: now,
+            ...basePlayer,
+          });
+          insertedPlayers += 1;
+        }
+
+        row.promoted_at = now;
+        row.promoted_by = 'mock-admin-id';
+      });
+
+      const status = validationErrors.length > 0 ? 'completed_with_warnings' : 'completed';
+      Object.assign(job, {
+        status,
+        processed_rows: stagedRows.length,
+        progress_percent: 100,
+        completed_at: now,
+        error_summary: { rowErrors: validationErrors },
+        warning_summary: {
+          ...(job.warning_summary || {}),
+          finalize: {
+            staged_rows: stagedRows.length,
+            valid_staged_rows: stagedRows.length,
+            promoted_rows: stagedRows.length,
+            inserted_players: insertedPlayers,
+            updated_players: updatedPlayers,
+            validation_error_rows: validationErrors.length,
+            status,
+            total_promoted_rows: (db.staging_players || []).filter(
+              (row) => String(row.import_job_id) === String(p_import_job_id) && row.promoted_at
+            ).length,
+          },
+        },
+      });
+
+      saveDB(db);
+      return { data: job.warning_summary.finalize, error: null };
+    }
+
     if (name === 'persist_evaluation_run') {
       return { data: { id: 'eval-' + Math.random().toString(36).substr(2, 6) }, error: null };
     }
@@ -1417,6 +1529,18 @@ export const mockSupabase = {
           'field name': 'name',
           'skill level': 'skill_tier',
           skill_tier: 'skill_tier',
+          id: 'gotsport_id',
+          pid: 'gotsport_id',
+          'official id': 'gotsport_id',
+          'gotsport id': 'gotsport_id',
+          gotsport_id: 'gotsport_id',
+          'registration id': 'external_registration_id',
+          registration_id: 'external_registration_id',
+          external_registration_id: 'external_registration_id',
+          group: 'division_name',
+          division: 'division_name',
+          division_name: 'division_name',
+          program: 'division_name',
         };
         const requiredFields = {
           players: ['first_name', 'last_name', 'date_of_birth'],
@@ -1430,6 +1554,7 @@ export const mockSupabase = {
             : String(value).trim().slice(0, 500).replaceAll('<', '').replaceAll('>', '');
 
         const validatedData = [];
+        const stagedRows = [];
         const validationErrors = [];
         const required = requiredFields[body.import_type] || [];
 
@@ -1463,8 +1588,32 @@ export const mockSupabase = {
           const hasRowError = validationErrors.some((error) => error.row === index + 1);
           if (!hasRowError) {
             validatedData.push(row);
+            if (body.import_type === 'players' && body.import_job_id) {
+              stagedRows.push({
+                id: Math.random().toString(36).substr(2, 9),
+                organization_id: body.organization_id,
+                import_job_id: body.import_job_id,
+                source_row_number: (body.row_offset || 0) + index + 1,
+                raw_payload: rawRow,
+                normalized_payload: row,
+                validation_errors: [],
+                created_at: new Date().toISOString(),
+              });
+            }
           }
         });
+
+        if (stagedRows.length > 0) {
+          const db = getDB();
+          const rowNumbers = new Set(stagedRows.map((row) => String(row.source_row_number)));
+          db.staging_players = (db.staging_players || []).filter(
+            (row) =>
+              String(row.import_job_id) !== String(body.import_job_id) ||
+              !rowNumbers.has(String(row.source_row_number))
+          );
+          db.staging_players.push(...stagedRows);
+          saveDB(db);
+        }
 
         return {
           data: {
@@ -1473,6 +1622,7 @@ export const mockSupabase = {
             total_rows: body.rows?.length || 0,
             valid_rows: validatedData.length,
             error_rows: validationErrors.length,
+            staged_rows: stagedRows.length,
             validated_data: validatedData,
             validation_errors: validationErrors,
           },
