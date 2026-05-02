@@ -142,9 +142,16 @@ Given('the team rosters have been generated and finalized', async ({ page }) => 
     const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
     const orgId = localStorage.getItem('squadlogic_active_org') || 'org-1';
 
-    // CRITICAL FIX: Remove + re-add run-1 (sessionStorage may not have initialMockData yet)
+    // Own the team-run fixture for this scenario so earlier E2E scenarios cannot win the
+    // "latest team run" query with a coach-less result.
     db.scheduler_runs = (db.scheduler_runs || []).filter(
-      (r: Record<string, unknown>) => r.id !== 'run-1'
+      (r: Record<string, unknown>) =>
+        !(
+          r.run_type === 'team' &&
+          (r.organization_id === orgId ||
+            r.organization_id === undefined ||
+            r.organization_id === null)
+        )
     );
     db.scheduler_runs.push({
       id: 'run-1',
@@ -189,7 +196,9 @@ Then(
     await expect(page.locator('article[aria-label="Teams Formed"]').first()).toContainText('1', {
       timeout: 15000,
     });
-    await page.getByTestId('generate-emails-btn').first().click({ force: true });
+    const generateEmailsButton = page.getByTestId('generate-emails-btn').first();
+    await expect(generateEmailsButton).toBeVisible({ timeout: 15000 });
+    await generateEmailsButton.click();
     await expect(page.getByText('Generated 1 email drafts.')).toBeVisible({ timeout: 10000 });
   }
 );

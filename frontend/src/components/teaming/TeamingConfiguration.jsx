@@ -9,9 +9,13 @@ export default function TeamingConfiguration({ program, config, onUpdate }) {
       </div>
     );
 
-  const handleChange = (field, value) => {
-    const intValue = parseInt(value);
-    onUpdate(program.id, { [field]: isNaN(intValue) ? null : intValue });
+  const handleNumberChange = (field, value) => {
+    const intValue = Number.parseInt(value, 10);
+    onUpdate(program.id, { [field]: Number.isNaN(intValue) ? null : intValue });
+  };
+
+  const handleTextChange = (field, value) => {
+    onUpdate(program.id, { [field]: value });
   };
 
   return (
@@ -30,9 +34,10 @@ export default function TeamingConfiguration({ program, config, onUpdate }) {
           <input
             id="target-team-size"
             type="number"
+            min="1"
             className="w-full bg-bg-base border border-border-subtle rounded-lg px-3 py-2 text-text-primary focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-            value={config?.targetTeamSize || 12}
-            onChange={(e) => handleChange('targetTeamSize', e.target.value)}
+            value={config?.targetTeamSize ?? ''}
+            onChange={(e) => handleNumberChange('targetTeamSize', e.target.value)}
           />
           <p className="text-xs text-text-muted mt-1">Ideal number of players per team.</p>
         </div>
@@ -48,9 +53,10 @@ export default function TeamingConfiguration({ program, config, onUpdate }) {
             <input
               id="min-roster"
               type="number"
+              min="1"
               className="w-full bg-bg-base border border-border-subtle rounded-lg px-3 py-2 text-text-primary focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-              value={config?.minRosterSize || 10}
-              onChange={(e) => handleChange('minRosterSize', e.target.value)}
+              value={config?.minRosterSize ?? ''}
+              onChange={(e) => handleNumberChange('minRosterSize', e.target.value)}
             />
           </div>
           <div>
@@ -63,9 +69,47 @@ export default function TeamingConfiguration({ program, config, onUpdate }) {
             <input
               id="max-roster"
               type="number"
+              min="1"
               className="w-full bg-bg-base border border-border-subtle rounded-lg px-3 py-2 text-text-primary focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-              value={config?.maxRosterSize || 14}
-              onChange={(e) => handleChange('maxRosterSize', e.target.value)}
+              value={config?.maxRosterSize ?? ''}
+              onChange={(e) => handleNumberChange('maxRosterSize', e.target.value)}
+            />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label
+              htmlFor="min-teams"
+              className="block text-sm font-medium text-text-secondary mb-2"
+            >
+              Min Teams
+            </label>
+            <input
+              id="min-teams"
+              type="number"
+              min="1"
+              placeholder="Auto"
+              className="w-full bg-bg-base border border-border-subtle rounded-lg px-3 py-2 text-text-primary focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+              value={config?.minTeams ?? ''}
+              onChange={(e) => handleNumberChange('minTeams', e.target.value)}
+            />
+          </div>
+          <div>
+            <label
+              htmlFor="max-teams"
+              className="block text-sm font-medium text-text-secondary mb-2"
+            >
+              Max Teams
+            </label>
+            <input
+              id="max-teams"
+              type="number"
+              min="1"
+              placeholder="Auto"
+              className="w-full bg-bg-base border border-border-subtle rounded-lg px-3 py-2 text-text-primary focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+              value={config?.maxTeams ?? ''}
+              onChange={(e) => handleNumberChange('maxTeams', e.target.value)}
             />
           </div>
         </div>
@@ -81,15 +125,16 @@ export default function TeamingConfiguration({ program, config, onUpdate }) {
             <input
               id="team-count-override"
               type="number"
+              min="1"
               placeholder="Auto"
               className="flex-1 bg-bg-base border border-border-subtle rounded-lg px-3 py-2 text-text-primary focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-              value={config?.teamCountOverride || ''}
-              onChange={(e) => handleChange('teamCountOverride', e.target.value)}
+              value={config?.teamCountOverride ?? ''}
+              onChange={(e) => handleNumberChange('teamCountOverride', e.target.value)}
             />
             <Button
               variant="secondary"
-              onClick={() => handleChange('teamCountOverride', '')}
-              disabled={!config?.teamCountOverride}
+              onClick={() => handleNumberChange('teamCountOverride', '')}
+              disabled={config?.teamCountOverride == null}
             >
               Reset
             </Button>
@@ -113,11 +158,11 @@ export default function TeamingConfiguration({ program, config, onUpdate }) {
               placeholder="e.g. 12345"
               className="w-full bg-bg-base border border-border-subtle rounded-lg px-3 py-2 text-text-primary focus:ring-2 focus:ring-blue-500 outline-none transition-all"
               value={config?.seed || ''}
-              onChange={(e) => onUpdate(program.id, { seed: e.target.value })}
+              onChange={(e) => handleTextChange('seed', e.target.value)}
             />
             <Button
               variant="secondary"
-              onClick={() => onUpdate(program.id, { seed: '' })}
+              onClick={() => handleTextChange('seed', '')}
               disabled={!config?.seed}
             >
               Clear

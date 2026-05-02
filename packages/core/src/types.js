@@ -89,8 +89,11 @@
  * @property {number} teamsCount
  * @property {number} slotsPerWeek
  * @property {number} [maxRosterSize]
+ * @property {number} [minRosterSize]
  * @property {number} [targetTeamSize]
  * @property {number} [teamCountOverride]
+ * @property {number} [minTeams]
+ * @property {number} [maxTeams]
  * @property {string[]} [teamNames]
  * @property {string} [teamNamePrefix]
  */

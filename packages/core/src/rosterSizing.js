@@ -66,8 +66,8 @@ export function calculateMaxRosterSize(playableCount, { buffer = DEFAULT_BUFFER,
  *   3. A `playableCount` value or a `playFormat` string (e.g., `7v7`).
  *
  * @param {Array<Object>} divisions - Raw division metadata.
- * @param {{ overrides?: Record<string, { maxRosterSize: number }> }} [options]
- * @returns {Record<string, { maxRosterSize: number, playableCount: number | null, source: string }>} -
+ * @param {{ overrides?: Record<string, Object> }} [options]
+ * @returns {Record<string, Object>} -
  *   Map keyed by division identifier containing the derived roster size and context.
  */
 export function deriveDivisionRosterConfigs(divisions, { overrides = {} } = {}) {
@@ -91,34 +91,34 @@ export function deriveDivisionRosterConfigs(divisions, { overrides = {} } = {}) 
 
     if (override) {
       const maxRosterSize = normalizeRosterSize(
-        override.maxRosterSize,
+        override.maxRosterSize ?? override.max_roster_size,
         `override for ${identifier}`
       );
-      configs[identifier] = {
+      configs[identifier] = withOptionalRosterConstraints(override, {
         maxRosterSize,
         playableCount: override.playableCount ?? null,
         source: 'override',
-      };
+      });
       continue;
     }
 
     if (division.maxRosterSize !== undefined) {
       const maxRosterSize = normalizeRosterSize(division.maxRosterSize, `division ${identifier}`);
-      configs[identifier] = {
+      configs[identifier] = withOptionalRosterConstraints(division, {
         maxRosterSize,
         playableCount: division.playableCount ?? null,
         source: 'division-record',
-      };
+      });
       continue;
     }
 
     const playableCount = resolvePlayableCount(division, identifier);
     const maxRosterSize = calculateMaxRosterSize(playableCount);
-    configs[identifier] = {
+    configs[identifier] = withOptionalRosterConstraints(division, {
       maxRosterSize,
       playableCount,
       source: 'formula',
-    };
+    });
   }
 
   return configs;
@@ -135,7 +135,7 @@ export function deriveDivisionRosterConfigs(divisions, { overrides = {} } = {}) 
  *
  * @param {Array<Object>} rows - Supabase roster override records.
  * @param {{ seasonId?: string }} [options]
- * @returns {Record<string, { maxRosterSize: number, playableCount: number | null }>}
+ * @returns {Record<string, Object>}
  */
 export function buildOverridesFromSupabaseRows(rows, { seasonId } = {}) {
   if (!Array.isArray(rows)) {
@@ -169,6 +169,7 @@ export function buildOverridesFromSupabaseRows(rows, { seasonId } = {}) {
     const candidate = {
       maxRosterSize,
       playableCount: normalizedPlayableCount,
+      ...extractOptionalRosterConstraints(row, divisionId),
       seasonId: rowSeasonId,
     };
 
@@ -271,6 +272,66 @@ function normalizePlayableCount(playableCount, divisionId) {
   }
 
   return Math.trunc(value);
+}
+
+function withOptionalRosterConstraints(source, base) {
+  const constraints = extractOptionalRosterConstraints(source, base.source || base.maxRosterSize);
+  if (constraints.minRosterSize && constraints.minRosterSize > base.maxRosterSize) {
+    throw new Error(`invalid minRosterSize for ${base.source}: cannot exceed maxRosterSize`);
+  }
+  if (constraints.minTeams && constraints.maxTeams && constraints.minTeams > constraints.maxTeams) {
+    throw new Error(`invalid team bounds for ${base.source}: minTeams cannot exceed maxTeams`);
+  }
+
+  return {
+    ...base,
+    ...constraints,
+  };
+}
+
+function extractOptionalRosterConstraints(source, context) {
+  const result = {};
+  const minRosterSize = normalizeOptionalPositiveInteger(
+    source.minRosterSize ?? source.min_roster_size ?? source.minSize,
+    `minRosterSize for ${context}`
+  );
+  const targetTeamSize = normalizeOptionalPositiveInteger(
+    source.targetTeamSize ?? source.target_team_size ?? source.targetSize,
+    `targetTeamSize for ${context}`
+  );
+  const teamCountOverride = normalizeOptionalPositiveInteger(
+    source.teamCountOverride ?? source.team_count_override,
+    `teamCountOverride for ${context}`
+  );
+  const minTeams = normalizeOptionalPositiveInteger(
+    source.minTeams ?? source.min_teams,
+    `minTeams for ${context}`
+  );
+  const maxTeams = normalizeOptionalPositiveInteger(
+    source.maxTeams ?? source.max_teams,
+    `maxTeams for ${context}`
+  );
+
+  if (minRosterSize !== null) result.minRosterSize = minRosterSize;
+  if (targetTeamSize !== null) result.targetTeamSize = targetTeamSize;
+  if (teamCountOverride !== null) result.teamCountOverride = teamCountOverride;
+  if (minTeams !== null) result.minTeams = minTeams;
+  if (maxTeams !== null) result.maxTeams = maxTeams;
+
+  return result;
+}
+
+function normalizeOptionalPositiveInteger(value, context) {
+  if (value === undefined || value === null || value === '') {
+    return null;
+  }
+
+  const numberValue = Number(value);
+  if (!Number.isFinite(numberValue) || numberValue <= 0) {
+    throw new Error(`invalid ${context}`);
+  }
+
+  return Math.trunc(numberValue);
 }
 
 function shouldPreferCandidate({ existing, candidate, seasonId }) {

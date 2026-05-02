@@ -41,12 +41,25 @@ describe('calculateMaxRosterSize', () => {
 describe('deriveDivisionRosterConfigs', () => {
   it('prefers overrides when available', () => {
     const divisions = [{ id: 'U10', playFormat: '7v7' }];
-    const overrides = { U10: { maxRosterSize: 13, playableCount: 7 } };
+    const overrides = {
+      U10: {
+        maxRosterSize: 13,
+        playableCount: 7,
+        minRosterSize: 10,
+        targetTeamSize: 12,
+        minTeams: 2,
+        maxTeams: 4,
+      },
+    };
     const configs = deriveDivisionRosterConfigs(divisions, { overrides });
 
     assert.deepEqual(configs, {
       U10: {
         maxRosterSize: 13,
+        minRosterSize: 10,
+        targetTeamSize: 12,
+        minTeams: 2,
+        maxTeams: 4,
         playableCount: 7,
         source: 'override',
       },
@@ -97,6 +110,19 @@ describe('deriveDivisionRosterConfigs', () => {
     const divisions = [{ id: 'U14' }];
     assert.throws(() => deriveDivisionRosterConfigs(divisions));
   });
+
+  it('validates optional roster and team bounds', () => {
+    assert.throws(
+      () => deriveDivisionRosterConfigs([{ id: 'U10', maxRosterSize: 10, minRosterSize: 11 }]),
+      /minRosterSize.*cannot exceed maxRosterSize/i
+    );
+
+    assert.throws(
+      () =>
+        deriveDivisionRosterConfigs([{ id: 'U10', maxRosterSize: 10, minTeams: 4, maxTeams: 3 }]),
+      /minTeams cannot exceed maxTeams/i
+    );
+  });
 });
 
 describe('buildOverridesFromSupabaseRows', () => {
@@ -125,6 +151,34 @@ describe('buildOverridesFromSupabaseRows', () => {
 
     assert.deepEqual(overrides, {
       U10: { maxRosterSize: 13, playableCount: null },
+    });
+  });
+
+  it('normalizes snake_case roster and team constraints', () => {
+    const rows = [
+      {
+        division_id: 'U10',
+        max_roster_size: 14,
+        min_roster_size: 10,
+        target_team_size: 12,
+        team_count_override: 3,
+        min_teams: 2,
+        max_teams: 4,
+      },
+    ];
+
+    const overrides = buildOverridesFromSupabaseRows(rows);
+
+    assert.deepEqual(overrides, {
+      U10: {
+        maxRosterSize: 14,
+        minRosterSize: 10,
+        targetTeamSize: 12,
+        teamCountOverride: 3,
+        minTeams: 2,
+        maxTeams: 4,
+        playableCount: null,
+      },
     });
   });
 
