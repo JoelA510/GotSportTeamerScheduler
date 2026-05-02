@@ -16,7 +16,9 @@ advisor-lint and get caught here.
 ## Quickstart
 
 ```bash
-# One-time install: Supabase CLI + Docker Desktop.
+# One-time install: Supabase CLI 2.95.4 + Docker Desktop.
+# Local ports come from supabase/config.toml:
+# API 55421, Postgres 55422, Studio 55423, Mailpit 55424.
 
 supabase start            # ~3 min first time; pulls images & applies migrations
 npm run test:db           # runs every supabase/tests/*.sql
@@ -30,9 +32,9 @@ npm run test:db:once supabase/tests/rls_cross_org_isolation.sql
 
 | File                                          | Purpose                                                      |
 | --------------------------------------------- | ------------------------------------------------------------ |
-| `_template.sql`                               | Copy-starting-point for new tests.                           |
+| `_template.sql.txt`                           | Copy-starting-point for new tests; renamed so auto-discovery does not execute it. |
 | `_harness.sql`                                | Trivial self-test; fails fast if pgTAP itself is broken.     |
-| `_fixtures.sql`                               | Shared seed data (orgs, users, teams, audit rows, imports).  |
+| `_fixtures.sql`                               | Shared seed data; standalone guard lets auto-discovery execute it safely. |
 | `rls_cross_org_isolation.sql`                 | Org A member cannot SELECT Org B's rows.                     |
 | `rls_anonymous_gate.sql`                      | `anon` role reads zero rows from every domain table.         |
 | `rls_admin_vs_coach.sql`                      | `audit_log` visible to admins, invisible to coaches.         |
@@ -45,9 +47,15 @@ Every test file MUST:
 
 1. Wrap its body in `BEGIN ... ROLLBACK` — the DB must be untouched after
    the test runs. No test relies on state left by another test.
-2. Include `\i supabase/tests/_fixtures.sql` where possible. If a fixture
-   doesn't provide the rows you need, **extend `_fixtures.sql`** rather
-   than inlining INSERTs. Per-test INSERTs are forbidden.
+2. Include fixtures where possible:
+
+   ```sql
+   \set squadlogic_fixture_include 1
+   \ir _fixtures.sql
+   ```
+
+   If a fixture doesn't provide the rows you need, **extend `_fixtures.sql`**
+   rather than inlining INSERTs. Per-test INSERTs are forbidden.
 3. Declare `SELECT plan(N)` with the exact number of assertions you make.
    Too many or too few asserts → test fails.
 4. Simulate a user with `SET LOCAL role = 'authenticated'` plus
@@ -56,7 +64,7 @@ Every test file MUST:
    from the JWT claims.
 5. Finish with `SELECT * FROM finish();` before `ROLLBACK;`.
 
-See `_template.sql` for a copy-paste starter.
+See `_template.sql.txt` for a copy-paste starter.
 
 ## Canonical fixture identities
 
@@ -85,7 +93,7 @@ tab if you need to validate the suite without an open PR.
 
 ## Adding a new test
 
-1. Copy `_template.sql` to a descriptive filename — `<area>_<invariant>.sql`
+1. Copy `_template.sql.txt` to a descriptive filename — `<area>_<invariant>.sql`
    (e.g. `trigger_audit_log_append_only.sql`).
 2. Decide which fixture rows you need; extend `_fixtures.sql` if the shared
    seed is missing something.

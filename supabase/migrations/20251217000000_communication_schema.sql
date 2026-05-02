@@ -24,7 +24,12 @@ create policy "Users can view their own player mappings"
     to authenticated
     using (
         (profile_id = auth.uid() or ((auth.jwt() -> 'app_metadata' ->> 'role') = 'admin'))
-        and organization_id = (select organization_id from public.profiles where id = auth.uid())
+        and exists (
+            select 1
+            from public.organization_members om
+            where om.organization_id = profile_players.organization_id
+              and om.profile_id = auth.uid()
+        )
     );
 
 -- ==========================================
@@ -52,22 +57,37 @@ create policy "Admins can access all rsvps" on public.event_rsvps
     for all to authenticated
     using (
         ((auth.jwt() -> 'app_metadata' ->> 'role') = 'admin')
-        and organization_id = (select organization_id from public.profiles where id = auth.uid())
+        and exists (
+            select 1
+            from public.organization_members om
+            where om.organization_id = event_rsvps.organization_id
+              and om.profile_id = auth.uid()
+        )
     )
     with check (
         ((auth.jwt() -> 'app_metadata' ->> 'role') = 'admin')
-        and organization_id = (select organization_id from public.profiles where id = auth.uid())
+        and exists (
+            select 1
+            from public.organization_members om
+            where om.organization_id = event_rsvps.organization_id
+              and om.profile_id = auth.uid()
+        )
     );
 
 -- Users can access RSVPs for their org, but must be linked to the team_id via coach or profile_players
 create policy "Users can access team RSVPs" on public.event_rsvps
     for select to authenticated
     using (
-        organization_id = (select organization_id from public.profiles where id = auth.uid())
+        exists (
+            select 1
+            from public.organization_members om
+            where om.organization_id = event_rsvps.organization_id
+              and om.profile_id = auth.uid()
+        )
         and (
             -- Is coach of this team
             auth.uid() in (
-                select profile_id from public.coaches 
+                select user_id from public.coaches
                 where id in (select coach_id from public.teams where id = event_rsvps.team_id)
                 or id = any(select unnest(assistant_coach_ids) from public.teams where id = event_rsvps.team_id)
             )
@@ -85,11 +105,21 @@ create policy "Users can access team RSVPs" on public.event_rsvps
 create policy "Parents can insert/update RSVPs for their children" on public.event_rsvps
     for all to authenticated
     using (
-        organization_id = (select organization_id from public.profiles where id = auth.uid())
+        exists (
+            select 1
+            from public.organization_members om
+            where om.organization_id = event_rsvps.organization_id
+              and om.profile_id = auth.uid()
+        )
         and player_id in (select player_id from public.profile_players where profile_id = auth.uid())
     )
     with check (
-        organization_id = (select organization_id from public.profiles where id = auth.uid())
+        exists (
+            select 1
+            from public.organization_members om
+            where om.organization_id = event_rsvps.organization_id
+              and om.profile_id = auth.uid()
+        )
         and player_id in (select player_id from public.profile_players where profile_id = auth.uid())
     );
 
@@ -130,17 +160,27 @@ create policy "Admins can access all team messages" on public.team_messages
     for all to authenticated
     using (
         ((auth.jwt() -> 'app_metadata' ->> 'role') = 'admin')
-        and organization_id = (select organization_id from public.profiles where id = auth.uid())
+        and exists (
+            select 1
+            from public.organization_members om
+            where om.organization_id = team_messages.organization_id
+              and om.profile_id = auth.uid()
+        )
     );
 
 create policy "Users can select team messages" on public.team_messages
     for select to authenticated
     using (
-        organization_id = (select organization_id from public.profiles where id = auth.uid())
+        exists (
+            select 1
+            from public.organization_members om
+            where om.organization_id = team_messages.organization_id
+              and om.profile_id = auth.uid()
+        )
         and (
             -- Is coach of this team
             auth.uid() in (
-                select profile_id from public.coaches 
+                select user_id from public.coaches
                 where id in (select coach_id from public.teams where id = team_messages.team_id)
                 or id = any(select unnest(assistant_coach_ids) from public.teams where id = team_messages.team_id)
             )
@@ -158,12 +198,17 @@ create policy "Users can select team messages" on public.team_messages
 create policy "Users can insert team messages" on public.team_messages
     for insert to authenticated
     with check (
-        organization_id = (select organization_id from public.profiles where id = auth.uid())
+        exists (
+            select 1
+            from public.organization_members om
+            where om.organization_id = team_messages.organization_id
+              and om.profile_id = auth.uid()
+        )
         and author_id = auth.uid()
         and (
             -- Is coach of this team
             auth.uid() in (
-                select profile_id from public.coaches 
+                select user_id from public.coaches
                 where id in (select coach_id from public.teams where id = team_messages.team_id)
                 or id = any(select unnest(assistant_coach_ids) from public.teams where id = team_messages.team_id)
             )

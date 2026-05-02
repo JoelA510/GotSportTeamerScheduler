@@ -60,6 +60,71 @@ BEGIN
 END;
 $$;
 
+-- Fresh-replay canonicalization:
+-- Historical migrations before this point created an interim bigint-based
+-- season schema. The canonical app schema below uses UUID primary keys and is
+-- what later migrations, pgTAP fixtures, and Edge Functions expect. During a
+-- fresh local/CI replay, drop the interim public app tables before rebuilding
+-- the definitive schema. Existing environments that already recorded this
+-- migration do not re-run it.
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'season_settings'
+          AND column_name = 'id'
+          AND data_type = 'bigint'
+    ) THEN
+        DROP VIEW IF EXISTS
+            public.coach_team_map,
+            public.view_org_metrics,
+            public.view_compliance_stats,
+            public.view_facility_usage,
+            public.view_league_standings
+        CASCADE;
+
+        DROP TABLE IF EXISTS
+            public.audit_log,
+            public.evaluation_run_events,
+            public.evaluation_metrics,
+            public.evaluation_findings,
+            public.evaluation_runs,
+            public.scheduler_runs,
+            public.schedule_evaluations,
+            public.email_log,
+            public.export_jobs,
+            public.player_buddies,
+            public.staging_players,
+            public.import_jobs,
+            public.imports,
+            public.registrations,
+            public.registration_forms,
+            public.team_messages,
+            public.event_rsvps,
+            public.games,
+            public.game_assignments,
+            public.game_slots,
+            public.practice_assignments,
+            public.practice_slots,
+            public.team_players,
+            public.teams,
+            public.profile_players,
+            public.coaches,
+            public.players,
+            public.field_subunits,
+            public.fields,
+            public.locations,
+            public.divisions,
+            public.season_settings,
+            public.organization_members,
+            public.profiles,
+            public.organizations
+        CASCADE;
+    END IF;
+END $$;
+
 -- ==================================================================================
 -- 1. CORE ORGANIZATION & AUTH TABLES
 -- ==================================================================================
@@ -429,7 +494,7 @@ CREATE TABLE IF NOT EXISTS public.game_slots (
     field_id            uuid NOT NULL REFERENCES public.fields(id) ON DELETE CASCADE,
     division_id         uuid REFERENCES public.divisions(id) ON DELETE SET NULL,
     start                timestamptz,
-    end                 timestamptz,
+    "end"               timestamptz,
     slot_date           date,
     start_time          time,
     end_time            time,
@@ -1078,5 +1143,123 @@ CREATE POLICY "Audit Log: admins view"
               AND om.role = 'admin'
         )
     );
+
+-- ==================================================================================
+-- 14. REPORTING VIEWS
+-- ==================================================================================
+
+CREATE OR REPLACE VIEW public.coach_team_map
+WITH (security_invoker = true)
+AS
+SELECT
+    c.user_id AS coach_user_id,
+    t.id AS team_id
+FROM public.coaches c
+JOIN public.teams t ON t.coach_id = c.id
+WHERE c.user_id IS NOT NULL
+UNION
+SELECT
+    c.user_id AS coach_user_id,
+    t.id AS team_id
+FROM public.coaches c
+JOIN public.teams t ON c.id = ANY(t.assistant_coach_ids)
+WHERE c.user_id IS NOT NULL;
+
+CREATE OR REPLACE VIEW public.view_org_metrics
+WITH (security_invoker = true)
+AS
+SELECT
+    o.id AS organization_id,
+    o.name AS organization_name,
+    (SELECT COUNT(p.id) FROM public.players p WHERE p.organization_id = o.id) AS total_players,
+    (SELECT COUNT(t.id) FROM public.teams t WHERE t.organization_id = o.id) AS total_teams,
+    (SELECT COUNT(om.profile_id) FROM public.organization_members om WHERE om.organization_id = o.id) AS total_users
+FROM public.organizations o;
+
+CREATE OR REPLACE VIEW public.view_compliance_stats
+WITH (security_invoker = true)
+AS
+SELECT
+    rf.id AS form_id,
+    rf.organization_id,
+    rf.title AS form_title,
+    COUNT(r.id) AS total_registrations,
+    COUNT(r.id) FILTER (WHERE r.waiver_signed = true) AS waivers_signed,
+    COUNT(r.id) FILTER (WHERE r.medical_cleared = true) AS medical_cleared
+FROM public.registration_forms rf
+LEFT JOIN public.registrations r ON r.form_id = rf.id
+GROUP BY rf.id, rf.organization_id, rf.title;
+
+CREATE OR REPLACE VIEW public.view_facility_usage
+WITH (security_invoker = true)
+AS
+SELECT
+    f.id AS field_id,
+    f.organization_id,
+    f.name AS field_name,
+    COUNT(DISTINCT pa.id) AS practice_count,
+    COUNT(DISTINCT g.id) AS game_count,
+    COUNT(DISTINCT pa.id) + COUNT(DISTINCT g.id) AS total_events
+FROM public.fields f
+LEFT JOIN public.practice_slots ps ON ps.field_id = f.id
+LEFT JOIN public.practice_assignments pa ON pa.practice_slot_id = ps.id
+LEFT JOIN public.game_slots gs ON gs.field_id = f.id
+LEFT JOIN public.games g ON g.game_slot_id = gs.id
+GROUP BY f.id, f.organization_id, f.name;
+
+CREATE OR REPLACE VIEW public.view_league_standings
+WITH (security_invoker = true)
+AS
+WITH game_results AS (
+    SELECT
+        id AS game_id,
+        season_id,
+        home_team_id AS team_id,
+        score_home AS goals_for,
+        score_away AS goals_against,
+        CASE WHEN score_home > score_away THEN 1 ELSE 0 END AS win,
+        CASE WHEN score_home < score_away THEN 1 ELSE 0 END AS loss,
+        CASE WHEN score_home = score_away THEN 1 ELSE 0 END AS draw
+    FROM public.games
+    WHERE score_home IS NOT NULL AND score_away IS NOT NULL
+
+    UNION ALL
+
+    SELECT
+        id AS game_id,
+        season_id,
+        away_team_id AS team_id,
+        score_away AS goals_for,
+        score_home AS goals_against,
+        CASE WHEN score_away > score_home THEN 1 ELSE 0 END AS win,
+        CASE WHEN score_away < score_home THEN 1 ELSE 0 END AS loss,
+        CASE WHEN score_away = score_home THEN 1 ELSE 0 END AS draw
+    FROM public.games
+    WHERE score_home IS NOT NULL AND score_away IS NOT NULL
+)
+SELECT
+    t.id AS team_id,
+    t.organization_id,
+    t.name AS team_name,
+    t.division_id,
+    COUNT(gr.game_id) AS games_played,
+    COALESCE(SUM(gr.win), 0) AS wins,
+    COALESCE(SUM(gr.loss), 0) AS losses,
+    COALESCE(SUM(gr.draw), 0) AS draws,
+    COALESCE(SUM(gr.goals_for), 0) AS goals_for,
+    COALESCE(SUM(gr.goals_against), 0) AS goals_against,
+    COALESCE(SUM(gr.goals_for), 0) - COALESCE(SUM(gr.goals_against), 0) AS goal_differential,
+    (COALESCE(SUM(gr.win), 0) * 3) + COALESCE(SUM(gr.draw), 0) AS points
+FROM public.teams t
+LEFT JOIN game_results gr ON gr.team_id = t.id
+GROUP BY t.id, t.organization_id, t.name, t.division_id;
+
+GRANT SELECT ON
+    public.coach_team_map,
+    public.view_org_metrics,
+    public.view_compliance_stats,
+    public.view_facility_usage,
+    public.view_league_standings
+TO authenticated;
 
 COMMIT;

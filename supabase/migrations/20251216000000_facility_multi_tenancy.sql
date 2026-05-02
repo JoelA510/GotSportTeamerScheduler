@@ -32,13 +32,13 @@ create policy "Organizations can access their own locations"
   using (
     organization_id is null -- Shared/Global facilities
     or organization_id in (
-      select org_id from user_organizations where user_id = auth.uid()
+      select organization_id from public.organization_members where profile_id = auth.uid()
     )
     or ((auth.jwt() -> 'app_metadata' ->> 'role') = 'admin')
   )
   with check (
     organization_id in (
-      select org_id from user_organizations where user_id = auth.uid()
+      select organization_id from public.organization_members where profile_id = auth.uid()
     )
     or ((auth.jwt() -> 'app_metadata' ->> 'role') = 'admin')
   );
@@ -53,13 +53,13 @@ create policy "Organizations can access their own fields"
   using (
     organization_id is null 
     or organization_id in (
-      select org_id from user_organizations where user_id = auth.uid()
+      select organization_id from public.organization_members where profile_id = auth.uid()
     )
     or ((auth.jwt() -> 'app_metadata' ->> 'role') = 'admin')
   )
   with check (
     organization_id in (
-      select org_id from user_organizations where user_id = auth.uid()
+      select organization_id from public.organization_members where profile_id = auth.uid()
     )
     or ((auth.jwt() -> 'app_metadata' ->> 'role') = 'admin')
   );
@@ -76,14 +76,18 @@ create policy "Organizations can access their own field subunits"
     field_id in (
       select id from fields 
       where organization_id is null 
-         or organization_id in (select org_id from user_organizations where user_id = auth.uid())
+         or organization_id in (
+           select organization_id from public.organization_members where profile_id = auth.uid()
+         )
     )
     or ((auth.jwt() -> 'app_metadata' ->> 'role') = 'admin')
   )
   with check (
     field_id in (
       select id from fields 
-      where organization_id in (select org_id from user_organizations where user_id = auth.uid())
+      where organization_id in (
+        select organization_id from public.organization_members where profile_id = auth.uid()
+      )
     )
     or ((auth.jwt() -> 'app_metadata' ->> 'role') = 'admin')
   );

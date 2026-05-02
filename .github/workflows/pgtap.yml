@@ -10,11 +10,19 @@ on:
     paths:
       - 'supabase/migrations/**'
       - 'supabase/tests/**'
+      - 'supabase/config.toml'
       - '.github/workflows/pgtap.yml'
   workflow_dispatch: {}
 
 permissions:
   contents: read
+
+concurrency:
+  group: pgtap-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  SUPABASE_CLI_VERSION: 2.95.4
 
 jobs:
   pgtap:
@@ -28,13 +36,16 @@ jobs:
       - name: Setup Supabase CLI
         uses: supabase/setup-cli@v1
         with:
-          version: latest
+          version: ${{ env.SUPABASE_CLI_VERSION }}
+
+      - name: Verify Supabase CLI version
+        run: supabase --version
 
       - name: Start local Supabase (applies all migrations)
         run: supabase start
 
       - name: Run pgTAP tests
-        run: supabase test db
+        run: npm run test:db
 
       - name: Stop local Supabase
         if: always()

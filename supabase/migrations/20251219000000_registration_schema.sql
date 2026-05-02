@@ -9,7 +9,7 @@ create table if not exists public.registration_forms (
     organization_id uuid not null references public.organizations(id) on delete cascade,
     title text not null,
     description text,
-    season_id uuid references public.season_settings(id) on delete cascade,
+    season_id bigint references public.season_settings(id) on delete cascade,
     fields jsonb not null default '[]'::jsonb,
     waiver_text text,
     status text not null default 'draft' check (status in ('draft', 'open', 'closed')),
@@ -44,10 +44,10 @@ create policy "Admins manage forms" on public.registration_forms
     for all
     using (
         exists (
-            select 1 from public.organization_roles
-            where organization_roles.profile_id = auth.uid()
-            and organization_roles.organization_id = registration_forms.organization_id
-            and organization_roles.role = 'admin'
+            select 1 from public.organization_members
+            where organization_members.profile_id = auth.uid()
+            and organization_members.organization_id = registration_forms.organization_id
+            and organization_members.role = 'admin'
         )
     );
 
@@ -65,10 +65,10 @@ create policy "Admins select registrations" on public.registrations
     for select
     using (
         exists (
-            select 1 from public.organization_roles
-            where organization_roles.profile_id = auth.uid()
-            and organization_roles.organization_id = registrations.organization_id
-            and organization_roles.role = 'admin'
+            select 1 from public.organization_members
+            where organization_members.profile_id = auth.uid()
+            and organization_members.organization_id = registrations.organization_id
+            and organization_members.role = 'admin'
         )
     );
     
@@ -76,10 +76,10 @@ create policy "Admins update registrations" on public.registrations
     for update
     using (
         exists (
-            select 1 from public.organization_roles
-            where organization_roles.profile_id = auth.uid()
-            and organization_roles.organization_id = registrations.organization_id
-            and organization_roles.role = 'admin'
+            select 1 from public.organization_members
+            where organization_members.profile_id = auth.uid()
+            and organization_members.organization_id = registrations.organization_id
+            and organization_members.role = 'admin'
         )
     );
 
@@ -87,10 +87,10 @@ create policy "Admins delete registrations" on public.registrations
     for delete
     using (
         exists (
-            select 1 from public.organization_roles
-            where organization_roles.profile_id = auth.uid()
-            and organization_roles.organization_id = registrations.organization_id
-            and organization_roles.role = 'admin'
+            select 1 from public.organization_members
+            where organization_members.profile_id = auth.uid()
+            and organization_members.organization_id = registrations.organization_id
+            and organization_members.role = 'admin'
         )
     );
 
@@ -117,10 +117,10 @@ create policy "Parents update own registrations" on public.registrations
 -- Triggers for updated_at
 create trigger handle_updated_at_forms
     before update on public.registration_forms
-    for each row execute procedure moddatetime (updated_at);
+    for each row execute function trigger_set_timestamp();
 
 create trigger handle_updated_at_registrations
     before update on public.registrations
-    for each row execute procedure moddatetime (updated_at);
+    for each row execute function trigger_set_timestamp();
 
 commit;

@@ -28,6 +28,8 @@ ALTER TABLE public.audit_log ADD CONSTRAINT audit_log_action_check
 
 -- 3. Redefine is_org_admin() to include tenant_admin
 --    This ensures existing RPCs (feature flags, settings) work for organization owners.
+DROP FUNCTION IF EXISTS public.is_org_admin(UUID);
+
 CREATE OR REPLACE FUNCTION public.is_org_admin(p_org_id UUID)
 RETURNS BOOLEAN
 LANGUAGE plpgsql

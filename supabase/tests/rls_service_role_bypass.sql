@@ -11,7 +11,8 @@
 
 BEGIN;
 
-\i supabase/tests/_fixtures.sql
+\set squadlogic_fixture_include 1
+\ir _fixtures.sql
 
 SELECT plan(1);
 

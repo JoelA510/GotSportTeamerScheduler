@@ -1,6 +1,7 @@
 -- Shared pgTAP fixtures.
 --
--- Included by `\i supabase/tests/_fixtures.sql` from every RLS test. Seeds
+-- Included by `\ir _fixtures.sql` from every RLS test after setting
+-- `squadlogic_fixture_include`. Seeds
 -- two organizations, three users, one team per org, one audit-log row per
 -- org, and one telemetry/import pair per org so cross-org isolation tests
 -- have something to measure.
@@ -23,6 +24,16 @@
 --   A-Team   aaaaaaaa-0000-0000-0000-000000000001   (Org A)
 --   B-Team   bbbbbbbb-0000-0000-0000-000000000002   (Org B)
 
+\if :{?squadlogic_fixture_include}
+\else
+BEGIN;
+SELECT plan(1);
+SELECT pass('fixture helper is available; include it with \ir _fixtures.sql from tests');
+SELECT * FROM finish();
+ROLLBACK;
+\quit
+\endif
+
 -- ──────────────────────────────────────────────────────────────
 -- 1. auth.users — seed three fixture users.
 --    The auth.users → profiles trigger (handle_new_user) fires on INSERT
@@ -31,11 +42,11 @@
 INSERT INTO auth.users (id, email, raw_user_meta_data, aud, role)
 VALUES
     ('11111111-1111-1111-1111-111111111111', 'alice@test.local',
-     jsonb_build_object('full_name', 'Alice Admin-A'),   'authenticated', 'authenticated'),
+     jsonb_build_object('full_name', 'Alice Admin-A', 'password_length', 12),   'authenticated', 'authenticated'),
     ('22222222-2222-2222-2222-222222222222', 'bob@test.local',
-     jsonb_build_object('full_name', 'Bob Admin-B'),     'authenticated', 'authenticated'),
+     jsonb_build_object('full_name', 'Bob Admin-B', 'password_length', 12),     'authenticated', 'authenticated'),
     ('33333333-3333-3333-3333-333333333333', 'charlie@test.local',
-     jsonb_build_object('full_name', 'Charlie Coach-A'), 'authenticated', 'authenticated')
+     jsonb_build_object('full_name', 'Charlie Coach-A', 'password_length', 12), 'authenticated', 'authenticated')
 ON CONFLICT (id) DO NOTHING;
 
 -- Safety net: if the handle_new_user trigger is disabled for any reason,
