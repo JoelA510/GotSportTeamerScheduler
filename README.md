@@ -6,11 +6,10 @@
 >
 > SquadLogic converts raw GotSport registration data into actionable teaming and scheduling frameworks, designed specifically to support youth sports organizations.
 
-> **Release status**: v1.0.1 (2026-04-23) — see [`CHANGELOG.md`](CHANGELOG.md) for release notes.
+> **Release status**: v1.0.1 (2026-04-23) shipped. Release-readiness hardening for the next cut is in progress; see [`CHANGELOG.md`](CHANGELOG.md) and [`docs/operations/ci-cd.md`](docs/operations/ci-cd.md).
 > **CI**: [![CI](https://github.com/JoelA510/SquadLogic/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/JoelA510/SquadLogic/actions/workflows/ci.yml)
 > **Deployment**: https://squadlogic.vercel.app/
 
-[![Build Status](https://img.shields.io/badge/build-passing-brightgreen)](https://github.com/JoelA510/SquadLogic/actions)
 [![License: ISC](https://img.shields.io/badge/License-ISC-blue.svg)](https://opensource.org/licenses/ISC)
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D20-green)](https://nodejs.org/)
 [![Vite](https://img.shields.io/badge/Vite-6.x-646cff)](https://vitejs.dev/)
@@ -21,11 +20,11 @@
 
 SquadLogic is a comprehensive tool for youth sports administrators. It simplifies the complex logistics of organizing leagues by automating team generation, practice scheduling, and game scheduling. Built with a modern tech stack and a "Deep Space Glass" design system, it offers a premium, intuitive user experience.
 
-> **Status:** v1.0 GA — Phase 10 pre-flight certification complete, post-launch monitoring in effect. See [`docs/operations/production-cutover.md`](docs/operations/production-cutover.md) for launch runbook.
+> **Status:** v1.0 GA is deployed. Current release-readiness work is focused on CI/CD reproducibility, pgTAP reliability, durable import persistence, and final validation. See [`docs/operations/production-cutover.md`](docs/operations/production-cutover.md) for the launch runbook.
 
 ## ✨ Implemented Features (v1.0 MVP Complete)
 
-SquadLogic v1.0 is feature-complete, providing a full-suite operational platform for youth sports management.
+SquadLogic v1.0 provides the core operational platform for youth sports management. The GotSport CSV path currently covers validation and import-job tracking; durable promotion into player, coach, and team records is tracked for the v1.1 release-readiness work.
 
 ### ✅ Implemented Baseline
 
@@ -83,7 +82,7 @@ The application is structured around the following core admin workflows (see `Ap
 2. **Install dependencies:**
 
    ```bash
-   npm install
+   npm ci
    ```
 
 3. **Environment Setup:**
