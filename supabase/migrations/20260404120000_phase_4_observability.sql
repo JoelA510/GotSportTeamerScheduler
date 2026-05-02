@@ -51,7 +51,16 @@ CREATE POLICY "Users can view their organization's import jobs"
 -- 5. Efficiency Metric View (Optional Helper)
 -- Derived from telemetry_log for the "Smart Match Rate"
 CREATE OR REPLACE VIEW public.import_efficiency_metrics AS
-SELECT 
+WITH import_events AS (
+    SELECT
+        CASE
+            WHEN payload->>'import_job_id' ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+                THEN (payload->>'import_job_id')::uuid
+        END AS import_job_id,
+        event_type
+    FROM public.telemetry_log
+)
+SELECT
     import_job_id,
     COUNT(*) FILTER (WHERE event_type = 'import.suggestion_applied') as suggestions_applied,
     COUNT(*) FILTER (WHERE event_type = 'import.suggestion_received') as total_suggestions,
@@ -60,7 +69,8 @@ SELECT
         THEN (COUNT(*) FILTER (WHERE event_type = 'import.suggestion_applied')::float / COUNT(*) FILTER (WHERE event_type = 'import.suggestion_received')::float) * 100
         ELSE 100
     END as match_rate
-FROM public.telemetry_log
+FROM import_events
+WHERE import_job_id IS NOT NULL
 GROUP BY import_job_id;
 
 -- Ensure RLS on the view if needed (PostgreSQL views don't have RLS, but the underlying tables do)

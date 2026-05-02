@@ -5,7 +5,7 @@
 --   e.g. `rls_cross_org_isolation.sql`, `trigger_audit_log_append_only.sql`.
 -- * Wrap the whole body in BEGIN ... ROLLBACK so the DB state is unchanged
 --   after the test runs — pgTAP tests must be idempotent.
--- * Include shared fixtures with `\i supabase/tests/_fixtures.sql` where
+-- * Include shared fixtures with `\ir _fixtures.sql` where
 --   possible. Per-test INSERTs are discouraged; extend `_fixtures.sql` if
 --   you need new seed data.
 -- * Simulate a user with `SET LOCAL role = 'authenticated'` +
@@ -33,7 +33,8 @@
 BEGIN;
 
 -- Include shared fixtures (Alice/Bob/Charlie + Org A/B + A-Team/B-Team).
-\i supabase/tests/_fixtures.sql
+\set squadlogic_fixture_include 1
+\ir _fixtures.sql
 
 -- Declare the number of assertions this test will make.
 SELECT plan(1);

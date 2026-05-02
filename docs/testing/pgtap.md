@@ -15,7 +15,10 @@ Together they cover structural + behavioral regressions.
 
 ## Running locally
 
-Prerequisites: Supabase CLI + Docker Desktop.
+Prerequisites: Supabase CLI `2.95.4` + Docker Desktop. The committed
+`supabase/config.toml` uses non-default local ports (`55421` API, `55422`
+Postgres, `55423` Studio, `55424` Mailpit) so this repo can run alongside
+other local Supabase projects.
 
 ```bash
 supabase start            # ~3 min first time; pulls images & applies every migration
@@ -23,11 +26,19 @@ npm run test:db           # runs every supabase/tests/*.sql in order
 supabase stop
 ```
 
+`supabase/config.toml` disables automatic `supabase/seed.sql` loading. The
+historical sample seed still targets the old bigint season schema; pgTAP tests
+seed only the rows they need through `_fixtures.sql`.
+
 Single file (for fast iteration while writing a new test):
 
 ```bash
 npm run test:db:once supabase/tests/rls_cross_org_isolation.sql
 ```
+
+`test:db:once` always passes `_fixtures.sql` to the Supabase runner before the
+requested file. That is intentional: single-file runs only mount explicitly
+listed files, while tests include the fixture helper with `\ir`.
 
 ## CI
 
@@ -36,6 +47,7 @@ instance on every PR that touches:
 
 - `supabase/migrations/**`
 - `supabase/tests/**`
+- `supabase/config.toml`
 - `.github/workflows/pgtap.yml` itself
 
 **Conditional trigger is load-bearing.** A full `supabase start` + test
@@ -48,14 +60,20 @@ you need to validate the suite without an open PR.
 
 ## Writing a test
 
-1. Copy `supabase/tests/_template.sql` to a descriptive filename —
+1. Copy `supabase/tests/_template.sql.txt` to a descriptive filename —
    snake_case, `<area>_<invariant>.sql`:
    - `rls_players_coach_write.sql`
    - `trigger_audit_log_append_only.sql`
    - `function_rotate_calendar_token_rejects_stranger.sql`
 2. Wrap the body in `BEGIN ... ROLLBACK`. Tests must leave zero residue.
-3. Include `\i supabase/tests/_fixtures.sql` if you need the shared seed
-   (two orgs, three users, a team per org, audit rows, import rows).
+3. Include the shared seed (two orgs, three users, a team per org, audit
+   rows, import rows) with:
+
+   ```sql
+   \set squadlogic_fixture_include 1
+   \ir _fixtures.sql
+   ```
+
    If the fixture is missing something, extend `_fixtures.sql` — **per-test
    INSERT statements are forbidden**.
 4. Declare `SELECT plan(N)` with the exact number of assertions. Too many
@@ -133,6 +151,9 @@ visible in git history.
 - Supabase CLI's `supabase test db` command auto-discovers every
   `supabase/tests/*.sql` file, so simply adding a file is sufficient —
   no test-registry update needed.
+- `_fixtures.sql` is also a valid standalone pgTAP file. When run directly by
+  auto-discovery it only asserts the helper is available; when included from a
+  real test after `\set squadlogic_fixture_include 1`, it seeds fixture rows.
 - Revert migration: `docs/sql/reverts/20260423065246_disable_pgtap.sql`.
 
 ## Related docs

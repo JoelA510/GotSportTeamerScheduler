@@ -37,6 +37,11 @@ declare
     evaluation_run_id uuid;
     export_job_id uuid;
 begin
+    if coalesce(current_setting('squadlogic.seed_sample_data', true), '') <> 'on' then
+        raise notice 'Skipping historical sample seed data. Set squadlogic.seed_sample_data=on to opt in.';
+        return;
+    end if;
+
     insert into season_settings (
         season_label,
         season_year,

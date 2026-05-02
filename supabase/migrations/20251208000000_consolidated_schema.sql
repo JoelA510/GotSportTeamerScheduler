@@ -944,13 +944,11 @@ on conflict (id) do nothing;
 -- Set up RLS policies for the bucket
 -- Note: Policies might fail if they already exist, so we drop them first just in case
 drop policy if exists "Public Access" on storage.objects;
-drop policy if exists "Public Access" on storage;
 create policy "Public Access"
   on storage.objects for select
   using ( bucket_id = 'raw-imports' );
 
 drop policy if exists "Authenticated Upload" on storage.objects;
-drop policy if exists "Authenticated Upload" on storage;
 create policy "Authenticated Upload"
   on storage.objects for insert
   with check ( bucket_id = 'raw-imports' and auth.role() = 'authenticated' );

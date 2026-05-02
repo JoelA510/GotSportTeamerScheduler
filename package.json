@@ -21,7 +21,7 @@
     "test:e2e:ui": "bddgen && playwright test --ui",
     "test:e2e:codegen": "playwright codegen http://localhost:5173",
     "test:db": "supabase test db",
-    "test:db:once": "supabase test db --file"
+    "test:db:once": "supabase test db supabase/tests/_fixtures.sql"
   },
   "directories": {
     "doc": "docs"
