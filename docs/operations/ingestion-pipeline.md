@@ -1,13 +1,17 @@
-[← Back to Documentation Index](docs/README.md)
+[← Back to Documentation Index](../README.md)
+
 ---
 
 > [!NOTE]
-> **Implementation Status: COMPLETE**
+> **Implementation Status: PARTIAL**
 >
-> The ingestion pipeline described below has been implemented. Key implementation differences from the original design:
+> The validation and player-promotion slice of the ingestion pipeline has been
+> implemented. Key implementation differences from the original design:
 >
 > - CSV parsing uses **PapaParse** (not `@fast-csv/parse`)
 > - Client-side validation is in `ImportContext.jsx`; server-side validation is in the `import-validation` Edge Function
+> - Valid player rows are staged in `staging_players` with source row numbers and promoted by `finalize_import_job(uuid, jsonb)` into `players`
+> - Coach, team, field-slot, and buddy-pair promotion remain pending v1.1 follow-up work
 > - Header matching uses a strict alias map (not fuzzy `.includes()`)
 > - Testing uses **Vitest** (not Jest)
 > - File size enforcement (10 MB) is implemented both client-side and via Supabase Storage policy
@@ -30,9 +34,9 @@ This document expands on the roadmap tasks for importing GotSport registrations 
 ### 1.2 Serverless Processing
 
 1. Upload the raw CSV to Supabase Storage under `imports/registrations/<uuid>.csv` with metadata referencing the user id.
-2. Invoke an Edge Function (`process-registration-import`) with the storage path and a generated `import_job_id`.
+2. Invoke the `import-validation` Edge Function with parsed rows and a generated `import_job_id`.
 3. Inside the function:
-   - Stream-parse the CSV (e.g., using `@fast-csv/parse`) to avoid loading the entire file into memory.
+   - Validate and sanitize chunked rows received from the browser.
    - Normalize guardian contacts into a JSON array (`[{ name, email, phone, primary }]`).
    - Build a map of `mutual_buddy_code → [playerIds]` to quickly detect reciprocal pairs.
    - For each row, stage inserts into a staging table `staging_players` that includes the `import_job_id` to handle concurrent jobs, with raw values and validation flags.
@@ -47,11 +51,13 @@ This document expands on the roadmap tasks for importing GotSport registrations 
 
 ### 1.4 Commit Phase
 
-1. If any row fails hard validation, leave the import job in `status = 'needs_fix'` and provide a downloadable CSV of errors.
-2. When all rows pass:
-   - Upsert into `players`, `coaches`, and related tables using SQL functions to ensure transactional safety.
-   - Derive buddy pairings by writing to a helper table `player_buddies` (`player_id`, `buddy_player_id`, `source_import_job`).
-   - Mark the import job as `status = 'completed'` and persist row counts, buddy statistics, and processing duration.
+1. If rows fail validation, keep row errors in `import_jobs.error_summary` and finish as `completed_with_warnings` when at least one valid player row is promoted.
+2. When validation completes:
+   - Call `finalize_import_job(import_job_id, validation_errors)` to promote staged player rows into `players` in one transaction.
+   - Use GotSport/external registration id as the preferred player match key. Rows without an external id are still promoted once per import job.
+   - Mark promoted staging rows with `promoted_at` / `promoted_by` so re-running finalization for the same job does not duplicate players.
+   - Store promotion counts in `import_jobs.warning_summary.finalize` and mark the import job `completed` or `completed_with_warnings`.
+3. Pending follow-up: coach lead promotion, buddy pair materialization, team creation, and field-slot promotion.
 
 ### 1.5 Notifications & Audit
 
@@ -99,11 +105,11 @@ This document expands on the roadmap tasks for importing GotSport registrations 
 
 - Require admin authentication before allowing uploads.
 - Scope Supabase Storage buckets with RLS policies so only admin users can read imported files.
-- Ensure Edge Functions validate JWTs and confirm the requesting user has the `role = 'admin'` claim before starting work.
+- Ensure Edge Functions validate JWTs and confirm the requesting user is an admin or tenant admin for the target organization before starting work.
 
 ## 5. Next Implementation Tasks
 
-- Scaffold the `import_jobs`, `staging_players`, and `player_buddies` tables in the first Supabase migration.
-- Build typed DTOs and Zod schemas for CSV rows to guarantee consistent parsing in TypeScript.
-- Draft Jest tests covering happy paths, duplicate detection, buddy validation, and overlapping slot rejection.
-- Add roadmap tasks for building the admin UI upload screens once the backend pipeline is ready.
+- Finish coach lead promotion from player imports and coach CSV imports.
+- Materialize buddy requests into `player_buddies` after player promotion.
+- Add field availability promotion into facility and slot tables.
+- Add duplicate and unknown-division operator review surfaces beyond the current warning metadata.

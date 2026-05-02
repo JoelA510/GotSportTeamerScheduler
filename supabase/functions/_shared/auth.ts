@@ -63,6 +63,32 @@ export async function verifyOrgMembership(
 }
 
 /**
+ * Verify that a user can administer a specific organization.
+ * Uses the service-role client to avoid recursive RLS while checking the
+ * organization_members table itself.
+ */
+export async function verifyOrgAdmin(
+  serviceClient: SupabaseClient,
+  userId: string,
+  organizationId: string
+): Promise<boolean> {
+  const { data, error } = await serviceClient
+    .from('organization_members')
+    .select('profile_id')
+    .eq('profile_id', userId)
+    .eq('organization_id', organizationId)
+    .in('role', ['admin', 'tenant_admin'])
+    .maybeSingle();
+
+  if (error) {
+    console.error('Org admin check failed:', error.message);
+    return false;
+  }
+
+  return data !== null;
+}
+
+/**
  * Get all organization IDs a user belongs to.
  */
 export async function getUserOrgIds(
@@ -120,18 +146,17 @@ export function recordAudit(
     metadata?: Record<string, unknown>;
   }
 ): void {
-  serviceClient
-    .rpc('record_audit_event', {
+  void (async () => {
+    const { error } = await serviceClient.rpc('record_audit_event', {
       p_organization_id: params.organizationId,
       p_action: params.action,
       p_resource_type: params.resourceType ?? null,
       p_resource_id: params.resourceId ?? null,
       p_metadata: params.metadata ?? {},
-    })
-    .then(({ error }) => {
-      if (error) console.error('Audit log write failed:', error.message);
-    })
-    .catch((err: Error) => console.error('Audit log write failed:', err.message));
+    });
+
+    if (error) console.error('Audit log write failed:', error.message);
+  })().catch((err: Error) => console.error('Audit log write failed:', err.message));
 }
 
 /**

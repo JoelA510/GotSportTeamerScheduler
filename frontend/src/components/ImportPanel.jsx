@@ -31,6 +31,7 @@ const REQUIRED_HEADERS = {
 /** @typedef {'players' | 'coaches' | 'fields'} ImportType */
 /** @type {readonly ImportType[]} */
 const IMPORT_TYPES = Object.freeze(['players', 'coaches', 'fields']);
+const COMPLETED_IMPORT_STATUSES = new Set(['completed', 'completed_with_warnings']);
 
 /**
  * Smart Confidence Badge component for high-fidelity mapping indicators.
@@ -96,6 +97,7 @@ export default function ImportPanel({ onImport }) {
   const { currentOrganization } = useOrganization();
 
   const theme = PERSISTENCE_THEMES.green;
+  const isComplete = COMPLETED_IMPORT_STATUSES.has(importStatus);
 
   const handleDragOver = (e) => {
     e.preventDefault();
@@ -341,7 +343,7 @@ export default function ImportPanel({ onImport }) {
     }
   };
 
-  if (isImporting || importStatus === 'completed') {
+  if (isImporting || isComplete) {
     return (
       <section className="glass-panel p-8 rounded-xl border border-border-subtle relative overflow-hidden mb-10">
         <div
@@ -349,7 +351,7 @@ export default function ImportPanel({ onImport }) {
         />
 
         <div className="relative z-10 flex flex-col items-center justify-center text-center py-8">
-          {importStatus === 'completed' ? (
+          {isComplete ? (
             <div className="mb-6 w-20 h-20 rounded-full bg-green-500/20 flex items-center justify-center animate-fadeIn">
               <CheckCircle className="w-10 h-10 text-green-400" />
             </div>
@@ -360,17 +362,18 @@ export default function ImportPanel({ onImport }) {
           )}
 
           <h2 className="text-3xl font-display font-bold text-text-primary mb-2">
-            {importStatus === 'completed' ? 'Import Complete!' : 'Importing Data...'}
+            {isComplete
+              ? importStatus === 'completed_with_warnings'
+                ? 'Import Applied with Warnings'
+                : 'Import Applied'
+              : 'Importing Data...'}
           </h2>
 
           <div className="w-full max-w-lg mb-8">
-            <ProgressBar
-              progress={progress}
-              label={importStatus === 'completed' ? 'Done' : 'Processing...'}
-            />
+            <ProgressBar progress={progress} label={isComplete ? 'Applied' : 'Processing...'} />
           </div>
 
-          {importStatus === 'completed' ? (
+          {isComplete ? (
             <div className="flex gap-4">
               <Button
                 variant="secondary"

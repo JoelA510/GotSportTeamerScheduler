@@ -16,7 +16,7 @@ import { z } from 'https://deno.land/x/zod@v3.22.4/mod.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.3';
 import {
   getUserFromRequest,
-  getUserOrgIds,
+  verifyOrgAdmin,
   recordAudit,
   corsHeaders,
   jsonResponse,
@@ -89,6 +89,38 @@ const HEADER_ALIASES: Record<string, string> = {
   'skill level': 'skill_tier',
   'skill tier': 'skill_tier',
   level: 'skill_tier',
+  id: 'gotsport_id',
+  pid: 'gotsport_id',
+  'official id': 'gotsport_id',
+  'gotsport id': 'gotsport_id',
+  gotsport_id: 'gotsport_id',
+  'registration id': 'external_registration_id',
+  registration_id: 'external_registration_id',
+  external_registration_id: 'external_registration_id',
+  group: 'division_name',
+  division: 'division_name',
+  division_name: 'division_name',
+  program: 'division_name',
+  grade: 'grade',
+  gender: 'gender',
+  'preferred name': 'preferred_name',
+  preferred_name: 'preferred_name',
+  nickname: 'nickname',
+  phone: 'phone',
+  'contact phone': 'contact_phone',
+  contact_phone: 'contact_phone',
+  'guardian name': 'guardian_name',
+  guardian_name: 'guardian_name',
+  'parent name': 'parent_name',
+  parent_name: 'parent_name',
+  'guardian email': 'guardian_email',
+  guardian_email: 'guardian_email',
+  'parent email': 'parent_email',
+  parent_email: 'parent_email',
+  'guardian phone': 'guardian_phone',
+  guardian_phone: 'guardian_phone',
+  'parent phone': 'parent_phone',
+  parent_phone: 'parent_phone',
 };
 
 function normalizeHeader(header: string): string {
@@ -164,6 +196,8 @@ const ImportValidationPayload = z.object({
   organization_id: z.string().uuid(),
   rows: z.array(z.record(z.unknown())).max(MAX_ROWS, `Maximum ${MAX_ROWS} rows per import`),
   file_name: z.string().max(255),
+  import_job_id: z.string().uuid().optional(),
+  row_offset: z.number().int().min(0).optional().default(0),
 });
 
 // --- Handler ---
@@ -226,17 +260,57 @@ serve(async (req: Request) => {
     return jsonResponse({ status: 'error', message: 'Invalid JSON' }, 400);
   }
 
-  // 4. Verify org membership
-  const userOrgIds = await getUserOrgIds(serviceClient, user.id);
-  if (!userOrgIds.includes(body.organization_id)) {
+  // 4. Verify org admin access before staging or validating import payloads.
+  const isOrgAdmin = await verifyOrgAdmin(serviceClient, user.id, body.organization_id);
+  if (!isOrgAdmin) {
     return jsonResponse(
-      { status: 'error', message: 'Access denied: not a member of this organization' },
+      { status: 'error', message: 'Access denied: not an admin of this organization' },
       403
     );
   }
 
+  if (body.import_job_id) {
+    const { data: job, error: jobError } = await serviceClient
+      .from('import_jobs')
+      .select('id, organization_id, job_type, status')
+      .eq('id', body.import_job_id)
+      .eq('organization_id', body.organization_id)
+      .maybeSingle();
+
+    if (jobError) {
+      console.error('Import job lookup failed:', jobError.message);
+      return jsonResponse({ status: 'error', message: 'Import job lookup failed' }, 500);
+    }
+
+    if (!job) {
+      return jsonResponse(
+        { status: 'error', message: 'Import job not found for organization' },
+        404
+      );
+    }
+
+    const expectedJobType = body.import_type === 'fields' ? 'fields' : 'registration';
+    if (job.job_type !== expectedJobType) {
+      return jsonResponse(
+        {
+          status: 'error',
+          message: `Import job type ${job.job_type} does not match ${body.import_type}`,
+        },
+        409
+      );
+    }
+
+    if (['completed', 'completed_with_warnings', 'failed'].includes(job.status)) {
+      return jsonResponse(
+        { status: 'error', message: `Import job cannot accept staged rows while ${job.status}` },
+        409
+      );
+    }
+  }
+
   // 5. Normalize headers and sanitize all rows
   const validatedRows: Record<string, string>[] = [];
+  const stagedRows: Record<string, unknown>[] = [];
   const allErrors: ValidationError[] = [];
 
   for (let i = 0; i < body.rows.length; i++) {
@@ -255,6 +329,41 @@ serve(async (req: Request) => {
       allErrors.push(...rowErrors);
     } else {
       validatedRows.push(normalizedRow);
+      if (body.import_type === 'players' && body.import_job_id) {
+        stagedRows.push({
+          import_job_id: body.import_job_id,
+          organization_id: body.organization_id,
+          source_row_number: body.row_offset + i + 1,
+          raw_payload: Object.fromEntries(
+            Object.entries(rawRow).map(([key, value]) => [key, sanitizeString(value)])
+          ),
+          normalized_payload: normalizedRow,
+          validation_errors: [],
+        });
+      }
+    }
+  }
+
+  if (stagedRows.length > 0) {
+    const sourceRowNumbers = stagedRows.map((row) => row.source_row_number);
+    const { error: deleteError } = await serviceClient
+      .from('staging_players')
+      .delete()
+      .eq('import_job_id', body.import_job_id)
+      .in('source_row_number', sourceRowNumbers);
+
+    if (deleteError) {
+      console.error('Failed to replace staged import rows:', deleteError.message);
+      return jsonResponse(
+        { status: 'error', message: 'Failed to replace staged import rows' },
+        500
+      );
+    }
+
+    const { error: stageError } = await serviceClient.from('staging_players').insert(stagedRows);
+    if (stageError) {
+      console.error('Failed to stage import rows:', stageError.message);
+      return jsonResponse({ status: 'error', message: 'Failed to stage import rows' }, 500);
     }
   }
 
@@ -269,6 +378,7 @@ serve(async (req: Request) => {
       total_rows: body.rows.length,
       valid_rows: validatedRows.length,
       error_rows: allErrors.length,
+      staged_rows: stagedRows.length,
     },
   });
 
@@ -279,6 +389,7 @@ serve(async (req: Request) => {
     total_rows: body.rows.length,
     valid_rows: validatedRows.length,
     error_rows: allErrors.length,
+    staged_rows: stagedRows.length,
     validated_data: validatedRows,
     validation_errors: allErrors,
   });
