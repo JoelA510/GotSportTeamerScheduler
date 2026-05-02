@@ -46,8 +46,9 @@ export default function TeamPortalPage() {
 
   const handleSendMessage = (e) => {
     e.preventDefault();
-    if (!chatInput.trim()) return;
-    sendMessage(chatInput);
+    const message = chatInput.trim();
+    if (!message) return;
+    sendMessage(message);
     setChatInput('');
   };
 
@@ -287,6 +288,7 @@ export default function TeamPortalPage() {
               />
               <button
                 type="submit"
+                aria-label="Send team message"
                 className="relative z-20 glass-button p-2 flex items-center justify-center"
               >
                 <Send size={18} />

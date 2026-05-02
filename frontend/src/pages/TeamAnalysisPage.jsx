@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useDashboardData } from '../hooks/useDashboardData.js';
 import { useTeamPersistence } from '../hooks/useTeamPersistence.js';
 import { useImport } from '../contexts/ImportContext.jsx';
+import { useOrganization } from '../contexts/OrganizationContext.jsx';
 import TeamOverviewPanel from '../components/TeamOverviewPanel.jsx';
 import ProgramOverview from '../components/teaming/ProgramOverview.jsx';
 import TeamingConfiguration from '../components/teaming/TeamingConfiguration.jsx';
@@ -13,22 +14,194 @@ import Button from '../components/ui/Button.jsx';
 import ProgressBar from '../components/ui/ProgressBar.jsx';
 import { Edit2, Save, ArrowRight } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient.js';
+import { generateTeams } from '../../../packages/core/src/teamGeneration.js';
+
+const DEFAULT_MAX_ROSTER_SIZE = 14;
+const DEFAULT_MIN_ROSTER_SIZE = 10;
+const DEFAULT_TARGET_TEAM_SIZE = 12;
+
+function getImportedRows(importedData) {
+  if (!importedData) return [];
+  if (Array.isArray(importedData)) return importedData;
+  if (Array.isArray(importedData.data)) return importedData.data;
+  if (Array.isArray(importedData.fullData)) return importedData.fullData;
+  if (Array.isArray(importedData.rows)) return importedData.rows;
+  return [];
+}
+
+function firstNonEmpty(row, keys) {
+  for (const key of keys) {
+    const value = row?.[key];
+    if (value !== undefined && value !== null && String(value).trim() !== '') {
+      return value;
+    }
+  }
+  return null;
+}
+
+function resolveDivisionName(row) {
+  return (
+    firstNonEmpty(row, [
+      'division_name',
+      'division',
+      'divisionName',
+      'Division',
+      'Group',
+      'Program',
+      'program',
+    ]) || 'Unassigned'
+  );
+}
+
+function resolveDivisionId(row) {
+  const explicitId = firstNonEmpty(row, ['division_id', 'divisionId']);
+  return String(explicitId || resolveDivisionName(row)).trim();
+}
+
+function createDefaultConfig(program) {
+  const estimatedTeams = Math.max(
+    1,
+    Math.ceil((program?.playerCount || 0) / DEFAULT_TARGET_TEAM_SIZE)
+  );
+  return {
+    targetTeamSize: DEFAULT_TARGET_TEAM_SIZE,
+    minRosterSize: DEFAULT_MIN_ROSTER_SIZE,
+    maxRosterSize: DEFAULT_MAX_ROSTER_SIZE,
+    minTeams: null,
+    maxTeams: null,
+    teamCountOverride: estimatedTeams,
+    seed: '',
+  };
+}
+
+function derivePrograms(rows) {
+  const grouped = new Map();
+
+  rows.forEach((row) => {
+    const id = resolveDivisionId(row);
+    const name = String(resolveDivisionName(row)).trim() || id;
+    const current = grouped.get(id) || { id, name, playerCount: 0 };
+    current.playerCount += 1;
+    grouped.set(id, current);
+  });
+
+  return Array.from(grouped.values()).map((program) => ({
+    ...program,
+    totalPlayers: program.playerCount,
+  }));
+}
+
+function positiveIntegerOrFallback(value, fallback) {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function deriveProgramStats(program, config = {}) {
+  const targetTeamSize = positiveIntegerOrFallback(config.targetTeamSize, DEFAULT_TARGET_TEAM_SIZE);
+  const maxRosterSize = positiveIntegerOrFallback(config.maxRosterSize, DEFAULT_MAX_ROSTER_SIZE);
+  const minTeams = positiveIntegerOrFallback(config.minTeams, null);
+  const maxTeams = positiveIntegerOrFallback(config.maxTeams, null);
+  const overrideTeams = positiveIntegerOrFallback(config.teamCountOverride, null);
+  const baseEstimate =
+    overrideTeams || Math.max(1, Math.ceil(program.playerCount / targetTeamSize));
+  const minBoundedEstimate = minTeams ? Math.max(baseEstimate, minTeams) : baseEstimate;
+  const estimatedTeams = maxTeams ? Math.min(minBoundedEstimate, maxTeams) : minBoundedEstimate;
+
+  return {
+    ...program,
+    estimatedTeams,
+    avgRosterSize: Number((program.playerCount / estimatedTeams).toFixed(1)),
+    capacity: estimatedTeams * maxRosterSize,
+  };
+}
+
+function parseBooleanLike(value) {
+  return ['true', 'yes', 'y', '1'].includes(
+    String(value || '')
+      .trim()
+      .toLowerCase()
+  );
+}
+
+function normalizeSkillRating(value) {
+  if (value === undefined || value === null || value === '') return undefined;
+  const numeric = Number(value);
+  if (Number.isFinite(numeric)) return numeric;
+
+  const text = String(value).trim().toLowerCase();
+  if (text === 'advanced') return 5;
+  if (text === 'developing') return 3;
+  if (text === 'novice') return 1;
+  return undefined;
+}
+
+function toGeneratorPlayer(row, sourceIndex, division) {
+  const id = String(
+    firstNonEmpty(row, [
+      'id',
+      'player_id',
+      'playerId',
+      'external_registration_id',
+      'gotsport_id',
+      'registration_id',
+    ]) || sourceIndex
+  );
+  const firstName = firstNonEmpty(row, ['first_name', 'First Name', 'firstName']) || '';
+  const lastName = firstNonEmpty(row, ['last_name', 'Last Name', 'lastName']) || '';
+  const skillRating = normalizeSkillRating(
+    firstNonEmpty(row, ['skillRating', 'skill_rating', 'Skill Rating', 'skill_tier', 'Skill Tier'])
+  );
+  const coachId = firstNonEmpty(row, ['coach_id', 'coachId', 'coach_email', 'Coach Email']);
+  const willingToCoach =
+    parseBooleanLike(row.willing_to_coach) ||
+    parseBooleanLike(row.coach_volunteer) ||
+    parseBooleanLike(row['Willing to Coach']);
+
+  return {
+    id,
+    division,
+    firstName,
+    lastName,
+    name: `${firstName} ${lastName}`.trim() || 'Unnamed Player',
+    ...(skillRating !== undefined ? { skillRating } : {}),
+    ...(coachId || willingToCoach ? { coachId: String(coachId || `coach-${id}`) } : {}),
+  };
+}
+
+function buildGeneratedTeamPlayerRows(teamsByDivision) {
+  return Object.values(teamsByDivision || {}).flatMap((teams) =>
+    (teams || []).flatMap((team) =>
+      (team.players || []).map((player) => ({
+        team_id: team.id,
+        player_id: player.id,
+        role: 'player',
+        source: 'auto',
+      }))
+    )
+  );
+}
 
 export default function TeamAnalysisPage() {
   const { team, loading, error: _error, timezone } = useDashboardData();
   const { persistenceSnapshot, loading: _persistenceLoading } = useTeamPersistence();
   const { importedData } = useImport();
+  const { currentOrganization, currentSeasonSetting } = useOrganization();
   const [isEditMode, setIsEditMode] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [selectedProgramId, setSelectedProgramId] = useState(null);
   const [configs, setConfigs] = useState({});
+  const [generationError, setGenerationError] = useState(null);
   const navigate = useNavigate();
 
-  // Mock data for initial empty state
-  const [programs] = useState([
-    { id: 'u10-rec', name: 'U10 Recreation League', totalPlayers: 148, capacity: 156 },
-    { id: 'u12-rec', name: 'U12 Recreation League', totalPlayers: 112, capacity: 120 },
-  ]);
+  const importedPlayerRows = useMemo(() => getImportedRows(importedData), [importedData]);
+  const basePrograms = useMemo(() => derivePrograms(importedPlayerRows), [importedPlayerRows]);
+  const programs = useMemo(
+    () =>
+      basePrograms.map((program) =>
+        deriveProgramStats(program, configs[program.id] || createDefaultConfig(program))
+      ),
+    [basePrograms, configs]
+  );
 
   const selectedProgram = useMemo(
     () => programs.find((p) => p.id === selectedProgramId) || programs[0],
@@ -36,49 +209,181 @@ export default function TeamAnalysisPage() {
   );
 
   useEffect(() => {
-    if (selectedProgram && !configs[selectedProgram.id]) {
-      setConfigs((prev) => ({
-        ...prev,
-        [selectedProgram.id]: {
-          targetSize: 12,
-          minSize: 10,
-          maxSize: 14,
-          balancing: 'skill',
-        },
-      }));
-    }
-  }, [selectedProgram, configs]);
+    if (!selectedProgram?.id) return;
 
-  const updateConfig = (newConfig) => {
+    setConfigs((prev) => {
+      if (prev[selectedProgram.id]) return prev;
+      return {
+        ...prev,
+        [selectedProgram.id]: createDefaultConfig(selectedProgram),
+      };
+    });
+  }, [selectedProgram]);
+
+  useEffect(() => {
+    const selectedExists = programs.some((program) => program.id === selectedProgramId);
+    if (programs.length > 0 && (!selectedProgramId || !selectedExists)) {
+      setSelectedProgramId(programs[0].id);
+    }
+  }, [programs, selectedProgramId]);
+
+  const updateConfig = (programId, patch) => {
     setConfigs((prev) => ({
       ...prev,
-      [selectedProgram.id]: newConfig,
+      [programId]: {
+        ...(prev[programId] || {}),
+        ...patch,
+      },
     }));
   };
 
   const validationErrors = useMemo(() => {
     const errors = [];
-    if (!importedData) errors.push('Missing imported player roster.');
+    const selectedConfig = selectedProgram ? configs[selectedProgram.id] : null;
+
+    if (importedPlayerRows.length === 0) {
+      errors.push({ type: 'data', message: 'Missing imported player roster.' });
+    }
+    if (!currentOrganization?.id) {
+      errors.push({ type: 'organization', message: 'Select an active organization.' });
+    }
+    if (!selectedProgram) {
+      errors.push({ type: 'division', message: 'Select a program before generating teams.' });
+    }
+    if (
+      selectedConfig?.minRosterSize &&
+      selectedConfig?.maxRosterSize &&
+      selectedConfig.minRosterSize > selectedConfig.maxRosterSize
+    ) {
+      errors.push({
+        type: 'roster',
+        message: 'Minimum roster size cannot exceed max roster size.',
+      });
+    }
+    if (
+      selectedConfig?.minTeams &&
+      selectedConfig?.maxTeams &&
+      selectedConfig.minTeams > selectedConfig.maxTeams
+    ) {
+      errors.push({ type: 'teams', message: 'Minimum team count cannot exceed max team count.' });
+    }
+    if (
+      selectedConfig?.teamCountOverride &&
+      selectedConfig?.minTeams &&
+      selectedConfig.teamCountOverride < selectedConfig.minTeams
+    ) {
+      errors.push({ type: 'teams', message: 'Override team count cannot be below min teams.' });
+    }
+    if (
+      selectedConfig?.teamCountOverride &&
+      selectedConfig?.maxTeams &&
+      selectedConfig.teamCountOverride > selectedConfig.maxTeams
+    ) {
+      errors.push({ type: 'teams', message: 'Override team count cannot exceed max teams.' });
+    }
+    if (generationError) {
+      errors.push({ type: 'generation', message: generationError });
+    }
+
     return errors;
-  }, [importedData]);
+  }, [
+    configs,
+    currentOrganization?.id,
+    generationError,
+    importedPlayerRows.length,
+    selectedProgram,
+  ]);
 
   const handleGenerateTeams = useCallback(async () => {
     setIsGenerating(true);
+    setGenerationError(null);
     try {
-      // In a real app, this would trigger the 'generate-teams' Edge Function
       const {
-        data: { user: _user },
+        data: { user },
+        error: userError,
       } = await supabase.auth.getUser();
-      // await supabase.functions.invoke('generate-teams', { body: { config: configs[selectedProgram.id] } });
+      if (userError) throw userError;
+      if (!user?.id) throw new Error('Sign in before generating teams.');
+      if (!currentOrganization?.id) throw new Error('Select an active organization.');
+      if (!selectedProgram) throw new Error('Select a program before generating teams.');
 
-      // Simulate a long-running process for UI feedback
-      await new Promise((resolve) => setTimeout(resolve, 3500));
+      const selectedProgramKey = String(selectedProgram.id);
+      const config = configs[selectedProgramKey] || createDefaultConfig(selectedProgram);
+      const rowsForProgram = importedPlayerRows
+        .map((row, sourceIndex) => ({ row, sourceIndex }))
+        .filter(({ row }) => resolveDivisionId(row) === selectedProgramKey);
+      if (rowsForProgram.length === 0) {
+        throw new Error(`No imported players found for ${selectedProgram.name}.`);
+      }
+
+      const generatorPlayers = rowsForProgram.map(({ row, sourceIndex }) =>
+        toGeneratorPlayer(row, sourceIndex, selectedProgramKey)
+      );
+      const divisionConfig = {
+        id: selectedProgramKey,
+        name: selectedProgram.name,
+        teamsCount: config.teamCountOverride || selectedProgram.estimatedTeams,
+        slotsPerWeek: 0,
+        maxRosterSize: config.maxRosterSize,
+        minRosterSize: config.minRosterSize,
+        targetTeamSize: config.targetTeamSize,
+        teamCountOverride: config.teamCountOverride,
+        minTeams: config.minTeams,
+        maxTeams: config.maxTeams,
+      };
+      const result = generateTeams({
+        players: generatorPlayers,
+        divisionConfigs: { [selectedProgramKey]: divisionConfig },
+        seed: config.seed,
+      });
+      const teams = Object.values(result.teamsByDivision).flat();
+      const teamPlayers = buildGeneratedTeamPlayerRows(result.teamsByDivision);
+      const overflowPlayers = Object.values(result.overflowSummaryByDivision || {}).reduce(
+        (sum, summary) => sum + (summary?.totalPlayers || 0),
+        0
+      );
+      const now = new Date().toISOString();
+
+      const { error: insertError } = await supabase.from('scheduler_runs').insert({
+        organization_id: currentOrganization.id,
+        season_id: currentSeasonSetting?.id ?? null,
+        season_settings_id: currentSeasonSetting?.id ?? null,
+        run_type: 'team',
+        status: 'completed',
+        parameters: {
+          source: 'team_analysis_page',
+          selectedProgramId: selectedProgramKey,
+          divisionConfigs: { [selectedProgramKey]: divisionConfig },
+        },
+        metrics: {
+          progress: 100,
+          generatedTeams: teams.length,
+          assignedPlayers: teamPlayers.length,
+          overflowPlayers,
+        },
+        results: {
+          ...result,
+          teams,
+          team_players: teamPlayers,
+        },
+        started_at: now,
+        completed_at: now,
+        created_by: user.id,
+      });
+      if (insertError) throw insertError;
     } catch (err) {
       console.error('Generation failed:', err);
+      setGenerationError(err?.message || 'Team generation failed.');
     } finally {
       setIsGenerating(false);
     }
-  }, [configs, selectedProgram]);
+  }, [
+    configs,
+    currentOrganization?.id,
+    currentSeasonSetting?.id,
+    importedPlayerRows,
+    selectedProgram,
+  ]);
 
   // Combined loading state for better UX
   const isActuallyGenerating = useMemo(() => {
@@ -100,7 +405,7 @@ export default function TeamAnalysisPage() {
   // Map persistence snapshot to nested structure for RosterManager
   const mappedTeams = useMemo(() => {
     const { teamRows = [], teamPlayerRows = [] } = persistenceSnapshot?.payload || {};
-    const rawPlayers = importedData?.data || [];
+    const rawPlayers = importedPlayerRows;
 
     return teamRows.map((teamRow) => {
       const players = teamPlayerRows
@@ -134,7 +439,7 @@ export default function TeamAnalysisPage() {
         players,
       };
     });
-  }, [persistenceSnapshot?.payload, importedData]);
+  }, [persistenceSnapshot?.payload, importedPlayerRows]);
 
   // Use real data from the dashboard hook if available, otherwise empty array
   // Map automated results if persistence is empty
@@ -142,7 +447,7 @@ export default function TeamAnalysisPage() {
     if (mappedTeams.length > 0) return mappedTeams;
     if (!team?.teams) return [];
 
-    const rawPlayers = importedData?.data || [];
+    const rawPlayers = importedPlayerRows;
     const teamPlayers = team?.team_players || [];
 
     return team.teams.map((t) => ({
@@ -166,7 +471,7 @@ export default function TeamAnalysisPage() {
           };
         }),
     }));
-  }, [mappedTeams, team, importedData]);
+  }, [mappedTeams, team, importedPlayerRows]);
 
   return (
     <div className="animate-fadeIn space-y-8 max-w-[65ch] mx-auto w-full">
@@ -241,7 +546,10 @@ export default function TeamAnalysisPage() {
               variant="primary"
               size="lg"
               onClick={handleGenerateTeams}
-              disabled={isActuallyGenerating || validationErrors.length > 0}
+              disabled={
+                isActuallyGenerating ||
+                validationErrors.some((error) => error.type !== 'generation')
+              }
               className="flex items-center gap-2"
             >
               Generate Teams <ArrowRight size={18} />

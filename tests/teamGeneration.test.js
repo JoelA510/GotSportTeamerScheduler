@@ -364,6 +364,35 @@ test('validates input arguments', () => {
     /duplicate player id detected: dup \(divisions U10 and U12\)/i,
     'should throw for duplicate IDs in different divisions'
   );
+
+  assert.throws(
+    () =>
+      generateTeams({
+        players: [{ id: 'a', division: 'U10' }],
+        divisionConfigs: {
+          U10: { id: 'U10', teamsCount: 1, slotsPerWeek: 1, maxRosterSize: 4, minRosterSize: 5 },
+        },
+      }),
+    /minRosterSize for division U10 cannot exceed maxRosterSize/i
+  );
+
+  assert.throws(
+    () =>
+      generateTeams({
+        players: [{ id: 'a', division: 'U10' }],
+        divisionConfigs: {
+          U10: {
+            id: 'U10',
+            teamsCount: 1,
+            slotsPerWeek: 1,
+            maxRosterSize: 4,
+            teamCountOverride: 4,
+            maxTeams: 3,
+          },
+        },
+      }),
+    /teamCountOverride for division U10 cannot exceed maxTeams/i
+  );
 });
 
 test('reports unmatched buddy requests for missing or non-reciprocal pairs', () => {
@@ -466,6 +495,88 @@ test('marks divisions that need additional coaches when team count exceeds volun
     needsAdditionalCoaches: true,
   });
   assert.deepEqual(rosterBalanceByDivision.U10.summary.totalCapacity, 6);
+});
+
+test('honors minimum roster size by reducing avoidable underfilled teams', () => {
+  const players = Array.from({ length: 10 }).map((_, index) =>
+    makeGenerationPlayer({ id: `player-${index + 1}` })
+  );
+
+  const { teamsByDivision, rosterBalanceByDivision } = generateTeams({
+    players,
+    divisionConfigs: {
+      U10: {
+        id: 'U10',
+        teamsCount: 1,
+        slotsPerWeek: 1,
+        maxRosterSize: 4,
+        minRosterSize: 3,
+        targetTeamSize: 2,
+      },
+    },
+    random: createDeterministicRandom(),
+  });
+
+  assert.equal(teamsByDivision.U10.length, 3);
+  assert.deepEqual(rosterBalanceByDivision.U10.summary.teamsBelowMinRoster, []);
+  rosterBalanceByDivision.U10.teamStats.forEach((entry) => {
+    assert.equal(entry.minRosterSize, 3);
+    assert.equal(entry.needsPlayersToMin, 0);
+  });
+});
+
+test('enforces maxTeams as a hard cap and reports overflow when capacity is insufficient', () => {
+  const players = Array.from({ length: 10 }).map((_, index) =>
+    makeGenerationPlayer({ id: `player-${index + 1}` })
+  );
+
+  const { teamsByDivision, overflowSummaryByDivision, rosterBalanceByDivision } = generateTeams({
+    players,
+    divisionConfigs: {
+      U10: {
+        id: 'U10',
+        teamsCount: 1,
+        slotsPerWeek: 1,
+        maxRosterSize: 4,
+        maxTeams: 2,
+      },
+    },
+    random: createDeterministicRandom(),
+  });
+
+  assert.equal(teamsByDivision.U10.length, 2);
+  assert.equal(rosterBalanceByDivision.U10.summary.totalPlayers, 8);
+  assert.equal(overflowSummaryByDivision.U10.totalPlayers, 2);
+  assert.deepEqual(rosterBalanceByDivision.U10.summary.teamCountConstraints, {
+    minTeams: null,
+    maxTeams: 2,
+  });
+});
+
+test('enforces minimum team counts when capacity allows', () => {
+  const players = Array.from({ length: 6 }).map((_, index) =>
+    makeGenerationPlayer({ id: `player-${index + 1}` })
+  );
+
+  const { teamsByDivision, rosterBalanceByDivision } = generateTeams({
+    players,
+    divisionConfigs: {
+      U10: {
+        id: 'U10',
+        teamsCount: 1,
+        slotsPerWeek: 1,
+        maxRosterSize: 4,
+        minTeams: 3,
+      },
+    },
+    random: createDeterministicRandom(),
+  });
+
+  assert.equal(teamsByDivision.U10.length, 3);
+  assert.deepEqual(rosterBalanceByDivision.U10.summary.teamCountConstraints, {
+    minTeams: 3,
+    maxTeams: null,
+  });
 });
 
 test('summarises roster slots remaining across teams', () => {

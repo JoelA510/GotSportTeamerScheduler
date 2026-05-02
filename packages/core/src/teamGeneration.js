@@ -50,12 +50,20 @@ import { EVALUATOR_REGISTRY } from './evaluators/index.js';
  *       maxRosterSize: number,
  *       slotsRemaining: number,
  *       fillRate: number,
+ *       minRosterSize?: number,
+ *       needsPlayersToMin?: number,
  *     }>,
  *     summary: {
  *       totalPlayers: number,
  *       totalCapacity: number,
  *       averageFillRate: number,
  *       teamsNeedingPlayers: Array<string>,
+ *       teamsBelowMinRoster?: Array<string>,
+ *       minRosterSize?: number,
+ *       teamCountConstraints?: {
+ *         minTeams: number | null,
+ *         maxTeams: number | null,
+ *       },
  *     },
  *   }>,
  *   skillBalanceByDivision: Record<string, {
@@ -184,11 +192,12 @@ export function generateTeams({
 
   for (const [division, divisionPlayers] of playersByDivision.entries()) {
     const config = divisionConfigs[division];
-    if (!config || typeof config.maxRosterSize !== 'number') {
+    if (!config) {
       throw new Error(`missing maxRosterSize for division ${division}`);
     }
 
-    const maxRosterSize = config.maxRosterSize;
+    const rosterConstraints = normalizeDivisionRosterConstraints(config, division);
+    const maxRosterSize = rosterConstraints.maxRosterSize;
     if (maxRosterSize <= 0) {
       throw new Error(`maxRosterSize for division ${division} must be positive`);
     }
@@ -198,6 +207,7 @@ export function generateTeams({
       players: divisionPlayers,
       maxRosterSize,
       divisionConfig: config,
+      rosterConstraints,
       random,
       featureFlags,
       customWeights,
@@ -248,6 +258,7 @@ export function generateTeams({
       const playerCount = team.players.length;
       const slotsRemaining = Math.max(0, maxRosterSize - playerCount);
       const fillRate = Number((playerCount / maxRosterSize).toFixed(4));
+      const minRosterSize = rosterConstraints.minRosterSize;
 
       return {
         teamId: team.id,
@@ -256,6 +267,12 @@ export function generateTeams({
         maxRosterSize,
         slotsRemaining,
         fillRate,
+        ...(minRosterSize
+          ? {
+              minRosterSize,
+              needsPlayersToMin: Math.max(0, minRosterSize - playerCount),
+            }
+          : {}),
       };
     });
 
@@ -266,6 +283,9 @@ export function generateTeams({
     const teamsNeedingPlayers = teamStats
       .filter((entry) => entry.slotsRemaining > 0)
       .map((entry) => entry.teamId);
+    const teamsBelowMinRoster = rosterConstraints.minRosterSize
+      ? teamStats.filter((entry) => entry.needsPlayersToMin > 0).map((entry) => entry.teamId)
+      : undefined;
 
     rosterBalanceByDivision[division] = {
       teamStats,
@@ -274,6 +294,20 @@ export function generateTeams({
         totalCapacity,
         averageFillRate,
         teamsNeedingPlayers,
+        ...(teamsBelowMinRoster
+          ? {
+              teamsBelowMinRoster,
+              minRosterSize: rosterConstraints.minRosterSize,
+            }
+          : {}),
+        ...(rosterConstraints.minTeams || rosterConstraints.maxTeams
+          ? {
+              teamCountConstraints: {
+                minTeams: rosterConstraints.minTeams ?? null,
+                maxTeams: rosterConstraints.maxTeams ?? null,
+              },
+            }
+          : {}),
       },
     };
 
@@ -331,6 +365,7 @@ export function generateTeams({
  * @param {Array<Player>} params.players
  * @param {number} params.maxRosterSize
  * @param {DivisionConfig} params.divisionConfig
+ * @param {Object} params.rosterConstraints
  * @param {function(): number} params.random
  * @param {Object} params.featureFlags
  * @param {Object} [params.customWeights]
@@ -341,6 +376,7 @@ function buildTeamsForDivision({
   players,
   maxRosterSize,
   divisionConfig,
+  rosterConstraints,
   random,
   featureFlags,
   customWeights,
@@ -350,37 +386,36 @@ function buildTeamsForDivision({
     new Set(players.filter((player) => player.coachId).map((player) => player.coachId))
   );
 
-  // Determine number of teams based on target size, defaulting to max roster size if not set.
-  // This allows generating smaller teams (higher count) than simply filling to capacity.
-  const targetSize = divisionConfig.targetTeamSize || maxRosterSize;
+  const {
+    targetTeamSize = maxRosterSize,
+    teamCountOverride,
+    minTeams,
+    maxTeams,
+    minRosterSize,
+  } = rosterConstraints;
 
-  // Calculate based on player count
-  let calculatedTeams = Math.ceil(players.length / targetSize) || 1;
+  let calculatedTeams = Math.ceil(players.length / targetTeamSize) || 1;
 
-  // Ensure consistent team count if override provided
-  if (divisionConfig.teamCountOverride && divisionConfig.teamCountOverride > 0) {
-    calculatedTeams = divisionConfig.teamCountOverride;
+  if (teamCountOverride) {
+    calculatedTeams = teamCountOverride;
   }
 
-  const requiredTeams = Math.max(coachIds.length, calculatedTeams);
-
-  // Validation: If requiredTeams results in roster size > maxRosterSize, we must increase team count?
-  // Actually, if targetSize < maxRosterSize, team count is higher, so avg size is lower.
-  // But if override or targetSize makes teams too small or too big?
-  // We should ensure players.length / requiredTeams <= maxRosterSize.
-  // If not, we must bump requiredTeams.
+  const minimumTeamCount = Math.max(coachIds.length, minTeams ?? 1);
   const minTeamsForCapacity = Math.ceil(players.length / maxRosterSize);
-  if (requiredTeams < minTeamsForCapacity) {
-    // This happens if teamCountOverride is too low or targetSize is invalidly high (though handled by default).
-    // We enforce capacity.
-    // throw new Error or adjust? Let's adjust.
-    // logic: we can't fit everyone if we don't have enough teams.
-    // return Math.max(requiredTeams, minTeamsForCapacity);
+  let finalRequiredTeams = Math.max(calculatedTeams, minimumTeamCount, minTeamsForCapacity);
+
+  if (minRosterSize && players.length >= minRosterSize) {
+    const maxTeamsForMinRoster = Math.max(1, Math.floor(players.length / minRosterSize));
+    finalRequiredTeams = Math.max(
+      minimumTeamCount,
+      minTeamsForCapacity,
+      Math.min(finalRequiredTeams, maxTeamsForMinRoster)
+    );
   }
 
-  // We use the stricter of the two constraints (enough to fit everyone vs target preference)
-  // Actually we need `requiredTeams` >= `minTeamsForCapacity`.
-  const finalRequiredTeams = Math.max(requiredTeams, minTeamsForCapacity);
+  if (maxTeams) {
+    finalRequiredTeams = Math.min(finalRequiredTeams, maxTeams);
+  }
 
   const teams = [];
   let teamIndex = 0;
@@ -388,6 +423,9 @@ function buildTeamsForDivision({
   const overflow = [];
 
   const createTeam = (coachId = null) => {
+    if (maxTeams && teams.length >= maxTeams) {
+      return null;
+    }
     teamIndex += 1;
     const id = `${division}-T${String(teamIndex).padStart(2, '0')}`;
     const name = generateTeamName({ division, teamIndex, divisionConfig });
@@ -400,7 +438,9 @@ function buildTeamsForDivision({
     createTeam(coachId);
   }
   while (teams.length < finalRequiredTeams) {
-    createTeam(null);
+    if (!createTeam(null)) {
+      break;
+    }
   }
 
   const { units, buddyDiagnostics } = createAssignmentUnits(players);
@@ -475,6 +515,20 @@ function buildTeamsForDivision({
     if (!targetTeam && !coachId && assistantCoachIds.length === 0) {
       // Fallback (shouldn't happen given logic above)
       targetTeam = createTeam(null);
+    }
+
+    if (!targetTeam) {
+      overflow.push({
+        players: unit,
+        reason: TEAM_GENERATION.REASON_InsufficientCapacity,
+        metadata: {
+          unitSize: unit.length,
+          coachId,
+          maxTeams,
+          currentTeams: teams.length,
+        },
+      });
+      continue;
     }
 
     // Ensure team has assistant array
@@ -720,6 +774,76 @@ function summarizeOverflow(entries) {
   }
 
   return summary;
+}
+
+function normalizeDivisionRosterConstraints(config, division) {
+  const maxRosterSize = normalizePositiveInteger(
+    config.maxRosterSize ?? config.max_roster_size,
+    `maxRosterSize for division ${division}`
+  );
+  const minRosterSize = normalizeOptionalPositiveInteger(
+    config.minRosterSize ?? config.min_roster_size ?? config.minSize,
+    `minRosterSize for division ${division}`
+  );
+  const targetTeamSize = normalizeOptionalPositiveInteger(
+    config.targetTeamSize ?? config.target_team_size ?? config.targetSize,
+    `targetTeamSize for division ${division}`
+  );
+  const teamCountOverride = normalizeOptionalPositiveInteger(
+    config.teamCountOverride ?? config.team_count_override,
+    `teamCountOverride for division ${division}`
+  );
+  const minTeams = normalizeOptionalPositiveInteger(
+    config.minTeams ?? config.min_teams,
+    `minTeams for division ${division}`
+  );
+  const maxTeams = normalizeOptionalPositiveInteger(
+    config.maxTeams ?? config.max_teams,
+    `maxTeams for division ${division}`
+  );
+
+  if (minRosterSize && minRosterSize > maxRosterSize) {
+    throw new Error(`minRosterSize for division ${division} cannot exceed maxRosterSize`);
+  }
+  if (minTeams && maxTeams && minTeams > maxTeams) {
+    throw new Error(`minTeams for division ${division} cannot exceed maxTeams`);
+  }
+  if (teamCountOverride && minTeams && teamCountOverride < minTeams) {
+    throw new Error(`teamCountOverride for division ${division} cannot be below minTeams`);
+  }
+  if (teamCountOverride && maxTeams && teamCountOverride > maxTeams) {
+    throw new Error(`teamCountOverride for division ${division} cannot exceed maxTeams`);
+  }
+
+  return {
+    maxRosterSize,
+    minRosterSize,
+    targetTeamSize: targetTeamSize ?? maxRosterSize,
+    teamCountOverride,
+    minTeams,
+    maxTeams,
+  };
+}
+
+function normalizePositiveInteger(value, context) {
+  const normalized = normalizeOptionalPositiveInteger(value, context);
+  if (!normalized) {
+    throw new Error(`${context} must be a positive integer`);
+  }
+  return normalized;
+}
+
+function normalizeOptionalPositiveInteger(value, context) {
+  if (value === undefined || value === null || value === '') {
+    return null;
+  }
+
+  const numberValue = Number(value);
+  if (!Number.isFinite(numberValue) || numberValue <= 0) {
+    throw new Error(`${context} must be a positive integer`);
+  }
+
+  return Math.trunc(numberValue);
 }
 
 function calculateUnitSkill(unit) {

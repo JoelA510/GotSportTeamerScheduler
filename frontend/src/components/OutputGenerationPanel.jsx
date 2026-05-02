@@ -8,6 +8,7 @@ const MOCK_UPLOAD = IS_MOCK_MODE;
 
 export default function OutputGenerationPanel({
   teams = [],
+  teamSummary = null,
   practiceAssignments = [],
   gameAssignments = [],
   supabaseClient,
@@ -18,13 +19,30 @@ export default function OutputGenerationPanel({
   const [message, setMessage] = useState('');
 
   const generateEmails = () => {
-    if (!teams || teams.length === 0) return;
+    const sourceTeams =
+      Array.isArray(teams) && teams.length > 0
+        ? teams
+        : Array.isArray(teamSummary?.teams)
+          ? teamSummary.teams
+          : [];
 
-    const drafts = teams
-      .filter((t) => t.headCoach && t.coachEmail)
+    const drafts = sourceTeams
+      .map((team) => ({
+        team,
+        coachName:
+          team.headCoach ||
+          team.coachName ||
+          team.coach_name ||
+          team.coach?.name ||
+          team.coach?.full_name ||
+          null,
+        coachEmail:
+          team.coachEmail || team.coach_email || team.coach?.email || team.headCoachEmail || null,
+      }))
+      .filter(({ coachName, coachEmail }) => coachName && coachEmail)
       .map((team) => {
-        const teamPractices = practiceAssignments.filter(
-          (p) => String(p.teamId) === String(team.id)
+        const teamPractices = practiceAssignments.filter((p) =>
+          [p.teamId, p.team_id].some((teamId) => String(teamId) === String(team.team.id))
         );
         const scheduleStr =
           teamPractices.length > 0
@@ -33,11 +51,11 @@ export default function OutputGenerationPanel({
                 .join(' and ')
             : 'TBD';
 
-        const subject = `Welcome to the season, Coach ${team.headCoach}!`;
-        const body = `Hi Coach ${team.headCoach},\n\nThank you for volunteering to coach ${team.name} in the ${team.division} division this season! Your roster has been finalized.\n\nYour assigned practice schedule is:\n${scheduleStr}\n\nPlease let us know if you have any questions.\n\nBest,\nLeague Admin`;
+        const subject = `Welcome to the season, Coach ${team.coachName}!`;
+        const body = `Hi Coach ${team.coachName},\n\nThank you for volunteering to coach ${team.team.name} in the ${team.team.division || team.team.divisionName} division this season! Your roster has been finalized.\n\nYour assigned practice schedule is:\n${scheduleStr}\n\nPlease let us know if you have any questions.\n\nBest,\nLeague Admin`;
         return {
-          teamId: team.id,
-          coachName: team.headCoach,
+          teamId: team.team.id,
+          coachName: team.coachName,
           coachEmail: team.coachEmail,
           subject,
           body,

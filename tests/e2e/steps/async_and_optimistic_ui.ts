@@ -59,14 +59,27 @@ When('I click {string} on the Team Persistence Panel', async ({ page }, btnLabel
 });
 
 Then('the resulting teams summary should reflect the new constraints', async ({ page }) => {
-  // Wait for the generating state to register in the UI first
-  await expect(page.getByText('Generating Teams...').first()).toBeVisible({ timeout: 10000 });
+  // The page now performs local generation and writes a completed scheduler run immediately.
+  // Older runs showed a longer in-progress state, so keep this observation optional and assert
+  // the durable completed summary below.
+  await page
+    .getByText('Generating Teams...')
+    .first()
+    .waitFor({ state: 'visible', timeout: 1000 })
+    .catch(() => {});
 
   // Simulate backend completing the run so the UI transitions out of "Generating Teams...".
-  // The current UI trigger is local-only, so there may not be a running row to update.
+  // If the app already inserted a completed run, leave it in place.
   await page.evaluate(() => {
     const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
     const orgId = localStorage.getItem('squadlogic_active_org') || 'org-1';
+    const hasCompletedTeamRun = (db.scheduler_runs || []).some(
+      (r: Record<string, unknown>) => r.run_type === 'team' && r.status === 'completed'
+    );
+    if (hasCompletedTeamRun) {
+      return;
+    }
+
     const now = new Date().toISOString();
     const completedRun = {
       id: 'mock-run-team-constraints',
