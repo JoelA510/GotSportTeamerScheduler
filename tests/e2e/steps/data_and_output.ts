@@ -106,20 +106,27 @@ When('I click to export the team rosters or schedules', async ({ page }) => {
     .locator('[data-testid*="workflow-step-"]')
     .filter({ hasText: '6. Output & Communication' })
     .first();
-  await step6.click({ force: true });
+  await step6.scrollIntoViewIfNeeded();
+  await step6.click();
 
-  await page.getByTestId('generate-csvs-btn').first().click({ force: true });
+  const generateButton = page.getByTestId('generate-csvs-btn').first();
+  await expect(generateButton).toBeVisible({ timeout: 15000 });
+  await generateButton.scrollIntoViewIfNeeded();
+  await generateButton.click();
 });
 
 Then('the system should generate the CSV file', async ({ page }) => {
-  await expect(page.getByText('Generated Files').first()).toBeVisible();
+  await expect(page.getByText('CSVs generated successfully.')).toBeVisible({ timeout: 15000 });
+  await expect(page.getByRole('heading', { name: 'Generated Files' }).first()).toBeVisible();
 });
 
 Then(
   "automatically upload a backup copy to the organization's Supabase Storage bucket",
   async ({ page }) => {
-    await page.getByRole('button', { name: 'Upload to Storage' }).first().click({ force: true });
-    await expect(page.getByText('Uploaded').first()).toBeVisible();
+    const uploadButton = page.getByRole('button', { name: 'Upload to Storage' }).first();
+    await expect(uploadButton).toBeVisible({ timeout: 15000 });
+    await uploadButton.click();
+    await expect(page.getByText('Uploaded').first()).toBeVisible({ timeout: 15000 });
   }
 );
 
