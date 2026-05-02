@@ -14,6 +14,11 @@
 
 These variables are set in **Vercel → Project Settings → Environment Variables**. Variables prefixed with `VITE_` are bundled into the client-side JavaScript at build time.
 
+As of the 2026-05-02 release-prep check, Vercel reports the `squadlogic`
+project runtime as Node `24.x`. CI intentionally remains on Node 20 as the
+minimum supported runtime until a separate parity PR changes that setting with
+full verification.
+
 | Variable | Required | Secret | Purpose | Source |
 |---|---|---|---|---|
 | `VITE_SUPABASE_URL` | **Yes** | No | Supabase project REST API URL | Supabase Dashboard → Settings → API → Project URL |
@@ -63,12 +68,24 @@ These are set in **GitHub → Repository Settings → Secrets and Variables → 
 
 | Variable | Required | Secret | Purpose |
 |---|---|---|---|
-| `VITE_SUPABASE_URL` | Yes | No | Supabase URL for CI builds |
-| `VITE_SUPABASE_ANON_KEY` | Yes | **Yes** | Anon key for CI builds |
-| `VITE_USE_MOCK_SUPABASE` | Yes | No | Set to `true` for E2E test runs |
-| `VITE_TEST_ADMIN_EMAIL` | E2E only | No | Admin test account email |
-| `VITE_TEST_COACH_EMAIL` | E2E only | No | Coach test account email |
-| `VITE_TEST_PASSWORD` | E2E only | **Yes** | Test account password |
+| `VITE_SUPABASE_URL` | Scheduled keep-alive | No | Supabase URL used by the weekly keep-alive job |
+| `VITE_SUPABASE_ANON_KEY` | Scheduled keep-alive | **Yes** | Anon key used by the weekly keep-alive job |
+
+The E2E job runs against mock Supabase data and sets its test account values in
+`.github/workflows/ci.yml`; those values are not required as repository secrets
+unless a future workflow switches to live test accounts.
+
+### Scheduled Raw-Import Cleanup
+
+The raw-import retention workflow uses Supabase Storage REST APIs and therefore
+needs service-role access. Configure these in **GitHub → Repository Settings →
+Secrets and variables → Actions** before enabling the scheduled job as a release
+gate:
+
+| Variable | Required | Secret | Purpose |
+|---|---|---|---|
+| `SUPABASE_URL` | Raw-import cleanup | No | Supabase project URL for Storage REST API calls |
+| `SUPABASE_SERVICE_ROLE_KEY` | Raw-import cleanup | **Yes** | Service-role key used only by the scheduled retention workflow |
 
 ---
 

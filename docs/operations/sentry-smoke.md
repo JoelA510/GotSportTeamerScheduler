@@ -13,7 +13,7 @@
 
 - Sentry account with a project of type "Browser JavaScript" (or "React").
 - The project's DSN string, format: `https://<hash>@<sub>.ingest.sentry.io/<id>`.
-- Vercel project access (the `squadlogic` project on the `joela510` team).
+- Vercel project access (the `squadlogic` project on the `secureyourtech` team).
 - 5 minutes for the redeploy.
 
 ## One-time setup
