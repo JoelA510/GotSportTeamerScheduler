@@ -167,9 +167,6 @@ jobs:
         run: npm run test:e2e -- --workers=1
         env:
           VITE_USE_MOCK_SUPABASE: 'true'
-          VITE_TEST_ADMIN_EMAIL: 'admin@squadlogic.app'
-          VITE_TEST_COACH_EMAIL: 'coach@squadlogic.app'
-          VITE_TEST_PASSWORD: 'test-password-123'
           TEST_ADMIN_EMAIL: 'admin@squadlogic.app'
           TEST_COACH_EMAIL: 'coach@squadlogic.app'
           TEST_PARENT_EMAIL: 'parent@squadlogic.app'
