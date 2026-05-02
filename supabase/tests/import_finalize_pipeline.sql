@@ -6,7 +6,7 @@ BEGIN;
 \set squadlogic_fixture_include 1
 \ir _fixtures.sql
 
-SELECT plan(9);
+SELECT plan(11);
 
 INSERT INTO public.import_jobs (
     id, organization_id, job_type, storage_path, status, created_by, total_rows
@@ -42,6 +42,42 @@ VALUES (
         'division_name', 'Org A U10',
         'skill_tier', 'developing',
         'willing_to_coach', 'yes'
+    ),
+    '[]'::jsonb
+);
+
+INSERT INTO public.import_jobs (
+    id, organization_id, job_type, storage_path, status, created_by, total_rows
+)
+VALUES (
+    '11111111-2222-3333-4444-555555555556',
+    'a1111111-1111-1111-1111-111111111111',
+    'registration',
+    'orga/gotsport-update.csv',
+    'importing',
+    '11111111-1111-1111-1111-111111111111',
+    1
+);
+
+INSERT INTO public.staging_players (
+    organization_id,
+    import_job_id,
+    source_row_number,
+    raw_payload,
+    normalized_payload,
+    validation_errors
+)
+VALUES (
+    'a1111111-1111-1111-1111-111111111111',
+    '11111111-2222-3333-4444-555555555556',
+    2,
+    '{"First Name":"Riley","Last Name":"Reyes","Date of Birth":"2016-04-02"}'::jsonb,
+    jsonb_build_object(
+        'first_name', 'Riley',
+        'last_name', 'Reyes',
+        'date_of_birth', '2016-04-02',
+        'external_registration_id', 'GS-123',
+        'grade', '4'
     ),
     '[]'::jsonb
 );
@@ -99,6 +135,21 @@ SELECT is(
     (SELECT count(*) FROM public.players WHERE organization_id = 'a1111111-1111-1111-1111-111111111111' AND external_registration_id = 'GS-123')::int,
     1,
     'idempotent rerun does not duplicate players'
+);
+
+SELECT is(
+    (public.finalize_import_job(
+        '11111111-2222-3333-4444-555555555556',
+        '[]'::jsonb
+    )->>'updated_players')::int,
+    1,
+    'finalize_import_job updates an existing GotSport player by registration id'
+);
+
+SELECT is(
+    (SELECT division_id FROM public.players WHERE external_registration_id = 'GS-123'),
+    'a1111111-1111-1111-1111-11111111abcd'::uuid,
+    'existing player division is preserved when the import row has no resolved division'
 );
 
 SELECT throws_ok(

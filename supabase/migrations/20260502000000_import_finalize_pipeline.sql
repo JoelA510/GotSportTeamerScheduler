@@ -265,7 +265,7 @@ BEGIN
     updated_existing AS (
         UPDATE public.players p
         SET
-            division_id = de.division_id,
+            division_id = COALESCE(de.division_id, p.division_id),
             first_name = de.first_name,
             last_name = de.last_name,
             preferred_name = de.preferred_name,

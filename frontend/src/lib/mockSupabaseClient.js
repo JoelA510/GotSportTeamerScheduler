@@ -952,12 +952,12 @@ export const mockSupabase = {
           select: () => chainable,
           single: () =>
             Promise.resolve({
-              data: Array.isArray(records) ? newRecords[0] : newRecords,
+              data: newRecords[0] || null,
               error: null,
             }),
           maybeSingle: () =>
             Promise.resolve({
-              data: Array.isArray(records) ? newRecords[0] : newRecords,
+              data: newRecords[0] || null,
               error: null,
             }),
           then: (onFulfilled, onRejected) => Promise.resolve(res).then(onFulfilled, onRejected),
@@ -1039,12 +1039,12 @@ export const mockSupabase = {
           select: () => chainable,
           single: () =>
             Promise.resolve({
-              data: Array.isArray(records) ? newRecords[0] : newRecords,
+              data: newRecords[0] || null,
               error: null,
             }),
           maybeSingle: () =>
             Promise.resolve({
-              data: Array.isArray(records) ? newRecords[0] : newRecords,
+              data: newRecords[0] || null,
               error: null,
             }),
           then: (onFulfilled, onRejected) => Promise.resolve(res).then(onFulfilled, onRejected),
@@ -1427,9 +1427,12 @@ export const mockSupabase = {
               String(player.organization_id) === String(job.organization_id) &&
               String(player.external_registration_id) === String(externalId)
           );
+        const willingToCoach = ['true', 'yes', 'y', '1'].includes(
+          String(payload.willing_to_coach || '').toLowerCase()
+        );
         const basePlayer = {
           organization_id: job.organization_id,
-          division_id: division?.id || payload.division_id || null,
+          division_id: division?.id || payload.division_id || existing?.division_id || null,
           first_name: payload.first_name,
           last_name: payload.last_name,
           preferred_name: payload.preferred_name || payload.nickname || null,
@@ -1445,9 +1448,8 @@ export const mockSupabase = {
           )
             ? String(payload.skill_tier).toLowerCase()
             : null,
-          willing_to_coach: ['true', 'yes', 'y', '1'].includes(
-            String(payload.willing_to_coach || '').toLowerCase()
-          ),
+          coach_volunteer: willingToCoach,
+          willing_to_coach: willingToCoach,
           import_source: 'gotsport',
           last_imported_at: now,
         };

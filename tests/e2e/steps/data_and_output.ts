@@ -77,14 +77,16 @@ When('a specific row has malformed data \\(e.g. invalid date of birth)', async (
 });
 
 Then('the system should flag the row as an error', async ({ page }) => {
-  // CRITICAL FIX: The ImportPanel shows "Import Complete!" after import.
+  // The malformed row is flagged in preview; the import can still apply the
+  // remaining valid rows and surface that warning state after finalization.
   // Row-level errors were already flagged in the preview via cell-error class (verified in When step).
-  // After import completes, we verify the import succeeded despite the error rows.
-  await expect(page.getByText('Import Complete!').first()).toBeVisible({ timeout: 15000 });
+  await expect(page.getByRole('heading', { name: 'Import Applied with Warnings' })).toBeVisible({
+    timeout: 15000,
+  });
 });
 
 Then('load the remaining valid rows into the staging table', async ({ page }) => {
-  // The valid rows were imported — the "Import Complete!" screen confirms this.
+  // The valid rows were imported — the applied state confirms this.
   // The "Continue" button proves the import completed and data is ready to proceed.
   await expect(page.getByRole('button', { name: 'Continue' }).first()).toBeVisible({
     timeout: 10000,
