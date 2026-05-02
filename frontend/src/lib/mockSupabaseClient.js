@@ -1427,10 +1427,7 @@ export const mockSupabase = {
         const sanitize = (value) =>
           value === null || value === undefined
             ? ''
-            : String(value)
-                .replace(/<[^>]*>/g, '')
-                .trim()
-                .slice(0, 500);
+            : String(value).trim().slice(0, 500).replaceAll('<', '').replaceAll('>', '');
 
         const validatedData = [];
         const validationErrors = [];
