@@ -1,7 +1,15 @@
 import React from 'react';
 import Button from '../ui/Button.jsx';
 
-export default function TeamingConfiguration({ program, config, onUpdate }) {
+export default function TeamingConfiguration({
+  program,
+  config,
+  onUpdate,
+  onSave,
+  saving = false,
+  saveDisabled = false,
+  saveMessage = '',
+}) {
   if (!program)
     return (
       <div className="bg-bg-surface border border-border-subtle rounded-xl p-8 text-center text-text-muted h-full flex items-center justify-center">
@@ -171,6 +179,15 @@ export default function TeamingConfiguration({ program, config, onUpdate }) {
           <p className="text-xs text-text-muted mt-1">
             Use the same seed to reproduce specific team assignments.
           </p>
+        </div>
+
+        <div className="pt-4 border-t border-border-subtle flex items-center justify-between gap-3">
+          <Button variant="secondary" onClick={onSave} disabled={saveDisabled || saving}>
+            {saving ? 'Saving...' : 'Save Rules'}
+          </Button>
+          {saveMessage && (
+            <span className="text-xs text-text-secondary text-right">{saveMessage}</span>
+          )}
         </div>
       </div>
     </div>
