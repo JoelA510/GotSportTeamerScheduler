@@ -58,7 +58,8 @@ understand WHY the violation is OK.
 npm run check:advisors
 
 # CI (added in .github/workflows/ci.yml)
-# Runs on every PR that modifies supabase/migrations/** or .env.*.example
+# Runs in the full matrix. Docs-only PRs intentionally skip Node checks; see
+# docs/operations/ci-cd.md.
 ```
 
 ## Failure modes

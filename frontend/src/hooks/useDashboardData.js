@@ -63,6 +63,7 @@ export function useDashboardData() {
   const resolvedGame = {
     summary: gameSummary,
     snapshot: gameReadinessSnapshot,
+    warnings: gameReadinessSnapshot?.warnings ?? [],
     generatedAt: gameGeneratedAt,
     runId: gameRunId,
     assignments: gameAssignments,

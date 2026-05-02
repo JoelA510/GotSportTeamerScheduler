@@ -146,6 +146,12 @@ Then('I should see a {string} button', async ({ page }, buttonText: string) => {
 Given('the auto-scheduler service is unavailable', async ({ page }) => {
   // Flag so the navigation step knows to return 503 instead of deferred response
   (page as AutoSchedulerPage).__autoSchedulerUnavailable = true;
+  await page.addInitScript(() => {
+    const testWindow = window as unknown as {
+      __SQUADLOGIC_E2E_AUTO_SCHEDULER_ERROR__?: boolean;
+    };
+    testWindow.__SQUADLOGIC_E2E_AUTO_SCHEDULER_ERROR__ = true;
+  });
 
   // Ensure a completed team run exists so the Auto-Generate button is enabled
   // (the button is disabled when !team?.teams?.length)

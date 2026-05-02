@@ -16,7 +16,7 @@ import { supabase } from '../lib/supabaseClient.js';
 
 export default function TeamAnalysisPage() {
   const { team, loading, error: _error, timezone } = useDashboardData();
-  const { snapshot: persistenceSnapshot, loading: _persistenceLoading } = useTeamPersistence();
+  const { persistenceSnapshot, loading: _persistenceLoading } = useTeamPersistence();
   const { importedData } = useImport();
   const [isEditMode, setIsEditMode] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);

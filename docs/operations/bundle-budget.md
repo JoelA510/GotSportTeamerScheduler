@@ -12,7 +12,7 @@
 | Trigger | Command | Effect |
 | --- | --- | --- |
 | Local pre-push smoke | `npm run check:bundle` | Runs after `npm run frontend:build`. Fails if any chunk exceeds the budget. |
-| CI on PRs that touch `frontend/**` | (added in `.github/workflows/ci.yml`) | Same as local; PR cannot merge if budget is busted. |
+| CI full matrix | `npm run check:bundle` after `npm run frontend:build` | Same as local; PR cannot merge if budget is busted. Docs-only PRs intentionally skip the full matrix; see [`ci-cd.md`](./ci-cd.md). |
 
 ## Budget file shape
 

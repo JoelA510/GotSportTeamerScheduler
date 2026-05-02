@@ -16,9 +16,9 @@ Feature: Async States and Optimistic UI Updates
   Scenario: Persistence Sync Timeout Handling
     Given I am on the "Team Management" page
     And I have generated a new set of teams
-    When I click "Sync to Supabase" on the Team Persistence Panel
-    And the network connection stalls
-    Then the panel status should change to "Failed to fetch"
+    When the network connection stalls
+    And I click "Sync to Supabase" on the Team Persistence Panel
+    Then the panel status should change to "Supabase sync timed out. Please retry."
 
   Scenario: Medical Clearance Optimistic Toggle
     Given I am on the "Compliance Dashboard"

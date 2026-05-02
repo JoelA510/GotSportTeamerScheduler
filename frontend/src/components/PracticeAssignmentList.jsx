@@ -41,6 +41,11 @@ export default function PracticeAssignmentList({ assignments = [], onToggleLock,
           <tbody className="divide-y divide-border-subtle/30">
             {assignments.map((assignment) => {
               const isLocked = assignment.source === 'manual';
+              const lockTitle = !onToggleLock
+                ? 'Enter manual override mode to change lock status'
+                : isLocked
+                  ? 'Unlock slot (allow algorithm to change)'
+                  : 'Lock slot (preserve manual choice)';
               const team = assignment.teams || {};
               const division = team.divisions || {};
               const slot = assignment.practiceSlots || {};
@@ -68,17 +73,14 @@ export default function PracticeAssignmentList({ assignments = [], onToggleLock,
                   </td>
                   <td className="p-4 text-right">
                     <button
-                      onClick={() => onToggleLock(assignment.id, isLocked ? 'auto' : 'manual')}
+                      onClick={() => onToggleLock?.(assignment.id, isLocked ? 'auto' : 'manual')}
+                      disabled={!onToggleLock}
                       className={`p-2 rounded-lg transition-all inline-flex border ${
                         isLocked
                           ? 'bg-amber-500/10 text-amber-500 border-amber-500/30 hover:bg-amber-500/20 shadow-[0_0_10px_rgba(245,158,11,0.1)]'
                           : 'bg-bg-app text-text-muted border-border-subtle hover:text-brand-400 hover:border-brand-400/50'
-                      }`}
-                      title={
-                        isLocked
-                          ? 'Unlock slot (allow algorithm to change)'
-                          : 'Lock slot (preserve manual choice)'
-                      }
+                      } ${!onToggleLock ? 'cursor-not-allowed opacity-60' : ''}`}
+                      title={lockTitle}
                     >
                       {isLocked ? <Lock size={16} /> : <Unlock size={16} />}
                     </button>

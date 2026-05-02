@@ -192,7 +192,7 @@ Given(
       await expect(
         page
           .getByRole('heading', {
-            name: /League Management|Dashboard|Season Setup Workflow|Team Portal|League Standings|Settings/i,
+            name: /Welcome to SquadLogic|League Management|Dashboard|Season Setup Workflow|Team Portal|League Standings|Settings/i,
           })
           .first()
       ).toBeVisible({ timeout: 15000 });

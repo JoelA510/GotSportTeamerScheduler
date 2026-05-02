@@ -31,6 +31,7 @@
 ## Operations
 
 - [Environment Variables](operations/ENVIRONMENT.md) — Full `VITE_*` / server-side env-var reference.
+- [CI/CD Operations](operations/ci-cd.md) — GitHub Actions scope, reproducibility, artifacts, and branch-protection policy.
 - [Production Cutover](operations/production-cutover.md) — Production deployment runbook.
 - [Ingestion Pipeline](operations/ingestion-pipeline.md) — GotSport CSV import flow end-to-end.
 - [Advisor Lint](operations/advisor-lint.md) — Static migration security gate (Wave 6a Task 2).
