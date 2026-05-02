@@ -5,10 +5,11 @@
 
 > Wave 6b Task 3. Free-tier Supabase Storage cap is 1 GB. The `raw-imports`
 > bucket holds transient GotSport CSV uploads that feed the ingestion
-> pipeline; once the import has been validated and persisted, the raw file
-> is operational history rather than live data. This workflow expires raw
-> objects older than the retention window so the bucket cannot drift toward
-> the cap.
+> pipeline; once the import has been validated and tracked, the raw file
+> is operational history rather than live data. Durable promotion into
+> player/coach/team records is tracked separately as v1.1 work. This workflow
+> expires raw objects older than the retention window so the bucket cannot
+> drift toward the cap.
 
 ## Retention window
 
@@ -50,6 +51,10 @@ Configure in GitHub → Settings → Secrets and variables → Actions:
 
 The workflow fails fast if either secret is missing — it does not silently
 degrade to no-op.
+
+> **Release-prep note (2026-05-02):** do not count this scheduled cleanup as
+> release-ready until the two Actions secrets above are configured, or until an
+> operator explicitly disables/replaces the scheduled retention policy.
 
 The `dry_run` input must be either `true` or `false`. Invalid values fail
 before any Storage API call is made.

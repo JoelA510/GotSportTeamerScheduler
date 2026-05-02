@@ -1,26 +1,29 @@
-[← Back to Documentation Index](docs/README.md)
+[← Back to Documentation Index](../README.md)
 ---
 
 # SquadLogic v1.0 — Production Cutover Runbook
 
 **Date written:** 2026-04-01
-**Last refreshed:** 2026-04-17
-**Status at writing:** All systems green — 37 migrations applied, 7 Edge Functions ACTIVE, Vercel live
+**Last refreshed:** 2026-05-02
+**Status:** Historical cutover runbook with current release-prep notes; not a final release sign-off
 **Supabase project:** `mmwupqsjkikqzvmdvuzm` (us-west-2)
 **Production URL:** https://squadlogic.vercel.app
 
-> **2026-04-17 reconciliation note:** Smoke checks on 2026-04-17 surfaced that prod was ~10 days behind disk — the three 2026-04-16 migrations (`security_hardening`, `initialize_new_tenant`, `data_retention_cron`) were pending, `rotate_calendar_token(uuid)` was missing (prod had a stale `refresh_calendar_token` body against a non-existent `integrations` table), and the `auto-scheduler` + `fairness-scoring` Edge Functions were undeployed. All five gaps were closed during that session via MCP (see `docs/expansion/98_PROGRESS_LOG.md` row `PROD-RECONCILE`). Open advisor items at that time: 1 ERROR (`public.import_efficiency_metrics` as `SECURITY DEFINER` view) + 4 WARN categories; see `docs/expansion/NEXT_SESSION_PLAN.md` for the cleanup plan. `VITE_SENTRY_DSN` is still not set in Vercel prod — production errors are not flowing to Sentry until that's wired and a redeploy is triggered.
+> **2026-04-17 reconciliation note:** Smoke checks on 2026-04-17 surfaced that prod was ~10 days behind disk — the three 2026-04-16 migrations (`security_hardening`, `initialize_new_tenant`, `data_retention_cron`) were pending, `rotate_calendar_token(uuid)` was missing (prod had a stale `refresh_calendar_token` body against a non-existent `integrations` table), and the `auto-scheduler` + `fairness-scoring` Edge Functions were undeployed. All five gaps were closed during that session via MCP (see [`98_PROGRESS_LOG.md`](../expansion/98_PROGRESS_LOG.md) row `PROD-RECONCILE`). Open advisor items at that time: 1 ERROR (`public.import_efficiency_metrics` as `SECURITY DEFINER` view) + 4 WARN categories; see [`NEXT_SESSION_PLAN.md`](../expansion/NEXT_SESSION_PLAN.md) for the cleanup plan. `VITE_SENTRY_DSN` is still not set in Vercel prod — production errors are not flowing to Sentry until that's wired and a redeploy is triggered.
+>
+> **2026-05-02 release-prep note:** Vercel reports the `squadlogic` project as framework `vite`, Node `24.x`, and latest production deployment `READY` for `main` commit `30f9aa7e9728008b7038228d9b74b46cc7c2141a` (PR #212). CI currently verifies on Node 20. Keep that runtime split documented until a separate parity PR changes either side with full verification. The repo now contains 49 migration files; production migration/advisor state still needs operator verification before final release sign-off.
 
 ---
 
 ## System State Checklist (confirm before launch)
 
-| System              | Expected state                                                                      | How to verify                                                    |
-| ------------------- | ----------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| Vercel deployment   | `READY` on `main`                                                                   | https://vercel.com/secureyourtech/squadlogic                     |
-| Vercel env vars     | `VITE_SUPABASE_URL` + `VITE_SUPABASE_ANON_KEY` set, `VITE_USE_MOCK_SUPABASE` absent | Vercel dashboard → Settings → Environment Variables              |
-| Supabase project    | `ACTIVE_HEALTHY`                                                                    | Supabase dashboard or MCP `get_project`                          |
-| Database migrations | 37 applied, no pending                                                              | Supabase dashboard → Database → Migrations                       |
+| System              | Expected state                                                                                 | How to verify                                       |
+| ------------------- | ---------------------------------------------------------------------------------------------- | --------------------------------------------------- |
+| Vercel deployment   | Latest `main` production deployment is `READY`                                                  | Vercel dashboard or connector deployment list       |
+| Vercel Node runtime | Project currently reports Node `24.x`; CI baseline remains Node 20                              | Vercel project settings and `.github/workflows/ci.yml` |
+| Vercel env vars     | `VITE_SUPABASE_URL` + `VITE_SUPABASE_ANON_KEY` set, `VITE_USE_MOCK_SUPABASE` absent            | Vercel dashboard → Settings → Environment Variables |
+| Supabase project    | `ACTIVE_HEALTHY`                                                                                | Supabase dashboard or MCP `get_project`             |
+| Database migrations | Production has all repo-required migrations applied; local repo currently has 49 migration files | Supabase dashboard → Database → Migrations          |
 
 Roles and their permissions are defined in `frontend/src/constants/permissions.js`.
 
@@ -34,24 +37,27 @@ Roles and their permissions are defined in `frontend/src/constants/permissions.j
 - Supabase dashboard → Database → Connection pooling. Free tier limit is 60 direct connections.
 
 **Free-tier keep-alive:**
-Supabase pauses free-tier projects after 7 days of inactivity. Add a scheduled keep-alive ping to prevent this. In the GitHub Actions CI workflow (`.github/workflows/ci.yml`), add a cron trigger:
-
-```yaml
-on:
-  schedule:
-    - cron: '0 12 * * 1' # Every Monday at noon UTC
-```
-
-With a job that simply hits the Supabase health endpoint:
+Supabase pauses free-tier projects after 7 days of inactivity. The scheduled
+keep-alive lives in `.github/workflows/ci.yml` and validates required secrets
+before pinging the Supabase REST API. It must fail loudly if the project is
+unreachable or secrets are missing.
 
 ```yaml
 jobs:
   keepalive:
+    if: github.event_name == 'schedule'
     runs-on: ubuntu-latest
     steps:
-      - run: curl -sf https://mmwupqsjkikqzvmdvuzm.supabase.co/rest/v1/ \
-               -H "apikey: ${{ secrets.VITE_SUPABASE_ANON_KEY }}" || true
+      - run: curl -sf "$SUPABASE_URL/rest/v1/" \
+               -H "apikey: $SUPABASE_ANON_KEY" \
+               -H "Authorization: Bearer $SUPABASE_ANON_KEY"
+        env:
+          SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
 ```
+
+See [`ci-cd.md`](./ci-cd.md) for the current workflow policy and artifact
+retention.
 
 ---
 
@@ -98,8 +104,20 @@ Users will see the mock client with seed data. No real data is lost. The Supabas
 
 ## What does NOT need a runbook step
 
-- **Migrations** — all 37 are already applied to the production database (including the three 2026-04-16 entries: `20260416000000_security_hardening`, `20260416000001_initialize_new_tenant`, `20260416000002_data_retention_cron`).
-- **Edge Functions** — all 7 are already deployed and ACTIVE (`auto-scheduler`, `calendar-feed`, `fairness-scoring`, `game-persistence`, `import-validation`, `practice-persistence`, `team-persistence`).
+- **Historical 2026-04-17 remediation** — the three 2026-04-16 migrations and the two missing Edge Function deployments were already reconciled during that session.
 - **Vercel connection** — already connected to GitHub; auto-deploys on every push to `main`.
 - **SSL/TLS** — handled by Vercel and Supabase automatically.
 - **CORS** — the Supabase project's allowed origins are managed in the Supabase dashboard → Settings → API → CORS. Add `https://squadlogic.vercel.app` if not already present.
+
+## What still needs confirmation before final release sign-off
+
+- **Production migrations/advisors** — verify the production database has the
+  current 49-file migration set applied and that security/performance advisor
+  output matches the release-readiness summary.
+- **Sentry** — set and smoke-test `VITE_SENTRY_DSN` if production error
+  collection is required for the release.
+- **Raw import retention** — configure `SUPABASE_URL` and
+  `SUPABASE_SERVICE_ROLE_KEY` Actions secrets, or intentionally disable the
+  scheduled cleanup workflow.
+- **Branch protection** — enable/validate required checks and conversation
+  resolution before final sign-off.
