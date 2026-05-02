@@ -17,11 +17,16 @@ When('I use the Team Communication tool', async ({ page }) => {
 });
 
 Then('a notification should be sent to all parents of players on my roster', async ({ page }) => {
-  const input = page.getByPlaceholder(/Type a message/i).first();
-  await input.fill('Practice is cancelled today due to rain.');
-  await page.locator('form button[type="submit"]').first().click({ force: true });
-  // Optimistic UI appends it immediately
-  await expect(page.getByText('Practice is cancelled today due to rain.').first()).toBeVisible();
+  const message = 'Practice is cancelled today due to rain.';
+  const chatForm = page.locator('form').filter({ has: page.getByPlaceholder(/Type a message/i) });
+  const input = chatForm.getByPlaceholder(/Type a message/i).first();
+  const sendButton = chatForm.getByRole('button', { name: /Send team message/i }).first();
+
+  await expect(sendButton).toBeVisible({ timeout: 10000 });
+  await input.fill(message);
+  await input.press('Enter');
+  await expect(input).toHaveValue('');
+  await expect(page.getByText(message).first()).toBeVisible({ timeout: 15000 });
 });
 
 Then('I should be able to see a history of all sent messages', async ({ page }) => {

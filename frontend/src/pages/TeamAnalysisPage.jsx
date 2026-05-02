@@ -85,16 +85,34 @@ function derivePrograms(rows) {
     grouped.set(id, current);
   });
 
-  return Array.from(grouped.values()).map((program) => {
-    const estimatedTeams = Math.max(1, Math.ceil(program.playerCount / DEFAULT_TARGET_TEAM_SIZE));
-    return {
-      ...program,
-      estimatedTeams,
-      avgRosterSize: Number((program.playerCount / estimatedTeams).toFixed(1)),
-      totalPlayers: program.playerCount,
-      capacity: estimatedTeams * DEFAULT_MAX_ROSTER_SIZE,
-    };
-  });
+  return Array.from(grouped.values()).map((program) => ({
+    ...program,
+    totalPlayers: program.playerCount,
+  }));
+}
+
+function positiveIntegerOrFallback(value, fallback) {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function deriveProgramStats(program, config = {}) {
+  const targetTeamSize = positiveIntegerOrFallback(config.targetTeamSize, DEFAULT_TARGET_TEAM_SIZE);
+  const maxRosterSize = positiveIntegerOrFallback(config.maxRosterSize, DEFAULT_MAX_ROSTER_SIZE);
+  const minTeams = positiveIntegerOrFallback(config.minTeams, null);
+  const maxTeams = positiveIntegerOrFallback(config.maxTeams, null);
+  const overrideTeams = positiveIntegerOrFallback(config.teamCountOverride, null);
+  const baseEstimate =
+    overrideTeams || Math.max(1, Math.ceil(program.playerCount / targetTeamSize));
+  const minBoundedEstimate = minTeams ? Math.max(baseEstimate, minTeams) : baseEstimate;
+  const estimatedTeams = maxTeams ? Math.min(minBoundedEstimate, maxTeams) : minBoundedEstimate;
+
+  return {
+    ...program,
+    estimatedTeams,
+    avgRosterSize: Number((program.playerCount / estimatedTeams).toFixed(1)),
+    capacity: estimatedTeams * maxRosterSize,
+  };
 }
 
 function parseBooleanLike(value) {
@@ -117,7 +135,7 @@ function normalizeSkillRating(value) {
   return undefined;
 }
 
-function toGeneratorPlayer(row, index, division) {
+function toGeneratorPlayer(row, sourceIndex, division) {
   const id = String(
     firstNonEmpty(row, [
       'id',
@@ -126,7 +144,7 @@ function toGeneratorPlayer(row, index, division) {
       'external_registration_id',
       'gotsport_id',
       'registration_id',
-    ]) || `${division}-row-${index + 1}`
+    ]) || sourceIndex
   );
   const firstName = firstNonEmpty(row, ['first_name', 'First Name', 'firstName']) || '';
   const lastName = firstNonEmpty(row, ['last_name', 'Last Name', 'lastName']) || '';
@@ -176,7 +194,14 @@ export default function TeamAnalysisPage() {
   const navigate = useNavigate();
 
   const importedPlayerRows = useMemo(() => getImportedRows(importedData), [importedData]);
-  const programs = useMemo(() => derivePrograms(importedPlayerRows), [importedPlayerRows]);
+  const basePrograms = useMemo(() => derivePrograms(importedPlayerRows), [importedPlayerRows]);
+  const programs = useMemo(
+    () =>
+      basePrograms.map((program) =>
+        deriveProgramStats(program, configs[program.id] || createDefaultConfig(program))
+      ),
+    [basePrograms, configs]
+  );
 
   const selectedProgram = useMemo(
     () => programs.find((p) => p.id === selectedProgramId) || programs[0],
@@ -284,15 +309,15 @@ export default function TeamAnalysisPage() {
 
       const selectedProgramKey = String(selectedProgram.id);
       const config = configs[selectedProgramKey] || createDefaultConfig(selectedProgram);
-      const rowsForProgram = importedPlayerRows.filter(
-        (row) => resolveDivisionId(row) === selectedProgramKey
-      );
+      const rowsForProgram = importedPlayerRows
+        .map((row, sourceIndex) => ({ row, sourceIndex }))
+        .filter(({ row }) => resolveDivisionId(row) === selectedProgramKey);
       if (rowsForProgram.length === 0) {
         throw new Error(`No imported players found for ${selectedProgram.name}.`);
       }
 
-      const generatorPlayers = rowsForProgram.map((row, index) =>
-        toGeneratorPlayer(row, index, selectedProgramKey)
+      const generatorPlayers = rowsForProgram.map(({ row, sourceIndex }) =>
+        toGeneratorPlayer(row, sourceIndex, selectedProgramKey)
       );
       const divisionConfig = {
         id: selectedProgramKey,
