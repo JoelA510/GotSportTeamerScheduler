@@ -51,6 +51,9 @@ Configure in GitHub → Settings → Secrets and variables → Actions:
 The workflow fails fast if either secret is missing — it does not silently
 degrade to no-op.
 
+The `dry_run` input must be either `true` or `false`. Invalid values fail
+before any Storage API call is made.
+
 ## Manually triggering a run
 
 1. Go to the GitHub repository → **Actions** tab.

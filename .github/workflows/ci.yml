@@ -8,18 +8,41 @@ on:
   schedule:
     # Keep the Supabase free-tier project alive (pauses after 7 days idle)
     - cron: '0 12 * * 1' # Every Monday at noon UTC
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   # ── Supabase keep-alive (scheduled runs only) ────────────────
   keepalive:
     if: github.event_name == 'schedule'
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
+      - name: Validate keep-alive secrets
+        run: |
+          if [ -z "${SUPABASE_URL}" ]; then
+            echo "::error::VITE_SUPABASE_URL secret is not configured."
+            exit 1
+          fi
+          if [ -z "${SUPABASE_ANON_KEY}" ]; then
+            echo "::error::VITE_SUPABASE_ANON_KEY secret is not configured."
+            exit 1
+          fi
+        env:
+          SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+
       - name: Ping Supabase REST API
         run: |
           curl -sf "$SUPABASE_URL/rest/v1/" \
             -H "apikey: $SUPABASE_ANON_KEY" \
-            -H "Authorization: Bearer $SUPABASE_ANON_KEY" || true
+            -H "Authorization: Bearer $SUPABASE_ANON_KEY"
         env:
           SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
@@ -29,47 +52,161 @@ jobs:
     if: github.event_name != 'schedule'
     name: Build & Test
     runs-on: ubuntu-latest
+    timeout-minutes: 35
 
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine change scope
+        id: changes
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          BEFORE_SHA: ${{ github.event.before }}
+          CURRENT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          if [ "${EVENT_NAME}" = "pull_request" ]; then
+            git diff --name-only "${BASE_SHA}" "${HEAD_SHA}" > changed-files.txt
+          elif [ -n "${BEFORE_SHA}" ] && [ "${BEFORE_SHA}" != "0000000000000000000000000000000000000000" ]; then
+            git diff --name-only "${BEFORE_SHA}" "${CURRENT_SHA}" > changed-files.txt
+          else
+            git show --name-only --format= "${CURRENT_SHA}" > changed-files.txt
+          fi
+
+          if [ ! -s changed-files.txt ]; then
+            echo "docs_only=false" >> "$GITHUB_OUTPUT"
+            echo "No changed files detected; running full matrix."
+            exit 0
+          fi
+
+          echo "Changed files:"
+          sed 's/^/  - /' changed-files.txt
+
+          if grep -Ev '^(docs/|README\.md$|CHANGELOG\.md$|[^/]+\.md$)' changed-files.txt | grep -q .; then
+            echo "docs_only=false" >> "$GITHUB_OUTPUT"
+            echo "Full matrix required."
+          else
+            echo "docs_only=true" >> "$GITHUB_OUTPUT"
+            echo "Docs-only change detected; running docs-only checks."
+          fi
+
+      - name: Docs-only diff check
+        if: steps.changes.outputs.docs_only == 'true'
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          BEFORE_SHA: ${{ github.event.before }}
+          CURRENT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          if [ "${EVENT_NAME}" = "pull_request" ]; then
+            git diff --check "${BASE_SHA}" "${HEAD_SHA}"
+          elif [ -n "${BEFORE_SHA}" ] && [ "${BEFORE_SHA}" != "0000000000000000000000000000000000000000" ]; then
+            git diff --check "${BEFORE_SHA}" "${CURRENT_SHA}"
+          else
+            git show --check --format= "${CURRENT_SHA}"
+          fi
 
       - name: Setup Node.js
+        if: steps.changes.outputs.docs_only != 'true'
         uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: 'npm'
+          cache-dependency-path: package-lock.json
 
       - name: Install Dependencies
-        run: npm install
+        if: steps.changes.outputs.docs_only != 'true'
+        run: npm ci
 
       - name: Typecheck
+        if: steps.changes.outputs.docs_only != 'true'
         run: npm run typecheck
 
       - name: Lint
+        if: steps.changes.outputs.docs_only != 'true'
         run: npm run lint
 
       - name: Unit & Integration Tests
+        if: steps.changes.outputs.docs_only != 'true'
         run: npm run test
 
       - name: Build Frontend
+        if: steps.changes.outputs.docs_only != 'true'
         run: npm run frontend:build
 
       - name: Bundle-budget gate (Wave 6a)
-        run: npm run check:bundle
+        if: steps.changes.outputs.docs_only != 'true'
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run check:bundle | tee bundle-budget-report.txt
 
       - name: Advisor-lint gate (Wave 6a)
+        if: steps.changes.outputs.docs_only != 'true'
         run: npm run check:advisors
 
       - name: Install Playwright Browsers
+        if: steps.changes.outputs.docs_only != 'true'
         run: npx playwright install --with-deps chromium
 
       - name: End-to-End Tests
+        if: steps.changes.outputs.docs_only != 'true'
+        id: e2e
         # Passing --workers=1 guarantees mock sessionStorage isolation per the Epic 19 plan
         run: npm run test:e2e -- --workers=1
         env:
           VITE_USE_MOCK_SUPABASE: 'true'
+          VITE_TEST_ADMIN_EMAIL: 'admin@squadlogic.app'
+          VITE_TEST_COACH_EMAIL: 'coach@squadlogic.app'
+          VITE_TEST_PASSWORD: 'test-password-123'
           TEST_ADMIN_EMAIL: 'admin@squadlogic.app'
           TEST_COACH_EMAIL: 'coach@squadlogic.app'
           TEST_PARENT_EMAIL: 'parent@squadlogic.app'
           TEST_PASSWORD: 'test-password-123'
+
+      - name: Upload Playwright HTML report
+        if: always() && steps.changes.outputs.docs_only != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Upload Playwright failure artifacts
+        if: always() && steps.changes.outputs.docs_only != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-test-results
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Upload bundle-budget report
+        if: always() && steps.changes.outputs.docs_only != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: bundle-budget-report
+          path: bundle-budget-report.txt
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Upload coverage report if present
+        if: always() && steps.changes.outputs.docs_only != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage/
+          if-no-files-found: ignore
+          retention-days: 14

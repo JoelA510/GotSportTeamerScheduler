@@ -1,6 +1,10 @@
 name: Cleanup raw-imports bucket (30-day retention)
 permissions: {}
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 # Wave 6b Task 3 — Storage retention for the raw-imports bucket.
 #
 # Why GitHub Actions, not pg_cron:
@@ -49,12 +53,15 @@ jobs:
             echo "::error::SUPABASE_SERVICE_ROLE_KEY secret is not configured."
             exit 1
           fi
+          if [ "${DRY_RUN}" != "true" ] && [ "${DRY_RUN}" != "false" ]; then
+            echo "::error::dry_run must be either 'true' or 'false'."
+            exit 1
+          fi
 
       - name: Enforce raw-imports retention
         shell: bash
         run: |
-          set -u
-          set -o pipefail
+          set -euo pipefail
 
           BASE_URL="${SUPABASE_URL%/}/storage/v1"
           CUTOFF_EPOCH=$(date -u -d "${RETENTION_DAYS} days ago" +%s)
@@ -90,13 +97,17 @@ jobs:
 
             if [ "${status}" -ge 500 ]; then
               echo "::error::Supabase list API returned HTTP ${status}. Aborting (non-destructive)."
-              cat "${response}" >&2 || true
+              if [ -s "${response}" ]; then
+                cat "${response}" >&2
+              fi
               rm -f "${response}"
               exit 1
             fi
             if [ "${status}" -ge 400 ]; then
               echo "::error::Supabase list API returned HTTP ${status}. Aborting."
-              cat "${response}" >&2 || true
+              if [ -s "${response}" ]; then
+                cat "${response}" >&2
+              fi
               rm -f "${response}"
               exit 1
             fi
@@ -150,13 +161,17 @@ jobs:
                 -H "${apikey_header}")
               if [ "${del_status}" -ge 500 ]; then
                 echo "::error::Delete API returned HTTP ${del_status} on ${name}. Aborting."
-                cat "${del_body}" >&2 || true
+                if [ -s "${del_body}" ]; then
+                  cat "${del_body}" >&2
+                fi
                 rm -f "${del_body}" "${response}"
                 exit 1
               fi
               if [ "${del_status}" -ge 400 ]; then
                 echo "::error::Delete API returned HTTP ${del_status} on ${name}. Aborting."
-                cat "${del_body}" >&2 || true
+                if [ -s "${del_body}" ]; then
+                  cat "${del_body}" >&2
+                fi
                 rm -f "${del_body}" "${response}"
                 exit 1
               fi
