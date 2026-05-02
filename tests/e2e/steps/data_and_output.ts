@@ -37,13 +37,14 @@ When(
 );
 
 Then('the system should reject the file completely', async ({ page }) => {
-  await expect(page.getByTestId('import-error-banner').first()).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Map your columns' })).toBeVisible({
+    timeout: 10000,
+  });
+  await expect(page.getByRole('button', { name: 'Continue' })).toBeDisabled();
 });
 
 Then('present a clear validation error to the user in the UI', async ({ page }) => {
-  await expect(page.getByTestId('import-error-banner').first()).toContainText(
-    'Missing required columns'
-  );
+  await expect(page.getByText(/Still need: First Name, Last Name, Date of Birth/)).toBeVisible();
 });
 
 Given('I upload the GotSport player CSV file with valid headers', async ({ page }) => {
@@ -98,10 +99,7 @@ Then('present an interface to manually correct the malformed row', async ({ page
 });
 
 When('I click to export the team rosters or schedules', async ({ page }) => {
-  // CRITICAL FIX: Go to root first to set origin, then set localStorage, then reload
-  await page.goto('/');
-  await page.evaluate(() => localStorage.setItem('dashboardActiveStep', '6'));
-  await page.reload();
+  await page.goto('/?step=6');
 
   // CRITICAL FIX: Use a more robust locator that matches the actual rendered text
   const step6 = page
@@ -166,10 +164,7 @@ Given('the team rosters have been generated and finalized', async ({ page }) => 
 });
 
 When('I access the communication tools', async ({ page }) => {
-  // CRITICAL FIX: Go to root first to set origin, then set localStorage, then reload
-  await page.goto('/');
-  await page.evaluate(() => localStorage.setItem('dashboardActiveStep', '6'));
-  await page.reload();
+  await page.goto('/?step=6');
 
   // CRITICAL FIX: Use a more robust locator that matches the actual rendered text
   const step6 = page
@@ -182,7 +177,11 @@ When('I access the communication tools', async ({ page }) => {
 Then(
   'I should be able to generate a batch of draft emails for all head coaches',
   async ({ page }) => {
+    await expect(page.locator('article[aria-label="Teams Formed"]').first()).toContainText('1', {
+      timeout: 15000,
+    });
     await page.getByTestId('generate-emails-btn').first().click({ force: true });
+    await expect(page.getByText('Generated 1 email drafts.')).toBeVisible({ timeout: 10000 });
   }
 );
 

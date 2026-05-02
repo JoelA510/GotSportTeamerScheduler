@@ -96,8 +96,11 @@ export function mapSchedulerRunToSummary(run) {
     (acc, div) => {
       acc.divisions++;
       acc.teams += div.totalTeams;
+      acc.totalTeams += div.totalTeams;
       acc.playersAssigned += div.playersAssigned;
+      acc.playersTarget += div.totalCapacity;
       acc.overflowPlayers += div.overflowPlayers;
+      acc.manualReviewRequired += div.overflowPlayers;
 
       if (div.needsAdditionalCoaches) {
         acc.divisionsNeedingCoaches++;
@@ -110,8 +113,11 @@ export function mapSchedulerRunToSummary(run) {
     {
       divisions: 0,
       teams: 0,
+      totalTeams: 0,
       playersAssigned: 0,
+      playersTarget: 0,
       overflowPlayers: 0,
+      manualReviewRequired: 0,
       divisionsNeedingCoaches: 0,
       divisionsWithOpenRosterSlots: 0,
     }

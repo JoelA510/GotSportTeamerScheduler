@@ -14,14 +14,13 @@ Feature: Dashboard Workflow and Readiness Score
     And the League Status panel should show the active organization name
     And the League Status panel should show the active season name
 
-  Scenario: Readiness score reflects data import completion
+  Scenario: Readiness score remains incomplete until generated outputs exist
     Given I have imported player data
     But I have not generated teams
     And I have not generated a practice schedule
     And I have not generated a game schedule
     When I view the Dashboard page
-    Then the Readiness Score should display "25%"
-    And the "1. Data Import" step should show as completed
+    Then the Readiness Score should display "0%"
 
   Scenario: Readiness score reflects all steps completed
     Given I have imported player data

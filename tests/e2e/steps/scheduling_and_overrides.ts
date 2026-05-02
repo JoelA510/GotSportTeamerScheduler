@@ -206,9 +206,8 @@ When('I trigger the team generation algorithm', async ({ page }) => {
 });
 
 Then('{int} teams should be created', async ({ page }, expectedTeams: number) => {
-  // Verify via the DOM in the Drafting Summary panel
-  const teamsMetric = page.locator('.metric-item').filter({ hasText: 'Teams' }).locator('dd');
-  await expect(teamsMetric).toHaveText(expectedTeams.toString(), { timeout: 15000 });
+  const teamsMetric = page.locator('article[aria-label="Teams Formed"]').first();
+  await expect(teamsMetric).toContainText(expectedTeams.toString(), { timeout: 15000 });
 });
 
 Then('players should be balanced by skill level across teams', async ({ page }) => {
@@ -216,14 +215,14 @@ Then('players should be balanced by skill level across teams', async ({ page }) 
   // We verify the UI successfully rendered the division stats card indicating a balanced run.
   const divisionCard = page.locator('.insight-card').filter({ hasText: 'U10' }).first();
   await expect(divisionCard).toBeVisible();
-  await expect(divisionCard).toContainText('Fill Rate:');
+  await expect(divisionCard).toContainText('Roster Utilization');
 });
 
 Then('mutual buddy requests should be respected where possible', async ({ page }) => {
   // The UI does not currently display buddy metrics in the summary panel.
   // We verify the run completed successfully without critical overflow errors.
-  const overflowMetric = page.locator('.metric-item').filter({ hasText: 'Overflow' }).locator('dd');
-  await expect(overflowMetric).toHaveText('0');
+  const manualReviewMetric = page.locator('article[aria-label="Manual Review"]').first();
+  await expect(manualReviewMetric).toContainText('0');
 });
 
 // ────────────────────────────────────────────────────────────
@@ -621,8 +620,7 @@ Given('the automated schedule has been generated', async ({ page }) => {
 });
 
 When('I manually assign a team to an alternative practice slot', async ({ page }) => {
-  // CRITICAL FIX: Enter Edit Mode to reveal the manual override controls
-  const editBtn = page.getByRole('button', { name: /Manual Overrides/i }).first();
+  const editBtn = page.getByRole('button', { name: /Enter Manual Override/i }).first();
   await editBtn.waitFor({ state: 'visible', timeout: 15000 });
   await editBtn.click();
 
@@ -805,7 +803,16 @@ Given('I am on the Game Scheduling page viewing an identified conflict', async (
       organization_id: orgId,
       run_type: 'game',
       status: 'completed',
-      results: { summary: { scheduledRate: 1.0, unscheduledMatchups: 0 } },
+      results: {
+        summary: { scheduledRate: 1.0, unscheduledMatchups: 0 },
+        warnings: [
+          {
+            type: 'field-overlap',
+            message: 'Field 1 has two games at the same kickoff time.',
+            details: { conflicts: [{ id: 'ga-conflict-1' }, { id: 'ga-conflict-2' }] },
+          },
+        ],
+      },
       created_at: timestamp,
       completed_at: timestamp,
     });
@@ -816,8 +823,7 @@ Given('I am on the Game Scheduling page viewing an identified conflict', async (
   // Step 3: Reload so React re-mounts with the fully seeded mock data
   await page.reload({ waitUntil: 'domcontentloaded' });
 
-  // Step 4: Wait for the Edit Schedule button (proves the page loaded)
-  const editBtn = page.getByRole('button', { name: /Edit Schedule/i });
+  const editBtn = page.getByRole('button', { name: /Quick Adjust/i });
   await editBtn.waitFor({ state: 'visible', timeout: 15000 });
 
   // Step 5: Wait for the conflict banner (async hook cascade needs time)
@@ -853,10 +859,10 @@ When('I drag a game to a new time slot to resolve the conflict', async ({ page }
 Then(
   'the system validates the new slot against field availability and coach schedules',
   async ({ page }) => {
-    // After the drag, the game card should now be in the target drop zone (v2:gs-3)
-    const targetZone = page.getByTestId('drop-zone-v2:gs-3');
-    // The game card should have moved here
-    await expect(targetZone.getByTestId('game-card-ga-conflict-2')).toBeVisible({ timeout: 10000 });
+    const targetField = page.getByTestId('field-column-v2');
+    await expect(targetField.getByTestId('game-card-ga-conflict-2')).toBeVisible({
+      timeout: 10000,
+    });
   }
 );
 
@@ -941,7 +947,12 @@ Given('I am on the Practice Scheduling page', async ({ page }) => {
 
 When(
   'I click the {string} icon on for {string}',
-  async ({ page }, iconName: string, teamName: string) => {
+  async ({ page }, _iconName: string, teamName: string) => {
+    const editBtn = page.getByRole('button', { name: /Enter Manual Override/i }).first();
+    if (await editBtn.isVisible().catch(() => false)) {
+      await editBtn.click();
+    }
+
     // Wait for the table to load, then target the specific row
     const row = page.locator('tr').filter({ hasText: teamName }).first();
     await row.waitFor({ state: 'visible', timeout: 10000 });
@@ -976,6 +987,11 @@ Given('{string} has a locked practice assignment', async ({ page }, teamName: st
 
   const row = page.locator('tr').filter({ hasText: teamName }).first();
   await row.waitFor({ state: 'visible', timeout: 10000 });
+
+  const editBtn = page.getByRole('button', { name: /Enter Manual Override/i }).first();
+  if (await editBtn.isVisible().catch(() => false)) {
+    await editBtn.click();
+  }
 
   // If it's not locked yet (amber text), click the toggle to lock it
   const lockBtn = row.locator('button').first();

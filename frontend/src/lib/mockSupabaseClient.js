@@ -1396,6 +1396,92 @@ export const mockSupabase = {
   functions: {
     invoke: async (name, options) => {
       logger.log(`[Mock Supabase] functions.invoke("${name}")`, options?.body);
+      if (name === 'import-validation') {
+        const body = options?.body || {};
+        const aliases = {
+          'first name': 'first_name',
+          first_name: 'first_name',
+          firstname: 'first_name',
+          'last name': 'last_name',
+          last_name: 'last_name',
+          lastname: 'last_name',
+          'date of birth': 'date_of_birth',
+          date_of_birth: 'date_of_birth',
+          dob: 'date_of_birth',
+          birthdate: 'date_of_birth',
+          'full name': 'full_name',
+          full_name: 'full_name',
+          email: 'email',
+          'email address': 'email',
+          name: 'name',
+          'field name': 'name',
+          'skill level': 'skill_tier',
+          skill_tier: 'skill_tier',
+        };
+        const requiredFields = {
+          players: ['first_name', 'last_name', 'date_of_birth'],
+          coaches: ['full_name', 'email'],
+          fields: ['name'],
+        };
+        const normalizeHeader = (header) => aliases[String(header).toLowerCase().trim()] || header;
+        const sanitize = (value) =>
+          value === null || value === undefined
+            ? ''
+            : String(value)
+                .replace(/<[^>]*>/g, '')
+                .trim()
+                .slice(0, 500);
+
+        const validatedData = [];
+        const validationErrors = [];
+        const required = requiredFields[body.import_type] || [];
+
+        (body.rows || []).forEach((rawRow, index) => {
+          const row = {};
+          Object.entries(rawRow).forEach(([key, value]) => {
+            row[normalizeHeader(key)] = sanitize(value);
+          });
+
+          required.forEach((field) => {
+            if (!row[field]) {
+              validationErrors.push({
+                row: index + 1,
+                field,
+                message: `Missing required field: ${field}`,
+              });
+            }
+          });
+
+          if (body.import_type === 'players' && row.date_of_birth) {
+            const dob = new Date(row.date_of_birth);
+            if (Number.isNaN(dob.getTime())) {
+              validationErrors.push({
+                row: index + 1,
+                field: 'date_of_birth',
+                message: `Invalid date format: ${row.date_of_birth}`,
+              });
+            }
+          }
+
+          const hasRowError = validationErrors.some((error) => error.row === index + 1);
+          if (!hasRowError) {
+            validatedData.push(row);
+          }
+        });
+
+        return {
+          data: {
+            status: 'success',
+            import_type: body.import_type,
+            total_rows: body.rows?.length || 0,
+            valid_rows: validatedData.length,
+            error_rows: validationErrors.length,
+            validated_data: validatedData,
+            validation_errors: validationErrors,
+          },
+          error: null,
+        };
+      }
       // Return a plausible empty success for any edge function call
       return { data: null, error: null };
     },

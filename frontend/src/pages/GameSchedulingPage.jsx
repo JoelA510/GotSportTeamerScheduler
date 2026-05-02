@@ -1,13 +1,17 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { DndContext, DragOverlay } from '@dnd-kit/core';
 import { useDashboardData } from '../hooks/useDashboardData.js';
 import TeamScheduleView from '../components/TeamScheduleView.jsx';
 import AutoSchedulerPanel from '../components/scheduling/AutoSchedulerPanel.jsx';
+import GameScheduleGrid from '../components/scheduling/GameScheduleGrid.jsx';
+import { GameCardPreview } from '../components/scheduling/GameCard.jsx';
 import Button from '../components/ui/Button.jsx';
 import ProgressBar from '../components/ui/ProgressBar.jsx';
 import { Edit2, Save, Trophy, Sparkles } from 'lucide-react';
 import GameReadinessPanel from '../components/GameReadinessPanel.jsx';
 import GameConflictBanner from '../components/scheduling/GameConflictBanner.jsx';
 import { formatDateTime } from '../utils/formatters.js';
+import { supabase } from '../lib/supabaseClient.js';
 
 export default function GameSchedulingPage() {
   const { game, loading, timezone } = useDashboardData();
@@ -22,6 +26,9 @@ export default function GameSchedulingPage() {
   const [autoSchedulerResult, setAutoSchedulerResult] = useState(null);
   const [autoSchedulerError, setAutoSchedulerError] = useState(null);
   const autoSchedulerIntervalRef = useRef(null);
+  const [fields, setFields] = useState([]);
+  const [gameSlots, setGameSlots] = useState([]);
+  const [activeGame, setActiveGame] = useState(null);
 
   useEffect(() => {
     if (game?.assignments) {
@@ -81,6 +88,97 @@ export default function GameSchedulingPage() {
     setAutoSchedulerProgress(0);
   };
 
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadGridReferenceData() {
+      const [{ data: fieldRows }, { data: slotRows }] = await Promise.all([
+        supabase.from('fields').select('*').eq('active', true),
+        supabase.from('game_slots').select('*').order('start', { ascending: true }),
+      ]);
+
+      if (!isMounted) return;
+      setFields(fieldRows ?? []);
+      setGameSlots(
+        (slotRows ?? []).map((slot) => ({
+          ...slot,
+          label: slot.start ? formatDateTime(slot.start, timezone) : slot.id,
+        }))
+      );
+    }
+
+    loadGridReferenceData();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [timezone]);
+
+  const conflictSet = useMemo(() => {
+    const ids = new Set();
+    (game?.warnings ?? []).forEach((warning) => {
+      (warning.details?.conflicts ?? []).forEach((assignment) => {
+        if (assignment?.id) ids.add(assignment.id);
+      });
+    });
+    return ids;
+  }, [game?.warnings]);
+
+  const handleDragStart = useCallback(
+    (event) => {
+      const assignment = localAssignments.find((a) => String(a.id) === String(event.active.id));
+      setActiveGame(assignment ?? null);
+    },
+    [localAssignments]
+  );
+
+  const handleDragEnd = useCallback(
+    async (event) => {
+      const { active, over } = event;
+      setActiveGame(null);
+      if (!over?.id) return;
+
+      const [targetFieldId, targetSlotId] = String(over.id).split(':');
+      if (!targetFieldId || !targetSlotId) return;
+
+      const targetSlot = gameSlots.find((slot) => String(slot.id) === targetSlotId);
+      const currentAssignment = localAssignments.find((assignment) => {
+        return String(assignment.id) === String(active.id);
+      });
+      if (!currentAssignment) return;
+
+      const updatedAssignment = {
+        ...currentAssignment,
+        fieldId: targetFieldId,
+        slotId: targetSlotId,
+        start: targetSlot?.start ?? currentAssignment.start,
+        end: targetSlot?.end ?? currentAssignment.end,
+        assignmentSource: 'manual',
+      };
+
+      setLocalAssignments((current) =>
+        current.map((assignment) =>
+          String(assignment.id) === String(active.id) ? updatedAssignment : assignment
+        )
+      );
+
+      const { error } = await supabase
+        .from('game_assignments')
+        .update({
+          field_id: targetFieldId,
+          slot_id: targetSlotId,
+          start: targetSlot?.start ?? updatedAssignment.start,
+          end: targetSlot?.end ?? updatedAssignment.end,
+          assignment_source: 'manual',
+        })
+        .eq('id', active.id);
+      if (error) {
+        console.error('Failed to persist game assignment override:', error);
+      }
+    },
+    [gameSlots, localAssignments]
+  );
+
   if (loading && !game) {
     return (
       <div className="p-12 text-center animate-fadeIn">
@@ -136,7 +234,23 @@ export default function GameSchedulingPage() {
             </div>
 
             <div className="p-0">
-              {activeTab === 'full' ? (
+              {isEditMode ? (
+                <div className="p-4 overflow-x-auto">
+                  <DndContext onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+                    <GameScheduleGrid
+                      assignments={localAssignments}
+                      fields={fields}
+                      timeSlots={gameSlots}
+                      conflictSet={conflictSet}
+                      activeGameId={activeGame?.id}
+                      timezone={timezone}
+                    />
+                    <DragOverlay>
+                      {activeGame ? <GameCardPreview assignment={activeGame} /> : null}
+                    </DragOverlay>
+                  </DndContext>
+                </div>
+              ) : activeTab === 'full' ? (
                 <GameScheduleList
                   assignments={localAssignments}
                   timezone={timezone}

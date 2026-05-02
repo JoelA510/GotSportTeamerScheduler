@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useDashboardData } from '../hooks/useDashboardData.js';
 import PracticeAssignmentList from '../components/PracticeAssignmentList.jsx';
+import PracticeOverridePanel from '../components/PracticeOverridePanel.jsx';
 import AutoSchedulerPanel from '../components/scheduling/AutoSchedulerPanel.jsx';
 import PracticeReadinessPanel from '../components/PracticeReadinessPanel.jsx';
 import Button from '../components/ui/Button.jsx';
@@ -61,6 +62,13 @@ export default function PracticeSchedulingPage() {
     try {
       // Ensure we have a signed-in session before kicking off the mock progress loop.
       await supabase.auth.getUser();
+      const testWindow =
+        typeof window !== 'undefined'
+          ? /** @type {Window & { __SQUADLOGIC_E2E_AUTO_SCHEDULER_ERROR__?: boolean }} */ (window)
+          : null;
+      if (testWindow?.__SQUADLOGIC_E2E_AUTO_SCHEDULER_ERROR__) {
+        throw new Error('Auto-scheduler service unavailable');
+      }
 
       // Mock call to edge function (scheduling-engine).
       // In production this would be: await supabase.functions.invoke('schedule-practices', { body: { teamId: team.id } });
@@ -112,11 +120,20 @@ export default function PracticeSchedulingPage() {
       : assignments;
 
   const isColdStart = !team?.teams?.length;
+  const overrideTeams = team?.teams ?? [];
+  const overrideBaseSlots = practice?.snapshot?.baseSlotDistribution ?? [];
 
-  const handleToggleLock = useCallback((assignmentId, nextSource) => {
+  const handleToggleLock = useCallback(async (assignmentId, nextSource) => {
     setAssignments((current) =>
       current.map((a) => (a.id === assignmentId ? { ...a, source: nextSource } : a))
     );
+    const { error } = await supabase
+      .from('practice_assignments')
+      .update({ source: nextSource })
+      .eq('id', assignmentId);
+    if (error) {
+      console.error('Failed to persist practice lock state:', error);
+    }
   }, []);
 
   return (
@@ -191,6 +208,9 @@ export default function PracticeSchedulingPage() {
               loading={dashboardLoading?.practice}
             />
           </div>
+          {isEditMode && (
+            <PracticeOverridePanel teams={overrideTeams} baseSlots={overrideBaseSlots} />
+          )}
         </div>
 
         <div className="lg:col-span-1 space-y-6">

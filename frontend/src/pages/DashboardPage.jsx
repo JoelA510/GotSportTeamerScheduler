@@ -28,13 +28,19 @@ export default function DashboardPage() {
   const { theme: _theme } = useTheme();
   const { currentOrganization } = useOrganization();
   const [error, setError] = useState(dataError);
-  const [activeStep, setActiveStep] = useState(0);
+  const [activeStep, setActiveStep] = useState(1);
 
   const location = useLocation();
 
   useEffect(() => {
     if (dataError) setError(dataError);
   }, [dataError]);
+
+  useEffect(() => {
+    if (location.state?.error) {
+      setError(location.state.error);
+    }
+  }, [location.state]);
 
   // Consume ?step=N from setup-wizard redirect exactly once on mount.
   // Re-running on later location changes would revert user-driven step changes.
@@ -50,7 +56,7 @@ export default function DashboardPage() {
   const readinessScore = useMemo(() => {
     let score = 0;
     if (team?.generatedAt) score += 40;
-    if (practice?.lastCalculated) score += 30;
+    if (practice?.generatedAt) score += 30;
     if (game?.generatedAt) score += 30;
     return score;
   }, [team, practice, game]);

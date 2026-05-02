@@ -62,22 +62,56 @@ Then('the resulting teams summary should reflect the new constraints', async ({ 
   // Wait for the generating state to register in the UI first
   await expect(page.getByText('Generating Teams...').first()).toBeVisible({ timeout: 10000 });
 
-  // Simulate backend completing the run so the UI transitions out of "Generating Teams..."
+  // Simulate backend completing the run so the UI transitions out of "Generating Teams...".
+  // The current UI trigger is local-only, so there may not be a running row to update.
   await page.evaluate(() => {
     const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
     const orgId = localStorage.getItem('squadlogic_active_org') || 'org-1';
+    const now = new Date().toISOString();
+    const completedRun = {
+      id: 'mock-run-team-constraints',
+      organization_id: orgId,
+      run_type: 'team',
+      status: 'completed',
+      created_at: now,
+      completed_at: now,
+      results: {
+        teamsByDivision: {
+          U10: [
+            {
+              id: 't1',
+              name: 'Tigers',
+              division_id: 'U10',
+              headCoach: 'Coach Smith',
+              coachEmail: 'smith@example.com',
+            },
+          ],
+        },
+        rosterBalanceByDivision: {
+          U10: {
+            summary: { totalPlayers: 10, totalCapacity: 12, averageFillRate: 0.83 },
+            teamStats: [{ teamId: 't1', slotsRemaining: 2 }],
+          },
+        },
+        coachCoverageByDivision: {
+          U10: { totalTeams: 1, teamsWithCoach: 1, coverageRate: 1 },
+        },
+        teams: [{ id: 't1', name: 'Tigers', division: 'U10' }],
+        team_players: [],
+      },
+    };
+    db.scheduler_runs = db.scheduler_runs || [];
     const run = db.scheduler_runs.find(
       (r: Record<string, unknown>) => r.run_type === 'team' && r.status === 'running'
     );
     if (run) {
       run.status = 'completed';
-      run.organization_id = orgId; // CRITICAL FIX: Ensure the polling hook finds this run
-      run.results = {
-        teamsByDivision: { 'U10 Boys': [{ id: 't1', name: 'Tigers' }] },
-        rosterBalanceByDivision: {
-          'U10 Boys': { summary: { totalPlayers: 10, totalCapacity: 10 } },
-        },
-      };
+      Object.assign(run, completedRun, { id: run.id });
+    } else {
+      db.scheduler_runs = db.scheduler_runs.filter(
+        (r: Record<string, unknown>) => r.id !== completedRun.id
+      );
+      db.scheduler_runs.push(completedRun);
     }
     sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
     if ((window as { __MOCK_DB__?: unknown }).__MOCK_DB__) {
@@ -85,7 +119,10 @@ Then('the resulting teams summary should reflect the new constraints', async ({ 
     }
   });
 
-  await expect(page.locator('text=Drafting Summary').first()).toBeVisible({ timeout: 15000 });
+  await page.goto('/teams');
+  await expect(page.getByRole('heading', { name: 'Teaming Overview' })).toBeVisible({
+    timeout: 15000,
+  });
 });
 
 When('the network connection stalls', async ({ page }) => {
@@ -129,7 +166,9 @@ When('the network connection stalls', async ({ page }) => {
 });
 
 Then('the panel status should change to {string}', async ({ page }, status: string) => {
-  const panel = page.locator('.glass-panel').filter({ hasText: 'Team Persistence' }).first();
+  const panel = page
+    .getByRole('heading', { name: 'Team Persistence' })
+    .locator('xpath=ancestor::div[contains(@class, "rounded-xl")][1]');
   if (status.toLowerCase() === 'error') {
     // The UI renders the error message in red, not the literal word "Error"
     await expect(panel.locator('.text-red-400')).toBeVisible({ timeout: 15000 });
@@ -199,12 +238,10 @@ Then(
 
 // --- Output Pipeline ---
 Given('I am on the {string} workflow step on Dashboard', async ({ page }, step: string) => {
-  // CRITICAL FIX: Go to root first to set origin, then set localStorage, then reload
+  // Go to root first to establish origin, seed storage, then use the dashboard
+  // query param consumed by DashboardPage's controlled workflow state.
   await page.goto('/');
-  await page.evaluate((s) => {
-    const map: Record<string, string> = { Outcome: '6', Teaming: '2' };
-    localStorage.setItem('dashboardActiveStep', map[s] || '6');
-
+  await page.evaluate(() => {
     // Seed data so the Output Generation panel has something to export
     const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
     const orgId = localStorage.getItem('squadlogic_active_org') || 'org-1';
@@ -244,12 +281,15 @@ Given('I am on the {string} workflow step on Dashboard', async ({ page }, step: 
     ];
 
     sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
-  }, step);
-  await page.goto('/');
-  const _label = step.includes('Outcome') ? 'output' : step.toLowerCase().replace(/\s+/g, '-');
+  });
+  const stepNumber = step.includes('Outcome') ? '6' : '2';
+  await page.goto(`/?step=${stepNumber}`);
+  const workflowStepName = step.includes('Outcome')
+    ? '6. Output & Communication'
+    : '2. Teaming & Analysis';
   await page
     .locator(`[data-testid*="workflow-step-"]`)
-    .filter({ hasText: '6. Output & Communication' })
+    .filter({ hasText: workflowStepName })
     .first()
     .click({ force: true });
 });
@@ -365,23 +405,50 @@ Given('I have generated a new set of teams', async ({ page }) => {
   await page.evaluate(() => {
     const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
     const orgId = localStorage.getItem('squadlogic_active_org') || 'org-1';
+    const now = new Date().toISOString();
     db.scheduler_runs = db.scheduler_runs || [];
-    db.scheduler_runs.push({
+    const completedRun = {
       id: 'mock-run-team-sync',
       organization_id: orgId,
       run_type: 'team',
       status: 'completed',
+      created_at: now,
+      completed_at: now,
       results: {
-        teamsByDivision: { U10: [{ id: 't1', name: 'Tigers' }] },
-        rosterBalanceByDivision: { U10: { summary: { totalPlayers: 10, totalCapacity: 12 } } },
+        teamsByDivision: {
+          U10: [
+            {
+              id: 't1',
+              name: 'Tigers',
+              division_id: 'U10',
+              headCoach: 'Coach Smith',
+              coachEmail: 'smith@example.com',
+            },
+          ],
+        },
+        rosterBalanceByDivision: {
+          U10: {
+            summary: { totalPlayers: 10, totalCapacity: 12, averageFillRate: 0.83 },
+            teamStats: [{ teamId: 't1', slotsRemaining: 2 }],
+          },
+        },
+        coachCoverageByDivision: {
+          U10: { totalTeams: 1, teamsWithCoach: 1, coverageRate: 1 },
+        },
+        teams: [{ id: 't1', name: 'Tigers', division: 'U10' }],
+        team_players: [],
       },
-      created_at: new Date().toISOString(),
-      completed_at: new Date().toISOString(),
-    });
+    };
+    db.scheduler_runs = db.scheduler_runs.filter(
+      (r: Record<string, unknown>) => r.id !== completedRun.id
+    );
+    db.scheduler_runs.push(completedRun);
     sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
   });
-  await page.reload();
-  await expect(page.locator('text=Drafting Summary').first()).toBeVisible({ timeout: 15000 });
+  await page.goto('/teams');
+  await expect(page.getByRole('heading', { name: 'Teaming Overview' })).toBeVisible({
+    timeout: 15000,
+  });
 });
 
 Then('the button should disable and show {string}', async ({ page }, _text: string) => {
