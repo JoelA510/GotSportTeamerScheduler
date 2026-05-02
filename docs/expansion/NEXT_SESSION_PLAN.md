@@ -2,23 +2,27 @@
 
 ---
 
-# Next Dev Session: Security Advisor Cleanup + Deferred Items
+# Security Advisor Cleanup + Deferred Items Status
 
-**Session date TBD.** Written 2026-04-17, after the §1–§4 production push landed ([#156](https://github.com/JoelA510/SquadLogic/pull/156), [#157](https://github.com/JoelA510/SquadLogic/pull/157), [#158](https://github.com/JoelA510/SquadLogic/pull/158)) and the prod Supabase state was reconciled with the repo (three 2026-04-16 migrations applied, `rotate_calendar_token` re-created, `auto-scheduler` + `fairness-scoring` deployed). The previous plan is archived at [`docs/archive/expansion/next-session-plan-2026-04-16.md`](../archive/expansion/next-session-plan-2026-04-16.md).
+**Originally written:** 2026-04-17, after the §1–§4 production push landed ([#156](https://github.com/JoelA510/SquadLogic/pull/156), [#157](https://github.com/JoelA510/SquadLogic/pull/157), [#158](https://github.com/JoelA510/SquadLogic/pull/158)) and the prod Supabase state was reconciled with the repo (three 2026-04-16 migrations applied, `rotate_calendar_token` re-created, `auto-scheduler` + `fairness-scoring` deployed). The previous plan is archived at [`docs/archive/expansion/next-session-plan-2026-04-16.md`](../archive/expansion/next-session-plan-2026-04-16.md).
+
+**Status refreshed:** 2026-05-02. This page is now a historical cleanup plan plus a current follow-up list. Repo-owned security-advisor fixes, the full E2E CI path, and the pgTAP harness have since shipped. Operator-owned production settings and v1.1 feature work remain separate release-readiness gates.
 
 ## Context
 
-`mcp get_advisors --type=security` now flags one ERROR + four distinct WARN categories against the production database, plus one deferred platform item. None block operation, but each is a concrete security or hardening gap with a bounded fix. The work below plus the three gap items from the prior session's follow-ups compose this session's scope.
+On 2026-04-17, `mcp get_advisors --type=security` flagged one ERROR + four distinct WARN categories against the production database, plus one deferred platform item. Repo-owned fixes for the view, storage bucket, function `search_path`, CSP, and supporting docs have since landed. Production dashboard state still requires operator confirmation for leaked-password protection, Sentry, and current advisor output.
 
 ---
 
-## 1. Security Advisor — ERROR
+## 1. Security Advisor — ERROR (repo fix shipped)
 
 ### 1.1 `public.import_efficiency_metrics` is a `SECURITY DEFINER` view
 
-A `SECURITY DEFINER` view enforces the **creator's** RLS/permissions when queried, not the caller's. In a multi-tenant schema where RLS on the underlying tables is the primary org-isolation gate, this means any querying user bypasses the caller-scoped `is_org_member(...)` policies on those tables.
+Historical finding: a `SECURITY DEFINER` view enforces the **creator's** RLS/permissions when queried, not the caller's. In a multi-tenant schema where RLS on the underlying tables is the primary org-isolation gate, this means any querying user bypasses the caller-scoped `is_org_member(...)` policies on those tables.
 
-**Fix.** Drop and recreate the view with `security_invoker = on` (Postgres 15+ supports this as a view option):
+**Current status.** Shipped in Wave 2 and re-verified in the import-efficiency repair. The view retains `security_invoker = on`, and targeted pgTAP coverage for the caller-scoped behavior is present in `supabase/tests/rls_import_efficiency_metrics_view.sql`.
+
+**Shipped fix.** Drop and recreate the view with `security_invoker = on` (Postgres 15+ supports this as a view option):
 
 ```sql
 alter view public.import_efficiency_metrics set (security_invoker = on);
@@ -28,27 +32,27 @@ Or, if the view needs to aggregate across orgs for a legitimate admin-facing rep
 - Keep `SECURITY DEFINER` but wrap the aggregation in a dedicated function that checks `is_global_admin(auth.uid())` before returning rows.
 - Or recreate as a `MATERIALIZED VIEW` that's refreshed server-side by a service-role job and grant SELECT only to an admin role.
 
-**Verification.**
+**Historical verification.**
 1. `select reloptions from pg_class where relname = 'import_efficiency_metrics';` shows `{security_invoker=true}`.
 2. `mcp get_advisors --type=security` no longer flags the view.
 3. Exercise the import pipeline from two different orgs and confirm rows don't bleed across.
 
-**Files to touch.**
-- New migration `supabase/migrations/202604XXXXXXXX_security_invoker_for_efficiency_view.sql`.
+**Historical files touched.**
+- Shipped migration `supabase/migrations/20260421000833_fix_import_efficiency_metrics_invoker.sql`.
 
 **Remediation guide.** https://supabase.com/docs/guides/database/database-linter?lint=0010_security_definer_view
 
 ---
 
-## 2. Security Advisor — WARN
+## 2. Security Advisor — WARN (repo fixes shipped; operator checks remain)
 
 ### 2.1 `public.raw-imports` storage bucket is public with broad SELECT
 
-Bucket is marked public AND has a `Public Access` SELECT policy on `storage.objects`. Combined, this lets any client list every file in the bucket — not just access a known-URL object. If the ingestion pipeline stores raw CSVs (with PII) in `raw-imports`, that's a data exposure path.
+Historical finding: the bucket was marked public and had a broad `Public Access` SELECT policy on `storage.objects`. Combined, this let any client list every file in the bucket.
 
-**Decision needed first.** Is `raw-imports` genuinely meant to serve public object URLs (e.g. logos, static assets), or is it storing user-uploaded CSVs? Confirm via Supabase dashboard → Storage → raw-imports before writing the fix.
+**Current status.** Path A shipped in migration `20260421001043_scope_raw_imports_bucket.sql`: `raw-imports` is private and read/write policies are scoped by organization path prefix. The scheduled raw-import retention workflow exists, but its Actions secrets (`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`) remain operator-owned.
 
-**Fix (path A — private CSV bucket).** Flip the bucket to private and scope SELECT by org membership:
+**Shipped fix (path A — private CSV bucket).** Flip the bucket to private and scope SELECT by org membership:
 
 ```sql
 update storage.buckets set public = false where id = 'raw-imports';
@@ -65,7 +69,7 @@ create policy "raw-imports read by org member"
 
 (This assumes uploads are keyed by `{organization_id}/{filename}`; adjust the folder parse if the path shape is different.)
 
-**Fix (path B — legitimate public bucket).** Keep `public = true`, but remove the list policy so clients can only fetch known URLs:
+**Rejected alternative (path B — legitimate public bucket).** Keep `public = true`, but remove the list policy so clients can only fetch known URLs:
 
 ```sql
 drop policy if exists "Public Access" on storage.objects;
@@ -75,15 +79,15 @@ create policy "raw-imports read public urls"
   using (bucket_id = 'raw-imports');
 ```
 
-(Note: this is subtly different from the current policy — the bucket is still listable via the admin API with the service-role key, but clients can't enumerate via a bare SELECT.)
+(Historical note: this was subtly different from the old policy — the bucket would still have been listable via the admin API with the service-role key, but clients couldn't enumerate via a bare SELECT.)
 
-**Verification.** `mcp get_advisors --type=security` drops the `public_bucket_allows_listing` entry.
+**Historical verification.** `mcp get_advisors --type=security` drops the `public_bucket_allows_listing` entry.
 
 **Remediation guide.** https://supabase.com/docs/guides/database/database-linter?lint=0025_public_bucket_allows_listing
 
 ### 2.2 Six functions with mutable `search_path`
 
-Flagged:
+Historical functions flagged:
 - `public.get_reserved_keys`
 - `public.log_schema_change`
 - `public.validate_custom_attributes`
@@ -91,9 +95,11 @@ Flagged:
 - `public.persist_evaluation_run` (two overloads)
 - `public.prune_old_evaluation_runs`
 
-A function without an explicit `SET search_path` resolves names against the caller's `search_path`, which an attacker-controlled search path can hijack to point at a malicious schema. The repo's newer functions (`initialize_new_tenant`, `rotate_calendar_token`, `record_audit_event`, `is_org_member`) already pin this; these six haven't been touched.
+A function without an explicit `SET search_path` resolves names against the caller's `search_path`, which an attacker-controlled search path can hijack to point at a malicious schema.
 
-**Fix.** One migration that uses `ALTER FUNCTION` to set `search_path = public`:
+**Current status.** Shipped in Wave 2 via `20260421001209_lock_search_path_on_definer_functions.sql`, with additional Wave 6a coverage for later definer functions through `npm run check:advisors`.
+
+**Shipped fix.** One migration that uses `ALTER FUNCTION` to set `search_path = public`:
 
 ```sql
 alter function public.get_reserved_keys() set search_path = public;
@@ -118,13 +124,13 @@ select n.nspname, p.proname, pg_get_function_identity_arguments(p.oid)
     );
 ```
 
-**Verification.** `mcp get_advisors --type=security` no longer lists any `function_search_path_mutable` warnings.
+**Historical verification.** `mcp get_advisors --type=security` no longer lists any `function_search_path_mutable` warnings.
 
 **Remediation guide.** https://supabase.com/docs/guides/database/database-linter?lint=0011_function_search_path_mutable
 
 ### 2.3 Leaked-password protection disabled
 
-Supabase Auth can reject passwords that appear in HaveIBeenPwned. Currently off.
+Supabase Auth can reject passwords that appear in HaveIBeenPwned. This remains an operator-owned dashboard setting unless production verification proves it is already enabled.
 
 **Fix.** Dashboard-only toggle:
 - Supabase Dashboard → Authentication → Password Security → enable "Leaked password protection".
@@ -140,7 +146,7 @@ Supabase Auth can reject passwords that appear in HaveIBeenPwned. Currently off.
 
 ### 3.1 Sentry DSN
 
-`frontend/src/main.jsx:14` gates `Sentry.init(...)` on `import.meta.env.VITE_SENTRY_DSN`. The env var is currently **not set** in Vercel prod, so the production bundle (fetched 2026-04-17) contains no `ingest.sentry.io` URL and no errors flow to Sentry.
+`frontend/src/main.jsx:14` gates `Sentry.init(...)` on `import.meta.env.VITE_SENTRY_DSN`. As of the 2026-04-17 production bundle check, the env var was **not set** in Vercel prod, so the bundle contained no `ingest.sentry.io` URL and no errors flowed to Sentry. The 2026-05-02 status is pending operator verification.
 
 **Fix.**
 1. Create (or locate) the Sentry project for SquadLogic — Frontend → React.
@@ -155,15 +161,11 @@ Supabase Auth can reject passwords that appear in HaveIBeenPwned. Currently off.
 
 ### 3.2 Onboarding test coverage
 
-Unchanged from the 2026-04-16 plan:
-- `initialize_new_tenant` needs pgTAP tests. **Blocker:** no pgTAP runner is configured in CI. PR #155's `supabase/setup-cli@v1 → supabase start → npm run test:db` scaffold is a reasonable starting point — it was closed unmerged but the branch (`feature/onboarding-testing-suite`) is preserved on origin.
-- `OrganizationCreation` lacks E2E coverage. **Blocker:** the mock Supabase client doesn't implement the `initialize_new_tenant` RPC, and the page is rendered inline by [`App.jsx:65`](../../frontend/src/App.jsx#L65) rather than under a `/organizations/new` route — Playwright can't navigate to it without refactoring the app's routing.
+**Current status.** The `/organizations/new` route, mock `initialize_new_tenant` RPC path, and onboarding cold-start E2E coverage shipped in PR #201. The pgTAP harness was restored in PR #211. Explicit pgTAP coverage for `initialize_new_tenant` can still be added as a focused DB test, but the old blockers are gone.
 
-**Suggested approach.** Solve the routing first: extract `OrganizationCreation` to `/organizations/new` and gate the App.jsx inline render behind a `needsOnboarding` predicate that no longer short-circuits the router. Then wire the mock client's `rpc()` dispatcher to handle `initialize_new_tenant`. Then add the pgTAP harness + an E2E scenario.
+### 3.3 E2E stability gap (closed in CI)
 
-### 3.3 E2E stability gap (23 of 63)
-
-The §1 repair moved the suite from 0/63 (build broken) to 40/63. The remaining 23 failures are stability drift on selectors and text expectations, not regressions from any of the four 2026-04-16 PRs. From the run logged on #156, the categories are:
+Historical state: the §1 repair moved the suite from 0/63 (build broken) to 40/63. The remaining 23 failures were selector/text/session drift categories:
 
 - **Readiness-score selector drift** — `[data-testid="readiness-score"]` not found on `dashboard_workflow.feature`. Likely the testid was renamed or removed during the UI polish pass and the feature file wasn't updated.
 - **"Drafting Summary" text** — `async_and_optimistic_ui.feature` expects this string; the rendered page uses different copy.
@@ -174,7 +176,7 @@ The §1 repair moved the suite from 0/63 (build broken) to 40/63. The remaining 
 - **Practice schedule locking (Locked status)** — `practice_schedule_locking.feature` doesn't see the Locked status badge.
 - **Roster conflict detection + Admin overrides** — all scenarios fail the initial "Team Roster page" nav; needs a closer look at `TeamAnalysisPage` post-fix.
 
-**Suggested approach.** Per-test loop: open the Playwright trace (`test-results/*-chromium/trace.zip`) via `npx playwright show-trace`, confirm what the page is actually rendering at the failing assertion, decide whether the feature file or the component is the source of truth, patch the smaller surface.
+**Current status.** PR #209 restored the hosted full E2E path with `npm run test:e2e -- --workers=1` and preserves Playwright HTML report, traces, screenshots, videos, and error-context artifacts. Future E2E failures should still use the per-test trace loop before changing feature files or assertions.
 
 ---
 
@@ -186,22 +188,22 @@ The production CSP serves `style-src 'self' 'unsafe-inline'`. `'unsafe-inline'` 
 
 ### 4.2 pgTAP / `supabase test db` in CI
 
-Even outside the onboarding tests, the repo has a `supabase/tests/database/` directory that the current CI never runs. Wire `supabase start` + `supabase test db` into `.github/workflows/ci.yml` — the PR #155 scaffold is a fine starting point — so pgTAP failures block merges.
+**Current status.** PR #211 restored the DB harness and wires `supabase start` + `npm run test:db` through `.github/workflows/pgtap.yml` for DB-affecting pull requests. Full and single-file local commands are documented by the package scripts and the Supabase test fixtures.
 
 ---
 
 ## Verification checklist for this session
 
-- [ ] Migration for 1.1 applied; view advisor clears.
-- [ ] Storage bucket fix (2.1) chosen between path A/B; advisor clears.
-- [ ] One migration for 2.2 alters all 6 flagged functions; advisor clears.
-- [ ] Leaked-password protection toggled on in dashboard (2.3); advisor clears.
+- [x] Migration for 1.1 applied; view retains caller-scoped `security_invoker` behavior.
+- [x] Storage bucket fix (2.1) chosen and applied as private org-scoped `raw-imports`.
+- [x] One migration for 2.2 alters all 6 flagged functions.
+- [ ] Leaked-password protection toggled on in dashboard (2.3); advisor clears. Pending operator verification.
 - [ ] `VITE_SENTRY_DSN` set in Vercel prod; synthetic error lands in Sentry.
-- [ ] `mcp get_advisors --type=security` returns an empty `lints` list (or only non-blocking informational entries).
+- [ ] `mcp get_advisors --type=security` returns an empty `lints` list (or only non-blocking informational entries). Pending production re-check.
 
 ## Verification checklist for stretch items
 
-- [ ] pgTAP runner wired into CI; `npm run test:db` runs on every PR.
-- [ ] `OrganizationCreation` moved under a `/organizations/new` route; mock client handles `initialize_new_tenant`; at least one E2E scenario covers the cold-start.
-- [ ] E2E suite at 63/63 (or failing tests have per-issue GitHub issues with traces attached).
+- [x] pgTAP runner wired into CI for DB-affecting PRs; `npm run test:db` runs in the pgTAP workflow.
+- [x] `OrganizationCreation` moved under a `/organizations/new` route; mock client handles `initialize_new_tenant`; at least one E2E scenario covers the cold-start.
+- [x] Hosted full E2E path restored in CI after PR #209.
 - [ ] CSP `style-src` hardened with a nonce; Deep Space Glass renders identically.

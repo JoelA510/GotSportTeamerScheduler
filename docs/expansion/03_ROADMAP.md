@@ -3,9 +3,9 @@
 
 # Production Roadmap: SquadLogic Expansion
 
-**Strategy**: "Full Suite Realization". We have successfully executed the expansion roadmap, transforming SquadLogic from a core scheduling engine into a comprehensive club management platform. The v1.0 MVP is now feature-complete and production-ready.
+**Strategy**: "Full Suite Realization". The v1.0 roadmap transformed SquadLogic from a core scheduling engine into a deployed club management platform. Release-readiness hardening for the next cut remains active, with durable import promotion, roster constraints, coach/admin workflows, performance tightening, and final validation tracked as v1.1 work.
 
-_Note on Epics: All epics (10 through 17) have been fully implemented, verified, and polished. The application now supports end-to-end workflows from registration through reporting._
+_Note on Epics: Epics 10 through 17 established the v1.0 baseline. Current documentation should distinguish shipped validation/import-job flows from the still-pending durable apply path into player, coach, and team records._
 
 ---
 
@@ -30,7 +30,7 @@ _Note on Epics: All epics (10 through 17) have been fully implemented, verified,
 **Goal**: Polish the admin experience, enforce security, and ensure type safety.
 
 - **Milestone 2.1: RBAC & Multi-Tenancy**: Broadened `usePermission` enforcement across all routes. Tightened RLS to strictly require `organization_id` checks.
-- **Milestone 2.2: Ingestion Hardening**: Finalized the CSV import-to-profile pipeline with robust validation and error recovery.
+- **Milestone 2.2: Ingestion Hardening**: Shipped CSV validation, import-job tracking, and error recovery. Durable promotion into `players`, `coaches`, `teams`, or staging tables remains a v1.1 release-readiness item.
 - **Milestone 2.3: Admin Overrides**: Completed UI for drag-and-drop roster adjustments and manual practice slot overrides.
 - **Milestone 2.4: Output Operationalization**: Connected CSV formatters to Supabase Storage and finalized coach email generation.
 - **Milestone 2.5: Type Safety & UX Polish**: Resolved >80 TypeScript errors and standardized the "Deep Space Glass" design system across all components.
@@ -41,7 +41,7 @@ _Note on Epics: All epics (10 through 17) have been fully implemented, verified,
 
 Following v1.0 completion, additional work was executed under **Epic 19: Launch & Beyond** (see `19_EPIC_LAUNCH_AND_BEYOND_CLAUDE.md`):
 
-- **Phase 1 (Completed):** GitHub Actions CI/CD pipeline, Vercel production deployment, branch protection
+- **Phase 1 (Completed with operator follow-up):** GitHub Actions CI/CD pipeline and Vercel production deployment. Branch protection remains an operator-owned setting to validate before release sign-off.
 - **Phase 2 (Completed):** Interactive Game Schedule Grid with drag-and-drop (`@dnd-kit`), real-time validation, and the final E2E test scenario
 - **Phase 3 (Completed):** Live Supabase backend transition, Edge Function deployment, production cutover (see `docs/operations/production-cutover.md`)
 
@@ -85,4 +85,4 @@ Additionally, a comprehensive **4-phase security audit** was completed in March 
 - **Dev Mode Indicator**: Glassmorphic "Mock Mode Active" badge in the sidebar, only visible when `IS_MOCK_MODE` is true. Links to `ENVIRONMENT.md` for setup context.
 - **Operational Documentation**: Comprehensive [`ENVIRONMENT.md`](../operations/ENVIRONMENT.md) cataloging every environment variable for Vercel, Supabase Edge Functions, and GitHub Actions CI/CD.
 - **Code Cleanup**: Codebase scanned for hardcoded credentials, debug endpoints, and leftover `console.*` noise. All sensitive values abstracted to `.env`.
-- **Quality Seal**: Full lint, typecheck, production build, Vitest, and Playwright E2E suites passing at 100%.
+- **Quality Seal**: CI/E2E and pgTAP were restored on `main` during the 2026-05-02 release-readiness pass. Final release sign-off still depends on the remaining v1.1 backlog and review sweeps.

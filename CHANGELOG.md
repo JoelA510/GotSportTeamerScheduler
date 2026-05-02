@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Release hygiene: CI now uses `npm ci`, explicit docs-only diff checks, concurrency, full E2E artifacts, and a hosted full E2E path restored in PR #209.
+- Release hygiene: local and CI pgTAP now use a pinned Supabase CLI, committed `supabase/config.toml`, repaired fresh migration replay, and reproducible full/single-file DB test commands from PR #211.
+
+### Documentation
+
+- Clarified that GotSport CSV import validation and `import_jobs` tracking are shipped, while durable apply/promotion into player, coach, team, or staging records remains pending v1.1 work.
+
 ## [1.0.1] - 2026-04-23
 
 ### Added
@@ -29,7 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
-- Wave 2: Closed all 5 NEXT_SESSION_PLAN §1–§3 Supabase security advisor findings — `get_advisors --type=security` goes to 0 ERROR and 0 WARN across the four prior categories (`import_efficiency_metrics` SECURITY DEFINER, public `raw-imports` bucket, mutable `search_path` on 6 definer functions, leaked-password protection). Operator runbooks shipped at `docs/operations/sentry-smoke.md` and `docs/operations/leaked-password-protection.md`. Dependabot prod-clean; vitest/vite dev-only finding waived in `docs/security/dependabot-waivers.md`. (#173)
+- Wave 2: Closed the repo-owned NEXT_SESSION_PLAN §1–§3 Supabase security advisor findings for `import_efficiency_metrics`, public `raw-imports`, and mutable `search_path` on 6 definer functions. Operator runbooks shipped at `docs/operations/sentry-smoke.md` and `docs/operations/leaked-password-protection.md`; production Sentry/leaked-password dashboard verification remains operator-owned. Dependabot prod-clean; vitest/vite dev-only finding waived in `docs/security/dependabot-waivers.md`. (#173)
 - Wave 6a: Advisor-lint CI gate now blocks PRs that introduce `SECURITY DEFINER` without pinned `search_path`, `CREATE VIEW` without `security_invoker` on RLS-sensitive migrations, `CREATE TABLE` without RLS, `USING/WITH CHECK (true)` policies, or suspicious `VITE_*SECRET*` env keys. Corrective migration `20260421002500_lock_search_path_remaining_definers.sql` pinned `search_path` on 4 additional definer functions (`is_org_admin`, `is_org_member`, `handle_field_subunits`, `prune_old_audit_logs`) and flipped `coach_team_map` view to `security_invoker = on`. (#173)
 - Wave 7b: Hardened CSP `connect-src` with the Sentry ingest domain and the Supabase project wildcard; documented policy + waivers in `docs/security/csp.md`. Production response headers verified live. (#175)
 

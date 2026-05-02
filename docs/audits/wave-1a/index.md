@@ -33,6 +33,8 @@
 | Edge Functions count                 | 7                                                         |
 | `npm audit`                          | 0 vulnerabilities (per security audit §F-2-13)            |
 
+**Current status overlay (2026-05-02):** this baseline remains historical. Since capture, CI/E2E was restored on `main` in PR #209, the local/CI pgTAP harness was restored in PR #211, and repo-owned security cleanup items for `import_efficiency_metrics`, `raw-imports`, function `search_path`, CSP, bundle/advisor gates, and doc-only CI scope have shipped. Durable import persistence, performance budget tightening, Sentry/branch-protection/operator settings, and final release sign-off remain pending.
+
 ---
 
 ## Distribution table
@@ -115,16 +117,16 @@ Status legend (used in per-finding tables below):
 | ID     | Title                                                     | Severity | Wave                           | Status             |
 | ------ | --------------------------------------------------------- | -------- | ------------------------------ | ------------------ |
 | F-2-01 | `import_efficiency_metrics` view is SECURITY DEFINER      | P1       | 2-security                     | ✅ shipped (Wave 2; payload-based repair retained `security_invoker`) |
-| F-2-02 | `raw-imports` bucket public with broad SELECT             | P1       | 2-security                     | 🟡 queued          |
-| F-2-03 | Six functions missing `SET search_path`                   | P1       | 2-security                     | 🟡 queued          |
-| F-2-04 | Leaked-password protection disabled (Auth dashboard)      | P1       | 2-security (operator)          | 🟡 queued          |
-| F-2-05 | `VITE_SENTRY_DSN` not set in Vercel prod                  | P1       | 2-security (operator)          | 🟡 queued          |
-| F-2-06 | CSP missing Sentry ingest endpoint in `connect-src`       | P2       | 7b-csp                         | 🟡 queued          |
+| F-2-02 | `raw-imports` bucket public with broad SELECT             | P1       | 2-security                     | ✅ shipped Wave 2 |
+| F-2-03 | Six functions missing `SET search_path`                   | P1       | 2-security                     | ✅ shipped Wave 2 |
+| F-2-04 | Leaked-password protection disabled (Auth dashboard)      | P1       | 2-security (operator)          | ✅ documented; dashboard pending |
+| F-2-05 | `VITE_SENTRY_DSN` not set in Vercel prod                  | P1       | 2-security (operator)          | ✅ documented; Vercel/Sentry pending |
+| F-2-06 | CSP missing Sentry ingest endpoint in `connect-src`       | P2       | 7b-csp                         | ✅ shipped Wave 7b |
 | F-2-07 | CSP `style-src 'unsafe-inline'` for Tailwind              | P2       | 7b-csp                         | 🔵 waived (compat) |
 | F-2-08 | Profiles `auth.uid() = id` without org-scope verification | P2       | 7a-pgtap                       | 🟡 queued          |
 | F-2-09 | Password trigger fires on every auth.users INSERT/UPDATE  | P3       | Skip / v1.1                    | 🔵 waived          |
 | F-2-10 | No rate-limiting on auth endpoints                        | P2       | 8-docs (Supabase Auth setting) | 🔵 waived          |
-| F-2-11 | Mock test creds in `.env.example`                         | P2       | 1b-trivial (rename + comment)  | 🟡 queued          |
+| F-2-11 | Mock test creds in `.env.example`                         | P2       | 1b-trivial (rename + comment)  | ✅ shipped Wave 1b |
 | F-2-12 | No audit-log coverage for calendar token rotation         | P2       | 8-docs / v1.1                  | 🔵 waived          |
 | F-2-13 | `npm audit` clean                                         | (info)   | n/a                            | ✅ verified        |
 
@@ -157,9 +159,9 @@ Status legend (used in per-finding tables below):
 | F-4-02 | `chart-vendor` 119.92 KB gzip — heaviest chunk                      | P1       | 6a-bundle            | 🟡 queued                  |
 | F-4-03 | Logo asset is 452 KB unoptimized PNG                                | P1       | 6a-bundle            | 🟡 queued                  |
 | F-4-04 | No TTL cache on `calendar-feed` / `fairness-scoring` Edge Functions | P1       | 6b-edge              | 🟡 queued                  |
-| F-4-05 | `raw-imports` bucket has no retention                               | P2       | 6b-storage           | 🟡 queued                  |
-| F-4-06 | CI runs full matrix on doc-only PRs                                 | P2       | 6a-bundle            | 🟡 queued                  |
-| F-4-07 | No bundle-size check in CI                                          | P2       | 6a-bundle            | 🟡 queued (Wave 6a Task 1) |
+| F-4-05 | `raw-imports` bucket has no retention                               | P2       | 6b-storage           | ✅ workflow shipped; secrets pending |
+| F-4-06 | CI runs full matrix on doc-only PRs                                 | P2       | 6a-bundle            | ✅ shipped PR #209         |
+| F-4-07 | No bundle-size check in CI                                          | P2       | 6a-bundle            | ✅ shipped Wave 6a         |
 | F-4-08 | `audit_log` retention not yet observability-verified                | P2       | 6b-storage           | 🟡 queued                  |
 | F-4-09 | `pg_cron` jobs lack `IF NOT EXISTS` (= SP-10)                       | P2       | 2-security           | 🔄 dup of SP-10            |
 | F-4-10 | `staging_players` rows not cleaned per-import                       | P3       | Skip / v1.1          | 🔵 waived                  |
@@ -263,8 +265,8 @@ Wave 1b shipped on the same execution branch (`claude/wave-execution-plan-87XGq`
 
 - **Wave 2-security**: ~~F-2-01, F-2-02, F-2-03, F-2-04, F-2-05~~ (✅ all shipped 2026-04-21); SP-03, SP-10, SP-11 still queued (re-filed to Wave 6b — schema integrity DDL paired with the index migration).
 - **Wave 5-e2e**: F-4.5-04, F-4.5-05, F-4.5-08, F-4.5-09, F-4.5-10, F-4.5-12, F-4.5-13.
-- **Wave 6a-bundle**: F-4-01, F-4-02, F-4-03, F-4-06, F-4-07.
-- **Wave 6b-edge / 6b-storage**: F-4-04; F-4-05, F-4-08; SP-01, SP-02, SP-04, SP-05, SP-06, SP-07, SP-08, SP-09.
+- **Wave 6a-bundle**: F-4-06 and F-4-07 shipped; F-4-01, F-4-02, and F-4-03 remain queued for performance polish.
+- **Wave 6b-edge / 6b-storage**: F-4-05 has a scheduled workflow but needs operator secrets; F-4-04 and F-4-08 remain queued; SP-01, SP-02, SP-04, SP-05, SP-06, SP-07, SP-08, and SP-09 shipped.
 - **Wave 7a-pgtap**: F-2-08.
 - **Wave 7b-csp**: F-2-06.
 - **Wave 8-docs (or v1.1)**: CQ-13, CQ-14, F-4.5-06, A-13.
