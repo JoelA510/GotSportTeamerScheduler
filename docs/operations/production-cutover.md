@@ -51,6 +51,9 @@ jobs:
       - run: curl -sf "$SUPABASE_URL/rest/v1/" \
                -H "apikey: $SUPABASE_ANON_KEY" \
                -H "Authorization: Bearer $SUPABASE_ANON_KEY"
+        env:
+          SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
 ```
 
 See [`ci-cd.md`](./ci-cd.md) for the current workflow policy and artifact
