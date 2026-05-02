@@ -319,6 +319,7 @@ export default function TeamAnalysisPage() {
       }
 
       setDivisionRows(null);
+      setDivisionSettingsError(null);
       const { data, error } = await supabase
         .from('divisions')
         .select(
@@ -383,7 +384,9 @@ export default function TeamAnalysisPage() {
         seasonSettingsId: currentSeasonSetting.id,
       });
       const existingRow = findDivisionRowForProgram(program, divisionRows);
-      if (existingRow?.id) payload.id = existingRow.id;
+      if (existingRow?.id && existingRow.name) {
+        payload.name = existingRow.name;
+      }
 
       if (!silent) {
         setSavingConfigId(program.id);
@@ -391,9 +394,11 @@ export default function TeamAnalysisPage() {
       }
 
       try {
-        const { data, error } = await supabase
-          .from('divisions')
-          .upsert(payload, { onConflict: 'season_settings_id,name' })
+        const divisionQuery = existingRow?.id
+          ? supabase.from('divisions').update(payload).eq('id', existingRow.id)
+          : supabase.from('divisions').upsert(payload, { onConflict: 'season_settings_id,name' });
+
+        const { data, error } = await divisionQuery
           .select(
             `
             id,
@@ -428,6 +433,10 @@ export default function TeamAnalysisPage() {
             String(a.name).localeCompare(String(b.name))
           );
         });
+        setConfigs((prev) => ({
+          ...prev,
+          [program.id]: configFromDivisionRow(program, data),
+        }));
         if (!silent) setConfigSaveMessage('Rules saved.');
         return data;
       } finally {
