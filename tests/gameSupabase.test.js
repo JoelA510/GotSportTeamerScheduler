@@ -25,12 +25,14 @@ test('buildGameAssignmentRows normalizes scheduler output for Supabase', () => {
     {
       division: 'U10',
       week_index: 1,
+      game_slot_id: 'slot-1',
       slot_id: 'slot-1',
       start: '2024-08-10T16:00:00.000Z',
       end: '2024-08-10T17:00:00.000Z',
       field_id: 'field-a',
       home_team_id: 'team-1',
       away_team_id: 'team-2',
+      assignment_source: 'auto',
       run_id: 'run-abc',
     },
   ]);
@@ -86,10 +88,29 @@ test('buildGameAssignmentRows validates inputs and ordering', () => {
             end: '2024-08-10T17:00:00Z',
             homeTeamId: 'team-1',
             awayTeamId: 'team-2',
+            source: 'invalid',
           },
         ],
       }),
     /division cannot be empty/
+  );
+  assert.throws(
+    () =>
+      buildGameAssignmentRows({
+        assignments: [
+          {
+            division: 'U10',
+            weekIndex: 1,
+            slotId: 'slot-1',
+            start: '2024-08-10T16:00:00Z',
+            end: '2024-08-10T17:00:00Z',
+            homeTeamId: 'team-1',
+            awayTeamId: 'team-2',
+            source: 'invalid',
+          },
+        ],
+      }),
+    /unsupported game assignment source/
   );
 });
 
@@ -132,12 +153,14 @@ test('persistGameAssignments inserts rows and returns Supabase payload', async (
         {
           division: 'U10',
           week_index: 1,
+          game_slot_id: 'slot-1',
           slot_id: 'slot-1',
           start: '2024-08-10T16:00:00.000Z',
           end: '2024-08-10T17:00:00.000Z',
           field_id: null,
           home_team_id: 'team-1',
           away_team_id: 'team-2',
+          assignment_source: 'auto',
           run_id: 'run-xyz',
         },
       ],
@@ -148,12 +171,14 @@ test('persistGameAssignments inserts rows and returns Supabase payload', async (
     {
       division: 'U10',
       week_index: 1,
+      game_slot_id: 'slot-1',
       slot_id: 'slot-1',
       start: '2024-08-10T16:00:00.000Z',
       end: '2024-08-10T17:00:00.000Z',
       field_id: null,
       home_team_id: 'team-1',
       away_team_id: 'team-2',
+      assignment_source: 'auto',
       run_id: 'run-xyz',
     },
   ]);
@@ -205,12 +230,14 @@ test('persistGameAssignments supports upserts and no-op handling', async () => {
         {
           division: 'U10',
           week_index: 1,
+          game_slot_id: 'slot-1',
           slot_id: 'slot-1',
           start: '2024-08-10T16:00:00.000Z',
           end: '2024-08-10T17:00:00.000Z',
           field_id: null,
           home_team_id: 'team-1',
           away_team_id: 'team-2',
+          assignment_source: 'auto',
           run_id: null,
         },
       ],

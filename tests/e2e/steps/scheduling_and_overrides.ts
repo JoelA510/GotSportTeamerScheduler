@@ -3,6 +3,17 @@ import { expect, type Page } from '@playwright/test';
 
 const { Given, When, Then } = createBdd();
 
+type GamePersistencePage = Page & {
+  __gamePersistencePayload?: {
+    snapshot?: {
+      payload?: {
+        assignmentRows?: Array<Record<string, unknown>>;
+      };
+    };
+    runMetadata?: Record<string, unknown>;
+  };
+};
+
 async function mockPracticeSchedulerRoutes(page: Page) {
   await page.route('**/functions/v1/auto-scheduler', async (route) => {
     const requestBody = JSON.parse(route.request().postData() || '{}');
@@ -47,6 +58,23 @@ async function mockPracticeSchedulerRoutes(page: Page) {
       body: JSON.stringify({
         status: 'success',
         runId: '00000000-0000-4000-8000-000000000322',
+        message: 'Persistence successful.',
+      }),
+    });
+  });
+}
+
+async function mockGamePersistenceRoutes(page: Page) {
+  await page.route('**/functions/v1/game-persistence', async (route) => {
+    const requestBody = JSON.parse(route.request().postData() || '{}');
+    (page as GamePersistencePage).__gamePersistencePayload = requestBody;
+
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        status: 'success',
+        runId: '00000000-0000-4000-8000-000000000323',
         message: 'Persistence successful.',
       }),
     });
@@ -704,6 +732,7 @@ Then(
 );
 
 Given('I am on the Game Scheduling page viewing an identified conflict', async ({ page }) => {
+  await mockGamePersistenceRoutes(page);
   // ── Navigate-then-seed-then-reload pattern ──────────────────────────────
   // Navigate FIRST to establish the route, THEN seed mock data,
   // THEN reload so React mounts fresh with all data in sessionStorage.
@@ -874,7 +903,7 @@ Given('I am on the Game Scheduling page viewing an identified conflict', async (
   // Step 3: Reload so React re-mounts with the fully seeded mock data
   await page.reload({ waitUntil: 'domcontentloaded' });
 
-  const editBtn = page.getByRole('button', { name: /Quick Adjust/i });
+  const editBtn = page.getByRole('button', { name: /Enter Manual Override/i });
   await editBtn.waitFor({ state: 'visible', timeout: 15000 });
 
   // Step 5: Wait for the conflict banner (async hook cascade needs time)
@@ -918,16 +947,22 @@ Then(
 );
 
 Then('updates the game schedule if the selected slot is valid', async ({ page }) => {
-  // Verify the assignment was updated with manual source in the mock DB
-  const dbState = await page.evaluate(() => {
-    const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
-    return db.game_assignments || [];
+  await page.getByRole('button', { name: /Apply Schedule/i }).click();
+  await expect(page.getByText('Game schedule applied', { exact: true }).first()).toBeVisible({
+    timeout: 10000,
   });
 
-  const movedAssignment = dbState.find((a: Record<string, unknown>) => a.id === 'ga-conflict-2');
+  const payload = (page as GamePersistencePage).__gamePersistencePayload;
+  const rows = payload?.snapshot?.payload?.assignmentRows ?? [];
+  const movedAssignment = rows.find(
+    (row) => row.home_team_id === 'team-gc3' && row.away_team_id === 'team-gc4'
+  );
+
   expect(movedAssignment).toBeTruthy();
-  expect(movedAssignment.assignment_source).toBe('manual');
-  expect(movedAssignment.field_id).toBe('v2');
+  expect(movedAssignment?.assignment_source).toBe('manual');
+  expect(movedAssignment?.field_id).toBe('v2');
+  expect(['gs-3', 'gs-4']).toContain(movedAssignment?.game_slot_id);
+  expect(payload?.runMetadata?.organizationId).toBeTruthy();
 });
 
 // ────────────────────────────────────────────────────────────

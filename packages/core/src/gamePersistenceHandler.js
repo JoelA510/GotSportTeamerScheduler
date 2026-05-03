@@ -49,7 +49,7 @@ export async function persistGameSnapshotTransactional(params) {
     rpcName: 'persist_game_schedule',
     transformPayload: ({ snapshot, runData }) => ({
       run_data: runData,
-      assignments: snapshot.payload.assignmentRows,
+      assignments: snapshot.payload.assignmentRows ?? snapshot.payload.gameRows ?? [],
     }),
   });
 }

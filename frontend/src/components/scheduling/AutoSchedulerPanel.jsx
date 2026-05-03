@@ -11,6 +11,11 @@ import Button from '../ui/Button.jsx';
  * and a summary of results on completion.
  */
 export default function AutoSchedulerPanel({
+  title = 'Intelligent Auto-Scheduler',
+  description = 'Optimize practice assignments for maximum fairness',
+  runningLabel = 'Running Hill Climbing optimization...',
+  assignedLabel = 'Assigned',
+  unassignedLabel = 'Unassigned',
   status,
   progress,
   result,
@@ -32,12 +37,8 @@ export default function AutoSchedulerPanel({
             <Zap size={20} className="text-cyan-400" aria-hidden="true" />
           </div>
           <div>
-            <h3 className="text-lg font-display font-bold text-white">
-              Intelligent Auto-Scheduler
-            </h3>
-            <p className="text-sm text-white/50">
-              Optimize practice assignments for maximum fairness
-            </p>
+            <h3 className="text-lg font-display font-bold text-white">{title}</h3>
+            <p className="text-sm text-white/50">{description}</p>
           </div>
         </div>
 
@@ -90,7 +91,7 @@ export default function AutoSchedulerPanel({
         >
           <div className="flex items-center gap-3 mb-2">
             <Loader2 size={16} className="text-cyan-400 animate-spin" aria-hidden="true" />
-            <span className="text-sm text-white/70">Running Hill Climbing optimization…</span>
+            <span className="text-sm text-white/70">{runningLabel}</span>
           </div>
           <div className="grid grid-cols-3 gap-4 text-center">
             <div>
@@ -128,13 +129,15 @@ export default function AutoSchedulerPanel({
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-center">
             <div>
-              <div className="text-xs text-white/40 uppercase tracking-wider">Assigned</div>
+              <div className="text-xs text-white/40 uppercase tracking-wider">{assignedLabel}</div>
               <div className="text-lg font-display font-bold text-white">
                 {result.assignments?.length ?? 0}
               </div>
             </div>
             <div>
-              <div className="text-xs text-white/40 uppercase tracking-wider">Unassigned</div>
+              <div className="text-xs text-white/40 uppercase tracking-wider">
+                {unassignedLabel}
+              </div>
               <div className="text-lg font-display font-bold text-white">
                 {result.unassigned?.length ?? 0}
               </div>
@@ -187,6 +190,11 @@ export default function AutoSchedulerPanel({
 }
 
 AutoSchedulerPanel.propTypes = {
+  title: PropTypes.string,
+  description: PropTypes.string,
+  runningLabel: PropTypes.string,
+  assignedLabel: PropTypes.string,
+  unassignedLabel: PropTypes.string,
   status: PropTypes.oneOf(['idle', 'running', 'polling', 'completed', 'failed']).isRequired,
   progress: PropTypes.shape({
     iteration: PropTypes.number,

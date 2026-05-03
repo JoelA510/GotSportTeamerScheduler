@@ -37,9 +37,30 @@ function parseAllowedRolesEnv(
 // ── Payload schema (Zod) ────────────────────────────────────────────────────
 const PersistencePayloadSchema = z.object({
   snapshot: z.object({
-    payload: z.object({
-      gameRows: z.array(z.object({ id: z.string() }).passthrough()),
-    }),
+    payload: z
+      .object({
+        gameRows: z.array(z.object({ id: z.string().optional() }).passthrough()).optional(),
+        assignmentRows: z
+          .array(
+            z
+              .object({
+                home_team_id: z.string().optional(),
+                homeTeamId: z.string().optional(),
+                away_team_id: z.string().optional(),
+                awayTeamId: z.string().optional(),
+                slot_id: z.string().optional(),
+                slotId: z.string().optional(),
+                game_slot_id: z.string().optional(),
+                gameSlotId: z.string().optional(),
+              })
+              .passthrough()
+          )
+          .optional(),
+      })
+      .refine(
+        (payload) => Array.isArray(payload.assignmentRows) || Array.isArray(payload.gameRows),
+        'snapshot.payload.assignmentRows or snapshot.payload.gameRows is required'
+      ),
     lastRunId: z.string().nullish(),
     runId: z.string().nullish(),
   }),
@@ -62,8 +83,31 @@ function evaluateOverrides(overrides: unknown[] = []): { pending: number } {
   };
 }
 
+function getNonEmptyString(value: unknown): string | null {
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
+}
+
+async function resolveOrgIdFromSeasonSettings(
+  supabaseClient: SupabaseClient,
+  seasonSettingsId: string
+): Promise<string | null> {
+  const { data, error } = await supabaseClient
+    .from('season_settings')
+    .select('organization_id')
+    .eq('id', seasonSettingsId)
+    .maybeSingle();
+
+  if (error) {
+    console.error('Failed to resolve org from season settings:', error.message);
+    throw new Error('Season settings lookup failed.');
+  }
+
+  return getNonEmptyString((data as Record<string, unknown> | null)?.organization_id);
+}
+
 interface RunMetadata {
   runId?: string;
+  organizationId?: string;
   seasonSettingsId?: string;
   parameters?: Record<string, unknown>;
   metrics?: Record<string, unknown>;
@@ -76,19 +120,20 @@ interface RunMetadata {
 async function persistGameSnapshot(
   supabaseClient: SupabaseClient,
   snapshot: {
-    payload: { gameRows: Record<string, unknown>[] };
+    payload: { assignmentRows?: Record<string, unknown>[]; gameRows?: Record<string, unknown>[] };
     lastRunId?: string | null;
     runId?: string | null;
   },
   runMetadata: RunMetadata = {},
   now: Date = new Date()
 ) {
-  const { gameRows } = snapshot.payload;
+  const gameRows = snapshot.payload.assignmentRows ?? snapshot.payload.gameRows ?? [];
   const effectiveRunId = runMetadata.runId ?? snapshot.lastRunId ?? snapshot.runId;
 
   const runData = effectiveRunId
     ? {
         id: effectiveRunId,
+        organization_id: runMetadata.organizationId,
         run_type: 'game',
         season_settings_id: runMetadata.seasonSettingsId,
         status: 'completed',
@@ -101,8 +146,16 @@ async function persistGameSnapshot(
         updated_at: now.toISOString(),
       }
     : {
+        organization_id: runMetadata.organizationId,
+        season_settings_id: runMetadata.seasonSettingsId,
         run_type: 'game',
         status: 'completed',
+        parameters: runMetadata.parameters ?? {},
+        metrics: runMetadata.metrics ?? {},
+        results: runMetadata.results ?? {},
+        created_by: runMetadata.createdBy ?? 'system',
+        started_at: runMetadata.startedAt ?? now.toISOString(),
+        completed_at: runMetadata.completedAt ?? now.toISOString(),
         updated_at: now.toISOString(),
       };
 
@@ -192,7 +245,7 @@ if (!supabaseUrl || !serviceRoleKey) {
       return jsonResponse({ status: 'error', message: 'Invalid JSON' }, 400);
     }
 
-    // 3. Verify organization membership via game → team chain
+    // 3. Verify organization membership across requested run, season, and teams.
     const userOrgIds = await getUserOrgIds(serviceClient, user.id);
     if (userOrgIds.length === 0) {
       return jsonResponse(
@@ -201,29 +254,95 @@ if (!supabaseUrl || !serviceRoleKey) {
       );
     }
 
-    const gameRows = body.snapshot.payload.gameRows;
+    const runMetadataRecord = (body.runMetadata ?? {}) as Record<string, unknown>;
+    const requestedOrgId = getNonEmptyString(runMetadataRecord.organizationId);
+    const requestedSeasonSettingsId = getNonEmptyString(runMetadataRecord.seasonSettingsId);
+    const targetOrgIds = new Set<string>();
+
+    if (requestedOrgId) {
+      targetOrgIds.add(requestedOrgId);
+    }
+
+    if (requestedSeasonSettingsId) {
+      try {
+        const seasonOrgId = await resolveOrgIdFromSeasonSettings(
+          serviceClient,
+          requestedSeasonSettingsId
+        );
+        if (!seasonOrgId) {
+          return jsonResponse({ status: 'error', message: 'Season settings not found.' }, 400);
+        }
+        targetOrgIds.add(seasonOrgId);
+      } catch (error) {
+        return jsonResponse(
+          {
+            status: 'error',
+            message: (error as Error)?.message || 'Season settings lookup failed.',
+          },
+          500
+        );
+      }
+    }
+
+    const gameRows = body.snapshot.payload.assignmentRows ?? body.snapshot.payload.gameRows ?? [];
     if (gameRows.length > 0) {
       const teamIds = [
         ...new Set(
           gameRows
             .flatMap((r) => [
               (r as Record<string, unknown>).home_team_id as string | undefined,
+              (r as Record<string, unknown>).homeTeamId as string | undefined,
               (r as Record<string, unknown>).away_team_id as string | undefined,
+              (r as Record<string, unknown>).awayTeamId as string | undefined,
             ])
             .filter(Boolean)
         ),
       ] as string[];
       if (teamIds.length > 0) {
-        const targetOrgIds = await resolveOrgIdsFromTeamIds(serviceClient, teamIds);
-        const unauthorized = targetOrgIds.filter((oid) => !userOrgIds.includes(oid));
-        if (unauthorized.length > 0) {
-          return jsonResponse(
-            { status: 'error', message: 'Access denied: data belongs to a different organization' },
-            403
-          );
+        const teamOrgIds = await resolveOrgIdsFromTeamIds(serviceClient, teamIds);
+        for (const organizationId of teamOrgIds) {
+          targetOrgIds.add(organizationId);
         }
       }
     }
+
+    if (targetOrgIds.size === 0) {
+      return jsonResponse(
+        {
+          status: 'error',
+          message: 'organizationId or organization-scoped assignments are required.',
+        },
+        400
+      );
+    }
+
+    if (targetOrgIds.size > 1) {
+      return jsonResponse(
+        { status: 'error', message: 'Game persistence payload spans multiple organizations.' },
+        403
+      );
+    }
+
+    const targetOrgId = Array.from(targetOrgIds)[0];
+    if (!targetOrgId) {
+      return jsonResponse(
+        { status: 'error', message: 'Unable to resolve target organization.' },
+        400
+      );
+    }
+
+    if (!userOrgIds.includes(targetOrgId)) {
+      return jsonResponse(
+        { status: 'error', message: 'Access denied: data belongs to a different organization' },
+        403
+      );
+    }
+
+    const effectiveRunMetadata = {
+      ...runMetadataRecord,
+      organizationId: requestedOrgId ?? targetOrgId,
+      seasonSettingsId: requestedSeasonSettingsId ?? undefined,
+    };
 
     // 4. Check for pending overrides
     const { pending } = evaluateOverrides(body.overrides ?? []);
@@ -243,19 +362,17 @@ if (!supabaseUrl || !serviceRoleKey) {
       const result = await persistGameSnapshot(
         serviceClient,
         body.snapshot as Parameters<typeof persistGameSnapshot>[1],
-        (body.runMetadata ?? {}) as RunMetadata,
+        effectiveRunMetadata as RunMetadata,
         new Date()
       );
 
       // Audit log (fire-and-forget)
-      if (userOrgIds.length > 0) {
-        recordAudit(serviceClient, {
-          organizationId: userOrgIds[0],
-          action: 'game.saved',
-          resourceType: 'game',
-          metadata: { game_count: gameRows.length },
-        });
-      }
+      recordAudit(serviceClient, {
+        organizationId: targetOrgId,
+        action: 'game.saved',
+        resourceType: 'game',
+        metadata: { game_count: gameRows.length },
+      });
 
       return jsonResponse(result, 200);
     } catch (error) {

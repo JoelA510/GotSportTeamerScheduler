@@ -11,6 +11,15 @@ function normalizeFieldId(value) {
   return normalizeOptionalString(value);
 }
 
+function normalizeAssignmentSource(value) {
+  const normalized = normalizeOptionalString(value) ?? 'auto';
+  if (normalized === 'locked') return 'manual';
+  if (normalized !== 'auto' && normalized !== 'manual') {
+    throw new Error(`unsupported game assignment source: ${normalized}`);
+  }
+  return normalized;
+}
+
 /**
  * Convert scheduler assignments into Supabase-ready rows for `game_assignments`.
  *
@@ -44,12 +53,16 @@ export function buildGameAssignmentRows({ assignments, runId } = { assignments: 
     return {
       division,
       week_index: weekIndex,
+      game_slot_id: slotId,
       slot_id: slotId,
       start,
       end,
       field_id: normalizeFieldId(assignment.fieldId ?? assignment.field_id),
       home_team_id: homeTeamId,
       away_team_id: awayTeamId,
+      assignment_source: normalizeAssignmentSource(
+        assignment.assignmentSource ?? assignment.assignment_source ?? assignment.source
+      ),
       run_id: runId ?? null,
     };
   });
