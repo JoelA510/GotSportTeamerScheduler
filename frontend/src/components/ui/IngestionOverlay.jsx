@@ -8,10 +8,15 @@ export function IngestionOverlay() {
   const [isMinimized, setIsMinimized] = useState(false);
 
   useEffect(() => {
-    if (isImporting || (activeJob && !['completed', 'failed'].includes(importStatus))) {
+    const settled =
+      importStatus === 'ready_to_apply' ||
+      importStatus === 'completed' ||
+      importStatus === 'completed_with_warnings' ||
+      importStatus === 'failed';
+    if (isImporting || (activeJob && !settled)) {
       const timer = setTimeout(() => setIsVisible(true), 0);
       return () => clearTimeout(timer);
-    } else if (importStatus === 'completed' || importStatus === 'failed') {
+    } else if (settled) {
       const timer = setTimeout(() => setIsVisible(false), 5000);
       return () => clearTimeout(timer);
     }

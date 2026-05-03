@@ -11,7 +11,7 @@
 > - CSV parsing uses **PapaParse** (not `@fast-csv/parse`)
 > - Client-side validation is in `ImportContext.jsx`; server-side validation is in the `import-validation` Edge Function
 > - Valid player rows are staged in `staging_players` with source row numbers and promoted by `finalize_import_job(uuid, jsonb)` into `players`
-> - Player-import coach volunteer rows create durable interested coach leads after player promotion; reciprocal player-import buddy requests are materialized into `player_buddies`; coach CSV and field-slot CSV imports now have durable apply/rollback RPCs, while team promotion remains pending v1.1 follow-up work
+> - Player-import coach volunteer rows create durable interested coach leads after player promotion; reciprocal player-import buddy requests are materialized into `player_buddies`; coach CSV and field-slot CSV imports now have durable validate-only, apply, cancel, and rollback RPC-backed flows, while team promotion remains pending v1.1 follow-up work
 > - Header matching uses a strict alias map (not fuzzy `.includes()`)
 > - Testing uses **Vitest** (not Jest)
 > - File size enforcement (10 MB) is implemented both client-side and via Supabase Storage policy
@@ -59,7 +59,7 @@ This document expands on the roadmap tasks for importing GotSport registrations 
    - Store promotion counts in `import_jobs.warning_summary.finalize` and mark the import job `completed` or `completed_with_warnings`.
 3. For player imports, call `materialize_import_buddy_pairs` after finalization. The RPC creates mutual directional `player_buddies` rows only when imported players reciprocally reference each other by external registration id or share an exactly two-player mutual buddy code; unmatched, self, non-reciprocal, and cross-division requests are preserved as warning metadata.
 4. For player imports, call `upsert_coach_leads` after finalization for rows with positive coach intent. The RPC creates interested coaches idempotently and rejects division/player references outside the caller's organization.
-5. Coach CSV and field-slot imports use dedicated apply/rollback RPCs backed by `staging_import_rows` and `import_application_records`.
+5. Coach CSV and field-slot imports use dedicated validate-only, apply, cancel, and rollback RPCs backed by `staging_import_rows`, `import_jobs.warning_summary.deferred_apply`, and `import_application_records`.
 6. Pending follow-up: team creation.
 
 ### 1.5 Notifications & Audit
@@ -96,7 +96,7 @@ This document expands on the roadmap tasks for importing GotSport registrations 
 
 - Summarize the number of practice vs. game slots inserted, updated, and skipped.
 - Highlight fields missing subunits even though related divisions expect them.
-- Update the `import_jobs` record with status (`completed`, `completed_with_warnings`, or `needs_fix`) plus downloadable CSVs for warnings and errors.
+- Update the `import_jobs` record with status (`ready_to_apply`, `completed`, `completed_with_warnings`, `needs_fix`, or `failed` for canceled staged imports) plus downloadable CSVs for warnings and errors.
 
 ## 3. Error Handling & Observability
 

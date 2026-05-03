@@ -39,3 +39,10 @@ Feature: Ingestion Hardening for CSV Imports
     Then the field slot CSV import should update the facilities database
     When I roll back the field slot CSV import
     Then the imported field slot should be removed from the facilities database
+
+  Scenario: Deferring and then applying a field slot CSV import
+    Given I upload a valid field slot CSV file
+    When I validate the field slot CSV import for later review
+    Then the field slot CSV import should be ready to apply without changing facilities
+    When I apply the reviewed field slot CSV import
+    Then the field slot CSV import should update the facilities database
