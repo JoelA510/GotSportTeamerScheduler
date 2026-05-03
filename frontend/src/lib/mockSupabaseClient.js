@@ -828,7 +828,52 @@ const createMockQuery = (table, data = null) => {
       results = results.slice(0, n);
       return proxy;
     },
-    or: () => proxy,
+    or: (condition) => {
+      const matchesClause = (item, { column, operator, value }) => {
+        const current = item[column];
+        if (operator === 'eq') return String(current) === String(value);
+        if (operator === 'neq') return String(current) !== String(value);
+        if (operator === 'is') {
+          if (value === 'null') return current === null || current === undefined;
+          if (value === 'not.null') return current !== null && current !== undefined;
+          return String(current) === String(value);
+        }
+        if (operator === 'in') {
+          const values = value
+            .replace(/^\(/, '')
+            .replace(/\)$/, '')
+            .split(',')
+            .map((entry) => entry.trim());
+          return values.includes(String(current));
+        }
+
+        logger.warn(`[Mock Supabase] Unsupported OR operator "${operator}" in ${condition}`);
+        return true;
+      };
+
+      const clauses = String(condition || '')
+        .split(',')
+        .map((clause) => clause.trim())
+        .filter(Boolean)
+        .map((clause) => {
+          const [column, operator, ...valueParts] = clause.split('.');
+          return {
+            column,
+            operator,
+            value: valueParts.join('.'),
+          };
+        })
+        .filter(({ column, operator, value }) => column && operator && value);
+
+      if (clauses.length === 0) return proxy;
+
+      results = results.filter(
+        (item) =>
+          clauses.every(({ column }) => !(column in item)) ||
+          clauses.some((clause) => matchesClause(item, clause))
+      );
+      return proxy;
+    },
     abortSignal: () => proxy,
     single: () => {
       isSingle = true;

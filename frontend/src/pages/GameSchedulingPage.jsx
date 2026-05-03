@@ -12,9 +12,12 @@ import GameReadinessPanel from '../components/GameReadinessPanel.jsx';
 import GameConflictBanner from '../components/scheduling/GameConflictBanner.jsx';
 import { formatDateTime } from '../utils/formatters.js';
 import { supabase } from '../lib/supabaseClient.js';
+import { useOrganization } from '../contexts/OrganizationContext.jsx';
+import { PERMISSIONS } from '../constants/permissions.js';
 
 export default function GameSchedulingPage() {
   const { game, loading, timezone } = useDashboardData();
+  const { currentOrganization, permissions = [] } = useOrganization();
   const [localAssignments, setLocalAssignments] = useState(game?.assignments ?? []);
   const [selectedTeamId, setSelectedTeamId] = useState(null);
   const [isEditMode, setIsEditMode] = useState(false);
@@ -29,6 +32,10 @@ export default function GameSchedulingPage() {
   const [fields, setFields] = useState([]);
   const [gameSlots, setGameSlots] = useState([]);
   const [activeGame, setActiveGame] = useState(null);
+  const canManageSchedule =
+    permissions.includes(PERMISSIONS.MANAGE_SCHEDULE) ||
+    permissions.includes(PERMISSIONS.MANAGE_ORGANIZATION);
+  const canEditSchedule = canManageSchedule && isEditMode;
 
   useEffect(() => {
     if (game?.assignments) {
@@ -57,6 +64,8 @@ export default function GameSchedulingPage() {
   };
 
   const handleAutoGenerate = () => {
+    if (!canManageSchedule) return;
+
     stopAutoSchedulerInterval();
     setAutoSchedulerStatus('running');
     setAutoSchedulerProgress(0);
@@ -92,9 +101,23 @@ export default function GameSchedulingPage() {
     let isMounted = true;
 
     async function loadGridReferenceData() {
+      if (!currentOrganization?.id) {
+        setFields([]);
+        setGameSlots([]);
+        return;
+      }
+
       const [{ data: fieldRows }, { data: slotRows }] = await Promise.all([
-        supabase.from('fields').select('*').eq('active', true),
-        supabase.from('game_slots').select('*').order('start', { ascending: true }),
+        supabase
+          .from('fields')
+          .select('*')
+          .eq('organization_id', currentOrganization.id)
+          .eq('active', true),
+        supabase
+          .from('game_slots')
+          .select('*')
+          .eq('organization_id', currentOrganization.id)
+          .order('start', { ascending: true }),
       ]);
 
       if (!isMounted) return;
@@ -112,7 +135,7 @@ export default function GameSchedulingPage() {
     return () => {
       isMounted = false;
     };
-  }, [timezone]);
+  }, [currentOrganization?.id, timezone]);
 
   const conflictSet = useMemo(() => {
     const ids = new Set();
@@ -126,16 +149,18 @@ export default function GameSchedulingPage() {
 
   const handleDragStart = useCallback(
     (event) => {
+      if (!canManageSchedule) return;
       const assignment = localAssignments.find((a) => String(a.id) === String(event.active.id));
       setActiveGame(assignment ?? null);
     },
-    [localAssignments]
+    [canManageSchedule, localAssignments]
   );
 
   const handleDragEnd = useCallback(
     async (event) => {
       const { active, over } = event;
       setActiveGame(null);
+      if (!canManageSchedule) return;
       if (!over?.id) return;
 
       const [targetFieldId, targetSlotId] = String(over.id).split(':');
@@ -176,7 +201,7 @@ export default function GameSchedulingPage() {
         console.error('Failed to persist game assignment override:', error);
       }
     },
-    [gameSlots, localAssignments]
+    [canManageSchedule, gameSlots, localAssignments]
   );
 
   if (loading && !game) {
@@ -194,16 +219,18 @@ export default function GameSchedulingPage() {
           <h1 className="text-3xl font-display font-bold text-white mb-2">Game Scheduling</h1>
           <p className="text-white/60">Generate and manage the master competition schedule.</p>
         </div>
-        <div className="flex gap-3">
-          <Button
-            variant={isEditMode ? 'primary' : 'secondary'}
-            onClick={() => setIsEditMode(!isEditMode)}
-            className="flex items-center gap-2"
-          >
-            {isEditMode ? <Save size={18} /> : <Edit2 size={18} />}
-            {isEditMode ? 'Commit Changes' : 'Quick Adjust'}
-          </Button>
-        </div>
+        {canManageSchedule && (
+          <div className="flex gap-3">
+            <Button
+              variant={canEditSchedule ? 'primary' : 'secondary'}
+              onClick={() => setIsEditMode(!isEditMode)}
+              className="flex items-center gap-2"
+            >
+              {canEditSchedule ? <Save size={18} /> : <Edit2 size={18} />}
+              {canEditSchedule ? 'Commit Changes' : 'Quick Adjust'}
+            </Button>
+          </div>
+        )}
       </div>
 
       <GameConflictBanner warnings={game?.warnings ?? []} />
@@ -234,7 +261,7 @@ export default function GameSchedulingPage() {
             </div>
 
             <div className="p-0">
-              {isEditMode ? (
+              {canEditSchedule ? (
                 <div className="p-4 overflow-x-auto">
                   <DndContext onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
                     <GameScheduleGrid
@@ -254,14 +281,14 @@ export default function GameSchedulingPage() {
                 <GameScheduleList
                   assignments={localAssignments}
                   timezone={timezone}
-                  onEditSchedule={() => setIsEditMode(true)}
+                  onEditSchedule={canManageSchedule ? () => setIsEditMode(true) : undefined}
                 />
               ) : (
                 <TeamScheduleSelector
                   assignments={localAssignments}
                   selectedTeamId={selectedTeamId}
                   onSelectTeam={setSelectedTeamId}
-                  onEditSchedule={() => setIsEditMode(true)}
+                  onEditSchedule={canManageSchedule ? () => setIsEditMode(true) : undefined}
                   timezone={timezone}
                 />
               )}
@@ -278,7 +305,7 @@ export default function GameSchedulingPage() {
             onTrigger={handleAutoGenerate}
             onCancel={handleCancelAutoScheduler}
             onReset={handleResetAutoScheduler}
-            disabled={Boolean(loading)}
+            disabled={Boolean(loading) || !canManageSchedule}
           />
 
           <GameReadinessPanel
@@ -308,16 +335,18 @@ function GameScheduleList({ assignments, timezone, onEditSchedule }) {
             The game schedule has not been generated for the current season. Run the auto-scheduler
             on the right once teams and field availability are finalized.
           </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Button
-              variant="primary"
-              size="lg"
-              className="flex items-center gap-2"
-              onClick={onEditSchedule}
-            >
-              Generate Schedule <Sparkles size={18} />
-            </Button>
-          </div>
+          {onEditSchedule && (
+            <div className="flex flex-col sm:flex-row gap-4 justify-center">
+              <Button
+                variant="primary"
+                size="lg"
+                className="flex items-center gap-2"
+                onClick={onEditSchedule}
+              >
+                Generate Schedule <Sparkles size={18} />
+              </Button>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -416,16 +445,18 @@ function TeamScheduleSelector({
                 The game schedule has not been generated for the current season. You can generate a
                 new schedule once teams and field availability are finalized.
               </p>
-              <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                <Button
-                  variant="primary"
-                  size="lg"
-                  className="flex items-center gap-2"
-                  onClick={onEditSchedule}
-                >
-                  Generate Schedule <Sparkles size={18} />
-                </Button>
-              </div>
+              {onEditSchedule && (
+                <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                  <Button
+                    variant="primary"
+                    size="lg"
+                    className="flex items-center gap-2"
+                    onClick={onEditSchedule}
+                  >
+                    Generate Schedule <Sparkles size={18} />
+                  </Button>
+                </div>
+              )}
             </div>
           </div>
         ) : (

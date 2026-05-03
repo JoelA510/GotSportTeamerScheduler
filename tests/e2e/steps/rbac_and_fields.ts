@@ -82,6 +82,8 @@ Given(
           {
             id: 'run-orgA',
             organization_id: id1,
+            season_id: 'season-a',
+            season_settings_id: 'season-a',
             run_type: 'team',
             status: 'completed',
             completed_at: now,
@@ -114,6 +116,8 @@ Given(
           {
             id: 'run-orgB',
             organization_id: id2,
+            season_id: 'season-b',
+            season_settings_id: 'season-b',
             run_type: 'team',
             status: 'completed',
             completed_at: now,
@@ -285,6 +289,57 @@ Then(
     expect(containsOrgReference, `Expected the page to reference "${org}" data`).toBeTruthy();
   }
 );
+
+const readOnlyRouteState: {
+  teamRedirected: boolean;
+  practiceControlsHidden: boolean;
+  gameControlsHidden: boolean;
+} = {
+  teamRedirected: false,
+  practiceControlsHidden: false,
+  gameControlsHidden: false,
+};
+
+When('I open the guarded team and schedule routes as a read-only user', async ({ page }) => {
+  readOnlyRouteState.teamRedirected = false;
+  readOnlyRouteState.practiceControlsHidden = false;
+  readOnlyRouteState.gameControlsHidden = false;
+
+  await page.goto('/teams');
+  await page.waitForURL((url) => url.pathname === '/', { timeout: 15000 });
+  readOnlyRouteState.teamRedirected = true;
+
+  await page.goto('/schedule/practice');
+  await expect(page.getByRole('heading', { name: /Practice Scheduling/i })).toBeVisible({
+    timeout: 15000,
+  });
+  await expect(
+    page.getByRole('button', { name: /Enter Manual Override|Save Assignments/i })
+  ).toBeHidden();
+  await expect(
+    page.getByRole('button', { name: /Run auto-scheduler optimization/i })
+  ).toBeDisabled();
+  readOnlyRouteState.practiceControlsHidden = true;
+
+  await page.goto('/schedule/game');
+  await expect(page.getByRole('heading', { name: /Game Scheduling/i })).toBeVisible({
+    timeout: 15000,
+  });
+  await expect(page.getByRole('button', { name: /Quick Adjust|Commit Changes/i })).toBeHidden();
+  await expect(
+    page.getByRole('button', { name: /Run auto-scheduler optimization/i })
+  ).toBeDisabled();
+  readOnlyRouteState.gameControlsHidden = true;
+});
+
+Then('Team Management should redirect the read-only user to the Dashboard', async () => {
+  expect(readOnlyRouteState.teamRedirected).toBe(true);
+});
+
+Then('Practice and Game Scheduling should not expose edit or apply controls', async () => {
+  expect(readOnlyRouteState.practiceControlsHidden).toBe(true);
+  expect(readOnlyRouteState.gameControlsHidden).toBe(true);
+});
 
 // ────────────────────────────────────────────────────────────
 // Field Management steps (shared with field_management_efficiency.feature)

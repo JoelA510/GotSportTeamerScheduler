@@ -24,6 +24,8 @@ describe('useDashboardData', () => {
       summary: { totals: { teams: 10 } },
       loading: false,
       generatedAt: '2026-03-01',
+      status: 'completed',
+      progress: 100,
     });
     /** @type {any} */ (usePracticeSummary).mockReturnValue({
       practiceSummary: { count: 5 },

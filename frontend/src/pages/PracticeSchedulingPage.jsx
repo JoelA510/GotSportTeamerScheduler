@@ -8,11 +8,19 @@ import Button from '../components/ui/Button.jsx';
 import { Edit2, Save, Sparkles, Calendar } from 'lucide-react';
 import EvaluationPanel from '../components/EvaluationPanel.jsx';
 import { supabase } from '../lib/supabaseClient.js';
+import { useOrganization } from '../contexts/OrganizationContext.jsx';
+import { PERMISSIONS } from '../constants/permissions.js';
 
 export default function PracticeSchedulingPage() {
   const { practice, team, loading: dashboardLoading } = useDashboardData();
+  const { permissions = [] } = useOrganization();
   const [assignments, setAssignments] = useState(practice?.assignments ?? []);
   const [isEditMode, setIsEditMode] = useState(false);
+  const [assignmentSaveError, setAssignmentSaveError] = useState(null);
+  const canManageSchedule =
+    permissions.includes(PERMISSIONS.MANAGE_SCHEDULE) ||
+    permissions.includes(PERMISSIONS.MANAGE_ORGANIZATION);
+  const canEditSchedule = canManageSchedule && isEditMode;
 
   // Auto-scheduler status
   const [autoSchedulerStatus, setAutoSchedulerStatus] = useState('idle');
@@ -24,7 +32,6 @@ export default function PracticeSchedulingPage() {
 
   useEffect(() => {
     if (practice?.assignments) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setAssignments(practice.assignments);
     }
     // Depend on stable signals — useDashboardData returns a fresh `practice` object
@@ -54,6 +61,8 @@ export default function PracticeSchedulingPage() {
 
   // Handle auto-scheduler trigger
   const handleAutoGenerate = useCallback(async () => {
+    if (!canManageSchedule) return;
+
     stopAutoSchedulerTimers();
     setAutoSchedulerStatus('running');
     setAutoSchedulerProgress(0);
@@ -100,7 +109,7 @@ export default function PracticeSchedulingPage() {
       setAutoSchedulerStatus('failed');
       setAutoSchedulerError(err.message);
     }
-  }, [assignments, stopAutoSchedulerTimers]);
+  }, [assignments, canManageSchedule, stopAutoSchedulerTimers]);
 
   const cancelAutoScheduler = useCallback(() => {
     stopAutoSchedulerTimers();
@@ -123,18 +132,27 @@ export default function PracticeSchedulingPage() {
   const overrideTeams = team?.teams ?? [];
   const overrideBaseSlots = practice?.snapshot?.baseSlotDistribution ?? [];
 
-  const handleToggleLock = useCallback(async (assignmentId, nextSource) => {
-    setAssignments((current) =>
-      current.map((a) => (a.id === assignmentId ? { ...a, source: nextSource } : a))
-    );
-    const { error } = await supabase
-      .from('practice_assignments')
-      .update({ source: nextSource })
-      .eq('id', assignmentId);
-    if (error) {
-      console.error('Failed to persist practice lock state:', error);
-    }
-  }, []);
+  const handleToggleLock = useCallback(
+    async (assignmentId, nextSource) => {
+      if (!canManageSchedule) return;
+
+      const previousAssignments = assignments;
+      setAssignmentSaveError(null);
+      setAssignments((current) =>
+        current.map((a) => (a.id === assignmentId ? { ...a, source: nextSource } : a))
+      );
+      const { error } = await supabase
+        .from('practice_assignments')
+        .update({ source: nextSource })
+        .eq('id', assignmentId);
+      if (error) {
+        console.error('Failed to persist practice lock state:', error);
+        setAssignments(previousAssignments);
+        setAssignmentSaveError('Practice lock change could not be saved. Please retry.');
+      }
+    },
+    [assignments, canManageSchedule]
+  );
 
   return (
     <div className="animate-fadeIn space-y-8 max-w-[65ch] mx-auto w-full">
@@ -143,16 +161,18 @@ export default function PracticeSchedulingPage() {
           <h1 className="text-3xl font-display font-bold text-white mb-2">Practice Scheduling</h1>
           <p className="text-white/60">Configure and optimize team field assignments.</p>
         </div>
-        <div className="flex gap-3">
-          <Button
-            variant={isEditMode ? 'primary' : 'secondary'}
-            onClick={() => setIsEditMode(!isEditMode)}
-            className="flex items-center gap-2"
-          >
-            {isEditMode ? <Save size={18} /> : <Edit2 size={18} />}
-            {isEditMode ? 'Save Assignments' : 'Enter Manual Override'}
-          </Button>
-        </div>
+        {canManageSchedule && (
+          <div className="flex gap-3">
+            <Button
+              variant={canEditSchedule ? 'primary' : 'secondary'}
+              onClick={() => setIsEditMode(!isEditMode)}
+              className="flex items-center gap-2"
+            >
+              {canEditSchedule ? <Save size={18} /> : <Edit2 size={18} />}
+              {canEditSchedule ? 'Save Assignments' : 'Enter Manual Override'}
+            </Button>
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -165,7 +185,7 @@ export default function PracticeSchedulingPage() {
             onTrigger={handleAutoGenerate}
             onCancel={cancelAutoScheduler}
             onReset={resetAutoScheduler}
-            disabled={dashboardLoading.practice || isColdStart}
+            disabled={dashboardLoading.practice || isColdStart || !canManageSchedule}
           />
 
           {isColdStart && (
@@ -202,13 +222,21 @@ export default function PracticeSchedulingPage() {
           />
 
           <div className="bg-white/5 border border-white/10 rounded-xl overflow-hidden shadow-2xl backdrop-blur-sm mt-8">
+            {assignmentSaveError && (
+              <div
+                role="alert"
+                className="border-b border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-200"
+              >
+                {assignmentSaveError}
+              </div>
+            )}
             <PracticeAssignmentList
               assignments={localAssignments}
-              onToggleLock={isEditMode ? handleToggleLock : undefined}
+              onToggleLock={canEditSchedule ? handleToggleLock : undefined}
               loading={dashboardLoading?.practice}
             />
           </div>
-          {isEditMode && (
+          {canEditSchedule && (
             <PracticeOverridePanel teams={overrideTeams} baseSlots={overrideBaseSlots} />
           )}
         </div>

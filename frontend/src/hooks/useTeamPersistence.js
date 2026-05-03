@@ -2,39 +2,47 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient.js';
 import { logger } from '../lib/logger.js';
 import { useOrganization } from '../contexts/OrganizationContext.jsx';
+import { scopeSchedulerRunsToActiveSeason } from '../utils/schedulerRunFilters.js';
+
+const EMPTY_PERSISTENCE_SNAPSHOT = {
+  manualOverrides: [],
+  runHistory: [],
+  lastRunId: null,
+  lastSyncedAt: null,
+  preparedTeamRows: 0,
+  preparedPlayerRows: 0,
+  payload: {
+    teamRows: [],
+    teamPlayerRows: [],
+  },
+};
 
 export function useTeamPersistence() {
-  const { currentOrganization } = useOrganization();
-  const [persistenceSnapshot, setPersistenceSnapshot] = useState({
-    manualOverrides: [],
-    runHistory: [],
-    lastRunId: null,
-    lastSyncedAt: null,
-    preparedTeamRows: 0,
-    preparedPlayerRows: 0,
-    payload: {
-      teamRows: [],
-      teamPlayerRows: [],
-    },
-  });
+  const { currentOrganization, currentSeasonSetting } = useOrganization();
+  const [persistenceSnapshot, setPersistenceSnapshot] = useState(EMPTY_PERSISTENCE_SNAPSHOT);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!currentOrganization?.id) {
+    if (!currentOrganization?.id || !currentSeasonSetting?.id) {
+      setPersistenceSnapshot(EMPTY_PERSISTENCE_SNAPSHOT);
       setLoading(false);
       return;
     }
 
     async function fetchPersistenceHistory() {
+      setLoading(true);
       try {
         // Fetch recent team runs scoped to the current organization
-        const { data: runs, error } = await supabase
+        let runQuery = supabase
           .from('scheduler_runs')
           .select('*')
           .eq('run_type', 'team')
           .eq('organization_id', currentOrganization.id)
-          .order('created_at', { ascending: false })
-          .limit(5);
+          .order('created_at', { ascending: false });
+
+        runQuery = scopeSchedulerRunsToActiveSeason(runQuery, currentSeasonSetting.id);
+
+        const { data: runs, error } = await runQuery.limit(5);
 
         if (error) {
           logger.error('Error fetching persistence history:', error);
@@ -73,7 +81,7 @@ export function useTeamPersistence() {
     }
 
     fetchPersistenceHistory();
-  }, [currentOrganization?.id]);
+  }, [currentOrganization?.id, currentSeasonSetting?.id]);
 
   return { persistenceSnapshot, loading };
 }

@@ -146,11 +146,17 @@ When('I click the {string} button', async ({ page }, name: string) => {
   };
   const actualName = buttonNameMap[name] || name;
 
-  // Try exact role match first, fall back to text match (handles aria-label overrides)
+  // Try exact role match first, fall back to text match (handles aria-label overrides).
+  // Waiting for visibility avoids clicking before React has hydrated the control.
   const roleButton = page.getByRole('button', { name: actualName, exact: true }).first();
   const textButton = page.locator(`button:has-text("${actualName}")`).first();
-  const button = (await roleButton.count()) > 0 ? roleButton : textButton;
-  await button.click({ force: true });
+  const button = (await roleButton.isVisible({ timeout: 5000 }).catch(() => false))
+    ? roleButton
+    : textButton;
+
+  await expect(button).toBeVisible({ timeout: 10000 });
+  await expect(button).toBeEnabled({ timeout: 10000 });
+  await button.click();
 });
 
 When('I attempt to navigate to the {string} page', async ({ page }, pageName: string) => {

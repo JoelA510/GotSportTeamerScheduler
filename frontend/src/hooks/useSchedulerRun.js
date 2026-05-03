@@ -1,6 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabaseClient.js';
 import { logger } from '../lib/logger.js';
+import { useOrganization } from '../contexts/OrganizationContext.jsx';
+import { scopeSchedulerRunsToActiveSeason } from '../utils/schedulerRunFilters.js';
 
 /**
  * Generic hook to fetch the latest completed scheduler run of a specific type.
@@ -11,23 +13,46 @@ import { logger } from '../lib/logger.js';
  * @returns {Object} { data, loading, error }
  */
 export function useSchedulerRun(runType, mapper, emptyState) {
+  const { currentOrganization, currentSeasonSetting } = useOrganization();
+  const mapperRef = useRef(mapper);
+  const emptyStateRef = useRef(emptyState);
   const [data, setData] = useState(null);
   const [evaluation, setEvaluation] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  mapperRef.current = mapper;
+  emptyStateRef.current = emptyState;
+
   useEffect(() => {
     const controller = new AbortController();
 
+    if (!currentOrganization?.id || !currentSeasonSetting?.id) {
+      setData(emptyStateRef.current);
+      setEvaluation(null);
+      setError(null);
+      setLoading(false);
+      return () => {
+        controller.abort();
+      };
+    }
+
     async function fetchLatestRun() {
+      setLoading(true);
+      setError(null);
       try {
         // 1. Fetch latest run
-        const { data: run, error: queryError } = await supabase
+        let runQuery = supabase
           .from('scheduler_runs')
           .select('*')
+          .eq('organization_id', currentOrganization.id)
           .eq('run_type', runType)
           .eq('status', 'completed')
-          .order('completed_at', { ascending: false })
+          .order('completed_at', { ascending: false });
+
+        runQuery = scopeSchedulerRunsToActiveSeason(runQuery, currentSeasonSetting.id);
+
+        const { data: run, error: queryError } = await runQuery
           .limit(1)
           .single()
           // @ts-expect-error [SUP] abortSignal present but untyped in PostgREST builder
@@ -36,7 +61,8 @@ export function useSchedulerRun(runType, mapper, emptyState) {
         if (queryError) {
           if (queryError.code === 'PGRST116') {
             // No rows found -> return empty state
-            setData(emptyState);
+            setData(emptyStateRef.current);
+            setEvaluation(null);
             return;
           }
           throw queryError;
@@ -48,19 +74,22 @@ export function useSchedulerRun(runType, mapper, emptyState) {
           const { data: evalData } = await supabase
             .from('schedule_evaluations')
             .select('*')
+            .eq('organization_id', currentOrganization.id)
             .eq('run_id', run.id)
-            .maybeSingle(); // Use maybeSingle to avoid 406/error if none found
+            .maybeSingle()
+            // @ts-expect-error [SUP] abortSignal present but untyped in PostgREST builder
+            .abortSignal(controller.signal); // Use maybeSingle to avoid 406/error if none found
           evalRecord = evalData;
         }
 
-        const mapped = mapper(run);
-        setData(mapped || emptyState);
+        const mapped = mapperRef.current(run);
+        setData(mapped || emptyStateRef.current);
         setEvaluation(evalRecord);
       } catch (err) {
         if (err.name !== 'AbortError') {
           logger.error(`Failed to fetch ${runType} summary:`, JSON.stringify(err, null, 2));
           setError(err);
-          setData(emptyState);
+          setData(emptyStateRef.current);
           setEvaluation(null);
         }
       } finally {
@@ -75,7 +104,7 @@ export function useSchedulerRun(runType, mapper, emptyState) {
     return () => {
       controller.abort();
     };
-  }, [runType, mapper, emptyState]);
+  }, [currentOrganization?.id, currentSeasonSetting?.id, runType]);
 
   return { data, evaluation, loading, error };
 }

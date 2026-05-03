@@ -262,6 +262,7 @@ export default function TeamAnalysisPage() {
   const canManageTeams =
     permissions.includes(PERMISSIONS.MANAGE_ALL_TEAMS) ||
     permissions.includes(PERMISSIONS.MANAGE_ORGANIZATION);
+  const canEditTeams = canManageTeams && isEditMode;
 
   const importedPlayerRows = useMemo(() => getImportedRows(importedData), [importedData]);
   const basePrograms = useMemo(() => derivePrograms(importedPlayerRows), [importedPlayerRows]);
@@ -522,6 +523,7 @@ export default function TeamAnalysisPage() {
       if (userError) throw userError;
       if (!user?.id) throw new Error('Sign in before generating teams.');
       if (!currentOrganization?.id) throw new Error('Select an active organization.');
+      if (!canManageTeams) throw new Error('Admin team-management permission is required.');
       if (!selectedProgram) throw new Error('Select a program before generating teams.');
 
       const selectedProgramKey = String(selectedProgram.id);
@@ -597,6 +599,7 @@ export default function TeamAnalysisPage() {
     }
   }, [
     configs,
+    canManageTeams,
     currentOrganization?.id,
     currentSeasonSetting?.id,
     importedPlayerRows,
@@ -703,7 +706,7 @@ export default function TeamAnalysisPage() {
             Review team generation, division capacity, and roster assignments.
           </p>
         </div>
-        {team?.generatedAt && (
+        {team?.generatedAt && canManageTeams && (
           <Button
             variant={isEditMode ? 'primary' : 'secondary'}
             onClick={() => setIsEditMode(!isEditMode)}
@@ -793,7 +796,7 @@ export default function TeamAnalysisPage() {
             </Button>
           </div>
         </div>
-      ) : isEditMode ? (
+      ) : canEditTeams ? (
         <div className="space-y-6">
           <div className="bg-bg-surface border border-border-subtle rounded-xl p-6">
             <div className="flex justify-between items-center mb-6">
@@ -814,10 +817,36 @@ export default function TeamAnalysisPage() {
             timezone={timezone}
           />
           <TeamPersistencePanel teamPersistenceSnapshot={persistenceSnapshot} />
+          {activeTeams.length > 0 && (
+            <section
+              className="bg-bg-surface border border-border-subtle rounded-xl p-6"
+              aria-label="Generated Teams"
+            >
+              <h3 className="text-xl font-bold text-text-primary mb-4">Generated Teams</h3>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {activeTeams.map((generatedTeam) => (
+                  <div
+                    key={generatedTeam.id}
+                    className="rounded-lg border border-border-subtle bg-bg-base px-4 py-3"
+                  >
+                    <div className="font-semibold text-text-primary">{generatedTeam.name}</div>
+                    <div className="text-sm text-text-secondary">
+                      {generatedTeam.divisionName ||
+                        generatedTeam.division ||
+                        generatedTeam.division_id ||
+                        'Unassigned'}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
           <div className="flex justify-end pt-4 border-t border-border-subtle">
-            <Button variant="primary" size="lg" onClick={() => navigate('/fields')}>
-              Confirm Teams & Proceed
-            </Button>
+            {canManageTeams && (
+              <Button variant="primary" size="lg" onClick={() => navigate('/fields')}>
+                Confirm Teams & Proceed
+              </Button>
+            )}
           </div>
         </>
       )}

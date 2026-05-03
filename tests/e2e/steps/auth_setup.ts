@@ -58,12 +58,30 @@ async function setupIsolatedTenant(page: Page, role: string = 'admin') {
         }
 
         db.season_settings = db.season_settings || [];
-        if (!db.season_settings.find((s: Record<string, unknown>) => s.organization_id === orgId)) {
-          db.season_settings.push({
-            id: 's1',
+        let activeSeason = db.season_settings.find(
+          (s: Record<string, unknown>) => s.organization_id === orgId && s.id === 'season-1'
+        );
+        if (!activeSeason) {
+          activeSeason = db.season_settings.find(
+            (s: Record<string, unknown>) =>
+              s.organization_id === orgId && (s.name === 'Fall 2026' || s.id === 's1')
+          );
+        }
+        if (activeSeason) {
+          Object.assign(activeSeason, {
+            id: 'season-1',
             organization_id: orgId,
             name: 'Fall 2026',
             status: 'active',
+            created_at: activeSeason.created_at || new Date().toISOString(),
+          });
+        } else {
+          db.season_settings.push({
+            id: 'season-1',
+            organization_id: orgId,
+            name: 'Fall 2026',
+            status: 'active',
+            created_at: new Date().toISOString(),
           });
         }
 
