@@ -147,6 +147,61 @@ Then('the imported coach should be removed from the coach database', async ({ pa
   expect(coachExists).toBe(false);
 });
 
+Given('I upload a valid field slot CSV file', async ({ page }) => {
+  await page.locator('button').filter({ hasText: 'fields' }).first().click();
+  await page.locator('input[type="file"]').setInputFiles({
+    name: 'fields.csv',
+    mimeType: 'text/csv',
+    buffer: Buffer.from(
+      [
+        'Location,Field,Subunit,Type,Day,Slot Date,Start,End,Capacity,Valid From,Valid Until',
+        'Main Park,Imported Field,A,practice,Mon,,17:30,18:30,1,2026-03-01,2026-05-31',
+      ].join('\n')
+    ),
+  });
+  await expect(page.getByRole('button', { name: 'Start Import' })).toBeVisible();
+});
+
+When('I apply the field slot CSV import', async ({ page }) => {
+  await page.getByRole('button', { name: 'Start Import' }).click();
+  await expect(page.getByRole('heading', { name: 'Import Applied' })).toBeVisible({
+    timeout: 15000,
+  });
+});
+
+Then('the field slot CSV import should update the facilities database', async ({ page }) => {
+  await expect(page.getByRole('button', { name: 'Roll Back Field Import' })).toBeVisible({
+    timeout: 10000,
+  });
+  const fieldExists = await page.evaluate(() => {
+    const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
+    const field = (db.fields || []).find(
+      (item: { name?: string }) => item.name === 'Imported Field'
+    );
+    const slotExists = (db.practice_slots || []).some(
+      (slot: { field_id?: string; start_time?: string }) =>
+        slot.field_id === field?.id && slot.start_time === '17:30'
+    );
+    return Boolean(field && slotExists);
+  });
+  expect(fieldExists).toBe(true);
+});
+
+When('I roll back the field slot CSV import', async ({ page }) => {
+  await page.getByRole('button', { name: 'Roll Back Field Import' }).click();
+  await expect(page.getByRole('button', { name: 'Start Import' })).toBeVisible({
+    timeout: 15000,
+  });
+});
+
+Then('the imported field slot should be removed from the facilities database', async ({ page }) => {
+  const fieldExists = await page.evaluate(() => {
+    const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
+    return (db.fields || []).some((field: { name?: string }) => field.name === 'Imported Field');
+  });
+  expect(fieldExists).toBe(false);
+});
+
 When('I click to export the team rosters or schedules', async ({ page }) => {
   await page.goto('/?step=6');
 

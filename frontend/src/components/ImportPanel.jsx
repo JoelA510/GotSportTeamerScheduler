@@ -25,7 +25,7 @@ import { logger } from '../lib/logger.js';
 const REQUIRED_HEADERS = {
   players: ['first_name', 'last_name', 'date_of_birth'],
   coaches: ['full_name', 'email'],
-  fields: ['name'],
+  fields: ['location', 'name', 'type', 'start', 'end'],
 };
 
 /** @typedef {'players' | 'coaches' | 'fields'} ImportType */
@@ -99,11 +99,14 @@ export default function ImportPanel({ onImport }) {
 
   const theme = PERSISTENCE_THEMES.green;
   const isComplete = COMPLETED_IMPORT_STATUSES.has(importStatus);
+  const coachRollbackComplete = importedCoaches?.persistence?.rollback?.status === 'rolled_back';
+  const fieldRollbackComplete = importedFields?.persistence?.rollback?.status === 'rolled_back';
   const canRollbackImport =
     isComplete &&
-    importType === 'coaches' &&
-    importedCoaches?.persistence?.durable &&
-    !importedCoaches?.persistence?.rollback;
+    ((importType === 'coaches' &&
+      importedCoaches?.persistence?.durable &&
+      !coachRollbackComplete) ||
+      (importType === 'fields' && importedFields?.persistence?.durable && !fieldRollbackComplete));
 
   const handleDragOver = (e) => {
     e.preventDefault();
@@ -398,13 +401,13 @@ export default function ImportPanel({ onImport }) {
                   onClick={async () => {
                     try {
                       setError(null);
-                      await rollbackImport('coaches');
+                      await rollbackImport(importType);
                     } catch (err) {
-                      setError(err.message || 'Coach import rollback failed.');
+                      setError(err.message || `${importType} import rollback failed.`);
                     }
                   }}
                 >
-                  Roll Back Coach Import
+                  Roll Back {importType === 'fields' ? 'Field Import' : 'Coach Import'}
                 </Button>
               )}
               <Button

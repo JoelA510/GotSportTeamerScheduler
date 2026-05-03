@@ -507,7 +507,7 @@ export function ImportProvider({ children }) {
 
             // Phase 5: Dynamic Ingestion Logic
             const entityType =
-              type === 'players' ? 'player' : type === 'coaches' ? 'coach' : 'team';
+              type === 'players' ? 'player' : type === 'coaches' ? 'coach' : 'field';
             const customSchema = organizationSchemas[entityType] || {};
 
             const { mappings, isFallback, timing, needsConfirmation } = matchHeaders(
@@ -561,7 +561,7 @@ export function ImportProvider({ children }) {
             const REQUIRED_HEADERS = {
               players: ['first_name', 'last_name', 'date_of_birth'],
               coaches: ['full_name', 'email'],
-              fields: ['name'],
+              fields: ['location', 'name', 'type', 'start', 'end'],
             };
 
             const requiredForType = REQUIRED_HEADERS[type] || [];
@@ -726,6 +726,25 @@ export function ImportProvider({ children }) {
                 addLog(
                   `Coach database updated: ${finalizeResult?.inserted_coaches ?? 0} inserted, ${finalizeResult?.updated_coaches ?? 0} updated.`
                 );
+              } else if (type === 'fields') {
+                addLog('Applying validated field slots to the facilities database...');
+                const { data: finalizeResult, error: finalizeError } = await supabase.rpc(
+                  'finalize_field_import_job',
+                  {
+                    p_import_job_id: job.id,
+                    p_validation_errors: validationErrors,
+                  }
+                );
+
+                if (finalizeError) {
+                  throw new Error(finalizeError.message || 'Field import finalization failed');
+                }
+
+                persistenceResult = finalizeResult;
+                effectiveStatus = finalizeResult?.status || finalStatus;
+                addLog(
+                  `Facilities database updated: ${finalizeResult?.inserted_fields ?? 0} fields, ${finalizeResult?.inserted_practice_slots ?? 0} practice slots, ${finalizeResult?.inserted_game_slots ?? 0} game slots inserted.`
+                );
               }
 
               const importData = {
@@ -738,22 +757,10 @@ export function ImportProvider({ children }) {
                 data: normalizedData,
                 validationErrors,
                 persistence: {
-                  durable: type === 'players' || type === 'coaches',
+                  durable: type === 'players' || type === 'coaches' || type === 'fields',
                   result: persistenceResult,
                 },
               };
-
-              if (type === 'fields') {
-                await supabase
-                  .from('import_jobs')
-                  .update({
-                    status: finalStatus,
-                    processed_rows: normalizedData.length,
-                    progress_percent: 100,
-                    error_summary: { rowErrors: validationErrors },
-                  })
-                  .eq('id', job.id);
-              }
 
               if (type === 'players') setImportedPlayers(importData);
               if (type === 'coaches') setImportedCoaches(importData);
@@ -790,43 +797,47 @@ export function ImportProvider({ children }) {
 
   const rollbackImport = useCallback(
     async (type = 'coaches') => {
-      if (type !== 'coaches') {
+      if (!['coaches', 'fields'].includes(type)) {
         throw new Error(`Rollback is not available for ${type} imports yet`);
       }
-      const rollbackJobId = importedCoaches?.importJobId;
+      const rollbackState = type === 'coaches' ? importedCoaches : importedFields;
+      const rollbackJobId = rollbackState?.importJobId;
       if (!rollbackJobId) {
-        throw new Error('No completed coach import job is available to roll back');
+        throw new Error(`No completed ${type} import job is available to roll back`);
       }
 
       setIsImporting(true);
       setImportStatus('importing');
-      addLog('Rolling back coach import...');
+      addLog(`Rolling back ${type} import...`);
 
       try {
-        const { data: rollbackResult, error: rollbackError } = await supabase.rpc(
-          'rollback_coach_import_job',
-          { p_import_job_id: rollbackJobId }
-        );
+        const rpcName =
+          type === 'coaches' ? 'rollback_coach_import_job' : 'rollback_field_import_job';
+        const { data: rollbackResult, error: rollbackError } = await supabase.rpc(rpcName, {
+          p_import_job_id: rollbackJobId,
+        });
 
         if (rollbackError) {
-          throw new Error(rollbackError.message || 'Coach import rollback failed');
+          throw new Error(rollbackError.message || `${type} import rollback failed`);
         }
 
         const rollbackData = {
-          ...(importedCoaches || {}),
+          ...(rollbackState || {}),
           persistence: {
-            ...(importedCoaches?.persistence || {}),
+            ...(rollbackState?.persistence || {}),
             rollback: rollbackResult,
           },
         };
         const rollbackSucceeded = rollbackResult?.status === 'rolled_back';
         if (rollbackSucceeded) {
-          setImportedCoaches(null);
+          if (type === 'coaches') setImportedCoaches(null);
+          if (type === 'fields') setImportedFields(null);
           setImportedData(null);
           setActiveJobId(null);
           setActiveJob(null);
         } else {
-          setImportedCoaches(rollbackData);
+          if (type === 'coaches') setImportedCoaches(rollbackData);
+          if (type === 'fields') setImportedFields(rollbackData);
           setImportedData(rollbackData);
         }
         setIsImporting(false);
@@ -838,7 +849,9 @@ export function ImportProvider({ children }) {
           localStorage.setItem('importStatus', nextStatus);
         }
         addLog(
-          `Coach import rolled back: ${rollbackResult?.deleted_coaches ?? 0} deleted, ${rollbackResult?.restored_coaches ?? 0} restored.`
+          type === 'coaches'
+            ? `Coach import rolled back: ${rollbackResult?.deleted_coaches ?? 0} deleted, ${rollbackResult?.restored_coaches ?? 0} restored.`
+            : `Field import rolled back: ${rollbackResult?.deleted_fields ?? 0} fields, ${rollbackResult?.deleted_practice_slots ?? 0} practice slots, ${rollbackResult?.deleted_game_slots ?? 0} game slots deleted.`
         );
         return rollbackResult;
       } catch (err) {
@@ -849,7 +862,7 @@ export function ImportProvider({ children }) {
         throw err;
       }
     },
-    [addLog, importedCoaches]
+    [addLog, importedCoaches, importedFields]
   );
 
   const resetImport = useCallback(async (type = 'all') => {
