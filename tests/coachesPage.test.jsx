@@ -33,6 +33,12 @@ const coaches = [
     import_source: 'player_import_lead',
   },
   {
+    id: 'coach-unassigned',
+    full_name: 'Uma Unassigned',
+    email: 'uma@example.com',
+    status: 'active',
+  },
+  {
     id: 'coach-inactive',
     full_name: 'Inactive Coach',
     email: 'inactive@example.com',
@@ -61,12 +67,14 @@ describe('coach review page helpers', () => {
   it('builds coach rows with status groups, lead programs, source players, and teams', () => {
     const rows = buildCoachReviewRows({ coaches, interestedPrograms, divisions, players, teams });
 
-    expect(rows).toHaveLength(3);
+    expect(rows).toHaveLength(4);
     expect(rows[0]).toMatchObject({
       id: 'coach-active',
       statusLabel: 'Registered',
       statusGroup: 'registered',
       canCoachMultipleTeams: true,
+      divisionIds: ['u8'],
+      programNames: ['U8 Coed'],
       teams: [{ id: 'team-1', name: 'Blue Sharks', divisionId: 'u8' }],
     });
     expect(rows[1]).toMatchObject({
@@ -82,11 +90,11 @@ describe('coach review page helpers', () => {
     const rows = buildCoachReviewRows({ coaches, interestedPrograms, divisions, players, teams });
 
     expect(summarizeCoachRows(rows)).toEqual({
-      total: 3,
-      registered: 1,
+      total: 4,
+      registered: 2,
       interested: 1,
       inactive: 1,
-      unassigned: 2,
+      unassigned: 1,
     });
   });
 
@@ -97,6 +105,10 @@ describe('coach review page helpers', () => {
       'coach-lead',
     ]);
     expect(filterCoachReviewRows(rows, { divisionId: 'u10' }).map((row) => row.id)).toEqual([
+      'coach-lead',
+    ]);
+    expect(filterCoachReviewRows(rows, { divisionId: 'u8' }).map((row) => row.id)).toEqual([
+      'coach-active',
       'coach-lead',
     ]);
     expect(filterCoachReviewRows(rows, { search: 'blue sharks' }).map((row) => row.id)).toEqual([

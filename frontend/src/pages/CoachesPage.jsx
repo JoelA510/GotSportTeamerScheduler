@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Mail, Phone, RefreshCw, Search, ShieldCheck, UserRoundCheck, Users } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient.js';
 import { useOrganization } from '../contexts/OrganizationContext.jsx';
@@ -85,9 +85,10 @@ export function buildCoachReviewRows({
     const interests = interestsByCoach.get(coachId) || [];
     const assignedTeams = teamsByCoach.get(coachId) || [];
     const status = coach.status || 'active';
-    const divisionIds = uniqueValues(
-      interests.map((interest) => (interest.division_id ? String(interest.division_id) : null))
-    );
+    const divisionIds = uniqueValues([
+      ...interests.map((interest) => (interest.division_id ? String(interest.division_id) : null)),
+      ...assignedTeams.map((team) => (team.division_id ? String(team.division_id) : null)),
+    ]);
     const programNames = uniqueValues(
       divisionIds.map((divisionId) => divisionsById.get(divisionId)?.name || divisionId)
     );
@@ -131,7 +132,7 @@ export function summarizeCoachRows(rows = []) {
       if (row.statusGroup === 'registered') summary.registered += 1;
       if (row.statusGroup === 'interested') summary.interested += 1;
       if (row.statusGroup === 'inactive') summary.inactive += 1;
-      if (row.teams.length === 0) summary.unassigned += 1;
+      if (row.statusGroup === 'registered' && row.teams.length === 0) summary.unassigned += 1;
       return summary;
     },
     { total: 0, registered: 0, interested: 0, inactive: 0, unassigned: 0 }
@@ -189,6 +190,7 @@ function StatusBadge({ status, label }) {
 
 export default function CoachesPage() {
   const { currentOrganization } = useOrganization();
+  const latestRequestRef = useRef(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [coaches, setCoaches] = useState([]);
@@ -199,52 +201,72 @@ export default function CoachesPage() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [divisionFilter, setDivisionFilter] = useState('all');
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
 
   const loadCoaches = useCallback(async () => {
-    if (!currentOrganization?.id) return;
+    const requestId = latestRequestRef.current + 1;
+    latestRequestRef.current = requestId;
+
+    if (!currentOrganization?.id) {
+      setCoaches([]);
+      setInterestedPrograms([]);
+      setDivisions([]);
+      setPlayers([]);
+      setTeams([]);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     setError(null);
 
     try {
-      const [coachResult, interestResult, divisionResult, playerResult, teamResult] =
-        await Promise.all([
-          supabase
-            .from('coaches')
-            .select(
-              'id, organization_id, full_name, email, phone, status, import_source, last_imported_at, can_coach_multiple_teams, created_at'
-            )
-            .eq('organization_id', currentOrganization.id)
-            .order('full_name', { ascending: true }),
-          supabase
-            .from('coach_interested_programs')
-            .select(
-              'id, coach_id, division_id, inferred_from_player_id, organization_id, created_at'
-            )
-            .eq('organization_id', currentOrganization.id)
-            .order('created_at', { ascending: false }),
-          supabase
-            .from('divisions')
-            .select('id, name, organization_id')
-            .eq('organization_id', currentOrganization.id)
-            .order('name', { ascending: true }),
-          supabase
-            .from('players')
-            .select('id, first_name, last_name, organization_id')
-            .eq('organization_id', currentOrganization.id),
-          supabase
-            .from('teams')
-            .select('id, name, division_id, coach_id, organization_id')
-            .eq('organization_id', currentOrganization.id)
-            .order('name', { ascending: true }),
-        ]);
+      const [coachResult, interestResult, divisionResult, teamResult] = await Promise.all([
+        supabase
+          .from('coaches')
+          .select(
+            'id, organization_id, full_name, email, phone, status, import_source, last_imported_at, can_coach_multiple_teams, created_at'
+          )
+          .eq('organization_id', currentOrganization.id)
+          .order('full_name', { ascending: true }),
+        supabase
+          .from('coach_interested_programs')
+          .select('id, coach_id, division_id, inferred_from_player_id, organization_id, created_at')
+          .eq('organization_id', currentOrganization.id)
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('divisions')
+          .select('id, name, organization_id')
+          .eq('organization_id', currentOrganization.id)
+          .order('name', { ascending: true }),
+        supabase
+          .from('teams')
+          .select('id, name, division_id, coach_id, organization_id')
+          .eq('organization_id', currentOrganization.id)
+          .order('name', { ascending: true }),
+      ]);
 
       const resultError =
-        coachResult.error ||
-        interestResult.error ||
-        divisionResult.error ||
-        playerResult.error ||
-        teamResult.error;
+        coachResult.error || interestResult.error || divisionResult.error || teamResult.error;
       if (resultError) throw resultError;
+      if (latestRequestRef.current !== requestId) return;
+
+      const sourcePlayerIds = uniqueValues(
+        (interestResult.data || []).map((interest) =>
+          interest.inferred_from_player_id ? String(interest.inferred_from_player_id) : null
+        )
+      );
+      const playerResult =
+        sourcePlayerIds.length > 0
+          ? await supabase
+              .from('players')
+              .select('id, first_name, last_name, organization_id')
+              .eq('organization_id', currentOrganization.id)
+              .in('id', sourcePlayerIds)
+          : { data: [], error: null };
+
+      if (playerResult.error) throw playerResult.error;
+      if (latestRequestRef.current !== requestId) return;
 
       setCoaches(coachResult.data || []);
       setInterestedPrograms(interestResult.data || []);
@@ -252,10 +274,13 @@ export default function CoachesPage() {
       setPlayers(playerResult.data || []);
       setTeams(teamResult.data || []);
     } catch (err) {
+      if (latestRequestRef.current !== requestId) return;
       logger.error('Failed to load coaches:', err);
       setError('Failed to load coach records.');
     } finally {
-      setLoading(false);
+      if (latestRequestRef.current === requestId) {
+        setLoading(false);
+      }
     }
   }, [currentOrganization?.id]);
 
@@ -263,14 +288,24 @@ export default function CoachesPage() {
     loadCoaches();
   }, [loadCoaches]);
 
+  useEffect(() => {
+    const timeoutId = setTimeout(() => setDebouncedSearch(search), 200);
+    return () => clearTimeout(timeoutId);
+  }, [search]);
+
   const rows = useMemo(
     () => buildCoachReviewRows({ coaches, interestedPrograms, divisions, players, teams }),
     [coaches, interestedPrograms, divisions, players, teams]
   );
   const summary = useMemo(() => summarizeCoachRows(rows), [rows]);
   const filteredRows = useMemo(
-    () => filterCoachReviewRows(rows, { status: statusFilter, divisionId: divisionFilter, search }),
-    [rows, statusFilter, divisionFilter, search]
+    () =>
+      filterCoachReviewRows(rows, {
+        status: statusFilter,
+        divisionId: divisionFilter,
+        search: debouncedSearch,
+      }),
+    [rows, statusFilter, divisionFilter, debouncedSearch]
   );
 
   return (
