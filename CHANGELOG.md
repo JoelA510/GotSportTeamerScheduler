@@ -30,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Added pressed-state semantics to season-format and season quick-select controls in settings.
 - Exposed settings feature-flag controls as named switches with checked state and descriptions.
 - Added explicit labels, button metadata, and progress semantics to the import ingestion overlay.
 - Added tab semantics, explicit field labels, and focus-visible delete controls to the settings schema builder.

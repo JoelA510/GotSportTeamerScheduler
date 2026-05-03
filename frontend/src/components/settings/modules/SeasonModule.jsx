@@ -14,11 +14,13 @@ export default function SeasonModule() {
   return (
     <div className="space-y-6 animate-fadeIn">
       <div>
-        <label className="block text-sm font-medium text-text-secondary mb-2">
+        <p id="season-format-label" className="block text-sm font-medium text-text-secondary mb-2">
           Season Naming Format
-        </label>
-        <div className="grid grid-cols-2 gap-4">
+        </p>
+        <div className="grid grid-cols-2 gap-4" role="group" aria-labelledby="season-format-label">
           <button
+            type="button"
+            aria-pressed={seasonFormat === 'single'}
             onClick={async () => {
               setSeasonFormat('single');
               const orgId = user?.profile?.organization_id;
@@ -47,6 +49,8 @@ export default function SeasonModule() {
             <div className="text-xs opacity-70">e.g., &quot;2025&quot;, &quot;2026&quot;</div>
           </button>
           <button
+            type="button"
+            aria-pressed={seasonFormat === 'dual'}
             onClick={async () => {
               setSeasonFormat('dual');
               const orgId = user?.profile?.organization_id;
@@ -117,6 +121,9 @@ export default function SeasonModule() {
                 {availableSeasons.map((season) => (
                   <button
                     key={season}
+                    type="button"
+                    aria-pressed={localCurrentSeason === season}
+                    aria-label={`Select ${season} as current season`}
                     onClick={() => {
                       setLocalCurrentSeason(season);
                       updateCurrentSeason(season);
