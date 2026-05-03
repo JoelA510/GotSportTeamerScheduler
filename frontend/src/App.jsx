@@ -21,6 +21,7 @@ const Login = lazy(() => import('./components/Login.jsx'));
 const DashboardPage = lazy(() => import('./pages/DashboardPage.jsx'));
 const ImportPage = lazy(() => import('./pages/ImportPage.jsx'));
 const TeamAnalysisPage = lazy(() => import('./pages/TeamAnalysisPage.jsx'));
+const CoachesPage = lazy(() => import('./pages/CoachesPage.jsx'));
 const FieldManagementPage = lazy(() => import('./pages/FieldManagementPage.jsx'));
 const PracticeSchedulingPage = lazy(() => import('./pages/PracticeSchedulingPage.jsx'));
 const GameSchedulingPage = lazy(() => import('./pages/GameSchedulingPage.jsx'));
@@ -131,6 +132,14 @@ function AppContent() {
             }
           />
           <Route path="/teams" element={<TeamAnalysisPage />} />
+          <Route
+            path="/coaches"
+            element={
+              <ProtectedRoute requiredPermission={PERMISSIONS.MANAGE_ORGANIZATION}>
+                <CoachesPage />
+              </ProtectedRoute>
+            }
+          />
           <Route
             path="/fields"
             element={

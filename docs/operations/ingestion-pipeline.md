@@ -110,7 +110,7 @@ This document expands on the roadmap tasks for importing GotSport registrations 
 
 ## 5. Next Implementation Tasks
 
-- Finish coach CSV coach promotion and add the admin coach lead review page.
+- Finish coach CSV coach promotion and add direct assignment actions from the admin coach review page.
 - Materialize buddy requests into `player_buddies` after player promotion.
 - Add field availability promotion into facility and slot tables.
 - Add duplicate and unknown-division operator review surfaces beyond the current warning metadata.
