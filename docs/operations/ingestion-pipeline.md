@@ -11,7 +11,7 @@
 > - CSV parsing uses **PapaParse** (not `@fast-csv/parse`)
 > - Client-side validation is in `ImportContext.jsx`; server-side validation is in the `import-validation` Edge Function
 > - Valid player rows are staged in `staging_players` with source row numbers and promoted by `finalize_import_job(uuid, jsonb)` into `players`
-> - Player-import coach volunteer rows create durable interested coach leads after player promotion; coach CSV, team, field-slot, and buddy-pair promotion remain pending v1.1 follow-up work
+> - Player-import coach volunteer rows create durable interested coach leads after player promotion; coach CSV and field-slot CSV imports now have durable apply/rollback RPCs, while team and buddy-pair promotion remain pending v1.1 follow-up work
 > - Header matching uses a strict alias map (not fuzzy `.includes()`)
 > - Testing uses **Vitest** (not Jest)
 > - File size enforcement (10 MB) is implemented both client-side and via Supabase Storage policy
@@ -58,7 +58,8 @@ This document expands on the roadmap tasks for importing GotSport registrations 
    - Mark promoted staging rows with `promoted_at` / `promoted_by` so re-running finalization for the same job does not duplicate players.
    - Store promotion counts in `import_jobs.warning_summary.finalize` and mark the import job `completed` or `completed_with_warnings`.
 3. For player imports, call `upsert_coach_leads` after finalization for rows with positive coach intent. The RPC creates interested coaches idempotently and rejects division/player references outside the caller's organization.
-4. Pending follow-up: coach CSV promotion, buddy pair materialization, team creation, and field-slot promotion.
+4. Coach CSV and field-slot imports use dedicated apply/rollback RPCs backed by `staging_import_rows` and `import_application_records`.
+5. Pending follow-up: buddy pair materialization and team creation.
 
 ### 1.5 Notifications & Audit
 
@@ -110,7 +111,5 @@ This document expands on the roadmap tasks for importing GotSport registrations 
 
 ## 5. Next Implementation Tasks
 
-- Finish coach CSV coach promotion and add direct assignment actions from the admin coach review page.
 - Materialize buddy requests into `player_buddies` after player promotion.
-- Add field availability promotion into facility and slot tables.
 - Add duplicate and unknown-division operator review surfaces beyond the current warning metadata.

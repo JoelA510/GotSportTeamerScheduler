@@ -46,7 +46,7 @@ function sanitizeString(value: unknown): string {
 const REQUIRED_FIELDS: Record<string, string[]> = {
   players: ['first_name', 'last_name', 'date_of_birth'],
   coaches: ['full_name', 'email'],
-  fields: ['name'],
+  fields: ['location', 'name', 'type', 'start', 'end'],
 };
 
 // GotSport header alias map (strict matching, not fuzzy .includes())
@@ -73,8 +73,48 @@ const HEADER_ALIASES: Record<string, string> = {
   email_userid: 'email',
   'contact email': 'email',
   name: 'name',
+  field: 'name',
   'field name': 'name',
   field_name: 'name',
+  location: 'location',
+  'location name': 'location',
+  location_name: 'location',
+  venue: 'location',
+  subunit: 'subunit',
+  'field subunit': 'subunit',
+  field_subunit: 'subunit',
+  day: 'day',
+  'day of week': 'day',
+  day_of_week: 'day',
+  start: 'start',
+  'start time': 'start',
+  start_time: 'start',
+  end: 'end',
+  'end time': 'end',
+  end_time: 'end',
+  type: 'type',
+  'slot type': 'type',
+  slot_type: 'type',
+  capacity: 'capacity',
+  'valid from': 'valid_from',
+  valid_from: 'valid_from',
+  'valid until': 'valid_until',
+  valid_until: 'valid_until',
+  date: 'slot_date',
+  'slot date': 'slot_date',
+  slot_date: 'slot_date',
+  week: 'week_index',
+  week_index: 'week_index',
+  surface: 'surface_type',
+  'surface type': 'surface_type',
+  surface_type: 'surface_type',
+  size: 'size',
+  'supports halves': 'supports_halves',
+  supports_halves: 'supports_halves',
+  lights: 'lighting_available',
+  lighted: 'lighting_available',
+  'lighting available': 'lighting_available',
+  lighting_available: 'lighting_available',
   'coach willing': 'willing_to_coach',
   'willing to coach': 'willing_to_coach',
   buddy: 'buddy_request',
@@ -126,6 +166,29 @@ const HEADER_ALIASES: Record<string, string> = {
 function normalizeHeader(header: string): string {
   const lower = header.toLowerCase().trim();
   return HEADER_ALIASES[lower] ?? lower;
+}
+
+function parseTimeMinutes(value: string | undefined): number | null {
+  const trimmed = value?.trim();
+  if (!trimmed) return null;
+
+  const match = trimmed.match(/^(\d{1,2}):(\d{2})(?::\d{2})?\s*([ap]m)?$/i);
+  if (!match) return null;
+
+  let hour = Number.parseInt(match[1], 10);
+  const minute = Number.parseInt(match[2], 10);
+  const meridiem = match[3]?.toLowerCase();
+
+  if (minute < 0 || minute > 59) return null;
+  if (meridiem) {
+    if (hour < 1 || hour > 12) return null;
+    if (meridiem === 'pm' && hour !== 12) hour += 12;
+    if (meridiem === 'am' && hour === 12) hour = 0;
+  } else if (hour < 0 || hour > 23) {
+    return null;
+  }
+
+  return hour * 60 + minute;
 }
 
 // --- Validation ---
@@ -185,6 +248,77 @@ function validateRow(
       field: 'skill_tier',
       message: `Invalid skill tier: ${row['skill_tier']}. Must be novice, developing, or advanced.`,
     });
+  }
+
+  if (importType === 'fields') {
+    const slotType = row['type']?.toLowerCase();
+    if (slotType && !['practice', 'game'].includes(slotType)) {
+      errors.push({
+        row: rowIndex + 1,
+        field: 'type',
+        message: `Invalid field slot type: ${row['type']}. Must be practice or game.`,
+      });
+    }
+
+    const start = parseTimeMinutes(row['start']);
+    const end = parseTimeMinutes(row['end']);
+    if (row['start'] && start === null) {
+      errors.push({
+        row: rowIndex + 1,
+        field: 'start',
+        message: `Invalid start time: ${row['start']}`,
+      });
+    }
+    if (row['end'] && end === null) {
+      errors.push({
+        row: rowIndex + 1,
+        field: 'end',
+        message: `Invalid end time: ${row['end']}`,
+      });
+    }
+    if (start !== null && end !== null && end <= start) {
+      errors.push({
+        row: rowIndex + 1,
+        field: 'end',
+        message: 'End time must be after start time',
+      });
+    }
+
+    if (row['capacity']) {
+      const capacity = Number.parseInt(row['capacity'], 10);
+      if (!Number.isInteger(capacity) || capacity < 1) {
+        errors.push({
+          row: rowIndex + 1,
+          field: 'capacity',
+          message: `Invalid capacity: ${row['capacity']}. Must be at least 1.`,
+        });
+      }
+    }
+
+    if (slotType === 'practice') {
+      if (!row['day']) {
+        errors.push({
+          row: rowIndex + 1,
+          field: 'day',
+          message: 'Practice field rows require day',
+        });
+      }
+      if (!row['valid_from'] || !row['valid_until']) {
+        errors.push({
+          row: rowIndex + 1,
+          field: 'valid_from',
+          message: 'Practice field rows require valid_from and valid_until',
+        });
+      }
+    }
+
+    if (slotType === 'game' && !row['slot_date'] && !row['valid_from']) {
+      errors.push({
+        row: rowIndex + 1,
+        field: 'slot_date',
+        message: 'Game field rows require slot_date',
+      });
+    }
   }
 
   return errors;

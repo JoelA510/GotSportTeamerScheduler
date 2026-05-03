@@ -1874,6 +1874,352 @@ export const mockSupabase = {
       return { data: result, error: null };
     }
 
+    if (name === 'finalize_field_import_job') {
+      const { p_import_job_id, p_validation_errors } = params || {};
+      const job = (db.import_jobs || []).find(
+        (item) => String(item.id) === String(p_import_job_id)
+      );
+      if (!job) {
+        return { data: null, error: { message: 'Import job not found' } };
+      }
+
+      const validationErrors = Array.isArray(p_validation_errors) ? p_validation_errors : [];
+      const now = new Date().toISOString();
+      const stagedRows = (db.staging_import_rows || []).filter(
+        (row) =>
+          String(row.import_job_id) === String(p_import_job_id) &&
+          row.import_type === 'fields' &&
+          !row.applied_at &&
+          (!row.validation_errors || row.validation_errors.length === 0)
+      );
+
+      db.locations = db.locations || [];
+      db.fields = db.fields || [];
+      db.field_subunits = db.field_subunits || [];
+      db.practice_slots = db.practice_slots || [];
+      db.game_slots = db.game_slots || [];
+      db.import_application_records = db.import_application_records || [];
+
+      let insertedLocations = 0;
+      let insertedFields = 0;
+      let insertedSubunits = 0;
+      let insertedPracticeSlots = 0;
+      let insertedGameSlots = 0;
+      let invalidRows = 0;
+
+      const makeId = () => Math.random().toString(36).substr(2, 9);
+      const boolFromText = (value, fallback = false) => {
+        if (value === undefined || value === null || value === '') return fallback;
+        return ['true', 't', 'yes', 'y', '1'].includes(String(value).trim().toLowerCase());
+      };
+      const ledger = (targetTable, target, operation, previousPayload = null) => {
+        if (
+          db.import_application_records.some(
+            (record) =>
+              String(record.import_job_id) === String(p_import_job_id) &&
+              record.target_table === targetTable &&
+              String(record.target_id) === String(target.id)
+          )
+        ) {
+          return;
+        }
+        db.import_application_records.push({
+          id: makeId(),
+          organization_id: job.organization_id,
+          import_job_id: p_import_job_id,
+          import_type: 'fields',
+          target_table: targetTable,
+          target_id: target.id,
+          operation,
+          previous_payload: previousPayload,
+          applied_payload: { ...target },
+          applied_at: now,
+          applied_by: 'mock-admin-id',
+          rolled_back_at: null,
+        });
+      };
+
+      stagedRows.forEach((row) => {
+        const payload = row.normalized_payload || {};
+        const locationName = String(payload.location || payload.location_name || '').trim();
+        const fieldName = String(payload.name || payload.field || payload.field_name || '').trim();
+        const slotType = String(payload.type || payload.slot_type || '').toLowerCase();
+        const start = String(payload.start || payload.start_time || '').trim();
+        const end = String(payload.end || payload.end_time || '').trim();
+        const day = String(payload.day || payload.day_of_week || '')
+          .trim()
+          .toLowerCase();
+        const validFrom = payload.valid_from || payload.start_date || '';
+        const validUntil = payload.valid_until || payload.end_date || '';
+        const slotDate = payload.slot_date || payload.date || validFrom || '';
+
+        if (
+          !locationName ||
+          !fieldName ||
+          !['practice', 'game'].includes(slotType) ||
+          !start ||
+          !end ||
+          (slotType === 'practice' && (!day || !validFrom || !validUntil)) ||
+          (slotType === 'game' && !slotDate)
+        ) {
+          invalidRows += 1;
+          row.validation_errors = [
+            {
+              message:
+                'Field row is missing required location/field/slot data or has an invalid slot window',
+              source_row_number: row.source_row_number,
+            },
+          ];
+          return;
+        }
+
+        let location = db.locations.find(
+          (item) =>
+            String(item.organization_id) === String(job.organization_id) &&
+            String(item.name || '').toLowerCase() === locationName.toLowerCase()
+        );
+        if (!location) {
+          location = {
+            id: makeId(),
+            organization_id: job.organization_id,
+            name: locationName,
+            address: payload.address || null,
+            lighting_available: boolFromText(payload.lighting_available, false),
+            created_at: now,
+            updated_at: now,
+          };
+          db.locations.push(location);
+          ledger('locations', location, 'inserted');
+          insertedLocations += 1;
+        }
+
+        let field = db.fields.find(
+          (item) =>
+            String(item.organization_id) === String(job.organization_id) &&
+            String(item.location_id) === String(location.id) &&
+            String(item.name || '').toLowerCase() === fieldName.toLowerCase()
+        );
+        if (!field) {
+          field = {
+            id: makeId(),
+            organization_id: job.organization_id,
+            location_id: location.id,
+            name: fieldName,
+            surface_type: payload.surface_type || payload.surface || null,
+            size: payload.size || null,
+            supports_halves:
+              Boolean(payload.subunit) || boolFromText(payload.supports_halves, false),
+            max_age: payload.max_age || null,
+            priority_rating: Number.parseInt(String(payload.priority_rating || '1'), 10) || 1,
+            active: boolFromText(payload.active, true),
+            created_at: now,
+            updated_at: now,
+          };
+          db.fields.push(field);
+          ledger('fields', field, 'inserted');
+          insertedFields += 1;
+        }
+
+        let subunit = null;
+        if (payload.subunit) {
+          subunit = db.field_subunits.find(
+            (item) =>
+              String(item.field_id) === String(field.id) &&
+              String(item.label || '').toLowerCase() === String(payload.subunit).toLowerCase()
+          );
+          if (!subunit) {
+            subunit = {
+              id: makeId(),
+              organization_id: job.organization_id,
+              field_id: field.id,
+              label: String(payload.subunit),
+              created_at: now,
+              updated_at: now,
+            };
+            db.field_subunits.push(subunit);
+            ledger('field_subunits', subunit, 'inserted');
+            insertedSubunits += 1;
+          }
+        }
+
+        if (slotType === 'practice') {
+          const slot = {
+            id: makeId(),
+            organization_id: job.organization_id,
+            field_id: field.id,
+            field_subunit_id: subunit?.id || null,
+            day_of_week: day.slice(0, 3),
+            start_time: start,
+            end_time: end,
+            capacity: Number.parseInt(String(payload.capacity || '1'), 10) || 1,
+            valid_from: validFrom,
+            valid_until: validUntil,
+            label: payload.label || null,
+            created_at: now,
+            updated_at: now,
+          };
+          db.practice_slots.push(slot);
+          ledger('practice_slots', slot, 'inserted');
+          insertedPracticeSlots += 1;
+        } else {
+          const slot = {
+            id: makeId(),
+            organization_id: job.organization_id,
+            field_id: field.id,
+            division_id: payload.division_id || null,
+            slot_date: slotDate,
+            start_time: start,
+            end_time: end,
+            week_index: Number.parseInt(String(payload.week_index || '1'), 10) || 1,
+            capacity: Number.parseInt(String(payload.capacity || '1'), 10) || 1,
+            created_at: now,
+            updated_at: now,
+          };
+          db.game_slots.push(slot);
+          ledger('game_slots', slot, 'inserted');
+          insertedGameSlots += 1;
+        }
+
+        row.applied_at = now;
+        row.applied_by = 'mock-admin-id';
+      });
+
+      const status =
+        validationErrors.length > 0 || invalidRows > 0 ? 'completed_with_warnings' : 'completed';
+      const result = {
+        status,
+        staged_rows: (db.staging_import_rows || []).filter(
+          (row) =>
+            String(row.import_job_id) === String(p_import_job_id) && row.import_type === 'fields'
+        ).length,
+        inserted_locations: insertedLocations,
+        updated_locations: 0,
+        inserted_fields: insertedFields,
+        updated_fields: 0,
+        inserted_field_subunits: insertedSubunits,
+        inserted_practice_slots: insertedPracticeSlots,
+        updated_practice_slots: 0,
+        inserted_game_slots: insertedGameSlots,
+        updated_game_slots: 0,
+        invalid_rows: invalidRows,
+        validation_error_rows: validationErrors.length,
+        total_applied_rows: (db.import_application_records || []).filter(
+          (record) =>
+            String(record.import_job_id) === String(p_import_job_id) &&
+            record.import_type === 'fields'
+        ).length,
+      };
+
+      Object.assign(job, {
+        status,
+        processed_rows: result.total_applied_rows,
+        progress_percent: 100,
+        completed_at: now,
+        error_summary: { rowErrors: validationErrors },
+        warning_summary: {
+          ...(job.warning_summary || {}),
+          field_finalize: result,
+        },
+      });
+
+      saveDB(db);
+      return { data: result, error: null };
+    }
+
+    if (name === 'rollback_field_import_job') {
+      const { p_import_job_id } = params || {};
+      const job = (db.import_jobs || []).find(
+        (item) => String(item.id) === String(p_import_job_id)
+      );
+      if (!job) {
+        return { data: null, error: { message: 'Import job not found' } };
+      }
+
+      const now = new Date().toISOString();
+      const records = (db.import_application_records || []).filter(
+        (record) =>
+          String(record.import_job_id) === String(p_import_job_id) &&
+          record.import_type === 'fields' &&
+          !record.rolled_back_at
+      );
+      if (records.length === 0) {
+        return {
+          data: null,
+          error: { message: 'Import job has no field application records to roll back' },
+        };
+      }
+
+      let deletedLocations = 0;
+      let deletedFields = 0;
+      let deletedSubunits = 0;
+      let deletedPracticeSlots = 0;
+      let deletedGameSlots = 0;
+      const order = {
+        game_slots: 1,
+        practice_slots: 2,
+        field_subunits: 3,
+        fields: 4,
+        locations: 5,
+      };
+
+      records
+        .slice()
+        .sort((a, b) => (order[a.target_table] || 99) - (order[b.target_table] || 99))
+        .forEach((record) => {
+          if (record.operation === 'inserted') {
+            if (record.target_table === 'game_slots') {
+              db.game_slots = (db.game_slots || []).filter(
+                (item) => String(item.id) !== String(record.target_id)
+              );
+              deletedGameSlots += 1;
+            } else if (record.target_table === 'practice_slots') {
+              db.practice_slots = (db.practice_slots || []).filter(
+                (item) => String(item.id) !== String(record.target_id)
+              );
+              deletedPracticeSlots += 1;
+            } else if (record.target_table === 'field_subunits') {
+              db.field_subunits = (db.field_subunits || []).filter(
+                (item) => String(item.id) !== String(record.target_id)
+              );
+              deletedSubunits += 1;
+            } else if (record.target_table === 'fields') {
+              db.fields = (db.fields || []).filter(
+                (item) => String(item.id) !== String(record.target_id)
+              );
+              deletedFields += 1;
+            } else if (record.target_table === 'locations') {
+              db.locations = (db.locations || []).filter(
+                (item) => String(item.id) !== String(record.target_id)
+              );
+              deletedLocations += 1;
+            }
+          }
+          record.rolled_back_at = now;
+          record.rolled_back_by = 'mock-admin-id';
+        });
+
+      const result = {
+        status: 'rolled_back',
+        deleted_locations: deletedLocations,
+        deleted_fields: deletedFields,
+        deleted_field_subunits: deletedSubunits,
+        deleted_practice_slots: deletedPracticeSlots,
+        deleted_game_slots: deletedGameSlots,
+        restored_records: 0,
+        blocked_records: 0,
+      };
+      Object.assign(job, {
+        status: 'needs_fix',
+        warning_summary: {
+          ...(job.warning_summary || {}),
+          field_rollback: result,
+        },
+      });
+
+      saveDB(db);
+      return { data: result, error: null };
+    }
+
     if (name === 'set_import_job_coach_lead_summary') {
       const { p_import_job_id, p_summary, p_status } = params || {};
       const job = (db.import_jobs || []).find(
@@ -2223,8 +2569,48 @@ export const mockSupabase = {
           email_userid: 'email',
           'contact email': 'email',
           name: 'name',
+          field: 'name',
           'field name': 'name',
           field_name: 'name',
+          location: 'location',
+          'location name': 'location',
+          location_name: 'location',
+          venue: 'location',
+          subunit: 'subunit',
+          'field subunit': 'subunit',
+          field_subunit: 'subunit',
+          day: 'day',
+          'day of week': 'day',
+          day_of_week: 'day',
+          start: 'start',
+          'start time': 'start',
+          start_time: 'start',
+          end: 'end',
+          'end time': 'end',
+          end_time: 'end',
+          type: 'type',
+          'slot type': 'type',
+          slot_type: 'type',
+          capacity: 'capacity',
+          'valid from': 'valid_from',
+          valid_from: 'valid_from',
+          'valid until': 'valid_until',
+          valid_until: 'valid_until',
+          date: 'slot_date',
+          'slot date': 'slot_date',
+          slot_date: 'slot_date',
+          week: 'week_index',
+          week_index: 'week_index',
+          surface: 'surface_type',
+          'surface type': 'surface_type',
+          surface_type: 'surface_type',
+          size: 'size',
+          'supports halves': 'supports_halves',
+          supports_halves: 'supports_halves',
+          lights: 'lighting_available',
+          lighted: 'lighting_available',
+          'lighting available': 'lighting_available',
+          lighting_available: 'lighting_available',
           'coach willing': 'willing_to_coach',
           'willing to coach': 'willing_to_coach',
           buddy: 'buddy_request',
@@ -2276,7 +2662,7 @@ export const mockSupabase = {
         const requiredFields = {
           players: ['first_name', 'last_name', 'date_of_birth'],
           coaches: ['full_name', 'email'],
-          fields: ['name'],
+          fields: ['location', 'name', 'type', 'start', 'end'],
         };
         const normalizeHeader = (header) => aliases[String(header).toLowerCase().trim()] || header;
         const sanitize = (value) =>

@@ -105,7 +105,14 @@ Called by the `team-persistence`, `practice-persistence`, and `game-persistence`
 | `public.finalize_coach_import_job(p_import_job_id uuid, p_validation_errors jsonb) returns jsonb` | `20260503060000_coach_import_apply_rollback.sql` | Admin-only coach CSV promotion. Consumes `staging_import_rows` for the import job, inserts or updates org-scoped `coaches`, promotes existing interested leads to active by default, stores one `import_application_records` ledger row per applied coach, and writes `import.completed` audit metadata. |
 | `public.rollback_coach_import_job(p_import_job_id uuid) returns jsonb`                            | `20260503060000_coach_import_apply_rollback.sql` | Admin-only rollback for coach CSV apply. Deletes coaches inserted by the job when they are not assigned, restores previous payload snapshots for updated coaches, marks ledger rows rolled back, updates `import_jobs.warning_summary.coach_rollback`, and writes `import.rolled_back` audit metadata.   |
 
-### 2.12 Schema Evolution & Custom Attributes
+### 2.12 Field Import Apply/Rollback
+
+| Function                                                                                         | Declared in                                      | Purpose                                                                                                                                                                                                                                                                         |
+| ------------------------------------------------------------------------------------------------ | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `public.finalize_field_import_job(p_import_job_id uuid, p_validation_errors jsonb) returns jsonb` | `20260503070000_field_import_apply_rollback.sql` | Admin-only field-slot CSV promotion. Consumes `staging_import_rows` for field imports, upserts org-scoped `locations`/`fields`, ensures requested `field_subunits`, applies practice/game slots, records rollback snapshots, and writes `import.completed` audit metadata. |
+| `public.rollback_field_import_job(p_import_job_id uuid) returns jsonb`                           | `20260503070000_field_import_apply_rollback.sql` | Admin-only rollback for field-slot CSV apply. Deletes inserted slots, subunits, fields, and empty locations when no downstream assignments block deletion, restores updated records from ledger snapshots, and writes `import.rolled_back` audit metadata.             |
+
+### 2.13 Schema Evolution & Custom Attributes
 
 These are trigger functions rather than caller-invokable RPCs, but they run inside the same `SECURITY DEFINER` envelope and are part of the RPC layer's attack surface.
 

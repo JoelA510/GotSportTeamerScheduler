@@ -27,3 +27,10 @@ Feature: Ingestion Hardening for CSV Imports
     Then the coach CSV import should update the coach database
     When I roll back the coach CSV import
     Then the imported coach should be removed from the coach database
+
+  Scenario: Applying and rolling back a field slot CSV import
+    Given I upload a valid field slot CSV file
+    When I apply the field slot CSV import
+    Then the field slot CSV import should update the facilities database
+    When I roll back the field slot CSV import
+    Then the imported field slot should be removed from the facilities database
