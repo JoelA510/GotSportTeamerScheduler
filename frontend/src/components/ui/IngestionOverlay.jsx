@@ -32,10 +32,12 @@ export function IngestionOverlay() {
 
   const getStatusIcon = () => {
     if (importStatus === 'failed' || importStatus === 'error')
-      return <AlertCircle className="w-5 h-5" />;
-    if (importStatus === 'completed') return <CheckCircle className="w-5 h-5" />;
-    return <Activity className="w-5 h-5 animate-pulse" />;
+      return <AlertCircle className="w-5 h-5" aria-hidden="true" />;
+    if (importStatus === 'completed') return <CheckCircle className="w-5 h-5" aria-hidden="true" />;
+    return <Activity className="w-5 h-5 animate-pulse" aria-hidden="true" />;
   };
+
+  const overlayTitle = activeJob?.job_type === 'fields' ? 'Field Ingestion' : 'Registration Sync';
 
   return (
     <div
@@ -55,9 +57,7 @@ export function IngestionOverlay() {
               {getStatusIcon()}
             </div>
             <div>
-              <h3 className="text-sm font-bold text-white tracking-tight">
-                {activeJob?.job_type === 'fields' ? 'Field Ingestion' : 'Registration Sync'}
-              </h3>
+              <h3 className="text-sm font-bold text-white tracking-tight">{overlayTitle}</h3>
               <p className="text-[10px] uppercase tracking-widest text-white/40 font-semibold">
                 Enterprise Observability
               </p>
@@ -65,18 +65,24 @@ export function IngestionOverlay() {
           </div>
           <div className="flex items-center gap-1">
             <button
+              type="button"
+              aria-label={isMinimized ? 'Expand import status' : 'Minimize import status'}
+              aria-expanded={!isMinimized}
               onClick={() => setIsMinimized(!isMinimized)}
               className="p-1.5 hover:bg-white/10 rounded-md transition-colors text-white/60"
             >
               <ChevronRight
                 className={`w-4 h-4 transition-transform duration-300 ${isMinimized ? 'rotate-90' : '-rotate-90'}`}
+                aria-hidden="true"
               />
             </button>
             <button
+              type="button"
+              aria-label="Dismiss import status"
               onClick={() => setIsVisible(false)}
               className="p-1.5 hover:bg-white/10 rounded-md transition-colors text-white/60"
             >
-              <X className="w-4 h-4" />
+              <X className="w-4 h-4" aria-hidden="true" />
             </button>
           </div>
         </div>
@@ -91,6 +97,11 @@ export function IngestionOverlay() {
               </div>
               <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
                 <div
+                  role="progressbar"
+                  aria-label={`${overlayTitle} progress`}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={progress}
                   className={`h-full transition-all duration-300 ease-out bg-gradient-to-r from-sky-500 to-indigo-500 shadow-[0_0_8px_rgba(14,165,233,0.5)]`}
                   style={{ width: `${progress}%` }}
                 />
@@ -104,7 +115,7 @@ export function IngestionOverlay() {
                   Efficiency
                 </p>
                 <div className="flex items-center gap-2">
-                  <BarChart3 className="w-4 h-4 text-sky-400/80" />
+                  <BarChart3 className="w-4 h-4 text-sky-400/80" aria-hidden="true" />
                   <span className="text-sm font-bold text-white">
                     {activeJob?.efficiency_metadata?.efficiency || '100'}%
                   </span>
@@ -115,7 +126,7 @@ export function IngestionOverlay() {
                   Latency
                 </p>
                 <div className="flex items-center gap-1.5">
-                  <Activity className="w-4 h-4 text-emerald-400/80" />
+                  <Activity className="w-4 h-4 text-emerald-400/80" aria-hidden="true" />
                   <span className="text-sm font-bold text-white">
                     {activeJob?.efficiency_metadata?.latency?.toFixed(1) || '0.0'}ms
                   </span>
@@ -126,7 +137,10 @@ export function IngestionOverlay() {
             {/* Ingestion Meta */}
             {importStatus === 'importing' && (
               <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-sky-500/10 border border-sky-500/20">
-                <div className="w-1.5 h-1.5 rounded-full bg-sky-400 animate-pulse" />
+                <div
+                  className="w-1.5 h-1.5 rounded-full bg-sky-400 animate-pulse"
+                  aria-hidden="true"
+                />
                 <span className="text-[10px] text-sky-400 font-bold uppercase tracking-widest">
                   Live Broadcast Active
                 </span>
@@ -135,7 +149,7 @@ export function IngestionOverlay() {
 
             {importStatus === 'completed' && (
               <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
-                <CheckCircle className="w-3 h-3 text-emerald-400" />
+                <CheckCircle className="w-3 h-3 text-emerald-400" aria-hidden="true" />
                 <span className="text-[10px] text-emerald-400 font-bold uppercase tracking-widest">
                   Ingestion Certified
                 </span>
@@ -146,7 +160,7 @@ export function IngestionOverlay() {
             {activeJob?.efficiency_metadata?.needs_confirmation?.length > 0 && (
               <div className="space-y-2 pt-2 border-t border-white/5">
                 <div className="flex items-center gap-2">
-                  <AlertCircle className="w-3 h-3 text-indigo-400" />
+                  <AlertCircle className="w-3 h-3 text-indigo-400" aria-hidden="true" />
                   <span className="text-[10px] text-indigo-400 font-bold uppercase tracking-widest">
                     Manual Confirmation Required
                   </span>

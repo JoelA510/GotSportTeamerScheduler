@@ -30,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Added explicit labels, button metadata, and progress semantics to the import ingestion overlay.
 - Added tab semantics, explicit field labels, and focus-visible delete controls to the settings schema builder.
 - Added pressed state to import column-mapping mode controls and explicit labels to mapping selects.
 - Added explicit labels, pressed state, and button metadata to practice assignment lock controls.
