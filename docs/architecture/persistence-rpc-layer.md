@@ -125,7 +125,13 @@ Called by the `team-persistence`, `practice-persistence`, and `game-persistence`
 | `public.mark_import_job_ready_to_apply(p_import_job_id uuid, p_import_type text, p_validation_errors jsonb) returns jsonb` | `20260503090000_import_deferred_apply_status.sql` | Admin-only lifecycle transition for staged coach/field imports. Stores validation errors, moves the job to `ready_to_apply`, preserves staged-row counts in `warning_summary.deferred_apply`, and writes `import.validated` audit metadata.                                             |
 | `public.cancel_ready_import_job(p_import_job_id uuid, p_import_type text) returns jsonb`                                   | `20260503090000_import_deferred_apply_status.sql` | Admin-only cancellation for a staged coach/field import that has not been applied. Moves the job to `failed` so existing finalizer RPC guards reject later apply attempts, preserves cancellation metadata, and writes `import.canceled` audit metadata without mutating domain tables. |
 
-### 2.15 Schema Evolution & Custom Attributes
+### 2.15 Import Recovery
+
+| Function                                                                                          | Declared in                                   | Purpose                                                                                                                                                                                                                                                                                         |
+| ------------------------------------------------------------------------------------------------- | --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `public.fail_stale_import_jobs(p_organization_id uuid, p_stale_before timestamptz) returns jsonb` | `20260503100000_import_stale_job_cleanup.sql` | Admin-only cleanup for browser-driven chunked imports. Fails org-scoped `queued`/`processing`/`importing` jobs whose `last_heartbeat_at` is older than the cutoff, records `error_summary.stale_cleanup`, and writes one `import.failed` audit event so operators can retry from a clear state. |
+
+### 2.16 Schema Evolution & Custom Attributes
 
 These are trigger functions rather than caller-invokable RPCs, but they run inside the same `SECURITY DEFINER` envelope and are part of the RPC layer's attack surface.
 

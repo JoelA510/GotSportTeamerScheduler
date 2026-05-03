@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added durable coach CSV import staging, admin-only coach apply/rollback RPCs, and `/import` rollback controls for coach imports.
 - Added durable field-slot CSV import apply/rollback for locations, fields, subunits, practice slots, and game slots through the non-player import staging ledger.
 - Added deferred coach/field import apply review: `/import` can validate only, mark jobs `ready_to_apply`, apply later through existing RPCs, or cancel before domain writes.
+- Added heartbeat-backed stale import cleanup so interrupted `queued`/`processing`/`importing` jobs fail safely for operator retry instead of rehydrating as stuck active imports.
 - Added durable player-import buddy materialization that writes reciprocal external-id or buddy-code matches into `player_buddies` with warning summaries for unmatched requests.
 - Added player-import coach volunteer lead capture: finalized GotSport player imports now submit interested coach leads through `upsert_coach_leads`, atomically persist per-job lead summaries, and cover payload shaping with Vitest plus pgTAP.
 - Added a current-schema `persist_game_schedule` RPC and `game_assignments` run linkage/idempotency columns to unblock org-scoped, persisted game scheduling apply flows.
