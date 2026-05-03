@@ -487,6 +487,14 @@ Then('the button should disable and show {string}', async ({ page }, _text: stri
 
 When('the generation completes, I click {string}', async ({ page }, btnLabel: string) => {
   const btn = page.getByRole('button', { name: btnLabel }).first();
+  const statusText = page.locator('.text-orange-400.animate-pulse, .text-emerald-400').first();
+  await expect(btn).toBeVisible({ timeout: 15000 });
   await expect(btn).toBeEnabled({ timeout: 15000 });
-  await btn.click({ force: true });
+  await btn.scrollIntoViewIfNeeded();
+  await page.waitForTimeout(150);
+  await btn.click();
+  if (!(await statusText.isVisible({ timeout: 1000 }).catch(() => false))) {
+    await expect(btn).toBeEnabled({ timeout: 15000 });
+    await btn.click();
+  }
 });
