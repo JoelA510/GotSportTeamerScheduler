@@ -16,13 +16,9 @@ import {
   useSortable,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { GripVertical, User, ShieldAlert, Zap, ArrowRight } from 'lucide-react';
+import { GripVertical, User, ShieldAlert, ArrowRight } from 'lucide-react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useConflicts } from '../../hooks/useConflicts.js';
-import { supabase } from '../../lib/supabaseClient.js';
-import { useOrganization } from '../../contexts/OrganizationContext.jsx';
-import { useAuth } from '../../contexts/AuthContext.jsx';
-import { logger } from '../../lib/logger.js';
 
 /**
  * @param {{ player: any }} props
@@ -165,19 +161,25 @@ export function TeamColumn({ team, players }) {
   );
 }
 
-export default function RosterManager({ initialTeams }) {
+export default function RosterManager({ initialTeams, onTeamsChange }) {
   const [teams, setTeams] = useState(initialTeams);
   const [activePlayer, setActivePlayer] = useState(null);
-  const [isDrafting, setIsDrafting] = useState(false);
+  const [dragOriginTeamId, setDragOriginTeamId] = useState(null);
   const [announcement, setAnnouncement] = useState('');
   const { conflicts, hasConflicts } = useConflicts(teams);
-  const { currentOrganization } = useOrganization();
-  const { user, isImpersonating } = useAuth();
 
   // CRITICAL FIX: Sync state when async mock data finishes loading
   useEffect(() => {
     setTeams(initialTeams);
   }, [initialTeams]);
+
+  const commitTeams = (updater) => {
+    setTeams((prevTeams) => {
+      const nextTeams = typeof updater === 'function' ? updater(prevTeams) : updater;
+      onTeamsChange?.(nextTeams);
+      return nextTeams;
+    });
+  };
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -200,6 +202,7 @@ export default function RosterManager({ initialTeams }) {
     if (team) {
       const player = team.players.find((p) => p.id === active.id);
       setActivePlayer(player);
+      setDragOriginTeamId(team.id);
     }
   };
 
@@ -221,7 +224,7 @@ export default function RosterManager({ initialTeams }) {
 
     if (!sourceTeam || !destTeam || sourceTeam.id === destTeam.id) return;
 
-    setTeams((prevTeams) => {
+    commitTeams((prevTeams) => {
       const newTeams = JSON.parse(JSON.stringify(prevTeams));
       const sTeam = newTeams.find((t) => t.id === sourceTeam.id);
       const dTeam = newTeams.find((t) => t.id === destTeam.id);
@@ -241,7 +244,7 @@ export default function RosterManager({ initialTeams }) {
     });
   };
 
-  const handleDragEnd = async (event) => {
+  const handleDragEnd = (event) => {
     const { active, over } = event;
     setActivePlayer(null);
 
@@ -257,7 +260,7 @@ export default function RosterManager({ initialTeams }) {
     if (!sourceTeam || !destTeam) return;
 
     if (sourceTeam.id === destTeam.id) {
-      setTeams((prevTeams) => {
+      commitTeams((prevTeams) => {
         const newTeams = [...prevTeams];
         const tIdx = newTeams.findIndex((t) => t.id === sourceTeam.id);
         const oldIndex = newTeams[tIdx].players.findIndex((p) => p.id === activeId);
@@ -266,72 +269,11 @@ export default function RosterManager({ initialTeams }) {
         newTeams[tIdx].players = arrayMove(newTeams[tIdx].players, oldIndex, newIndex);
         return newTeams;
       });
-      setAnnouncement(`Moved ${activePlayer.name} within ${destTeam.name}`);
-    } else {
-      try {
-        const { error } = /** @type {any} */ (
-          await supabase
-            .from('players')
-            .update({
-              team_id: destTeam.id,
-              assignment_source: 'manual',
-            })
-            .eq('id', activeId)
-        );
-
-        if (error) throw error;
-        setAnnouncement(`Assigned ${activePlayer.name} to ${destTeam.name}`);
-
-        // Audit the manual override
-        await supabase.rpc('record_audit_event', {
-          p_organization_id: currentOrganization?.id,
-          p_action: 'player.reassigned',
-          p_metadata: {
-            player_id: activeId,
-            from_team_id: sourceTeam.id,
-            to_team_id: destTeam.id,
-            trigger: 'roster_drag_drop',
-            ...(isImpersonating && {
-              target_user_id: user.profile.id,
-              impersonated_by: user.id,
-              admin_email: user.email,
-            }),
-          },
-        });
-      } catch (e) {
-        logger.error('Failed to persist player assignment override', e);
-        setAnnouncement(`Failed to move ${activePlayer.name}`);
-      }
+      setAnnouncement(`Moved ${activePlayer?.name || 'player'} within ${destTeam.name}`);
+    } else if (dragOriginTeamId && dragOriginTeamId !== destTeam.id) {
+      setAnnouncement(`Assigned ${activePlayer?.name || 'player'} to ${destTeam.name}`);
     }
-  };
-
-  const handleQuickDraft = async () => {
-    setIsDrafting(true);
-    try {
-      const { data: settings } = /** @type {any} */ (
-        await supabase
-          .from('season_settings')
-          .select('id')
-          .eq('organization_id', currentOrganization?.id)
-          .limit(1)
-          .single()
-      );
-
-      if (settings) {
-        await supabase.from('scheduler_runs').insert({
-          season_settings_id: settings.id,
-          run_type: 'team',
-          status: 'running',
-          parameters: { source: 'quick_draft' },
-          metrics: { progress: 0 },
-          started_at: new Date().toISOString(),
-        });
-      }
-    } catch (e) {
-      logger.error('Quick Draft backend insert failed', e);
-    } finally {
-      setIsDrafting(false);
-    }
+    setDragOriginTeamId(null);
   };
 
   return (
@@ -368,17 +310,6 @@ export default function RosterManager({ initialTeams }) {
         {announcement}
       </div>
 
-      <div className="flex justify-end mb-4">
-        <button
-          onClick={handleQuickDraft}
-          disabled={isDrafting}
-          className="relative z-10 glass-button flex items-center gap-2 text-sm"
-          aria-label={isDrafting ? 'Drafting in progress' : 'Execute Quick Draft'}
-        >
-          <Zap size={16} aria-hidden="true" />
-          {isDrafting ? 'Drafting...' : 'Quick Draft'}
-        </button>
-      </div>
       <DndContext
         sensors={sensors}
         collisionDetection={closestCorners}

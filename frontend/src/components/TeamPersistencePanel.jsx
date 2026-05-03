@@ -10,7 +10,10 @@ import PersistenceHistoryList from './PersistenceHistoryList.jsx';
 
 const SUPABASE_SYNC_TIMEOUT_MS = 10000;
 
-export default function TeamPersistencePanel({ teamPersistenceSnapshot }) {
+export default function TeamPersistencePanel({
+  teamPersistenceSnapshot,
+  onPersistSuccess = undefined,
+}) {
   const { session } = useAuth();
 
   const [persistenceActionState, setPersistenceActionState] = useState('idle');
@@ -140,6 +143,7 @@ export default function TeamPersistencePanel({ teamPersistenceSnapshot }) {
       setPersistenceActionMessage(
         `Supabase upsert completed for ${result.updatedTeams} teams and ${result.updatedPlayers} players at ${formatDateTime(result.syncedAt)}.`
       );
+      onPersistSuccess?.(result);
     } catch {
       setPersistenceActionState('error');
       setPersistenceActionMessage('Supabase sync failed. Please retry.');
@@ -227,4 +231,5 @@ TeamPersistencePanel.propTypes = {
       })
     ),
   }).isRequired,
+  onPersistSuccess: PropTypes.func,
 };

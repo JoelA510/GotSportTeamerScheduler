@@ -23,7 +23,7 @@ export default function DashboardPage() {
   }
 
   const { team, practice, game, loading, error: dataError, timezone } = useDashboardData();
-  const { snapshot: persistenceSnapshot, loading: _persistenceLoading } = useTeamPersistence();
+  const { persistenceSnapshot, loading: _persistenceLoading } = useTeamPersistence();
   const { importedData, setImportedData } = useImport();
   const { theme: _theme } = useTheme();
   const { currentOrganization } = useOrganization();

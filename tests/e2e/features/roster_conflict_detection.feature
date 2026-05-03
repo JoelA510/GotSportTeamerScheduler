@@ -27,9 +27,7 @@ Feature: Roster Conflict Detection
     When I view the Roster Manager
     Then I should see a conflict banner with message containing "Age mismatch"
 
-  Scenario: Quick Draft
+  Scenario: Direct quick draft writes are not exposed
     Given there are 20 players in the "U10" division
     When I view the Roster Manager
-    And I click the "Quick Draft" button on the Roster Manager
-    Then a new row should be inserted into the "team_players" table
-    And the run should have run_type "team" and status "completed"
+    Then the "Quick Draft" button should not be displayed on the Roster Manager
