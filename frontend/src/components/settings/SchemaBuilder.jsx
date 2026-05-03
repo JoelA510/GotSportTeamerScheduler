@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { supabase } from '../../lib/supabaseClient.js';
 import { useOrganization } from '../../contexts/OrganizationContext.jsx';
 import { logger } from '../../lib/logger.js';
@@ -26,6 +26,7 @@ const SCHEMA_TABS = [
 export function SchemaBuilder() {
   const { currentOrganization } = useOrganization();
   const [activeTab, setActiveTab] = useState('player'); // player, coach, team
+  const tabRefs = useRef({});
   const [schemas, setSchemas] = useState({
     player: {},
     coach: {},
@@ -102,6 +103,34 @@ export function SchemaBuilder() {
     [activeTab]
   );
 
+  const handleTabKeyDown = useCallback(
+    (event) => {
+      const currentTabId =
+        SCHEMA_TABS.find((tab) => event.target?.id === `schema-tab-${tab.id}`)?.id ?? activeTab;
+      const currentIndex = SCHEMA_TABS.findIndex((tab) => tab.id === currentTabId);
+      if (currentIndex === -1) return;
+
+      let nextIndex = currentIndex;
+      if (event.key === 'ArrowRight') {
+        nextIndex = (currentIndex + 1) % SCHEMA_TABS.length;
+      } else if (event.key === 'ArrowLeft') {
+        nextIndex = (currentIndex - 1 + SCHEMA_TABS.length) % SCHEMA_TABS.length;
+      } else if (event.key === 'Home') {
+        nextIndex = 0;
+      } else if (event.key === 'End') {
+        nextIndex = SCHEMA_TABS.length - 1;
+      } else {
+        return;
+      }
+
+      event.preventDefault();
+      const nextTab = SCHEMA_TABS[nextIndex];
+      setActiveTab(nextTab.id);
+      tabRefs.current[nextTab.id]?.focus();
+    },
+    [activeTab]
+  );
+
   const saveSchema = async () => {
     if (!currentOrganization?.id) return;
     setIsSaving(true);
@@ -135,7 +164,7 @@ export function SchemaBuilder() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold text-white tracking-tight flex items-center gap-3">
-            <Database className="text-sky-400 w-7 h-7" />
+            <Database className="text-sky-400 w-7 h-7" aria-hidden="true" />
             Dynamic Schema Architect
           </h2>
           <p className="text-white/40 text-sm mt-1">
@@ -143,7 +172,7 @@ export function SchemaBuilder() {
           </p>
         </div>
         <div className="bg-emerald-500/10 border border-emerald-500/20 px-4 py-2 rounded-xl flex items-center gap-2">
-          <ShieldCheck className="w-4 h-4 text-emerald-400" />
+          <ShieldCheck className="w-4 h-4 text-emerald-400" aria-hidden="true" />
           <span className="text-xs font-bold text-emerald-400 uppercase tracking-widest">
             Level 5 Security Active
           </span>
@@ -151,10 +180,24 @@ export function SchemaBuilder() {
       </div>
 
       {/* Tabs */}
-      <div className="flex p-1 bg-white/5 border border-white/10 rounded-2xl w-fit">
+      <div
+        className="flex p-1 bg-white/5 border border-white/10 rounded-2xl w-fit"
+        role="tablist"
+        aria-label="Schema entity tabs"
+        onKeyDown={handleTabKeyDown}
+      >
         {SCHEMA_TABS.map((tab) => (
           <button
             key={tab.id}
+            id={`schema-tab-${tab.id}`}
+            ref={(element) => {
+              tabRefs.current[tab.id] = element;
+            }}
+            type="button"
+            role="tab"
+            aria-selected={activeTab === tab.id}
+            aria-controls="schema-panel"
+            tabIndex={activeTab === tab.id ? 0 : -1}
             onClick={() => setActiveTab(tab.id)}
             className={`flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-bold transition-all duration-300 ${
               activeTab === tab.id
@@ -162,13 +205,18 @@ export function SchemaBuilder() {
                 : 'text-white/40 hover:text-white/60 hover:bg-white/5'
             }`}
           >
-            <tab.icon className="w-4 h-4" />
+            <tab.icon className="w-4 h-4" aria-hidden="true" />
             {tab.label}
           </button>
         ))}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div
+        id="schema-panel"
+        role="tabpanel"
+        aria-labelledby={`schema-tab-${activeTab}`}
+        className="grid grid-cols-1 lg:grid-cols-3 gap-6"
+      >
         {/* Field List */}
         <div className="lg:col-span-2 glass-panel-enterprise p-6 space-y-6">
           <div className="flex items-center justify-between">
@@ -181,7 +229,7 @@ export function SchemaBuilder() {
           <div className="space-y-3">
             {attributeEntries.length === 0 ? (
               <div className="py-12 flex flex-col items-center justify-center text-white/20 border-2 border-dashed border-white/5 rounded-2xl">
-                <Settings className="w-12 h-12 mb-3 opacity-10" />
+                <Settings className="w-12 h-12 mb-3 opacity-10" aria-hidden="true" />
                 <p className="text-sm font-medium">
                   No custom attributes defined for {activeTab}s.
                 </p>
@@ -202,10 +250,12 @@ export function SchemaBuilder() {
                     </div>
                   </div>
                   <button
+                    type="button"
+                    aria-label={`Remove ${name} ${activeTab} attribute`}
                     onClick={() => handleRemoveField(name)}
-                    className="p-2 text-white/20 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all opacity-0 group-hover:opacity-100"
+                    className="p-2 text-white/20 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-bg-surface"
                   >
-                    <Trash2 className="w-4 h-4" />
+                    <Trash2 className="w-4 h-4" aria-hidden="true" />
                   </button>
                 </div>
               ))
@@ -213,14 +263,15 @@ export function SchemaBuilder() {
           </div>
 
           <button
+            type="button"
             disabled={isSaving}
             onClick={saveSchema}
             className="w-full py-4 rounded-2xl bg-gradient-to-r from-sky-600 to-indigo-600 text-white font-bold text-sm flex items-center justify-center gap-3 hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-50 disabled:grayscale"
           >
             {isSaving ? (
-              <Activity className="w-5 h-5 animate-spin" />
+              <Activity className="w-5 h-5 animate-spin" aria-hidden="true" />
             ) : (
-              <Save className="w-5 h-5" />
+              <Save className="w-5 h-5" aria-hidden="true" />
             )}
             {isSaving ? 'Processing Evolution...' : `Finalize ${activeTab.toUpperCase()} Schema`}
           </button>
@@ -230,16 +281,20 @@ export function SchemaBuilder() {
         <div className="space-y-6">
           <div className="glass-panel-enterprise p-6 space-y-6 border-indigo-500/10 bg-indigo-500/5">
             <h3 className="text-lg font-bold text-white flex items-center gap-2">
-              <Plus className="w-5 h-5 text-indigo-400" />
+              <Plus className="w-5 h-5 text-indigo-400" aria-hidden="true" />
               New Attribute
             </h3>
 
             <div className="space-y-4">
               <div>
-                <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-1.5 block">
+                <label
+                  htmlFor="schema-field-name"
+                  className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-1.5 block"
+                >
                   Field Identity
                 </label>
                 <input
+                  id="schema-field-name"
                   type="text"
                   placeholder="e.g. jersey_size"
                   value={newFieldName}
@@ -249,10 +304,14 @@ export function SchemaBuilder() {
               </div>
 
               <div>
-                <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-1.5 block">
+                <label
+                  htmlFor="schema-field-type"
+                  className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-1.5 block"
+                >
                   Data Structure
                 </label>
                 <select
+                  id="schema-field-type"
                   value={newFieldType}
                   onChange={(e) => setNewFieldType(e.target.value)}
                   className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:border-indigo-500/50 outline-none transition-all"
@@ -266,12 +325,13 @@ export function SchemaBuilder() {
 
               {error && (
                 <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 text-red-400" />
+                  <AlertCircle className="w-4 h-4 text-red-400" aria-hidden="true" />
                   <p className="text-[10px] text-red-400 font-bold uppercase">{error}</p>
                 </div>
               )}
 
               <button
+                type="button"
                 onClick={handleAddField}
                 className="w-full py-4 rounded-xl bg-indigo-500/20 text-indigo-300 font-bold text-xs uppercase tracking-widest border border-indigo-500/30 hover:bg-indigo-500/30 transition-all"
               >
@@ -282,7 +342,7 @@ export function SchemaBuilder() {
 
           <div className="p-5 rounded-2xl bg-white/5 border border-white/5">
             <div className="flex gap-3">
-              <Shield className="w-5 h-5 text-sky-400 shrink-0" />
+              <Shield className="w-5 h-5 text-sky-400 shrink-0" aria-hidden="true" />
               <p className="text-[11px] leading-relaxed text-white/60">
                 <strong className="text-white">Governance Note:</strong> Changes to schema
                 definitions are audited in{' '}
