@@ -42,7 +42,7 @@ export default function PracticeAssignmentList({ assignments = [], onToggleLock,
             {assignments.map((assignment) => {
               const isLocked = assignment.source === 'manual';
               const lockTitle = !onToggleLock
-                ? 'Enter manual override mode to change lock status'
+                ? 'Lock status changes require schedule edit permission'
                 : isLocked
                   ? 'Unlock slot (allow algorithm to change)'
                   : 'Lock slot (preserve manual choice)';

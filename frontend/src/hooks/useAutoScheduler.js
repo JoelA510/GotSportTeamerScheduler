@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef } from 'react';
 import { supabase } from '../lib/supabaseClient.js';
 import { buildEdgeFunctionCacheKey, edgeFunctionCache } from '../lib/cache.js';
+import { API_BASE_URL, SUPABASE_URL } from '../config.js';
 
 // Wave 6b Task 1: 5-minute TTL for auto-scheduler runs. Rationale: an
 // optimization with identical inputs (same teams, slots, config, weights)
@@ -9,6 +10,7 @@ import { buildEdgeFunctionCacheKey, edgeFunctionCache } from '../lib/cache.js';
 // click, immediate retry) cache-hits the prior result. Input changes bust the
 // key automatically. Errors are NOT cached (so retries run fresh).
 const AUTO_SCHEDULER_TTL_MS = 300_000;
+const DEFAULT_LOCAL_FUNCTIONS_URL = 'http://localhost:54321/functions/v1';
 
 /**
  * @typedef {'idle' | 'running' | 'polling' | 'completed' | 'failed'} AutoSchedulerStatus
@@ -88,6 +90,7 @@ export function useAutoScheduler({ organizationId }) {
       scoringWeights,
       schoolDayEnd,
       timezone,
+      seasonSettingsId,
       config,
     }) => {
       if (!organizationId) {
@@ -104,6 +107,7 @@ export function useAutoScheduler({ organizationId }) {
       // share entries.
       const cacheKey = buildEdgeFunctionCacheKey('auto-scheduler', {
         organization_id: organizationId,
+        season_settings_id: seasonSettingsId ?? null,
         teams,
         slots,
         coachPreferences: coachPreferences ?? {},
@@ -174,8 +178,11 @@ export function useAutoScheduler({ organizationId }) {
           throw new Error('Not authenticated');
         }
 
-        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-        const response = await fetch(`${supabaseUrl}/functions/v1/auto-scheduler`, {
+        const functionsBaseUrl =
+          API_BASE_URL !== DEFAULT_LOCAL_FUNCTIONS_URL || !SUPABASE_URL
+            ? API_BASE_URL
+            : `${SUPABASE_URL}/functions/v1`;
+        const response = await fetch(`${functionsBaseUrl}/auto-scheduler`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -183,6 +190,7 @@ export function useAutoScheduler({ organizationId }) {
           },
           body: JSON.stringify({
             organizationId,
+            seasonSettingsId,
             teams,
             slots,
             coachPreferences: coachPreferences ?? {},

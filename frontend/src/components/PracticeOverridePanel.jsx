@@ -1,21 +1,44 @@
 import React, { useState } from 'react';
+import PropTypes from 'prop-types';
 import { AlertCircle, Plus, Check } from 'lucide-react';
 import Button from './ui/Button.jsx';
 
-export default function PracticeOverridePanel({ teams = [], baseSlots = [] }) {
+function getAssignmentTeamId(assignment) {
+  return assignment?.teamId ?? assignment?.team_id ?? assignment?.teams?.id ?? null;
+}
+
+function getAssignmentSlotId(assignment) {
+  return (
+    assignment?.slotId ??
+    assignment?.slot_id ??
+    assignment?.practiceSlotId ??
+    assignment?.practice_slot_id ??
+    assignment?.practiceSlots?.id ??
+    null
+  );
+}
+
+export default function PracticeOverridePanel({
+  teams = [],
+  baseSlots = [],
+  stagedAssignments = [],
+  onStageAssignment,
+}) {
   const [selectedTeamId, setSelectedTeamId] = useState('');
   const [selectedSlotId, setSelectedSlotId] = useState('');
-  const [overrides, setOverrides] = useState([]);
 
-  // Mock checking for conflicts (e.g., Coach already has a team in this slot)
   const checkForConflict = (teamId, slotId) => {
     const team = teams.find((t) => String(t.id) === String(teamId));
     if (!team || !team.headCoach) return null;
 
-    // Check if any existing override has the same coach in the same slot
-    const conflict = overrides.find((o) => {
-      const oTeam = teams.find((t) => String(t.id) === String(o.teamId));
-      return o.slotId === slotId && oTeam?.headCoach === team.headCoach;
+    const conflict = stagedAssignments.find((assignment) => {
+      const stagedTeamId = getAssignmentTeamId(assignment);
+      const oTeam = teams.find((t) => String(t.id) === String(stagedTeamId));
+      return (
+        String(stagedTeamId) !== String(teamId) &&
+        getAssignmentSlotId(assignment) === slotId &&
+        oTeam?.headCoach === team.headCoach
+      );
     });
 
     if (conflict) {
@@ -30,20 +53,23 @@ export default function PracticeOverridePanel({ teams = [], baseSlots = [] }) {
   const handleAssign = () => {
     if (!selectedTeamId || !selectedSlotId) return;
 
-    const conflict = checkForConflict(selectedTeamId, selectedSlotId);
-
-    const newOverride = {
-      id: Date.now().toString(),
-      teamId: selectedTeamId,
-      slotId: selectedSlotId,
-      conflictWarning: conflict,
-      status: 'pending',
-    };
-
-    setOverrides([newOverride, ...overrides]);
+    onStageAssignment?.(selectedTeamId, selectedSlotId);
     setSelectedTeamId('');
     setSelectedSlotId('');
   };
+
+  const manualStagedAssignments = stagedAssignments
+    .filter((assignment) => assignment?.source === 'manual' || assignment?.source === 'locked')
+    .map((assignment) => {
+      const teamId = getAssignmentTeamId(assignment);
+      const slotId = getAssignmentSlotId(assignment);
+      return {
+        id: assignment.id ?? `${teamId}-${slotId}`,
+        teamId,
+        slotId,
+        conflictWarning: checkForConflict(teamId, slotId),
+      };
+    });
 
   return (
     <div className="bg-bg-surface border border-border-subtle rounded-xl p-6 mt-8 shadow-sm">
@@ -89,8 +115,8 @@ export default function PracticeOverridePanel({ teams = [], baseSlots = [] }) {
             <option value="">-- Choose Slot --</option>
             {baseSlots.map((s) => (
               <option key={s.baseSlotId} value={s.baseSlotId}>
-                {s.day} @ {s.baseSlotId.split('_').pop().slice(0, 5)} (Avail:{' '}
-                {s.totalCapacity - s.totalAssigned})
+                {s.day} @ {s.startLabel ?? s.baseSlotId.split('_').pop().slice(0, 5)} (Avail:{' '}
+                {Math.max(0, (s.totalCapacity ?? 0) - (s.totalAssigned ?? 0))})
               </option>
             ))}
           </select>
@@ -108,13 +134,13 @@ export default function PracticeOverridePanel({ teams = [], baseSlots = [] }) {
       </div>
 
       <div className="space-y-3">
-        <h4 className="text-sm font-semibold text-text-primary mb-3">Pending Overrides</h4>
-        {overrides.length === 0 ? (
+        <h4 className="text-sm font-semibold text-text-primary mb-3">Staged Overrides</h4>
+        {manualStagedAssignments.length === 0 ? (
           <div className="text-sm text-text-muted italic p-4 text-center border border-dashed border-border-subtle rounded-md">
             No manual overrides created yet.
           </div>
         ) : (
-          overrides.map((override) => {
+          manualStagedAssignments.map((override) => {
             const team = teams.find((t) => String(t.id) === String(override.teamId));
             const slot = baseSlots.find((s) => s.baseSlotId === override.slotId);
 
@@ -128,7 +154,7 @@ export default function PracticeOverridePanel({ teams = [], baseSlots = [] }) {
                     <span className="font-bold text-text-primary">{team?.name}</span>
                     <span className="text-text-muted">&rarr;</span>
                     <span className="font-medium text-blue-400">
-                      {slot?.day} at {slot?.baseSlotId.split('_').pop()}
+                      {slot?.day} at {slot?.startLabel ?? slot?.baseSlotId.split('_').pop()}
                     </span>
                     <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full font-bold bg-amber-500/20 text-amber-500 border border-amber-500/30">
                       Manual
@@ -145,7 +171,7 @@ export default function PracticeOverridePanel({ teams = [], baseSlots = [] }) {
                 </div>
 
                 <div className="text-emerald-500 flex items-center gap-1 text-xs font-semibold">
-                  <Check size={14} /> Saved
+                  <Check size={14} /> Staged
                 </div>
               </div>
             );
@@ -155,3 +181,10 @@ export default function PracticeOverridePanel({ teams = [], baseSlots = [] }) {
     </div>
   );
 }
+
+PracticeOverridePanel.propTypes = {
+  teams: PropTypes.array,
+  baseSlots: PropTypes.array,
+  stagedAssignments: PropTypes.array,
+  onStageAssignment: PropTypes.func,
+};

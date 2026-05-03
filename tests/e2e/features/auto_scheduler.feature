@@ -36,6 +36,28 @@ Feature: Intelligent Auto-Scheduler
     And I should see the optimization score
     And I should see a "Reset" button
 
+  Scenario: Auto-Scheduler review can be applied through persistence
+    Given I have imported player data
+    And I have generated teams
+    And I have generated a practice schedule
+    When I navigate to the Practice Scheduling page
+    And I click the "Auto-Generate" button
+    And the auto-scheduler completes
+    Then I should see the practice schedule review panel
+    When I apply the practice schedule
+    Then I should see "Practice Schedule Applied" in the practice schedule review panel
+
+  Scenario: Manual practice override can be staged and applied through persistence
+    Given I have imported player data
+    And I have generated teams
+    And I have generated a practice schedule
+    When I navigate to the Practice Scheduling page
+    And I enter manual override mode
+    And I stage a manual practice override
+    Then I should see a staged manual override
+    When I apply the practice schedule
+    Then I should see "Practice Schedule Applied" in the practice schedule review panel
+
   Scenario: Auto-Scheduler displays error on failure
     Given I have imported player data
     And the auto-scheduler service is unavailable
@@ -47,12 +69,12 @@ Feature: Intelligent Auto-Scheduler
     Given I have imported player data
     And I have generated teams
     And I have generated a practice schedule
-    And team "T1" has a locked assignment to slot "s1"
+    And team "t1" has a locked assignment to slot "ps-1"
     When I navigate to the Practice Scheduling page
     And I click the "Auto-Generate" button
     And the auto-scheduler completes
-    Then team "T1" should remain assigned to slot "s1"
-    And team "T1" assignment should have source "locked"
+    Then team "t1" should remain assigned to slot "ps-1"
+    And team "t1" assignment should have source "manual"
 
   Scenario: Auto-Scheduler panel is accessible via keyboard
     When I navigate to the Practice Scheduling page

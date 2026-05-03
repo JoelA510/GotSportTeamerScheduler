@@ -1,7 +1,57 @@
 import { createBdd } from 'playwright-bdd';
-import { expect } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
 
 const { Given, When, Then } = createBdd();
+
+async function mockPracticeSchedulerRoutes(page: Page) {
+  await page.route('**/functions/v1/auto-scheduler', async (route) => {
+    const requestBody = JSON.parse(route.request().postData() || '{}');
+    const lockedAssignments = Array.isArray(requestBody.lockedAssignments)
+      ? requestBody.lockedAssignments
+      : [];
+    const lockedByTeam = new Map(
+      lockedAssignments.map((assignment: { teamId: string; slotId: string }) => [
+        assignment.teamId,
+        assignment.slotId,
+      ])
+    );
+
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        runId: '00000000-0000-4000-8000-000000000322',
+        assignments: [
+          {
+            teamId: 'team-a',
+            slotId: lockedByTeam.get('team-a') || 'slot-1',
+            source: lockedByTeam.has('team-a') ? 'locked' : 'auto',
+          },
+        ],
+        unassigned: [],
+        evaluation: { overallScore: 95 },
+        optimization: {
+          iterations: 100,
+          bestScore: 0.95,
+          elapsedMs: 100,
+          status: 'Optimization Complete',
+        },
+      }),
+    });
+  });
+
+  await page.route('**/functions/v1/practice-persistence', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        status: 'success',
+        runId: '00000000-0000-4000-8000-000000000322',
+        message: 'Persistence successful.',
+      }),
+    });
+  });
+}
 
 // ────────────────────────────────────────────────────────────
 // Background Setup
@@ -545,6 +595,7 @@ Then(
 );
 
 Given('the automated schedule has been generated', async ({ page }) => {
+  await mockPracticeSchedulerRoutes(page);
   // ERADICATE NOISE: Wipe the specific tables first to ensure no competing hardcoded runs exist
   await page.evaluate(() => {
     const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
@@ -884,6 +935,7 @@ Then('updates the game schedule if the selected slot is valid', async ({ page })
 // ────────────────────────────────────────────────────────────
 
 Given('a practice schedule has been generated', async ({ page }) => {
+  await mockPracticeSchedulerRoutes(page);
   // ERADICATE NOISE: Wipe the specific tables first to ensure no competing hardcoded runs exist
   await page.evaluate(() => {
     const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
