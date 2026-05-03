@@ -47,9 +47,9 @@ Seven functions are deployed. Each has its own directory under `supabase/functio
 
 ### 2.4 `game-persistence`
 
-- **Purpose**: Persist the output of the game-scheduling engine.
-- **Invoked by**: `frontend/src/*` via `apiClient.post('game-persistence', …)`.
-- **Authentication**: Same JWT + role allow-list + Zod payload as the other persistence functions; resolves target `team_id` values to organizations and asserts each is in the caller's org set. The RPC also rejects cross-org game slots, fields, teams, and season references.
+- **Purpose**: Persist reviewed game schedules and manual game moves after the routed game page stages them for apply/rollback.
+- **Invoked by**: `frontend/src/utils/gamePersistenceClient.js` via a direct POST to `/functions/v1/game-persistence`.
+- **Authentication**: Same JWT + role allow-list + Zod payload as the other persistence functions; verifies `runMetadata.organizationId`, `runMetadata.seasonSettingsId`, and all target home/away teams resolve to exactly one caller organization before using the service client. The RPC also rejects cross-org game slots, fields, teams, and season references.
 - **Rate limit**: `checkRateLimit(user.id)` — default 60 req/min.
 - **RPC used**: `persist_game_schedule(run_data, assignments)`; returns the persisted scheduler run id, links current assignment rows to that run via `game_assignments.run_id`, and rejects cross-org season, team, slot, or field references.
 - **Audit**: `recordAudit(action: 'game.saved', ...)`.
@@ -88,7 +88,7 @@ Seven functions are deployed. Each has its own directory under `supabase/functio
 | `import-validation`    | `import-validation/index.ts`    | ~285  | JWT + org scope                    | Yes        | — (writes directly)                                    | —                  | `ImportContext.jsx`        |
 | `team-persistence`     | `team-persistence/index.ts`     | ~285  | JWT + role allow-list + IDOR guard | Yes        | `persist_team_schedule`                                | —                  | `teamPersistenceClient.js` |
 | `practice-persistence` | `practice-persistence/index.ts` | ~290  | JWT + role allow-list + IDOR guard | Yes        | `persist_practice_schedule`                            | —                  | Frontend practice utils    |
-| `game-persistence`     | `game-persistence/index.ts`     | ~275  | JWT + role allow-list + IDOR guard | Yes        | `persist_game_schedule`                                | —                  | Frontend game utils        |
+| `game-persistence`     | `game-persistence/index.ts`     | ~330  | JWT + role allow-list + IDOR guard | Yes        | `persist_game_schedule`                                | —                  | `gamePersistenceClient.js` |
 | `fairness-scoring`     | `fairness-scoring/index.ts`     | ~230  | JWT + `verifyOrgMembership`        | No (gap)   | `persist_evaluation_run` (3-arg)                       | —                  | `EvaluationPanel.jsx`      |
 | `auto-scheduler`       | `auto-scheduler/index.ts`       | ~800  | JWT + `verifyOrgMembership`        | Yes        | `persist_evaluation_run` (3-arg), `record_audit_event` | —                  | `useAutoScheduler.js`      |
 | `calendar-feed`        | `calendar-feed/index.ts`        | ~220  | Token-based (`?token=`)            | No         | —                                                      | Yes                | External ICS clients       |
@@ -164,7 +164,6 @@ Edge Functions are the single most expensive free-tier line item if they runaway
 v1.1-deferred items surfaced while writing this inventory:
 
 - **`fairness-scoring` has no rate limiter.** Every other function uses `checkRateLimit(user.id)` from `_shared/rateLimit.ts`; this one calls the scoring engine (a heavier synchronous workload) and imports `_shared/auth.ts` but not `_shared/rateLimit.ts`. Worth adding for symmetry.
-- **`game-persistence` is contract-ready but not fully wired from the routed page.** The RPC wrapper exists; the next app PR must replace the game page's timer simulation with the real trigger/review/apply flow.
 - **pgTAP coverage is RLS-focused, not RPC- or Edge-Function-focused.** The four pgTAP suites in `supabase/tests/` validate policy behavior, not the specific RPC branches each Edge Function invokes. Gap to close in Wave 7b or later.
 - **No observed invocation telemetry baseline.** We have the BetterStack hook but no dashboard that tracks per-function invocation counts or p95 latency. When that's in place it belongs in [`operations/`](../operations/) alongside `sentry-smoke.md`.
 - **`calendar-feed` token leakage risk.** The token is a plain UUID query parameter; any intermediary that logs URLs (browser history, proxy logs, analytics) could capture it. Mitigated by 90-day expiry + `rotate_calendar_token` RPC, but consider HMAC-signed tokens in v1.1.

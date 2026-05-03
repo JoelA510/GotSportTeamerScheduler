@@ -16,6 +16,7 @@ import { DEFAULT_ALLOWED_ROLES, PERSISTENCE_STATUS } from './constants.js';
  * @typedef {Object} PersistenceSnapshot
  * @property {Object} payload
  * @property {Array<Object>} [payload.assignmentRows]
+ * @property {Array<Object>} [payload.gameRows]
  * @property {Array<Object>} [payload.teamRows]
  * @property {Array<Object>} [payload.teamPlayerRows]
  * @property {string | null} [lastRunId]
@@ -135,6 +136,7 @@ export function handlePersistenceRequest({
  * @param {PersistenceSnapshot} params.snapshot
  * @param {Object} [params.runMetadata]
  * @param {string} [params.runMetadata.runId]
+ * @param {string} [params.runMetadata.organizationId]
  * @param {string} [params.runMetadata.seasonSettingsId]
  * @param {Object} [params.runMetadata.parameters]
  * @param {Object} [params.runMetadata.metrics]
@@ -158,26 +160,20 @@ export async function persistSnapshotTransactional({
   transformPayload,
 }) {
   // Prepare Run Data Payload
-  const runData = runMetadata?.runId
-    ? {
-        id: runMetadata.runId,
-        run_type: runType,
-        season_settings_id: runMetadata.seasonSettingsId,
-        status: 'completed',
-        parameters: runMetadata.parameters ?? {},
-        metrics: runMetadata.metrics ?? {},
-        results: runMetadata.results ?? {},
-        created_by: runMetadata.createdBy ?? 'system',
-        started_at: runMetadata.startedAt ?? now.toISOString(),
-        completed_at: runMetadata.completedAt ?? now.toISOString(),
-        updated_at: now.toISOString(),
-      }
-    : {
-        // Fallback if no run metadata provided (less common for transactional)
-        run_type: runType,
-        status: 'completed',
-        updated_at: now.toISOString(),
-      };
+  const runData = {
+    ...(runMetadata?.runId ? { id: runMetadata.runId } : {}),
+    organization_id: runMetadata?.organizationId,
+    run_type: runType,
+    season_settings_id: runMetadata?.seasonSettingsId,
+    status: 'completed',
+    parameters: runMetadata?.parameters ?? {},
+    metrics: runMetadata?.metrics ?? {},
+    results: runMetadata?.results ?? {},
+    created_by: runMetadata?.createdBy ?? 'system',
+    started_at: runMetadata?.startedAt ?? now.toISOString(),
+    completed_at: runMetadata?.completedAt ?? now.toISOString(),
+    updated_at: now.toISOString(),
+  };
 
   // Transform payload if normalizer provided, otherwise use snapshot directly
   const rpcPayload = transformPayload

@@ -69,7 +69,8 @@ test('processGamePersistenceRequest persists snapshot after validation and auth'
       snapshot: SAMPLE_SNAPSHOT,
       overrides: [],
       runMetadata: {
-        seasonSettingsId: 101,
+        organizationId: 'org-game-1',
+        seasonSettingsId: 'season-game-1',
         createdBy: 'user-admin',
       },
     },
@@ -83,9 +84,33 @@ test('processGamePersistenceRequest persists snapshot after validation and auth'
 
   const rpcCall = calls.find((call) => call.rpcName === 'persist_game_schedule');
   assert.ok(rpcCall, 'persist_game_schedule RPC should be invoked');
-  assert.strictEqual(rpcCall.args.run_data.season_settings_id, 101);
+  assert.strictEqual(rpcCall.args.run_data.organization_id, 'org-game-1');
+  assert.strictEqual(rpcCall.args.run_data.season_settings_id, 'season-game-1');
   assert.strictEqual(rpcCall.args.run_data.created_by, 'user-admin');
   assert.deepStrictEqual(rpcCall.args.assignments, SAMPLE_SNAPSHOT.payload.assignmentRows);
+});
+
+test('processGamePersistenceRequest accepts legacy gameRows payloads', async () => {
+  const { client, calls } = buildTransactionStub();
+  const legacyRows = [
+    { id: 'game-1', slot_id: 'slot-1', home_team_id: 'team-A', away_team_id: 'team-B' },
+  ];
+
+  const result = await processGamePersistenceRequest({
+    supabaseClient: client,
+    requestBody: {
+      snapshot: { lastRunId: 'run-game-legacy', payload: { gameRows: legacyRows } },
+      runMetadata: {
+        organizationId: 'org-game-1',
+        seasonSettingsId: 'season-game-1',
+      },
+    },
+    user: { role: 'admin' },
+  });
+
+  assert.strictEqual(result.status, 'success');
+  const rpcCall = calls.find((call) => call.rpcName === 'persist_game_schedule');
+  assert.deepStrictEqual(rpcCall.args.assignments, legacyRows);
 });
 
 test('processGamePersistenceRequest surfaces persistence errors', async () => {
