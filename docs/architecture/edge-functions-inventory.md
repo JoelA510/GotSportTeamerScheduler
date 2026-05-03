@@ -42,7 +42,7 @@ Seven functions are deployed. Each has its own directory under `supabase/functio
 - **Invoked by**: `frontend/src/utils/*` via `apiClient.post('practice-persistence', …)`.
 - **Authentication**: Same JWT + role allow-list + Zod payload as team-persistence. Resolves `team_id` → `organizations.id` via `resolveOrgIdsFromTeamIds()` and asserts each is in the caller's org set.
 - **Rate limit**: `checkRateLimit(user.id)` — default 60 req/min.
-- **RPC used**: `persist_practice_schedule(run_data, assignments)`.
+- **RPC used**: `persist_practice_schedule(run_data, assignments)`; returns the persisted scheduler run id and rejects cross-org season, team, or slot references.
 - **Audit**: `recordAudit(action: 'practice.saved', ...)`.
 
 ### 2.4 `game-persistence`
