@@ -20,12 +20,12 @@ Seven functions are deployed. Each has its own directory under `supabase/functio
 
 ### 2.1 `import-validation`
 
-- **Purpose**: Server-side validation and staging gate for the GotSport CSV import flow (Phase 2.1, finding H-1). The browser parses the CSV with PapaParse client-side; rows are POSTed here after an `import_jobs` row exists. The function validates headers (strict alias map, not fuzzy matching), required fields, data types, string length caps, strips HTML/control characters, and stages valid player rows in `staging_players`.
+- **Purpose**: Server-side validation and staging gate for the GotSport CSV import flow (Phase 2.1, finding H-1). The browser parses the CSV with PapaParse client-side; rows are POSTed here after an `import_jobs` row exists. The function validates headers (strict alias map, not fuzzy matching), required fields, data types, string length caps, strips HTML/control characters, stages valid player rows in `staging_players`, and stages valid non-player rows in `staging_import_rows`.
 - **Invoked by**: `frontend/src/contexts/ImportContext.jsx` via `supabase.functions.invoke('import-validation', …)`.
 - **Authentication**: `getUserFromRequest()` → returns `401` on missing/invalid bearer. Requires admin/tenant-admin membership for the target organization before staging rows.
 - **Rate limit**: `checkRateLimit(user.id)` — 10 req/min per user.
 - **Size caps**: 5000 rows, 500 char/field, 10 MB payload.
-- **RLS interaction**: Uses the service-role client for staging writes, but gates every write with `verifyOrgAdmin()` and verifies the `import_job_id` belongs to the requested organization. Final promotion uses the admin-only `finalize_import_job(uuid, jsonb)` RPC.
+- **RLS interaction**: Uses the service-role client for staging writes, but gates every write with `verifyOrgAdmin()` and verifies the `import_job_id` belongs to the requested organization. Final player promotion uses the admin-only `finalize_import_job(uuid, jsonb)` RPC; final coach promotion uses `finalize_coach_import_job(uuid, jsonb)`.
 
 ### 2.2 `team-persistence`
 
@@ -85,7 +85,7 @@ Seven functions are deployed. Each has its own directory under `supabase/functio
 
 | Function               | Entry                           | Lines | Auth                               | Rate limit | RPC called                                             | Service-role read? | Invoked by                 |
 | ---------------------- | ------------------------------- | ----- | ---------------------------------- | ---------- | ------------------------------------------------------ | ------------------ | -------------------------- |
-| `import-validation`    | `import-validation/index.ts`    | ~285  | JWT + org scope                    | Yes        | — (writes directly)                                    | —                  | `ImportContext.jsx`        |
+| `import-validation`    | `import-validation/index.ts`    | ~315  | JWT + org scope                    | Yes        | — (writes directly)                                    | —                  | `ImportContext.jsx`        |
 | `team-persistence`     | `team-persistence/index.ts`     | ~285  | JWT + role allow-list + IDOR guard | Yes        | `persist_team_schedule`                                | —                  | `teamPersistenceClient.js` |
 | `practice-persistence` | `practice-persistence/index.ts` | ~290  | JWT + role allow-list + IDOR guard | Yes        | `persist_practice_schedule`                            | —                  | Frontend practice utils    |
 | `game-persistence`     | `game-persistence/index.ts`     | ~330  | JWT + role allow-list + IDOR guard | Yes        | `persist_game_schedule`                                | —                  | `gamePersistenceClient.js` |

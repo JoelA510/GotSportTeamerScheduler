@@ -100,6 +100,53 @@ Then('present an interface to manually correct the malformed row', async ({ page
   });
 });
 
+Given('I upload a valid GotSport coach CSV file', async ({ page }) => {
+  await page.locator('button').filter({ hasText: 'coaches' }).first().click();
+  await page.locator('input[type="file"]').setInputFiles({
+    name: 'coaches.csv',
+    mimeType: 'text/csv',
+    buffer: Buffer.from('full_name,email,phone\nCSV Coach,csvcoach@example.com,555-1212'),
+  });
+  await expect(page.getByRole('button', { name: 'Start Import' })).toBeVisible();
+});
+
+When('I apply the coach CSV import', async ({ page }) => {
+  await page.getByRole('button', { name: 'Start Import' }).click();
+  await expect(page.getByRole('heading', { name: 'Import Applied' })).toBeVisible({
+    timeout: 15000,
+  });
+});
+
+Then('the coach CSV import should update the coach database', async ({ page }) => {
+  await expect(page.getByRole('button', { name: 'Roll Back Coach Import' })).toBeVisible({
+    timeout: 10000,
+  });
+  const coachExists = await page.evaluate(() => {
+    const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
+    return (db.coaches || []).some(
+      (coach: { email?: string }) => coach.email === 'csvcoach@example.com'
+    );
+  });
+  expect(coachExists).toBe(true);
+});
+
+When('I roll back the coach CSV import', async ({ page }) => {
+  await page.getByRole('button', { name: 'Roll Back Coach Import' }).click();
+  await expect(page.getByRole('button', { name: 'Start Import' })).toBeVisible({
+    timeout: 15000,
+  });
+});
+
+Then('the imported coach should be removed from the coach database', async ({ page }) => {
+  const coachExists = await page.evaluate(() => {
+    const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
+    return (db.coaches || []).some(
+      (coach: { email?: string }) => coach.email === 'csvcoach@example.com'
+    );
+  });
+  expect(coachExists).toBe(false);
+});
+
 When('I click to export the team rosters or schedules', async ({ page }) => {
   await page.goto('/?step=6');
 

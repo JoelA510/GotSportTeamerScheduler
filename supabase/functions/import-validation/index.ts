@@ -311,6 +311,7 @@ serve(async (req: Request) => {
   // 5. Normalize headers and sanitize all rows
   const validatedRows: Record<string, string>[] = [];
   const stagedRows: Record<string, unknown>[] = [];
+  const stagedImportRows: Record<string, unknown>[] = [];
   const allErrors: ValidationError[] = [];
 
   for (let i = 0; i < body.rows.length; i++) {
@@ -333,6 +334,18 @@ serve(async (req: Request) => {
         stagedRows.push({
           import_job_id: body.import_job_id,
           organization_id: body.organization_id,
+          source_row_number: body.row_offset + i + 1,
+          raw_payload: Object.fromEntries(
+            Object.entries(rawRow).map(([key, value]) => [key, sanitizeString(value)])
+          ),
+          normalized_payload: normalizedRow,
+          validation_errors: [],
+        });
+      } else if (body.import_type !== 'players' && body.import_job_id) {
+        stagedImportRows.push({
+          import_job_id: body.import_job_id,
+          organization_id: body.organization_id,
+          import_type: body.import_type,
           source_row_number: body.row_offset + i + 1,
           raw_payload: Object.fromEntries(
             Object.entries(rawRow).map(([key, value]) => [key, sanitizeString(value)])
@@ -367,6 +380,31 @@ serve(async (req: Request) => {
     }
   }
 
+  if (stagedImportRows.length > 0) {
+    const sourceRowNumbers = stagedImportRows.map((row) => row.source_row_number);
+    const { error: deleteError } = await serviceClient
+      .from('staging_import_rows')
+      .delete()
+      .eq('import_job_id', body.import_job_id)
+      .in('source_row_number', sourceRowNumbers);
+
+    if (deleteError) {
+      console.error('Failed to replace staged non-player import rows:', deleteError.message);
+      return jsonResponse(
+        { status: 'error', message: 'Failed to replace staged import rows' },
+        500
+      );
+    }
+
+    const { error: stageError } = await serviceClient
+      .from('staging_import_rows')
+      .insert(stagedImportRows);
+    if (stageError) {
+      console.error('Failed to stage non-player import rows:', stageError.message);
+      return jsonResponse({ status: 'error', message: 'Failed to stage import rows' }, 500);
+    }
+  }
+
   // 6. Audit log (fire-and-forget, Phase 4)
   recordAudit(serviceClient, {
     organizationId: body.organization_id,
@@ -378,7 +416,7 @@ serve(async (req: Request) => {
       total_rows: body.rows.length,
       valid_rows: validatedRows.length,
       error_rows: allErrors.length,
-      staged_rows: stagedRows.length,
+      staged_rows: stagedRows.length + stagedImportRows.length,
     },
   });
 
@@ -389,7 +427,7 @@ serve(async (req: Request) => {
     total_rows: body.rows.length,
     valid_rows: validatedRows.length,
     error_rows: allErrors.length,
-    staged_rows: stagedRows.length,
+    staged_rows: stagedRows.length + stagedImportRows.length,
     validated_data: validatedRows,
     validation_errors: allErrors,
   });
