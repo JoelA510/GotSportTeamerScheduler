@@ -14,9 +14,15 @@ import { logger } from '../lib/logger.js';
 import { withTimeout } from '../lib/withTimeout.js';
 import { useOrganization } from './OrganizationContext.jsx';
 import { matchHeaders, SYSTEM_COLUMNS } from '../utils/telemetryUtils.js';
+import {
+  buildCoachLeadPayload,
+  getExternalRegistrationId,
+  hasCoachLeadIntent,
+} from '../utils/coachLeads.js';
 
 const MAX_ROWS = 10000;
 const MAX_COLS = 1200;
+const PLAYER_LOOKUP_CHUNK_SIZE = 500;
 
 const ImportContext = createContext({
   isImporting: false,
@@ -67,6 +73,134 @@ const maskDataInternal = (importPayload, entitySchema) => {
     return masked ? { ...row, custom_attributes: newAttrs } : row;
   });
   return { ...importPayload, data: maskedRows };
+};
+
+const chunkValues = (values, chunkSize) => {
+  const chunks = [];
+  for (let index = 0; index < values.length; index += chunkSize) {
+    chunks.push(values.slice(index, index + chunkSize));
+  }
+  return chunks;
+};
+
+const persistCoachLeadSummary = async ({ importJobId, summary, statusOverride = null, addLog }) => {
+  const { error } = await supabase.rpc('set_import_job_coach_lead_summary', {
+    p_import_job_id: importJobId,
+    p_summary: summary,
+    p_status: statusOverride,
+  });
+
+  if (error) {
+    addLog(`Warning: Could not persist coach lead summary: ${error.message}`);
+  }
+};
+
+const fetchCoachLeadPlayers = async ({ organizationId, candidateRows }) => {
+  const externalIds = Array.from(
+    new Set(candidateRows.map(getExternalRegistrationId).filter(Boolean))
+  );
+  const players = [];
+
+  for (const externalIdChunk of chunkValues(externalIds, PLAYER_LOOKUP_CHUNK_SIZE)) {
+    const { data: matchedPlayers, error } = await supabase
+      .from('players')
+      .select('id, external_registration_id, division_id')
+      .eq('organization_id', organizationId)
+      .in('external_registration_id', externalIdChunk);
+
+    if (error) {
+      throw new Error(error.message || 'Could not resolve imported players');
+    }
+    players.push(...(matchedPlayers || []));
+  }
+
+  return players;
+};
+
+const captureCoachLeadsForImport = async ({
+  importJobId,
+  organizationId,
+  normalizedData,
+  addLog,
+}) => {
+  const candidateRows = normalizedData.filter(hasCoachLeadIntent);
+  if (candidateRows.length === 0) return null;
+
+  try {
+    const { data: divisions, error: divisionsError } = await supabase
+      .from('divisions')
+      .select('id, name')
+      .eq('organization_id', organizationId);
+
+    if (divisionsError) {
+      throw new Error(divisionsError.message || 'Could not resolve divisions');
+    }
+
+    const players = await fetchCoachLeadPlayers({ organizationId, candidateRows });
+    const coachLeadPayload = buildCoachLeadPayload(normalizedData, {
+      organizationId,
+      divisions: divisions || [],
+      players,
+    });
+
+    if (coachLeadPayload.length === 0) {
+      const summary = {
+        status: 'skipped',
+        candidate_rows: candidateRows.length,
+        leads_submitted: 0,
+        message:
+          'Coach volunteer rows were present, but no guardian or parent name and email could be resolved.',
+      };
+      addLog(
+        `Warning: ${candidateRows.length} coach volunteer row(s) could not create leads because adult contact fields were missing.`
+      );
+      await persistCoachLeadSummary({
+        importJobId,
+        summary,
+        statusOverride: 'completed_with_warnings',
+        addLog,
+      });
+      return summary;
+    }
+
+    const { data: coachLeadResult, error: coachLeadError } = await supabase.rpc(
+      'upsert_coach_leads',
+      { p_leads: coachLeadPayload }
+    );
+
+    if (coachLeadError) {
+      throw new Error(coachLeadError.message || 'Coach lead capture failed');
+    }
+
+    const summary = {
+      status: 'completed',
+      candidate_rows: candidateRows.length,
+      leads_submitted: coachLeadPayload.length,
+      leads_created: coachLeadResult?.leads_created ?? 0,
+      programs_linked: coachLeadResult?.programs_linked ?? 0,
+      skipped_existing: coachLeadResult?.skipped_existing ?? 0,
+    };
+    addLog(
+      `Coach leads captured: ${summary.leads_created} new, ${summary.programs_linked} program links.`
+    );
+    await persistCoachLeadSummary({ importJobId, summary, addLog });
+    return summary;
+  } catch (err) {
+    const summary = {
+      status: 'failed',
+      candidate_rows: candidateRows.length,
+      leads_submitted: 0,
+      message: err.message,
+    };
+    addLog(`Warning: Coach lead capture failed: ${err.message}`);
+    await persistCoachLeadSummary({
+      importJobId,
+      summary,
+      statusOverride: 'completed_with_warnings',
+      addLog,
+    });
+    return summary;
+  }
 };
 
 export function ImportProvider({ children }) {
@@ -535,6 +669,7 @@ export function ImportProvider({ children }) {
               const finalStatus =
                 validationErrors.length > 0 ? 'completed_with_warnings' : 'completed';
               let persistenceResult = null;
+              let effectiveStatus = finalStatus;
 
               if (type === 'players') {
                 addLog('Applying validated players to the roster database...');
@@ -551,9 +686,26 @@ export function ImportProvider({ children }) {
                 }
 
                 persistenceResult = finalizeResult;
+                effectiveStatus = finalizeResult?.status || finalStatus;
                 addLog(
                   `Roster database updated: ${finalizeResult?.inserted_players ?? 0} inserted, ${finalizeResult?.updated_players ?? 0} updated.`
                 );
+
+                const coachLeadSummary = await captureCoachLeadsForImport({
+                  importJobId: job.id,
+                  organizationId: currentOrganization.id,
+                  normalizedData,
+                  addLog,
+                });
+                if (coachLeadSummary) {
+                  persistenceResult = {
+                    ...(persistenceResult || {}),
+                    coach_leads: coachLeadSummary,
+                  };
+                  if (coachLeadSummary.status !== 'completed') {
+                    effectiveStatus = 'completed_with_warnings';
+                  }
+                }
               }
 
               const importData = {
@@ -587,7 +739,7 @@ export function ImportProvider({ children }) {
               if (type === 'fields') setImportedFields(importData);
               setImportedData(importData);
 
-              completeImport(type, importData, persistenceResult?.status || finalStatus);
+              completeImport(type, importData, effectiveStatus);
             };
 
             await processChunk();
