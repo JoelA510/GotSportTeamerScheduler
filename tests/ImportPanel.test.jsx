@@ -5,6 +5,7 @@ import ImportPanel from '../frontend/src/components/ImportPanel.jsx';
 
 const mocks = vi.hoisted(() => ({
   parse: vi.fn(),
+  importState: null,
   startImport: vi.fn(),
   applyDeferredImport: vi.fn(),
   cancelDeferredImport: vi.fn(),
@@ -20,23 +21,7 @@ vi.mock('papaparse', () => ({
 }));
 
 vi.mock('../frontend/src/contexts/ImportContext.jsx', () => ({
-  useImport: () => ({
-    isImporting: false,
-    progress: 0,
-    importStatus: 'idle',
-    startImport: mocks.startImport,
-    applyDeferredImport: mocks.applyDeferredImport,
-    cancelDeferredImport: mocks.cancelDeferredImport,
-    resetImport: mocks.resetImport,
-    notifyOnComplete: false,
-    setNotifyOnComplete: mocks.setNotifyOnComplete,
-    importedPlayers: null,
-    importedCoaches: null,
-    importedFields: null,
-    rollbackImport: mocks.rollbackImport,
-    telemetryLogs: [],
-    activeJob: null,
-  }),
+  useImport: () => mocks.importState,
 }));
 
 vi.mock('../frontend/src/contexts/OrganizationContext.jsx', () => ({
@@ -55,6 +40,23 @@ vi.mock('../frontend/src/lib/supabaseClient.js', () => ({
 describe('ImportPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.importState = {
+      isImporting: false,
+      progress: 0,
+      importStatus: 'idle',
+      startImport: mocks.startImport,
+      applyDeferredImport: mocks.applyDeferredImport,
+      cancelDeferredImport: mocks.cancelDeferredImport,
+      resetImport: mocks.resetImport,
+      notifyOnComplete: false,
+      setNotifyOnComplete: mocks.setNotifyOnComplete,
+      importedPlayers: null,
+      importedCoaches: null,
+      importedFields: null,
+      rollbackImport: mocks.rollbackImport,
+      telemetryLogs: [],
+      activeJob: null,
+    };
     mocks.parse.mockImplementation((_file, options) => {
       options.complete({
         data: [{ first_name: 'Alex', last_name: 'Smith', date_of_birth: '2016-01-01' }],
@@ -91,5 +93,59 @@ describe('ImportPanel', () => {
 
     firstBadge.focus();
     await waitFor(() => expect(firstBadge).toHaveFocus());
+  });
+
+  it('uses keyboard-accessible controls for import notifications and file picking', () => {
+    const { unmount } = render(<ImportPanel onImport={vi.fn()} />);
+
+    const notifyButton = screen.getByRole('button', { name: /notify when import completes/i });
+    expect(notifyButton).toHaveAttribute('type', 'button');
+    expect(notifyButton).toHaveAttribute('aria-pressed', 'false');
+    expect(notifyButton).toHaveAttribute('title', 'Notify when complete');
+
+    fireEvent.click(notifyButton);
+    expect(mocks.setNotifyOnComplete).toHaveBeenCalledWith(true);
+
+    const playersButton = screen.getByRole('button', { name: /^players\b/i });
+    const coachesButton = screen.getByRole('button', { name: /^coaches\b/i });
+    expect(playersButton).toHaveAttribute('aria-pressed', 'true');
+    expect(coachesButton).toHaveAttribute('aria-pressed', 'false');
+
+    fireEvent.click(coachesButton);
+    expect(coachesButton).toHaveAttribute('aria-pressed', 'true');
+
+    const fileInput = screen.getByLabelText(/browse files/i);
+    expect(fileInput).toHaveAttribute('type', 'file');
+    expect(fileInput).toHaveClass('sr-only');
+    expect(fileInput.closest('label')).toHaveClass('focus-within:ring-2');
+
+    unmount();
+    mocks.importState = {
+      ...mocks.importState,
+      notifyOnComplete: true,
+    };
+    render(<ImportPanel onImport={vi.fn()} />);
+    expect(
+      screen.getByRole('button', { name: /disable import completion email notifications/i })
+    ).toHaveAttribute('title', 'Disable notifications');
+  });
+
+  it('keeps the importing notification checkbox focusable', () => {
+    mocks.importState = {
+      ...mocks.importState,
+      isImporting: true,
+      progress: 35,
+      importStatus: 'importing',
+    };
+
+    render(<ImportPanel onImport={vi.fn()} />);
+
+    const checkbox = screen.getByRole('checkbox', { name: /email me when complete/i });
+    expect(checkbox).toHaveClass('sr-only');
+    expect(checkbox.closest('label')).toHaveClass('focus-within:ring-2');
+    expect(checkbox.closest('label')?.querySelector('[aria-hidden="true"]')).not.toBeNull();
+
+    fireEvent.click(checkbox);
+    expect(mocks.setNotifyOnComplete).toHaveBeenCalledWith(true);
   });
 });

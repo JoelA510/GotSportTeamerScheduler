@@ -74,6 +74,8 @@ const SmartBadge = ({ score, rationale }) => {
 };
 
 export default function ImportPanel({ onImport }) {
+  const notifyCheckboxId = React.useId();
+  const fileInputId = React.useId();
   const [isDragging, setIsDragging] = useState(false);
   const [file, setFile] = useState(null);
   const [error, setError] = useState(null);
@@ -505,13 +507,18 @@ export default function ImportPanel({ onImport }) {
             </div>
           ) : (
             <div className="flex items-center gap-3 bg-bg-surface px-4 py-2 rounded-lg border border-border-subtle">
-              <div
-                className={`w-2 h-2 rounded-full ${notifyOnComplete ? 'bg-green-400 shadow-[0_0_8px_rgba(74,222,128,0.8)]' : 'bg-text-muted/20'}`}
-              />
-              <label className="flex items-center gap-2 text-sm text-text-secondary cursor-pointer select-none">
+              <label
+                htmlFor={notifyCheckboxId}
+                className="flex items-center gap-2 text-sm text-text-secondary cursor-pointer select-none rounded-sm focus-within:outline-none focus-within:ring-2 focus-within:ring-blue-400/80 focus-within:ring-offset-2 focus-within:ring-offset-bg-surface"
+              >
+                <div
+                  aria-hidden="true"
+                  className={`w-2 h-2 rounded-full ${notifyOnComplete ? 'bg-green-400 shadow-[0_0_8px_rgba(74,222,128,0.8)]' : 'bg-text-muted/20'}`}
+                />
                 <input
+                  id={notifyCheckboxId}
                   type="checkbox"
-                  className="hidden"
+                  className="sr-only"
                   checked={notifyOnComplete}
                   onChange={(e) => setNotifyOnComplete(e.target.checked)}
                 />
@@ -543,11 +550,18 @@ export default function ImportPanel({ onImport }) {
           </div>
           <div className="flex items-center gap-2">
             <button
+              type="button"
+              aria-pressed={notifyOnComplete}
+              aria-label={
+                notifyOnComplete
+                  ? 'Disable import completion email notifications'
+                  : 'Notify when import completes'
+              }
               className={`p-2 rounded-lg transition-colors ${notifyOnComplete ? 'bg-blue-500/20 text-blue-400' : 'bg-bg-surface text-text-muted hover:text-text-primary'}`}
               onClick={() => setNotifyOnComplete(!notifyOnComplete)}
-              title="Notify when complete"
+              title={notifyOnComplete ? 'Disable notifications' : 'Notify when complete'}
             >
-              <Bell size={20} />
+              <Bell size={20} aria-hidden="true" />
             </button>
           </div>
         </div>
@@ -556,6 +570,8 @@ export default function ImportPanel({ onImport }) {
           {IMPORT_TYPES.map((type) => (
             <button
               key={type}
+              type="button"
+              aria-pressed={importType === type}
               onClick={() => {
                 setImportType(type);
                 setFile(null);
@@ -663,11 +679,15 @@ export default function ImportPanel({ onImport }) {
                 </p>
                 <p className="text-sm text-text-secondary">
                   or{' '}
-                  <label className="text-blue-400 hover:text-blue-300 cursor-pointer font-semibold hover:underline transition-colors">
+                  <label
+                    htmlFor={fileInputId}
+                    className="text-blue-400 hover:text-blue-300 cursor-pointer font-semibold hover:underline transition-colors rounded-sm focus-within:outline-none focus-within:ring-2 focus-within:ring-blue-400/80 focus-within:ring-offset-2 focus-within:ring-offset-bg-surface"
+                  >
                     browse files
                     <input
+                      id={fileInputId}
                       type="file"
-                      className="hidden"
+                      className="sr-only"
                       accept=".csv"
                       onChange={handleFileSelect}
                     />
