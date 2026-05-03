@@ -91,6 +91,7 @@ export default function ImportPanel({ onImport }) {
     importedPlayers,
     importedCoaches,
     importedFields,
+    rollbackImport,
     telemetryLogs,
   } = useImport();
 
@@ -98,6 +99,11 @@ export default function ImportPanel({ onImport }) {
 
   const theme = PERSISTENCE_THEMES.green;
   const isComplete = COMPLETED_IMPORT_STATUSES.has(importStatus);
+  const canRollbackImport =
+    isComplete &&
+    importType === 'coaches' &&
+    importedCoaches?.persistence?.durable &&
+    !importedCoaches?.persistence?.rollback;
 
   const handleDragOver = (e) => {
     e.preventDefault();
@@ -373,8 +379,34 @@ export default function ImportPanel({ onImport }) {
             <ProgressBar progress={progress} label={isComplete ? 'Applied' : 'Processing...'} />
           </div>
 
+          {error && (
+            <div
+              data-testid="import-error-banner"
+              className="bg-red-500/10 border border-red-500/20 text-red-400 px-4 py-2 rounded-lg text-sm mb-6 animate-slideUp flex items-center gap-2"
+            >
+              <AlertCircle size={16} />
+              {error}
+            </div>
+          )}
+
           {isComplete ? (
-            <div className="flex gap-4">
+            <div className="flex flex-wrap justify-center gap-4">
+              {canRollbackImport && (
+                <Button
+                  variant="danger"
+                  size="lg"
+                  onClick={async () => {
+                    try {
+                      setError(null);
+                      await rollbackImport('coaches');
+                    } catch (err) {
+                      setError(err.message || 'Coach import rollback failed.');
+                    }
+                  }}
+                >
+                  Roll Back Coach Import
+                </Button>
+              )}
               <Button
                 variant="secondary"
                 size="lg"

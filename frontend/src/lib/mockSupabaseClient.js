@@ -477,6 +477,8 @@ const initialMockData = {
   ],
   import_jobs: [],
   staging_players: [],
+  staging_import_rows: [],
+  import_application_records: [],
   view_league_standings: [
     {
       organization_id: 'org-1',
@@ -1622,6 +1624,256 @@ export const mockSupabase = {
       return { data: job.warning_summary.finalize, error: null };
     }
 
+    if (name === 'finalize_coach_import_job') {
+      const { p_import_job_id, p_validation_errors } = params || {};
+      const job = (db.import_jobs || []).find(
+        (item) => String(item.id) === String(p_import_job_id)
+      );
+      if (!job) {
+        return { data: null, error: { message: 'Import job not found' } };
+      }
+
+      const validationErrors = Array.isArray(p_validation_errors) ? p_validation_errors : [];
+      const now = new Date().toISOString();
+      const stagedRows = (db.staging_import_rows || []).filter(
+        (row) =>
+          String(row.import_job_id) === String(p_import_job_id) &&
+          row.import_type === 'coaches' &&
+          !row.applied_at &&
+          (!row.validation_errors || row.validation_errors.length === 0)
+      );
+
+      db.coaches = db.coaches || [];
+      db.import_application_records = db.import_application_records || [];
+
+      let insertedCoaches = 0;
+      let updatedCoaches = 0;
+      let invalidRows = 0;
+      let crossOrgConflictRows = 0;
+
+      stagedRows.forEach((row) => {
+        const payload = row.normalized_payload || {};
+        const email = String(payload.email || '')
+          .trim()
+          .toLowerCase();
+        const fullName = String(payload.full_name || '').trim();
+        const status = String(payload.status || 'active').toLowerCase();
+
+        if (
+          !email ||
+          !fullName ||
+          !['active', 'pending-confirmation', 'inactive'].includes(status)
+        ) {
+          invalidRows += 1;
+          row.validation_errors = [
+            {
+              message: 'Coach row is missing full_name/email or has an invalid status',
+              source_row_number: row.source_row_number,
+            },
+          ];
+          return;
+        }
+
+        const existing = db.coaches.find(
+          (coach) => String(coach.email || '').toLowerCase() === email
+        );
+        if (existing && String(existing.organization_id) !== String(job.organization_id)) {
+          crossOrgConflictRows += 1;
+          row.validation_errors = [
+            {
+              message: 'Coach email already belongs to another organization',
+              source_row_number: row.source_row_number,
+            },
+          ];
+          return;
+        }
+
+        if (existing) {
+          const previous = { ...existing };
+          const canCoachMultipleTeams =
+            payload.can_coach_multiple_teams === undefined
+              ? Boolean(existing.can_coach_multiple_teams)
+              : ['true', 'yes', '1', 'y'].includes(
+                  String(payload.can_coach_multiple_teams || '').toLowerCase()
+                );
+          Object.assign(existing, {
+            full_name: fullName,
+            email,
+            phone: payload.phone || payload.contact_phone || null,
+            status,
+            can_coach_multiple_teams: canCoachMultipleTeams,
+            contact_info: {
+              email,
+              phone: payload.phone || payload.contact_phone || null,
+            },
+            import_source: 'coach_csv',
+            last_imported_at: now,
+            custom_attributes: payload,
+            updated_at: now,
+          });
+          db.import_application_records.push({
+            id: Math.random().toString(36).substr(2, 9),
+            organization_id: job.organization_id,
+            import_job_id: p_import_job_id,
+            import_type: 'coaches',
+            target_table: 'coaches',
+            target_id: existing.id,
+            operation: 'updated',
+            previous_payload: previous,
+            applied_payload: { ...existing },
+            applied_at: now,
+            applied_by: 'mock-admin-id',
+            rolled_back_at: null,
+          });
+          updatedCoaches += 1;
+        } else {
+          const coach = {
+            id: Math.random().toString(36).substr(2, 9),
+            organization_id: job.organization_id,
+            full_name: fullName,
+            email,
+            phone: payload.phone || payload.contact_phone || null,
+            status,
+            can_coach_multiple_teams: ['true', 'yes', '1', 'y'].includes(
+              String(payload.can_coach_multiple_teams || '').toLowerCase()
+            ),
+            contact_info: {
+              email,
+              phone: payload.phone || payload.contact_phone || null,
+            },
+            import_source: 'coach_csv',
+            last_imported_at: now,
+            custom_attributes: payload,
+            created_at: now,
+            updated_at: now,
+          };
+          db.coaches.push(coach);
+          db.import_application_records.push({
+            id: Math.random().toString(36).substr(2, 9),
+            organization_id: job.organization_id,
+            import_job_id: p_import_job_id,
+            import_type: 'coaches',
+            target_table: 'coaches',
+            target_id: coach.id,
+            operation: 'inserted',
+            previous_payload: null,
+            applied_payload: { ...coach },
+            applied_at: now,
+            applied_by: 'mock-admin-id',
+            rolled_back_at: null,
+          });
+          insertedCoaches += 1;
+        }
+
+        row.applied_at = now;
+        row.applied_by = 'mock-admin-id';
+      });
+
+      const status =
+        validationErrors.length > 0 || invalidRows > 0 || crossOrgConflictRows > 0
+          ? 'completed_with_warnings'
+          : 'completed';
+      const result = {
+        status,
+        staged_rows: (db.staging_import_rows || []).filter(
+          (row) =>
+            String(row.import_job_id) === String(p_import_job_id) && row.import_type === 'coaches'
+        ).length,
+        inserted_coaches: insertedCoaches,
+        updated_coaches: updatedCoaches,
+        invalid_rows: invalidRows,
+        cross_org_conflict_rows: crossOrgConflictRows,
+        blocked_assignment_rows: 0,
+        validation_error_rows: validationErrors.length,
+        total_applied_rows: (db.import_application_records || []).filter(
+          (record) =>
+            String(record.import_job_id) === String(p_import_job_id) &&
+            record.import_type === 'coaches'
+        ).length,
+      };
+
+      Object.assign(job, {
+        status,
+        processed_rows: result.total_applied_rows,
+        progress_percent: 100,
+        completed_at: now,
+        error_summary: { rowErrors: validationErrors },
+        warning_summary: {
+          ...(job.warning_summary || {}),
+          coach_finalize: result,
+        },
+      });
+
+      saveDB(db);
+      return { data: result, error: null };
+    }
+
+    if (name === 'rollback_coach_import_job') {
+      const { p_import_job_id } = params || {};
+      const job = (db.import_jobs || []).find(
+        (item) => String(item.id) === String(p_import_job_id)
+      );
+      if (!job) {
+        return { data: null, error: { message: 'Import job not found' } };
+      }
+
+      const now = new Date().toISOString();
+      const records = (db.import_application_records || []).filter(
+        (record) =>
+          String(record.import_job_id) === String(p_import_job_id) &&
+          record.import_type === 'coaches' &&
+          !record.rolled_back_at
+      );
+      if (records.length === 0) {
+        return {
+          data: null,
+          error: { message: 'Import job has no coach application records to roll back' },
+        };
+      }
+
+      let deletedCoaches = 0;
+      let restoredCoaches = 0;
+
+      records
+        .slice()
+        .reverse()
+        .forEach((record) => {
+          if (record.operation === 'inserted') {
+            db.coaches = (db.coaches || []).filter(
+              (coach) => String(coach.id) !== String(record.target_id)
+            );
+            deletedCoaches += 1;
+          } else if (record.operation === 'updated') {
+            const coach = (db.coaches || []).find(
+              (item) => String(item.id) === String(record.target_id)
+            );
+            if (coach && record.previous_payload) {
+              Object.assign(coach, record.previous_payload, { updated_at: now });
+              restoredCoaches += 1;
+            }
+          }
+          record.rolled_back_at = now;
+          record.rolled_back_by = 'mock-admin-id';
+        });
+
+      const result = {
+        status: 'rolled_back',
+        deleted_coaches: deletedCoaches,
+        restored_coaches: restoredCoaches,
+        blocked_assigned_coaches: 0,
+      };
+      Object.assign(job, {
+        status: 'needs_fix',
+        warning_summary: {
+          ...(job.warning_summary || {}),
+          coach_rollback: result,
+        },
+      });
+
+      saveDB(db);
+      return { data: result, error: null };
+    }
+
     if (name === 'set_import_job_coach_lead_summary') {
       const { p_import_job_id, p_summary, p_status } = params || {};
       const job = (db.import_jobs || []).find(
@@ -2034,6 +2286,7 @@ export const mockSupabase = {
 
         const validatedData = [];
         const stagedRows = [];
+        const stagedImportRows = [];
         const validationErrors = [];
         const required = requiredFields[body.import_type] || [];
 
@@ -2078,19 +2331,44 @@ export const mockSupabase = {
                 validation_errors: [],
                 created_at: new Date().toISOString(),
               });
+            } else if (body.import_type !== 'players' && body.import_job_id) {
+              stagedImportRows.push({
+                id: Math.random().toString(36).substr(2, 9),
+                organization_id: body.organization_id,
+                import_job_id: body.import_job_id,
+                import_type: body.import_type,
+                source_row_number: (body.row_offset || 0) + index + 1,
+                raw_payload: rawRow,
+                normalized_payload: row,
+                validation_errors: [],
+                created_at: new Date().toISOString(),
+              });
             }
           }
         });
 
-        if (stagedRows.length > 0) {
+        if (stagedRows.length > 0 || stagedImportRows.length > 0) {
           const db = getDB();
-          const rowNumbers = new Set(stagedRows.map((row) => String(row.source_row_number)));
-          db.staging_players = (db.staging_players || []).filter(
-            (row) =>
-              String(row.import_job_id) !== String(body.import_job_id) ||
-              !rowNumbers.has(String(row.source_row_number))
-          );
-          db.staging_players.push(...stagedRows);
+          if (stagedRows.length > 0) {
+            const rowNumbers = new Set(stagedRows.map((row) => String(row.source_row_number)));
+            db.staging_players = (db.staging_players || []).filter(
+              (row) =>
+                String(row.import_job_id) !== String(body.import_job_id) ||
+                !rowNumbers.has(String(row.source_row_number))
+            );
+            db.staging_players.push(...stagedRows);
+          }
+          if (stagedImportRows.length > 0) {
+            const rowNumbers = new Set(
+              stagedImportRows.map((row) => String(row.source_row_number))
+            );
+            db.staging_import_rows = (db.staging_import_rows || []).filter(
+              (row) =>
+                String(row.import_job_id) !== String(body.import_job_id) ||
+                !rowNumbers.has(String(row.source_row_number))
+            );
+            db.staging_import_rows.push(...stagedImportRows);
+          }
           saveDB(db);
         }
 
@@ -2101,7 +2379,7 @@ export const mockSupabase = {
             total_rows: body.rows?.length || 0,
             valid_rows: validatedData.length,
             error_rows: validationErrors.length,
-            staged_rows: stagedRows.length,
+            staged_rows: stagedRows.length + stagedImportRows.length,
             validated_data: validatedData,
             validation_errors: validationErrors,
           },

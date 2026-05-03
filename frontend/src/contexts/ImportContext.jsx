@@ -41,6 +41,7 @@ const ImportContext = createContext({
   setImportedCoaches: (_data) => {},
   importedFields: null,
   setImportedFields: (_data) => {},
+  rollbackImport: async (_type) => {},
   telemetryLogs: [],
   organizationSchemas: {},
   activeJobId: null,
@@ -706,9 +707,29 @@ export function ImportProvider({ children }) {
                     effectiveStatus = 'completed_with_warnings';
                   }
                 }
+              } else if (type === 'coaches') {
+                addLog('Applying validated coaches to the coach database...');
+                const { data: finalizeResult, error: finalizeError } = await supabase.rpc(
+                  'finalize_coach_import_job',
+                  {
+                    p_import_job_id: job.id,
+                    p_validation_errors: validationErrors,
+                  }
+                );
+
+                if (finalizeError) {
+                  throw new Error(finalizeError.message || 'Coach import finalization failed');
+                }
+
+                persistenceResult = finalizeResult;
+                effectiveStatus = finalizeResult?.status || finalStatus;
+                addLog(
+                  `Coach database updated: ${finalizeResult?.inserted_coaches ?? 0} inserted, ${finalizeResult?.updated_coaches ?? 0} updated.`
+                );
               }
 
               const importData = {
+                importJobId: job.id,
                 fileName: file.name,
                 totalRows: data.length,
                 validRows: normalizedData.length,
@@ -717,12 +738,12 @@ export function ImportProvider({ children }) {
                 data: normalizedData,
                 validationErrors,
                 persistence: {
-                  durable: type === 'players',
+                  durable: type === 'players' || type === 'coaches',
                   result: persistenceResult,
                 },
               };
 
-              if (type !== 'players') {
+              if (type === 'fields') {
                 await supabase
                   .from('import_jobs')
                   .update({
@@ -765,6 +786,70 @@ export function ImportProvider({ children }) {
       updateJobProgress,
       organizationSchemas,
     ]
+  );
+
+  const rollbackImport = useCallback(
+    async (type = 'coaches') => {
+      if (type !== 'coaches') {
+        throw new Error(`Rollback is not available for ${type} imports yet`);
+      }
+      const rollbackJobId = importedCoaches?.importJobId;
+      if (!rollbackJobId) {
+        throw new Error('No completed coach import job is available to roll back');
+      }
+
+      setIsImporting(true);
+      setImportStatus('importing');
+      addLog('Rolling back coach import...');
+
+      try {
+        const { data: rollbackResult, error: rollbackError } = await supabase.rpc(
+          'rollback_coach_import_job',
+          { p_import_job_id: rollbackJobId }
+        );
+
+        if (rollbackError) {
+          throw new Error(rollbackError.message || 'Coach import rollback failed');
+        }
+
+        const rollbackData = {
+          ...(importedCoaches || {}),
+          persistence: {
+            ...(importedCoaches?.persistence || {}),
+            rollback: rollbackResult,
+          },
+        };
+        const rollbackSucceeded = rollbackResult?.status === 'rolled_back';
+        if (rollbackSucceeded) {
+          setImportedCoaches(null);
+          setImportedData(null);
+          setActiveJobId(null);
+          setActiveJob(null);
+        } else {
+          setImportedCoaches(rollbackData);
+          setImportedData(rollbackData);
+        }
+        setIsImporting(false);
+        const nextStatus = rollbackSucceeded ? 'idle' : 'completed_with_warnings';
+        setImportStatus(nextStatus);
+        if (nextStatus === 'idle') {
+          localStorage.removeItem('importStatus');
+        } else {
+          localStorage.setItem('importStatus', nextStatus);
+        }
+        addLog(
+          `Coach import rolled back: ${rollbackResult?.deleted_coaches ?? 0} deleted, ${rollbackResult?.restored_coaches ?? 0} restored.`
+        );
+        return rollbackResult;
+      } catch (err) {
+        logger.error('Import rollback failed:', err);
+        addLog(`Rollback failed: ${err.message}`);
+        setImportStatus('error');
+        setIsImporting(false);
+        throw err;
+      }
+    },
+    [addLog, importedCoaches]
   );
 
   const resetImport = useCallback(async (type = 'all') => {
@@ -833,6 +918,7 @@ export function ImportProvider({ children }) {
       setImportedCoaches: stableSetImportedCoaches,
       importedFields: maskedImportedFields,
       setImportedFields: stableSetImportedFields,
+      rollbackImport,
       telemetryLogs,
       organizationSchemas,
       activeJobId,
@@ -855,6 +941,7 @@ export function ImportProvider({ children }) {
       stableSetImportedCoaches,
       maskedImportedFields,
       stableSetImportedFields,
+      rollbackImport,
       telemetryLogs,
       organizationSchemas,
       activeJobId,

@@ -20,3 +20,10 @@ Feature: Ingestion Hardening for CSV Imports
     Then the system should flag the row as an error
     And load the remaining valid rows into the staging table
     And present an interface to manually correct the malformed row
+
+  Scenario: Applying and rolling back a coach CSV import
+    Given I upload a valid GotSport coach CSV file
+    When I apply the coach CSV import
+    Then the coach CSV import should update the coach database
+    When I roll back the coach CSV import
+    Then the imported coach should be removed from the coach database
