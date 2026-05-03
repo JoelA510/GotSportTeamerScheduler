@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Added an admin-only `/coaches` review page with registered/interested status filters, program filtering, search, team assignment visibility, and source-player context for player-import coach leads.
 - Added player-import coach volunteer lead capture: finalized GotSport player imports now submit interested coach leads through `upsert_coach_leads`, atomically persist per-job lead summaries, and cover payload shaping with Vitest plus pgTAP.
+- Added a current-schema `persist_game_schedule` RPC and `game_assignments` run linkage/idempotency columns to unblock org-scoped, persisted game scheduling apply flows.
 
 ### Changed
 

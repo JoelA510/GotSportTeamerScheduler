@@ -47,13 +47,13 @@ These are the foundation everything else leans on. They are `SECURITY DEFINER` w
 
 ### 2.4 Team / Practice / Game Persistence
 
-Called by the `team-persistence`, `practice-persistence`, and `game-persistence` Edge Functions (see [`edge-functions-inventory.md`](./edge-functions-inventory.md)). These are `SECURITY INVOKER` — the Edge Function authenticates and checks org membership before invoking, then calls the RPC with the service-role client so the function body runs under the service role's RLS context.
+Called by the `team-persistence`, `practice-persistence`, and `game-persistence` Edge Functions (see [`edge-functions-inventory.md`](./edge-functions-inventory.md)). The Edge Function authenticates and checks org membership before invoking the RPC. `persist_game_schedule` is `SECURITY DEFINER` with pinned `search_path` because `game_assignments` intentionally has no broad authenticated write policy; the function body performs its own org-membership, season, team, slot, and field checks before writing.
 
 | Function                                                                                      | Declared in                              | Purpose                                                                                                                                                                   |
 | --------------------------------------------------------------------------------------------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `public.persist_team_schedule(run_data jsonb, teams jsonb, team_players jsonb) returns jsonb` | `20251208000000_consolidated_schema.sql` | Upserts the `scheduler_runs` row, bulk-upserts `teams`, bulk-upserts `team_players`. Returns a counts summary.                                                            |
 | `public.persist_practice_schedule(run_data jsonb, assignments jsonb) returns uuid`            | `20260503020000_link_practice_assignments_to_runs.sql` | Upserts the org-scoped `scheduler_runs` row and bulk-upserts validated `practice_assignments` (keyed by `team_id`, `practice_slot_id`, `effective_date_range`) while linking each current assignment row to the persisted scheduler run via `run_id`. Returns the scheduler run id. |
-| Game persistence                                                                              | N/A (Missing RPC)                        | Game rows are written by the game-persistence Edge Function directly against games under the service-role client; there is no standalone persist_game_schedule RPC today. |
+| `public.persist_game_schedule(run_data jsonb, assignments jsonb) returns uuid`                | `20260503030000_repair_game_persistence_rpc.sql` | Upserts the org-scoped `scheduler_runs` row and bulk-upserts validated `game_assignments` (keyed by `home_team_id`, `away_team_id`, `game_slot_id`, `week_index`) while linking each current assignment row to the persisted scheduler run via `run_id`. Returns the scheduler run id. |
 
 ### 2.5 Registration
 
@@ -186,7 +186,7 @@ When you need to add a new state-altering RPC, every item below must be satisfie
 
 v1.1-deferred items surfaced while writing this inventory. None block v1.0 production but should be tracked for later hardening.
 
-- **No `persist_game_schedule` RPC.** The `game-persistence` Edge Function writes to `games` under the service-role client directly rather than through an RPC, breaking symmetry with `persist_team_schedule` / `persist_practice_schedule`. Writes are still RLS-safe because the Edge Function validates org membership first, but the pattern is inconsistent. Defer to v1.1.
+- **Game operationalization still needs UI wiring.** `persist_game_schedule` now exists and is org-scoped, but the routed game scheduling page still needs a separate workflow PR to replace its timer simulation and call the `game-persistence` apply surface.
 - **pgTAP coverage is seeded but thin.** `supabase/tests/` ships four pgTAP suites today (`rls_admin_vs_coach`, `rls_anonymous_gate`, `rls_cross_org_isolation`, `rls_service_role_bypass`). The RPC bodies themselves (e.g., `submit_registration`'s cross-org rejection path, `redeem_org_invite`'s single-use lock) are _not_ individually covered. Wave 7b or later should add per-RPC suites; see [`testing/e2e_master_plan.md`](../testing/e2e_master_plan.md).
 - **Two `persist_evaluation_run` overloads.** The four-arg variant predates Phase 8 and is no longer called by any Edge Function. It remains installed because dropping an overload requires a targeted `DROP FUNCTION` migration. Safe to remove in v1.1.
 - **`current_user_role()` is legacy.** Defined in `20251208000000_consolidated_schema.sql` but superseded by `is_org_member` / `is_org_admin`. Not referenced by any current RLS policy or RPC. Can be dropped in v1.1.
