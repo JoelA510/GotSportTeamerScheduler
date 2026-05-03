@@ -21,6 +21,11 @@ Feature: Ingestion Hardening for CSV Imports
     And load the remaining valid rows into the staging table
     And present an interface to manually correct the malformed row
 
+  Scenario: Materializing reciprocal buddy requests during player import
+    Given I upload a GotSport player CSV file with reciprocal buddy requests
+    When I apply the player CSV import
+    Then the player import should materialize reciprocal buddy pairs
+
   Scenario: Applying and rolling back a coach CSV import
     Given I upload a valid GotSport coach CSV file
     When I apply the coach CSV import

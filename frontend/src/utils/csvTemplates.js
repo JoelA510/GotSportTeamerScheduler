@@ -15,8 +15,16 @@
 
 export const CSV_TEMPLATES = {
   players: {
-    headers: ['First Name', 'Last Name', 'Date of Birth', 'Medical Info', 'Skill Tier'],
-    example: ['Jane', 'Doe', '2015-03-14', 'None', 'developing'],
+    headers: [
+      'First Name',
+      'Last Name',
+      'Date of Birth',
+      'Registration ID',
+      'Buddy ID',
+      'Medical Info',
+      'Skill Tier',
+    ],
+    example: ['Jane', 'Doe', '2015-03-14', 'GS-1001', 'GS-1002', 'None', 'developing'],
     filename: 'squadlogic-players-template.csv',
   },
   coaches: {
