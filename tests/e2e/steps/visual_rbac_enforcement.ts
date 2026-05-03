@@ -37,6 +37,49 @@ Then(
   }
 );
 
+// --- Coach Admin Actions ---
+When('I promote {string} from the Coaches page', async ({ page }, coachName: string) => {
+  const row = page.locator('tbody tr').filter({ hasText: coachName }).first();
+  await expect(row).toBeVisible({ timeout: 15000 });
+
+  await row.getByLabel(`Status for ${coachName}`).selectOption('active');
+  await expect(page.getByRole('status')).toContainText(
+    `${coachName} status updated to Registered.`,
+    { timeout: 15000 }
+  );
+});
+
+When(
+  'I assign {string} to {string} from the Coaches page',
+  async ({ page }, coachName: string, teamName: string) => {
+    const row = page.locator('tbody tr').filter({ hasText: coachName }).first();
+    await expect(row).toBeVisible({ timeout: 15000 });
+
+    const teamSelect = row.getByLabel(`Assign team to ${coachName}`);
+    const teamValue = await teamSelect
+      .locator('option')
+      .filter({ hasText: teamName })
+      .first()
+      .getAttribute('value');
+    expect(teamValue).toBeTruthy();
+
+    await teamSelect.selectOption(teamValue || '');
+    await row.getByRole('button', { name: `Assign selected team to ${coachName}` }).click();
+    await expect(page.getByRole('status')).toContainText(
+      `${coachName} assigned to the selected team.`,
+      { timeout: 15000 }
+    );
+  }
+);
+
+Then(
+  'the coach row for {string} should show team {string}',
+  async ({ page }, coachName: string, teamName: string) => {
+    const row = page.locator('tbody tr').filter({ hasText: coachName }).first();
+    await expect(row).toContainText(teamName, { timeout: 15000 });
+  }
+);
+
 // --- Score Entry RBAC ---
 When('I view the {string} section', async ({ page }, sectionName: string) => {
   // CRITICAL FIX: Seed games so the score entry fields appear

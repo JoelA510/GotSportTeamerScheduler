@@ -16,6 +16,13 @@ Feature: Visual Role-Based Access Control
     And I should see the text "Mock Coach"
     And I should see the text "Morgan Reyes"
 
+  Scenario: Admin Coach Lead Promotion and Assignment
+    Given I am logged into SquadLogic as an "Admin"
+    And I am on the "Coaches" page
+    When I promote "Morgan Reyes" from the Coaches page
+    And I assign "Morgan Reyes" to "Tigers" from the Coaches page
+    Then the coach row for "Morgan Reyes" should show team "Tigers"
+
   Scenario: Score Entry Restrictions in League Standings
     Given I am logged into SquadLogic as a "Parent"
     And I navigate to the "League Standings" page
