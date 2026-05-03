@@ -828,7 +828,33 @@ const createMockQuery = (table, data = null) => {
       results = results.slice(0, n);
       return proxy;
     },
-    or: () => proxy,
+    or: (condition) => {
+      const clauses = String(condition || '')
+        .split(',')
+        .map((clause) => clause.trim())
+        .filter(Boolean)
+        .map((clause) => {
+          const [column, operator, ...valueParts] = clause.split('.');
+          return {
+            column,
+            operator,
+            value: valueParts.join('.'),
+          };
+        })
+        .filter(({ column, operator, value }) => column && operator && value);
+
+      if (clauses.length === 0) return proxy;
+
+      results = results.filter(
+        (item) =>
+          clauses.every(({ column }) => !(column in item)) ||
+          clauses.some(({ column, operator, value }) => {
+            if (operator !== 'eq') return false;
+            return String(item[column]) === String(value);
+          })
+      );
+      return proxy;
+    },
     abortSignal: () => proxy,
     single: () => {
       isSingle = true;

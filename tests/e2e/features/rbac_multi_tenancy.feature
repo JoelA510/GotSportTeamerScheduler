@@ -25,3 +25,9 @@ Feature: RBAC and Multi-Tenancy Enforcement
     When I navigate to the Admin routes
     Then I should successfully load the page
     And I should be able to view and manage data specifically for "Org B"
+
+  Scenario: Read-only users cannot enter team or schedule edit flows
+    Given I am logged into SquadLogic as a "Parent"
+    When I open the guarded team and schedule routes as a read-only user
+    Then Team Management should redirect the read-only user to the Dashboard
+    And Practice and Game Scheduling should not expose edit or apply controls

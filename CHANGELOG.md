@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- Scoped scheduler summary reads to the active organization and season, and guarded team/practice/game routes plus edit controls by view/manage permissions.
 - Hardened `upsert_coach_leads` and `coach_interested_programs` so security-definer lead capture rejects division/player references outside the lead organization.
 
 ## [1.0.1] - 2026-04-23

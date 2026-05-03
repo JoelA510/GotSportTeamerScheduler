@@ -4,6 +4,7 @@ import { logger } from '../lib/logger.js';
 // Use absolute import via configured alias
 import { mapSchedulerRunToSummary } from '../../../packages/core/src/utils/teamSummaryMapper.js';
 import { useOrganization } from '../contexts/OrganizationContext.jsx';
+import { scopeSchedulerRunsToActiveSeason } from '../utils/schedulerRunFilters.js';
 
 // Fallback skeleton
 const EMPTY_SUMMARY = {
@@ -22,7 +23,7 @@ const EMPTY_SUMMARY = {
 };
 
 export function useTeamSummary() {
-  const { currentOrganization } = useOrganization();
+  const { currentOrganization, currentSeasonSetting } = useOrganization();
   const [summary, setSummary] = useState(null); // null triggers loading state
   const [loading, setLoading] = useState(true);
   const [error, _setError] = useState(null);
@@ -32,23 +33,28 @@ export function useTeamSummary() {
   useEffect(() => {
     let pollInterval;
 
-    if (!currentOrganization?.id) {
+    if (!currentOrganization?.id || !currentSeasonSetting?.id) {
+      setSummary(EMPTY_SUMMARY);
       setLoading(false);
+      setStatus('idle');
+      setProgress(0);
       return;
     }
 
     async function fetchLatestRun() {
       try {
         // Fetch the latest run for the CURRENT ORGANIZATION, regardless of status
-        const { data, error: queryError } = await supabase
+        let runQuery = supabase
           .from('scheduler_runs')
           .select('*')
           .eq('run_type', 'team')
           .eq('organization_id', currentOrganization.id)
           .in('status', ['completed', 'running'])
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .single();
+          .order('created_at', { ascending: false });
+
+        runQuery = scopeSchedulerRunsToActiveSeason(runQuery, currentSeasonSetting.id);
+
+        const { data, error: queryError } = await runQuery.limit(1).single();
 
         if (queryError) {
           if (queryError.code === 'PGRST116') {
@@ -80,6 +86,7 @@ export function useTeamSummary() {
       }
     }
 
+    setLoading(true);
     fetchLatestRun();
 
     // Poll if running
@@ -90,7 +97,7 @@ export function useTeamSummary() {
     return () => {
       if (pollInterval) clearInterval(pollInterval);
     };
-  }, [currentOrganization?.id]);
+  }, [currentOrganization?.id, currentSeasonSetting?.id]);
 
   return { summary, loading, error, status, progress, generatedAt: summary?.generatedAt };
 }

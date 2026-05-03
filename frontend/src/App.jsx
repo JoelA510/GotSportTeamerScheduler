@@ -131,7 +131,14 @@ function AppContent() {
               </ProtectedRoute>
             }
           />
-          <Route path="/teams" element={<TeamAnalysisPage />} />
+          <Route
+            path="/teams"
+            element={
+              <ProtectedRoute requiredPermission={PERMISSIONS.VIEW_ALL_TEAMS}>
+                <TeamAnalysisPage />
+              </ProtectedRoute>
+            }
+          />
           <Route
             path="/coaches"
             element={
@@ -188,8 +195,22 @@ function AppContent() {
               </ProtectedRoute>
             }
           />
-          <Route path="/schedule/practice" element={<PracticeSchedulingPage />} />
-          <Route path="/schedule/game" element={<GameSchedulingPage />} />
+          <Route
+            path="/schedule/practice"
+            element={
+              <ProtectedRoute requiredPermission={PERMISSIONS.VIEW_SCHEDULE}>
+                <PracticeSchedulingPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/schedule/game"
+            element={
+              <ProtectedRoute requiredPermission={PERMISSIONS.VIEW_SCHEDULE}>
+                <GameSchedulingPage />
+              </ProtectedRoute>
+            }
+          />
           <Route
             path="/settings"
             element={
