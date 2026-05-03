@@ -26,12 +26,14 @@ export default function TimeSlotDropZone({
   isDragDisabled = false,
   timezone = undefined,
 }) {
+  const invalidReasonId = React.useId();
   const droppableId = `${fieldId}:${slotId}`;
   const { setNodeRef, isOver } = useDroppable({ id: droppableId });
 
   const hasConflict = conflictSet?.has(assignment?.id);
   const showValidIndicator = isOver && isValidTarget;
   const showInvalidIndicator = isOver && isInvalidTarget;
+  const invalidTooltipId = invalidReason ? `${invalidReasonId}-invalid-reason` : undefined;
 
   return (
     <div
@@ -61,10 +63,20 @@ export default function TimeSlotDropZone({
         </div>
       )}
       {showInvalidIndicator && (
-        <div className="absolute top-1 right-1 group" data-testid="invalid-indicator">
-          <X size={14} className="text-status-error" />
+        <div
+          className="absolute top-1 right-1 group rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-status-error/70 focus-visible:ring-offset-2 focus-visible:ring-offset-bg-surface"
+          data-testid="invalid-indicator"
+          tabIndex={0}
+          aria-label="Invalid drop target"
+          aria-describedby={invalidTooltipId}
+        >
+          <X size={14} className="text-status-error" aria-hidden="true" />
           {invalidReason && (
-            <div className="hidden group-hover:block absolute right-0 top-5 bg-bg-surface border border-border-default rounded px-2 py-1 text-xs text-text-secondary whitespace-nowrap shadow-lg z-10">
+            <div
+              id={invalidTooltipId}
+              role="tooltip"
+              className="absolute right-0 top-5 bg-bg-surface border border-border-default rounded px-2 py-1 text-xs text-text-secondary whitespace-nowrap shadow-lg z-10 opacity-0 pointer-events-none transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+            >
               {invalidReason}
             </div>
           )}
