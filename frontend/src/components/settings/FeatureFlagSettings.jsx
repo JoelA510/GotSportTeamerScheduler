@@ -84,7 +84,7 @@ export default function FeatureFlagSettings() {
     <div className="space-y-6 animate-fadeIn">
       <div className="flex items-center gap-2 mb-6">
         <div className="p-2 bg-purple-500/10 text-purple-400 rounded-lg">
-          <Shield size={20} />
+          <Shield size={20} aria-hidden="true" />
         </div>
         <div>
           <h3 className="text-lg font-medium text-text-primary">Executive Control Panel</h3>
@@ -102,7 +102,7 @@ export default function FeatureFlagSettings() {
               : 'bg-red-500/10 border-red-500/20 text-red-400'
           }`}
         >
-          <Info size={18} />
+          <Info size={18} aria-hidden="true" />
           <span className="text-sm font-medium">{message.text}</span>
         </div>
       )}
@@ -117,6 +117,8 @@ export default function FeatureFlagSettings() {
             description: 'Organization-level feature toggle.',
           };
           const isEnabled = localFlags[flag] || false;
+          const descriptionId = `feature-flag-${flag}-description`;
+          const switchLabel = `${meta.label}${flag.includes('advanced') ? ' Enterprise' : ''}`;
 
           return (
             <div
@@ -137,17 +139,26 @@ export default function FeatureFlagSettings() {
                       </span>
                     )}
                   </h4>
-                  <p className="text-xs text-text-muted max-w-lg leading-relaxed">
+                  <p
+                    id={descriptionId}
+                    className="text-xs text-text-muted max-w-lg leading-relaxed"
+                  >
                     {meta.description}
                   </p>
                 </div>
                 <button
+                  type="button"
+                  role="switch"
+                  aria-checked={isEnabled}
+                  aria-label={switchLabel}
+                  aria-describedby={descriptionId}
                   onClick={() => handleToggle(flag)}
-                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-bg-surface ${
                     isEnabled ? 'bg-brand-500' : 'bg-white/10'
                   }`}
                 >
                   <span
+                    aria-hidden="true"
                     className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
                       isEnabled ? 'translate-x-5' : 'translate-x-0'
                     }`}
@@ -179,7 +190,7 @@ export default function FeatureFlagSettings() {
       </div>
 
       <div className="mt-4 p-4 bg-yellow-500/5 border border-yellow-500/20 rounded-lg flex gap-3">
-        <AlertTriangle className="text-yellow-500 shrink-0" size={18} />
+        <AlertTriangle className="text-yellow-500 shrink-0" size={18} aria-hidden="true" />
         <p className="text-xs text-yellow-500/80 leading-relaxed">
           <strong>Caution</strong>: Modifying these flags can fundamentally alter teaming and
           scheduling outcomes. ensure all stakeholders are informed before performing structural
