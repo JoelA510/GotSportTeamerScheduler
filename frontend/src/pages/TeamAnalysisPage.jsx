@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDashboardData } from '../hooks/useDashboardData.js';
 import { useTeamPersistence } from '../hooks/useTeamPersistence.js';
 import { useImport } from '../contexts/ImportContext.jsx';
 import { useOrganization } from '../contexts/OrganizationContext.jsx';
+import { useAuth } from '../contexts/AuthContext.jsx';
 import TeamOverviewPanel from '../components/TeamOverviewPanel.jsx';
 import ProgramOverview from '../components/teaming/ProgramOverview.jsx';
 import TeamingConfiguration from '../components/teaming/TeamingConfiguration.jsx';
@@ -14,8 +15,18 @@ import Button from '../components/ui/Button.jsx';
 import ProgressBar from '../components/ui/ProgressBar.jsx';
 import { Edit2, Save, ArrowRight } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient.js';
+import { IS_MOCK_MODE } from '../config.js';
 import { generateTeams } from '../../../packages/core/src/teamGeneration.js';
+import { mapSchedulerRunToSummary } from '../../../packages/core/src/utils/teamSummaryMapper.js';
 import { PERMISSIONS } from '../constants/permissions.js';
+import { getPersistenceEndpoint, triggerTeamPersistence } from '../utils/teamPersistenceClient.js';
+import {
+  buildManualRosterSnapshot,
+  buildTeamReviewSnapshot,
+  firstString,
+  getPlayerExternalId,
+  isUuid,
+} from '../utils/teamReviewPersistence.js';
 
 const DEFAULT_MAX_ROSTER_SIZE = 14;
 const DEFAULT_MIN_ROSTER_SIZE = 10;
@@ -231,17 +242,43 @@ function toGeneratorPlayer(row, sourceIndex, division) {
   };
 }
 
-function buildGeneratedTeamPlayerRows(teamsByDivision) {
-  return Object.values(teamsByDivision || {}).flatMap((teams) =>
-    (teams || []).flatMap((team) =>
-      (team.players || []).map((player) => ({
-        team_id: team.id,
-        player_id: player.id,
-        role: 'player',
-        source: 'auto',
-      }))
-    )
+function getTeamReviewStorageKey(organizationId, seasonSettingsId) {
+  if (!organizationId || !seasonSettingsId) return null;
+  return `squadlogic:team-review:${organizationId}:${seasonSettingsId}`;
+}
+
+function resolveImportedPlayerName(row) {
+  const firstName = firstNonEmpty(row, ['first_name', 'First Name', 'firstName']) || '';
+  const lastName = firstNonEmpty(row, ['last_name', 'Last Name', 'lastName']) || '';
+  return `${firstName} ${lastName}`.trim() || 'Unnamed Player';
+}
+
+function getPlayerIdCandidate(row) {
+  return firstString(row, ['id', 'player_id', 'playerId']);
+}
+
+function getPlayerExternalCandidate(row) {
+  return (
+    getPlayerExternalId(row) ||
+    (isUuid(getPlayerIdCandidate(row)) ? null : getPlayerIdCandidate(row))
   );
+}
+
+function collectPlayerLookupKeys(rowsForProgram) {
+  const ids = new Set();
+  const externalIds = new Set();
+
+  rowsForProgram.forEach(({ row }) => {
+    const idCandidate = getPlayerIdCandidate(row);
+    const externalCandidate = getPlayerExternalCandidate(row);
+    if (isUuid(idCandidate)) ids.add(idCandidate);
+    if (externalCandidate) externalIds.add(externalCandidate);
+  });
+
+  return {
+    ids: [...ids],
+    externalIds: [...externalIds],
+  };
 }
 
 export default function TeamAnalysisPage() {
@@ -249,15 +286,22 @@ export default function TeamAnalysisPage() {
   const { persistenceSnapshot, loading: _persistenceLoading } = useTeamPersistence();
   const { importedData } = useImport();
   const { currentOrganization, currentSeasonSetting, permissions = [] } = useOrganization();
+  const { session, user: authUser } = useAuth();
   const [isEditMode, setIsEditMode] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [manualTeams, setManualTeams] = useState(null);
+  const [manualSaveState, setManualSaveState] = useState('idle');
+  const [manualSaveMessage, setManualSaveMessage] = useState('');
   const [selectedProgramId, setSelectedProgramId] = useState(null);
   const [configs, setConfigs] = useState({});
   const [generationError, setGenerationError] = useState(null);
+  const [reviewMessage, setReviewMessage] = useState('');
+  const [stagedReview, setStagedReview] = useState(null);
   const [divisionRows, setDivisionRows] = useState(null);
   const [divisionSettingsError, setDivisionSettingsError] = useState(null);
   const [savingConfigId, setSavingConfigId] = useState(null);
   const [configSaveMessage, setConfigSaveMessage] = useState('');
+  const loadedReviewKeyRef = useRef(null);
   const navigate = useNavigate();
   const canManageTeams =
     permissions.includes(PERMISSIONS.MANAGE_ALL_TEAMS) ||
@@ -266,6 +310,10 @@ export default function TeamAnalysisPage() {
 
   const importedPlayerRows = useMemo(() => getImportedRows(importedData), [importedData]);
   const basePrograms = useMemo(() => derivePrograms(importedPlayerRows), [importedPlayerRows]);
+  const reviewStorageKey = useMemo(
+    () => getTeamReviewStorageKey(currentOrganization?.id, currentSeasonSetting?.id),
+    [currentOrganization?.id, currentSeasonSetting?.id]
+  );
   const programs = useMemo(
     () =>
       basePrograms.map((program) =>
@@ -277,7 +325,41 @@ export default function TeamAnalysisPage() {
   useEffect(() => {
     setConfigs({});
     setConfigSaveMessage('');
+    setManualTeams(null);
+    setManualSaveMessage('');
+    setIsEditMode(false);
   }, [currentOrganization?.id, currentSeasonSetting?.id]);
+
+  useEffect(() => {
+    loadedReviewKeyRef.current = reviewStorageKey;
+    if (!reviewStorageKey || typeof sessionStorage === 'undefined') {
+      setStagedReview(null);
+      return;
+    }
+
+    try {
+      const storedReview = sessionStorage.getItem(reviewStorageKey);
+      setStagedReview(storedReview ? JSON.parse(storedReview) : null);
+    } catch {
+      setStagedReview(null);
+    }
+  }, [reviewStorageKey]);
+
+  useEffect(() => {
+    if (
+      !reviewStorageKey ||
+      loadedReviewKeyRef.current !== reviewStorageKey ||
+      typeof sessionStorage === 'undefined'
+    ) {
+      return;
+    }
+
+    if (stagedReview) {
+      sessionStorage.setItem(reviewStorageKey, JSON.stringify(stagedReview));
+    } else {
+      sessionStorage.removeItem(reviewStorageKey);
+    }
+  }, [reviewStorageKey, stagedReview]);
 
   const selectedProgram = useMemo(
     () => programs.find((p) => p.id === selectedProgramId) || programs[0],
@@ -512,15 +594,88 @@ export default function TeamAnalysisPage() {
     selectedProgram,
   ]);
 
+  const resolveGeneratorPlayers = useCallback(
+    async (rowsForProgram, selectedProgramKey, selectedDivisionId) => {
+      const { ids, externalIds } = collectPlayerLookupKeys(rowsForProgram);
+      const durablePlayers = [];
+      const selectedDivisionKey = String(selectedDivisionId || '');
+      const lookupResults = await Promise.all([
+        ids.length > 0
+          ? supabase
+              .from('players')
+              .select('id, external_registration_id, division_id')
+              .eq('organization_id', currentOrganization.id)
+              .in('id', ids)
+          : Promise.resolve({ data: [], error: null }),
+        externalIds.length > 0
+          ? supabase
+              .from('players')
+              .select('id, external_registration_id, division_id')
+              .eq('organization_id', currentOrganization.id)
+              .eq('division_id', selectedDivisionId)
+              .in('external_registration_id', externalIds)
+          : Promise.resolve({ data: [], error: null }),
+      ]);
+
+      lookupResults.forEach(({ data, error }) => {
+        if (error) throw error;
+        durablePlayers.push(...(data || []));
+      });
+
+      const byId = new Map(durablePlayers.map((player) => [String(player.id), player]));
+      const byExternalId = new Map(
+        durablePlayers
+          .filter((player) => player.external_registration_id)
+          .map((player) => [String(player.external_registration_id), player])
+      );
+      const missingRows = [];
+
+      const generatorPlayers = rowsForProgram.map(({ row, sourceIndex }) => {
+        const idCandidate = getPlayerIdCandidate(row);
+        const externalCandidate = getPlayerExternalCandidate(row);
+        const matchedPlayer =
+          (isUuid(idCandidate) && byId.get(idCandidate)) ||
+          (externalCandidate && byExternalId.get(externalCandidate)) ||
+          null;
+        const durablePlayer =
+          matchedPlayer &&
+          (!selectedDivisionKey || String(matchedPlayer.division_id || '') === selectedDivisionKey)
+            ? matchedPlayer
+            : null;
+
+        if (!durablePlayer && !IS_MOCK_MODE) {
+          missingRows.push(resolveImportedPlayerName(row));
+        }
+
+        const rowForGeneration = durablePlayer
+          ? {
+              ...row,
+              id: durablePlayer.id,
+              player_id: durablePlayer.id,
+              division_id: durablePlayer.division_id || row.division_id,
+            }
+          : row;
+
+        return toGeneratorPlayer(rowForGeneration, sourceIndex, selectedProgramKey);
+      });
+
+      if (missingRows.length > 0) {
+        const preview = missingRows.slice(0, 3).join(', ');
+        throw new Error(
+          `Apply-ready team generation requires durable roster players. Could not match ${missingRows.length} imported row${missingRows.length === 1 ? '' : 's'} to players: ${preview}.`
+        );
+      }
+
+      return generatorPlayers;
+    },
+    [currentOrganization?.id]
+  );
+
   const handleGenerateTeams = useCallback(async () => {
     setIsGenerating(true);
     setGenerationError(null);
     try {
-      const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser();
-      if (userError) throw userError;
+      const user = authUser || session?.user;
       if (!user?.id) throw new Error('Sign in before generating teams.');
       if (!currentOrganization?.id) throw new Error('Select an active organization.');
       if (!canManageTeams) throw new Error('Admin team-management permission is required.');
@@ -528,7 +683,7 @@ export default function TeamAnalysisPage() {
 
       const selectedProgramKey = String(selectedProgram.id);
       const config = configs[selectedProgramKey] || createDefaultConfig(selectedProgram);
-      await saveDivisionConfig(selectedProgram, config, { silent: true });
+      const savedDivision = await saveDivisionConfig(selectedProgram, config, { silent: true });
       const rowsForProgram = importedPlayerRows
         .map((row, sourceIndex) => ({ row, sourceIndex }))
         .filter(({ row }) => resolveDivisionId(row) === selectedProgramKey);
@@ -536,8 +691,10 @@ export default function TeamAnalysisPage() {
         throw new Error(`No imported players found for ${selectedProgram.name}.`);
       }
 
-      const generatorPlayers = rowsForProgram.map(({ row, sourceIndex }) =>
-        toGeneratorPlayer(row, sourceIndex, selectedProgramKey)
+      const generatorPlayers = await resolveGeneratorPlayers(
+        rowsForProgram,
+        selectedProgramKey,
+        savedDivision.id
       );
       const divisionConfig = {
         id: selectedProgramKey,
@@ -556,41 +713,38 @@ export default function TeamAnalysisPage() {
         divisionConfigs: { [selectedProgramKey]: divisionConfig },
         seed: config.seed,
       });
-      const teams = Object.values(result.teamsByDivision).flat();
-      const teamPlayers = buildGeneratedTeamPlayerRows(result.teamsByDivision);
-      const overflowPlayers = Object.values(result.overflowSummaryByDivision || {}).reduce(
-        (sum, summary) => sum + (summary?.totalPlayers || 0),
-        0
-      );
       const now = new Date().toISOString();
-
-      const { error: insertError } = await supabase.from('scheduler_runs').insert({
+      const snapshot = buildTeamReviewSnapshot({
+        generatedResult: result,
+        divisionKey: selectedProgramKey,
+        divisionId: savedDivision.id,
+        organizationId: currentOrganization.id,
+        seasonSettingsId: currentSeasonSetting?.id,
+        userId: user.id,
+        selectedProgramId: selectedProgramKey,
+        divisionConfig,
+        nowIso: now,
+      });
+      const summary = mapSchedulerRunToSummary({
+        id: snapshot.lastRunId,
         organization_id: currentOrganization.id,
         season_id: currentSeasonSetting?.id ?? null,
         season_settings_id: currentSeasonSetting?.id ?? null,
         run_type: 'team',
-        status: 'completed',
-        parameters: {
-          source: 'team_analysis_page',
-          selectedProgramId: selectedProgramKey,
-          divisionConfigs: { [selectedProgramKey]: divisionConfig },
-        },
-        metrics: {
-          progress: 100,
-          generatedTeams: teams.length,
-          assignedPlayers: teamPlayers.length,
-          overflowPlayers,
-        },
-        results: {
-          ...result,
-          teams,
-          team_players: teamPlayers,
-        },
-        started_at: now,
+        status: 'needs_manual_review',
+        results: snapshot.runMetadata.results,
+        created_at: now,
         completed_at: now,
-        created_by: user.id,
       });
-      if (insertError) throw insertError;
+
+      setStagedReview({
+        snapshot,
+        summary,
+        createdAt: now,
+        programName: selectedProgram.name,
+      });
+      setManualTeams(null);
+      setReviewMessage('Team review staged. Sync to Supabase to apply it.');
     } catch (err) {
       console.error('Generation failed:', err);
       setGenerationError(err?.message || 'Team generation failed.');
@@ -602,8 +756,11 @@ export default function TeamAnalysisPage() {
     canManageTeams,
     currentOrganization?.id,
     currentSeasonSetting?.id,
+    authUser,
     importedPlayerRows,
+    resolveGeneratorPlayers,
     saveDivisionConfig,
+    session?.user,
     selectedProgram,
   ]);
 
@@ -624,9 +781,122 @@ export default function TeamAnalysisPage() {
     }
   }, [team?.status, isGenerating]);
 
+  const activeTeamData = useMemo(() => {
+    if (!stagedReview?.summary) return team;
+    return {
+      ...team,
+      summary: stagedReview.summary,
+      generatedAt: stagedReview.summary.generatedAt,
+      totals: stagedReview.summary.totals,
+      divisions: stagedReview.summary.divisions,
+      teams: stagedReview.summary.teams,
+      team_players: stagedReview.summary.team_players,
+      status: 'needs_manual_review',
+      progress: 100,
+    };
+  }, [stagedReview?.summary, team]);
+
+  const displayPersistenceSnapshot = stagedReview?.snapshot || persistenceSnapshot;
+
+  const handlePersistSuccess = useCallback(() => {
+    if (stagedReview) {
+      setStagedReview(null);
+      setReviewMessage('Team review applied. Latest persisted teams will load from Supabase.');
+    }
+  }, [stagedReview]);
+
+  const handleDiscardReview = useCallback(() => {
+    setStagedReview(null);
+    setManualTeams(null);
+    setIsEditMode(false);
+    setReviewMessage('Team review discarded.');
+  }, []);
+
+  const handleRosterTeamsChange = useCallback((nextTeams) => {
+    setManualTeams(nextTeams);
+    setManualSaveMessage('Roster changes staged.');
+  }, []);
+
+  const handleSaveRosterChanges = useCallback(async () => {
+    if (!manualTeams || manualTeams.length === 0) {
+      setIsEditMode(false);
+      return;
+    }
+
+    setManualSaveState('saving');
+    setManualSaveMessage('');
+
+    try {
+      const user = authUser || session?.user;
+      if (!user?.id) throw new Error('Sign in before saving roster changes.');
+      if (!currentOrganization?.id) throw new Error('Select an active organization.');
+      if (!currentSeasonSetting?.id) throw new Error('Select an active season.');
+      if (!canManageTeams) throw new Error('Admin team-management permission is required.');
+
+      const snapshot = buildManualRosterSnapshot({
+        baseSnapshot: displayPersistenceSnapshot,
+        teams: manualTeams,
+        organizationId: currentOrganization.id,
+        seasonSettingsId: currentSeasonSetting.id,
+        userId: user.id,
+        divisionRows: divisionRows || [],
+      });
+
+      if (stagedReview) {
+        const summary = mapSchedulerRunToSummary({
+          id: snapshot.lastRunId,
+          organization_id: currentOrganization.id,
+          season_id: currentSeasonSetting.id,
+          season_settings_id: currentSeasonSetting.id,
+          run_type: 'team',
+          status: 'needs_manual_review',
+          results: snapshot.runMetadata.results,
+          created_at: new Date().toISOString(),
+          completed_at: new Date().toISOString(),
+        });
+        setStagedReview((current) => ({
+          ...(current || {}),
+          snapshot,
+          summary,
+        }));
+        setManualSaveMessage('Roster changes staged for review.');
+      } else {
+        const result = await triggerTeamPersistence({
+          snapshot,
+          overrides: [],
+          endpoint: getPersistenceEndpoint(),
+          accessToken: session?.access_token,
+        });
+
+        if (result.status !== 'success') {
+          throw new Error(result.message || 'Roster persistence failed.');
+        }
+
+        setManualSaveMessage('Roster changes synced to Supabase.');
+      }
+
+      setIsEditMode(false);
+    } catch (err) {
+      setManualSaveMessage(err?.message || 'Roster changes could not be saved.');
+    } finally {
+      setManualSaveState('idle');
+    }
+  }, [
+    canManageTeams,
+    currentOrganization?.id,
+    currentSeasonSetting?.id,
+    displayPersistenceSnapshot,
+    authUser,
+    divisionRows,
+    manualTeams,
+    session?.access_token,
+    session?.user,
+    stagedReview,
+  ]);
+
   // Map persistence snapshot to nested structure for RosterManager
   const mappedTeams = useMemo(() => {
-    const { teamRows = [], teamPlayerRows = [] } = persistenceSnapshot?.payload || {};
+    const { teamRows = [], teamPlayerRows = [] } = displayPersistenceSnapshot?.payload || {};
     const rawPlayers = importedPlayerRows;
 
     return teamRows.map((teamRow) => {
@@ -643,11 +913,16 @@ export default function TeamAnalysisPage() {
             name: playerDetails
               ? `${playerDetails['First Name'] || playerDetails['first_name'] || ''} ${playerDetails['Last Name'] || playerDetails['last_name'] || ''}`.trim() ||
                 'Unnamed Player'
-              : 'Unknown Player',
-            skill: playerDetails?.['Skill Level'] || playerDetails?.['skill_tier'] || 'developing',
+              : tp.player_name || 'Unknown Player',
+            skill:
+              playerDetails?.['Skill Level'] ||
+              playerDetails?.['skill_tier'] ||
+              tp.skill ||
+              'developing',
             buddyId: playerDetails?.buddyId || playerDetails?.buddy_id,
             gender: playerDetails?.gender || playerDetails?.Gender,
             age: playerDetails?.age || playerDetails?.Age || 10,
+            assignment_source: tp.source,
           };
         });
 
@@ -661,18 +936,18 @@ export default function TeamAnalysisPage() {
         players,
       };
     });
-  }, [persistenceSnapshot?.payload, importedPlayerRows]);
+  }, [displayPersistenceSnapshot?.payload, importedPlayerRows]);
 
   // Use real data from the dashboard hook if available, otherwise empty array
   // Map automated results if persistence is empty
   const activeTeams = useMemo(() => {
     if (mappedTeams.length > 0) return mappedTeams;
-    if (!team?.teams) return [];
+    if (!activeTeamData?.teams) return [];
 
     const rawPlayers = importedPlayerRows;
-    const teamPlayers = team?.team_players || [];
+    const teamPlayers = activeTeamData?.team_players || [];
 
-    return team.teams.map((t) => ({
+    return activeTeamData.teams.map((t) => ({
       ...t,
       players: teamPlayers
         .filter((tp) => tp.team_id === t.id)
@@ -685,15 +960,31 @@ export default function TeamAnalysisPage() {
             name: playerDetails
               ? `${playerDetails['First Name'] || playerDetails['first_name'] || ''} ${playerDetails['Last Name'] || playerDetails['last_name'] || ''}`.trim() ||
                 'Unnamed Player'
-              : 'Unknown Player',
-            skill: playerDetails?.['Skill Level'] || playerDetails?.['skill_tier'] || 'developing',
+              : tp.player_name || 'Unknown Player',
+            skill:
+              playerDetails?.['Skill Level'] ||
+              playerDetails?.['skill_tier'] ||
+              tp.skill ||
+              'developing',
             buddyId: playerDetails?.buddyId || playerDetails?.buddy_id,
             gender: playerDetails?.gender || playerDetails?.Gender,
             age: playerDetails?.age || playerDetails?.Age || 10,
+            assignment_source: tp.source,
           };
         }),
     }));
-  }, [mappedTeams, team, importedPlayerRows]);
+  }, [mappedTeams, activeTeamData, importedPlayerRows]);
+
+  const handleEditButtonClick = useCallback(() => {
+    if (isEditMode) {
+      handleSaveRosterChanges();
+      return;
+    }
+
+    setManualTeams(activeTeams);
+    setManualSaveMessage('');
+    setIsEditMode(true);
+  }, [activeTeams, handleSaveRosterChanges, isEditMode]);
 
   return (
     <div className="animate-fadeIn space-y-8 max-w-[65ch] mx-auto w-full">
@@ -706,19 +997,24 @@ export default function TeamAnalysisPage() {
             Review team generation, division capacity, and roster assignments.
           </p>
         </div>
-        {team?.generatedAt && canManageTeams && (
+        {activeTeamData?.generatedAt && canManageTeams && (
           <Button
             variant={isEditMode ? 'primary' : 'secondary'}
-            onClick={() => setIsEditMode(!isEditMode)}
+            onClick={handleEditButtonClick}
+            disabled={manualSaveState === 'saving'}
             className="flex items-center gap-2"
           >
             {isEditMode ? <Save size={18} /> : <Edit2 size={18} />}
-            {isEditMode ? 'Save Changes' : 'Edit Mode'}
+            {isEditMode
+              ? manualSaveState === 'saving'
+                ? 'Saving...'
+                : 'Save Changes'
+              : 'Edit Mode'}
           </Button>
         )}
       </div>
 
-      {loading?.team || isActuallyGenerating ? (
+      {(loading?.team && !stagedReview) || isActuallyGenerating ? (
         <div className="p-12 text-center animate-fadeIn">
           <div className="max-w-md mx-auto">
             <h3 className="text-xl font-bold text-text-primary mb-4">
@@ -736,7 +1032,7 @@ export default function TeamAnalysisPage() {
             />
           </div>
         </div>
-      ) : !team?.generatedAt && importedData ? (
+      ) : !activeTeamData?.generatedAt && importedData ? (
         // NEW DASHBOARD VIEW
         <div className="space-y-6">
           {/* 1. Validation Panel */}
@@ -805,18 +1101,49 @@ export default function TeamAnalysisPage() {
                 Drag and drop players between teams to manually override automated assignments.
               </p>
             </div>
-            <RosterManager initialTeams={activeTeams} />
+            {manualSaveMessage && (
+              <div className="mb-4 rounded-lg border border-border-subtle bg-bg-base px-4 py-3 text-sm text-text-secondary">
+                {manualSaveMessage}
+              </div>
+            )}
+            <RosterManager
+              initialTeams={manualTeams || activeTeams}
+              onTeamsChange={handleRosterTeamsChange}
+            />
           </div>
         </div>
       ) : (
         <>
           <TeamOverviewPanel
-            totals={team.totals}
-            divisions={team.divisions}
-            generatedAt={team.generatedAt}
+            totals={activeTeamData.totals}
+            divisions={activeTeamData.divisions}
+            generatedAt={activeTeamData.generatedAt}
             timezone={timezone}
           />
-          <TeamPersistencePanel teamPersistenceSnapshot={persistenceSnapshot} />
+          {(stagedReview || reviewMessage) && (
+            <section className="bg-bg-surface border border-border-subtle rounded-xl p-5">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h3 className="text-lg font-bold text-text-primary">
+                    {stagedReview ? 'Team Review Pending' : 'Team Review Status'}
+                  </h3>
+                  <p className="text-sm text-text-secondary">
+                    {reviewMessage ||
+                      `${stagedReview.programName || 'Selected program'} is ready for Supabase sync.`}
+                  </p>
+                </div>
+                {stagedReview && (
+                  <Button variant="secondary" onClick={handleDiscardReview}>
+                    Discard Review
+                  </Button>
+                )}
+              </div>
+            </section>
+          )}
+          <TeamPersistencePanel
+            teamPersistenceSnapshot={displayPersistenceSnapshot}
+            onPersistSuccess={stagedReview ? handlePersistSuccess : undefined}
+          />
           {activeTeams.length > 0 && (
             <section
               className="bg-bg-surface border border-border-subtle rounded-xl p-6"

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient.js';
 import WorkflowStep from './WorkflowStep.jsx';
 import ImportPanel from './ImportPanel.jsx';
@@ -13,7 +14,6 @@ import Button from './ui/Button.jsx';
 import ProgressBar from './ui/ProgressBar.jsx';
 import { FeatureGuard } from './ui/FeatureGuard.jsx';
 import { FEATURE_FLAGS } from '../constants/featureFlags.js';
-import { logger } from '../lib/logger.js';
 
 const DashboardWorkflow = ({
   loading,
@@ -28,6 +28,7 @@ const DashboardWorkflow = ({
   timezone,
   scheduleEvaluation: _scheduleEvaluation = undefined,
 }) => {
+  const navigate = useNavigate();
   const totalSteps = 6;
   const [internalActiveStep, setInternalActiveStep] = useState(() => {
     const saved = localStorage.getItem('dashboardActiveStep');
@@ -147,34 +148,8 @@ const DashboardWorkflow = ({
                   {importedData.totalRows} records imported and ready for processing. Click below to
                   generate team structures based on the imported data.
                 </p>
-                <Button
-                  variant="primary"
-                  size="lg"
-                  onClick={async () => {
-                    // Attempt real insert
-                    try {
-                      // Fetch season settings ID first
-                      const { data: settings } = await supabase
-                        .from('season_settings')
-                        .select('id')
-                        .limit(1)
-                        .single();
-
-                      if (settings) {
-                        await supabase.from('scheduler_runs').insert({
-                          season_settings_id: settings.id,
-                          run_type: 'team',
-                          status: 'running',
-                          metrics: { progress: 0 },
-                          started_at: new Date().toISOString(),
-                        });
-                      }
-                    } catch (e) {
-                      logger.error('Backend insert failed', e);
-                    }
-                  }}
-                >
-                  Generate Teams
+                <Button variant="primary" size="lg" onClick={() => navigate('/teams')}>
+                  Open Team Builder
                 </Button>
               </div>
             ) : (

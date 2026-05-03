@@ -308,6 +308,13 @@ When('I click the {string} button on the Roster Manager', async ({ page }, btnNa
   await btn.click({ force: true });
 });
 
+Then(
+  'the {string} button should not be displayed on the Roster Manager',
+  async ({ page }, btnName: string) => {
+    await expect(page.getByRole('button', { name: new RegExp(btnName, 'i') })).toHaveCount(0);
+  }
+);
+
 Then('no conflict banner should be displayed', async ({ page }) => {
   await expect(page.locator('.bg-status-error-bg').first()).toBeHidden();
 });
