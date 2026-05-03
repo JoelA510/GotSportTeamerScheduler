@@ -30,17 +30,18 @@ npm run test:db:once supabase/tests/rls_cross_org_isolation.sql
 
 ## Directory layout
 
-| File                                          | Purpose                                                      |
-| --------------------------------------------- | ------------------------------------------------------------ |
-| `_template.sql.txt`                           | Copy-starting-point for new tests; renamed so auto-discovery does not execute it. |
-| `_harness.sql`                                | Trivial self-test; fails fast if pgTAP itself is broken.     |
-| `_fixtures.sql`                               | Shared seed data; standalone guard lets auto-discovery execute it safely. |
-| `rls_cross_org_isolation.sql`                 | Org A member cannot SELECT Org B's rows.                     |
-| `rls_anonymous_gate.sql`                      | `anon` role reads zero rows from every domain table.         |
-| `rls_admin_vs_coach.sql`                      | `audit_log` visible to admins, invisible to coaches.         |
-| `rls_service_role_bypass.sql`                 | `service_role` sees every row across orgs.                   |
-| `rls_import_efficiency_metrics_view.sql`      | `security_invoker = on` view is org-scoped for its caller.   |
-| `division_roster_constraints.sql`             | Division roster/team bounds persist and stay admin-owned.    |
+| File                                     | Purpose                                                                           |
+| ---------------------------------------- | --------------------------------------------------------------------------------- |
+| `_template.sql.txt`                      | Copy-starting-point for new tests; renamed so auto-discovery does not execute it. |
+| `_harness.sql`                           | Trivial self-test; fails fast if pgTAP itself is broken.                          |
+| `_fixtures.sql`                          | Shared seed data; standalone guard lets auto-discovery execute it safely.         |
+| `rls_cross_org_isolation.sql`            | Org A member cannot SELECT Org B's rows.                                          |
+| `rls_anonymous_gate.sql`                 | `anon` role reads zero rows from every domain table.                              |
+| `rls_admin_vs_coach.sql`                 | `audit_log` visible to admins, invisible to coaches.                              |
+| `rls_service_role_bypass.sql`            | `service_role` sees every row across orgs.                                        |
+| `rls_import_efficiency_metrics_view.sql` | `security_invoker = on` view is org-scoped for its caller.                        |
+| `coach_leads.sql`                        | Player-import coach lead RPC stays idempotent and org-scoped.                     |
+| `division_roster_constraints.sql`        | Division roster/team bounds persist and stay admin-owned.                         |
 
 ## Conventions
 
@@ -57,6 +58,7 @@ Every test file MUST:
 
    If a fixture doesn't provide the rows you need, **extend `_fixtures.sql`**
    rather than inlining INSERTs. Per-test INSERTs are forbidden.
+
 3. Declare `SELECT plan(N)` with the exact number of assertions you make.
    Too many or too few asserts → test fails.
 4. Simulate a user with `SET LOCAL role = 'authenticated'` plus
@@ -72,15 +74,15 @@ See `_template.sql.txt` for a copy-paste starter.
 Defined in `_fixtures.sql`. Reuse these UUIDs in new tests — don't mint
 fresh ones unless the test specifically needs a new identity.
 
-| Entity                    | UUID                                   |
-| ------------------------- | -------------------------------------- |
-| Alice (admin of Org A)    | `11111111-1111-1111-1111-111111111111` |
-| Bob (admin of Org B)      | `22222222-2222-2222-2222-222222222222` |
-| Charlie (coach of Org A)  | `33333333-3333-3333-3333-333333333333` |
-| Org A                     | `a1111111-1111-1111-1111-111111111111` |
-| Org B                     | `b2222222-2222-2222-2222-222222222222` |
-| A-Team (Org A)            | `aaaaaaaa-0000-0000-0000-000000000001` |
-| B-Team (Org B)            | `bbbbbbbb-0000-0000-0000-000000000002` |
+| Entity                   | UUID                                   |
+| ------------------------ | -------------------------------------- |
+| Alice (admin of Org A)   | `11111111-1111-1111-1111-111111111111` |
+| Bob (admin of Org B)     | `22222222-2222-2222-2222-222222222222` |
+| Charlie (coach of Org A) | `33333333-3333-3333-3333-333333333333` |
+| Org A                    | `a1111111-1111-1111-1111-111111111111` |
+| Org B                    | `b2222222-2222-2222-2222-222222222222` |
+| A-Team (Org A)           | `aaaaaaaa-0000-0000-0000-000000000001` |
+| B-Team (Org B)           | `bbbbbbbb-0000-0000-0000-000000000002` |
 
 ## CI
 

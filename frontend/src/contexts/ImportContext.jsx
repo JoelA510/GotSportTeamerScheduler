@@ -14,6 +14,11 @@ import { logger } from '../lib/logger.js';
 import { withTimeout } from '../lib/withTimeout.js';
 import { useOrganization } from './OrganizationContext.jsx';
 import { matchHeaders, SYSTEM_COLUMNS } from '../utils/telemetryUtils.js';
+import {
+  buildCoachLeadPayload,
+  getExternalRegistrationId,
+  hasCoachLeadIntent,
+} from '../utils/coachLeads.js';
 
 const MAX_ROWS = 10000;
 const MAX_COLS = 1200;
@@ -535,6 +540,125 @@ export function ImportProvider({ children }) {
               const finalStatus =
                 validationErrors.length > 0 ? 'completed_with_warnings' : 'completed';
               let persistenceResult = null;
+              let effectiveStatus = finalStatus;
+
+              const persistCoachLeadSummary = async (summary, statusOverride = null) => {
+                const { data: latestJob, error: readError } = await supabase
+                  .from('import_jobs')
+                  .select('warning_summary')
+                  .eq('id', job.id)
+                  .maybeSingle();
+
+                if (readError) {
+                  addLog(`Warning: Could not read import job warnings: ${readError.message}`);
+                  return;
+                }
+
+                const updatePayload = {
+                  warning_summary: {
+                    ...(latestJob?.warning_summary || {}),
+                    coach_leads: summary,
+                  },
+                };
+                if (statusOverride) updatePayload.status = statusOverride;
+
+                const { error: updateError } = await supabase
+                  .from('import_jobs')
+                  .update(updatePayload)
+                  .eq('id', job.id);
+
+                if (updateError) {
+                  addLog(`Warning: Could not persist coach lead summary: ${updateError.message}`);
+                }
+              };
+
+              const captureCoachLeads = async () => {
+                const candidateRows = normalizedData.filter(hasCoachLeadIntent);
+                if (candidateRows.length === 0) return null;
+
+                try {
+                  const { data: divisions, error: divisionsError } = await supabase
+                    .from('divisions')
+                    .select('id, name')
+                    .eq('organization_id', currentOrganization.id);
+
+                  if (divisionsError) {
+                    throw new Error(divisionsError.message || 'Could not resolve divisions');
+                  }
+
+                  const externalIds = Array.from(
+                    new Set(candidateRows.map(getExternalRegistrationId).filter(Boolean))
+                  );
+                  let players = [];
+
+                  if (externalIds.length > 0) {
+                    const { data: matchedPlayers, error: playersError } = await supabase
+                      .from('players')
+                      .select('id, external_registration_id, division_id')
+                      .eq('organization_id', currentOrganization.id)
+                      .in('external_registration_id', externalIds);
+
+                    if (playersError) {
+                      throw new Error(playersError.message || 'Could not resolve imported players');
+                    }
+                    players = matchedPlayers || [];
+                  }
+
+                  const coachLeadPayload = buildCoachLeadPayload(normalizedData, {
+                    organizationId: currentOrganization.id,
+                    divisions: divisions || [],
+                    players,
+                  });
+
+                  if (coachLeadPayload.length === 0) {
+                    const summary = {
+                      status: 'skipped',
+                      candidate_rows: candidateRows.length,
+                      leads_submitted: 0,
+                      message:
+                        'Coach volunteer rows were present, but no guardian or parent name and email could be resolved.',
+                    };
+                    addLog(
+                      `Warning: ${candidateRows.length} coach volunteer row(s) could not create leads because adult contact fields were missing.`
+                    );
+                    await persistCoachLeadSummary(summary, 'completed_with_warnings');
+                    return summary;
+                  }
+
+                  const { data: coachLeadResult, error: coachLeadError } = await supabase.rpc(
+                    'upsert_coach_leads',
+                    { p_leads: coachLeadPayload }
+                  );
+
+                  if (coachLeadError) {
+                    throw new Error(coachLeadError.message || 'Coach lead capture failed');
+                  }
+
+                  const summary = {
+                    status: 'completed',
+                    candidate_rows: candidateRows.length,
+                    leads_submitted: coachLeadPayload.length,
+                    leads_created: coachLeadResult?.leads_created ?? 0,
+                    programs_linked: coachLeadResult?.programs_linked ?? 0,
+                    skipped_existing: coachLeadResult?.skipped_existing ?? 0,
+                  };
+                  addLog(
+                    `Coach leads captured: ${summary.leads_created} new, ${summary.programs_linked} program links.`
+                  );
+                  await persistCoachLeadSummary(summary);
+                  return summary;
+                } catch (err) {
+                  const summary = {
+                    status: 'failed',
+                    candidate_rows: candidateRows.length,
+                    leads_submitted: 0,
+                    message: err.message,
+                  };
+                  addLog(`Warning: Coach lead capture failed: ${err.message}`);
+                  await persistCoachLeadSummary(summary, 'completed_with_warnings');
+                  return summary;
+                }
+              };
 
               if (type === 'players') {
                 addLog('Applying validated players to the roster database...');
@@ -551,9 +675,21 @@ export function ImportProvider({ children }) {
                 }
 
                 persistenceResult = finalizeResult;
+                effectiveStatus = finalizeResult?.status || finalStatus;
                 addLog(
                   `Roster database updated: ${finalizeResult?.inserted_players ?? 0} inserted, ${finalizeResult?.updated_players ?? 0} updated.`
                 );
+
+                const coachLeadSummary = await captureCoachLeads();
+                if (coachLeadSummary) {
+                  persistenceResult = {
+                    ...(persistenceResult || {}),
+                    coach_leads: coachLeadSummary,
+                  };
+                  if (coachLeadSummary.status !== 'completed') {
+                    effectiveStatus = 'completed_with_warnings';
+                  }
+                }
               }
 
               const importData = {
@@ -587,7 +723,7 @@ export function ImportProvider({ children }) {
               if (type === 'fields') setImportedFields(importData);
               setImportedData(importData);
 
-              completeImport(type, importData, persistenceResult?.status || finalStatus);
+              completeImport(type, importData, effectiveStatus);
             };
 
             await processChunk();

@@ -31,7 +31,7 @@
   - `preferred_practice_days` (`day_of_week[]` limited to Mon–Thu)
   - `preferred_practice_window` (tsrange) for time-of-day preferences
   - `can_coach_multiple_teams` (boolean)
-  - `status` (`active`, `pending-confirmation`, `inactive`)
+  - `status` (`active`, `pending-confirmation`, `inactive`, `interested`)
 - **Indexes & constraints**:
   - Unique index on `email`.
   - Foreign key `player_id` references `players.id` with `ON DELETE SET NULL`.

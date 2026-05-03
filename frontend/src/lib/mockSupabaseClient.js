@@ -148,6 +148,8 @@ const initialMockData = {
       division_id: 'U8 Boys',
     },
   ],
+  coaches: [],
+  coach_interested_programs: [],
   profile_players: [
     { profile_id: 'mock-parent-id', player_id: 'player-1' },
     { profile_id: 'mock-parent-id', player_id: 'player-2' },
@@ -1440,9 +1442,18 @@ export const mockSupabase = {
               String(player.organization_id) === String(job.organization_id) &&
               String(player.external_registration_id) === String(externalId)
           );
-        const willingToCoach = ['true', 'yes', 'y', '1'].includes(
-          String(payload.willing_to_coach || '').toLowerCase()
-        );
+        const willingToCoach = [
+          'true',
+          't',
+          'yes',
+          'y',
+          '1',
+          'coach',
+          'head coach',
+          'assistant coach',
+          'volunteer',
+          'willing',
+        ].includes(String(payload.willing_to_coach || '').toLowerCase());
         const basePlayer = {
           organization_id: job.organization_id,
           division_id: division?.id || payload.division_id || existing?.division_id || null,
@@ -1511,6 +1522,123 @@ export const mockSupabase = {
       return { data: job.warning_summary.finalize, error: null };
     }
 
+    if (name === 'upsert_coach_leads') {
+      const leads = Array.isArray(params?.p_leads) ? params.p_leads : null;
+      if (!leads) {
+        return { data: null, error: { message: 'p_leads must be an array' } };
+      }
+
+      const normalizeEmail = (email) =>
+        String(email || '')
+          .trim()
+          .toLowerCase();
+      const validLeads = leads
+        .map((lead) => ({
+          email: normalizeEmail(lead.email),
+          full_name: String(lead.full_name || '').trim(),
+          organization_id: lead.organization_id,
+          division_id: lead.division_id || null,
+          player_id: lead.player_id || null,
+        }))
+        .filter((lead) => lead.email && lead.full_name && lead.organization_id);
+
+      db.coaches = db.coaches || [];
+      db.coach_interested_programs = db.coach_interested_programs || [];
+
+      for (const lead of validLeads) {
+        if (
+          lead.division_id &&
+          !(db.divisions || []).some(
+            (division) =>
+              String(division.id) === String(lead.division_id) &&
+              String(division.organization_id) === String(lead.organization_id)
+          )
+        ) {
+          return {
+            data: null,
+            error: { message: 'Coach lead references a division outside its organization' },
+          };
+        }
+
+        if (
+          lead.player_id &&
+          !(db.players || []).some(
+            (player) =>
+              String(player.id) === String(lead.player_id) &&
+              String(player.organization_id) === String(lead.organization_id)
+          )
+        ) {
+          return {
+            data: null,
+            error: { message: 'Coach lead references a player outside its organization' },
+          };
+        }
+      }
+
+      let leadsCreated = 0;
+      let programsLinked = 0;
+      const coachCandidateEmails = new Set();
+
+      validLeads.forEach((lead) => {
+        if (coachCandidateEmails.has(lead.email)) return;
+        coachCandidateEmails.add(lead.email);
+
+        const existingGlobalCoach = db.coaches.find(
+          (coach) => normalizeEmail(coach.email) === lead.email
+        );
+        if (!existingGlobalCoach) {
+          db.coaches.push({
+            id: Math.random().toString(36).substr(2, 9),
+            organization_id: lead.organization_id,
+            full_name: lead.full_name,
+            email: lead.email,
+            status: 'interested',
+            import_source: 'player_import_lead',
+            last_imported_at: new Date().toISOString(),
+            created_at: new Date().toISOString(),
+          });
+          leadsCreated += 1;
+        }
+      });
+
+      validLeads.forEach((lead) => {
+        const coach = db.coaches.find(
+          (item) =>
+            normalizeEmail(item.email) === lead.email &&
+            String(item.organization_id) === String(lead.organization_id)
+        );
+        if (!coach || !lead.division_id) return;
+
+        const existingLink = db.coach_interested_programs.find(
+          (item) =>
+            String(item.coach_id) === String(coach.id) &&
+            String(item.division_id) === String(lead.division_id) &&
+            String(item.inferred_from_player_id || '') === String(lead.player_id || '')
+        );
+        if (existingLink) return;
+
+        db.coach_interested_programs.push({
+          id: Math.random().toString(36).substr(2, 9),
+          coach_id: coach.id,
+          division_id: lead.division_id,
+          inferred_from_player_id: lead.player_id,
+          organization_id: lead.organization_id,
+          created_at: new Date().toISOString(),
+        });
+        programsLinked += 1;
+      });
+
+      saveDB(db);
+      return {
+        data: {
+          leads_created: leadsCreated,
+          programs_linked: programsLinked,
+          skipped_existing: validLeads.length - leadsCreated,
+        },
+        error: null,
+      };
+    }
+
     if (name === 'persist_evaluation_run') {
       return { data: { id: 'eval-' + Math.random().toString(36).substr(2, 6) }, error: null };
     }
@@ -1536,12 +1664,33 @@ export const mockSupabase = {
           birthdate: 'date_of_birth',
           'full name': 'full_name',
           full_name: 'full_name',
+          'coach name': 'full_name',
+          'coach first name': 'first_name',
+          'coach last name': 'last_name',
           email: 'email',
           'email address': 'email',
+          'email/userid': 'email',
+          'email/user id': 'email',
+          email_userid: 'email',
+          'contact email': 'email',
           name: 'name',
           'field name': 'name',
+          field_name: 'name',
+          'coach willing': 'willing_to_coach',
+          'willing to coach': 'willing_to_coach',
+          buddy: 'buddy_request',
+          'buddy request': 'buddy_request',
+          friend: 'buddy_request',
+          'friend request': 'buddy_request',
+          medical: 'medical_info',
+          'medical info': 'medical_info',
+          allergy: 'medical_info',
+          allergies: 'medical_info',
+          skill: 'skill_tier',
           'skill level': 'skill_tier',
+          'skill tier': 'skill_tier',
           skill_tier: 'skill_tier',
+          level: 'skill_tier',
           id: 'gotsport_id',
           pid: 'gotsport_id',
           'official id': 'gotsport_id',
@@ -1554,6 +1703,26 @@ export const mockSupabase = {
           division: 'division_name',
           division_name: 'division_name',
           program: 'division_name',
+          grade: 'grade',
+          gender: 'gender',
+          'preferred name': 'preferred_name',
+          preferred_name: 'preferred_name',
+          nickname: 'nickname',
+          phone: 'phone',
+          'contact phone': 'contact_phone',
+          contact_phone: 'contact_phone',
+          'guardian name': 'guardian_name',
+          guardian_name: 'guardian_name',
+          'parent name': 'parent_name',
+          parent_name: 'parent_name',
+          'guardian email': 'guardian_email',
+          guardian_email: 'guardian_email',
+          'parent email': 'parent_email',
+          parent_email: 'parent_email',
+          'guardian phone': 'guardian_phone',
+          guardian_phone: 'guardian_phone',
+          'parent phone': 'parent_phone',
+          parent_phone: 'parent_phone',
         };
         const requiredFields = {
           players: ['first_name', 'last_name', 'date_of_birth'],

@@ -27,14 +27,14 @@ So any work that adds new functionality belongs here, not in the existing wave s
 The CSV-import pipeline now has a durable player-promotion slice, but the
 remaining import work is not fully closed. Specifically:
 
-| Surface                                                   | State                                                                                                                                                            |
-| :-------------------------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `supabase/functions/import-validation/index.ts`           | Validates + sanitizes rows, returns them in `validated_data`, and stages valid player rows into `staging_players` when an `import_job_id` is supplied.           |
-| `frontend/src/contexts/ImportContext.jsx` — `startImport` | Writes an `import_jobs` row, invokes validation, then calls `finalize_import_job` for player imports. Coach and field imports still stop at validation/metadata. |
-| `players` table                                           | Player rows are promoted from `staging_players` by `finalize_import_job(uuid, jsonb)` with admin-only RBAC and per-job idempotency.                              |
-| `coaches` / `teams` tables                                | Exist with RLS, triggers, indexes — direct promotion from imports remains pending Task 8 / later teaming work.                                                   |
-| `staging_players` table                                   | Stores valid player rows with `source_row_number`, `promoted_at`, and `promoted_by`; promoted rows are skipped on finalize reruns.                               |
-| `docs/expansion/03_ROADMAP.md` — M2.2                     | Claims the ingestion pipeline is "finalized with robust validation and error recovery." True for validation; false for write-through.                            |
+| Surface                                                   | State                                                                                                                                                                                                              |
+| :-------------------------------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `supabase/functions/import-validation/index.ts`           | Validates + sanitizes rows, returns them in `validated_data`, and stages valid player rows into `staging_players` when an `import_job_id` is supplied.                                                             |
+| `frontend/src/contexts/ImportContext.jsx` — `startImport` | Writes an `import_jobs` row, invokes validation, calls `finalize_import_job` for player imports, then captures player-import coach volunteer leads. Coach CSV and field imports still stop at validation/metadata. |
+| `players` table                                           | Player rows are promoted from `staging_players` by `finalize_import_job(uuid, jsonb)` with admin-only RBAC and per-job idempotency.                                                                                |
+| `coaches` / `teams` tables                                | `coaches` can receive `interested` rows from player-import coach intent. Coach CSV promotion, coach admin UX, and team/field import promotion remain pending.                                                      |
+| `staging_players` table                                   | Stores valid player rows with `source_row_number`, `promoted_at`, and `promoted_by`; promoted rows are skipped on finalize reruns.                                                                                 |
+| `docs/expansion/03_ROADMAP.md` — M2.2                     | Claims the ingestion pipeline is "finalized with robust validation and error recovery." True for validation; false for write-through.                                                                              |
 
 Three downstream features stub around this:
 
@@ -60,7 +60,7 @@ User ask (2026-04-21, this session):
 Constraints worth naming explicitly:
 
 - `coaches.email` is globally `UNIQUE` today (not org-scoped). Whatever write path is built has to either tolerate that assumption or migrate the constraint.
-- `coaches.status` today accepts `'active' | 'pending-confirmation' | 'inactive'`. Adding `'interested'` is additive and backward-safe.
+- `coaches.status` now accepts `'active' | 'pending-confirmation' | 'inactive' | 'interested'`; coach CSV promotion still needs to preserve active records and promote matching interested leads.
 - Division gender comes from `divisions.gender_policy` (`'coed' | 'girls' | 'boys'`). A "U12B" program is `(division_name='U12', gender_policy='boys')` — no separate gender column is needed on a coach-interest junction.
 - `players.coach_volunteer` already exists as a boolean column. A lead-capture pass should read this rather than inventing a new `coach_intent` field.
 - The wave-execution protocol (`.claude/wave-execution-protocol.md`) forbids modifying `.claude/wave-*-prompt.md` during execution. A v1.1 wave is a new file, not an edit to an existing one.
@@ -116,11 +116,11 @@ Broken into plausible v1.1 waves. Names + numbers are tentative; a v1.1 planning
   - `organization_id` constraint in the lead lookup (P1 — cross-tenant risk with global-unique email).
   - `NULLS NOT DISTINCT` on the `coach_interested_programs` unique (P2 — re-imports create duplicates otherwise).
   - Remove unused `v_existing_status`.
-- Inline inference during player import: match the enroller name against Guardian 1 / Guardian 2 by Levenshtein, pick the closer guardian's email.
+- Player imports now call `upsert_coach_leads` after `finalize_import_job`, deriving interested coach leads from positive coach intent plus guardian/parent contact fields. Remaining refinement: add enroller/guardian Levenshtein matching when those distinct GotSport columns are available.
 - Auto-promote matching leads when a coach CSV imports (coach-CSV wins; the parent may still be flagged as "interested" in other children's divisions, but the identity is now `'active'`).
 - `/coaches` page — doesn't exist today. Build minimal: status pills (All / Registered / Interested), program filter, search by name/email. Listed as interested = "here are people who volunteered on a registration form but haven't completed coach registration; reach out offline."
 
-**Touches**: `supabase/migrations/20260421060000_coach_leads.sql` (the parked migration), `frontend/src/components/ColumnMapper.jsx` (new canonical fields for enroller + guardian + division), `frontend/src/utils/telemetryUtils.js` (alias additions — must be kept in sync with `supabase/functions/import-validation/index.ts` per the Codex P1 on #186), `frontend/src/contexts/ImportContext.jsx` (call `upsert_coach_leads` after player finalize), new `frontend/src/pages/CoachesPage.jsx`, router wiring.
+**Touches**: `supabase/migrations/20260421060000_coach_leads.sql` plus the org-scope hardening migration, `frontend/src/contexts/ImportContext.jsx` (calls `upsert_coach_leads` after player finalize), `frontend/src/utils/coachLeads.js`, `frontend/src/components/ColumnMapper.jsx` (remaining enroller/manual mapping refinements), `frontend/src/utils/telemetryUtils.js` (alias additions — must be kept in sync with `supabase/functions/import-validation/index.ts` per the Codex P1 on #186), new `frontend/src/pages/CoachesPage.jsx`, router wiring.
 
 ### v1.1 Area E — Intent-Field Capture for Non-Coach Volunteers
 
@@ -130,15 +130,15 @@ Out of scope for v1.1 per user ask (2026-04-21): referee-rep intent, PSA-trainin
 
 ## Related Artifacts
 
-| Artifact                                                                            | State                       | Notes                                                                                                                            |
-| :---------------------------------------------------------------------------------- | :-------------------------- | :------------------------------------------------------------------------------------------------------------------------------- |
-| PR [#185](https://github.com/JoelA510/SquadLogic/pull/185) — CSV template downloads | Open                        | Ready to merge once Gemini feedback applied. Prereq for Area A / D UX.                                                           |
-| PR [#184](https://github.com/JoelA510/SquadLogic/pull/184) — Column mapper          | Open                        | Ready to merge once Gemini feedback applied. Foundation for Area D's new canonical fields.                                       |
-| PR [#186](https://github.com/JoelA510/SquadLogic/pull/186) — Coach leads WIP        | Open, marked "do not merge" | Migration + RPC salvageable under Area D; blocked on write-path (Area A).                                                        |
-| Branch `claude/feat-coach-leads`                                                    | Parked on origin            | Contains the WIP migration `20260421060000_coach_leads.sql`. Don't delete until Area D is scoped.                                |
-| `supabase/migrations/20251208000000_consolidated_schema.sql:345`                    | Landed                      | `staging_players` table exists, hints at an intended promote-from-staging pattern. Area A should confirm or reject that pattern. |
-| `docs/expansion/03_ROADMAP.md` M2.2                                                 | Landed                      | Reads as if ingestion is complete; reconcile after Area A lands.                                                                 |
-| `frontend/src/pages/EnterpriseDashboard.jsx:106`                                    | Landed                      | Stub calc `coaches: Math.floor(orgData.total_users * 0.4)` — remove after Area A.                                                |
+| Artifact                                                                            | State      | Notes                                                                                                                            |
+| :---------------------------------------------------------------------------------- | :--------- | :------------------------------------------------------------------------------------------------------------------------------- |
+| PR [#185](https://github.com/JoelA510/SquadLogic/pull/185) — CSV template downloads | Open       | Ready to merge once Gemini feedback applied. Prereq for Area A / D UX.                                                           |
+| PR [#184](https://github.com/JoelA510/SquadLogic/pull/184) — Column mapper          | Open       | Ready to merge once Gemini feedback applied. Foundation for Area D's new canonical fields.                                       |
+| PR [#186](https://github.com/JoelA510/SquadLogic/pull/186) — Coach leads WIP        | Superseded | Migration/RPC concepts were salvaged into the player-import lead capture path and org-scope hardening migration.                 |
+| Branch `claude/feat-coach-leads`                                                    | Superseded | WIP concepts have been absorbed; verify no unique unmerged UI work remains before deleting the parked branch.                    |
+| `supabase/migrations/20251208000000_consolidated_schema.sql:345`                    | Landed     | `staging_players` table exists, hints at an intended promote-from-staging pattern. Area A should confirm or reject that pattern. |
+| `docs/expansion/03_ROADMAP.md` M2.2                                                 | Landed     | Reads as if ingestion is complete; reconcile after Area A lands.                                                                 |
+| `frontend/src/pages/EnterpriseDashboard.jsx:106`                                    | Landed     | Stub calc `coaches: Math.floor(orgData.total_users * 0.4)` — remove after Area A.                                                |
 
 ---
 

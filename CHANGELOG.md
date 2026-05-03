@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Added player-import coach volunteer lead capture: finalized GotSport player imports now submit interested coach leads through `upsert_coach_leads`, persist per-job lead summaries, and cover payload shaping with Vitest plus pgTAP.
+
 ### Changed
 
 - Release hygiene: CI now uses `npm ci`, explicit docs-only diff checks, concurrency, full E2E artifacts, and a hosted full E2E path restored in PR #209.
@@ -14,9 +18,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Documentation
 
-- Clarified that GotSport CSV import validation and `import_jobs` tracking are shipped, while durable apply/promotion into player, coach, team, or staging records remains pending v1.1 work.
+- Clarified that GotSport CSV import validation, durable player promotion, and player-import coach lead capture are shipped, while coach CSV, team, field-slot, and buddy-pair promotion remain pending v1.1 work.
 - Added release-prep closure documentation covering current Vercel evidence, Node runtime drift, Lighthouse/performance deferrals, cleanup secrets, Sentry verification, and final sign-off blockers.
 - Added durable GotSport player-import staging and admin-only finalize promotion into `players`, with pgTAP coverage and rollback/smoke SQL.
+
+### Security
+
+- Hardened `upsert_coach_leads` and `coach_interested_programs` so security-definer lead capture rejects division/player references outside the lead organization.
 
 ## [1.0.1] - 2026-04-23
 
