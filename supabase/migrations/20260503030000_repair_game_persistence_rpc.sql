@@ -94,6 +94,17 @@ BEGIN
             REFERENCES public.teams(id)
             ON DELETE CASCADE;
     END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+          FROM pg_constraint
+         WHERE conrelid = 'public.game_assignments'::regclass
+           AND conname = 'game_assignments_slot_alias_match'
+    ) THEN
+        ALTER TABLE public.game_assignments
+            ADD CONSTRAINT game_assignments_slot_alias_match
+            CHECK (slot_id IS NULL OR game_slot_id IS NULL OR slot_id = game_slot_id);
+    END IF;
 END;
 $$;
 
@@ -581,9 +592,6 @@ BEGIN
           ON home_division.id = home_team.division_id
         LEFT JOIN public.divisions slot_division
           ON slot_division.id = game_slot.division_id
-        WHERE home_team.organization_id = v_org_id
-          AND away_team.organization_id = v_org_id
-          AND game_slot.organization_id = v_org_id
     ),
     deduped_assignment_rows AS (
         SELECT DISTINCT ON (home_team_id, away_team_id, game_slot_id, week_index)

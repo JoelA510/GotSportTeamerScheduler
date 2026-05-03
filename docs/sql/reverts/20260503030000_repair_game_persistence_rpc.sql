@@ -16,6 +16,7 @@ DROP INDEX IF EXISTS public.idx_game_assignments_org_slot_week;
 DROP INDEX IF EXISTS public.idx_game_assignments_org_run_id;
 
 ALTER TABLE public.game_assignments
+    DROP CONSTRAINT IF EXISTS game_assignments_slot_alias_match,
     DROP CONSTRAINT IF EXISTS game_assignments_away_team_id_fkey,
     DROP CONSTRAINT IF EXISTS game_assignments_home_team_id_fkey,
     DROP CONSTRAINT IF EXISTS game_assignments_field_id_fkey,
