@@ -525,6 +525,7 @@ BEGIN
 
     WITH parsed_assignments AS MATERIALIZED (
         SELECT
+            assignment_items.ordinality AS assignment_ordinal,
             COALESCE(
                 NULLIF(value->>'home_team_id', '')::uuid,
                 NULLIF(value->>'homeTeamId', '')::uuid
@@ -552,10 +553,11 @@ BEGIN
                     THEN 'manual'
                 ELSE lower(COALESCE(NULLIF(value->>'assignment_source', ''), NULLIF(value->>'source', ''), 'auto'))
             END AS assignment_source
-        FROM jsonb_array_elements(assignments) AS assignment_items(value)
+        FROM jsonb_array_elements(assignments) WITH ORDINALITY AS assignment_items(value, ordinality)
     ),
     assignment_rows AS (
         SELECT
+            parsed_assignments.assignment_ordinal,
             v_org_id AS organization_id,
             v_persisted_run_id AS run_id,
             parsed_assignments.game_slot_id,
@@ -582,6 +584,28 @@ BEGIN
         WHERE home_team.organization_id = v_org_id
           AND away_team.organization_id = v_org_id
           AND game_slot.organization_id = v_org_id
+    ),
+    deduped_assignment_rows AS (
+        SELECT DISTINCT ON (home_team_id, away_team_id, game_slot_id, week_index)
+            organization_id,
+            run_id,
+            game_slot_id,
+            slot_id,
+            field_id,
+            home_team_id,
+            away_team_id,
+            division,
+            week_index,
+            start,
+            "end",
+            assignment_source
+        FROM assignment_rows
+        ORDER BY
+            home_team_id,
+            away_team_id,
+            game_slot_id,
+            week_index,
+            assignment_ordinal DESC
     )
     INSERT INTO public.game_assignments (
         organization_id,
@@ -610,7 +634,7 @@ BEGIN
         start,
         "end",
         assignment_source
-    FROM assignment_rows
+    FROM deduped_assignment_rows
     ON CONFLICT (home_team_id, away_team_id, game_slot_id, week_index)
         WHERE home_team_id IS NOT NULL
           AND away_team_id IS NOT NULL

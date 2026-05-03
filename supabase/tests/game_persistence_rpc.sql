@@ -5,7 +5,7 @@ BEGIN;
 \set squadlogic_fixture_include 1
 \ir _fixtures.sql
 
-SELECT plan(17);
+SELECT plan(19);
 
 INSERT INTO public.teams (id, organization_id, division_id, name)
 VALUES
@@ -247,6 +247,54 @@ SELECT is(
     ),
     'a1111111-1111-1111-1111-00000000da02',
     'idempotent assignment upsert re-links to the latest persisted scheduler run'
+);
+
+SELECT lives_ok(
+    $$
+        SELECT public.persist_game_schedule(
+            jsonb_build_object(
+                'id', 'a1111111-1111-1111-1111-00000000da03',
+                'organization_id', 'a1111111-1111-1111-1111-111111111111',
+                'season_settings_id', 'a1111111-1111-1111-1111-111111111aaa',
+                'run_type', 'game',
+                'status', 'completed'
+            ),
+            jsonb_build_array(
+                jsonb_build_object(
+                    'home_team_id', 'aaaaaaaa-0000-0000-0000-000000000001',
+                    'away_team_id', 'aaaaaaaa-0000-0000-0000-000000000003',
+                    'game_slot_id', 'a1111111-1111-1111-1111-00000000ca01',
+                    'week_index', 1,
+                    'start', '2026-04-04T08:00:00Z',
+                    'end', '2026-04-04T09:00:00Z',
+                    'source', 'auto'
+                ),
+                jsonb_build_object(
+                    'home_team_id', 'aaaaaaaa-0000-0000-0000-000000000001',
+                    'away_team_id', 'aaaaaaaa-0000-0000-0000-000000000003',
+                    'game_slot_id', 'a1111111-1111-1111-1111-00000000ca01',
+                    'week_index', 1,
+                    'start', '2026-04-04T08:00:00Z',
+                    'end', '2026-04-04T09:00:00Z',
+                    'source', 'locked'
+                )
+            )
+        )
+    $$,
+    'duplicate matchup/slot/week rows in one payload are deduplicated before upsert'
+);
+
+SELECT is(
+    (
+        SELECT run_id::text
+        FROM public.game_assignments
+        WHERE home_team_id = 'aaaaaaaa-0000-0000-0000-000000000001'
+          AND away_team_id = 'aaaaaaaa-0000-0000-0000-000000000003'
+          AND game_slot_id = 'a1111111-1111-1111-1111-00000000ca01'
+          AND week_index = 1
+    ),
+    'a1111111-1111-1111-1111-00000000da03',
+    'deduplicated duplicate payload relinks the assignment to the persisted run'
 );
 
 RESET ROLE;
