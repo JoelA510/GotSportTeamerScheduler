@@ -1,7 +1,11 @@
 import React from 'react';
 import { Lock, Unlock } from 'lucide-react';
 
-export default function PracticeAssignmentList({ assignments = [], onToggleLock, loading }) {
+export default function PracticeAssignmentList({
+  assignments = [],
+  onToggleLock = undefined,
+  loading = false,
+}) {
   if (loading) {
     return (
       <div className="flex justify-center py-12">
@@ -41,20 +45,24 @@ export default function PracticeAssignmentList({ assignments = [], onToggleLock,
           <tbody className="divide-y divide-border-subtle/30">
             {assignments.map((assignment) => {
               const isLocked = assignment.source === 'manual';
+              const team = assignment.teams || {};
+              const teamName = team.name || 'Unknown Team';
+              const division = team.divisions || {};
+              const slot = assignment.practiceSlots || {};
+              const field = slot.fields || {};
               const lockTitle = !onToggleLock
                 ? 'Lock status changes require schedule edit permission'
                 : isLocked
                   ? 'Unlock slot (allow algorithm to change)'
                   : 'Lock slot (preserve manual choice)';
-              const team = assignment.teams || {};
-              const division = team.divisions || {};
-              const slot = assignment.practiceSlots || {};
-              const field = slot.fields || {};
+              const lockActionLabel = !onToggleLock
+                ? `Practice lock status for ${teamName} requires schedule edit permission`
+                : `Lock practice slot for ${teamName}`;
 
               return (
                 <tr key={assignment.id} className="hover:bg-white/5 transition-colors group">
                   <td className="p-4">
-                    <div className="font-bold text-text-primary">{team.name || 'Unknown Team'}</div>
+                    <div className="font-bold text-text-primary">{teamName}</div>
                     <div className="text-xs text-text-secondary">
                       {division.name || 'Unknown Division'}
                     </div>
@@ -73,8 +81,11 @@ export default function PracticeAssignmentList({ assignments = [], onToggleLock,
                   </td>
                   <td className="p-4 text-right">
                     <button
+                      type="button"
                       onClick={() => onToggleLock?.(assignment.id, isLocked ? 'auto' : 'manual')}
                       disabled={!onToggleLock}
+                      aria-label={lockActionLabel}
+                      aria-pressed={isLocked}
                       className={`p-2 rounded-lg transition-all inline-flex border ${
                         isLocked
                           ? 'bg-amber-500/10 text-amber-500 border-amber-500/30 hover:bg-amber-500/20 shadow-[0_0_10px_rgba(245,158,11,0.1)]'
@@ -82,7 +93,11 @@ export default function PracticeAssignmentList({ assignments = [], onToggleLock,
                       } ${!onToggleLock ? 'cursor-not-allowed opacity-60' : ''}`}
                       title={lockTitle}
                     >
-                      {isLocked ? <Lock size={16} /> : <Unlock size={16} />}
+                      {isLocked ? (
+                        <Lock size={16} aria-hidden="true" />
+                      ) : (
+                        <Unlock size={16} aria-hidden="true" />
+                      )}
                     </button>
                   </td>
                 </tr>
