@@ -30,6 +30,16 @@ const DAY_LABELS = {
   saturday: 'Saturday',
 };
 
+const DAY_INDEX = {
+  sunday: 0,
+  monday: 1,
+  tuesday: 2,
+  wednesday: 3,
+  thursday: 4,
+  friday: 5,
+  saturday: 6,
+};
+
 function normalizeDay(value) {
   const normalized = String(value ?? '')
     .trim()
@@ -45,7 +55,26 @@ function normalizeTime(value) {
 }
 
 function buildDateTime(date, time) {
-  return `${date}T${time}Z`;
+  return `${date}T${time}`;
+}
+
+function parseDateOnly(date) {
+  const [year, month, day] = String(date).split('-').map(Number);
+  if (!year || !month || !day) return null;
+  return new Date(Date.UTC(year, month - 1, day));
+}
+
+function getSlotDateForDay(effectiveFrom, day) {
+  const baseDate = parseDateOnly(effectiveFrom);
+  const dayIndex = DAY_INDEX[String(day ?? '').toLowerCase()];
+
+  if (!baseDate || dayIndex == null) {
+    return effectiveFrom;
+  }
+
+  const delta = (dayIndex - baseDate.getUTCDay() + 7) % 7;
+  baseDate.setUTCDate(baseDate.getUTCDate() + delta);
+  return baseDate.toISOString().slice(0, 10);
 }
 
 function getSeasonDateRange(seasonSetting) {
@@ -61,16 +90,19 @@ function normalizePracticeSlot(row, seasonSetting) {
   const effectiveUntil = row.valid_until ?? row.validUntil ?? seasonRange.end;
   const startTime = normalizeTime(row.start_time ?? row.startTime);
   const endTime = normalizeTime(row.end_time ?? row.endTime);
+  const day = normalizeDay(row.day_of_week ?? row.dayOfWeek);
 
   if (!row.id || !effectiveFrom || !effectiveUntil || !startTime || !endTime) {
     throw new Error('Practice slots must include an id, time window, and effective date range.');
   }
 
+  const slotDate = getSlotDateForDay(effectiveFrom, day);
+
   return {
     id: row.id,
-    day: normalizeDay(row.day_of_week ?? row.dayOfWeek),
-    start: buildDateTime(effectiveFrom, startTime),
-    end: buildDateTime(effectiveFrom, endTime),
+    day,
+    start: buildDateTime(slotDate, startTime),
+    end: buildDateTime(slotDate, endTime),
     startTime,
     endTime,
     capacity: Math.max(1, Number(row.capacity ?? row.slotCapacity ?? 1)),
@@ -181,7 +213,7 @@ export default function PracticeSchedulingPage() {
   const [practiceSlotsLoading, setPracticeSlotsLoading] = useState(false);
   const [practiceSlotsError, setPracticeSlotsError] = useState(null);
   const [isEditMode, setIsEditMode] = useState(false);
-  const [assignmentSaveError, setAssignmentSaveError] = useState(null);
+  const [statusMessage, setStatusMessage] = useState(null);
   const [applyStatus, setApplyStatus] = useState('idle');
   const [applyError, setApplyError] = useState(null);
   const [reviewedSchedulerRunId, setReviewedSchedulerRunId] = useState(null);
@@ -316,7 +348,7 @@ export default function PracticeSchedulingPage() {
     setReviewAssignments(nextAssignments);
     setApplyStatus('review');
     setApplyError(null);
-    setAssignmentSaveError(null);
+    setStatusMessage(null);
     setReviewedSchedulerRunId(resultRunId);
   }, [autoScheduler.result, autoScheduler.status, reviewedSchedulerRunId, slotById, teamById]);
 
@@ -378,7 +410,7 @@ export default function PracticeSchedulingPage() {
     setReviewedSchedulerRunId(null);
     setApplyStatus('idle');
     setApplyError(null);
-    setAssignmentSaveError(null);
+    setStatusMessage(null);
 
     await autoScheduler.trigger({
       teams: schedulerTeams,
@@ -419,7 +451,7 @@ export default function PracticeSchedulingPage() {
     setReviewedSchedulerRunId(null);
     setApplyStatus('idle');
     setApplyError(null);
-    setAssignmentSaveError(null);
+    setStatusMessage(null);
   }, [autoScheduler]);
 
   const discardReview = useCallback(() => {
@@ -428,7 +460,7 @@ export default function PracticeSchedulingPage() {
     setReviewedSchedulerRunId(null);
     setApplyStatus('discarded');
     setApplyError(null);
-    setAssignmentSaveError(null);
+    setStatusMessage(null);
   }, [autoScheduler]);
 
   const handleApplySchedule = useCallback(async () => {
@@ -490,7 +522,7 @@ export default function PracticeSchedulingPage() {
       );
       setReviewAssignments(null);
       setApplyStatus('applied');
-      setAssignmentSaveError(null);
+      setStatusMessage(null);
     } catch (err) {
       setApplyError(err.message || 'Practice schedule changes could not be applied.');
       setApplyStatus('error');
@@ -523,7 +555,7 @@ export default function PracticeSchedulingPage() {
       setReviewAssignments(staged);
       setApplyStatus('review');
       setApplyError(null);
-      setAssignmentSaveError('Lock change staged. Apply the schedule to persist it.');
+      setStatusMessage('Lock change staged. Apply the schedule to persist it.');
     },
     [canManageSchedule, localAssignments]
   );
@@ -557,7 +589,7 @@ export default function PracticeSchedulingPage() {
       setReviewAssignments(staged);
       setApplyStatus('review');
       setApplyError(null);
-      setAssignmentSaveError('Manual override staged. Apply the schedule to persist it.');
+      setStatusMessage('Manual override staged. Apply the schedule to persist it.');
     },
     [
       autoScheduler.result?.runId,
@@ -703,12 +735,12 @@ export default function PracticeSchedulingPage() {
           />
 
           <div className="bg-white/5 border border-white/10 rounded-xl overflow-hidden shadow-2xl backdrop-blur-sm mt-8">
-            {assignmentSaveError && (
+            {statusMessage && (
               <div
                 role="status"
                 className="border-b border-blue-400/20 bg-blue-500/10 px-4 py-3 text-sm text-blue-100"
               >
-                {assignmentSaveError}
+                {statusMessage}
               </div>
             )}
             <PracticeAssignmentList
@@ -721,6 +753,7 @@ export default function PracticeSchedulingPage() {
             <PracticeOverridePanel
               teams={schedulerTeams}
               baseSlots={overrideBaseSlots}
+              stagedAssignments={reviewAssignments ?? []}
               onStageAssignment={handleStageManualAssignment}
             />
           )}
