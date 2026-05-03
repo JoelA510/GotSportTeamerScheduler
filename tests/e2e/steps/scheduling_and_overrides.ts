@@ -887,13 +887,20 @@ Given('a practice schedule has been generated', async ({ page }) => {
   // ERADICATE NOISE: Wipe the specific tables first to ensure no competing hardcoded runs exist
   await page.evaluate(() => {
     const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
+    const orgId = localStorage.getItem('squadlogic_active_org') || 'org-1';
+    const storedSeason = localStorage.getItem('squadlogic-current-season') || 'Fall 2026';
+    const activeSeason = (db.season_settings || []).find(
+      (s: Record<string, unknown>) =>
+        s.organization_id === orgId && (s.id === storedSeason || s.name === storedSeason)
+    );
+    const seasonId = activeSeason?.id || 'season-1';
 
     // Clear out existing runs and assignments to ensure our injected one is the only "Latest"
     db.scheduler_runs = [];
     db.practice_assignments = [];
 
     // 1. Seed base tables
-    db.teams = [{ id: 'team-a', name: 'Team A', division_id: 'div-1' }];
+    db.teams = [{ id: 'team-a', name: 'Team A', division_id: 'div-1', organization_id: orgId }];
     db.practice_slots = [
       {
         id: 'slot-1',
@@ -901,6 +908,7 @@ Given('a practice schedule has been generated', async ({ page }) => {
         start_time: '17:00',
         end_time: '18:30',
         field_id: 'field-1',
+        organization_id: orgId,
       },
     ];
 
@@ -911,6 +919,9 @@ Given('a practice schedule has been generated', async ({ page }) => {
 
     db.scheduler_runs.push({
       id: 'active-run-id',
+      organization_id: orgId,
+      season_id: seasonId,
+      season_settings_id: seasonId,
       run_type: 'practice',
       status: 'completed',
       results: { assignments: [{ team_id: 'team-a', slot_id: 'slot-1', source: 'auto' }] },

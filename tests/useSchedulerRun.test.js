@@ -27,7 +27,7 @@ function createQueryBuilder(resolvedValue) {
     or: vi.fn(() => builder),
     limit: vi.fn(() => builder),
     single: vi.fn(() => builder),
-    maybeSingle: vi.fn(() => Promise.resolve(resolvedValue)),
+    maybeSingle: vi.fn(() => builder),
     abortSignal: vi.fn(() => Promise.resolve(resolvedValue)),
   };
   return builder;
@@ -90,5 +90,45 @@ describe('useSchedulerRun', () => {
     expect(result.current.data).toBe(emptyState);
     expect(result.current.evaluation).toBeNull();
     expect(supabase.from).not.toHaveBeenCalled();
+  });
+
+  it('clears a previous evaluation when the scoped run is missing after context changes', async () => {
+    let organizationContext = {
+      currentOrganization: { id: 'org-1' },
+      currentSeasonSetting: { id: 'season-1' },
+    };
+    // @ts-expect-error [MOCK] - partial organization context is enough for this hook.
+    vi.mocked(useOrganization).mockImplementation(() => organizationContext);
+
+    const runBuilder = createQueryBuilder({
+      data: { id: 'practice-run-1', results: {}, completed_at: '2026-05-01T00:00:00Z' },
+      error: null,
+    });
+    const evaluationRecord = { id: 'eval-1', organization_id: 'org-1', run_id: 'practice-run-1' };
+    const evaluationBuilder = createQueryBuilder({ data: evaluationRecord, error: null });
+    const missingRunBuilder = createQueryBuilder({
+      data: null,
+      error: { code: 'PGRST116', message: 'No rows found' },
+    });
+    const builders = [runBuilder, evaluationBuilder, missingRunBuilder];
+
+    // @ts-expect-error [MOCK] - query builder only implements methods exercised by this hook.
+    vi.mocked(supabase.from).mockImplementation(() => builders.shift());
+
+    const emptyState = { runId: null };
+    const mapper = vi.fn((run) => ({ runId: run.id }));
+
+    const { result, rerender } = renderHook(() => useSchedulerRun('practice', mapper, emptyState));
+
+    await waitFor(() => expect(result.current.evaluation).toEqual(evaluationRecord));
+
+    organizationContext = {
+      currentOrganization: { id: 'org-1' },
+      currentSeasonSetting: { id: 'season-2' },
+    };
+    rerender();
+
+    await waitFor(() => expect(result.current.data).toBe(emptyState));
+    expect(result.current.evaluation).toBeNull();
   });
 });

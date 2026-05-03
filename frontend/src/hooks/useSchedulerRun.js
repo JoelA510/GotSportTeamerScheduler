@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabaseClient.js';
 import { logger } from '../lib/logger.js';
 import { useOrganization } from '../contexts/OrganizationContext.jsx';
@@ -14,16 +14,21 @@ import { scopeSchedulerRunsToActiveSeason } from '../utils/schedulerRunFilters.j
  */
 export function useSchedulerRun(runType, mapper, emptyState) {
   const { currentOrganization, currentSeasonSetting } = useOrganization();
+  const mapperRef = useRef(mapper);
+  const emptyStateRef = useRef(emptyState);
   const [data, setData] = useState(null);
   const [evaluation, setEvaluation] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  mapperRef.current = mapper;
+  emptyStateRef.current = emptyState;
+
   useEffect(() => {
     const controller = new AbortController();
 
     if (!currentOrganization?.id || !currentSeasonSetting?.id) {
-      setData(emptyState);
+      setData(emptyStateRef.current);
       setEvaluation(null);
       setError(null);
       setLoading(false);
@@ -56,7 +61,8 @@ export function useSchedulerRun(runType, mapper, emptyState) {
         if (queryError) {
           if (queryError.code === 'PGRST116') {
             // No rows found -> return empty state
-            setData(emptyState);
+            setData(emptyStateRef.current);
+            setEvaluation(null);
             return;
           }
           throw queryError;
@@ -70,18 +76,20 @@ export function useSchedulerRun(runType, mapper, emptyState) {
             .select('*')
             .eq('organization_id', currentOrganization.id)
             .eq('run_id', run.id)
-            .maybeSingle(); // Use maybeSingle to avoid 406/error if none found
+            .maybeSingle()
+            // @ts-expect-error [SUP] abortSignal present but untyped in PostgREST builder
+            .abortSignal(controller.signal); // Use maybeSingle to avoid 406/error if none found
           evalRecord = evalData;
         }
 
-        const mapped = mapper(run);
-        setData(mapped || emptyState);
+        const mapped = mapperRef.current(run);
+        setData(mapped || emptyStateRef.current);
         setEvaluation(evalRecord);
       } catch (err) {
         if (err.name !== 'AbortError') {
           logger.error(`Failed to fetch ${runType} summary:`, JSON.stringify(err, null, 2));
           setError(err);
-          setData(emptyState);
+          setData(emptyStateRef.current);
           setEvaluation(null);
         }
       } finally {
@@ -96,7 +104,7 @@ export function useSchedulerRun(runType, mapper, emptyState) {
     return () => {
       controller.abort();
     };
-  }, [currentOrganization?.id, currentSeasonSetting?.id, runType, mapper, emptyState]);
+  }, [currentOrganization?.id, currentSeasonSetting?.id, runType]);
 
   return { data, evaluation, loading, error };
 }

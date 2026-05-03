@@ -16,6 +16,7 @@ export default function PracticeSchedulingPage() {
   const { permissions = [] } = useOrganization();
   const [assignments, setAssignments] = useState(practice?.assignments ?? []);
   const [isEditMode, setIsEditMode] = useState(false);
+  const [assignmentSaveError, setAssignmentSaveError] = useState(null);
   const canManageSchedule =
     permissions.includes(PERMISSIONS.MANAGE_SCHEDULE) ||
     permissions.includes(PERMISSIONS.MANAGE_ORGANIZATION);
@@ -135,6 +136,8 @@ export default function PracticeSchedulingPage() {
     async (assignmentId, nextSource) => {
       if (!canManageSchedule) return;
 
+      const previousAssignments = assignments;
+      setAssignmentSaveError(null);
       setAssignments((current) =>
         current.map((a) => (a.id === assignmentId ? { ...a, source: nextSource } : a))
       );
@@ -144,9 +147,11 @@ export default function PracticeSchedulingPage() {
         .eq('id', assignmentId);
       if (error) {
         console.error('Failed to persist practice lock state:', error);
+        setAssignments(previousAssignments);
+        setAssignmentSaveError('Practice lock change could not be saved. Please retry.');
       }
     },
-    [canManageSchedule]
+    [assignments, canManageSchedule]
   );
 
   return (
@@ -217,6 +222,14 @@ export default function PracticeSchedulingPage() {
           />
 
           <div className="bg-white/5 border border-white/10 rounded-xl overflow-hidden shadow-2xl backdrop-blur-sm mt-8">
+            {assignmentSaveError && (
+              <div
+                role="alert"
+                className="border-b border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-200"
+              >
+                {assignmentSaveError}
+              </div>
+            )}
             <PracticeAssignmentList
               assignments={localAssignments}
               onToggleLock={canEditSchedule ? handleToggleLock : undefined}
