@@ -1,8 +1,25 @@
-import { describe, test, expect } from 'vitest';
+import { beforeEach, describe, test, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import React from 'react';
 import { DndContext } from '@dnd-kit/core';
 import TimeSlotDropZone from '../frontend/src/components/scheduling/TimeSlotDropZone.jsx';
+
+const dndMocks = vi.hoisted(() => ({
+  isOver: false,
+  setNodeRef: vi.fn(),
+}));
+
+vi.mock('@dnd-kit/core', async (importOriginal) => {
+  const actual = await importOriginal();
+  const actualModule = /** @type {typeof import('@dnd-kit/core')} */ (actual);
+  return {
+    ...actualModule,
+    useDroppable: vi.fn(() => ({
+      setNodeRef: dndMocks.setNodeRef,
+      isOver: dndMocks.isOver,
+    })),
+  };
+});
 
 function DndWrapper({ children }) {
   return <DndContext>{children}</DndContext>;
@@ -21,6 +38,11 @@ const ASSIGNMENT = {
 };
 
 describe('TimeSlotDropZone', () => {
+  beforeEach(() => {
+    dndMocks.isOver = false;
+    dndMocks.setNodeRef.mockClear();
+  });
+
   test('renders with correct data-testid', () => {
     render(
       <DndWrapper>
@@ -113,6 +135,31 @@ describe('TimeSlotDropZone', () => {
     );
     // Component renders without error
     expect(screen.getByTestId('drop-zone-v1:gs-1')).toBeInTheDocument();
+  });
+
+  test('exposes invalid drop reasons on focus and to screen readers', () => {
+    dndMocks.isOver = true;
+
+    render(
+      <DndWrapper>
+        <TimeSlotDropZone
+          fieldId="v1"
+          slotId="gs-1"
+          isInvalidTarget={true}
+          invalidReason="Teams already play in this slot"
+        />
+      </DndWrapper>
+    );
+
+    const indicator = screen.getByTestId('invalid-indicator');
+    const tooltip = screen.getByRole('tooltip');
+
+    expect(indicator).toHaveAttribute('aria-label', 'Invalid drop target');
+    expect(indicator).toHaveAttribute('aria-describedby', tooltip.id);
+    expect(indicator).toHaveAttribute('tabindex', '0');
+    expect(tooltip).toHaveTextContent('Teams already play in this slot');
+    expect(tooltip).toHaveClass('group-focus-within:opacity-100');
+    expect(tooltip).not.toHaveClass('hidden');
   });
 
   test('passes isDragDisabled to child GameCard', () => {
