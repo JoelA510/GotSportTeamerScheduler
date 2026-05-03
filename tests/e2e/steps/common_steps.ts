@@ -123,11 +123,11 @@ When('I view the Dashboard', async ({ page }) => {
 
 When('I click {string}', async ({ page }, name: string) => {
   const btn = page.getByRole('button', { name, exact: true }).first();
-  if (await btn.isVisible()) {
+  if (await btn.isVisible({ timeout: 5000 }).catch(() => false)) {
     await btn.click({ force: true });
   } else {
     const textBtn = page.getByText(name, { exact: true }).first();
-    if (await textBtn.isVisible()) {
+    if (await textBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
       await textBtn.click({ force: true });
     } else {
       await page.evaluate((n) => {
