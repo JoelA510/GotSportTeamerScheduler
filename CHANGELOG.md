@@ -30,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Added tab semantics and arrow-key navigation to General Settings section switching.
 - Added pressed-state semantics to season-format and season quick-select controls in settings.
 - Exposed settings feature-flag controls as named switches with checked state and descriptions.
 - Added explicit labels, button metadata, and progress semantics to the import ingestion overlay.
