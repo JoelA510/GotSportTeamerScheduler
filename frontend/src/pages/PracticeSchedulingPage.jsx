@@ -1,157 +1,572 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useDashboardData } from '../hooks/useDashboardData.js';
 import PracticeAssignmentList from '../components/PracticeAssignmentList.jsx';
 import PracticeOverridePanel from '../components/PracticeOverridePanel.jsx';
 import AutoSchedulerPanel from '../components/scheduling/AutoSchedulerPanel.jsx';
 import PracticeReadinessPanel from '../components/PracticeReadinessPanel.jsx';
 import Button from '../components/ui/Button.jsx';
-import { Edit2, Save, Sparkles, Calendar } from 'lucide-react';
+import { Edit2, Save, Sparkles, Calendar, CheckCircle, RotateCcw } from 'lucide-react';
 import EvaluationPanel from '../components/EvaluationPanel.jsx';
 import { supabase } from '../lib/supabaseClient.js';
 import { useOrganization } from '../contexts/OrganizationContext.jsx';
 import { PERMISSIONS } from '../constants/permissions.js';
+import { useAutoScheduler } from '../hooks/useAutoScheduler.js';
+import { persistPracticeScheduleReview } from '../utils/practicePersistenceClient.js';
+
+const DAY_LABELS = {
+  sun: 'Sunday',
+  sunday: 'Sunday',
+  mon: 'Monday',
+  monday: 'Monday',
+  tue: 'Tuesday',
+  tuesday: 'Tuesday',
+  wed: 'Wednesday',
+  wednesday: 'Wednesday',
+  thu: 'Thursday',
+  thursday: 'Thursday',
+  fri: 'Friday',
+  friday: 'Friday',
+  sat: 'Saturday',
+  saturday: 'Saturday',
+};
+
+function normalizeDay(value) {
+  const normalized = String(value ?? '')
+    .trim()
+    .toLowerCase();
+  return DAY_LABELS[normalized] ?? value ?? 'Practice Day';
+}
+
+function normalizeTime(value) {
+  const trimmed = String(value ?? '').trim();
+  if (!trimmed) return null;
+  const [hours = '00', minutes = '00', seconds = '00'] = trimmed.split(':');
+  return `${hours.padStart(2, '0')}:${minutes.padStart(2, '0')}:${seconds.padStart(2, '0')}`;
+}
+
+function buildDateTime(date, time) {
+  return `${date}T${time}Z`;
+}
+
+function getSeasonDateRange(seasonSetting) {
+  return {
+    start: seasonSetting?.season_start ?? seasonSetting?.seasonStart ?? null,
+    end: seasonSetting?.season_end ?? seasonSetting?.seasonEnd ?? null,
+  };
+}
+
+function normalizePracticeSlot(row, seasonSetting) {
+  const seasonRange = getSeasonDateRange(seasonSetting);
+  const effectiveFrom = row.valid_from ?? row.validFrom ?? seasonRange.start;
+  const effectiveUntil = row.valid_until ?? row.validUntil ?? seasonRange.end;
+  const startTime = normalizeTime(row.start_time ?? row.startTime);
+  const endTime = normalizeTime(row.end_time ?? row.endTime);
+
+  if (!row.id || !effectiveFrom || !effectiveUntil || !startTime || !endTime) {
+    throw new Error('Practice slots must include an id, time window, and effective date range.');
+  }
+
+  return {
+    id: row.id,
+    day: normalizeDay(row.day_of_week ?? row.dayOfWeek),
+    start: buildDateTime(effectiveFrom, startTime),
+    end: buildDateTime(effectiveFrom, endTime),
+    startTime,
+    endTime,
+    capacity: Math.max(1, Number(row.capacity ?? row.slotCapacity ?? 1)),
+    effectiveFrom,
+    effectiveUntil,
+    baseSlotId: row.base_slot_id ?? row.baseSlotId ?? row.id,
+    fieldId: row.field_id ?? row.fieldId ?? null,
+    fieldSubunitId: row.field_subunit_id ?? row.fieldSubunitId ?? null,
+    fieldName: row.fields?.name ?? row.fieldName ?? null,
+  };
+}
+
+function normalizeTeam(team) {
+  const id = team?.id ?? team?.teamId;
+  if (!id) return null;
+  const division =
+    team.division ??
+    team.divisionName ??
+    team.division_id ??
+    team.divisionId ??
+    team.divisions?.name ??
+    'Unassigned';
+
+  return {
+    id,
+    name: team.name ?? `Team ${id}`,
+    division,
+    coachId: team.coachId ?? team.coach_id ?? team.coach?.id ?? null,
+    divisions: team.divisions ?? { name: division },
+  };
+}
+
+function normalizeAssignmentSource(source) {
+  return source === 'manual' || source === 'locked' ? 'manual' : 'auto';
+}
+
+function getAssignmentTeamId(assignment) {
+  return assignment?.teamId ?? assignment?.team_id ?? assignment?.teams?.id ?? null;
+}
+
+function getAssignmentSlotId(assignment) {
+  return (
+    assignment?.slotId ??
+    assignment?.slot_id ??
+    assignment?.practiceSlotId ??
+    assignment?.practice_slot_id ??
+    assignment?.practiceSlots?.id ??
+    null
+  );
+}
+
+function buildDisplayAssignment({ assignment, index, runId, teamById, slotById }) {
+  const teamId = getAssignmentTeamId(assignment);
+  const slotId = getAssignmentSlotId(assignment);
+  const team = teamById.get(teamId) ?? assignment.teams ?? {};
+  const slot = slotById.get(slotId);
+  const fallbackSlot = assignment.practiceSlots ?? {};
+  const fieldName = slot?.fieldName ?? fallbackSlot.fields?.name ?? 'Unknown Field';
+
+  return {
+    ...assignment,
+    id: assignment.id ?? `${runId ?? 'review'}-${teamId}-${slotId}-${index}`,
+    runId: runId ?? assignment.runId ?? assignment.run_id ?? null,
+    teamId,
+    slotId,
+    practiceSlotId: slotId,
+    source: normalizeAssignmentSource(assignment.source),
+    effectiveDateRange:
+      assignment.effectiveDateRange ??
+      assignment.effective_date_range ??
+      (slot ? `[${slot.effectiveFrom},${slot.effectiveUntil}]` : 'Full Season'),
+    teams: {
+      ...team,
+      id: teamId,
+      name: team.name ?? 'Unknown Team',
+      divisions: team.divisions ?? {
+        name: team.division ?? team.divisionName ?? 'Unknown Division',
+      },
+    },
+    practiceSlots: {
+      ...fallbackSlot,
+      id: slotId,
+      dayOfWeek: fallbackSlot.dayOfWeek ?? fallbackSlot.day_of_week ?? slot?.day,
+      startTime: fallbackSlot.startTime ?? fallbackSlot.start_time ?? slot?.startTime,
+      endTime: fallbackSlot.endTime ?? fallbackSlot.end_time ?? slot?.endTime,
+      fields: fallbackSlot.fields ?? {
+        id: slot?.fieldId ?? null,
+        name: fieldName,
+      },
+    },
+  };
+}
+
+function toPersistenceAssignment(assignment) {
+  return {
+    teamId: getAssignmentTeamId(assignment),
+    slotId: getAssignmentSlotId(assignment),
+    source: normalizeAssignmentSource(assignment.source),
+  };
+}
 
 export default function PracticeSchedulingPage() {
   const { practice, team, loading: dashboardLoading } = useDashboardData();
-  const { permissions = [] } = useOrganization();
+  const { currentOrganization, currentSeasonSetting, permissions = [] } = useOrganization();
   const [assignments, setAssignments] = useState(practice?.assignments ?? []);
+  const [reviewAssignments, setReviewAssignments] = useState(null);
+  const [practiceSlotRows, setPracticeSlotRows] = useState([]);
+  const [practiceSlotsLoading, setPracticeSlotsLoading] = useState(false);
+  const [practiceSlotsError, setPracticeSlotsError] = useState(null);
   const [isEditMode, setIsEditMode] = useState(false);
   const [assignmentSaveError, setAssignmentSaveError] = useState(null);
+  const [applyStatus, setApplyStatus] = useState('idle');
+  const [applyError, setApplyError] = useState(null);
+  const [reviewedSchedulerRunId, setReviewedSchedulerRunId] = useState(null);
+
   const canManageSchedule =
     permissions.includes(PERMISSIONS.MANAGE_SCHEDULE) ||
     permissions.includes(PERMISSIONS.MANAGE_ORGANIZATION);
   const canEditSchedule = canManageSchedule && isEditMode;
 
-  // Auto-scheduler status
-  const [autoSchedulerStatus, setAutoSchedulerStatus] = useState('idle');
-  const [autoSchedulerProgress, setAutoSchedulerProgress] = useState(0);
-  const [autoSchedulerResult, setAutoSchedulerResult] = useState(null);
-  const [autoSchedulerError, setAutoSchedulerError] = useState(null);
-  const autoSchedulerIntervalRef = useRef(null);
-  const autoSchedulerTimeoutRef = useRef(null);
+  const autoScheduler = useAutoScheduler({ organizationId: currentOrganization?.id });
 
   useEffect(() => {
     if (practice?.assignments) {
       setAssignments(practice.assignments);
     }
-    // Depend on stable signals — useDashboardData returns a fresh `practice` object
-    // every render, so `[practice?.assignments]` alone would loop.
-  }, [practice?.assignments?.length, practice?.snapshot?.lastCalculated]);
+  }, [
+    practice.assignments,
+    practice?.assignments?.length,
+    practice?.snapshot?.lastCalculated,
+    practice?.runId,
+  ]);
 
-  // Ensure simulation timers can't outlive the component.
   useEffect(() => {
-    return () => {
-      if (autoSchedulerIntervalRef.current) clearInterval(autoSchedulerIntervalRef.current);
-      if (autoSchedulerTimeoutRef.current) clearTimeout(autoSchedulerTimeoutRef.current);
-      autoSchedulerIntervalRef.current = null;
-      autoSchedulerTimeoutRef.current = null;
-    };
-  }, []);
+    let cancelled = false;
 
-  const stopAutoSchedulerTimers = useCallback(() => {
-    if (autoSchedulerIntervalRef.current) {
-      clearInterval(autoSchedulerIntervalRef.current);
-      autoSchedulerIntervalRef.current = null;
-    }
-    if (autoSchedulerTimeoutRef.current) {
-      clearTimeout(autoSchedulerTimeoutRef.current);
-      autoSchedulerTimeoutRef.current = null;
-    }
-  }, []);
-
-  // Handle auto-scheduler trigger
-  const handleAutoGenerate = useCallback(async () => {
-    if (!canManageSchedule) return;
-
-    stopAutoSchedulerTimers();
-    setAutoSchedulerStatus('running');
-    setAutoSchedulerProgress(0);
-    setAutoSchedulerError(null);
-
-    try {
-      // Ensure we have a signed-in session before kicking off the mock progress loop.
-      await supabase.auth.getUser();
-      const testWindow =
-        typeof window !== 'undefined'
-          ? /** @type {Window & { __SQUADLOGIC_E2E_AUTO_SCHEDULER_ERROR__?: boolean }} */ (window)
-          : null;
-      if (testWindow?.__SQUADLOGIC_E2E_AUTO_SCHEDULER_ERROR__) {
-        throw new Error('Auto-scheduler service unavailable');
+    async function fetchPracticeSlots() {
+      if (!currentOrganization?.id) {
+        setPracticeSlotRows([]);
+        setPracticeSlotsError(null);
+        return;
       }
 
-      // Mock call to edge function (scheduling-engine).
-      // In production this would be: await supabase.functions.invoke('schedule-practices', { body: { teamId: team.id } });
-      autoSchedulerIntervalRef.current = setInterval(() => {
-        setAutoSchedulerProgress((prev) => {
-          if (prev >= 100) {
-            if (autoSchedulerIntervalRef.current) {
-              clearInterval(autoSchedulerIntervalRef.current);
-              autoSchedulerIntervalRef.current = null;
-            }
-            return 100;
-          }
-          return prev + 5;
-        });
-      }, 100);
+      setPracticeSlotsLoading(true);
+      setPracticeSlotsError(null);
 
-      // Simulate network delay and processing
-      autoSchedulerTimeoutRef.current = setTimeout(() => {
-        stopAutoSchedulerTimers();
-        setAutoSchedulerProgress(100);
-        setAutoSchedulerStatus('completed');
-        setAutoSchedulerResult({
-          assignments: assignments, // Mocking unchanged for now
-          summary: { conflictFree: 100, fieldUtilization: 88 },
-        });
-      }, 3000);
-    } catch (err) {
-      stopAutoSchedulerTimers();
-      setAutoSchedulerStatus('failed');
-      setAutoSchedulerError(err.message);
+      try {
+        const { data, error } = await supabase
+          .from('practice_slots')
+          .select(
+            `
+            id,
+            day_of_week,
+            start_time,
+            end_time,
+            capacity,
+            valid_from,
+            valid_until,
+            field_id,
+            field_subunit_id,
+            fields (
+              id,
+              name
+            )
+          `
+          )
+          .eq('organization_id', currentOrganization.id)
+          .order('day_of_week', { ascending: true })
+          .order('start_time', { ascending: true });
+
+        if (cancelled) return;
+        if (error) throw error;
+        setPracticeSlotRows(data ?? []);
+      } catch (err) {
+        if (cancelled) return;
+        setPracticeSlotsError(err.message || 'Practice slots could not be loaded.');
+        setPracticeSlotRows([]);
+      } finally {
+        if (!cancelled) setPracticeSlotsLoading(false);
+      }
     }
-  }, [assignments, canManageSchedule, stopAutoSchedulerTimers]);
+
+    fetchPracticeSlots();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentOrganization?.id]);
+
+  const schedulerTeams = useMemo(
+    () => (team?.teams ?? []).map(normalizeTeam).filter(Boolean),
+    [team?.teams]
+  );
+
+  const teamById = useMemo(() => {
+    const map = new Map();
+    for (const entry of schedulerTeams) {
+      map.set(entry.id, entry);
+    }
+    for (const assignment of assignments) {
+      const teamId = getAssignmentTeamId(assignment);
+      if (teamId && assignment.teams && !map.has(teamId)) {
+        map.set(teamId, normalizeTeam({ ...assignment.teams, id: teamId }));
+      }
+    }
+    return map;
+  }, [assignments, schedulerTeams]);
+
+  const { schedulerSlots, slotById, slotShapeError } = useMemo(() => {
+    try {
+      const normalized = practiceSlotRows.map((row) =>
+        normalizePracticeSlot(row, currentSeasonSetting)
+      );
+      return {
+        schedulerSlots: normalized,
+        slotById: new Map(normalized.map((slot) => [slot.id, slot])),
+        slotShapeError: null,
+      };
+    } catch (err) {
+      return {
+        schedulerSlots: [],
+        slotById: new Map(),
+        slotShapeError: err.message,
+      };
+    }
+  }, [currentSeasonSetting, practiceSlotRows]);
+
+  useEffect(() => {
+    if (autoScheduler.status !== 'completed' || !autoScheduler.result) return;
+    const resultRunId = autoScheduler.result.runId ?? 'latest-auto-scheduler-result';
+    if (reviewedSchedulerRunId === resultRunId) return;
+
+    const nextAssignments = (autoScheduler.result.assignments ?? []).map((assignment, index) =>
+      buildDisplayAssignment({
+        assignment,
+        index,
+        runId: autoScheduler.result.runId,
+        teamById,
+        slotById,
+      })
+    );
+
+    setReviewAssignments(nextAssignments);
+    setApplyStatus('review');
+    setApplyError(null);
+    setAssignmentSaveError(null);
+    setReviewedSchedulerRunId(resultRunId);
+  }, [autoScheduler.result, autoScheduler.status, reviewedSchedulerRunId, slotById, teamById]);
+
+  const localAssignments = reviewAssignments ?? assignments;
+  const isColdStart = !schedulerTeams.length;
+  const schoolDayEnd =
+    currentSeasonSetting?.school_day_end ?? currentSeasonSetting?.schoolDayEnd ?? undefined;
+  const timezone = currentSeasonSetting?.timezone ?? undefined;
+
+  const lockedAssignments = useMemo(
+    () =>
+      localAssignments
+        .map(toPersistenceAssignment)
+        .filter(
+          (assignment) =>
+            assignment.teamId &&
+            assignment.slotId &&
+            normalizeAssignmentSource(assignment.source) === 'manual'
+        ),
+    [localAssignments]
+  );
+
+  const overrideBaseSlots = useMemo(() => {
+    const assignedBySlot = new Map();
+    for (const assignment of localAssignments) {
+      const slotId = getAssignmentSlotId(assignment);
+      if (!slotId) continue;
+      assignedBySlot.set(slotId, (assignedBySlot.get(slotId) ?? 0) + 1);
+    }
+
+    return schedulerSlots.map((slot) => ({
+      baseSlotId: slot.id,
+      day: slot.day,
+      startLabel: slot.startTime.slice(0, 5),
+      totalCapacity: slot.capacity,
+      totalAssigned: assignedBySlot.get(slot.id) ?? 0,
+    }));
+  }, [localAssignments, schedulerSlots]);
+
+  const schedulerDisabled =
+    dashboardLoading.practice ||
+    practiceSlotsLoading ||
+    isColdStart ||
+    !schedulerSlots.length ||
+    Boolean(slotShapeError) ||
+    !canManageSchedule;
+
+  const schedulerReadinessMessage =
+    practiceSlotsError ||
+    slotShapeError ||
+    (!practiceSlotsLoading && !schedulerSlots.length && !isColdStart
+      ? 'No practice slots are available for this organization.'
+      : null);
+
+  const handleAutoGenerate = useCallback(async () => {
+    if (!canManageSchedule || schedulerDisabled) return;
+
+    setReviewAssignments(null);
+    setReviewedSchedulerRunId(null);
+    setApplyStatus('idle');
+    setApplyError(null);
+    setAssignmentSaveError(null);
+
+    await autoScheduler.trigger({
+      teams: schedulerTeams,
+      slots: schedulerSlots,
+      lockedAssignments,
+      scoringWeights: {},
+      schoolDayEnd,
+      timezone,
+      seasonSettingsId: currentSeasonSetting?.id,
+      config: {
+        timeBudgetMs: 8000,
+        maxIterations: 1000,
+        seed: 42,
+      },
+    });
+  }, [
+    autoScheduler,
+    canManageSchedule,
+    currentSeasonSetting?.id,
+    lockedAssignments,
+    schedulerDisabled,
+    schedulerSlots,
+    schedulerTeams,
+    schoolDayEnd,
+    timezone,
+  ]);
 
   const cancelAutoScheduler = useCallback(() => {
-    stopAutoSchedulerTimers();
-    setAutoSchedulerStatus('idle');
-    setAutoSchedulerProgress(0);
-  }, [stopAutoSchedulerTimers]);
+    autoScheduler.cancel();
+    setReviewAssignments(null);
+    setApplyStatus('cancelled');
+    setApplyError(null);
+  }, [autoScheduler]);
 
   const resetAutoScheduler = useCallback(() => {
-    stopAutoSchedulerTimers();
-    setAutoSchedulerStatus('idle');
-    setAutoSchedulerResult(null);
-  }, [stopAutoSchedulerTimers]);
+    autoScheduler.reset();
+    setReviewAssignments(null);
+    setReviewedSchedulerRunId(null);
+    setApplyStatus('idle');
+    setApplyError(null);
+    setAssignmentSaveError(null);
+  }, [autoScheduler]);
 
-  const localAssignments =
-    autoSchedulerStatus === 'completed' && autoSchedulerResult
-      ? autoSchedulerResult.assignments
-      : assignments;
+  const discardReview = useCallback(() => {
+    autoScheduler.reset();
+    setReviewAssignments(null);
+    setReviewedSchedulerRunId(null);
+    setApplyStatus('discarded');
+    setApplyError(null);
+    setAssignmentSaveError(null);
+  }, [autoScheduler]);
 
-  const isColdStart = !team?.teams?.length;
-  const overrideTeams = team?.teams ?? [];
-  const overrideBaseSlots = practice?.snapshot?.baseSlotDistribution ?? [];
+  const handleApplySchedule = useCallback(async () => {
+    if (!canManageSchedule || !reviewAssignments?.length) return;
+
+    const persistenceAssignments = reviewAssignments.map(toPersistenceAssignment);
+    const missingSlot = persistenceAssignments.find(
+      (assignment) => !slotById.has(assignment.slotId)
+    );
+
+    if (missingSlot) {
+      setApplyError(
+        'One or more staged assignments references a practice slot that no longer exists.'
+      );
+      setApplyStatus('error');
+      return;
+    }
+
+    const runId = autoScheduler.result?.runId ?? practice?.runId ?? undefined;
+    const now = new Date().toISOString();
+
+    setApplyStatus('applying');
+    setApplyError(null);
+
+    try {
+      const result = await persistPracticeScheduleReview({
+        assignments: persistenceAssignments,
+        slots: schedulerSlots,
+        runId,
+        runMetadata: {
+          runId,
+          seasonSettingsId: currentSeasonSetting?.id,
+          parameters: {
+            organizationId: currentOrganization?.id,
+            teamCount: schedulerTeams.length,
+            slotCount: schedulerSlots.length,
+            lockedCount: lockedAssignments.length,
+            schoolDayEnd,
+            timezone,
+          },
+          metrics: autoScheduler.result?.optimization ?? {},
+          results: {
+            assignments: persistenceAssignments,
+            unassigned: autoScheduler.result?.unassigned ?? [],
+            evaluation: autoScheduler.result?.evaluation ?? null,
+            optimization: autoScheduler.result?.optimization ?? null,
+          },
+          completedAt: now,
+        },
+      });
+
+      const appliedRunId = result.runId ?? runId ?? null;
+      setAssignments(
+        reviewAssignments.map((assignment) => ({
+          ...assignment,
+          runId: appliedRunId,
+          source: normalizeAssignmentSource(assignment.source),
+        }))
+      );
+      setReviewAssignments(null);
+      setApplyStatus('applied');
+      setAssignmentSaveError(null);
+    } catch (err) {
+      setApplyError(err.message || 'Practice schedule changes could not be applied.');
+      setApplyStatus('error');
+    }
+  }, [
+    autoScheduler.result,
+    canManageSchedule,
+    currentOrganization?.id,
+    currentSeasonSetting?.id,
+    lockedAssignments.length,
+    practice?.runId,
+    reviewAssignments,
+    schedulerSlots,
+    schedulerTeams.length,
+    schoolDayEnd,
+    slotById,
+    timezone,
+  ]);
 
   const handleToggleLock = useCallback(
-    async (assignmentId, nextSource) => {
+    (assignmentId, nextSource) => {
       if (!canManageSchedule) return;
 
-      const previousAssignments = assignments;
-      setAssignmentSaveError(null);
-      setAssignments((current) =>
-        current.map((a) => (a.id === assignmentId ? { ...a, source: nextSource } : a))
+      const staged = localAssignments.map((assignment) =>
+        assignment.id === assignmentId
+          ? { ...assignment, source: normalizeAssignmentSource(nextSource) }
+          : assignment
       );
-      const { error } = await supabase
-        .from('practice_assignments')
-        .update({ source: nextSource })
-        .eq('id', assignmentId);
-      if (error) {
-        console.error('Failed to persist practice lock state:', error);
-        setAssignments(previousAssignments);
-        setAssignmentSaveError('Practice lock change could not be saved. Please retry.');
-      }
+
+      setReviewAssignments(staged);
+      setApplyStatus('review');
+      setApplyError(null);
+      setAssignmentSaveError('Lock change staged. Apply the schedule to persist it.');
     },
-    [assignments, canManageSchedule]
+    [canManageSchedule, localAssignments]
+  );
+
+  const handleStageManualAssignment = useCallback(
+    (teamId, slotId) => {
+      if (!canManageSchedule) return;
+
+      const nextAssignment = buildDisplayAssignment({
+        assignment: {
+          id: `staged-${teamId}-${slotId}`,
+          teamId,
+          slotId,
+          source: 'manual',
+        },
+        index: localAssignments.length,
+        runId: autoScheduler.result?.runId ?? practice?.runId ?? null,
+        teamById,
+        slotById,
+      });
+
+      const replaced = localAssignments.some(
+        (assignment) => String(getAssignmentTeamId(assignment)) === String(teamId)
+      );
+      const staged = replaced
+        ? localAssignments.map((assignment) =>
+            String(getAssignmentTeamId(assignment)) === String(teamId) ? nextAssignment : assignment
+          )
+        : [...localAssignments, nextAssignment];
+
+      setReviewAssignments(staged);
+      setApplyStatus('review');
+      setApplyError(null);
+      setAssignmentSaveError('Manual override staged. Apply the schedule to persist it.');
+    },
+    [
+      autoScheduler.result?.runId,
+      canManageSchedule,
+      localAssignments,
+      practice?.runId,
+      slotById,
+      teamById,
+    ]
   );
 
   return (
@@ -169,7 +584,7 @@ export default function PracticeSchedulingPage() {
               className="flex items-center gap-2"
             >
               {canEditSchedule ? <Save size={18} /> : <Edit2 size={18} />}
-              {canEditSchedule ? 'Save Assignments' : 'Enter Manual Override'}
+              {canEditSchedule ? 'Exit Manual Override' : 'Enter Manual Override'}
             </Button>
           </div>
         )}
@@ -178,15 +593,81 @@ export default function PracticeSchedulingPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2">
           <AutoSchedulerPanel
-            status={autoSchedulerStatus}
-            progress={autoSchedulerProgress}
-            result={autoSchedulerResult}
-            error={autoSchedulerError}
+            status={autoScheduler.status}
+            progress={autoScheduler.progress}
+            result={autoScheduler.result}
+            error={autoScheduler.error}
             onTrigger={handleAutoGenerate}
             onCancel={cancelAutoScheduler}
             onReset={resetAutoScheduler}
-            disabled={dashboardLoading.practice || isColdStart || !canManageSchedule}
+            disabled={schedulerDisabled}
           />
+
+          {schedulerReadinessMessage && (
+            <div
+              role="alert"
+              className="mt-4 rounded-lg border border-amber-400/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-100"
+            >
+              {schedulerReadinessMessage}
+            </div>
+          )}
+
+          {applyStatus !== 'idle' && (
+            <section
+              aria-label="Practice schedule review"
+              role="region"
+              className="mt-4 rounded-xl border border-white/10 bg-white/5 p-4"
+            >
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h3 className="text-base font-semibold text-white">
+                    {applyStatus === 'applied'
+                      ? 'Practice Schedule Applied'
+                      : applyStatus === 'discarded'
+                        ? 'Review Discarded'
+                        : applyStatus === 'cancelled'
+                          ? 'Optimization Cancelled'
+                          : 'Review Practice Changes'}
+                  </h3>
+                  <p className="mt-1 text-sm text-white/60">
+                    {reviewAssignments?.length
+                      ? `${reviewAssignments.length} assignments are staged for persistence.`
+                      : 'No practice assignment changes are currently staged.'}
+                  </p>
+                </div>
+                {reviewAssignments?.length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      onClick={handleApplySchedule}
+                      loading={applyStatus === 'applying'}
+                      disabled={applyStatus === 'applying'}
+                      className="flex items-center gap-1"
+                    >
+                      <CheckCircle size={14} aria-hidden="true" />
+                      Apply Schedule
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={discardReview}
+                      disabled={applyStatus === 'applying'}
+                      className="flex items-center gap-1"
+                    >
+                      <RotateCcw size={14} aria-hidden="true" />
+                      Discard Review
+                    </Button>
+                  </div>
+                )}
+              </div>
+              {applyError && (
+                <div role="alert" className="mt-3 text-sm text-red-300">
+                  {applyError}
+                </div>
+              )}
+            </section>
+          )}
 
           {isColdStart && (
             <div className="glass-panel p-12 text-center animate-fadeIn border-brand-400/20 relative overflow-hidden">
@@ -224,8 +705,8 @@ export default function PracticeSchedulingPage() {
           <div className="bg-white/5 border border-white/10 rounded-xl overflow-hidden shadow-2xl backdrop-blur-sm mt-8">
             {assignmentSaveError && (
               <div
-                role="alert"
-                className="border-b border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-200"
+                role="status"
+                className="border-b border-blue-400/20 bg-blue-500/10 px-4 py-3 text-sm text-blue-100"
               >
                 {assignmentSaveError}
               </div>
@@ -237,7 +718,11 @@ export default function PracticeSchedulingPage() {
             />
           </div>
           {canEditSchedule && (
-            <PracticeOverridePanel teams={overrideTeams} baseSlots={overrideBaseSlots} />
+            <PracticeOverridePanel
+              teams={schedulerTeams}
+              baseSlots={overrideBaseSlots}
+              onStageAssignment={handleStageManualAssignment}
+            />
           )}
         </div>
 

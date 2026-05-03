@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
+import PropTypes from 'prop-types';
 import { AlertCircle, Plus, Check } from 'lucide-react';
 import Button from './ui/Button.jsx';
 
-export default function PracticeOverridePanel({ teams = [], baseSlots = [] }) {
+export default function PracticeOverridePanel({ teams = [], baseSlots = [], onStageAssignment }) {
   const [selectedTeamId, setSelectedTeamId] = useState('');
   const [selectedSlotId, setSelectedSlotId] = useState('');
   const [overrides, setOverrides] = useState([]);
@@ -31,13 +32,14 @@ export default function PracticeOverridePanel({ teams = [], baseSlots = [] }) {
     if (!selectedTeamId || !selectedSlotId) return;
 
     const conflict = checkForConflict(selectedTeamId, selectedSlotId);
+    onStageAssignment?.(selectedTeamId, selectedSlotId);
 
     const newOverride = {
       id: Date.now().toString(),
       teamId: selectedTeamId,
       slotId: selectedSlotId,
       conflictWarning: conflict,
-      status: 'pending',
+      status: 'staged',
     };
 
     setOverrides([newOverride, ...overrides]);
@@ -89,8 +91,8 @@ export default function PracticeOverridePanel({ teams = [], baseSlots = [] }) {
             <option value="">-- Choose Slot --</option>
             {baseSlots.map((s) => (
               <option key={s.baseSlotId} value={s.baseSlotId}>
-                {s.day} @ {s.baseSlotId.split('_').pop().slice(0, 5)} (Avail:{' '}
-                {s.totalCapacity - s.totalAssigned})
+                {s.day} @ {s.startLabel ?? s.baseSlotId.split('_').pop().slice(0, 5)} (Avail:{' '}
+                {Math.max(0, (s.totalCapacity ?? 0) - (s.totalAssigned ?? 0))})
               </option>
             ))}
           </select>
@@ -128,7 +130,7 @@ export default function PracticeOverridePanel({ teams = [], baseSlots = [] }) {
                     <span className="font-bold text-text-primary">{team?.name}</span>
                     <span className="text-text-muted">&rarr;</span>
                     <span className="font-medium text-blue-400">
-                      {slot?.day} at {slot?.baseSlotId.split('_').pop()}
+                      {slot?.day} at {slot?.startLabel ?? slot?.baseSlotId.split('_').pop()}
                     </span>
                     <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full font-bold bg-amber-500/20 text-amber-500 border border-amber-500/30">
                       Manual
@@ -145,7 +147,7 @@ export default function PracticeOverridePanel({ teams = [], baseSlots = [] }) {
                 </div>
 
                 <div className="text-emerald-500 flex items-center gap-1 text-xs font-semibold">
-                  <Check size={14} /> Saved
+                  <Check size={14} /> Staged
                 </div>
               </div>
             );
@@ -155,3 +157,9 @@ export default function PracticeOverridePanel({ teams = [], baseSlots = [] }) {
     </div>
   );
 }
+
+PracticeOverridePanel.propTypes = {
+  teams: PropTypes.array,
+  baseSlots: PropTypes.array,
+  onStageAssignment: PropTypes.func,
+};

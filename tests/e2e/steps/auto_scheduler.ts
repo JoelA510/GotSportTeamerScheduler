@@ -12,7 +12,7 @@ interface AutoSchedulerPage extends Page {
 // --- Navigation ---
 
 const MOCK_AUTO_SCHEDULER_RESPONSE = {
-  runId: 'mock-run-auto-1',
+  runId: '00000000-0000-4000-8000-000000000221',
   assignments: [
     { teamId: 't1', slotId: 'ps-1', source: 'auto' },
     { teamId: 't2', slotId: 'ps-1', source: 'auto' },
@@ -21,9 +21,9 @@ const MOCK_AUTO_SCHEDULER_RESPONSE = {
   evaluation: { overallScore: 95 },
   optimization: {
     iterations: 250,
-    bestScore: 95,
+    bestScore: 0.95,
     elapsedMs: 1200,
-    improvement: 15,
+    improvement: 0.15,
     terminationReason: 'max_iterations',
     status: 'Optimization Complete',
   },
@@ -50,13 +50,45 @@ When('I navigate to the Practice Scheduling page', async ({ page }) => {
     await page.route('**/functions/v1/auto-scheduler', async (route) => {
       const timeout = new Promise((r) => setTimeout(r, 8000));
       await Promise.race([routePromise, timeout]);
+      const requestBody = JSON.parse(route.request().postData() || '{}');
+      const lockedAssignments = Array.isArray(requestBody.lockedAssignments)
+        ? requestBody.lockedAssignments
+        : [];
+      const lockedByTeam = new Map(
+        lockedAssignments.map((assignment: { teamId: string; slotId: string }) => [
+          assignment.teamId,
+          assignment.slotId,
+        ])
+      );
+      const assignments = MOCK_AUTO_SCHEDULER_RESPONSE.assignments.map((assignment) =>
+        lockedByTeam.has(assignment.teamId)
+          ? {
+              ...assignment,
+              slotId: lockedByTeam.get(assignment.teamId),
+              source: 'locked',
+            }
+          : assignment
+      );
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify(MOCK_AUTO_SCHEDULER_RESPONSE),
+        body: JSON.stringify({ ...MOCK_AUTO_SCHEDULER_RESPONSE, assignments }),
       });
     });
   }
+
+  await page.route('**/functions/v1/practice-persistence', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        status: 'success',
+        runId: '00000000-0000-4000-8000-000000000221',
+        message: 'Persistence successful.',
+        syncedAt: new Date().toISOString(),
+      }),
+    });
+  });
 
   await page.goto('/schedule/practice');
   await page.waitForLoadState('networkidle');
@@ -141,6 +173,46 @@ Then('I should see a {string} button', async ({ page }, buttonText: string) => {
   await expect(button).toBeVisible();
 });
 
+Then('I should see the practice schedule review panel', async ({ page }) => {
+  const panel = page.locator('section[aria-label="Practice schedule review"]');
+  await expect(panel).toBeVisible({ timeout: 10000 });
+  await expect(panel).toContainText('Review Practice Changes');
+});
+
+When('I apply the practice schedule', async ({ page }) => {
+  await page.getByRole('button', { name: /Apply Schedule/i }).click();
+});
+
+Then(
+  'I should see {string} in the practice schedule review panel',
+  async ({ page }, expectedText: string) => {
+    const panel = page.locator('section[aria-label="Practice schedule review"]');
+    await expect(panel).toContainText(expectedText, { timeout: 10000 });
+  }
+);
+
+When('I enter manual override mode', async ({ page }) => {
+  await page.getByRole('button', { name: /Enter Manual Override/i }).click();
+});
+
+When('I stage a manual practice override', async ({ page }) => {
+  await page.getByTestId('team-select').selectOption('t1');
+  await page.getByTestId('slot-select').selectOption('ps-1');
+  await page.getByTestId('assign-slot-button').click();
+});
+
+Then('I should see a staged manual override', async ({ page }) => {
+  await expect(
+    page.getByText('Manual override staged. Apply the schedule to persist it.')
+  ).toBeVisible({
+    timeout: 10000,
+  });
+  await expect(page.getByText('Staged', { exact: true })).toBeVisible();
+  await expect(page.locator('section[aria-label="Practice schedule review"]')).toContainText(
+    'Review Practice Changes'
+  );
+});
+
 // --- Error ---
 
 Given('the auto-scheduler service is unavailable', async ({ page }) => {
@@ -210,9 +282,13 @@ Given(
         const db = JSON.parse(sessionStorage.getItem(dbKey) || '{}');
         if (!db.practice_assignments) db.practice_assignments = [];
         db.practice_assignments.push({
+          id: `locked-${tId}-${sId}`,
           team_id: tId,
           slot_id: sId,
-          source: 'locked',
+          practice_slot_id: sId,
+          run_id: 'run-practice-1',
+          source: 'manual',
+          effective_date_range: '[2025-01-01,2025-12-31)',
         });
         sessionStorage.setItem(dbKey, JSON.stringify(db));
       },
@@ -234,10 +310,9 @@ Then(
   'team {string} assignment should have source {string}',
   async ({ page }, _teamId: string, source: string) => {
     // The locked badge should be visible in the assignment list
-    if (source === 'locked') {
-      const badge = page.locator('text=locked').first();
-      // This will be in the PracticeAssignmentList — just ensure it exists
-      await expect(badge)
+    if (source === 'manual') {
+      const lockButton = page.locator('button[title*="Unlock slot"]').first();
+      await expect(lockButton)
         .toBeVisible({ timeout: 5000 })
         .catch(() => {
           // In mock mode, assignment list rendering may differ — pass if panel shows complete
