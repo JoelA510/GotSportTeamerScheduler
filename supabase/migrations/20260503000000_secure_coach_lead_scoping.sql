@@ -159,7 +159,7 @@ BEGIN
         FROM valid_leads
         ORDER BY email, organization_id
     ),
-    inserted_coaches AS (
+    upserted_coaches AS (
         INSERT INTO public.coaches (
             organization_id, full_name, email, status,
             import_source, last_imported_at
@@ -168,19 +168,21 @@ BEGIN
             organization_id, full_name, email, 'interested',
             'player_import_lead', timezone('utc', now())
         FROM coach_candidates
-        ON CONFLICT (email) DO NOTHING
-        RETURNING id, organization_id, email
+        ON CONFLICT (email) DO UPDATE
+        SET last_imported_at = EXCLUDED.last_imported_at
+        WHERE public.coaches.organization_id = EXCLUDED.organization_id
+        RETURNING id, organization_id, email, (xmax = '0'::xid) AS inserted
     ),
     resolved_leads AS (
         SELECT
             vl.division_id,
             vl.player_id,
             vl.organization_id,
-            COALESCE(ic.id, c.id) AS coach_id
+            COALESCE(uc.id, c.id) AS coach_id
         FROM valid_leads vl
-        LEFT JOIN inserted_coaches ic
-            ON ic.email = vl.email
-           AND ic.organization_id = vl.organization_id
+        LEFT JOIN upserted_coaches uc
+            ON uc.email = vl.email
+           AND uc.organization_id = vl.organization_id
         LEFT JOIN public.coaches c
             ON lower(c.email) = vl.email
            AND c.organization_id = vl.organization_id
@@ -197,10 +199,10 @@ BEGIN
         RETURNING 1
     )
     SELECT jsonb_build_object(
-        'leads_created', (SELECT count(*) FROM inserted_coaches),
+        'leads_created', (SELECT count(*) FROM upserted_coaches WHERE inserted),
         'programs_linked', (SELECT count(*) FROM inserted_links),
         'skipped_existing', (SELECT count(*) FROM valid_leads)
-                            - (SELECT count(*) FROM inserted_coaches)
+                            - (SELECT count(*) FROM upserted_coaches WHERE inserted)
     )
     INTO v_result;
 
@@ -209,5 +211,67 @@ END;
 $$;
 
 GRANT EXECUTE ON FUNCTION public.upsert_coach_leads(jsonb) TO authenticated;
+
+CREATE OR REPLACE FUNCTION public.set_import_job_coach_lead_summary(
+    p_import_job_id uuid,
+    p_summary jsonb,
+    p_status text DEFAULT NULL
+)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+    v_org_id uuid;
+BEGIN
+    IF p_summary IS NULL OR jsonb_typeof(p_summary) <> 'object' THEN
+        RAISE EXCEPTION 'p_summary must be a jsonb object';
+    END IF;
+
+    IF p_status IS NOT NULL
+       AND p_status NOT IN (
+           'queued',
+           'processing',
+           'importing',
+           'completed',
+           'completed_with_warnings',
+           'needs_fix',
+           'failed'
+       ) THEN
+        RAISE EXCEPTION 'invalid import job status: %', p_status
+            USING ERRCODE = '23514';
+    END IF;
+
+    SELECT organization_id
+    INTO v_org_id
+    FROM public.import_jobs
+    WHERE id = p_import_job_id;
+
+    IF v_org_id IS NULL THEN
+        RAISE EXCEPTION 'Import job not found: %', p_import_job_id
+            USING ERRCODE = 'P0002';
+    END IF;
+
+    IF NOT public.is_org_member(v_org_id) THEN
+        RAISE EXCEPTION 'Access denied: user is not a member of organization %', v_org_id
+            USING ERRCODE = '42501';
+    END IF;
+
+    UPDATE public.import_jobs
+    SET
+        status = COALESCE(p_status, status),
+        warning_summary = jsonb_set(
+            COALESCE(warning_summary, '{}'::jsonb),
+            '{coach_leads}',
+            p_summary,
+            true
+        )
+    WHERE id = p_import_job_id;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.set_import_job_coach_lead_summary(uuid, jsonb, text)
+    TO authenticated;
 
 COMMIT;

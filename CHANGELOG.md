@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Added player-import coach volunteer lead capture: finalized GotSport player imports now submit interested coach leads through `upsert_coach_leads`, persist per-job lead summaries, and cover payload shaping with Vitest plus pgTAP.
+- Added player-import coach volunteer lead capture: finalized GotSport player imports now submit interested coach leads through `upsert_coach_leads`, atomically persist per-job lead summaries, and cover payload shaping with Vitest plus pgTAP.
 
 ### Changed
 

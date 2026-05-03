@@ -5,7 +5,7 @@ BEGIN;
 \set squadlogic_fixture_include 1
 \ir _fixtures.sql
 
-SELECT plan(11);
+SELECT plan(16);
 
 INSERT INTO public.players (
     id,
@@ -107,6 +107,11 @@ SELECT is(
     'existing active coach is not downgraded to interested'
 );
 
+SELECT ok(
+    (SELECT last_imported_at IS NOT NULL FROM public.coaches WHERE email = 'active.coachlead@example.com'),
+    'existing active coach last_imported_at is refreshed on re-import'
+);
+
 SELECT is(
     (
         SELECT count(*)
@@ -148,7 +153,51 @@ SELECT throws_ok(
     'RPC rejects a lead whose player belongs to another organization'
 );
 
+SELECT lives_ok(
+    $$
+        SELECT public.set_import_job_coach_lead_summary(
+            'aaaabbbb-1111-1111-1111-111111111111',
+            '{"status":"completed","leads_submitted":1}'::jsonb,
+            'completed_with_warnings'
+        )
+    $$,
+    'org member can atomically persist a coach lead import summary'
+);
+
+SELECT is(
+    (
+        SELECT warning_summary #>> '{coach_leads,status}'
+        FROM public.import_jobs
+        WHERE id = 'aaaabbbb-1111-1111-1111-111111111111'
+    ),
+    'completed',
+    'coach lead summary is merged under warning_summary.coach_leads'
+);
+
+SELECT is(
+    (
+        SELECT status
+        FROM public.import_jobs
+        WHERE id = 'aaaabbbb-1111-1111-1111-111111111111'
+    ),
+    'completed_with_warnings',
+    'coach lead summary RPC can atomically set the import job status'
+);
+
 SET LOCAL "request.jwt.claims" TO '{"sub":"22222222-2222-2222-2222-222222222222"}';
+
+SELECT throws_ok(
+    $$
+        SELECT public.set_import_job_coach_lead_summary(
+            'aaaabbbb-1111-1111-1111-111111111111',
+            '{"status":"blocked"}'::jsonb,
+            'completed'
+        )
+    $$,
+    '42501',
+    NULL,
+    'Org B admin cannot update Org A import coach lead summaries'
+);
 
 SELECT throws_ok(
     $$

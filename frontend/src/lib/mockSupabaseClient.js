@@ -1522,6 +1522,24 @@ export const mockSupabase = {
       return { data: job.warning_summary.finalize, error: null };
     }
 
+    if (name === 'set_import_job_coach_lead_summary') {
+      const { p_import_job_id, p_summary, p_status } = params || {};
+      const job = (db.import_jobs || []).find(
+        (item) => String(item.id) === String(p_import_job_id)
+      );
+      if (!job) {
+        return { data: null, error: { message: 'Import job not found' } };
+      }
+
+      job.warning_summary = {
+        ...(job.warning_summary || {}),
+        coach_leads: p_summary || {},
+      };
+      if (p_status) job.status = p_status;
+      saveDB(db);
+      return { data: true, error: null };
+    }
+
     if (name === 'upsert_coach_leads') {
       const leads = Array.isArray(params?.p_leads) ? params.p_leads : null;
       if (!leads) {
@@ -1598,6 +1616,8 @@ export const mockSupabase = {
             created_at: new Date().toISOString(),
           });
           leadsCreated += 1;
+        } else if (String(existingGlobalCoach.organization_id) === String(lead.organization_id)) {
+          existingGlobalCoach.last_imported_at = new Date().toISOString();
         }
       });
 
