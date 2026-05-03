@@ -9,6 +9,7 @@ import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supa
 import {
   getUserFromRequest,
   getUserOrgIds,
+  verifyOrgAdmin,
   recordAudit,
   corsHeaders,
   jsonResponse,
@@ -66,6 +67,8 @@ function evaluateOverrides(overrides: unknown[] = []): { pending: number } {
 
 interface RunMetadata {
   runId?: string;
+  organizationId?: string;
+  seasonId?: string;
   seasonSettingsId?: string;
   parameters?: Record<string, unknown>;
   metrics?: Record<string, unknown>;
@@ -91,6 +94,8 @@ async function persistTeamSnapshot(
   const runData = effectiveRunId
     ? {
         id: effectiveRunId,
+        organization_id: runMetadata.organizationId,
+        season_id: runMetadata.seasonId ?? runMetadata.seasonSettingsId,
         run_type: 'team',
         season_settings_id: runMetadata.seasonSettingsId,
         status: 'completed',
@@ -104,6 +109,8 @@ async function persistTeamSnapshot(
       }
     : {
         run_type: 'team',
+        organization_id: runMetadata.organizationId,
+        season_id: runMetadata.seasonId ?? runMetadata.seasonSettingsId,
         status: 'completed',
         updated_at: now.toISOString(),
       };
@@ -124,6 +131,127 @@ async function persistTeamSnapshot(
     updatedTeams: teamRows.length,
     updatedPlayers: teamPlayerRows.length,
   };
+}
+
+type PersistencePayload = z.infer<typeof PersistencePayloadSchema>;
+
+function stringValue(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
+}
+
+function firstStringValue(record: Record<string, unknown> | undefined, keys: string[]) {
+  if (!record) return undefined;
+  for (const key of keys) {
+    const value = stringValue(record[key]);
+    if (value) return value;
+  }
+  return undefined;
+}
+
+function uniqueStrings(values: Array<string | undefined>) {
+  return [...new Set(values.filter((value): value is string => Boolean(value)))];
+}
+
+async function addOrgIdsFromTable(
+  serviceClient: SupabaseClient,
+  tableName: string,
+  ids: string[],
+  candidateOrgIds: Set<string>
+) {
+  if (ids.length === 0) return undefined;
+
+  const { data, error } = await serviceClient
+    .from(tableName)
+    .select('organization_id')
+    .in('id', ids);
+
+  if (error) {
+    console.error(`Failed to resolve organization ids from ${tableName}:`, error.message);
+    return 'Unable to verify organization scope for team persistence.';
+  }
+
+  for (const row of data ?? []) {
+    const orgId = stringValue((row as Record<string, unknown>).organization_id);
+    if (orgId) candidateOrgIds.add(orgId);
+  }
+
+  return undefined;
+}
+
+async function resolveTargetOrgId(
+  serviceClient: SupabaseClient,
+  body: PersistencePayload
+): Promise<{ organizationId?: string; status?: number; message?: string }> {
+  const candidateOrgIds = new Set<string>();
+  const runMetadata = (body.runMetadata ?? {}) as Record<string, unknown>;
+  const metadataOrgId = firstStringValue(runMetadata, ['organizationId', 'organization_id']);
+  const seasonSettingsId = firstStringValue(runMetadata, [
+    'seasonSettingsId',
+    'season_settings_id',
+    'seasonId',
+    'season_id',
+  ]);
+
+  if (metadataOrgId) candidateOrgIds.add(metadataOrgId);
+
+  if (seasonSettingsId) {
+    const { data, error } = await serviceClient
+      .from('season_settings')
+      .select('organization_id')
+      .eq('id', seasonSettingsId)
+      .maybeSingle();
+
+    if (error) {
+      console.error('Failed to resolve season settings organization:', error.message);
+      return { status: 500, message: 'Unable to verify season organization.' };
+    }
+
+    const seasonOrgId = stringValue((data as Record<string, unknown> | null)?.organization_id);
+    if (seasonOrgId) candidateOrgIds.add(seasonOrgId);
+  }
+
+  const teamRows = body.snapshot.payload.teamRows as Array<Record<string, unknown>>;
+  const teamPlayerRows = body.snapshot.payload.teamPlayerRows as Array<Record<string, unknown>>;
+
+  for (const row of teamRows) {
+    const rowOrgId = firstStringValue(row, ['organizationId', 'organization_id']);
+    if (rowOrgId) candidateOrgIds.add(rowOrgId);
+  }
+
+  const divisionIds = uniqueStrings(
+    teamRows.map((row) => firstStringValue(row, ['divisionId', 'division_id']))
+  );
+  const teamIds = uniqueStrings([
+    ...teamRows.map((row) => stringValue(row.id)),
+    ...teamPlayerRows.map((row) => firstStringValue(row, ['teamId', 'team_id'])),
+  ]);
+  const playerIds = uniqueStrings(
+    teamPlayerRows.map((row) => firstStringValue(row, ['playerId', 'player_id']))
+  );
+  const resolutionErrors = await Promise.all([
+    addOrgIdsFromTable(serviceClient, 'divisions', divisionIds, candidateOrgIds),
+    addOrgIdsFromTable(serviceClient, 'teams', teamIds, candidateOrgIds),
+    addOrgIdsFromTable(serviceClient, 'players', playerIds, candidateOrgIds),
+  ]);
+  const resolutionError = resolutionErrors.find(Boolean);
+
+  if (resolutionError) return { status: 500, message: resolutionError };
+
+  if (candidateOrgIds.size === 0) {
+    return {
+      status: 400,
+      message: 'Unable to resolve organization for team persistence payload.',
+    };
+  }
+
+  if (candidateOrgIds.size > 1) {
+    return {
+      status: 403,
+      message: 'Access denied: team persistence payload spans multiple organizations.',
+    };
+  }
+
+  return { organizationId: [...candidateOrgIds][0] };
 }
 
 // ── Handler setup ───────────────────────────────────────────────────────────
@@ -197,7 +325,7 @@ if (!supabaseUrl || !serviceRoleKey) {
       return jsonResponse({ status: 'error', message: 'Invalid JSON' }, 400);
     }
 
-    // 3. Verify organization membership
+    // 3. Verify organization membership and admin authority for the target org.
     const userOrgIds = await getUserOrgIds(serviceClient, user.id);
     if (userOrgIds.length === 0) {
       return jsonResponse(
@@ -206,33 +334,32 @@ if (!supabaseUrl || !serviceRoleKey) {
       );
     }
 
-    const teamRows = body.snapshot.payload.teamRows;
-    if (teamRows.length > 0) {
-      const divisionIds = [
-        ...new Set(
-          teamRows
-            .map((r) => (r as Record<string, unknown>).division_id as string | undefined)
-            .filter(Boolean)
-        ),
-      ];
-      if (divisionIds.length > 0) {
-        const { data: divisions } = await serviceClient
-          .from('divisions')
-          .select('organization_id')
-          .in('id', divisionIds);
-
-        const targetOrgIds = [
-          ...new Set((divisions ?? []).map((d: { organization_id: string }) => d.organization_id)),
-        ];
-        const unauthorized = targetOrgIds.filter((oid) => !userOrgIds.includes(oid));
-        if (unauthorized.length > 0) {
-          return jsonResponse(
-            { status: 'error', message: 'Access denied: data belongs to a different organization' },
-            403
-          );
-        }
-      }
+    const targetOrg = await resolveTargetOrgId(serviceClient, body);
+    if (!targetOrg.organizationId) {
+      return jsonResponse(
+        { status: 'error', message: targetOrg.message ?? 'Unable to verify organization scope.' },
+        targetOrg.status ?? 403
+      );
     }
+
+    if (!userOrgIds.includes(targetOrg.organizationId)) {
+      return jsonResponse(
+        { status: 'error', message: 'Access denied: data belongs to a different organization' },
+        403
+      );
+    }
+
+    const isOrgAdmin = await verifyOrgAdmin(serviceClient, user.id, targetOrg.organizationId);
+    if (!isOrgAdmin) {
+      return jsonResponse(
+        { status: 'error', message: 'Admin team-management permission is required.' },
+        403
+      );
+    }
+
+    const teamRows = body.snapshot.payload.teamRows;
+    body.runMetadata = body.runMetadata ?? {};
+    body.runMetadata.organizationId = targetOrg.organizationId;
 
     // 4. Check for pending overrides
     const { pending } = evaluateOverrides(body.overrides ?? []);
@@ -257,14 +384,12 @@ if (!supabaseUrl || !serviceRoleKey) {
       );
 
       // Audit log (fire-and-forget)
-      if (userOrgIds.length > 0) {
-        recordAudit(serviceClient, {
-          organizationId: userOrgIds[0],
-          action: 'team.saved',
-          resourceType: 'team',
-          metadata: { team_count: teamRows.length },
-        });
-      }
+      recordAudit(serviceClient, {
+        organizationId: targetOrg.organizationId,
+        action: 'team.saved',
+        resourceType: 'team',
+        metadata: { team_count: teamRows.length },
+      });
 
       const response = jsonResponse(result, 200);
       return response;

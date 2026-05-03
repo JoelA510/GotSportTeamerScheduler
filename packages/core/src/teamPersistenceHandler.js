@@ -18,6 +18,8 @@ import { evaluateOverrides } from './utils/snapshot.js';
  * Authorize a team persistence request.
  * @param {Object} params
  * @param {string} [params.runId]
+ * @param {string} [params.organizationId]
+ * @param {string} [params.seasonId]
  * @param {string} [params.seasonSettingsId]
  * @param {string} [params.createdBy]
  * @param {string} [params.runType]
@@ -93,6 +95,8 @@ function normalizeSnapshot(snapshot) {
  * Build a scheduler run row.
  * @param {Object} params
  * @param {string} [params.runId]
+ * @param {string} [params.organizationId]
+ * @param {string} [params.seasonId]
  * @param {string} [params.seasonSettingsId]
  * @param {string} [params.runType]
  * @param {string} [params.status]
@@ -107,6 +111,8 @@ function normalizeSnapshot(snapshot) {
  */
 function buildSchedulerRunRow({
   runId,
+  organizationId,
+  seasonId,
   seasonSettingsId,
   runType = 'team',
   status = 'completed',
@@ -122,6 +128,8 @@ function buildSchedulerRunRow({
   // but we keep the structure building here for the RPC argument.
   return {
     id: runId,
+    organization_id: organizationId,
+    season_id: seasonId ?? seasonSettingsId,
     season_settings_id: seasonSettingsId,
     run_type: runType,
     status,

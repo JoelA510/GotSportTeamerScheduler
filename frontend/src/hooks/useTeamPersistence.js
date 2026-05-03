@@ -11,6 +11,7 @@ const EMPTY_PERSISTENCE_SNAPSHOT = {
   lastSyncedAt: null,
   preparedTeamRows: 0,
   preparedPlayerRows: 0,
+  runMetadata: {},
   payload: {
     teamRows: [],
     teamPlayerRows: [],
@@ -60,6 +61,27 @@ export function useTeamPersistence() {
         }));
 
         const lastRun = runs[0];
+        const lastRunMetadata = lastRun
+          ? {
+              runId: lastRun.id,
+              organizationId: lastRun.organization_id,
+              seasonId: lastRun.season_id ?? lastRun.season_settings_id,
+              seasonSettingsId: lastRun.season_settings_id,
+              runType: lastRun.run_type,
+              status: lastRun.status,
+              parameters: lastRun.parameters ?? {},
+              metrics: lastRun.metrics ?? {},
+              results: lastRun.results ?? {},
+              createdBy: lastRun.created_by,
+              startedAt: lastRun.started_at,
+              completedAt: lastRun.completed_at,
+            }
+          : {
+              organizationId: currentOrganization.id,
+              seasonId: currentSeasonSetting.id,
+              seasonSettingsId: currentSeasonSetting.id,
+              runType: 'team',
+            };
 
         setPersistenceSnapshot({
           manualOverrides: [], // No table for overrides yet
@@ -68,6 +90,7 @@ export function useTeamPersistence() {
           lastSyncedAt: lastRun?.completed_at || null,
           preparedTeamRows: lastRun?.results?.teams?.length || 0,
           preparedPlayerRows: lastRun?.results?.team_players?.length || 0,
+          runMetadata: lastRunMetadata,
           payload: {
             teamRows: lastRun?.results?.teams || [],
             teamPlayerRows: lastRun?.results?.team_players || [],

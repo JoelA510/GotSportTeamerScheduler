@@ -88,6 +88,7 @@ test('processTeamPersistenceRequest persists snapshot after validation and auth'
       snapshot: SAMPLE_SNAPSHOT,
       overrides: [],
       runMetadata: {
+        organizationId: 'org-55',
         seasonSettingsId: 55,
         createdBy: 'user-99',
         parameters: { trigger: 'edge-function' },
@@ -107,6 +108,8 @@ test('processTeamPersistenceRequest persists snapshot after validation and auth'
 
   const schedulerRunCall = calls.find((call) => call.table === 'scheduler_runs');
   assert.ok(schedulerRunCall, 'scheduler_runs upsert should be invoked');
+  assert.strictEqual(schedulerRunCall.rows[0].organization_id, 'org-55');
+  assert.strictEqual(schedulerRunCall.rows[0].season_id, 55);
   assert.strictEqual(schedulerRunCall.rows[0].season_settings_id, 55);
   assert.strictEqual(schedulerRunCall.rows[0].created_by, 'user-99');
 });
