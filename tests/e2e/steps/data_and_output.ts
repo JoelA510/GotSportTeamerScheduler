@@ -100,6 +100,45 @@ Then('present an interface to manually correct the malformed row', async ({ page
   });
 });
 
+Given('I upload a GotSport player CSV file with reciprocal buddy requests', async ({ page }) => {
+  await page.locator('input[type="file"]').setInputFiles({
+    name: 'players-buddies.csv',
+    mimeType: 'text/csv',
+    buffer: Buffer.from(
+      [
+        'First Name,Last Name,Date of Birth,Registration ID,Division,Buddy ID',
+        'Avery,Adams,2016-04-02,GS-BUDDY-A,U8 Coed,GS-BUDDY-B',
+        'Blair,Bennett,2016-05-03,GS-BUDDY-B,U8 Coed,GS-BUDDY-A',
+      ].join('\n')
+    ),
+  });
+  await expect(page.getByRole('button', { name: 'Start Import' })).toBeVisible();
+});
+
+When('I apply the player CSV import', async ({ page }) => {
+  await page.getByRole('button', { name: 'Start Import' }).click();
+  await expect(page.getByRole('heading', { name: 'Import Applied' })).toBeVisible({
+    timeout: 15000,
+  });
+});
+
+Then('the player import should materialize reciprocal buddy pairs', async ({ page }) => {
+  const buddySummary = await page.evaluate(() => {
+    const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
+    const latestPlayerJob = [...(db.import_jobs || [])]
+      .reverse()
+      .find((job: { job_type?: string }) => job.job_type === 'registration');
+    return {
+      relationships: (db.player_buddies || []).filter(
+        (buddy: { source_import_job?: string }) => buddy.source_import_job === latestPlayerJob?.id
+      ).length,
+      materializedPairs: latestPlayerJob?.warning_summary?.buddy_pairs?.materialized_pairs,
+    };
+  });
+
+  expect(buddySummary).toEqual({ relationships: 2, materializedPairs: 1 });
+});
+
 Given('I upload a valid GotSport coach CSV file', async ({ page }) => {
   await page.locator('button').filter({ hasText: 'coaches' }).first().click();
   await page.locator('input[type="file"]').setInputFiles({

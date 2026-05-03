@@ -7,6 +7,7 @@
  * the Supabase JS client API surface used by SquadLogic's hooks and pages.
  */
 import { logger } from './logger.js';
+import { HEADER_ALIASES } from '../utils/telemetryUtils.js';
 
 // ── Mock Data Seed ──────────────────────────────────────────────────────────
 const initialMockData = {
@@ -134,6 +135,7 @@ const initialMockData = {
     { team_id: '00000000-0000-0000-0000-000000000001', player_id: 'player-1' },
     { team_id: '00000000-0000-0000-0000-000000000001', player_id: 'player-2' },
   ],
+  player_buddies: [],
   players: [
     {
       id: 'player-1',
@@ -559,6 +561,11 @@ const mergeSource = (db, source) => {
             return (
               String(r.organization_id) === String(record.organization_id) &&
               String(r.profile_id) === String(record.profile_id)
+            );
+          if (key === 'player_buddies')
+            return (
+              String(r.player_id) === String(record.player_id) &&
+              String(r.buddy_player_id) === String(record.buddy_player_id)
             );
           if (key === 'view_org_metrics')
             return String(r.organization_id) === String(record.organization_id);
@@ -1576,6 +1583,8 @@ export const mockSupabase = {
             : null,
           coach_volunteer: willingToCoach,
           willing_to_coach: willingToCoach,
+          buddy_request: payload.buddy_request || null,
+          mutual_buddy_code: payload.mutual_buddy_code || payload.buddy_code || null,
           import_source: 'gotsport',
           last_imported_at: now,
         };
@@ -1622,6 +1631,212 @@ export const mockSupabase = {
 
       saveDB(db);
       return { data: job.warning_summary.finalize, error: null };
+    }
+
+    if (name === 'materialize_import_buddy_pairs') {
+      const { p_import_job_id } = params || {};
+      const job = (db.import_jobs || []).find(
+        (item) => String(item.id) === String(p_import_job_id)
+      );
+      if (!job) {
+        return { data: null, error: { message: 'Import job not found' } };
+      }
+      if (job.job_type !== 'registration') {
+        return { data: null, error: { message: 'Import job is not registration' } };
+      }
+
+      const normalizeKey = (value) =>
+        String(value || '')
+          .trim()
+          .toLowerCase();
+      const readPayload = (payload, keys) => {
+        for (const key of keys) {
+          const value = payload?.[key];
+          if (value !== undefined && String(value).trim() !== '') return String(value).trim();
+        }
+        return '';
+      };
+      const promotedRows = (db.staging_players || []).filter(
+        (row) =>
+          String(row.import_job_id) === String(p_import_job_id) &&
+          String(row.organization_id) === String(job.organization_id) &&
+          row.promoted_at
+      );
+      const promotedPayloads = promotedRows.map((row) => {
+        const payload = row.normalized_payload || {};
+        return {
+          row,
+          externalKey: normalizeKey(
+            readPayload(payload, [
+              'external_registration_id',
+              'gotsport_id',
+              'registration_id',
+              'player_id',
+            ])
+          ),
+          buddyRequestKey: normalizeKey(
+            readPayload(payload, [
+              'buddy_request',
+              'buddy_id',
+              'buddy_external_registration_id',
+              'buddy_registration_id',
+              'friend_request',
+            ])
+          ),
+          mutualCodeKey: normalizeKey(
+            readPayload(payload, ['mutual_buddy_code', 'buddy_code', 'friend_code'])
+          ),
+        };
+      });
+      const matchedSources = promotedPayloads
+        .map((source) => {
+          const player = (db.players || []).find(
+            (item) =>
+              String(item.organization_id) === String(job.organization_id) &&
+              normalizeKey(item.external_registration_id) === source.externalKey
+          );
+          if (!player || (!source.buddyRequestKey && !source.mutualCodeKey)) return null;
+          return {
+            ...source,
+            playerId: player.id,
+            divisionId: player.division_id || null,
+          };
+        })
+        .filter(Boolean);
+      const byExternalKey = new Map(matchedSources.map((source) => [source.externalKey, source]));
+      const pairKeys = new Map();
+      let unmatchedRequestRows = 0;
+      let selfRequestRows = 0;
+      let nonreciprocalRequestRows = 0;
+      let crossDivisionRequestRows = 0;
+
+      matchedSources.forEach((source) => {
+        if (!source.buddyRequestKey) return;
+        const buddy = byExternalKey.get(source.buddyRequestKey);
+        if (!buddy) {
+          unmatchedRequestRows += 1;
+          return;
+        }
+        if (String(buddy.playerId) === String(source.playerId)) {
+          selfRequestRows += 1;
+          return;
+        }
+        if (buddy.buddyRequestKey !== source.externalKey) {
+          nonreciprocalRequestRows += 1;
+          return;
+        }
+        if (String(buddy.divisionId || '') !== String(source.divisionId || '')) {
+          crossDivisionRequestRows += 1;
+          return;
+        }
+        const ids = [source.playerId, buddy.playerId].sort();
+        pairKeys.set(ids.join(':'), ids);
+      });
+
+      const codeGroups = new Map();
+      matchedSources.forEach((source) => {
+        if (!source.mutualCodeKey) return;
+        const group = codeGroups.get(source.mutualCodeKey) || [];
+        group.push(source);
+        codeGroups.set(source.mutualCodeKey, group);
+      });
+
+      let invalidCodeGroups = 0;
+      for (const group of codeGroups.values()) {
+        const uniqueByPlayer = Array.from(
+          new Map(group.map((source) => [String(source.playerId), source])).values()
+        );
+        const divisions = new Set(uniqueByPlayer.map((source) => String(source.divisionId || '')));
+        if (uniqueByPlayer.length !== 2 || divisions.size !== 1) {
+          invalidCodeGroups += 1;
+          continue;
+        }
+        const ids = uniqueByPlayer.map((source) => source.playerId).sort();
+        pairKeys.set(ids.join(':'), ids);
+      }
+
+      db.player_buddies = db.player_buddies || [];
+      let insertedRelationships = 0;
+      for (const ids of pairKeys.values()) {
+        const directional = [
+          { player_id: ids[0], buddy_player_id: ids[1] },
+          { player_id: ids[1], buddy_player_id: ids[0] },
+        ];
+        directional.forEach((relationship) => {
+          const exists = db.player_buddies.some(
+            (item) =>
+              String(item.player_id) === String(relationship.player_id) &&
+              String(item.buddy_player_id) === String(relationship.buddy_player_id)
+          );
+          if (!exists) {
+            db.player_buddies.push({
+              ...relationship,
+              organization_id: job.organization_id,
+              source_import_job: p_import_job_id,
+              is_mutual: true,
+              created_at: new Date().toISOString(),
+            });
+            insertedRelationships += 1;
+          }
+        });
+      }
+
+      const requestedRows = matchedSources.length;
+      const missingExternalIdRows = promotedPayloads.filter(
+        (source) => (source.buddyRequestKey || source.mutualCodeKey) && !source.externalKey
+      ).length;
+      const unmatchedPromotedRows = promotedPayloads.filter(
+        (source) =>
+          source.externalKey &&
+          (source.buddyRequestKey || source.mutualCodeKey) &&
+          !matchedSources.some((matched) => matched.externalKey === source.externalKey)
+      ).length;
+      const warningCount =
+        missingExternalIdRows +
+        unmatchedPromotedRows +
+        unmatchedRequestRows +
+        selfRequestRows +
+        nonreciprocalRequestRows +
+        crossDivisionRequestRows +
+        invalidCodeGroups;
+      const candidateRelationships = pairKeys.size * 2;
+      const result = {
+        status: warningCount > 0 ? 'completed_with_warnings' : 'completed',
+        promoted_rows: promotedPayloads.length,
+        requested_rows: requestedRows,
+        materialized_pairs: pairKeys.size,
+        candidate_relationships: candidateRelationships,
+        inserted_relationships: insertedRelationships,
+        existing_relationships: candidateRelationships - insertedRelationships,
+        missing_external_id_rows: missingExternalIdRows,
+        unmatched_promoted_rows: unmatchedPromotedRows,
+        unmatched_request_rows: unmatchedRequestRows,
+        self_request_rows: selfRequestRows,
+        nonreciprocal_request_rows: nonreciprocalRequestRows,
+        cross_division_request_rows: crossDivisionRequestRows,
+        invalid_code_groups: invalidCodeGroups,
+      };
+
+      Object.assign(job, {
+        status: warningCount > 0 ? 'completed_with_warnings' : job.status,
+        warning_summary: {
+          ...(job.warning_summary || {}),
+          buddy_pairs: result,
+        },
+      });
+      db.audit_log = db.audit_log || [];
+      db.audit_log.push({
+        id: 'audit-buddy-' + Math.random().toString(36).substr(2, 9),
+        organization_id: job.organization_id,
+        action: 'import.completed',
+        user_id: 'mock-admin-id',
+        resource_type: 'import_job',
+        resource_id: p_import_job_id,
+        metadata: { ...result, stage: 'buddy_pairs' },
+        created_at: new Date().toISOString(),
+      });
+      saveDB(db);
+      return { data: result, error: null };
     }
 
     if (name === 'finalize_coach_import_job') {
@@ -2546,119 +2761,7 @@ export const mockSupabase = {
       logger.log(`[Mock Supabase] functions.invoke("${name}")`, options?.body);
       if (name === 'import-validation') {
         const body = options?.body || {};
-        const aliases = {
-          'first name': 'first_name',
-          first_name: 'first_name',
-          firstname: 'first_name',
-          'last name': 'last_name',
-          last_name: 'last_name',
-          lastname: 'last_name',
-          'date of birth': 'date_of_birth',
-          date_of_birth: 'date_of_birth',
-          dob: 'date_of_birth',
-          birthdate: 'date_of_birth',
-          'full name': 'full_name',
-          full_name: 'full_name',
-          'coach name': 'full_name',
-          'coach first name': 'first_name',
-          'coach last name': 'last_name',
-          email: 'email',
-          'email address': 'email',
-          'email/userid': 'email',
-          'email/user id': 'email',
-          email_userid: 'email',
-          'contact email': 'email',
-          name: 'name',
-          field: 'name',
-          'field name': 'name',
-          field_name: 'name',
-          location: 'location',
-          'location name': 'location',
-          location_name: 'location',
-          venue: 'location',
-          subunit: 'subunit',
-          'field subunit': 'subunit',
-          field_subunit: 'subunit',
-          day: 'day',
-          'day of week': 'day',
-          day_of_week: 'day',
-          start: 'start',
-          'start time': 'start',
-          start_time: 'start',
-          end: 'end',
-          'end time': 'end',
-          end_time: 'end',
-          type: 'type',
-          'slot type': 'type',
-          slot_type: 'type',
-          capacity: 'capacity',
-          'valid from': 'valid_from',
-          valid_from: 'valid_from',
-          'valid until': 'valid_until',
-          valid_until: 'valid_until',
-          date: 'slot_date',
-          'slot date': 'slot_date',
-          slot_date: 'slot_date',
-          week: 'week_index',
-          week_index: 'week_index',
-          surface: 'surface_type',
-          'surface type': 'surface_type',
-          surface_type: 'surface_type',
-          size: 'size',
-          'supports halves': 'supports_halves',
-          supports_halves: 'supports_halves',
-          lights: 'lighting_available',
-          lighted: 'lighting_available',
-          'lighting available': 'lighting_available',
-          lighting_available: 'lighting_available',
-          'coach willing': 'willing_to_coach',
-          'willing to coach': 'willing_to_coach',
-          buddy: 'buddy_request',
-          'buddy request': 'buddy_request',
-          friend: 'buddy_request',
-          'friend request': 'buddy_request',
-          medical: 'medical_info',
-          'medical info': 'medical_info',
-          allergy: 'medical_info',
-          allergies: 'medical_info',
-          skill: 'skill_tier',
-          'skill level': 'skill_tier',
-          'skill tier': 'skill_tier',
-          skill_tier: 'skill_tier',
-          level: 'skill_tier',
-          id: 'gotsport_id',
-          pid: 'gotsport_id',
-          'official id': 'gotsport_id',
-          'gotsport id': 'gotsport_id',
-          gotsport_id: 'gotsport_id',
-          'registration id': 'external_registration_id',
-          registration_id: 'external_registration_id',
-          external_registration_id: 'external_registration_id',
-          group: 'division_name',
-          division: 'division_name',
-          division_name: 'division_name',
-          program: 'division_name',
-          grade: 'grade',
-          gender: 'gender',
-          'preferred name': 'preferred_name',
-          preferred_name: 'preferred_name',
-          nickname: 'nickname',
-          phone: 'phone',
-          'contact phone': 'contact_phone',
-          contact_phone: 'contact_phone',
-          'guardian name': 'guardian_name',
-          guardian_name: 'guardian_name',
-          'parent name': 'parent_name',
-          parent_name: 'parent_name',
-          'guardian email': 'guardian_email',
-          guardian_email: 'guardian_email',
-          'parent email': 'parent_email',
-          parent_email: 'parent_email',
-          'guardian phone': 'guardian_phone',
-          guardian_phone: 'guardian_phone',
-          'parent phone': 'parent_phone',
-          parent_phone: 'parent_phone',
-        };
+        const aliases = HEADER_ALIASES;
         const requiredFields = {
           players: ['first_name', 'last_name', 'date_of_birth'],
           coaches: ['full_name', 'email'],

@@ -204,6 +204,34 @@ const captureCoachLeadsForImport = async ({
   }
 };
 
+const materializeBuddyPairsForImport = async ({ importJobId, addLog }) => {
+  try {
+    const { data: buddyPairResult, error: buddyPairError } = await supabase.rpc(
+      'materialize_import_buddy_pairs',
+      { p_import_job_id: importJobId }
+    );
+
+    if (buddyPairError) {
+      throw new Error(buddyPairError.message || 'Buddy pair materialization failed');
+    }
+
+    addLog(
+      `Buddy pairs materialized: ${buddyPairResult?.materialized_pairs ?? 0} pair(s), ${buddyPairResult?.inserted_relationships ?? 0} relationship rows.`
+    );
+    if (buddyPairResult?.status === 'completed_with_warnings') {
+      addLog('Warning: Some buddy requests could not be matched reciprocally.');
+    }
+    return buddyPairResult;
+  } catch (err) {
+    const summary = {
+      status: 'failed',
+      message: err.message,
+    };
+    addLog(`Warning: Buddy pair materialization failed: ${err.message}`);
+    return summary;
+  }
+};
+
 export function ImportProvider({ children }) {
   const { currentOrganization } = useOrganization();
   const [isImporting, setIsImporting] = useState(false);
@@ -691,6 +719,20 @@ export function ImportProvider({ children }) {
                 addLog(
                   `Roster database updated: ${finalizeResult?.inserted_players ?? 0} inserted, ${finalizeResult?.updated_players ?? 0} updated.`
                 );
+
+                const buddyPairSummary = await materializeBuddyPairsForImport({
+                  importJobId: job.id,
+                  addLog,
+                });
+                if (buddyPairSummary) {
+                  persistenceResult = {
+                    ...(persistenceResult || {}),
+                    buddy_pairs: buddyPairSummary,
+                  };
+                  if (buddyPairSummary.status !== 'completed') {
+                    effectiveStatus = 'completed_with_warnings';
+                  }
+                }
 
                 const coachLeadSummary = await captureCoachLeadsForImport({
                   importJobId: job.id,
