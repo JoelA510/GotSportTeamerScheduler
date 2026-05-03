@@ -23,6 +23,7 @@ import {
 const MAX_ROWS = 10000;
 const MAX_COLS = 1200;
 const PLAYER_LOOKUP_CHUNK_SIZE = 500;
+const canDeferImport = (type) => type === 'coaches' || type === 'fields';
 
 const ImportContext = createContext({
   isImporting: false,
@@ -31,7 +32,9 @@ const ImportContext = createContext({
   importLogs: [],
   notifyOnComplete: false,
   setNotifyOnComplete: (_val) => {},
-  startImport: async (_file, _type) => {},
+  startImport: async (_file, _type, _options) => {},
+  applyDeferredImport: async (_type) => {},
+  cancelDeferredImport: async (_type) => {},
   resetImport: async (_type) => {},
   importedData: null,
   setImportedData: (_data) => {},
@@ -238,7 +241,7 @@ export function ImportProvider({ children }) {
   const [progress, setProgress] = useState(0);
   const [importStatus, setImportStatus] = useState(() => {
     return localStorage.getItem('importStatus') || 'idle';
-  }); // idle, importing, completed, completed_with_warnings, error
+  }); // idle, importing, ready_to_apply, completed, completed_with_warnings, error
   const [importLogs, setImportLogs] = useState([]);
   const [notifyOnComplete, setNotifyOnComplete] = useState(false);
   const [telemetryLogs, setTelemetryLogs] = useState([]);
@@ -264,6 +267,30 @@ export function ImportProvider({ children }) {
     activeJobRef.current = activeJob;
     activeJobIdRef.current = activeJobId;
   }, [activeJob, activeJobId]);
+
+  const setImportDataForType = useCallback((type, data) => {
+    if (type === 'players') setImportedPlayers(data);
+    if (type === 'coaches') setImportedCoaches(data);
+    if (type === 'fields') setImportedFields(data);
+    setImportedData(data);
+  }, []);
+
+  const hydrateReadyImportJob = useCallback(
+    async (job) => {
+      const { buildDeferredImportDataFromJob } = await import('../utils/importDeferredActions.js');
+      const deferredImportData = buildDeferredImportDataFromJob(job);
+      setActiveJobId(job.id);
+      setActiveJob((prev) => ({ ...(prev || {}), ...job }));
+      setIsImporting(false);
+      setImportStatus('ready_to_apply');
+      setProgress(job.progress_percent || 100);
+      localStorage.setItem('importStatus', 'ready_to_apply');
+      if (deferredImportData) {
+        setImportDataForType(deferredImportData.persistence.ready.import_type, deferredImportData);
+      }
+    },
+    [setImportDataForType]
+  );
 
   // Throttled Progress Update Helper
   const lastUpdateRef = useRef(0);
@@ -338,6 +365,7 @@ export function ImportProvider({ children }) {
   useEffect(() => {
     const loadFromSupabase = async () => {
       try {
+        let readyImportType = null;
         const {
           data: { user },
         } = await supabase.auth.getUser();
@@ -350,17 +378,22 @@ export function ImportProvider({ children }) {
           .from('import_jobs')
           .select('*')
           .eq('organization_id', currentOrganization.id)
-          .in('status', ['processing', 'importing'])
+          .in('status', ['processing', 'importing', 'ready_to_apply'])
           .order('created_at', { ascending: false })
           .limit(1);
 
         if (activeJobs && activeJobs.length > 0) {
           const job = activeJobs[0];
-          setActiveJobId(job.id);
-          setActiveJob(job);
-          setProgress(job.progress_percent || 0);
-          setIsImporting(true);
-          setImportStatus('importing');
+          if (job.status === 'ready_to_apply') {
+            await hydrateReadyImportJob(job);
+            readyImportType = job.warning_summary?.deferred_apply?.import_type;
+          } else {
+            setActiveJobId(job.id);
+            setActiveJob(job);
+            setProgress(job.progress_percent || 0);
+            setIsImporting(true);
+            setImportStatus('importing');
+          }
         }
 
         const { data, error } = await supabase
@@ -372,7 +405,7 @@ export function ImportProvider({ children }) {
 
         if (error) throw error;
 
-        if (data) {
+        if (data && !readyImportType) {
           const latestPlayers = data.find((i) => i.import_type === 'players');
           const latestCoaches = data.find((i) => i.import_type === 'coaches');
           const latestFields = data.find((i) => i.import_type === 'fields');
@@ -435,7 +468,7 @@ export function ImportProvider({ children }) {
       subscription?.unsubscribe();
       if (channel) supabase.removeChannel(channel);
     };
-  }, [currentOrganization?.id]);
+  }, [currentOrganization?.id, hydrateReadyImportJob]);
 
   const addLog = useCallback((message) => {
     setImportLogs((prev) => [...prev, { timestamp: new Date(), message }]);
@@ -461,12 +494,17 @@ export function ImportProvider({ children }) {
   );
 
   const startImport = useCallback(
-    async (file, type = 'players') => {
+    async (file, type = 'players', options = {}) => {
+      const deferApply = options.deferApply === true && canDeferImport(type);
       setIsImporting(true);
       setImportStatus('importing');
       setProgress(0);
       setImportLogs([]);
-      addLog(`Starting import for ${type} from ${file.name}...`);
+      addLog(
+        deferApply
+          ? `Starting validation for ${type} from ${file.name}...`
+          : `Starting import for ${type} from ${file.name}...`
+      );
 
       try {
         const {
@@ -700,6 +738,32 @@ export function ImportProvider({ children }) {
               let persistenceResult = null;
               let effectiveStatus = finalStatus;
 
+              if (deferApply) {
+                addLog(`Validation complete. ${type} import is ready for review.`);
+                const { markDeferredImportReady } =
+                  await import('../utils/importDeferredActions.js');
+                const { importData, activeJob: readyJob } = await markDeferredImportReady({
+                  supabase,
+                  job,
+                  type,
+                  fileName: file.name,
+                  totalRows: data.length,
+                  normalizedData,
+                  validationErrors,
+                });
+
+                setImportDataForType(type, importData);
+                setProgress(100);
+                setActiveJob(readyJob);
+                setIsImporting(false);
+                setImportStatus('ready_to_apply');
+                localStorage.setItem('importStatus', 'ready_to_apply');
+                addLog(
+                  `${type === 'fields' ? 'Field' : 'Coach'} import validated and waiting for apply.`
+                );
+                return;
+              }
+
               if (type === 'players') {
                 addLog('Applying validated players to the roster database...');
                 const { data: finalizeResult, error: finalizeError } = await supabase.rpc(
@@ -804,10 +868,7 @@ export function ImportProvider({ children }) {
                 },
               };
 
-              if (type === 'players') setImportedPlayers(importData);
-              if (type === 'coaches') setImportedCoaches(importData);
-              if (type === 'fields') setImportedFields(importData);
-              setImportedData(importData);
+              setImportDataForType(type, importData);
 
               completeImport(type, importData, effectiveStatus);
             };
@@ -834,7 +895,102 @@ export function ImportProvider({ children }) {
       currentOrganization?.id,
       updateJobProgress,
       organizationSchemas,
+      setImportDataForType,
     ]
+  );
+
+  const applyDeferredImport = useCallback(
+    async (type = 'coaches') => {
+      const deferredState = type === 'coaches' ? importedCoaches : importedFields;
+      const deferredJobId = deferredState?.importJobId;
+      if (!deferredJobId) {
+        throw new Error('No validated import job is ready to apply');
+      }
+
+      setIsImporting(true);
+      setImportStatus('importing');
+      setProgress(100);
+      addLog(`Applying ${type} import...`);
+
+      try {
+        const { finalizeDeferredImportJob } = await import('../utils/importDeferredActions.js');
+        const finalizeResult = await finalizeDeferredImportJob({
+          supabase,
+          type,
+          importJobId: deferredJobId,
+          validationErrors: deferredState.validationErrors || [],
+        });
+
+        const appliedData = {
+          ...deferredState,
+          persistence: {
+            ...(deferredState.persistence || {}),
+            durable: true,
+            deferred: true,
+            result: finalizeResult,
+          },
+        };
+        const effectiveStatus = finalizeResult?.status || 'completed';
+        setImportDataForType(type, appliedData);
+        setActiveJob((prev) => ({
+          ...(prev || {}),
+          id: deferredJobId,
+          status: effectiveStatus,
+          progress_percent: 100,
+          completed_at: new Date().toISOString(),
+        }));
+        completeImport(type, appliedData, effectiveStatus);
+        return finalizeResult;
+      } catch (err) {
+        logger.error('Import apply failed:', err);
+        addLog(`Apply failed: ${err.message}`);
+        setImportStatus('error');
+        setIsImporting(false);
+        throw err;
+      }
+    },
+    [addLog, completeImport, importedCoaches, importedFields, setImportDataForType]
+  );
+
+  const cancelDeferredImport = useCallback(
+    async (type = 'coaches') => {
+      const deferredState = type === 'coaches' ? importedCoaches : importedFields;
+      const deferredJobId = deferredState?.importJobId;
+      if (!deferredJobId) {
+        throw new Error('No validated import job is ready to cancel');
+      }
+
+      setIsImporting(true);
+      setImportStatus('importing');
+      setProgress(100);
+      addLog(`Canceling ${type} import...`);
+
+      try {
+        const { cancelDeferredImportJob } = await import('../utils/importDeferredActions.js');
+        const cancelResult = await cancelDeferredImportJob({
+          supabase,
+          type,
+          importJobId: deferredJobId,
+        });
+
+        setImportDataForType(type, null);
+        setActiveJobId(null);
+        setActiveJob(null);
+        setIsImporting(false);
+        setImportStatus('idle');
+        setProgress(0);
+        localStorage.removeItem('importStatus');
+        addLog(`${type} import canceled before apply.`);
+        return cancelResult;
+      } catch (err) {
+        logger.error('Import cancel failed:', err);
+        addLog(`Cancel failed: ${err.message}`);
+        setImportStatus('error');
+        setIsImporting(false);
+        throw err;
+      }
+    },
+    [addLog, importedCoaches, importedFields, setImportDataForType]
   );
 
   const rollbackImport = useCallback(
@@ -964,6 +1120,8 @@ export function ImportProvider({ children }) {
       notifyOnComplete,
       setNotifyOnComplete: stableSetNotifyOnComplete,
       startImport,
+      applyDeferredImport,
+      cancelDeferredImport,
       resetImport,
       importedData: maskedImportedData,
       setImportedData: stableSetImportedData,
@@ -987,6 +1145,8 @@ export function ImportProvider({ children }) {
       notifyOnComplete,
       stableSetNotifyOnComplete,
       startImport,
+      applyDeferredImport,
+      cancelDeferredImport,
       resetImport,
       maskedImportedData,
       stableSetImportedData,

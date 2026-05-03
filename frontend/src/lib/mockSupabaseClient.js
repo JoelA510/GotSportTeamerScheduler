@@ -1512,6 +1512,127 @@ export const mockSupabase = {
       return { data: logs, error: null };
     }
 
+    if (name === 'mark_import_job_ready_to_apply') {
+      const { p_import_job_id, p_import_type, p_validation_errors } = params || {};
+      const importType = String(p_import_type || '').toLowerCase();
+      const job = (db.import_jobs || []).find(
+        (item) => String(item.id) === String(p_import_job_id)
+      );
+      if (!job) {
+        return { data: null, error: { message: 'Import job not found' } };
+      }
+      if (!['coaches', 'fields'].includes(importType)) {
+        return {
+          data: null,
+          error: { message: 'Deferred apply is only available for coach and field imports' },
+        };
+      }
+      if (importType === 'coaches' && job.job_type !== 'registration') {
+        return { data: null, error: { message: 'Import job is not registration' } };
+      }
+      if (importType === 'fields' && job.job_type !== 'fields') {
+        return { data: null, error: { message: 'Import job is not fields' } };
+      }
+      if (['completed', 'completed_with_warnings', 'failed'].includes(job.status)) {
+        return { data: null, error: { message: `Import job is ${job.status}` } };
+      }
+
+      const validationErrors = Array.isArray(p_validation_errors) ? p_validation_errors : [];
+      const stagedRows = (db.staging_import_rows || []).filter(
+        (row) =>
+          String(row.import_job_id) === String(p_import_job_id) && row.import_type === importType
+      ).length;
+      const result = {
+        status: 'ready_to_apply',
+        import_type: importType,
+        staged_rows: stagedRows,
+        validation_error_rows: validationErrors.length,
+        ready_at: new Date().toISOString(),
+      };
+
+      Object.assign(job, {
+        status: 'ready_to_apply',
+        processed_rows: stagedRows,
+        progress_percent: 100,
+        completed_at: null,
+        error_summary: { rowErrors: validationErrors },
+        warning_summary: {
+          ...(job.warning_summary || {}),
+          deferred_apply: result,
+        },
+      });
+      db.audit_log = db.audit_log || [];
+      db.audit_log.push({
+        id: 'audit-ready-' + Math.random().toString(36).substr(2, 9),
+        organization_id: job.organization_id,
+        action: 'import.validated',
+        user_id: 'mock-admin-id',
+        resource_type: 'import_job',
+        resource_id: p_import_job_id,
+        metadata: result,
+        created_at: new Date().toISOString(),
+      });
+      saveDB(db);
+      return { data: result, error: null };
+    }
+
+    if (name === 'cancel_ready_import_job') {
+      const { p_import_job_id, p_import_type } = params || {};
+      const importType = String(p_import_type || '').toLowerCase();
+      const job = (db.import_jobs || []).find(
+        (item) => String(item.id) === String(p_import_job_id)
+      );
+      if (!job) {
+        return { data: null, error: { message: 'Import job not found' } };
+      }
+      if (!['coaches', 'fields'].includes(importType)) {
+        return {
+          data: null,
+          error: { message: 'Deferred cancellation is only available for coach and field imports' },
+        };
+      }
+      if (job.status !== 'ready_to_apply') {
+        return { data: null, error: { message: `Import job is ${job.status}` } };
+      }
+
+      const stagedRows = (db.staging_import_rows || []).filter(
+        (row) =>
+          String(row.import_job_id) === String(p_import_job_id) && row.import_type === importType
+      ).length;
+      const result = {
+        status: 'canceled',
+        import_type: importType,
+        staged_rows: stagedRows,
+        canceled_at: new Date().toISOString(),
+      };
+
+      Object.assign(job, {
+        status: 'failed',
+        completed_at: result.canceled_at,
+        error_summary: {
+          ...(job.error_summary || {}),
+          deferred_apply: result,
+        },
+        warning_summary: {
+          ...(job.warning_summary || {}),
+          deferred_apply: result,
+        },
+      });
+      db.audit_log = db.audit_log || [];
+      db.audit_log.push({
+        id: 'audit-cancel-' + Math.random().toString(36).substr(2, 9),
+        organization_id: job.organization_id,
+        action: 'import.canceled',
+        user_id: 'mock-admin-id',
+        resource_type: 'import_job',
+        resource_id: p_import_job_id,
+        metadata: result,
+        created_at: new Date().toISOString(),
+      });
+      saveDB(db);
+      return { data: result, error: null };
+    }
+
     if (name === 'finalize_import_job') {
       const { p_import_job_id, p_validation_errors } = params || {};
       const job = (db.import_jobs || []).find(

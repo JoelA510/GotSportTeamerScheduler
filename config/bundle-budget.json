@@ -4,8 +4,8 @@
     {
       "match": "^assets/index-.*\\.js$",
       "label": "main entry",
-      "maxGzipBytes": 130000,
-      "rationale": "Current 115.68 KB; 130 KB cap leaves 14 KB headroom. Tighten in v1.1 once chart-vendor route-splits."
+      "maxGzipBytes": 131000,
+      "rationale": "Current 127.20 KB after deferred import lifecycle state; cap leaves <1 KB headroom after lazy-loading deferred RPC helpers. Tighten in v1.1 once chart-vendor route-splits."
     },
     {
       "match": "^assets/index-.*\\.css$",

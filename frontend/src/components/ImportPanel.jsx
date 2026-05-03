@@ -85,6 +85,8 @@ export default function ImportPanel({ onImport }) {
     progress,
     importStatus,
     startImport,
+    applyDeferredImport,
+    cancelDeferredImport,
     resetImport,
     notifyOnComplete,
     setNotifyOnComplete,
@@ -93,20 +95,27 @@ export default function ImportPanel({ onImport }) {
     importedFields,
     rollbackImport,
     telemetryLogs,
+    activeJob,
   } = useImport();
 
   const { currentOrganization } = useOrganization();
 
   const theme = PERSISTENCE_THEMES.green;
   const isComplete = COMPLETED_IMPORT_STATUSES.has(importStatus);
+  const isReadyToApply = importStatus === 'ready_to_apply';
+  const deferredImportType = activeJob?.warning_summary?.deferred_apply?.import_type;
+  const workflowImportType =
+    isReadyToApply && IMPORT_TYPES.includes(deferredImportType) ? deferredImportType : importType;
   const coachRollbackComplete = importedCoaches?.persistence?.rollback?.status === 'rolled_back';
   const fieldRollbackComplete = importedFields?.persistence?.rollback?.status === 'rolled_back';
   const canRollbackImport =
     isComplete &&
-    ((importType === 'coaches' &&
+    ((workflowImportType === 'coaches' &&
       importedCoaches?.persistence?.durable &&
       !coachRollbackComplete) ||
-      (importType === 'fields' && importedFields?.persistence?.durable && !fieldRollbackComplete));
+      (workflowImportType === 'fields' &&
+        importedFields?.persistence?.durable &&
+        !fieldRollbackComplete));
 
   const handleDragOver = (e) => {
     e.preventDefault();
@@ -339,6 +348,12 @@ export default function ImportPanel({ onImport }) {
     }
   };
 
+  const handleValidateOnlyImport = async () => {
+    if (file) {
+      await startImport(file, importType, { deferApply: true });
+    }
+  };
+
   const getImportedCount = (type) => {
     switch (type) {
       case 'players':
@@ -352,7 +367,7 @@ export default function ImportPanel({ onImport }) {
     }
   };
 
-  if (isImporting || isComplete) {
+  if (isImporting || isComplete || isReadyToApply) {
     return (
       <section className="glass-panel p-8 rounded-xl border border-border-subtle relative overflow-hidden mb-10">
         <div
@@ -360,7 +375,7 @@ export default function ImportPanel({ onImport }) {
         />
 
         <div className="relative z-10 flex flex-col items-center justify-center text-center py-8">
-          {isComplete ? (
+          {isComplete || isReadyToApply ? (
             <div className="mb-6 w-20 h-20 rounded-full bg-green-500/20 flex items-center justify-center animate-fadeIn">
               <CheckCircle className="w-10 h-10 text-green-400" />
             </div>
@@ -375,11 +390,16 @@ export default function ImportPanel({ onImport }) {
               ? importStatus === 'completed_with_warnings'
                 ? 'Import Applied with Warnings'
                 : 'Import Applied'
-              : 'Importing Data...'}
+              : isReadyToApply
+                ? 'Import Ready to Apply'
+                : 'Importing Data...'}
           </h2>
 
           <div className="w-full max-w-lg mb-8">
-            <ProgressBar progress={progress} label={isComplete ? 'Applied' : 'Processing...'} />
+            <ProgressBar
+              progress={progress}
+              label={isReadyToApply ? 'Validated' : isComplete ? 'Applied' : 'Processing...'}
+            />
           </div>
 
           {error && (
@@ -392,7 +412,41 @@ export default function ImportPanel({ onImport }) {
             </div>
           )}
 
-          {isComplete ? (
+          {isReadyToApply ? (
+            <div className="flex flex-wrap justify-center gap-4">
+              <Button
+                variant="primary"
+                size="lg"
+                onClick={async () => {
+                  try {
+                    setError(null);
+                    await applyDeferredImport(workflowImportType);
+                  } catch (err) {
+                    setError(err.message || `${workflowImportType} import apply failed.`);
+                  }
+                }}
+              >
+                Apply {workflowImportType === 'fields' ? 'Field Import' : 'Coach Import'}
+              </Button>
+              <Button
+                variant="secondary"
+                size="lg"
+                onClick={async () => {
+                  try {
+                    setError(null);
+                    await cancelDeferredImport(workflowImportType);
+                    setFile(null);
+                    setPreviewData(null);
+                    setOriginalParse(null);
+                  } catch (err) {
+                    setError(err.message || `${workflowImportType} import cancellation failed.`);
+                  }
+                }}
+              >
+                Cancel Deferred Import
+              </Button>
+            </div>
+          ) : isComplete ? (
             <div className="flex flex-wrap justify-center gap-4">
               {canRollbackImport && (
                 <Button
@@ -401,13 +455,13 @@ export default function ImportPanel({ onImport }) {
                   onClick={async () => {
                     try {
                       setError(null);
-                      await rollbackImport(importType);
+                      await rollbackImport(workflowImportType);
                     } catch (err) {
-                      setError(err.message || `${importType} import rollback failed.`);
+                      setError(err.message || `${workflowImportType} import rollback failed.`);
                     }
                   }}
                 >
-                  Roll Back {importType === 'fields' ? 'Field Import' : 'Coach Import'}
+                  Roll Back {workflowImportType === 'fields' ? 'Field Import' : 'Coach Import'}
                 </Button>
               )}
               <Button
@@ -666,6 +720,11 @@ export default function ImportPanel({ onImport }) {
                   >
                     <SlidersHorizontal size={14} className="mr-1" />
                     Adjust mapping
+                  </Button>
+                )}
+                {importType !== 'players' && (
+                  <Button variant="secondary" size="sm" onClick={handleValidateOnlyImport}>
+                    Validate Only
                   </Button>
                 )}
                 <Button

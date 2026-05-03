@@ -208,6 +208,34 @@ When('I apply the field slot CSV import', async ({ page }) => {
   });
 });
 
+When('I validate the field slot CSV import for later review', async ({ page }) => {
+  await page.getByRole('button', { name: 'Validate Only' }).click();
+  await expect(page.getByRole('heading', { name: 'Import Ready to Apply' })).toBeVisible({
+    timeout: 15000,
+  });
+});
+
+Then(
+  'the field slot CSV import should be ready to apply without changing facilities',
+  async ({ page }) => {
+    await expect(page.getByRole('button', { name: 'Apply Field Import' })).toBeVisible({
+      timeout: 10000,
+    });
+    const fieldExists = await page.evaluate(() => {
+      const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
+      return (db.fields || []).some((field: { name?: string }) => field.name === 'Imported Field');
+    });
+    expect(fieldExists).toBe(false);
+  }
+);
+
+When('I apply the reviewed field slot CSV import', async ({ page }) => {
+  await page.getByRole('button', { name: 'Apply Field Import' }).click();
+  await expect(page.getByRole('heading', { name: 'Import Applied' })).toBeVisible({
+    timeout: 15000,
+  });
+});
+
 Then('the field slot CSV import should update the facilities database', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Roll Back Field Import' })).toBeVisible({
     timeout: 10000,
