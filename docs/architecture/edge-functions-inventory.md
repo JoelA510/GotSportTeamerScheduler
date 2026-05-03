@@ -31,9 +31,9 @@ Seven functions are deployed. Each has its own directory under `supabase/functio
 
 - **Purpose**: Persist the output of the team-generation engine. Upserts a `scheduler_runs` row, the `teams` batch, and the `team_players` batch by calling the `persist_team_schedule` RPC. Blocks persistence if any `overrides` in the payload are still in `pending` status.
 - **Invoked by**: `frontend/src/utils/teamPersistenceClient.js` via the `apiClient.post('team-persistence', …)` helper.
-- **Authentication**: JWT + role allow-list (`authenticated`, `service_role`, `admin`, `scheduler`; configurable via `TEAM_PERSISTENCE_ALLOWED_ROLES`). Validates Zod payload schema, then resolves team `division_id` → `organizations.id` and asserts each is in the caller's `getUserOrgIds()` (IDOR guard).
+- **Authentication**: JWT + role allow-list (`authenticated`, `service_role`, `admin`, `scheduler`; configurable via `TEAM_PERSISTENCE_ALLOWED_ROLES`). Validates Zod payload schema, resolves the requested organization from run metadata, season settings, divisions, teams, and players, then requires the caller to be an admin/tenant-admin of that single organization before using the service client (IDOR guard).
 - **Rate limit**: `checkRateLimit(user.id)` — default 60 req/min.
-- **RPC used**: `persist_team_schedule(run_data, teams, team_players)`.
+- **RPC used**: `persist_team_schedule(run_data, teams, team_players)`; returns the persisted scheduler run id and treats the submitted roster rows as authoritative for the teams in the payload.
 - **Audit**: `recordAudit(action: 'team.saved', ...)` fire-and-forget.
 
 ### 2.3 `practice-persistence`

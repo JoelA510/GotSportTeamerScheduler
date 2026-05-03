@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added an admin-only `/coaches` review page with registered/interested status filters, program filtering, search, team assignment visibility, and source-player context for player-import coach leads.
 - Added player-import coach volunteer lead capture: finalized GotSport player imports now submit interested coach leads through `upsert_coach_leads`, atomically persist per-job lead summaries, and cover payload shaping with Vitest plus pgTAP.
 - Added a current-schema `persist_game_schedule` RPC and `game_assignments` run linkage/idempotency columns to unblock org-scoped, persisted game scheduling apply flows.
+- Added a current-schema `persist_team_schedule` RPC that returns the persisted run id and treats submitted roster rows as authoritative for each team in the payload.
 
 ### Changed
 
@@ -30,6 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Linked persisted practice assignment rows to their scheduler run id so practice schedules can reload by the latest org-scoped run after apply.
 - Hardened the game persistence Edge Function so service-role RPC calls are scoped to the requested organization, season, and assignment teams before writing.
+- Hardened team persistence so service-role RPC calls require one resolved target organization and an org-admin caller before writing roster state.
 - Repaired `persist_practice_schedule` for the current UUID scheduler schema with org-scoped run persistence, cross-org assignment rejection, idempotent practice assignment upserts, and pgTAP coverage.
 - Scoped scheduler summary reads to the active organization and season, and guarded team/practice/game routes plus edit controls by view/manage permissions.
 - Hardened `upsert_coach_leads` and `coach_interested_programs` so security-definer lead capture rejects division/player references outside the lead organization.
