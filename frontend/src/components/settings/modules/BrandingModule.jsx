@@ -6,6 +6,13 @@ import { supabase } from '../../../lib/supabaseClient.js';
 import { extractColorsFromImage } from '../../../utils/colorUtils.js';
 import { logger } from '../../../lib/logger.js';
 
+const COLOR_TARGET_LABELS = {
+  background1: 'Background 1',
+  background2: 'Background 2',
+  primaryAccent: 'Primary Accent',
+  secondaryAccent: 'Secondary Accent',
+};
+
 export default function BrandingModule() {
   const {
     clubColors,
@@ -181,34 +188,40 @@ export default function BrandingModule() {
             </div>
           </div>
           <div>
-            <label
-              htmlFor="club-logo-upload"
+            <div
+              id="club-logo-upload-label"
               className="block text-sm font-medium text-text-secondary mb-2"
             >
               Club Logo
-            </label>
-            <div
+            </div>
+            <button
+              type="button"
+              aria-labelledby="club-logo-upload-label club-logo-upload-action"
+              aria-describedby="club-logo-upload-help"
               className="border-2 border-dashed border-border-subtle rounded-lg p-6 text-center hover:bg-bg-surface-hover transition-colors cursor-pointer h-full flex flex-col items-center justify-center relative overflow-hidden"
               onClick={() => fileInputRef.current?.click()}
             >
               {clubLogo ? (
-                <img src={clubLogo} alt="Club Logo" className="max-h-32 object-contain mb-2" />
+                <img src={clubLogo} alt="" className="max-h-32 object-contain mb-2" />
               ) : (
-                <Upload className="mx-auto h-8 w-8 text-text-muted mb-2" />
+                <Upload className="mx-auto h-8 w-8 text-text-muted mb-2" aria-hidden="true" />
               )}
-              <p className="text-sm text-text-muted">
-                {clubLogo ? 'Click to change logo' : 'Click to upload logo'}
-              </p>
-              <p className="text-xs text-text-muted mt-1">PNG, JPG up to 2MB</p>
-              <input
-                id="club-logo-upload"
-                type="file"
-                ref={fileInputRef}
-                className="hidden"
-                accept="image/*"
-                onChange={handleLogoUpload}
-              />
-            </div>
+              <span id="club-logo-upload-action" className="text-sm text-text-muted">
+                {clubLogo ? 'Change logo' : 'Upload logo'}
+              </span>
+              <span id="club-logo-upload-help" className="text-xs text-text-muted mt-1">
+                PNG, JPG up to 2MB
+              </span>
+            </button>
+            <input
+              id="club-logo-upload"
+              type="file"
+              ref={fileInputRef}
+              className="hidden"
+              accept="image/*"
+              onChange={handleLogoUpload}
+              aria-label="Club logo file"
+            />
           </div>
         </div>
 
@@ -230,11 +243,17 @@ export default function BrandingModule() {
                   />
                   <div className="flex flex-col gap-1 w-full">
                     <div className="text-xs font-mono text-text-muted mb-1">{color}</div>
-                    <div className="grid grid-cols-2 gap-1 w-full mt-1">
+                    <div
+                      className="grid grid-cols-2 gap-1 w-full mt-1"
+                      role="group"
+                      aria-label={`Apply detected color ${color}`}
+                    >
                       {['background1', 'background2', 'primaryAccent', 'secondaryAccent'].map(
                         (type) => (
                           <button
                             key={type}
+                            type="button"
+                            aria-label={`Apply ${color} as ${COLOR_TARGET_LABELS[type]}`}
                             onClick={() => handleColorSuggestionClick(color, type)}
                             className="px-1 py-1 text-[10px] font-medium rounded bg-bg-surface hover:bg-brand-500 hover:text-white transition-colors border border-white/10 text-center truncate"
                           >
@@ -260,11 +279,16 @@ export default function BrandingModule() {
       <div className="border-t border-white/10 pt-6">
         <h3 className="text-lg font-medium text-text-primary mb-4">Theme Configuration</h3>
         <div className="mb-6">
-          <label className="block text-sm font-medium text-text-secondary mb-2">
+          <div
+            id="base-theme-mode-label"
+            className="block text-sm font-medium text-text-secondary mb-2"
+          >
             Base Theme Mode (for Club Theme)
-          </label>
-          <div className="flex gap-4">
+          </div>
+          <div className="flex gap-4" role="group" aria-labelledby="base-theme-mode-label">
             <button
+              type="button"
+              aria-pressed={clubMode === 'light'}
               onClick={() => updateClubMode('light')}
               className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition-all ${
                 clubMode === 'light'
@@ -272,9 +296,11 @@ export default function BrandingModule() {
                   : 'bg-bg-surface border-border-subtle text-text-muted hover:bg-bg-surface-hover'
               }`}
             >
-              <Sun size={16} /> Light Base
+              <Sun size={16} aria-hidden="true" /> Light Base
             </button>
             <button
+              type="button"
+              aria-pressed={clubMode === 'dark'}
               onClick={() => updateClubMode('dark')}
               className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition-all ${
                 clubMode === 'dark'
@@ -282,7 +308,7 @@ export default function BrandingModule() {
                   : 'bg-bg-surface border-border-subtle text-text-muted hover:bg-bg-surface-hover'
               }`}
             >
-              <Moon size={16} /> Dark Base
+              <Moon size={16} aria-hidden="true" /> Dark Base
             </button>
           </div>
         </div>
