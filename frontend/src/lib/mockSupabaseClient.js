@@ -1759,6 +1759,183 @@ export const mockSupabase = {
       };
     }
 
+    if (name === 'admin_update_coach_status') {
+      const { p_organization_id, p_coach_id, p_status } = params || {};
+      const validStatuses = new Set(['active', 'pending-confirmation', 'inactive', 'interested']);
+      if (!validStatuses.has(p_status)) {
+        return { data: null, error: { message: `invalid coach status: ${p_status}` } };
+      }
+
+      const session =
+        typeof window !== 'undefined'
+          ? JSON.parse(sessionStorage.getItem('__MOCK_SESSION__') || 'null')
+          : null;
+      const member = (db.organization_members || []).find(
+        (item) =>
+          String(item.organization_id) === String(p_organization_id) &&
+          String(item.profile_id) === String(session?.user?.id)
+      );
+      if (!['admin', 'tenant_admin'].includes(String(member?.role || ''))) {
+        return { data: null, error: { message: 'Access denied: admin role required' } };
+      }
+
+      const coach = (db.coaches || []).find(
+        (item) =>
+          String(item.id) === String(p_coach_id) &&
+          String(item.organization_id) === String(p_organization_id)
+      );
+      if (!coach) {
+        return { data: null, error: { message: 'Coach not found in organization' } };
+      }
+
+      const assignedTeamCount = (db.teams || []).filter(
+        (team) =>
+          String(team.organization_id) === String(p_organization_id) &&
+          String(team.coach_id) === String(p_coach_id)
+      ).length;
+      if (['inactive', 'interested'].includes(p_status) && assignedTeamCount > 0) {
+        return {
+          data: null,
+          error: { message: `Cannot set an assigned coach to status ${p_status}` },
+        };
+      }
+
+      const previousStatus = coach.status;
+      coach.status = p_status;
+      coach.updated_at = new Date().toISOString();
+      db.audit_log = db.audit_log || [];
+      if (previousStatus !== p_status) {
+        db.audit_log.push({
+          id: Math.random().toString(36).substr(2, 9),
+          organization_id: p_organization_id,
+          user_id: session?.user?.id,
+          action:
+            previousStatus === 'interested' && p_status === 'active'
+              ? 'coach.promoted'
+              : 'coach.status_updated',
+          resource_type: 'coach',
+          resource_id: p_coach_id,
+          metadata: {
+            coach_id: p_coach_id,
+            previous_status: previousStatus,
+            status: p_status,
+            assigned_team_count: assignedTeamCount,
+          },
+          created_at: new Date().toISOString(),
+        });
+      }
+      saveDB(db);
+      return {
+        data: {
+          coach_id: p_coach_id,
+          organization_id: p_organization_id,
+          previous_status: previousStatus,
+          status: p_status,
+          changed: previousStatus !== p_status,
+        },
+        error: null,
+      };
+    }
+
+    if (name === 'admin_assign_team_coach') {
+      const { p_organization_id, p_team_id, p_coach_id } = params || {};
+      const session =
+        typeof window !== 'undefined'
+          ? JSON.parse(sessionStorage.getItem('__MOCK_SESSION__') || 'null')
+          : null;
+      const member = (db.organization_members || []).find(
+        (item) =>
+          String(item.organization_id) === String(p_organization_id) &&
+          String(item.profile_id) === String(session?.user?.id)
+      );
+      if (!['admin', 'tenant_admin'].includes(String(member?.role || ''))) {
+        return { data: null, error: { message: 'Access denied: admin role required' } };
+      }
+
+      const team = (db.teams || []).find(
+        (item) =>
+          String(item.id) === String(p_team_id) &&
+          String(item.organization_id) === String(p_organization_id)
+      );
+      if (!team) {
+        return { data: null, error: { message: 'Team not found in organization' } };
+      }
+
+      const previousCoachId = team.coach_id || null;
+      if (p_coach_id) {
+        const coach = (db.coaches || []).find(
+          (item) =>
+            String(item.id) === String(p_coach_id) &&
+            String(item.organization_id) === String(p_organization_id)
+        );
+        if (!coach) {
+          return { data: null, error: { message: 'Coach not found in organization' } };
+        }
+        if (!['active', 'pending-confirmation'].includes(String(coach.status))) {
+          return {
+            data: null,
+            error: { message: 'Coach must be active or pending-confirmation before assignment' },
+          };
+        }
+
+        const otherAssignments = (db.teams || []).filter(
+          (item) =>
+            String(item.organization_id) === String(p_organization_id) &&
+            String(item.coach_id) === String(p_coach_id) &&
+            String(item.id) !== String(p_team_id)
+        );
+        if (!coach.can_coach_multiple_teams && otherAssignments.length > 0) {
+          return { data: null, error: { message: 'Coach is already assigned to another team' } };
+        }
+      }
+
+      if (String(previousCoachId || '') === String(p_coach_id || '')) {
+        return {
+          data: {
+            team_id: p_team_id,
+            organization_id: p_organization_id,
+            previous_coach_id: previousCoachId,
+            coach_id: p_coach_id || null,
+            changed: false,
+          },
+          error: null,
+        };
+      }
+
+      team.coach_id = p_coach_id || null;
+      team.updated_at = new Date().toISOString();
+      db.audit_log = db.audit_log || [];
+      db.audit_log.push({
+        id: Math.random().toString(36).substr(2, 9),
+        organization_id: p_organization_id,
+        user_id: session?.user?.id,
+        action: p_coach_id
+          ? previousCoachId
+            ? 'team.coach_swapped'
+            : 'team.coach_assigned'
+          : 'team.coach_unassigned',
+        resource_type: 'team',
+        resource_id: p_team_id,
+        metadata: {
+          team_id: p_team_id,
+          previous_coach_id: previousCoachId,
+          coach_id: p_coach_id || null,
+        },
+        created_at: new Date().toISOString(),
+      });
+      saveDB(db);
+      return {
+        data: {
+          team_id: p_team_id,
+          organization_id: p_organization_id,
+          previous_coach_id: previousCoachId,
+          coach_id: p_coach_id || null,
+          changed: true,
+        },
+        error: null,
+      };
+    }
+
     if (name === 'persist_evaluation_run') {
       return { data: { id: 'eval-' + Math.random().toString(36).substr(2, 6) }, error: null };
     }

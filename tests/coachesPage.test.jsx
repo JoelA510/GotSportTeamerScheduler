@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildCoachReviewRows,
+  buildTeamAssignmentOptions,
+  canAssignCoachToTeam,
+  canSetCoachStatus,
   filterCoachReviewRows,
   summarizeCoachRows,
 } from '../frontend/src/pages/CoachesPage.jsx';
@@ -114,5 +117,34 @@ describe('coach review page helpers', () => {
     expect(filterCoachReviewRows(rows, { search: 'blue sharks' }).map((row) => row.id)).toEqual([
       'coach-active',
     ]);
+  });
+
+  it('builds team assignment options with current coach context', () => {
+    expect(buildTeamAssignmentOptions({ teams, divisions })).toEqual([
+      {
+        value: 'team-1',
+        label: 'Blue Sharks - U8 Coed - Assigned',
+        coachId: 'coach-active',
+        divisionId: 'u8',
+      },
+    ]);
+  });
+
+  it('only allows active or pending coaches to be assigned', () => {
+    expect(canAssignCoachToTeam({ status: 'active' })).toBe(true);
+    expect(canAssignCoachToTeam({ status: 'pending-confirmation' })).toBe(true);
+    expect(canAssignCoachToTeam({ status: 'interested' })).toBe(false);
+    expect(canAssignCoachToTeam({ status: 'inactive' })).toBe(false);
+  });
+
+  it('blocks assigned coaches from inactive or interested status transitions', () => {
+    const assignedCoach = { teams: [{ id: 'team-1' }] };
+    const unassignedCoach = { teams: [] };
+
+    expect(canSetCoachStatus(assignedCoach, 'inactive')).toBe(false);
+    expect(canSetCoachStatus(assignedCoach, 'interested')).toBe(false);
+    expect(canSetCoachStatus(assignedCoach, 'active')).toBe(true);
+    expect(canSetCoachStatus(unassignedCoach, 'inactive')).toBe(true);
+    expect(canSetCoachStatus(unassignedCoach, 'interested')).toBe(true);
   });
 });

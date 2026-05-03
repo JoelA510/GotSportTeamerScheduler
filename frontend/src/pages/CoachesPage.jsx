@@ -1,7 +1,18 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Mail, Phone, RefreshCw, Search, ShieldCheck, UserRoundCheck, Users } from 'lucide-react';
+import {
+  CheckCircle2,
+  Mail,
+  Phone,
+  RefreshCw,
+  Search,
+  ShieldCheck,
+  UserMinus,
+  UserRoundCheck,
+  Users,
+} from 'lucide-react';
 import { supabase } from '../lib/supabaseClient.js';
 import { useOrganization } from '../contexts/OrganizationContext.jsx';
+import { usePermission } from '../hooks/usePermission.js';
 import { logger } from '../lib/logger.js';
 
 const STATUS_FILTERS = [
@@ -18,6 +29,13 @@ const STATUS_LABELS = {
   inactive: 'Inactive',
 };
 
+const STATUS_OPTIONS = [
+  { id: 'active', label: 'Registered' },
+  { id: 'pending-confirmation', label: 'Pending' },
+  { id: 'interested', label: 'Interested' },
+  { id: 'inactive', label: 'Inactive' },
+];
+
 const STATUS_STYLES = {
   active: 'border-status-success/30 bg-status-success-bg text-status-success',
   'pending-confirmation': 'border-status-warning/30 bg-status-warning-bg text-status-warning',
@@ -33,6 +51,13 @@ function normalizeSearch(value) {
 
 function uniqueValues(values) {
   return Array.from(new Set(values.filter(Boolean)));
+}
+
+function formatTeamAssignmentLabel({ team, divisionsById }) {
+  const divisionName = divisionsById.get(String(team.division_id || ''))?.name;
+  return [team.name || team.id, divisionName, team.coach_id ? 'Assigned' : 'Unassigned']
+    .filter(Boolean)
+    .join(' - ');
 }
 
 function getCoachStatusGroup(status) {
@@ -165,6 +190,25 @@ export function filterCoachReviewRows(
   });
 }
 
+export function buildTeamAssignmentOptions({ teams = [], divisions = [] } = {}) {
+  const divisionsById = new Map(divisions.map((division) => [String(division.id), division]));
+
+  return teams.map((team) => ({
+    value: team.id,
+    label: formatTeamAssignmentLabel({ team, divisionsById }),
+    coachId: team.coach_id || null,
+    divisionId: team.division_id || null,
+  }));
+}
+
+export function canAssignCoachToTeam(coach) {
+  return coach?.status === 'active' || coach?.status === 'pending-confirmation';
+}
+
+export function canSetCoachStatus(coach, status) {
+  return !(['inactive', 'interested'].includes(status) && (coach?.teams || []).length > 0);
+}
+
 function CoachStat({ icon: Icon, label, value }) {
   return (
     <div className="bg-bg-surface border border-border-highlight rounded-lg p-4">
@@ -190,9 +234,13 @@ function StatusBadge({ status, label }) {
 
 export default function CoachesPage() {
   const { currentOrganization } = useOrganization();
+  const { can, PERMISSIONS } = usePermission();
   const latestRequestRef = useRef(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [mutationMessage, setMutationMessage] = useState(null);
+  const [pendingAction, setPendingAction] = useState(null);
+  const [selectedTeamByCoach, setSelectedTeamByCoach] = useState({});
   const [coaches, setCoaches] = useState([]);
   const [interestedPrograms, setInterestedPrograms] = useState([]);
   const [divisions, setDivisions] = useState([]);
@@ -202,6 +250,7 @@ export default function CoachesPage() {
   const [divisionFilter, setDivisionFilter] = useState('all');
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
+  const canManageCoaches = can(PERMISSIONS.MANAGE_ORGANIZATION);
 
   const loadCoaches = useCallback(async () => {
     const requestId = latestRequestRef.current + 1;
@@ -273,6 +322,12 @@ export default function CoachesPage() {
       setDivisions(divisionResult.data || []);
       setPlayers(playerResult.data || []);
       setTeams(teamResult.data || []);
+      setSelectedTeamByCoach((previous) => {
+        const validTeamIds = new Set((teamResult.data || []).map((team) => String(team.id)));
+        return Object.fromEntries(
+          Object.entries(previous).filter(([, teamId]) => validTeamIds.has(String(teamId)))
+        );
+      });
     } catch (err) {
       if (latestRequestRef.current !== requestId) return;
       logger.error('Failed to load coaches:', err);
@@ -293,11 +348,20 @@ export default function CoachesPage() {
     return () => clearTimeout(timeoutId);
   }, [search]);
 
+  useEffect(() => {
+    setMutationMessage(null);
+    setSelectedTeamByCoach({});
+  }, [currentOrganization?.id]);
+
   const rows = useMemo(
     () => buildCoachReviewRows({ coaches, interestedPrograms, divisions, players, teams }),
     [coaches, interestedPrograms, divisions, players, teams]
   );
   const summary = useMemo(() => summarizeCoachRows(rows), [rows]);
+  const teamAssignmentOptions = useMemo(
+    () => buildTeamAssignmentOptions({ teams, divisions }),
+    [teams, divisions]
+  );
   const filteredRows = useMemo(
     () =>
       filterCoachReviewRows(rows, {
@@ -306,6 +370,94 @@ export default function CoachesPage() {
         search: debouncedSearch,
       }),
     [rows, statusFilter, divisionFilter, debouncedSearch]
+  );
+
+  const runCoachMutation = useCallback(
+    async ({ actionKey, successMessage, mutation }) => {
+      if (!currentOrganization?.id || !canManageCoaches) return;
+
+      setPendingAction(actionKey);
+      setMutationMessage(null);
+      setError(null);
+
+      try {
+        const { error: mutationError } = await mutation();
+        if (mutationError) throw mutationError;
+        setMutationMessage({ type: 'success', text: successMessage });
+        await loadCoaches();
+      } catch (err) {
+        logger.error('Coach admin mutation failed:', err);
+        setMutationMessage({
+          type: 'error',
+          text: err?.message || 'Coach action failed. Please try again.',
+        });
+      } finally {
+        setPendingAction(null);
+      }
+    },
+    [canManageCoaches, currentOrganization?.id, loadCoaches]
+  );
+
+  const handleStatusChange = useCallback(
+    (coach, nextStatus) => {
+      if (!nextStatus || nextStatus === coach.status) return;
+
+      runCoachMutation({
+        actionKey: `status:${coach.id}`,
+        successMessage: `${coach.fullName} status updated to ${STATUS_LABELS[nextStatus] || nextStatus}.`,
+        mutation: () =>
+          supabase.rpc('admin_update_coach_status', {
+            p_organization_id: currentOrganization.id,
+            p_coach_id: coach.id,
+            p_status: nextStatus,
+          }),
+      });
+    },
+    [currentOrganization?.id, runCoachMutation]
+  );
+
+  const handleAssignTeam = useCallback(
+    (coach) => {
+      const teamId = selectedTeamByCoach[coach.id];
+      if (!teamId) return;
+
+      runCoachMutation({
+        actionKey: `assign:${coach.id}`,
+        successMessage: `${coach.fullName} assigned to the selected team.`,
+        mutation: async () => {
+          const result = await supabase.rpc('admin_assign_team_coach', {
+            p_organization_id: currentOrganization.id,
+            p_team_id: teamId,
+            p_coach_id: coach.id,
+          });
+          if (!result.error) {
+            setSelectedTeamByCoach((previous) => {
+              const next = { ...previous };
+              delete next[coach.id];
+              return next;
+            });
+          }
+          return result;
+        },
+      });
+    },
+    [currentOrganization?.id, runCoachMutation, selectedTeamByCoach]
+  );
+
+  const handleUnassignTeam = useCallback(
+    (team) => {
+      runCoachMutation({
+        actionKey: `unassign:${team.id}`,
+        successMessage: `${team.name} no longer has an assigned coach.`,
+        mutation: () =>
+          supabase.rpc('admin_assign_team_coach', {
+            p_organization_id: currentOrganization.id,
+            p_team_id: team.id,
+            p_coach_id: null,
+          }),
+      });
+    },
+    [currentOrganization?.id, runCoachMutation]
   );
 
   return (
@@ -334,6 +486,20 @@ export default function CoachesPage() {
           role="alert"
         >
           {error}
+        </div>
+      )}
+
+      {mutationMessage && (
+        <div
+          className={`rounded-lg border px-4 py-3 text-sm font-medium ${
+            mutationMessage.type === 'error'
+              ? 'border-status-error/30 bg-status-error-bg text-status-error'
+              : 'border-status-success/30 bg-status-success-bg text-status-success'
+          }`}
+          role={mutationMessage.type === 'error' ? 'alert' : 'status'}
+          aria-live="polite"
+        >
+          {mutationMessage.text}
         </div>
       )}
 
@@ -417,18 +583,29 @@ export default function CoachesPage() {
               <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-text-muted">
                 Last Import
               </th>
+              {canManageCoaches && (
+                <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-text-muted">
+                  Actions
+                </th>
+              )}
             </tr>
           </thead>
           <tbody className="divide-y divide-border-subtle">
             {loading ? (
               <tr>
-                <td colSpan={5} className="px-4 py-10 text-center text-sm text-text-secondary">
+                <td
+                  colSpan={canManageCoaches ? 6 : 5}
+                  className="px-4 py-10 text-center text-sm text-text-secondary"
+                >
                   Loading coaches...
                 </td>
               </tr>
             ) : filteredRows.length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-4 py-10 text-center text-sm text-text-secondary">
+                <td
+                  colSpan={canManageCoaches ? 6 : 5}
+                  className="px-4 py-10 text-center text-sm text-text-secondary"
+                >
                   No coaches match the current filters.
                 </td>
               </tr>
@@ -486,7 +663,21 @@ export default function CoachesPage() {
                     {coach.teams.length > 0 ? (
                       <div className="space-y-1">
                         {coach.teams.map((team) => (
-                          <div key={team.id}>{team.name}</div>
+                          <div key={team.id} className="flex items-center gap-2">
+                            <span>{team.name}</span>
+                            {canManageCoaches && (
+                              <button
+                                type="button"
+                                onClick={() => handleUnassignTeam(team)}
+                                disabled={pendingAction === `unassign:${team.id}`}
+                                className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border-subtle text-text-muted transition-colors hover:border-status-error/50 hover:text-status-error disabled:cursor-not-allowed disabled:opacity-50"
+                                aria-label={`Unassign ${coach.fullName} from ${team.name}`}
+                                title="Unassign coach"
+                              >
+                                <UserMinus size={14} />
+                              </button>
+                            )}
+                          </div>
                         ))}
                       </div>
                     ) : (
@@ -499,6 +690,71 @@ export default function CoachesPage() {
                       <div className="mt-1 text-xs text-text-muted">{coach.importSource}</div>
                     )}
                   </td>
+                  {canManageCoaches && (
+                    <td className="min-w-[260px] px-4 py-4 align-top">
+                      <div className="space-y-3">
+                        <label className="block">
+                          <span className="sr-only">Status for {coach.fullName}</span>
+                          <select
+                            value={coach.status}
+                            onChange={(event) => handleStatusChange(coach, event.target.value)}
+                            disabled={pendingAction === `status:${coach.id}`}
+                            className="w-full rounded-lg border border-border-subtle bg-bg-card px-3 py-2 text-sm text-text-primary outline-none transition-colors focus:border-brand-400/60 disabled:cursor-not-allowed disabled:opacity-60"
+                            aria-label={`Status for ${coach.fullName}`}
+                          >
+                            {STATUS_OPTIONS.map((status) => (
+                              <option
+                                key={status.id}
+                                value={status.id}
+                                disabled={!canSetCoachStatus(coach, status.id)}
+                              >
+                                {status.label}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+
+                        <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
+                          <label className="block">
+                            <span className="sr-only">Assign team to {coach.fullName}</span>
+                            <select
+                              value={selectedTeamByCoach[coach.id] || ''}
+                              onChange={(event) =>
+                                setSelectedTeamByCoach((previous) => ({
+                                  ...previous,
+                                  [coach.id]: event.target.value,
+                                }))
+                              }
+                              disabled={!canAssignCoachToTeam(coach)}
+                              className="w-full rounded-lg border border-border-subtle bg-bg-card px-3 py-2 text-sm text-text-primary outline-none transition-colors focus:border-brand-400/60 disabled:cursor-not-allowed disabled:opacity-60"
+                              aria-label={`Assign team to ${coach.fullName}`}
+                            >
+                              <option value="">Select team</option>
+                              {teamAssignmentOptions.map((team) => (
+                                <option key={team.value} value={team.value}>
+                                  {team.label}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => handleAssignTeam(coach)}
+                            disabled={
+                              !canAssignCoachToTeam(coach) ||
+                              !selectedTeamByCoach[coach.id] ||
+                              pendingAction === `assign:${coach.id}`
+                            }
+                            className="inline-flex h-10 items-center gap-2 rounded-lg border border-brand-400/40 bg-brand-glow px-3 text-sm font-semibold text-brand-400 transition-colors hover:bg-brand-400/10 disabled:cursor-not-allowed disabled:opacity-50"
+                            aria-label={`Assign selected team to ${coach.fullName}`}
+                          >
+                            <CheckCircle2 size={16} />
+                            Assign
+                          </button>
+                        </div>
+                      </div>
+                    </td>
+                  )}
                 </tr>
               ))
             )}
