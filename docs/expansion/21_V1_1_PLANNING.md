@@ -118,7 +118,7 @@ Broken into plausible v1.1 waves. Names + numbers are tentative; a v1.1 planning
   - Remove unused `v_existing_status`.
 - Player imports now call `upsert_coach_leads` after `finalize_import_job`, deriving interested coach leads from positive coach intent plus guardian/parent contact fields. Remaining refinement: add enroller/guardian Levenshtein matching when those distinct GotSport columns are available.
 - Auto-promote matching leads when a coach CSV imports (coach-CSV wins; the parent may still be flagged as "interested" in other children's divisions, but the identity is now `'active'`).
-- `/coaches` page — doesn't exist today. Build minimal: status pills (All / Registered / Interested), program filter, search by name/email. Listed as interested = "here are people who volunteered on a registration form but haven't completed coach registration; reach out offline."
+- `/coaches` page now exists as an admin-only review surface with status pills (All / Registered / Interested / Inactive), program filter, search by name/email/team/program, assigned team visibility, and originating-player context for interested leads.
 
 **Touches**: `supabase/migrations/20260421060000_coach_leads.sql` plus the org-scope hardening migration, `frontend/src/contexts/ImportContext.jsx` (calls `upsert_coach_leads` after player finalize), `frontend/src/utils/coachLeads.js`, `frontend/src/components/ColumnMapper.jsx` (remaining enroller/manual mapping refinements), `frontend/src/utils/telemetryUtils.js` (alias additions — must be kept in sync with `supabase/functions/import-validation/index.ts` per the Codex P1 on #186), new `frontend/src/pages/CoachesPage.jsx`, router wiring.
 

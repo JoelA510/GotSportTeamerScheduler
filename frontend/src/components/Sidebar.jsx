@@ -14,6 +14,7 @@ import {
   ClipboardList,
   History,
   FlaskConical,
+  UserRoundCheck,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext.jsx';
 import { useOrganization } from '../contexts/OrganizationContext.jsx';
@@ -24,6 +25,7 @@ const navItems = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, path: '/' },
   { id: 'import', label: 'Data Import', icon: Upload, path: '/import' },
   { id: 'teams', label: 'Team Management', icon: Users, path: '/teams' },
+  { id: 'coaches', label: 'Coaches', icon: UserRoundCheck, path: '/coaches' },
   { id: 'fields', label: 'Field Management', icon: Map, path: '/fields' },
   {
     id: 'schedule-practice',

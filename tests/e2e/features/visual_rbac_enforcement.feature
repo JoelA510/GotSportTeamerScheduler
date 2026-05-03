@@ -9,6 +9,13 @@ Feature: Visual Role-Based Access Control
     Then I should see links for "Dashboard", "Team Management", and "Practice Schedule"
     But I should NOT see links for "Data Import", "Settings", or "Compliance"
 
+  Scenario: Admin Coach Review Page
+    Given I am logged into SquadLogic as an "Admin"
+    And I am on the "Coaches" page
+    Then I should see the text "Registered coaches and player-import volunteer leads."
+    And I should see the text "Mock Coach"
+    And I should see the text "Morgan Reyes"
+
   Scenario: Score Entry Restrictions in League Standings
     Given I am logged into SquadLogic as a "Parent"
     And I navigate to the "League Standings" page
