@@ -28,6 +28,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Replaced the routed game scheduling mock timer and direct assignment updates with core round-robin generation, staged review/apply/discard UI, and a game-persistence backed apply flow.
 - Replaced the routed practice scheduling mock timer with the real auto-scheduler trigger, staged review/apply/discard UI, and practice-persistence backed apply flow.
 
+### Fixed
+
+- Made import smart-mapping confidence tooltips keyboard focusable and screen-reader described instead of hover-only.
+
 ### Documentation
 
 - Clarified that GotSport CSV import validation, durable player promotion, coach CSV, field-slot, buddy-pair materialization, and player-import coach lead capture are shipped, while team import promotion remains pending v1.1 work.

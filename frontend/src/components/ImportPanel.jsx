@@ -37,6 +37,9 @@ const COMPLETED_IMPORT_STATUSES = new Set(['completed', 'completed_with_warnings
  * Smart Confidence Badge component for high-fidelity mapping indicators.
  */
 const SmartBadge = ({ score, rationale }) => {
+  const tooltipId = React.useId();
+  const matchPercent = (score * 100).toFixed(0);
+
   const getColor = () => {
     if (score >= 0.9) return 'text-green-400 bg-green-400/10 border-green-400/20';
     if (score >= 0.7) return 'text-blue-400 bg-blue-400/10 border-blue-400/20';
@@ -45,13 +48,21 @@ const SmartBadge = ({ score, rationale }) => {
 
   return (
     <div
-      className={`flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] whitespace-nowrap group relative cursor-help animate-fadeIn ${getColor()}`}
+      tabIndex={0}
+      role="status"
+      aria-label={`${matchPercent}% header match confidence`}
+      aria-describedby={tooltipId}
+      className={`flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] whitespace-nowrap group relative cursor-help animate-fadeIn outline-none focus-visible:ring-2 focus-visible:ring-blue-400/80 focus-visible:ring-offset-2 focus-visible:ring-offset-bg-surface ${getColor()}`}
     >
       <BrainCircuit size={10} />
-      <span>{(score * 100).toFixed(0)}% Match</span>
+      <span>{matchPercent}% Match</span>
 
       {/* Tooltip */}
-      <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 w-48 p-2 bg-bg-surface border border-border-highlight rounded-lg shadow-xl opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 text-text-primary text-[11px] leading-snug">
+      <div
+        id={tooltipId}
+        role="tooltip"
+        className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 w-48 p-2 bg-bg-surface border border-border-highlight rounded-lg shadow-xl opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 pointer-events-none transition-opacity z-50 text-text-primary text-[11px] leading-snug"
+      >
         <div className="flex items-start gap-1.5">
           <Info size={12} className="shrink-0 mt-0.5 text-blue-400" />
           <span>{rationale}</span>
