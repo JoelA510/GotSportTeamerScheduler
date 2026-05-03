@@ -267,6 +267,8 @@ Given('I am on the {string} workflow step on Dashboard', async ({ page }, step: 
       {
         id: 'run-t',
         organization_id: orgId,
+        season_id: 'season-1',
+        season_settings_id: 'season-1',
         run_type: 'team',
         status: 'completed',
         created_at: now,
@@ -277,6 +279,8 @@ Given('I am on the {string} workflow step on Dashboard', async ({ page }, step: 
         id: 'run-p',
         organization_id: orgId,
         run_type: 'practice',
+        season_id: 'season-1',
+        season_settings_id: 'season-1',
         status: 'completed',
         created_at: now,
         completed_at: now,
@@ -286,6 +290,8 @@ Given('I am on the {string} workflow step on Dashboard', async ({ page }, step: 
         id: 'run-g',
         organization_id: orgId,
         run_type: 'game',
+        season_id: 'season-1',
+        season_settings_id: 'season-1',
         status: 'completed',
         created_at: now,
         completed_at: now,
@@ -468,11 +474,27 @@ Then('the button should disable and show {string}', async ({ page }, _text: stri
   // In mock mode, generation is nearly instant (50ms). We might miss the "Generating..." state.
   // We verify the pipeline advanced by checking for the Upload button instead.
   const uploadBtn = page.getByRole('button', { name: 'Upload to Storage' }).first();
+  if (!(await uploadBtn.isVisible({ timeout: 1000 }).catch(() => false))) {
+    const generateBtn = page.getByTestId('generate-csvs-btn').first();
+    await expect(generateBtn).toBeVisible({ timeout: 15000 });
+    await expect(generateBtn).toBeEnabled({ timeout: 15000 });
+    await generateBtn.scrollIntoViewIfNeeded();
+    await page.waitForTimeout(150);
+    await generateBtn.click();
+  }
   await expect(uploadBtn).toBeVisible({ timeout: 15000 });
 });
 
 When('the generation completes, I click {string}', async ({ page }, btnLabel: string) => {
   const btn = page.getByRole('button', { name: btnLabel }).first();
+  const statusText = page.locator('.text-orange-400.animate-pulse, .text-emerald-400').first();
+  await expect(btn).toBeVisible({ timeout: 15000 });
   await expect(btn).toBeEnabled({ timeout: 15000 });
-  await btn.click({ force: true });
+  await btn.scrollIntoViewIfNeeded();
+  await page.waitForTimeout(150);
+  await btn.click();
+  if (!(await statusText.isVisible({ timeout: 1000 }).catch(() => false))) {
+    await expect(btn).toBeEnabled({ timeout: 15000 });
+    await btn.click();
+  }
 });

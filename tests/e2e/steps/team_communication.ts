@@ -199,8 +199,18 @@ When(
     };
 
     const btn = playerRsvpRow.getByTitle(titleMap[action] || action, { exact: true }).first();
-    await btn.waitFor({ state: 'visible', timeout: 10000 });
-    await btn.click({ force: true });
+    await expect(btn).toBeVisible({ timeout: 10000 });
+    await expect(btn).toBeEnabled({ timeout: 10000 });
+    await btn.scrollIntoViewIfNeeded();
+    await page.waitForTimeout(150);
+    await btn.click();
+    const isActive = async () =>
+      (await btn.getAttribute('class'))?.includes('shadow-glow') ?? false;
+    if (!(await isActive())) {
+      await expect(btn).toBeEnabled({ timeout: 10000 });
+      await btn.click();
+    }
+    await expect(btn).toHaveClass(/shadow-glow/, { timeout: 10000 });
 
     // CRITICAL FIX: Allow the mock Supabase client and React state to settle
     // before proceeding to the next click, preventing read-modify-write race conditions.
