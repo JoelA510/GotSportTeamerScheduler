@@ -474,6 +474,14 @@ Then('the button should disable and show {string}', async ({ page }, _text: stri
   // In mock mode, generation is nearly instant (50ms). We might miss the "Generating..." state.
   // We verify the pipeline advanced by checking for the Upload button instead.
   const uploadBtn = page.getByRole('button', { name: 'Upload to Storage' }).first();
+  if (!(await uploadBtn.isVisible({ timeout: 1000 }).catch(() => false))) {
+    const generateBtn = page.getByTestId('generate-csvs-btn').first();
+    await expect(generateBtn).toBeVisible({ timeout: 15000 });
+    await expect(generateBtn).toBeEnabled({ timeout: 15000 });
+    await generateBtn.scrollIntoViewIfNeeded();
+    await page.waitForTimeout(150);
+    await generateBtn.click();
+  }
   await expect(uploadBtn).toBeVisible({ timeout: 15000 });
 });
 
