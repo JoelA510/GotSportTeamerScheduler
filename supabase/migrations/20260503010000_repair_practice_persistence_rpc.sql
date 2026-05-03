@@ -30,18 +30,15 @@ DECLARE
     v_created_by uuid;
     v_started_at timestamptz;
     v_completed_at timestamptz;
-    v_assignment jsonb;
-    v_team_id uuid;
-    v_slot_id uuid;
-    v_team_org_id uuid;
-    v_slot_org_id uuid;
-    v_slot_day text;
-    v_slot_start text;
-    v_slot_end text;
-    v_slot_field_id uuid;
-    v_effective_date_range daterange;
-    v_source text;
     v_effective_role text;
+    v_missing_team_count integer;
+    v_missing_slot_count integer;
+    v_missing_range_count integer;
+    v_invalid_source_count integer;
+    v_missing_team_ref uuid;
+    v_cross_team_ref uuid;
+    v_missing_slot_ref uuid;
+    v_cross_slot_ref uuid;
 BEGIN
     IF run_data IS NULL OR jsonb_typeof(run_data) IS DISTINCT FROM 'object' THEN
         RAISE EXCEPTION 'run_data must be a JSON object'
@@ -196,121 +193,244 @@ BEGIN
             USING ERRCODE = '42501';
     END IF;
 
-    FOR v_assignment IN
-        SELECT value FROM jsonb_array_elements(assignments) AS assignment_items(value)
-    LOOP
-        IF v_assignment IS NULL OR jsonb_typeof(v_assignment) IS DISTINCT FROM 'object' THEN
-            RAISE EXCEPTION 'each assignment must be a JSON object'
-                USING ERRCODE = '22023';
-        END IF;
+    IF EXISTS (
+        SELECT 1
+          FROM jsonb_array_elements(assignments) AS assignment_items(value)
+         WHERE jsonb_typeof(assignment_items.value) IS DISTINCT FROM 'object'
+    ) THEN
+        RAISE EXCEPTION 'each assignment must be a JSON object'
+            USING ERRCODE = '22023';
+    END IF;
 
-        v_team_id := NULLIF(v_assignment->>'team_id', '')::uuid;
-        v_slot_id := COALESCE(
-            NULLIF(v_assignment->>'practice_slot_id', '')::uuid,
-            NULLIF(v_assignment->>'slot_id', '')::uuid
-        );
-        v_effective_date_range := NULLIF(v_assignment->>'effective_date_range', '')::daterange;
-
-        IF v_team_id IS NULL THEN
-            RAISE EXCEPTION 'assignment team_id is required'
-                USING ERRCODE = '23502';
-        END IF;
-
-        IF v_slot_id IS NULL THEN
-            RAISE EXCEPTION 'assignment practice_slot_id or slot_id is required'
-                USING ERRCODE = '23502';
-        END IF;
-
-        IF v_effective_date_range IS NULL THEN
-            RAISE EXCEPTION 'assignment effective_date_range is required'
-                USING ERRCODE = '23502';
-        END IF;
-
-        SELECT t.organization_id
-          INTO v_team_org_id
-          FROM public.teams t
-         WHERE t.id = v_team_id;
-
-        IF v_team_org_id IS NULL THEN
-            RAISE EXCEPTION 'team_id % does not exist', v_team_id
-                USING ERRCODE = '23503';
-        END IF;
-
-        IF v_team_org_id <> v_org_id THEN
-            RAISE EXCEPTION 'team_id % belongs to another organization', v_team_id
-                USING ERRCODE = '42501';
-        END IF;
-
-        SELECT ps.organization_id,
-               ps.day_of_week::text,
-               ps.start_time::text,
-               ps.end_time::text,
-               ps.field_id
-          INTO v_slot_org_id,
-               v_slot_day,
-               v_slot_start,
-               v_slot_end,
-               v_slot_field_id
-          FROM public.practice_slots ps
-         WHERE ps.id = v_slot_id;
-
-        IF v_slot_org_id IS NULL THEN
-            RAISE EXCEPTION 'practice_slot_id % does not exist', v_slot_id
-                USING ERRCODE = '23503';
-        END IF;
-
-        IF v_slot_org_id <> v_org_id THEN
-            RAISE EXCEPTION 'practice_slot_id % belongs to another organization', v_slot_id
-                USING ERRCODE = '42501';
-        END IF;
-
-        v_source := lower(COALESCE(NULLIF(v_assignment->>'source', ''), 'auto'));
-        IF v_source = 'locked' THEN
-            v_source := 'manual';
-        END IF;
-
-        IF v_source NOT IN ('auto', 'manual') THEN
-            RAISE EXCEPTION 'invalid practice assignment source: %', v_source
-                USING ERRCODE = '22023';
-        END IF;
-
-        INSERT INTO public.practice_assignments (
-            organization_id,
-            team_id,
-            slot_id,
-            practice_slot_id,
-            day_of_week,
-            start_time,
-            end_time,
-            field_id,
-            effective_date_range,
-            source
+    WITH parsed_assignments AS (
+        SELECT
+            NULLIF(raw_assignments.team_id, '')::uuid AS team_id,
+            COALESCE(
+                NULLIF(raw_assignments.practice_slot_id, '')::uuid,
+                NULLIF(raw_assignments.slot_id, '')::uuid
+            ) AS practice_slot_id,
+            NULLIF(raw_assignments.effective_date_range, '')::daterange AS effective_date_range,
+            CASE
+                WHEN lower(COALESCE(NULLIF(raw_assignments.source, ''), 'auto')) = 'locked'
+                    THEN 'manual'
+                ELSE lower(COALESCE(NULLIF(raw_assignments.source, ''), 'auto'))
+            END AS source
+        FROM jsonb_to_recordset(assignments) AS raw_assignments(
+            team_id text,
+            practice_slot_id text,
+            slot_id text,
+            effective_date_range text,
+            source text
         )
-        VALUES (
-            v_org_id,
-            v_team_id,
-            v_slot_id,
-            v_slot_id,
-            v_slot_day,
-            v_slot_start,
-            v_slot_end,
-            v_slot_field_id,
-            v_effective_date_range,
-            v_source::source_enum
+    )
+    SELECT
+        count(*) FILTER (WHERE team_id IS NULL),
+        count(*) FILTER (WHERE practice_slot_id IS NULL),
+        count(*) FILTER (WHERE effective_date_range IS NULL),
+        count(*) FILTER (WHERE source NOT IN ('auto', 'manual'))
+      INTO
+        v_missing_team_count,
+        v_missing_slot_count,
+        v_missing_range_count,
+        v_invalid_source_count
+      FROM parsed_assignments;
+
+    IF v_missing_team_count > 0 THEN
+        RAISE EXCEPTION 'assignment team_id is required'
+            USING ERRCODE = '23502';
+    END IF;
+
+    IF v_missing_slot_count > 0 THEN
+        RAISE EXCEPTION 'assignment practice_slot_id or slot_id is required'
+            USING ERRCODE = '23502';
+    END IF;
+
+    IF v_missing_range_count > 0 THEN
+        RAISE EXCEPTION 'assignment effective_date_range is required'
+            USING ERRCODE = '23502';
+    END IF;
+
+    IF v_invalid_source_count > 0 THEN
+        RAISE EXCEPTION 'invalid practice assignment source'
+            USING ERRCODE = '22023';
+    END IF;
+
+    WITH parsed_assignments AS (
+        SELECT
+            NULLIF(raw_assignments.team_id, '')::uuid AS team_id,
+            COALESCE(
+                NULLIF(raw_assignments.practice_slot_id, '')::uuid,
+                NULLIF(raw_assignments.slot_id, '')::uuid
+            ) AS practice_slot_id
+        FROM jsonb_to_recordset(assignments) AS raw_assignments(
+            team_id text,
+            practice_slot_id text,
+            slot_id text
         )
-        ON CONFLICT (team_id, practice_slot_id, effective_date_range)
-            WHERE practice_slot_id IS NOT NULL
-              AND effective_date_range IS NOT NULL
-        DO UPDATE SET
-            organization_id = EXCLUDED.organization_id,
-            slot_id = EXCLUDED.slot_id,
-            day_of_week = EXCLUDED.day_of_week,
-            start_time = EXCLUDED.start_time,
-            end_time = EXCLUDED.end_time,
-            field_id = EXCLUDED.field_id,
-            source = EXCLUDED.source,
-            updated_at = timezone('utc', now());
-    END LOOP;
+    )
+    SELECT parsed_assignments.team_id
+      INTO v_missing_team_ref
+      FROM parsed_assignments
+      LEFT JOIN public.teams t
+        ON t.id = parsed_assignments.team_id
+     WHERE t.id IS NULL
+     LIMIT 1;
+
+    IF v_missing_team_ref IS NOT NULL THEN
+        RAISE EXCEPTION 'team_id % does not exist', v_missing_team_ref
+            USING ERRCODE = '23503';
+    END IF;
+
+    WITH parsed_assignments AS (
+        SELECT
+            NULLIF(raw_assignments.team_id, '')::uuid AS team_id
+        FROM jsonb_to_recordset(assignments) AS raw_assignments(team_id text)
+    )
+    SELECT parsed_assignments.team_id
+      INTO v_cross_team_ref
+      FROM parsed_assignments
+      JOIN public.teams t
+        ON t.id = parsed_assignments.team_id
+     WHERE t.organization_id <> v_org_id
+     LIMIT 1;
+
+    IF v_cross_team_ref IS NOT NULL THEN
+        RAISE EXCEPTION 'team_id % belongs to another organization', v_cross_team_ref
+            USING ERRCODE = '42501';
+    END IF;
+
+    WITH parsed_assignments AS (
+        SELECT
+            COALESCE(
+                NULLIF(raw_assignments.practice_slot_id, '')::uuid,
+                NULLIF(raw_assignments.slot_id, '')::uuid
+            ) AS practice_slot_id
+        FROM jsonb_to_recordset(assignments) AS raw_assignments(
+            practice_slot_id text,
+            slot_id text
+        )
+    )
+    SELECT parsed_assignments.practice_slot_id
+      INTO v_missing_slot_ref
+      FROM parsed_assignments
+      LEFT JOIN public.practice_slots ps
+        ON ps.id = parsed_assignments.practice_slot_id
+     WHERE ps.id IS NULL
+     LIMIT 1;
+
+    IF v_missing_slot_ref IS NOT NULL THEN
+        RAISE EXCEPTION 'practice_slot_id % does not exist', v_missing_slot_ref
+            USING ERRCODE = '23503';
+    END IF;
+
+    WITH parsed_assignments AS (
+        SELECT
+            COALESCE(
+                NULLIF(raw_assignments.practice_slot_id, '')::uuid,
+                NULLIF(raw_assignments.slot_id, '')::uuid
+            ) AS practice_slot_id
+        FROM jsonb_to_recordset(assignments) AS raw_assignments(
+            practice_slot_id text,
+            slot_id text
+        )
+    )
+    SELECT parsed_assignments.practice_slot_id
+      INTO v_cross_slot_ref
+      FROM parsed_assignments
+      JOIN public.practice_slots ps
+        ON ps.id = parsed_assignments.practice_slot_id
+     WHERE ps.organization_id <> v_org_id
+     LIMIT 1;
+
+    IF v_cross_slot_ref IS NOT NULL THEN
+        RAISE EXCEPTION 'practice_slot_id % belongs to another organization', v_cross_slot_ref
+            USING ERRCODE = '42501';
+    END IF;
+
+    WITH parsed_assignments AS (
+        SELECT
+            NULLIF(raw_assignments.team_id, '')::uuid AS team_id,
+            COALESCE(
+                NULLIF(raw_assignments.practice_slot_id, '')::uuid,
+                NULLIF(raw_assignments.slot_id, '')::uuid
+            ) AS practice_slot_id,
+            NULLIF(raw_assignments.effective_date_range, '')::daterange AS effective_date_range,
+            CASE
+                WHEN lower(COALESCE(NULLIF(raw_assignments.source, ''), 'auto')) = 'locked'
+                    THEN 'manual'
+                ELSE lower(COALESCE(NULLIF(raw_assignments.source, ''), 'auto'))
+            END AS source
+        FROM jsonb_to_recordset(assignments) AS raw_assignments(
+            team_id text,
+            practice_slot_id text,
+            slot_id text,
+            effective_date_range text,
+            source text
+        )
+    ),
+    org_scoped_assignments AS (
+        SELECT DISTINCT ON (
+            parsed_assignments.team_id,
+            parsed_assignments.practice_slot_id,
+            parsed_assignments.effective_date_range
+        )
+            parsed_assignments.team_id,
+            parsed_assignments.practice_slot_id,
+            parsed_assignments.effective_date_range,
+            parsed_assignments.source,
+            ps.day_of_week::text AS day_of_week,
+            ps.start_time::text AS start_time,
+            ps.end_time::text AS end_time,
+            ps.field_id
+        FROM parsed_assignments
+        JOIN public.teams t
+          ON t.id = parsed_assignments.team_id
+         AND t.organization_id = v_org_id
+        JOIN public.practice_slots ps
+          ON ps.id = parsed_assignments.practice_slot_id
+         AND ps.organization_id = v_org_id
+        ORDER BY
+            parsed_assignments.team_id,
+            parsed_assignments.practice_slot_id,
+            parsed_assignments.effective_date_range,
+            parsed_assignments.source DESC
+    )
+    INSERT INTO public.practice_assignments (
+        organization_id,
+        team_id,
+        slot_id,
+        practice_slot_id,
+        day_of_week,
+        start_time,
+        end_time,
+        field_id,
+        effective_date_range,
+        source
+    )
+    SELECT
+        v_org_id,
+        team_id,
+        practice_slot_id,
+        practice_slot_id,
+        day_of_week,
+        start_time,
+        end_time,
+        field_id,
+        effective_date_range,
+        source::source_enum
+    FROM org_scoped_assignments
+    ON CONFLICT (team_id, practice_slot_id, effective_date_range)
+        WHERE practice_slot_id IS NOT NULL
+          AND effective_date_range IS NOT NULL
+    DO UPDATE SET
+        organization_id = EXCLUDED.organization_id,
+        slot_id = EXCLUDED.slot_id,
+        day_of_week = EXCLUDED.day_of_week,
+        start_time = EXCLUDED.start_time,
+        end_time = EXCLUDED.end_time,
+        field_id = EXCLUDED.field_id,
+        source = EXCLUDED.source,
+        updated_at = timezone('utc', now());
 
     RETURN v_run_id;
 END;
