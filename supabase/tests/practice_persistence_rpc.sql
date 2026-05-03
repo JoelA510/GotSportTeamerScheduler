@@ -5,7 +5,7 @@ BEGIN;
 \set squadlogic_fixture_include 1
 \ir _fixtures.sql
 
-SELECT plan(12);
+SELECT plan(15);
 
 INSERT INTO public.locations (id, organization_id, name)
 VALUES
@@ -137,6 +137,18 @@ SELECT is(
     'locked assignments are normalized to manual source'
 );
 
+SELECT is(
+    (
+        SELECT run_id::text
+        FROM public.practice_assignments
+        WHERE team_id = 'aaaaaaaa-0000-0000-0000-000000000001'
+          AND practice_slot_id = 'a1111111-1111-1111-1111-00000000aa01'
+          AND effective_date_range = '[2026-03-01,2026-06-01)'::daterange
+    ),
+    'a1111111-1111-1111-1111-00000000dead',
+    'practice assignment is linked to the persisted scheduler run'
+);
+
 SELECT lives_ok(
     $$
         SELECT public.persist_practice_schedule(
@@ -168,6 +180,38 @@ SELECT is(
     )::int,
     1,
     'idempotent re-run does not duplicate the assignment'
+);
+
+SELECT is(
+    public.persist_practice_schedule(
+        jsonb_build_object(
+            'id', 'a1111111-1111-1111-1111-00000000beef',
+            'organization_id', 'a1111111-1111-1111-1111-111111111111',
+            'season_settings_id', 'a1111111-1111-1111-1111-111111111aaa',
+            'run_type', 'practice',
+            'status', 'completed'
+        ),
+        jsonb_build_array(jsonb_build_object(
+            'team_id', 'aaaaaaaa-0000-0000-0000-000000000001',
+            'practice_slot_id', 'a1111111-1111-1111-1111-00000000aa01',
+            'effective_date_range', '[2026-03-01,2026-06-01)',
+            'source', 'auto'
+        ))
+    )::text,
+    'a1111111-1111-1111-1111-00000000beef',
+    'later persisted snapshots return the new scheduler run id'
+);
+
+SELECT is(
+    (
+        SELECT run_id::text
+        FROM public.practice_assignments
+        WHERE team_id = 'aaaaaaaa-0000-0000-0000-000000000001'
+          AND practice_slot_id = 'a1111111-1111-1111-1111-00000000aa01'
+          AND effective_date_range = '[2026-03-01,2026-06-01)'::daterange
+    ),
+    'a1111111-1111-1111-1111-00000000beef',
+    'idempotent assignment upsert re-links to the latest persisted scheduler run'
 );
 
 RESET ROLE;
