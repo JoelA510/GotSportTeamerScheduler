@@ -5,6 +5,167 @@ import { IS_MOCK_MODE } from '../config.js';
 import { logger } from '../lib/logger.js';
 
 const MOCK_UPLOAD = IS_MOCK_MODE;
+const DAY_INDEX = {
+  sun: 0,
+  sunday: 0,
+  mon: 1,
+  monday: 1,
+  tue: 2,
+  tuesday: 2,
+  wed: 3,
+  wednesday: 3,
+  thu: 4,
+  thursday: 4,
+  fri: 5,
+  friday: 5,
+  sat: 6,
+  saturday: 6,
+};
+
+function getAssignmentTeamId(assignment) {
+  return assignment?.teamId ?? assignment?.team_id ?? assignment?.teams?.id ?? null;
+}
+
+function getAssignmentSlotId(assignment) {
+  return (
+    assignment?.slotId ??
+    assignment?.slot_id ??
+    assignment?.practiceSlotId ??
+    assignment?.practice_slot_id ??
+    assignment?.practiceSlots?.id ??
+    assignment?.practice_slots?.id ??
+    null
+  );
+}
+
+function normalizeTeamForExport(team) {
+  const id = team?.id ?? team?.teamId ?? team?.team_id;
+  if (!id) return null;
+
+  const division =
+    team.division ??
+    team.divisionName ??
+    team.division_id ??
+    team.divisionId ??
+    team.divisions?.name ??
+    '';
+
+  return {
+    id,
+    name: team.name ?? team.teamName ?? id,
+    division,
+    coachName: team.headCoach ?? team.coachName ?? team.coach_name ?? team.coach?.name ?? '',
+    coachEmail:
+      team.coachEmail ?? team.coach_email ?? team.headCoachEmail ?? team.coach?.email ?? '',
+    assistantCoaches: team.assistantCoaches ?? team.assistant_coaches ?? [],
+  };
+}
+
+function getDateFromRange(range) {
+  const match = String(range ?? '').match(/\d{4}-\d{2}-\d{2}/);
+  return match?.[0] ?? '2026-01-01';
+}
+
+function getDateForDay(baseDate, day) {
+  const date = new Date(`${baseDate}T00:00:00Z`);
+  const dayIndex = DAY_INDEX[String(day ?? '').toLowerCase()];
+  if (Number.isNaN(date.getTime()) || dayIndex == null) {
+    return baseDate;
+  }
+
+  const delta = (dayIndex - date.getUTCDay() + 7) % 7;
+  date.setUTCDate(date.getUTCDate() + delta);
+  return date.toISOString().slice(0, 10);
+}
+
+function normalizeTime(value) {
+  const trimmed = String(value ?? '').trim();
+  if (!trimmed) return null;
+  const [hours = '00', minutes = '00', seconds = '00'] = trimmed.split(':');
+  return `${hours.padStart(2, '0')}:${minutes.padStart(2, '0')}:${seconds.padStart(2, '0')}`;
+}
+
+function normalizePracticeForExport(assignment) {
+  const teamId = getAssignmentTeamId(assignment);
+  const slot = assignment?.practiceSlots ?? assignment?.practice_slots ?? {};
+  const startTime = normalizeTime(
+    assignment?.startTime ?? assignment?.start_time ?? slot.startTime ?? slot.start_time
+  );
+  const endTime = normalizeTime(
+    assignment?.endTime ?? assignment?.end_time ?? slot.endTime ?? slot.end_time
+  );
+  const range = assignment?.effectiveDateRange ?? assignment?.effective_date_range;
+  const day =
+    assignment?.dayOfWeek ?? assignment?.day_of_week ?? slot.dayOfWeek ?? slot.day_of_week;
+  const date = getDateForDay(getDateFromRange(range), day);
+
+  if (!teamId || (!assignment?.start && !startTime) || (!assignment?.end && !endTime)) {
+    return null;
+  }
+
+  return {
+    teamId,
+    start: assignment.start ?? `${date}T${startTime}`,
+    end: assignment.end ?? `${date}T${endTime}`,
+    fieldId:
+      assignment.fieldId ??
+      assignment.field_id ??
+      slot.fieldId ??
+      slot.field_id ??
+      slot.fields?.id ??
+      slot.fields?.name ??
+      '',
+    slotId: getAssignmentSlotId(assignment) ?? '',
+    notes: assignment.notes ?? '',
+  };
+}
+
+function normalizeGameForExport(assignment) {
+  if (!assignment?.start || !assignment?.end) return null;
+
+  return {
+    homeTeamId: assignment.homeTeamId ?? assignment.home_team_id,
+    awayTeamId: assignment.awayTeamId ?? assignment.away_team_id,
+    start: assignment.start,
+    end: assignment.end,
+    fieldId: assignment.fieldId ?? assignment.field_id ?? '',
+    slotId: assignment.slotId ?? assignment.slot_id ?? '',
+    notes: assignment.notes ?? '',
+  };
+}
+
+function buildExportPayload({ teams, teamSummary, practiceAssignments, gameAssignments }) {
+  const teamDirectory = new Map();
+  const addTeam = (team) => {
+    const normalized = normalizeTeamForExport(team);
+    if (normalized) teamDirectory.set(normalized.id, normalized);
+  };
+
+  (Array.isArray(teams) ? teams : []).forEach(addTeam);
+  (Array.isArray(teamSummary?.teams) ? teamSummary.teams : []).forEach(addTeam);
+  (Array.isArray(practiceAssignments) ? practiceAssignments : []).forEach((assignment) => {
+    const teamId = getAssignmentTeamId(assignment);
+    if (!teamDirectory.has(teamId)) {
+      addTeam({ ...assignment.teams, id: teamId });
+    }
+  });
+
+  const exportTeams = Array.from(teamDirectory.values());
+  const exportTeamIds = new Set(exportTeams.map((team) => String(team.id)));
+  const exportPractices = (Array.isArray(practiceAssignments) ? practiceAssignments : [])
+    .map(normalizePracticeForExport)
+    .filter((assignment) => assignment && exportTeamIds.has(String(assignment.teamId)));
+  const exportGames = (Array.isArray(gameAssignments) ? gameAssignments : [])
+    .map(normalizeGameForExport)
+    .filter(
+      (assignment) =>
+        assignment &&
+        exportTeamIds.has(String(assignment.homeTeamId)) &&
+        exportTeamIds.has(String(assignment.awayTeamId))
+    );
+
+  return { teams: exportTeams, practiceAssignments: exportPractices, gameAssignments: exportGames };
+}
 
 export default function OutputGenerationPanel({
   teams = [],
@@ -67,25 +228,31 @@ export default function OutputGenerationPanel({
   };
 
   const handleGenerate = () => {
-    try {
-      setStatus('generating');
-      setMessage('Generating CSVs...');
+    setStatus('generating');
+    setMessage('Generating CSVs...');
 
-      setTimeout(() => {
-        const exports = generateScheduleExports({
+    setTimeout(() => {
+      try {
+        const exportPayload = buildExportPayload({
           teams,
+          teamSummary,
           practiceAssignments,
           gameAssignments,
+        });
+        const exports = generateScheduleExports({
+          teams: exportPayload.teams,
+          practiceAssignments: exportPayload.practiceAssignments,
+          gameAssignments: exportPayload.gameAssignments,
         });
         setGenerated(exports);
         setStatus('idle');
         setMessage('CSVs generated successfully.');
-      }, 50);
-    } catch (err) {
-      logger.error('Generation error:', err);
-      setStatus('error');
-      setMessage(`Generation failed: ${err.message}`);
-    }
+      } catch (err) {
+        logger.error('Generation error:', err);
+        setStatus('error');
+        setMessage(`Generation failed: ${err.message}`);
+      }
+    }, 50);
   };
 
   const handleUpload = async () => {
