@@ -60,11 +60,13 @@ This document expands on the roadmap tasks for importing GotSport registrations 
 3. For player imports, call `materialize_import_buddy_pairs` after finalization. The RPC creates mutual directional `player_buddies` rows only when imported players reciprocally reference each other by external registration id or share an exactly two-player mutual buddy code; unmatched, self, non-reciprocal, and cross-division requests are preserved as warning metadata.
 4. For player imports, call `upsert_coach_leads` after finalization for rows with positive coach intent. The RPC creates interested coaches idempotently and rejects division/player references outside the caller's organization.
 5. Coach CSV and field-slot imports use dedicated validate-only, apply, cancel, and rollback RPCs backed by `staging_import_rows`, `import_jobs.warning_summary.deferred_apply`, and `import_application_records`.
-6. Pending follow-up: team creation.
+6. Chunked validation writes `last_heartbeat_at`, `processed_rows`, and `progress_percent`; `/import` calls `fail_stale_import_jobs` before rehydrating active work so interrupted browser-driven imports fail cleanly for retry.
+7. Pending follow-up: team creation.
 
 ### 1.5 Notifications & Audit
 
 - Emit Supabase channel events so the UI can display progress (`uploading → processing → completed`).
+- Record heartbeat timestamps while validating chunks so ghost imports older than the stale cutoff can be failed and retried.
 - Store a summary JSON payload per job with metrics: number of players inserted, duplicates skipped, buddy pairs confirmed, and orphan requests.
 - Retain the raw CSV for 30 days; schedule a cleanup edge function to purge older files.
 

@@ -236,7 +236,7 @@ const materializeBuddyPairsForImport = async ({ importJobId, addLog }) => {
 };
 
 export function ImportProvider({ children }) {
-  const { currentOrganization } = useOrganization();
+  const { currentOrganization, orgMember } = useOrganization();
   const [isImporting, setIsImporting] = useState(false);
   const [progress, setProgress] = useState(0);
   const [importStatus, setImportStatus] = useState(() => {
@@ -295,7 +295,7 @@ export function ImportProvider({ children }) {
   // Throttled Progress Update Helper
   const lastUpdateRef = useRef(0);
   const updateJobProgress = useCallback(
-    async (jobId, progressPercent) => {
+    async (jobId, progressPercent, processedRows = null) => {
       const now = Date.now();
       // Governance: Throttled to 100ms max frequency
       if (now - lastUpdateRef.current < 100 && progressPercent < 100) return;
@@ -303,13 +303,16 @@ export function ImportProvider({ children }) {
       lastUpdateRef.current = now;
       setProgress(progressPercent);
 
+      const progressPatch = {
+        progress_percent: progressPercent,
+        last_heartbeat_at: new Date(now).toISOString(),
+      };
+      if (Number.isFinite(processedRows)) {
+        progressPatch.processed_rows = processedRows;
+      }
+
       // Update DB (Quietly)
-      await supabase
-        .from('import_jobs')
-        .update({
-          progress_percent: progressPercent,
-        })
-        .eq('id', jobId);
+      await supabase.from('import_jobs').update(progressPatch).eq('id', jobId);
 
       // Broadcast Realtime Channel
       const channel = supabase.channel(`import-progress-${currentOrganization?.id}`);
@@ -361,6 +364,10 @@ export function ImportProvider({ children }) {
     loadOrgData();
   }, [currentOrganization?.id]);
 
+  const addLog = useCallback((message) => {
+    setImportLogs((prev) => [...prev, { timestamp: new Date(), message }]);
+  }, []);
+
   // 2. Load initial state & Setup Realtime Subscriptions
   useEffect(() => {
     const loadFromSupabase = async () => {
@@ -373,26 +380,48 @@ export function ImportProvider({ children }) {
 
         logger.log('[ImportContext] Loading imports for user:', user.id);
 
-        // Check for active/recent jobs for re-hydration
-        const { data: activeJobs } = await supabase
-          .from('import_jobs')
-          .select('*')
-          .eq('organization_id', currentOrganization.id)
-          .in('status', ['processing', 'importing', 'ready_to_apply'])
-          .order('created_at', { ascending: false })
-          .limit(1);
+        const role = orgMember?.role;
+        const roleKnown = Boolean(role);
+        const canManageImports = role === 'admin' || role === 'tenant_admin';
 
-        if (activeJobs && activeJobs.length > 0) {
-          const job = activeJobs[0];
-          if (job.status === 'ready_to_apply') {
-            await hydrateReadyImportJob(job);
-            readyImportType = job.warning_summary?.deferred_apply?.import_type;
-          } else {
-            setActiveJobId(job.id);
-            setActiveJob(job);
-            setProgress(job.progress_percent || 0);
-            setIsImporting(true);
-            setImportStatus('importing');
+        if (canManageImports) {
+          const { data: staleCleanup, error: staleCleanupError } = await supabase.rpc(
+            'fail_stale_import_jobs',
+            {
+              p_organization_id: currentOrganization.id,
+            }
+          );
+          if (staleCleanupError) {
+            logger.warn('[ImportContext] Failed to clean stale import jobs:', staleCleanupError);
+          } else if (staleCleanup?.failed_jobs > 0) {
+            addLog(
+              `${staleCleanup.failed_jobs} stale import job${staleCleanup.failed_jobs === 1 ? '' : 's'} failed so the import can be retried.`
+            );
+          }
+        }
+
+        if (roleKnown && canManageImports) {
+          // Check for active/recent jobs for re-hydration
+          const { data: activeJobs } = await supabase
+            .from('import_jobs')
+            .select('*')
+            .eq('organization_id', currentOrganization.id)
+            .in('status', ['processing', 'importing', 'ready_to_apply'])
+            .order('created_at', { ascending: false })
+            .limit(1);
+
+          if (activeJobs && activeJobs.length > 0) {
+            const job = activeJobs[0];
+            if (job.status === 'ready_to_apply') {
+              await hydrateReadyImportJob(job);
+              readyImportType = job.warning_summary?.deferred_apply?.import_type;
+            } else {
+              setActiveJobId(job.id);
+              setActiveJob(job);
+              setProgress(job.progress_percent || 0);
+              setIsImporting(true);
+              setImportStatus('importing');
+            }
           }
         }
 
@@ -468,11 +497,7 @@ export function ImportProvider({ children }) {
       subscription?.unsubscribe();
       if (channel) supabase.removeChannel(channel);
     };
-  }, [currentOrganization?.id, hydrateReadyImportJob]);
-
-  const addLog = useCallback((message) => {
-    setImportLogs((prev) => [...prev, { timestamp: new Date(), message }]);
-  }, []);
+  }, [addLog, currentOrganization?.id, hydrateReadyImportJob, orgMember?.role]);
 
   const completeImport = useCallback(
     (type, _previewData, status = 'completed') => {
@@ -706,7 +731,7 @@ export function ImportProvider({ children }) {
 
                 // Update progress
                 const currentProgress = Math.floor((endIndex / data.length) * 100);
-                await updateJobProgress(job.id, currentProgress);
+                await updateJobProgress(job.id, currentProgress, endIndex);
 
                 currentIndex = endIndex;
                 if (currentIndex < data.length) {

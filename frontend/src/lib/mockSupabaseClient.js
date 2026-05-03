@@ -1469,6 +1469,79 @@ export const mockSupabase = {
       return { data: true, error: null };
     }
 
+    if (name === 'fail_stale_import_jobs') {
+      const { p_organization_id, p_stale_before } = params || {};
+      if (!p_organization_id) {
+        return { data: null, error: { message: 'organization_id is required' } };
+      }
+
+      const staleBefore = p_stale_before
+        ? new Date(p_stale_before)
+        : new Date(Date.now() - 5 * 60 * 1000);
+      const now = new Date().toISOString();
+      const failedJobIds = [];
+
+      db.import_jobs = db.import_jobs || [];
+      db.import_jobs.forEach((job) => {
+        if (String(job.organization_id) !== String(p_organization_id)) return;
+        if (!['queued', 'processing', 'importing'].includes(job.status)) return;
+
+        const heartbeat = new Date(
+          job.last_heartbeat_at || job.started_at || job.created_at || now
+        );
+        if (!(heartbeat < staleBefore)) return;
+
+        const cleanup = {
+          status: 'failed',
+          previous_status: job.status,
+          last_heartbeat_at: heartbeat.toISOString(),
+          stale_before: staleBefore.toISOString(),
+          failed_at: now,
+          message: 'Import job stopped sending progress heartbeats and was failed for retry',
+        };
+
+        job.status = 'failed';
+        job.completed_at = now;
+        job.error_summary = {
+          ...(job.error_summary || {}),
+          stale_cleanup: cleanup,
+        };
+        failedJobIds.push(job.id);
+      });
+
+      const result = {
+        status: 'completed',
+        failed_jobs: failedJobIds.length,
+        job_ids: failedJobIds,
+        stale_before: staleBefore.toISOString(),
+        cleaned_at: now,
+      };
+
+      if (failedJobIds.length > 0) {
+        db.audit_log = db.audit_log || [];
+        db.audit_log.push({
+          id: 'audit-stale-' + Math.random().toString(36).substr(2, 9),
+          organization_id: p_organization_id,
+          action: 'import.failed',
+          user_id: 'mock-admin-id',
+          resource_type: 'import_job',
+          resource_id: null,
+          metadata: {
+            stage: 'stale_cleanup',
+            failed_jobs: failedJobIds.length,
+            job_ids: failedJobIds,
+            stale_before: staleBefore.toISOString(),
+            cleaned_at: now,
+          },
+          created_at: now,
+        });
+
+        saveDB(db);
+      }
+
+      return { data: result, error: null };
+    }
+
     if (name === 'rotate_calendar_token') {
       const newToken = 'mock-calendar-token-' + Math.random().toString(36).substr(2, 8);
       const teamId = params?.p_team_id;
