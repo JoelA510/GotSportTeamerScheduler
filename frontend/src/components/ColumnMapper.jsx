@@ -232,9 +232,14 @@ export default function ColumnMapper({
 
         <div className="flex-1 flex flex-col sm:flex-row sm:items-center gap-2">
           {canCompose && (
-            <div className="flex items-center gap-1 text-[11px] text-text-muted">
+            <div
+              className="flex items-center gap-1 text-[11px] text-text-muted"
+              role="group"
+              aria-label={`${field.label} mapping mode`}
+            >
               <button
                 type="button"
+                aria-pressed={!isComposite}
                 onClick={() =>
                   setField(field.key, {
                     kind: 'single',
@@ -249,6 +254,7 @@ export default function ColumnMapper({
               </button>
               <button
                 type="button"
+                aria-pressed={isComposite}
                 onClick={() =>
                   setField(field.key, {
                     kind: 'composite',
@@ -268,6 +274,7 @@ export default function ColumnMapper({
           {isComposite ? (
             <div className="flex-1 flex items-center gap-1.5">
               <select
+                aria-label={`${field.label} first source column`}
                 value={entry.columns?.[0] || ''}
                 onChange={(e) =>
                   setField(field.key, {
@@ -286,6 +293,7 @@ export default function ColumnMapper({
               </select>
               <span className="text-text-muted text-xs">+</span>
               <select
+                aria-label={`${field.label} second source column`}
                 value={entry.columns?.[1] || ''}
                 onChange={(e) =>
                   setField(field.key, {
@@ -305,6 +313,7 @@ export default function ColumnMapper({
             </div>
           ) : (
             <select
+              aria-label={`${field.label} source column`}
               value={entry?.column || ''}
               onChange={(e) => {
                 const v = e.target.value;

@@ -30,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Added pressed state to import column-mapping mode controls and explicit labels to mapping selects.
 - Added explicit labels, pressed state, and button metadata to practice assignment lock controls.
 - Made game schedule invalid drop-target reasons keyboard focusable and screen-reader described instead of hover-only.
 - Made import file-picker and completion notification controls keyboard focusable with explicit screen-reader labels and pressed/checkbox state.
