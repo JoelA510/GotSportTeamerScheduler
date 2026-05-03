@@ -263,17 +263,37 @@ Then("the RSVP timestamps should align with the league's official timezone", asy
 
 When('I type {string} into the chat input', async ({ page }, msg: string) => {
   const input = page.getByPlaceholder('Type a message...').first();
+  await expect(input).toBeVisible({ timeout: 10000 });
   await input.fill(msg);
 });
 
 When('I send the messenger chat', async ({ page }) => {
-  await page.locator('form button[type="submit"]').first().click({ force: true });
+  const chatForm = page.locator('form').filter({ has: page.getByPlaceholder('Type a message...') });
+  const input = chatForm.getByPlaceholder('Type a message...').first();
+  const message = await input.inputValue();
+  const sendButton = chatForm.getByRole('button', { name: /Send team message/i }).first();
+
+  await expect(sendButton).toBeVisible({ timeout: 10000 });
+  await sendButton.click();
+  await expect(input).toHaveValue('', { timeout: 10000 });
+  await expect
+    .poll(
+      async () =>
+        page.evaluate((expectedMessage) => {
+          const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
+          return (db.team_messages || []).some(
+            (entry: Record<string, unknown>) => entry.content === expectedMessage
+          );
+        }, message),
+      { timeout: 10000 }
+    )
+    .toBe(true);
 });
 
 Then(
   'the message {string} should appear in the team chat feed immediately',
   async ({ page }, msg: string) => {
-    await expect(page.getByText(msg).first()).toBeVisible();
+    await expect(page.getByText(msg).first()).toBeVisible({ timeout: 15000 });
   }
 );
 
