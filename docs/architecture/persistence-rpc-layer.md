@@ -26,7 +26,6 @@ These are the foundation everything else leans on. They are `SECURITY DEFINER` w
 | ---------------------------------------------------- | ---------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
 | `public.is_org_member(org_id uuid) returns boolean`  | `20260331000000_definitive_schema.sql` (search_path pinned by `20260421002500`)    | Returns `true` if `auth.uid()` is in `organization_members` for `org_id`. Gate used by almost every RLS policy. |
 | `public.is_org_admin(p_org_id uuid) returns boolean` | `20260404100000_phase_2_setup_wizard.sql` (search_path pinned by `20260421002500`) | Admin-only variant. Admits `role IN ('admin', 'tenant_admin')`.                                                 |
-| `public.current_user_role()`                         | `20251208000000_consolidated_schema.sql`                                           | Legacy role probe used by early RLS drafts; superseded by `is_org_member`/`is_org_admin`.                       |
 
 ### 2.2 Tenant Onboarding
 
@@ -243,6 +242,5 @@ When you need to add a new state-altering RPC, every item below must be satisfie
 v1.1-deferred items surfaced while writing this inventory. None block v1.0 production but should be tracked for later hardening.
 
 - **pgTAP coverage is seeded but thin.** `supabase/tests/` ships four pgTAP suites today (`rls_admin_vs_coach`, `rls_anonymous_gate`, `rls_cross_org_isolation`, `rls_service_role_bypass`). The RPC bodies themselves (e.g., `submit_registration`'s cross-org rejection path, `redeem_org_invite`'s single-use lock) are _not_ individually covered. Wave 7b or later should add per-RPC suites; see [`testing/e2e_master_plan.md`](../testing/e2e_master_plan.md).
-- **`current_user_role()` is legacy.** Defined in `20251208000000_consolidated_schema.sql` but superseded by `is_org_member` / `is_org_admin`. Not referenced by any current RLS policy or RPC. Can be dropped in v1.1.
 - **check_password_length_on_auth_users targets the auth schema.** It is SECURITY DEFINER and was pinned to `public` by 20260421001209, but it operates on `auth.users`; low-risk since the trigger body does no schema-sensitive lookups, but worth noting for a future audit.
 - **`record_audit_event` audit-action CHECK lag.** When a new `action` string is introduced, the CHECK constraint must be dropped and recreated in the same migration. Several migrations do this ad-hoc (`20260403000000`, `20260407000000`, `20260404100000`). A consolidated migration that sources the set from a single table would be cleaner; defer to v1.1.
