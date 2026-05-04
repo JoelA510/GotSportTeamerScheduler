@@ -63,6 +63,7 @@ export default function SettingsPage() {
           <button
             key={tab.id}
             id={`tab-${tab.id}`}
+            type="button"
             role="tab"
             aria-selected={activeTab === tab.id}
             aria-controls={`panel-${tab.id}`}
@@ -70,24 +71,35 @@ export default function SettingsPage() {
             onClick={() => setActiveTab(tab.id)}
             onKeyDown={(e) => {
               const index = tabs.findIndex((t) => t.id === tab.id);
+              let nextIndex = index;
+
               if (e.key === 'ArrowRight') {
-                const nextIndex = (index + 1) % tabs.length;
-                setActiveTab(tabs[nextIndex].id);
-                document.getElementById(`tab-${tabs[nextIndex].id}`).focus();
+                nextIndex = (index + 1) % tabs.length;
               } else if (e.key === 'ArrowLeft') {
-                const prevIndex = (index - 1 + tabs.length) % tabs.length;
-                setActiveTab(tabs[prevIndex].id);
-                document.getElementById(`tab-${tabs[prevIndex].id}`).focus();
+                nextIndex = (index - 1 + tabs.length) % tabs.length;
+              } else if (e.key === 'Home') {
+                nextIndex = 0;
+              } else if (e.key === 'End') {
+                nextIndex = tabs.length - 1;
+              } else {
+                return;
               }
+
+              e.preventDefault();
+              setActiveTab(tabs[nextIndex].id);
+              document.getElementById(`tab-${tabs[nextIndex].id}`)?.focus();
             }}
             className={`flex items-center gap-2 px-6 py-4 text-sm font-medium transition-all relative whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-inset ${
               activeTab === tab.id ? 'text-brand-400' : 'text-text-muted hover:text-text-primary'
             }`}
           >
-            <tab.icon size={18} />
+            <tab.icon size={18} aria-hidden="true" />
             {tab.label}
             {activeTab === tab.id && (
-              <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-brand-400 rounded-full" />
+              <div
+                className="absolute bottom-0 left-0 right-0 h-0.5 bg-brand-400 rounded-full"
+                aria-hidden="true"
+              />
             )}
           </button>
         ))}
