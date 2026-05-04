@@ -103,8 +103,13 @@ export default function InvitesSettings() {
   };
 
   const handleRevoke = async (id) => {
+    if (!orgId) return;
+    setFetchError(null);
     try {
-      const { error } = await supabase.from('organization_invites').delete().eq('id', id);
+      const { error } = await supabase.rpc('revoke_org_invite', {
+        p_organization_id: orgId,
+        p_invite_id: id,
+      });
       if (error) throw error;
       await loadInvites();
     } catch (err) {

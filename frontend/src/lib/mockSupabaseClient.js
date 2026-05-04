@@ -1452,6 +1452,40 @@ export const mockSupabase = {
       return { data: null, error: null };
     }
 
+    if (name === 'revoke_org_invite') {
+      const inviteId = params?.p_invite_id;
+      const orgId = params?.p_organization_id;
+      const invite = db.organization_invites?.find((row) => row.id === inviteId);
+
+      if (!invite || invite.organization_id !== orgId) {
+        return { data: null, error: { message: 'Invite was not found' } };
+      }
+
+      if (invite.used_at) {
+        return { data: null, error: { message: 'Invite has already been used' } };
+      }
+
+      db.organization_invites = db.organization_invites.filter((row) => row.id !== inviteId);
+      db.audit_log = db.audit_log || [];
+      db.audit_log.push({
+        id: mockId(),
+        organization_id: orgId,
+        action: 'settings.updated',
+        resource_type: 'organization_invite',
+        resource_id: inviteId,
+        metadata: {
+          setting: 'organization_invites',
+          operation: 'revoke',
+          invite_id: inviteId,
+          role: invite.role,
+        },
+        created_at: new Date().toISOString(),
+      });
+      saveDB(db);
+
+      return { data: inviteId, error: null };
+    }
+
     if (
       (import.meta.env.DEV || import.meta.env.VITE_USE_MOCK_SUPABASE === 'true') &&
       name === 'update_game_score'
