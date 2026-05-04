@@ -19,6 +19,7 @@ import Button from '../components/ui/Button.jsx';
 import { supabase } from '../lib/supabaseClient.js';
 import { logger } from '../lib/logger.js';
 import BrandingModule from '../components/settings/modules/BrandingModule.jsx';
+import { createWebCryptoId } from '../utils/webCryptoId.js';
 
 /**
  * Premium Error Banner for critical setup failures.
@@ -66,7 +67,7 @@ export default function SetupWizard() {
   const [error, setError] = useState(null);
 
   // Telemetry session initialization
-  const sessionId = useMemo(() => Math.random().toString(36).substring(2, 15), []);
+  const sessionId = useMemo(createWebCryptoId, []);
 
   const isTenantAdmin = permissions?.includes(PERMISSIONS.MANAGE_GLOBAL_SETTINGS);
 
