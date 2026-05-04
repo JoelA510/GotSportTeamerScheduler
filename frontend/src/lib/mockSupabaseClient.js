@@ -1452,6 +1452,23 @@ export const mockSupabase = {
       return { data: registration.id, error: null };
     }
 
+    if (
+      (import.meta.env.DEV || import.meta.env.VITE_USE_MOCK_SUPABASE === 'true') &&
+      name === 'update_game_score'
+    ) {
+      await mockSupabase
+        .from('games')
+        .update({ score_home: params?.p_score_home, score_away: params?.p_score_away })
+        .eq('id', params?.p_game_id);
+      return {
+        data: {
+          score_home: params?.p_score_home,
+          score_away: params?.p_score_away,
+        },
+        error: null,
+      };
+    }
+
     if (name === 'record_audit_event') {
       const { p_organization_id, p_action, p_user_id, p_metadata } = params;
 
