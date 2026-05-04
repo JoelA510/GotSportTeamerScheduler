@@ -306,29 +306,14 @@ export function useTeamPortal(teamId) {
       const { data: profileData } = await supabase.auth.getUser();
       if (!profileData.user) throw new Error('Not authenticated');
 
-      const { data: orgData } = await supabase
-        .from('profiles')
-        .select('organization_id')
-        .eq('id', profileData.user.id)
-        .single();
-
-      if (!orgData) throw new Error('No organization found for profile');
-
-      const { error: upsertError } = await supabase.from('event_rsvps').upsert(
-        {
-          organization_id: orgData.organization_id,
-          team_id: teamId,
-          player_id: playerId,
-          reference_id: referenceId,
-          event_type: eventType,
-          occurrence_date: occurrenceDate,
-          status,
-          updated_at: new Date().toISOString(),
-        },
-        {
-          onConflict: 'player_id,reference_id,occurrence_date',
-        }
-      );
+      const { error: upsertError } = await supabase.rpc('upsert_team_event_rsvp', {
+        p_team_id: teamId,
+        p_player_id: playerId,
+        p_reference_id: referenceId,
+        p_event_type: eventType,
+        p_occurrence_date: occurrenceDate,
+        p_status: status,
+      });
 
       if (upsertError) throw upsertError;
     } catch (err) {
@@ -342,14 +327,6 @@ export function useTeamPortal(teamId) {
       const { data: authData } = await supabase.auth.getUser();
       if (!authData.user) throw new Error('Not authenticated');
 
-      const { data: profileData } = await supabase
-        .from('profiles')
-        .select('organization_id')
-        .eq('id', authData.user.id)
-        .single();
-
-      if (!profileData) throw new Error('No organization found for profile');
-
       // Optimistic UI Update
       const optimisticMsg = {
         id: Date.now(),
@@ -359,11 +336,9 @@ export function useTeamPortal(teamId) {
       };
       setMessages((prev) => [...prev, optimisticMsg]);
 
-      const { error: sendError } = await supabase.from('team_messages').insert({
-        organization_id: profileData.organization_id,
-        team_id: teamId,
-        author_id: authData.user.id,
-        content,
+      const { error: sendError } = await supabase.rpc('create_team_message', {
+        p_team_id: teamId,
+        p_content: content,
       });
 
       if (sendError) throw sendError;
