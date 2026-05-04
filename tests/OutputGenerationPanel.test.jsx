@@ -26,7 +26,7 @@ const practiceAssignments = [
 ];
 
 describe('OutputGenerationPanel', () => {
-  it('generates CSV output immediately and uses explicit button controls', () => {
+  it('generates CSV output and uses explicit button controls', async () => {
     render(
       <OutputGenerationPanel
         teams={teams}
@@ -40,7 +40,9 @@ describe('OutputGenerationPanel', () => {
 
     fireEvent.click(generateButton);
 
-    expect(screen.getByText('Generated Files')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Generating...' })).toBeDisabled();
+    expect(screen.getByText('Generating CSVs...')).toBeInTheDocument();
+    expect(await screen.findByText('Generated Files')).toBeInTheDocument();
     expect(screen.getByText('Master Schedule: 1 rows')).toBeInTheDocument();
     expect(screen.getByText('Team Schedules: 1 files')).toBeInTheDocument();
     expect(screen.getByText('CSVs generated successfully.')).toBeInTheDocument();

@@ -231,26 +231,28 @@ export default function OutputGenerationPanel({
     setStatus('generating');
     setMessage('Generating CSVs...');
 
-    try {
-      const exportPayload = buildExportPayload({
-        teams,
-        teamSummary,
-        practiceAssignments,
-        gameAssignments,
-      });
-      const exports = generateScheduleExports({
-        teams: exportPayload.teams,
-        practiceAssignments: exportPayload.practiceAssignments,
-        gameAssignments: exportPayload.gameAssignments,
-      });
-      setGenerated(exports);
-      setStatus('idle');
-      setMessage('CSVs generated successfully.');
-    } catch (err) {
-      logger.error('Generation error:', err);
-      setStatus('error');
-      setMessage(`Generation failed: ${err.message}`);
-    }
+    setTimeout(() => {
+      try {
+        const exportPayload = buildExportPayload({
+          teams,
+          teamSummary,
+          practiceAssignments,
+          gameAssignments,
+        });
+        const exports = generateScheduleExports({
+          teams: exportPayload.teams,
+          practiceAssignments: exportPayload.practiceAssignments,
+          gameAssignments: exportPayload.gameAssignments,
+        });
+        setGenerated(exports);
+        setStatus('idle');
+        setMessage('CSVs generated successfully.');
+      } catch (err) {
+        logger.error('Generation error:', err);
+        setStatus('error');
+        setMessage(`Generation failed: ${err.message}`);
+      }
+    }, 0);
   };
 
   const handleUpload = async () => {
