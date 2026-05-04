@@ -231,28 +231,26 @@ export default function OutputGenerationPanel({
     setStatus('generating');
     setMessage('Generating CSVs...');
 
-    setTimeout(() => {
-      try {
-        const exportPayload = buildExportPayload({
-          teams,
-          teamSummary,
-          practiceAssignments,
-          gameAssignments,
-        });
-        const exports = generateScheduleExports({
-          teams: exportPayload.teams,
-          practiceAssignments: exportPayload.practiceAssignments,
-          gameAssignments: exportPayload.gameAssignments,
-        });
-        setGenerated(exports);
-        setStatus('idle');
-        setMessage('CSVs generated successfully.');
-      } catch (err) {
-        logger.error('Generation error:', err);
-        setStatus('error');
-        setMessage(`Generation failed: ${err.message}`);
-      }
-    }, 50);
+    try {
+      const exportPayload = buildExportPayload({
+        teams,
+        teamSummary,
+        practiceAssignments,
+        gameAssignments,
+      });
+      const exports = generateScheduleExports({
+        teams: exportPayload.teams,
+        practiceAssignments: exportPayload.practiceAssignments,
+        gameAssignments: exportPayload.gameAssignments,
+      });
+      setGenerated(exports);
+      setStatus('idle');
+      setMessage('CSVs generated successfully.');
+    } catch (err) {
+      logger.error('Generation error:', err);
+      setStatus('error');
+      setMessage(`Generation failed: ${err.message}`);
+    }
   };
 
   const handleUpload = async () => {
@@ -329,6 +327,7 @@ export default function OutputGenerationPanel({
         <div className="flex flex-col gap-4">
           <div className="flex gap-4">
             <button
+              type="button"
               data-testid="generate-csvs-btn"
               onClick={handleGenerate}
               disabled={status === 'generating' || status === 'uploading'}
@@ -339,6 +338,7 @@ export default function OutputGenerationPanel({
 
             {generated && (
               <button
+                type="button"
                 onClick={handleUpload}
                 disabled={status === 'uploading'}
                 className="relative z-20 bg-orange-500 hover:bg-orange-400 text-white px-4 py-2 rounded-lg shadow-lg shadow-orange-500/20 transition-all"
@@ -353,6 +353,7 @@ export default function OutputGenerationPanel({
               <div className="flex justify-between items-center mb-2">
                 <h3 className="text-sm font-medium text-text-primary">Generated Files</h3>
                 <button
+                  type="button"
                   onClick={() => downloadCsv('master-schedule.csv', generated.master.csv)}
                   className="relative z-20 text-xs text-blue-400 hover:text-blue-300"
                 >
@@ -369,6 +370,7 @@ export default function OutputGenerationPanel({
           <div className="pt-4 border-t border-white/10 mt-4">
             <h3 className="text-lg font-bold text-white mb-4">Coach Communications</h3>
             <button
+              type="button"
               data-testid="generate-emails-btn"
               onClick={generateEmails}
               className="relative z-20 bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/30 px-4 py-2 rounded-lg transition-colors mb-4"

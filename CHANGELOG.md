@@ -30,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Removed the artificial CSV generation delay and added explicit button metadata to output-generation controls.
 - Reduced team summary polling so completed or absent scheduler runs stop re-querying while active runs still refresh.
 - Added explicit button metadata, decorative icon hiding, and Home/End keyboard navigation to Organization Settings tabs.
 - Made branding logo upload, detected-color actions, and base theme choices keyboard-accessible with explicit labels and pressed state.
