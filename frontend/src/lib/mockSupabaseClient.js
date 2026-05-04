@@ -9,6 +9,9 @@
 import { logger } from './logger.js';
 import { HEADER_ALIASES } from '../utils/telemetryUtils.js';
 
+const mockId = (prefix = '') =>
+  prefix + (crypto.randomUUID?.() || crypto.getRandomValues(new Uint32Array(4)).join('-'));
+
 // ── Mock Data Seed ──────────────────────────────────────────────────────────
 const initialMockData = {
   organizations: [{ id: 'org-1', name: 'SquadLogic FC' }],
@@ -1051,7 +1054,7 @@ export const mockSupabase = {
       insert: (records) => {
         const db = getDB();
         const newRecords = (Array.isArray(records) ? records : [records]).map((r) => {
-          const id = r.id || Math.random().toString(36).substr(2, 9);
+          const id = r.id || mockId();
           if (table === 'fields' && r.supports_halves) {
             db.field_subunits = db.field_subunits || [];
             db.field_subunits.push({
@@ -1091,7 +1094,7 @@ export const mockSupabase = {
       upsert: (records) => {
         const db = getDB();
         const newRecords = (Array.isArray(records) ? records : [records]).map((r) => ({
-          id: r.id || Math.random().toString(36).substr(2, 9),
+          id: r.id || mockId(),
           created_at: r.created_at || new Date().toISOString(),
           ...r,
         }));
@@ -1369,8 +1372,8 @@ export const mockSupabase = {
         return { data: null, error: { message: 'duplicate key value violates unique constraint' } };
       }
 
-      const orgId = crypto.randomUUID();
-      const seasonId = crypto.randomUUID();
+      const orgId = mockId();
+      const seasonId = mockId();
       db.organizations = db.organizations || [];
       db.organization_members = db.organization_members || [];
       db.season_settings = db.season_settings || [];
@@ -1393,7 +1396,7 @@ export const mockSupabase = {
         created_at: new Date().toISOString(),
       });
       db.audit_log.push({
-        id: crypto.randomUUID(),
+        id: mockId(),
         organization_id: orgId,
         action: 'settings.updated',
         user_id: userId,
@@ -1417,7 +1420,7 @@ export const mockSupabase = {
 
       let playerId = p_player_id;
       if (!playerId && p_first_name && p_last_name) {
-        playerId = crypto.randomUUID();
+        playerId = mockId();
         db.players.push({
           id: playerId,
           first_name: p_first_name,
@@ -1431,7 +1434,7 @@ export const mockSupabase = {
       }
 
       const registration = {
-        id: crypto.randomUUID(),
+        id: mockId(),
         organization_id: p_organization_id,
         form_id: p_form_id,
         player_id: playerId,
@@ -1453,7 +1456,7 @@ export const mockSupabase = {
       const { p_organization_id, p_action, p_user_id, p_metadata } = params;
 
       const event = {
-        id: Math.random().toString(36).substr(2, 9),
+        id: mockId(),
         organization_id: p_organization_id,
         action: p_action,
         user_id: p_user_id,
@@ -1520,7 +1523,7 @@ export const mockSupabase = {
       if (failedJobIds.length > 0) {
         db.audit_log = db.audit_log || [];
         db.audit_log.push({
-          id: 'audit-stale-' + Math.random().toString(36).substr(2, 9),
+          id: mockId('audit-stale-'),
           organization_id: p_organization_id,
           action: 'import.failed',
           user_id: 'mock-admin-id',
@@ -1568,7 +1571,7 @@ export const mockSupabase = {
     }
 
     if (name === 'rotate_calendar_token') {
-      const newToken = 'mock-calendar-token-' + Math.random().toString(36).substr(2, 8);
+      const newToken = mockId('mock-calendar-token-');
       const teamId = params?.p_team_id;
       if (teamId) {
         const teams = db.teams || [];
@@ -1661,7 +1664,7 @@ export const mockSupabase = {
       });
       db.audit_log = db.audit_log || [];
       db.audit_log.push({
-        id: 'audit-ready-' + Math.random().toString(36).substr(2, 9),
+        id: mockId('audit-ready-'),
         organization_id: job.organization_id,
         action: 'import.validated',
         user_id: 'mock-admin-id',
@@ -1718,7 +1721,7 @@ export const mockSupabase = {
       });
       db.audit_log = db.audit_log || [];
       db.audit_log.push({
-        id: 'audit-cancel-' + Math.random().toString(36).substr(2, 9),
+        id: mockId('audit-cancel-'),
         organization_id: job.organization_id,
         action: 'import.canceled',
         user_id: 'mock-admin-id',
@@ -1813,7 +1816,7 @@ export const mockSupabase = {
           updatedPlayers += 1;
         } else {
           db.players.push({
-            id: Math.random().toString(36).substr(2, 9),
+            id: mockId(),
             created_at: now,
             ...basePlayer,
           });
@@ -2045,7 +2048,7 @@ export const mockSupabase = {
       });
       db.audit_log = db.audit_log || [];
       db.audit_log.push({
-        id: 'audit-buddy-' + Math.random().toString(36).substr(2, 9),
+        id: mockId('audit-buddy-'),
         organization_id: job.organization_id,
         action: 'import.completed',
         user_id: 'mock-admin-id',
@@ -2146,7 +2149,7 @@ export const mockSupabase = {
             updated_at: now,
           });
           db.import_application_records.push({
-            id: Math.random().toString(36).substr(2, 9),
+            id: mockId(),
             organization_id: job.organization_id,
             import_job_id: p_import_job_id,
             import_type: 'coaches',
@@ -2162,7 +2165,7 @@ export const mockSupabase = {
           updatedCoaches += 1;
         } else {
           const coach = {
-            id: Math.random().toString(36).substr(2, 9),
+            id: mockId(),
             organization_id: job.organization_id,
             full_name: fullName,
             email,
@@ -2183,7 +2186,7 @@ export const mockSupabase = {
           };
           db.coaches.push(coach);
           db.import_application_records.push({
-            id: Math.random().toString(36).substr(2, 9),
+            id: mockId(),
             organization_id: job.organization_id,
             import_job_id: p_import_job_id,
             import_type: 'coaches',
@@ -2341,7 +2344,7 @@ export const mockSupabase = {
       let insertedGameSlots = 0;
       let invalidRows = 0;
 
-      const makeId = () => Math.random().toString(36).substr(2, 9);
+      const makeId = () => mockId();
       const boolFromText = (value, fallback = false) => {
         if (value === undefined || value === null || value === '') return fallback;
         return ['true', 't', 'yes', 'y', '1'].includes(String(value).trim().toLowerCase());
@@ -2738,7 +2741,7 @@ export const mockSupabase = {
         );
         if (!existingGlobalCoach) {
           db.coaches.push({
-            id: Math.random().toString(36).substr(2, 9),
+            id: mockId(),
             organization_id: lead.organization_id,
             full_name: lead.full_name,
             email: lead.email,
@@ -2770,7 +2773,7 @@ export const mockSupabase = {
         if (existingLink) return;
 
         db.coach_interested_programs.push({
-          id: Math.random().toString(36).substr(2, 9),
+          id: mockId(),
           coach_id: coach.id,
           division_id: lead.division_id,
           inferred_from_player_id: lead.player_id,
@@ -2838,7 +2841,7 @@ export const mockSupabase = {
       db.audit_log = db.audit_log || [];
       if (previousStatus !== p_status) {
         db.audit_log.push({
-          id: Math.random().toString(36).substr(2, 9),
+          id: mockId(),
           organization_id: p_organization_id,
           user_id: session?.user?.id,
           action:
@@ -2938,7 +2941,7 @@ export const mockSupabase = {
       team.updated_at = new Date().toISOString();
       db.audit_log = db.audit_log || [];
       db.audit_log.push({
-        id: Math.random().toString(36).substr(2, 9),
+        id: mockId(),
         organization_id: p_organization_id,
         user_id: session?.user?.id,
         action: p_coach_id
@@ -2969,7 +2972,7 @@ export const mockSupabase = {
     }
 
     if (name === 'persist_evaluation_run') {
-      return { data: { id: 'eval-' + Math.random().toString(36).substr(2, 6) }, error: null };
+      return { data: { id: mockId('eval-') }, error: null };
     }
 
     logger.warn(`[Mock Supabase] RPC "${name}" not implemented — returning empty success`);
@@ -3030,7 +3033,7 @@ export const mockSupabase = {
             validatedData.push(row);
             if (body.import_type === 'players' && body.import_job_id) {
               stagedRows.push({
-                id: Math.random().toString(36).substr(2, 9),
+                id: mockId(),
                 organization_id: body.organization_id,
                 import_job_id: body.import_job_id,
                 source_row_number: (body.row_offset || 0) + index + 1,
@@ -3041,7 +3044,7 @@ export const mockSupabase = {
               });
             } else if (body.import_type !== 'players' && body.import_job_id) {
               stagedImportRows.push({
-                id: Math.random().toString(36).substr(2, 9),
+                id: mockId(),
                 organization_id: body.organization_id,
                 import_job_id: body.import_job_id,
                 import_type: body.import_type,

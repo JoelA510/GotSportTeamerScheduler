@@ -31,6 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Replaced the team-portal hardcoded medical-clearance display with a season-scoped, role-gated roster status RPC.
+- Replaced mock Supabase `Math.random()` IDs and tokens with a Web Crypto helper to avoid insecure-randomness scan paths.
 - Removed the team-portal calendar modal's fallback `mock-token`; missing calendar tokens now require regeneration before sharing or copying.
 - Removed the artificial CSV generation delay and added explicit button metadata to output-generation controls.
 - Reduced team summary polling so completed or absent scheduler runs stop re-querying while active runs still refresh.
