@@ -62,6 +62,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 
 - Added shared per-user rate limiting to the `fairness-scoring` Edge Function.
+- Routed team-generation division rule saves through an org-admin RPC with atomic `settings.updated` audit logging instead of direct browser writes to `divisions`.
 - Routed league standings score entry through an org-scoped schedule-manager RPC with atomic audit logging instead of direct browser writes to `games`.
 - Routed admin compliance medical-clearance updates through an org-admin RPC with atomic audit logging instead of direct browser writes to `registrations`.
 - Routed setup wizard telemetry writes through the org-scoped `log_telemetry_event` RPC.
