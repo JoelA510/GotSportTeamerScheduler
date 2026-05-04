@@ -49,7 +49,13 @@ Given(
         // CRITICAL FIX: Aggressively clear previous state to prevent cross-worker contamination
         db.teams =
           db.teams?.filter((t: Record<string, unknown>) => t.organization_id !== orgId) || [];
-        db.teams.push({ id: teamId, name: team, organization_id: orgId });
+        db.teams.push({
+          id: teamId,
+          name: team,
+          organization_id: orgId,
+          calendar_token: `mock-calendar-token-${teamId}`,
+          calendar_token_expires_at: new Date(Date.now() + 90 * 86400000).toISOString(),
+        });
 
         db.team_messages =
           db.team_messages?.filter((m: Record<string, unknown>) => m.organization_id !== orgId) ||

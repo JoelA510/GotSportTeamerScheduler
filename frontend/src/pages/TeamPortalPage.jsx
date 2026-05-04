@@ -66,10 +66,11 @@ export default function TeamPortalPage() {
         </div>
         <div className="flex gap-4">
           <button
+            type="button"
             onClick={() => setCalendarModalOpen(true)}
             className="relative z-20 bg-bg-surface px-4 py-2 rounded-lg border border-border-subtle flex items-center gap-2 hover:bg-bg-surface-hover transition-colors"
           >
-            <Calendar size={18} className="text-color-primary" />
+            <Calendar size={18} className="text-color-primary" aria-hidden="true" />
             <span className="font-semibold">Subscribe to Calendar</span>
           </button>
           <div className="bg-bg-surface px-4 py-2 rounded-lg border border-border-subtle flex items-center gap-2">
@@ -309,19 +310,18 @@ export default function TeamPortalPage() {
  * Phase 2.3 (H-2): Calendar modal with token rotation support.
  * Coaches/admins can regenerate the calendar link if it's been compromised or expired.
  */
-function CalendarModal({ team, onClose }) {
-  const [calendarToken, setCalendarToken] = useState(team?.calendar_token || 'mock-token');
+export function CalendarModal({ team, onClose }) {
+  const [calendarToken, setCalendarToken] = useState(team?.calendar_token ?? '');
   const [isRotating, setIsRotating] = useState(false);
   const [rotateMessage, setRotateMessage] = useState('');
 
-  // CRITICAL FIX: Sync token if team data hydrates after modal opens
   useEffect(() => {
-    if (team?.calendar_token) {
-      setCalendarToken(team.calendar_token);
-    }
+    setCalendarToken(team?.calendar_token ?? '');
   }, [team?.calendar_token]);
 
-  const calendarUrl = `webcal://${window.location.host}/functions/v1/calendar-feed?token=${calendarToken}`;
+  const calendarUrl = calendarToken
+    ? `webcal://${window.location.host}/functions/v1/calendar-feed?token=${calendarToken}`
+    : '';
 
   const handleRotateToken = async () => {
     if (!team?.id) return;
@@ -332,7 +332,7 @@ function CalendarModal({ team, onClose }) {
         p_team_id: team.id,
       });
       if (error) throw error;
-      if (data?.status === 'success') {
+      if ((data?.status === 'success' || data?.status === 'ok') && data?.calendar_token) {
         setCalendarToken(data.calendar_token);
         setRotateMessage('New link generated. Update your calendar subscription.');
       } else {
@@ -349,29 +349,52 @@ function CalendarModal({ team, onClose }) {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
       <div className="bg-bg-app border border-border-subtle rounded-xl p-6 w-full max-w-md shadow-2xl">
         <h3 className="text-xl font-bold text-text-primary mb-4">Calendar Subscription</h3>
-        <p className="text-sm text-text-secondary mb-4">Copy this link to your calendar app:</p>
+        <label
+          htmlFor="team-calendar-subscription-link"
+          className="block text-sm text-text-secondary mb-4"
+        >
+          Copy this link to your calendar app:
+        </label>
         <input
+          id="team-calendar-subscription-link"
           type="text"
           readOnly
           value={calendarUrl}
+          placeholder="Regenerate a link before subscribing."
           className="w-full bg-bg-surface border border-border-subtle rounded-lg p-3 text-text-primary mb-4 text-sm"
         />
-        {rotateMessage && <p className="text-sm text-status-warning mb-3">{rotateMessage}</p>}
+        {!calendarToken && (
+          <p className="text-sm text-status-warning mb-3">
+            No calendar link is currently available. Regenerate the link before sharing it.
+          </p>
+        )}
+        {rotateMessage && (
+          <p className="text-sm text-status-warning mb-3" aria-live="polite">
+            {rotateMessage}
+          </p>
+        )}
         <div className="flex justify-between items-center">
           <button
+            type="button"
             onClick={handleRotateToken}
             disabled={isRotating}
             className="flex items-center gap-2 text-sm text-text-secondary hover:text-text-primary transition-colors disabled:opacity-50"
             title="Generate a new calendar link (invalidates the old one)"
           >
-            <RefreshCw size={14} className={isRotating ? 'animate-spin' : ''} />
+            <RefreshCw size={14} className={isRotating ? 'animate-spin' : ''} aria-hidden="true" />
             Regenerate Link
           </button>
           <div className="flex gap-3">
             <Button variant="secondary" onClick={onClose}>
               Close
             </Button>
-            <Button variant="primary" onClick={() => navigator.clipboard.writeText(calendarUrl)}>
+            <Button
+              variant="primary"
+              disabled={!calendarToken}
+              onClick={() => {
+                if (calendarUrl) navigator.clipboard?.writeText(calendarUrl).catch(() => {});
+              }}
+            >
               Copy Link
             </Button>
           </div>
@@ -380,6 +403,14 @@ function CalendarModal({ team, onClose }) {
     </div>
   );
 }
+
+CalendarModal.propTypes = {
+  team: PropTypes.shape({
+    id: PropTypes.string,
+    calendar_token: PropTypes.string,
+  }),
+  onClose: PropTypes.func.isRequired,
+};
 
 function RsvpButton({ active, type, onClick }) {
   const configs = {
@@ -403,7 +434,9 @@ function RsvpButton({ active, type, onClick }) {
 
   return (
     <button
+      type="button"
       onClick={onClick}
+      aria-pressed={active}
       className={`relative z-20 flex-1 flex flex-col items-center gap-1 p-2 rounded transition-all duration-200 ${
         active
           ? `${config.bg} ${config.color} border-current shadow-glow scale-105`
@@ -411,7 +444,7 @@ function RsvpButton({ active, type, onClick }) {
       } border`}
       title={config.label}
     >
-      <Icon size={16} />
+      <Icon size={16} aria-hidden="true" />
       <span className="text-[9px] font-bold uppercase">{config.label}</span>
     </button>
   );
