@@ -1366,6 +1366,19 @@ export const mockSupabase = {
   },
   rpc: async (name, params) => {
     const db = getDB();
+    const storedSession =
+      typeof window !== 'undefined' ? sessionStorage.getItem('__MOCK_SESSION__') : null;
+    const currentUserId = storedSession
+      ? JSON.parse(storedSession)?.user?.id || 'mock-admin-id'
+      : 'mock-admin-id';
+    const isOrgAdmin = (organizationId) => {
+      const member = (db.organization_members || []).find(
+        (item) =>
+          String(item.organization_id) === String(organizationId) &&
+          String(item.profile_id) === String(currentUserId)
+      );
+      return ['admin', 'tenant_admin'].includes(String(member?.role || ''));
+    };
 
     if (name === 'initialize_new_tenant') {
       const { p_name, p_slug, p_timezone, p_season_year } = params || {};
@@ -1986,6 +1999,205 @@ export const mockSupabase = {
       saveDB(db);
 
       return { data: true, error: null };
+    }
+
+    if (name === 'create_import_job') {
+      const { p_organization_id, p_import_type, p_file_name } = params || {};
+      const importType = String(p_import_type || '')
+        .trim()
+        .toLowerCase();
+      const fileName = String(p_file_name || '')
+        .trim()
+        .replace(/[/\\:]+/g, '_');
+
+      if (!p_organization_id) {
+        return { data: null, error: { message: 'organization_id is required' } };
+      }
+      if (!isOrgAdmin(p_organization_id)) {
+        return {
+          data: null,
+          error: { message: 'Only organization admins can create import jobs' },
+        };
+      }
+      if (!['players', 'coaches', 'fields'].includes(importType)) {
+        return { data: null, error: { message: `invalid import type: ${p_import_type}` } };
+      }
+      if (!fileName) {
+        return { data: null, error: { message: 'file_name is required' } };
+      }
+
+      const now = new Date().toISOString();
+      const jobType = importType === 'fields' ? 'fields' : 'registration';
+      const job = {
+        id: mockId('import-job-'),
+        organization_id: p_organization_id,
+        job_type: jobType,
+        storage_path: `imports/${currentUserId}/${fileName}`,
+        status: 'importing',
+        total_rows: 0,
+        processed_rows: 0,
+        progress_percent: 0,
+        error_summary: {},
+        warning_summary: {},
+        efficiency_metadata: {},
+        created_by: currentUserId,
+        started_at: now,
+        created_at: now,
+        completed_at: null,
+        last_heartbeat_at: now,
+      };
+
+      db.import_jobs = db.import_jobs || [];
+      db.import_jobs.push(job);
+      db.audit_log = db.audit_log || [];
+      db.audit_log.push({
+        id: mockId('audit-import-started-'),
+        organization_id: p_organization_id,
+        action: 'import.started',
+        user_id: currentUserId,
+        resource_type: 'import_job',
+        resource_id: job.id,
+        metadata: {
+          import_type: importType,
+          job_type: jobType,
+          file_name: fileName,
+          status: 'importing',
+        },
+        created_at: now,
+      });
+      saveDB(db);
+
+      return { data: job, error: null };
+    }
+
+    if (name === 'update_import_job_progress') {
+      const {
+        p_import_job_id,
+        p_progress_percent,
+        p_processed_rows,
+        p_total_rows,
+        p_efficiency_metadata,
+      } = params || {};
+      const job = (db.import_jobs || []).find(
+        (item) => String(item.id) === String(p_import_job_id)
+      );
+
+      if (!job) {
+        return { data: null, error: { message: 'Import job not found' } };
+      }
+      if (!isOrgAdmin(job.organization_id)) {
+        return {
+          data: null,
+          error: { message: 'Only organization admins can update import job progress' },
+        };
+      }
+      if (!['queued', 'processing', 'importing'].includes(job.status)) {
+        return { data: null, error: { message: `Import job is ${job.status}, not active` } };
+      }
+      if (
+        p_progress_percent !== null &&
+        p_progress_percent !== undefined &&
+        (p_progress_percent < 0 || p_progress_percent > 100)
+      ) {
+        return { data: null, error: { message: 'progress_percent must be between 0 and 100' } };
+      }
+      if (p_processed_rows !== null && p_processed_rows !== undefined && p_processed_rows < 0) {
+        return { data: null, error: { message: 'processed_rows cannot be negative' } };
+      }
+      if (p_total_rows !== null && p_total_rows !== undefined && p_total_rows < 0) {
+        return { data: null, error: { message: 'total_rows cannot be negative' } };
+      }
+      if (
+        p_efficiency_metadata !== null &&
+        p_efficiency_metadata !== undefined &&
+        (Array.isArray(p_efficiency_metadata) || typeof p_efficiency_metadata !== 'object')
+      ) {
+        return { data: null, error: { message: 'efficiency_metadata must be an object' } };
+      }
+
+      const nextTotalRows =
+        p_total_rows !== null && p_total_rows !== undefined ? p_total_rows : job.total_rows || 0;
+      const nextProcessedRows =
+        p_processed_rows !== null && p_processed_rows !== undefined
+          ? p_processed_rows
+          : job.processed_rows || 0;
+      if (nextTotalRows > 0 && nextProcessedRows > nextTotalRows) {
+        return { data: null, error: { message: 'processed_rows cannot exceed total_rows' } };
+      }
+
+      Object.assign(job, {
+        progress_percent:
+          p_progress_percent !== null && p_progress_percent !== undefined
+            ? p_progress_percent
+            : job.progress_percent,
+        processed_rows: nextProcessedRows,
+        total_rows: nextTotalRows,
+        efficiency_metadata:
+          p_efficiency_metadata !== null && p_efficiency_metadata !== undefined
+            ? p_efficiency_metadata
+            : job.efficiency_metadata,
+        last_heartbeat_at: new Date().toISOString(),
+      });
+      saveDB(db);
+
+      return { data: job, error: null };
+    }
+
+    if (name === 'fail_import_job') {
+      const { p_import_job_id, p_message, p_error_summary } = params || {};
+      const job = (db.import_jobs || []).find(
+        (item) => String(item.id) === String(p_import_job_id)
+      );
+      const message = String(p_message || '').trim();
+      const errorSummary =
+        p_error_summary && !Array.isArray(p_error_summary) && typeof p_error_summary === 'object'
+          ? p_error_summary
+          : {};
+
+      if (!job) {
+        return { data: null, error: { message: 'Import job not found' } };
+      }
+      if (!isOrgAdmin(job.organization_id)) {
+        return { data: null, error: { message: 'Only organization admins can fail import jobs' } };
+      }
+      if (!message) {
+        return { data: null, error: { message: 'failure message is required' } };
+      }
+      if (['completed', 'completed_with_warnings'].includes(job.status)) {
+        return { data: null, error: { message: 'Completed import job cannot be failed' } };
+      }
+
+      const now = new Date().toISOString();
+      const previousStatus = job.status;
+      Object.assign(job, {
+        status: 'failed',
+        completed_at: now,
+        last_heartbeat_at: now,
+        error_summary: {
+          ...(job.error_summary || {}),
+          ...errorSummary,
+          message,
+        },
+      });
+      db.audit_log = db.audit_log || [];
+      db.audit_log.push({
+        id: mockId('audit-import-failed-'),
+        organization_id: job.organization_id,
+        action: 'import.failed',
+        user_id: currentUserId,
+        resource_type: 'import_job',
+        resource_id: p_import_job_id,
+        metadata: {
+          stage: errorSummary.stage || 'client_lifecycle',
+          previous_status: previousStatus,
+          message,
+          failed_at: now,
+        },
+        created_at: now,
+      });
+      saveDB(db);
+
+      return { data: job, error: null };
     }
 
     if (name === 'fail_stale_import_jobs') {
