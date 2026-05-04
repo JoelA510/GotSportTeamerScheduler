@@ -1417,7 +1417,7 @@ export const mockSupabase = {
 
       let playerId = p_player_id;
       if (!playerId && p_first_name && p_last_name) {
-        playerId = Math.random().toString(36).substr(2, 9);
+        playerId = crypto.randomUUID();
         db.players.push({
           id: playerId,
           first_name: p_first_name,
@@ -1431,7 +1431,7 @@ export const mockSupabase = {
       }
 
       const registration = {
-        id: Math.random().toString(36).substr(2, 9),
+        id: crypto.randomUUID(),
         organization_id: p_organization_id,
         form_id: p_form_id,
         player_id: playerId,
@@ -1540,6 +1540,31 @@ export const mockSupabase = {
       }
 
       return { data: result, error: null };
+    }
+
+    if (name === 'get_team_portal_medical_status') {
+      const teamId = params?.p_team_id;
+      const team = (db.teams || []).find((item) => String(item.id) === String(teamId));
+      const rosterPlayerIds = (db.team_players || [])
+        .filter((row) => String(row.team_id) === String(teamId))
+        .map((row) => String(row.player_id));
+      const registrations = db.registrations || [];
+
+      return {
+        data: rosterPlayerIds.map((playerId) => {
+          const registration = registrations.find(
+            (row) =>
+              String(row.organization_id) === String(team?.organization_id) &&
+              String(row.player_id) === String(playerId)
+          );
+
+          return {
+            player_id: playerId,
+            medical_cleared: registration?.medical_cleared === true,
+          };
+        }),
+        error: null,
+      };
     }
 
     if (name === 'rotate_calendar_token') {
