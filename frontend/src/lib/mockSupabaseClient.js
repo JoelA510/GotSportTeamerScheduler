@@ -82,6 +82,7 @@ const initialMockData = {
   organization_members: [
     { organization_id: 'org-1', profile_id: 'mock-admin-id', role: 'admin' },
     { organization_id: 'org-1', profile_id: 'mock-coach-id', role: 'coach' },
+    { organization_id: 'org-1', profile_id: 'mock-parent-id', role: 'parent' },
   ],
   season_settings: [
     {
@@ -1598,6 +1599,188 @@ export const mockSupabase = {
       saveDB(db);
 
       return { data: { ...row, changed }, error: null };
+    }
+
+    if (
+      (import.meta.env.DEV || import.meta.env.VITE_USE_MOCK_SUPABASE === 'true') &&
+      ['upsert_team_event_rsvp', 'create_team_message'].includes(name)
+    ) {
+      const p = params || {};
+      const session =
+        typeof window !== 'undefined'
+          ? JSON.parse(sessionStorage.getItem('__MOCK_SESSION__') || 'null')
+          : null;
+      const userId = session?.user?.id;
+      const team = (db.teams || []).find((item) => String(item.id) === String(p.p_team_id));
+      const orgId = team?.organization_id;
+      const member = (db.organization_members || []).find(
+        (item) =>
+          String(item.organization_id) === String(orgId) &&
+          String(item.profile_id) === String(userId)
+      );
+      const isAdmin = ['admin', 'tenant_admin'].includes(String(member?.role || ''));
+      const isParentOnTeam = () =>
+        (db.profile_players || []).some(
+          (profilePlayer) =>
+            String(profilePlayer.profile_id) === String(userId) &&
+            (db.team_players || []).some(
+              (teamPlayer) =>
+                String(teamPlayer.team_id) === String(p.p_team_id) &&
+                String(teamPlayer.player_id) === String(profilePlayer.player_id)
+            )
+        );
+      const isAssignedCoach = () =>
+        (db.coaches || []).some(
+          (coach) =>
+            String(coach.organization_id) === String(orgId) &&
+            [coach.user_id, coach.profile_id].map(String).includes(String(userId)) &&
+            (String(coach.id) === String(team?.coach_id) ||
+              (team?.assistant_coach_ids || []).map(String).includes(String(coach.id)))
+        );
+      const audit = (action, resourceType, resourceId, metadata) => {
+        db.audit_log = db.audit_log || [];
+        db.audit_log.push({
+          id: mockId(),
+          organization_id: orgId,
+          user_id: userId,
+          action,
+          resource_type: resourceType,
+          resource_id: resourceId,
+          metadata,
+          created_at: new Date().toISOString(),
+        });
+      };
+
+      if (!userId || !team || !member) {
+        return { data: null, error: { message: 'Team is outside the caller organization' } };
+      }
+
+      if (name === 'upsert_team_event_rsvp') {
+        if (!['game', 'practice'].includes(p.p_event_type)) {
+          return { data: null, error: { message: 'event_type must be game or practice' } };
+        }
+        if (!['attending', 'declined', 'maybe'].includes(p.p_status)) {
+          return { data: null, error: { message: 'status must be attending, declined, or maybe' } };
+        }
+
+        const playerOnTeam = (db.players || []).some(
+          (player) =>
+            String(player.id) === String(p.p_player_id) &&
+            String(player.organization_id) === String(orgId) &&
+            (db.team_players || []).some(
+              (teamPlayer) =>
+                String(teamPlayer.team_id) === String(p.p_team_id) &&
+                String(teamPlayer.player_id) === String(p.p_player_id)
+            )
+        );
+        if (!playerOnTeam) {
+          return { data: null, error: { message: 'Player is outside the requested team' } };
+        }
+
+        const canManagePlayer =
+          isAdmin ||
+          (db.profile_players || []).some(
+            (profilePlayer) =>
+              String(profilePlayer.profile_id) === String(userId) &&
+              String(profilePlayer.player_id) === String(p.p_player_id)
+          );
+        if (!canManagePlayer) {
+          return { data: null, error: { message: 'Caller cannot manage RSVP for this player' } };
+        }
+
+        const referenceAllowed =
+          p.p_event_type === 'game'
+            ? (db.games || []).some(
+                (game) =>
+                  String(game.id) === String(p.p_reference_id) &&
+                  String(game.organization_id) === String(orgId) &&
+                  [game.home_team_id, game.away_team_id].map(String).includes(String(p.p_team_id))
+              )
+            : (db.practice_assignments || []).some(
+                (assignment) =>
+                  String(assignment.id) === String(p.p_reference_id) &&
+                  String(assignment.team_id) === String(p.p_team_id)
+              );
+        if (!referenceAllowed) {
+          return {
+            data: null,
+            error: { message: 'Event reference is outside the requested team' },
+          };
+        }
+
+        db.event_rsvps = db.event_rsvps || [];
+        const existingIndex = db.event_rsvps.findIndex(
+          (rsvp) =>
+            String(rsvp.player_id) === String(p.p_player_id) &&
+            String(rsvp.reference_id) === String(p.p_reference_id) &&
+            String(rsvp.occurrence_date) === String(p.p_occurrence_date)
+        );
+        const previous = existingIndex >= 0 ? { ...db.event_rsvps[existingIndex] } : null;
+        const rsvp = {
+          ...(previous || {}),
+          id: previous?.id || mockId(),
+          organization_id: orgId,
+          team_id: p.p_team_id,
+          player_id: p.p_player_id,
+          reference_id: p.p_reference_id,
+          event_type: p.p_event_type,
+          occurrence_date: p.p_occurrence_date,
+          status: p.p_status,
+          updated_at: new Date().toISOString(),
+        };
+        const changed = !previous || previous.status !== rsvp.status;
+        if (existingIndex >= 0) {
+          db.event_rsvps[existingIndex] = rsvp;
+        } else {
+          db.event_rsvps.push(rsvp);
+        }
+        if (changed) {
+          audit('team.rsvp_updated', 'event_rsvp', rsvp.id, {
+            team_id: p.p_team_id,
+            player_id: p.p_player_id,
+            reference_id: p.p_reference_id,
+            event_type: p.p_event_type,
+            occurrence_date: p.p_occurrence_date,
+            previous_status: previous?.status || null,
+            status: rsvp.status,
+          });
+        }
+        saveDB(db);
+        triggerRealtimeEvent('event_rsvps', previous ? 'UPDATE' : 'INSERT', {
+          new: rsvp,
+          old: previous,
+        });
+        return { data: { rsvp, changed }, error: null };
+      }
+
+      const content = String(p.p_content || '').trim();
+      if (!content) {
+        return { data: null, error: { message: 'Message content is required' } };
+      }
+      if (content.length > 4000) {
+        return { data: null, error: { message: 'Message content exceeds 4000 characters' } };
+      }
+      if (!isAdmin && !isAssignedCoach() && !isParentOnTeam()) {
+        return { data: null, error: { message: 'Caller cannot post messages for this team' } };
+      }
+
+      const message = {
+        id: mockId(),
+        organization_id: orgId,
+        team_id: p.p_team_id,
+        author_id: userId,
+        content,
+        created_at: new Date().toISOString(),
+      };
+      db.team_messages = db.team_messages || [];
+      db.team_messages.push(message);
+      audit('team.message_created', 'team_message', message.id, {
+        team_id: p.p_team_id,
+        content_length: content.length,
+      });
+      saveDB(db);
+      triggerRealtimeEvent('team_messages', 'INSERT', { new: message, old: null });
+      return { data: { message }, error: null };
     }
 
     if (
