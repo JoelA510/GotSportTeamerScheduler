@@ -13,6 +13,7 @@ import {
   jsonResponse,
   recordAudit,
 } from '../_shared/auth.ts';
+import { checkRateLimit, rateLimitExceededResponse } from '../_shared/rateLimit.ts';
 
 serve(async (req) => {
   // 1. CORS Preflight
@@ -29,6 +30,11 @@ serve(async (req) => {
     const user = await getUserFromRequest(req, supabase);
     if (!user) {
       return jsonResponse({ error: 'Unauthorized' }, 401);
+    }
+
+    const rateCheck = checkRateLimit(user.id);
+    if (!rateCheck.allowed) {
+      return rateLimitExceededResponse(rateCheck);
     }
 
     // 3. Payload Validation (Zod)

@@ -59,7 +59,7 @@ Seven functions are deployed. Each has its own directory under `supabase/functio
 - **Purpose**: Evaluate a practice and/or game schedule against the isomorphic scoring engine in `supabase/functions/_shared/engines/scoring-engine.ts`. Returns `metrics_summary` and structured `findings`. With `persist: true`, also writes an `evaluation_runs` row through the three-arg `persist_evaluation_run` overload.
 - **Invoked by**: `frontend/src/components/EvaluationPanel.jsx` via `supabase.functions.invoke('fairness-scoring', …)`.
 - **Authentication**: `getUserFromRequest()` + `verifyOrgMembership(supabase, user.id, body.organizationId)`.
-- **Rate limit**: Not enforced directly in `fairness-scoring/index.ts` today (the other persistence functions do; flagged as a gap in §6).
+- **Rate limit**: `checkRateLimit(user.id)` with the default 60 req/min.
 - **RPC used**: `persist_evaluation_run(p_run_data, p_findings, p_metrics)` when `persist: true`.
 - **Audit**: Writes an `evaluation.run` audit row via `recordAudit()` when persisted.
 
@@ -89,7 +89,7 @@ Seven functions are deployed. Each has its own directory under `supabase/functio
 | `team-persistence`     | `team-persistence/index.ts`     | ~285  | JWT + role allow-list + IDOR guard | Yes        | `persist_team_schedule`                                | —                  | `teamPersistenceClient.js` |
 | `practice-persistence` | `practice-persistence/index.ts` | ~290  | JWT + role allow-list + IDOR guard | Yes        | `persist_practice_schedule`                            | —                  | Frontend practice utils    |
 | `game-persistence`     | `game-persistence/index.ts`     | ~330  | JWT + role allow-list + IDOR guard | Yes        | `persist_game_schedule`                                | —                  | `gamePersistenceClient.js` |
-| `fairness-scoring`     | `fairness-scoring/index.ts`     | ~230  | JWT + `verifyOrgMembership`        | No (gap)   | `persist_evaluation_run` (3-arg)                       | —                  | `EvaluationPanel.jsx`      |
+| `fairness-scoring`     | `fairness-scoring/index.ts`     | ~230  | JWT + `verifyOrgMembership`        | Yes        | `persist_evaluation_run` (3-arg)                       | —                  | `EvaluationPanel.jsx`      |
 | `auto-scheduler`       | `auto-scheduler/index.ts`       | ~800  | JWT + `verifyOrgMembership`        | Yes        | `persist_evaluation_run` (3-arg), `record_audit_event` | —                  | `useAutoScheduler.js`      |
 | `calendar-feed`        | `calendar-feed/index.ts`        | ~220  | Token-based (`?token=`)            | No         | —                                                      | Yes                | External ICS clients       |
 
@@ -163,7 +163,6 @@ Edge Functions are the single most expensive free-tier line item if they runaway
 
 v1.1-deferred items surfaced while writing this inventory:
 
-- **`fairness-scoring` has no rate limiter.** Every other function uses `checkRateLimit(user.id)` from `_shared/rateLimit.ts`; this one calls the scoring engine (a heavier synchronous workload) and imports `_shared/auth.ts` but not `_shared/rateLimit.ts`. Worth adding for symmetry.
 - **pgTAP coverage is RLS-focused, not RPC- or Edge-Function-focused.** The four pgTAP suites in `supabase/tests/` validate policy behavior, not the specific RPC branches each Edge Function invokes. Gap to close in Wave 7b or later.
 - **No observed invocation telemetry baseline.** We have the BetterStack hook but no dashboard that tracks per-function invocation counts or p95 latency. When that's in place it belongs in [`operations/`](../operations/) alongside `sentry-smoke.md`.
 - **`calendar-feed` token leakage risk.** The token is a plain UUID query parameter; any intermediary that logs URLs (browser history, proxy logs, analytics) could capture it. Mitigated by 90-day expiry + `rotate_calendar_token` RPC, but consider HMAC-signed tokens in v1.1.
