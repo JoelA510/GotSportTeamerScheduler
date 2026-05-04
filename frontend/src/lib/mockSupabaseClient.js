@@ -1688,18 +1688,52 @@ export const mockSupabase = {
           return { data: null, error: { message: 'Caller cannot manage RSVP for this player' } };
         }
 
+        const normalizeDate = (value) => String(value || '').slice(0, 10);
+        const rangeContainsDate = (range, date) => {
+          const [start, end] = String(range || '')
+            .replace(/[()[\]]/g, '')
+            .split(',');
+          return Boolean(start && end && date >= start && date < end);
+        };
+        const dayCodeForDate = (date) => {
+          const day = new Date(`${date}T00:00:00Z`).getUTCDay();
+          return ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'][day];
+        };
+        const slotDayForAssignment = (assignment) => {
+          const slot =
+            assignment.slot ||
+            (db.practice_slots || []).find(
+              (practiceSlot) =>
+                String(practiceSlot.id) ===
+                String(assignment.practice_slot_id || assignment.slot_id)
+            );
+          return String(assignment.day_of_week || slot?.day_of_week || '').toLowerCase();
+        };
+
         const referenceAllowed =
           p.p_event_type === 'game'
-            ? (db.games || []).some(
-                (game) =>
+            ? (db.games || []).some((game) => {
+                const gameSlot = (db.game_slots || []).find(
+                  (slot) => String(slot.id) === String(game.game_slot_id)
+                );
+                const gameDate = normalizeDate(
+                  gameSlot?.slot_date || gameSlot?.start || game.start_time
+                );
+                return (
                   String(game.id) === String(p.p_reference_id) &&
                   String(game.organization_id) === String(orgId) &&
-                  [game.home_team_id, game.away_team_id].map(String).includes(String(p.p_team_id))
-              )
+                  [game.home_team_id, game.away_team_id]
+                    .map(String)
+                    .includes(String(p.p_team_id)) &&
+                  gameDate === normalizeDate(p.p_occurrence_date)
+                );
+              })
             : (db.practice_assignments || []).some(
                 (assignment) =>
                   String(assignment.id) === String(p.p_reference_id) &&
-                  String(assignment.team_id) === String(p.p_team_id)
+                  String(assignment.team_id) === String(p.p_team_id) &&
+                  rangeContainsDate(assignment.effective_date_range, p.p_occurrence_date) &&
+                  slotDayForAssignment(assignment) === dayCodeForDate(p.p_occurrence_date)
               );
         if (!referenceAllowed) {
           return {

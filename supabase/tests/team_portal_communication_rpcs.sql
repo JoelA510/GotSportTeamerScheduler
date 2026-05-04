@@ -5,7 +5,7 @@ BEGIN;
 \set squadlogic_fixture_include 1
 \ir _fixtures.sql
 
-SELECT plan(18);
+SELECT plan(21);
 
 INSERT INTO auth.users (id, email, raw_user_meta_data, aud, role)
 VALUES (
@@ -119,7 +119,69 @@ VALUES (
     'a1111111-1111-1111-1111-111111111aaa',
     'aaaaaaaa-0000-0000-0000-000000000001',
     'aaaaaaaa-0000-0000-0000-000000000003',
-    timezone('utc', now()) + interval '1 day'
+    '2026-05-10T09:00:00Z'::timestamptz
+)
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO public.locations (id, organization_id, name)
+VALUES (
+    'a1111111-1111-1111-1111-00000000dd21',
+    'a1111111-1111-1111-1111-111111111111',
+    'Practice Complex'
+)
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO public.fields (id, organization_id, location_id, name, active)
+VALUES (
+    'a1111111-1111-1111-1111-00000000dd22',
+    'a1111111-1111-1111-1111-111111111111',
+    'a1111111-1111-1111-1111-00000000dd21',
+    'Practice Field',
+    true
+)
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO public.practice_slots (
+    id,
+    organization_id,
+    field_id,
+    day_of_week,
+    start_time,
+    end_time,
+    capacity,
+    valid_from,
+    valid_until
+)
+VALUES (
+    'a1111111-1111-1111-1111-00000000dd23',
+    'a1111111-1111-1111-1111-111111111111',
+    'a1111111-1111-1111-1111-00000000dd22',
+    'tue',
+    '17:00'::time,
+    '18:30'::time,
+    2,
+    '2026-05-01'::date,
+    '2026-06-01'::date
+)
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO public.practice_assignments (
+    id,
+    organization_id,
+    team_id,
+    slot_id,
+    practice_slot_id,
+    day_of_week,
+    effective_date_range
+)
+VALUES (
+    'a1111111-1111-1111-1111-00000000dd24',
+    'a1111111-1111-1111-1111-111111111111',
+    'aaaaaaaa-0000-0000-0000-000000000001',
+    'a1111111-1111-1111-1111-00000000dd23',
+    'a1111111-1111-1111-1111-00000000dd23',
+    'tue',
+    '[2026-05-01,2026-06-01)'::daterange
 )
 ON CONFLICT (id) DO NOTHING;
 
@@ -280,6 +342,52 @@ SELECT throws_ok(
     '22023',
     NULL,
     'invalid event type is rejected'
+);
+
+SELECT throws_ok(
+    $$
+        SELECT public.upsert_team_event_rsvp(
+            'aaaaaaaa-0000-0000-0000-000000000001',
+            'a1111111-1111-1111-1111-00000000a201',
+            'a1111111-1111-1111-1111-00000000aa21',
+            'game',
+            '2026-05-11'::date,
+            'maybe'
+        )
+    $$,
+    '42501',
+    NULL,
+    'game RSVP date must match the game date'
+);
+
+SELECT lives_ok(
+    $$
+        SELECT public.upsert_team_event_rsvp(
+            'aaaaaaaa-0000-0000-0000-000000000001',
+            'a1111111-1111-1111-1111-00000000a201',
+            'a1111111-1111-1111-1111-00000000dd24',
+            'practice',
+            '2026-05-12'::date,
+            'maybe'
+        )
+    $$,
+    'linked parent can RSVP for a practice occurrence on the configured weekday'
+);
+
+SELECT throws_ok(
+    $$
+        SELECT public.upsert_team_event_rsvp(
+            'aaaaaaaa-0000-0000-0000-000000000001',
+            'a1111111-1111-1111-1111-00000000a201',
+            'a1111111-1111-1111-1111-00000000dd24',
+            'practice',
+            '2026-05-13'::date,
+            'maybe'
+        )
+    $$,
+    '42501',
+    NULL,
+    'practice RSVP date must match the assignment weekday'
 );
 
 RESET ROLE;

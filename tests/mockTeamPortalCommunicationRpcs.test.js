@@ -82,6 +82,16 @@ describe('mock team portal communication rpcs', () => {
     });
     expect(blankError?.message).toContain('Message content is required');
 
+    const { error: dateError } = await supabase.rpc('upsert_team_event_rsvp', {
+      p_team_id: TEAM_ID,
+      p_player_id: 'player-1',
+      p_reference_id: 'pa-1',
+      p_event_type: 'practice',
+      p_occurrence_date: '2025-01-08',
+      p_status: 'maybe',
+    });
+    expect(dateError?.message).toContain('Event reference is outside the requested team');
+
     setMockSession('mock-coach-id');
     const { error: rsvpError } = await supabase.rpc('upsert_team_event_rsvp', {
       p_team_id: TEAM_ID,

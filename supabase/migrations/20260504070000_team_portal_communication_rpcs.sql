@@ -130,19 +130,26 @@ BEGIN
         SELECT EXISTS (
             SELECT 1
               FROM public.games g
+              LEFT JOIN public.game_slots gs
+                ON gs.id = g.game_slot_id
              WHERE g.id = p_reference_id
                AND g.organization_id = v_org_id
                AND (g.home_team_id = p_team_id OR g.away_team_id = p_team_id)
+               AND coalesce(gs.slot_date, gs.start::date, g.start_time::date) = p_occurrence_date
         )
           INTO v_reference_allowed;
     ELSE
         SELECT EXISTS (
             SELECT 1
               FROM public.practice_assignments pa
+              LEFT JOIN public.practice_slots ps
+                ON ps.id = coalesce(pa.practice_slot_id, pa.slot_id)
              WHERE pa.id = p_reference_id
                AND pa.organization_id = v_org_id
                AND pa.team_id = p_team_id
                AND p_occurrence_date <@ pa.effective_date_range
+               AND trim(lower(to_char(p_occurrence_date, 'dy'))) =
+                   coalesce(nullif(lower(pa.day_of_week), ''), ps.day_of_week::text)
         )
           INTO v_reference_allowed;
     END IF;
