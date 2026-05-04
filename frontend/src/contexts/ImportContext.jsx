@@ -8,7 +8,6 @@ import React, {
   useRef,
 } from 'react';
 import { supabase } from '../lib/supabaseClient.js';
-import Papa from 'papaparse';
 import { z } from 'zod';
 import { logger } from '../lib/logger.js';
 import { withTimeout } from '../lib/withTimeout.js';
@@ -303,16 +302,14 @@ export function ImportProvider({ children }) {
       lastUpdateRef.current = now;
       setProgress(progressPercent);
 
-      const progressPatch = {
-        progress_percent: progressPercent,
-        last_heartbeat_at: new Date(now).toISOString(),
-      };
-      if (Number.isFinite(processedRows)) {
-        progressPatch.processed_rows = processedRows;
-      }
-
-      // Update DB (Quietly)
-      await supabase.from('import_jobs').update(progressPatch).eq('id', jobId);
+      const { persistImportJobProgress } = await import('../utils/importJobLifecycleActions.js');
+      const updatedJob = await persistImportJobProgress({
+        supabase,
+        importJobId: jobId,
+        progressPercent,
+        processedRows: Number.isFinite(processedRows) ? processedRows : null,
+      });
+      setActiveJob((prev) => (prev?.id === jobId ? { ...prev, ...updatedJob } : prev));
 
       // Broadcast Realtime Channel
       const channel = supabase.channel(`import-progress-${currentOrganization?.id}`);
@@ -538,23 +535,14 @@ export function ImportProvider({ children }) {
         if (!user || !currentOrganization?.id)
           throw new Error('Unauthenticated or no organization');
 
-        // Create Job entry
-        const { data: job, error: jobError } = await supabase
-          .from('import_jobs')
-          .insert({
-            created_by: user.id,
-            organization_id: currentOrganization.id,
-            job_type: type === 'fields' ? 'fields' : 'registration',
-            storage_path: `imports/${user.id}/${file.name}`,
-            status: 'importing',
-            total_rows: 0,
-            processed_rows: 0,
-            progress_percent: 0,
-          })
-          .select()
-          .single();
-
-        if (jobError) throw jobError;
+        const [{ default: Papa }, { createImportJob, failImportJob, persistImportJobProgress }] =
+          await Promise.all([import('papaparse'), import('../utils/importJobLifecycleActions.js')]);
+        const job = await createImportJob({
+          supabase,
+          organizationId: currentOrganization.id,
+          type,
+          fileName: file.name,
+        });
         setActiveJobId(job.id);
         setActiveJob(job);
 
@@ -567,26 +555,26 @@ export function ImportProvider({ children }) {
 
             // Check hard limits for DoS mitigation
             if (meta.fields.length > MAX_COLS) {
-              await supabase
-                .from('import_jobs')
-                .update({
-                  status: 'failed',
-                  error_summary: { message: `Payload exceeds column limit of ${MAX_COLS}` },
-                })
-                .eq('id', job.id);
+              await failImportJob({
+                supabase,
+                importJobId: job.id,
+                stage: 'parse_limit',
+                message: `Payload exceeds column limit of ${MAX_COLS}`,
+                errorSummary: { limit: 'columns', max_columns: MAX_COLS },
+              });
               setImportStatus('error');
               setIsImporting(false);
               addLog('Validation Error: Payload exceeds column limit of ' + MAX_COLS);
               return;
             }
             if (data.length > MAX_ROWS) {
-              await supabase
-                .from('import_jobs')
-                .update({
-                  status: 'failed',
-                  error_summary: { message: `Payload exceeds row limit of ${MAX_ROWS}` },
-                })
-                .eq('id', job.id);
+              await failImportJob({
+                supabase,
+                importJobId: job.id,
+                stage: 'parse_limit',
+                message: `Payload exceeds row limit of ${MAX_ROWS}`,
+                errorSummary: { limit: 'rows', max_rows: MAX_ROWS },
+              });
               setImportStatus('error');
               setIsImporting(false);
               addLog('Validation Error: Payload exceeds row limit of ' + MAX_ROWS);
@@ -594,7 +582,12 @@ export function ImportProvider({ children }) {
             }
 
             // Update total rows
-            await supabase.from('import_jobs').update({ total_rows: data.length }).eq('id', job.id);
+            const countedJob = await persistImportJobProgress({
+              supabase,
+              importJobId: job.id,
+              totalRows: data.length,
+            });
+            setActiveJob((prev) => ({ ...(prev || {}), ...countedJob }));
 
             // Phase 5: Dynamic Ingestion Logic
             const entityType =
@@ -626,14 +619,13 @@ export function ImportProvider({ children }) {
             }
 
             // Persist metrics for Enterprise Overlay
-            await supabase
-              .from('import_jobs')
-              .update({
-                efficiency_metadata: efficiencyMetadata,
-              })
-              .eq('id', job.id);
+            const efficiencyJob = await persistImportJobProgress({
+              supabase,
+              importJobId: job.id,
+              efficiencyMetadata,
+            });
 
-            setActiveJob((prev) => ({ ...(prev || {}), efficiency_metadata: efficiencyMetadata }));
+            setActiveJob((prev) => ({ ...(prev || {}), ...efficiencyJob }));
 
             const normalizeHeader = (h) => mappings[h] || h.toLowerCase().trim();
 
@@ -662,15 +654,13 @@ export function ImportProvider({ children }) {
               (req) => !normalizedFileHeaders.includes(req)
             );
             if (missingHeaders.length > 0) {
-              await supabase
-                .from('import_jobs')
-                .update({
-                  status: 'failed',
-                  error_summary: {
-                    message: `Missing required columns: ${missingHeaders.join(', ')}`,
-                  },
-                })
-                .eq('id', job.id);
+              await failImportJob({
+                supabase,
+                importJobId: job.id,
+                stage: 'header_validation',
+                message: `Missing required columns: ${missingHeaders.join(', ')}`,
+                errorSummary: { missing_columns: missingHeaders },
+              });
               setImportStatus('error');
               setIsImporting(false);
               addLog(`Import failed: Missing required columns: ${missingHeaders.join(', ')}`);
@@ -742,13 +732,12 @@ export function ImportProvider({ children }) {
               } catch (err) {
                 logger.error('Edge Function validation failed:', err);
                 addLog(`Server Validation Error: ${err.message}`);
-                await supabase
-                  .from('import_jobs')
-                  .update({
-                    status: 'failed',
-                    error_summary: { message: err.message },
-                  })
-                  .eq('id', job.id);
+                await failImportJob({
+                  supabase,
+                  importJobId: job.id,
+                  stage: 'validation',
+                  message: err.message,
+                });
                 setImportStatus('error');
                 setIsImporting(false);
               }

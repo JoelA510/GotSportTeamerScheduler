@@ -78,6 +78,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Hardened `upsert_coach_leads` and `coach_interested_programs` so security-definer lead capture rejects division/player references outside the lead organization.
 - Routed field-management location/field mutations through org-admin facility RPCs with audit logging, leaving facility tables read-only to org members.
 - Routed team portal RSVP and chat message writes through org-scoped RPCs with participant checks and metadata-only audit logging, removing direct browser write policies for `event_rsvps` and `team_messages`.
+- Routed browser-driven import job creation, progress, and failure writes through org-admin RPCs with audit logging, removing the broad member-write `import_jobs` policy.
 
 ## [1.0.1] - 2026-04-23
 
