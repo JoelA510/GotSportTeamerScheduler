@@ -1,0 +1,93 @@
+import { describe, it, expect, beforeEach } from 'vitest';
+import { mockSupabase as supabase, getMockData } from '../frontend/src/lib/mockSupabaseClient.js';
+
+const setMockSession = (userId) => {
+  sessionStorage.setItem('__MOCK_SESSION__', JSON.stringify({ user: { id: userId } }));
+};
+
+describe('mock facility admin rpcs', () => {
+  beforeEach(() => {
+    sessionStorage.clear();
+    delete window.__MOCK_DB__;
+    setMockSession('mock-admin-id');
+  });
+
+  it('creates, updates, and deletes fields through admin RPC handlers', async () => {
+    const { data: location, error: locationError } = await supabase.rpc('admin_create_location', {
+      p_organization_id: 'org-1',
+      p_name: '  New Park  ',
+    });
+    expect(locationError).toBeNull();
+    expect(location).toMatchObject({ organization_id: 'org-1', name: 'New Park' });
+
+    const { data: field, error: fieldError } = await supabase.rpc('admin_create_field', {
+      p_organization_id: 'org-1',
+      p_location_id: location.id,
+      p_name: '  South Field  ',
+      p_surface_type: 'Turf',
+      p_size: '7v7',
+      p_supports_halves: true,
+      p_priority_rating: 3,
+      p_active: true,
+    });
+    expect(fieldError).toBeNull();
+    expect(field).toMatchObject({
+      organization_id: 'org-1',
+      location_id: location.id,
+      name: 'South Field',
+      size: '7v7',
+      supports_halves: true,
+      priority_rating: 3,
+    });
+
+    const { data: updated, error: updateError } = await supabase.rpc('admin_update_field', {
+      p_organization_id: 'org-1',
+      p_field_id: field.id,
+      p_location_id: location.id,
+      p_name: 'Renamed Field',
+      p_surface_type: 'Grass',
+      p_size: '11v11',
+      p_supports_halves: false,
+      p_priority_rating: 2,
+      p_active: false,
+    });
+    expect(updateError).toBeNull();
+    expect(updated).toMatchObject({ name: 'Renamed Field', active: false, size: '11v11' });
+
+    const { data: deleted, error: deleteError } = await supabase.rpc('admin_delete_field', {
+      p_organization_id: 'org-1',
+      p_field_id: field.id,
+    });
+    expect(deleteError).toBeNull();
+    expect(deleted).toMatchObject({ id: field.id, organization_id: 'org-1', deleted: true });
+    expect(getMockData('fields').some((row) => row.id === field.id)).toBe(false);
+    expect(
+      getMockData('audit_log').filter(
+        (row) =>
+          row.action === 'settings.updated' && ['location', 'field'].includes(row.resource_type)
+      )
+    ).toHaveLength(4);
+  });
+
+  it('rejects non-admin and cross-org facility writes', async () => {
+    setMockSession('mock-coach-id');
+    const { error: roleError } = await supabase.rpc('admin_create_location', {
+      p_organization_id: 'org-1',
+      p_name: 'Coach Park',
+    });
+    expect(roleError?.message).toContain('Admin role is required');
+
+    setMockSession('mock-admin-id');
+    const { error: scopeError } = await supabase.rpc('admin_create_field', {
+      p_organization_id: 'org-1',
+      p_location_id: 'missing-location',
+      p_name: 'Bad Field',
+      p_surface_type: 'Grass',
+      p_size: '11v11',
+      p_supports_halves: false,
+      p_priority_rating: 1,
+      p_active: true,
+    });
+    expect(scopeError?.message).toContain('Location is outside organization');
+  });
+});

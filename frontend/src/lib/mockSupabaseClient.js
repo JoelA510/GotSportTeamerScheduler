@@ -268,7 +268,7 @@ const initialMockData = {
       updated_at: new Date().toISOString(),
     },
   ],
-  locations: [{ id: 'loc-1', name: 'Central Park' }],
+  locations: [{ id: 'loc-1', organization_id: 'org-1', name: 'Central Park' }],
   fields: [
     {
       id: 'v1',
@@ -1567,6 +1567,130 @@ export const mockSupabase = {
       saveDB(db);
 
       return { data: { ...row, changed }, error: null };
+    }
+
+    if (
+      (import.meta.env.DEV || import.meta.env.VITE_USE_MOCK_SUPABASE === 'true') &&
+      [
+        'admin_create_location',
+        'admin_create_field',
+        'admin_update_field',
+        'admin_delete_field',
+      ].includes(name)
+    ) {
+      const p = params || {};
+      const orgId = p.p_organization_id;
+      const session =
+        typeof window !== 'undefined'
+          ? JSON.parse(sessionStorage.getItem('__MOCK_SESSION__') || 'null')
+          : null;
+      const member = (db.organization_members || []).find(
+        (item) =>
+          String(item.organization_id) === String(orgId) &&
+          String(item.profile_id) === String(session?.user?.id)
+      );
+      if (!['admin', 'tenant_admin'].includes(String(member?.role || ''))) {
+        return { data: null, error: { message: 'Admin role is required' } };
+      }
+
+      const audit = (resourceType, resourceId, operation, payload) => {
+        db.audit_log = db.audit_log || [];
+        db.audit_log.push({
+          id: mockId(),
+          organization_id: orgId,
+          user_id: session?.user?.id,
+          action: 'settings.updated',
+          resource_type: resourceType,
+          resource_id: resourceId,
+          metadata: { setting: `facility.${resourceType}`, operation, ...payload },
+          created_at: new Date().toISOString(),
+        });
+      };
+
+      if (name === 'admin_create_location') {
+        const locationName = String(p.p_name || '').trim();
+        if (!locationName) {
+          return { data: null, error: { message: 'location name is required' } };
+        }
+        const location = {
+          id: mockId(),
+          organization_id: orgId,
+          name: locationName,
+          address: p.p_address || null,
+          lighting_available: Boolean(p.p_lighting_available),
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+        db.locations = db.locations || [];
+        db.locations.push(location);
+        audit('location', location.id, 'created', { current: location });
+        saveDB(db);
+        return { data: location, error: null };
+      }
+
+      const location = (db.locations || []).find(
+        (item) =>
+          String(item.id) === String(p.p_location_id) &&
+          String(item.organization_id) === String(orgId)
+      );
+      if (name !== 'admin_delete_field' && !location) {
+        return { data: null, error: { message: 'Location is outside organization' } };
+      }
+
+      if (name === 'admin_create_field') {
+        const fieldName = String(p.p_name || '').trim();
+        if (!fieldName) return { data: null, error: { message: 'field name is required' } };
+        const field = {
+          id: mockId(),
+          organization_id: orgId,
+          location_id: p.p_location_id,
+          name: fieldName,
+          surface_type: p.p_surface_type || null,
+          size: p.p_size || null,
+          supports_halves: Boolean(p.p_supports_halves),
+          priority_rating: p.p_priority_rating || 1,
+          active: p.p_active !== false,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+        db.fields = db.fields || [];
+        db.fields.push(field);
+        audit('field', field.id, 'created', { current: field });
+        saveDB(db);
+        return { data: field, error: null };
+      }
+
+      const field = (db.fields || []).find(
+        (item) =>
+          String(item.id) === String(p.p_field_id) && String(item.organization_id) === String(orgId)
+      );
+      if (!field) {
+        return { data: null, error: { message: 'Field not found in organization' } };
+      }
+
+      if (name === 'admin_update_field') {
+        const fieldName = String(p.p_name || '').trim();
+        if (!fieldName) return { data: null, error: { message: 'field name is required' } };
+        const previous = { ...field };
+        Object.assign(field, {
+          location_id: p.p_location_id,
+          name: fieldName,
+          surface_type: p.p_surface_type || null,
+          size: p.p_size || null,
+          supports_halves: Boolean(p.p_supports_halves),
+          priority_rating: p.p_priority_rating || 1,
+          active: p.p_active !== false,
+          updated_at: new Date().toISOString(),
+        });
+        audit('field', field.id, 'updated', { previous, current: field });
+        saveDB(db);
+        return { data: field, error: null };
+      }
+
+      db.fields = (db.fields || []).filter((item) => String(item.id) !== String(p.p_field_id));
+      audit('field', field.id, 'deleted', { previous: field });
+      saveDB(db);
+      return { data: { id: field.id, organization_id: orgId, deleted: true }, error: null };
     }
 
     if (

@@ -150,7 +150,7 @@ function AppContent() {
           <Route
             path="/fields"
             element={
-              <ProtectedRoute requiredPermission={PERMISSIONS.MANAGE_SCHEDULE}>
+              <ProtectedRoute requiredPermission={PERMISSIONS.MANAGE_ORGANIZATION}>
                 <FieldManagementPage />
               </ProtectedRoute>
             }
