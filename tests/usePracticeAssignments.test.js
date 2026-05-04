@@ -18,6 +18,7 @@ describe('usePracticeAssignments', () => {
     const { result } = renderHook(() => usePracticeAssignments(null));
     expect(result.current.assignments).toEqual([]);
     expect(result.current.loading).toBe(false);
+    expect(result.current).not.toHaveProperty('updateAssignmentSource');
   });
 
   it('fetches assignments from supabase when runId is provided', async () => {
