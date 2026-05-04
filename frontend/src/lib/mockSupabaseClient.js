@@ -1453,34 +1453,14 @@ export const mockSupabase = {
     }
 
     if (name === 'revoke_org_invite') {
-      const inviteId = params?.p_invite_id;
-      const orgId = params?.p_organization_id;
-      const invite = db.organization_invites?.find((row) => row.id === inviteId);
+      const { p_invite_id: inviteId, p_organization_id: orgId } = params || {};
+      const invite = db.organization_invites?.find(({ id }) => id === inviteId);
 
-      if (!invite || invite.organization_id !== orgId) {
-        return { data: null, error: { message: 'Invite was not found' } };
+      if (!invite || invite.organization_id !== orgId || invite.used_at) {
+        return { data: null, error: { message: 'Invite cannot be revoked' } };
       }
 
-      if (invite.used_at) {
-        return { data: null, error: { message: 'Invite has already been used' } };
-      }
-
-      db.organization_invites = db.organization_invites.filter((row) => row.id !== inviteId);
-      db.audit_log = db.audit_log || [];
-      db.audit_log.push({
-        id: mockId(),
-        organization_id: orgId,
-        action: 'settings.updated',
-        resource_type: 'organization_invite',
-        resource_id: inviteId,
-        metadata: {
-          setting: 'organization_invites',
-          operation: 'revoke',
-          invite_id: inviteId,
-          role: invite.role,
-        },
-        created_at: new Date().toISOString(),
-      });
+      db.organization_invites = db.organization_invites.filter(({ id }) => id !== inviteId);
       saveDB(db);
 
       return { data: inviteId, error: null };

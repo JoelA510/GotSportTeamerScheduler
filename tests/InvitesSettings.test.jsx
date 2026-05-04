@@ -50,6 +50,13 @@ describe('InvitesSettings', () => {
   });
 
   it('revokes active invites through the org-scoped RPC', async () => {
+    let resolveRpc = (_value) => {};
+    mocks.rpc.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveRpc = resolve;
+        })
+    );
     render(<InvitesSettings />);
 
     const revokeButton = await screen.findByRole('button', { name: 'Revoke invite' });
@@ -61,5 +68,9 @@ describe('InvitesSettings', () => {
         p_invite_id: 'invite-1',
       });
     });
+    expect(revokeButton).toBeDisabled();
+
+    resolveRpc({ data: 'invite-1', error: null });
+    await waitFor(() => expect(revokeButton).not.toBeDisabled());
   });
 });

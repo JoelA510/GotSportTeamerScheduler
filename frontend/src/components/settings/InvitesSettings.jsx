@@ -44,6 +44,7 @@ export default function InvitesSettings() {
   const [role, setRole] = useState('coach');
   const [expiresIn, setExpiresIn] = useState('7 days');
   const [creating, setCreating] = useState(false);
+  const [revokingId, setRevokingId] = useState(null);
   const [createError, setCreateError] = useState(null);
   const [justCreated, setJustCreated] = useState(null);
   const [copiedKey, setCopiedKey] = useState(null);
@@ -103,8 +104,9 @@ export default function InvitesSettings() {
   };
 
   const handleRevoke = async (id) => {
-    if (!orgId) return;
+    if (!orgId || revokingId) return;
     setFetchError(null);
+    setRevokingId(id);
     try {
       const { error } = await supabase.rpc('revoke_org_invite', {
         p_organization_id: orgId,
@@ -115,6 +117,8 @@ export default function InvitesSettings() {
     } catch (err) {
       logger.error('Failed to revoke invite', err);
       setFetchError(err);
+    } finally {
+      setRevokingId(null);
     }
   };
 
@@ -317,11 +321,12 @@ export default function InvitesSettings() {
                       variant="ghost"
                       size="sm"
                       onClick={() => handleRevoke(inv.id)}
+                      disabled={revokingId === inv.id}
                       className="flex items-center gap-1 text-red-400 hover:text-red-300"
                       aria-label="Revoke invite"
                     >
                       <Trash2 size={14} />
-                      Revoke
+                      {revokingId === inv.id ? 'Revoking...' : 'Revoke'}
                     </Button>
                   </div>
                 )}
