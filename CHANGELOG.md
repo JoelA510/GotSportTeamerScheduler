@@ -51,6 +51,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- Removed tracked Supabase CLI temp metadata from `supabase/.temp/`; the directory was already ignored and should remain local-only.
 - Removed the legacy `current_user_role()` helper after confirming current RLS/RPC code uses org-scoped auth helpers.
 - Removed the legacy four-argument `persist_evaluation_run` RPC overload, leaving the JSONB evaluation persistence contract used by Edge Functions.
 - Removed an unused direct `practice_assignments` update helper from the practice assignments hook.
