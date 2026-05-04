@@ -59,6 +59,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Documentation
 
 - Added the Edge Function budget runbook covering cost, dependency, logging, rate-limit, and review guardrails.
+- Recorded live Supabase advisor evidence in release prep: production currently has WARN-level security advisor findings that must be remediated or accepted before final release sign-off.
 - Refreshed release-prep and architecture evidence after the latest RPC cleanup PRs, including current `main`, migration inventory, pgTAP inventory, branch-protection evidence, and Vercel preview/production deployment distinctions.
 - Clarified that GotSport CSV import validation, durable player promotion, coach CSV, field-slot, buddy-pair materialization, and player-import coach lead capture are shipped, while team import promotion remains pending v1.1 work.
 - Added release-prep closure documentation covering current Vercel evidence, Node runtime drift, Lighthouse/performance deferrals, cleanup secrets, Sentry verification, and final sign-off blockers.
