@@ -1,10 +1,9 @@
-## [← Back to Documentation Index](../README.md)
+[← Back to Documentation Index](../README.md)
 
 # Release Prep Closure
 
 **Last refreshed:** 2026-05-04
-**Status:** Code-completable release-prep hardening is current through PR #262;
-not a final release sign-off.
+**Status:** Code-completable release-prep hardening is current through PR #262; not a final release sign-off.
 
 This page closes the current release-prep documentation drift. It does not
 replace the final review-pass sign-off, and it does not claim production
