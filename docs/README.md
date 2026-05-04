@@ -37,6 +37,7 @@
 - [Ingestion Pipeline](operations/ingestion-pipeline.md) — GotSport CSV import flow end-to-end.
 - [Advisor Lint](operations/advisor-lint.md) — Static migration security gate (Wave 6a Task 2).
 - [Bundle Budget](operations/bundle-budget.md) — Frontend asset-size budget and enforcement.
+- [Edge Function Budget](operations/edge-function-budget.md) — Supabase Edge Function cost, dependency, logging, and review guardrails.
 - [Leaked-Password Protection](operations/leaked-password-protection.md) — Supabase Auth HIBP integration.
 - [Sentry Smoke Test](operations/sentry-smoke.md) — Sentry integration runbook and verification.
 
