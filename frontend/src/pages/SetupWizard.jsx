@@ -20,6 +20,7 @@ import { supabase } from '../lib/supabaseClient.js';
 import { logger } from '../lib/logger.js';
 import BrandingModule from '../components/settings/modules/BrandingModule.jsx';
 import { createWebCryptoId } from '../utils/webCryptoId.js';
+import { logSetupWizardTelemetry } from '../utils/setupTelemetry.js';
 
 /**
  * Premium Error Banner for critical setup failures.
@@ -95,16 +96,15 @@ export default function SetupWizard() {
   }, [organizations, orgLoading, navigate]);
 
   const logTelemetry = async (eventType, payload = {}) => {
-    try {
-      await supabase.from('telemetry_log').insert({
-        org_id: currentOrganization?.id,
-        session_id: sessionId,
-        event_type: eventType,
-        payload: { ...payload, step },
-      });
-    } catch (err) {
-      logger.error('Telemetry failed', err);
-    }
+    await logSetupWizardTelemetry({
+      supabaseClient: supabase,
+      organizationId: currentOrganization?.id,
+      eventType,
+      sessionId,
+      payload,
+      step,
+      logger,
+    });
   };
 
   const handleNext = () => {
