@@ -16,12 +16,12 @@ The current function inventory is:
 
 | Function | Budget Class | Expected Shape |
 | --- | --- | --- |
-| `team-persistence` | Thin write wrapper | Authenticate, validate, rate-limit, call `persist_team_schedule`, audit. |
-| `practice-persistence` | Thin write wrapper | Authenticate, validate, rate-limit, call `persist_practice_schedule`, audit. |
-| `game-persistence` | Thin write wrapper | Authenticate, validate, rate-limit, call `persist_game_schedule`, audit. |
+| `team-persistence` | Thin write wrapper | Authenticate, validate, rate-limit, org-scope check, call `persist_team_schedule`, audit. |
+| `practice-persistence` | Thin write wrapper | Authenticate, validate, rate-limit, org-scope check, call `persist_practice_schedule`, audit. |
+| `game-persistence` | Thin write wrapper | Authenticate, validate, rate-limit, org-scope check, call `persist_game_schedule`, audit. |
 | `import-validation` | Validation and staging | Chunked CSV validation, capped rows/fields, staging writes. |
 | `fairness-scoring` | CPU-bound scoring | Score one submitted schedule and optionally persist evaluation output. |
-| `auto-scheduler` | Long-running CPU work | Hill-climbing loop with explicit wall-clock cap and progress events. |
+| `auto-scheduler` | Long-running CPU work | Hill-climbing loop with explicit wall-clock cap, periodic yielding, and progress events. |
 | `calendar-feed` | Token-based public read | Generate one team calendar feed from a valid expiring token. |
 
 ## Guardrails
@@ -33,7 +33,7 @@ Use these limits when changing an existing function or adding a new one:
 | Thin persistence functions | Single RPC call plus audit | Move branching database work into the RPC before adding Edge Function logic. |
 | Request payloads | Explicit Zod/schema validation and size caps | Add a documented cap before accepting new arrays or free-form objects. |
 | Rate limiting | Per-user `checkRateLimit()` for authenticated functions | New public functions need a token or gateway-level abuse story in the PR. |
-| Wall-clock work | Return quickly unless the function is explicitly CPU-bound | Long loops need a hard cap, progress behavior, and cancel/failure semantics. |
+| Wall-clock work | Return quickly unless the function is explicitly CPU-bound | Long loops need a hard cap (max 140s), progress behavior, cancel/failure semantics, and periodic yielding. |
 | Dependencies | Reuse `import_map.json`; prefer pinned small imports | Justify any new heavyweight dependency in the PR body. |
 | Logging | Structured, metadata-only logs | Do not log raw CSV rows, medical data, names, emails, tokens, or full URLs. |
 
