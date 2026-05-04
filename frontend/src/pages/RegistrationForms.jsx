@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabaseClient.js';
+import { IS_MOCK_MODE } from '../config.js';
 import { useOrganization } from '../contexts/OrganizationContext.jsx';
 import { useAuth } from '../contexts/AuthContext.jsx';
 import Button from '../components/ui/Button.jsx';
@@ -83,35 +84,44 @@ export default function RegistrationForms() {
     }
     setSaving(true);
     try {
-      const { error } = await supabase.from('registration_forms').insert([
-        {
-          ...editingForm,
-          organization_id: currentOrganization.id,
-          status: 'active',
-        },
-      ]);
+      const auditMetadata = {
+        ...(isImpersonating && {
+          target_user_id: user.profile.id,
+          impersonated_by: user.id,
+          admin_email: user.email,
+        }),
+      };
+      const { data, error } = await supabase.rpc('admin_create_registration_form', {
+        p_organization_id: currentOrganization.id,
+        p_title: editingForm.title,
+        p_description: editingForm.description || null,
+        p_season_id: editingForm.season_id || null,
+        p_fields: editingForm.fields,
+        p_status: 'open',
+        p_metadata: auditMetadata,
+      });
       if (error) throw error;
 
-      // Audit form creation
-      await supabase.rpc('record_audit_event', {
-        p_organization_id: currentOrganization.id,
-        p_action: 'registration.form_created',
-        p_metadata: {
-          title: editingForm.title,
-          season_id: editingForm.season_id,
-          field_count: editingForm.fields.length,
-          ...(isImpersonating && {
-            target_user_id: user.profile.id,
-            impersonated_by: user.id,
-            admin_email: user.email,
-          }),
-        },
-      });
+      const savedForm =
+        data ||
+        (IS_MOCK_MODE
+          ? {
+              id: `mock-form-${Date.now()}`,
+              ...editingForm,
+              organization_id: currentOrganization.id,
+              status: 'open',
+              created_at: new Date().toISOString(),
+            }
+          : null);
 
       setMessage({ type: 'success', text: 'Form saved successfully!' });
       setTimeout(() => {
         setShowEditor(false);
-        loadForms();
+        if (IS_MOCK_MODE && savedForm) {
+          setForms((prev) => [savedForm, ...prev]);
+        } else {
+          loadForms();
+        }
         setMessage(null);
       }, 1500);
     } catch (err) {
