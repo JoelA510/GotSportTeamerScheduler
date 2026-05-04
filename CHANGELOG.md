@@ -49,6 +49,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Made import file-picker and completion notification controls keyboard focusable with explicit screen-reader labels and pressed/checkbox state.
 - Made import smart-mapping confidence tooltips keyboard focusable and screen-reader described instead of hover-only.
 
+### Removed
+
+- Removed an unused direct `practice_assignments` update helper from the practice assignments hook.
+
 ### Documentation
 
 - Clarified that GotSport CSV import validation, durable player promotion, coach CSV, field-slot, buddy-pair materialization, and player-import coach lead capture are shipped, while team import promotion remains pending v1.1 work.

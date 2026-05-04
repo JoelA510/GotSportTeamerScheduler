@@ -61,25 +61,5 @@ export function usePracticeAssignments(runId) {
     fetchAssignments();
   }, [runId]);
 
-  const updateAssignmentSource = async (assignmentId, newSource) => {
-    try {
-      const { error: updateError } = await supabase
-        .from('practice_assignments')
-        .update({ source: newSource })
-        .eq('id', assignmentId);
-
-      if (updateError) throw updateError;
-
-      // Update local state
-      setAssignments((prev) =>
-        prev.map((a) => (a.id === assignmentId ? { ...a, source: newSource } : a))
-      );
-    } catch (err) {
-      logger.error('Error updating assignment source:', err);
-      setError(err);
-      throw err;
-    }
-  };
-
-  return { assignments, loading, error, updateAssignmentSource };
+  return { assignments, loading, error };
 }
