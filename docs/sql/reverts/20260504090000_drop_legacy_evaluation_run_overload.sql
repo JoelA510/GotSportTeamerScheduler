@@ -28,7 +28,8 @@ BEGIN
     WHERE organization_id = p_org_id
       AND profile_id = auth.uid()
   ) THEN
-    RAISE EXCEPTION 'Not authorized: User is not a member of organization %', p_org_id;
+    RAISE EXCEPTION 'Access denied: user is not a member of organization %', p_org_id
+      USING ERRCODE = '42501';
   END IF;
 
   INSERT INTO public.evaluation_runs (
