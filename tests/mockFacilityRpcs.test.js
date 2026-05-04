@@ -78,6 +78,22 @@ describe('mock facility admin rpcs', () => {
     expect(roleError?.message).toContain('Admin role is required');
 
     setMockSession('mock-admin-id');
+    const { data: location } = await supabase.rpc('admin_create_location', {
+      p_organization_id: 'org-1',
+      p_name: 'Priority Park',
+    });
+    const { error: priorityError } = await supabase.rpc('admin_create_field', {
+      p_organization_id: 'org-1',
+      p_location_id: location.id,
+      p_name: 'Bad Priority Field',
+      p_surface_type: 'Grass',
+      p_size: '11v11',
+      p_supports_halves: false,
+      p_priority_rating: 0,
+      p_active: true,
+    });
+    expect(priorityError?.message).toContain('priority_rating must be at least 1');
+
     const { error: scopeError } = await supabase.rpc('admin_create_field', {
       p_organization_id: 'org-1',
       p_location_id: 'missing-location',

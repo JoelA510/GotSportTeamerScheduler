@@ -1640,6 +1640,10 @@ export const mockSupabase = {
       if (name === 'admin_create_field') {
         const fieldName = String(p.p_name || '').trim();
         if (!fieldName) return { data: null, error: { message: 'field name is required' } };
+        const priorityRating = p.p_priority_rating ?? 1;
+        if (priorityRating < 1) {
+          return { data: null, error: { message: 'priority_rating must be at least 1' } };
+        }
         const field = {
           id: mockId(),
           organization_id: orgId,
@@ -1648,7 +1652,7 @@ export const mockSupabase = {
           surface_type: p.p_surface_type || null,
           size: p.p_size || null,
           supports_halves: Boolean(p.p_supports_halves),
-          priority_rating: p.p_priority_rating || 1,
+          priority_rating: priorityRating,
           active: p.p_active !== false,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
@@ -1671,6 +1675,10 @@ export const mockSupabase = {
       if (name === 'admin_update_field') {
         const fieldName = String(p.p_name || '').trim();
         if (!fieldName) return { data: null, error: { message: 'field name is required' } };
+        const priorityRating = p.p_priority_rating ?? 1;
+        if (priorityRating < 1) {
+          return { data: null, error: { message: 'priority_rating must be at least 1' } };
+        }
         const previous = { ...field };
         Object.assign(field, {
           location_id: p.p_location_id,
@@ -1678,7 +1686,7 @@ export const mockSupabase = {
           surface_type: p.p_surface_type || null,
           size: p.p_size || null,
           supports_halves: Boolean(p.p_supports_halves),
-          priority_rating: p.p_priority_rating || 1,
+          priority_rating: priorityRating,
           active: p.p_active !== false,
           updated_at: new Date().toISOString(),
         });

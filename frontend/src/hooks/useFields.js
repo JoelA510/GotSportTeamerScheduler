@@ -68,7 +68,7 @@ export function useFields() {
     });
 
     if (insertError) throw insertError;
-    setLocations((prev) => [...prev, data]);
+    await fetchLocationsAndFields();
     return data;
   };
 
