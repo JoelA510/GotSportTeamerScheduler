@@ -7,10 +7,18 @@
  * the Supabase JS client API surface used by SquadLogic's hooks and pages.
  */
 import { logger } from './logger.js';
-import { HEADER_ALIASES } from '../utils/telemetryUtils.js';
+import { HEADER_ALIASES, RESERVED_KEYS } from '../utils/telemetryUtils.js';
 
 const mockId = (prefix = '') =>
   prefix + (crypto.randomUUID?.() || crypto.getRandomValues(new Uint32Array(4)).join('-'));
+const SCHEMA_ENTITIES = new Set(['player', 'coach', 'team']);
+const SCHEMA_VALUE_TYPES = new Set(['string', 'number', 'boolean', 'date']);
+const stableSchemaKey = (schema) =>
+  JSON.stringify(
+    Object.keys(schema || {})
+      .sort()
+      .map((key) => [key, schema[key]])
+  );
 
 // ── Mock Data Seed ──────────────────────────────────────────────────────────
 const initialMockData = {
@@ -1334,23 +1342,23 @@ export const mockSupabase = {
       const userId = storedSession ? JSON.parse(storedSession)?.user?.id : 'mock-admin-id';
 
       if (!userId) {
-        return { data: null, error: { message: 'Auth required' } };
+        return { data: null, error: { message: 'User authentication is required' } };
       }
       if (!p_name || typeof p_name !== 'string' || !p_name.trim()) {
-        return { data: null, error: { message: 'Name required' } };
+        return { data: null, error: { message: 'Organization name is required' } };
       }
       if (
         !p_slug ||
         typeof p_slug !== 'string' ||
         !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(p_slug.trim())
       ) {
-        return { data: null, error: { message: 'Invalid slug' } };
+        return { data: null, error: { message: 'Organization slug format is invalid' } };
       }
       if (!p_timezone || typeof p_timezone !== 'string' || !p_timezone.trim()) {
-        return { data: null, error: { message: 'Timezone required' } };
+        return { data: null, error: { message: 'Organization timezone is required' } };
       }
       if (!Number.isInteger(p_season_year) || p_season_year < 2000 || p_season_year > 3000) {
-        return { data: null, error: { message: 'Invalid year' } };
+        return { data: null, error: { message: 'Season year must be between 2000 and 3000' } };
       }
 
       const normalizedSlug = p_slug.trim();
@@ -1466,26 +1474,99 @@ export const mockSupabase = {
       return { data: inviteId, error: null };
     }
 
-    if (name === 'admin_upsert_organization_schema') {
+    if (
+      (import.meta.env.DEV || import.meta.env.VITE_USE_MOCK_SUPABASE === 'true') &&
+      name === 'admin_upsert_organization_schema'
+    ) {
       const p = params || {};
+      const entityType = String(p.p_entity_type || '')
+        .trim()
+        .toLowerCase();
+      const session =
+        typeof window !== 'undefined'
+          ? JSON.parse(sessionStorage.getItem('__MOCK_SESSION__') || 'null')
+          : null;
+      const member = (db.organization_members || []).find(
+        (item) =>
+          String(item.organization_id) === String(p.p_organization_id) &&
+          String(item.profile_id) === String(session?.user?.id)
+      );
+
+      if (!['admin', 'tenant_admin'].includes(String(member?.role || ''))) {
+        return { data: null, error: { message: 'Admin role is required' } };
+      }
+      if (!SCHEMA_ENTITIES.has(entityType)) {
+        return { data: null, error: { message: `Invalid schema entity type: ${p.p_entity_type}` } };
+      }
+      if (
+        !p.p_schema_definition ||
+        Array.isArray(p.p_schema_definition) ||
+        typeof p.p_schema_definition !== 'object'
+      ) {
+        return { data: null, error: { message: 'Schema definition must be a JSON object' } };
+      }
+
+      const normalized = {};
+      for (const [fieldName, rawType] of Object.entries(p.p_schema_definition)) {
+        if (!String(fieldName).trim()) {
+          return { data: null, error: { message: 'Schema field names must not be blank' } };
+        }
+        if (RESERVED_KEYS.has(fieldName)) {
+          return { data: null, error: { message: `Schema field ${fieldName} is reserved` } };
+        }
+        if (typeof rawType !== 'string') {
+          return { data: null, error: { message: `Schema field ${fieldName} must map to text` } };
+        }
+        const fieldType = rawType.trim().toLowerCase();
+        if (!SCHEMA_VALUE_TYPES.has(fieldType)) {
+          return {
+            data: null,
+            error: { message: `Schema field ${fieldName} has unsupported type ${fieldType}` },
+          };
+        }
+        normalized[fieldName] = fieldType;
+      }
+
       const rows = db.organization_schemas || (db.organization_schemas = []);
       let row = rows.find(
         (item) =>
-          item.organization_id === p.p_organization_id && item.entity_type === p.p_entity_type
+          String(item.organization_id) === String(p.p_organization_id) &&
+          String(item.entity_type) === entityType
       );
+      let changed = true;
 
       if (!row) {
         row = {
           id: mockId(),
           organization_id: p.p_organization_id,
-          entity_type: p.p_entity_type,
+          entity_type: entityType,
         };
         rows.push(row);
+      } else {
+        changed = stableSchemaKey(row.schema_definition) !== stableSchemaKey(normalized);
       }
-      row.schema_definition = p.p_schema_definition || {};
+      row.schema_definition = normalized;
+
+      if (changed) {
+        db.audit_log = db.audit_log || [];
+        db.audit_log.push({
+          id: mockId(),
+          organization_id: p.p_organization_id,
+          user_id: session?.user?.id,
+          action: 'settings.updated',
+          resource_type: 'organization_schema',
+          resource_id: row.id,
+          metadata: {
+            setting: 'organization_schema',
+            entity_type: entityType,
+            current: normalized,
+          },
+          created_at: new Date().toISOString(),
+        });
+      }
       saveDB(db);
 
-      return { data: row, error: null };
+      return { data: { ...row, changed }, error: null };
     }
 
     if (
@@ -1527,7 +1608,7 @@ export const mockSupabase = {
     if (name === 'fail_stale_import_jobs') {
       const { p_organization_id, p_stale_before } = params || {};
       if (!p_organization_id) {
-        return { data: null, error: { message: 'org required' } };
+        return { data: null, error: { message: 'Organization id is required' } };
       }
 
       const staleBefore = p_stale_before
@@ -1552,7 +1633,7 @@ export const mockSupabase = {
           last_heartbeat_at: heartbeat.toISOString(),
           stale_before: staleBefore.toISOString(),
           failed_at: now,
-          message: 'stale import failed',
+          message: 'Import job heartbeat expired and was marked failed for retry',
         };
 
         job.status = 'failed';
@@ -1677,7 +1758,7 @@ export const mockSupabase = {
       if (!['coaches', 'fields'].includes(importType)) {
         return {
           data: null,
-          error: { message: 'unsupported import type' },
+          error: { message: 'Only coach and field imports support deferred apply' },
         };
       }
       if (importType === 'coaches' && job.job_type !== 'registration') {
@@ -1741,7 +1822,7 @@ export const mockSupabase = {
       if (!['coaches', 'fields'].includes(importType)) {
         return {
           data: null,
-          error: { message: 'unsupported import type' },
+          error: { message: 'Only coach and field imports support deferred cancellation' },
         };
       }
       if (job.status !== 'ready_to_apply') {
@@ -2156,7 +2237,7 @@ export const mockSupabase = {
           invalidRows += 1;
           row.validation_errors = [
             {
-              message: 'invalid coach row',
+              message: 'Coach row is missing full_name/email or has an invalid status',
               source_row_number: row.source_row_number,
             },
           ];
@@ -2170,7 +2251,7 @@ export const mockSupabase = {
           crossOrgConflictRows += 1;
           row.validation_errors = [
             {
-              message: 'duplicate coach email',
+              message: 'Coach email already belongs to another organization',
               source_row_number: row.source_row_number,
             },
           ];
@@ -2316,7 +2397,7 @@ export const mockSupabase = {
       if (records.length === 0) {
         return {
           data: null,
-          error: { message: 'no coach rollback records' },
+          error: { message: 'Import job has no coach application records to roll back' },
         };
       }
 
@@ -2454,7 +2535,7 @@ export const mockSupabase = {
           invalidRows += 1;
           row.validation_errors = [
             {
-              message: 'invalid field row',
+              message: 'Field row is missing required location/field/slot data or slot window',
               source_row_number: row.source_row_number,
             },
           ];
@@ -2633,7 +2714,7 @@ export const mockSupabase = {
       if (records.length === 0) {
         return {
           data: null,
-          error: { message: 'no field rollback records' },
+          error: { message: 'Import job has no field application records to roll back' },
         };
       }
 
@@ -2760,7 +2841,7 @@ export const mockSupabase = {
         ) {
           return {
             data: null,
-            error: { message: 'invalid division scope' },
+            error: { message: 'Coach lead references a division outside its organization' },
           };
         }
 
@@ -2774,7 +2855,7 @@ export const mockSupabase = {
         ) {
           return {
             data: null,
-            error: { message: 'invalid player scope' },
+            error: { message: 'Coach lead references a player outside its organization' },
           };
         }
       }
@@ -2862,7 +2943,7 @@ export const mockSupabase = {
           String(item.profile_id) === String(session?.user?.id)
       );
       if (!['admin', 'tenant_admin'].includes(String(member?.role || ''))) {
-        return { data: null, error: { message: 'admin required' } };
+        return { data: null, error: { message: 'Access denied: admin role required' } };
       }
 
       const coach = (db.coaches || []).find(
@@ -2935,7 +3016,7 @@ export const mockSupabase = {
           String(item.profile_id) === String(session?.user?.id)
       );
       if (!['admin', 'tenant_admin'].includes(String(member?.role || ''))) {
-        return { data: null, error: { message: 'admin required' } };
+        return { data: null, error: { message: 'Access denied: admin role required' } };
       }
 
       const team = (db.teams || []).find(
