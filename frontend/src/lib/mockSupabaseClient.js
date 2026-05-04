@@ -268,7 +268,7 @@ const initialMockData = {
       updated_at: new Date().toISOString(),
     },
   ],
-  locations: [{ id: 'loc-1', name: 'Central Park' }],
+  locations: [{ id: 'loc-1', organization_id: 'org-1', name: 'Central Park' }],
   fields: [
     {
       id: 'v1',
@@ -623,6 +623,37 @@ const saveDB = (db) => {
     window.__MOCK_DB__ = db;
     sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
   }
+};
+
+const syncMockFieldSubunits = (db, field, supportsHalves) => {
+  db.field_subunits = db.field_subunits || [];
+
+  if (supportsHalves) {
+    ['A', 'B'].forEach((label) => {
+      const exists = db.field_subunits.some(
+        (subunit) =>
+          String(subunit.field_id) === String(field.id) && String(subunit.label) === label
+      );
+      if (exists) return;
+
+      const subunit = {
+        id: `sub-${field.id}-${label.toLowerCase()}`,
+        field_id: field.id,
+        label,
+        organization_id: field.organization_id || 'org-1',
+      };
+      db.field_subunits.push(subunit);
+      triggerRealtimeEvent('field_subunits', 'INSERT', { new: subunit, old: null });
+    });
+    return;
+  }
+
+  db.field_subunits = db.field_subunits.filter((subunit) => {
+    if (String(subunit.field_id) !== String(field.id)) return true;
+
+    triggerRealtimeEvent('field_subunits', 'DELETE', { new: null, old: subunit });
+    return false;
+  });
 };
 
 // Initial state load
@@ -1567,6 +1598,141 @@ export const mockSupabase = {
       saveDB(db);
 
       return { data: { ...row, changed }, error: null };
+    }
+
+    if (
+      (import.meta.env.DEV || import.meta.env.VITE_USE_MOCK_SUPABASE === 'true') &&
+      [
+        'admin_create_location',
+        'admin_create_field',
+        'admin_update_field',
+        'admin_delete_field',
+      ].includes(name)
+    ) {
+      const p = params || {};
+      const orgId = p.p_organization_id;
+      const session =
+        typeof window !== 'undefined'
+          ? JSON.parse(sessionStorage.getItem('__MOCK_SESSION__') || 'null')
+          : null;
+      const member = (db.organization_members || []).find(
+        (item) =>
+          String(item.organization_id) === String(orgId) &&
+          String(item.profile_id) === String(session?.user?.id)
+      );
+      if (!['admin', 'tenant_admin'].includes(String(member?.role || ''))) {
+        return { data: null, error: { message: 'Admin role is required' } };
+      }
+
+      const audit = (resourceType, resourceId, operation, payload) => {
+        db.audit_log = db.audit_log || [];
+        db.audit_log.push({
+          id: mockId(),
+          organization_id: orgId,
+          user_id: session?.user?.id,
+          action: 'settings.updated',
+          resource_type: resourceType,
+          resource_id: resourceId,
+          metadata: { setting: `facility.${resourceType}`, operation, ...payload },
+          created_at: new Date().toISOString(),
+        });
+      };
+
+      if (name === 'admin_create_location') {
+        const locationName = String(p.p_name || '').trim();
+        if (!locationName) {
+          return { data: null, error: { message: 'location name is required' } };
+        }
+        const location = {
+          id: mockId(),
+          organization_id: orgId,
+          name: locationName,
+          address: p.p_address || null,
+          lighting_available: Boolean(p.p_lighting_available),
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+        db.locations = db.locations || [];
+        db.locations.push(location);
+        audit('location', location.id, 'created', { current: location });
+        saveDB(db);
+        return { data: location, error: null };
+      }
+
+      const location = (db.locations || []).find(
+        (item) =>
+          String(item.id) === String(p.p_location_id) &&
+          String(item.organization_id) === String(orgId)
+      );
+      if (name !== 'admin_delete_field' && !location) {
+        return { data: null, error: { message: 'Location is outside organization' } };
+      }
+
+      if (name === 'admin_create_field') {
+        const fieldName = String(p.p_name || '').trim();
+        if (!fieldName) return { data: null, error: { message: 'field name is required' } };
+        const priorityRating = p.p_priority_rating ?? 1;
+        if (priorityRating < 1) {
+          return { data: null, error: { message: 'priority_rating must be at least 1' } };
+        }
+        const field = {
+          id: mockId(),
+          organization_id: orgId,
+          location_id: p.p_location_id,
+          name: fieldName,
+          surface_type: p.p_surface_type || null,
+          size: p.p_size || null,
+          supports_halves: Boolean(p.p_supports_halves),
+          priority_rating: priorityRating,
+          active: p.p_active !== false,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+        db.fields = db.fields || [];
+        db.fields.push(field);
+        syncMockFieldSubunits(db, field, field.supports_halves);
+        audit('field', field.id, 'created', { current: field });
+        saveDB(db);
+        return { data: field, error: null };
+      }
+
+      const field = (db.fields || []).find(
+        (item) =>
+          String(item.id) === String(p.p_field_id) && String(item.organization_id) === String(orgId)
+      );
+      if (!field) {
+        return { data: null, error: { message: 'Field not found in organization' } };
+      }
+
+      if (name === 'admin_update_field') {
+        const fieldName = String(p.p_name || '').trim();
+        if (!fieldName) return { data: null, error: { message: 'field name is required' } };
+        const priorityRating = p.p_priority_rating ?? 1;
+        if (priorityRating < 1) {
+          return { data: null, error: { message: 'priority_rating must be at least 1' } };
+        }
+        const previous = { ...field };
+        Object.assign(field, {
+          location_id: p.p_location_id,
+          name: fieldName,
+          surface_type: p.p_surface_type || null,
+          size: p.p_size || null,
+          supports_halves: Boolean(p.p_supports_halves),
+          priority_rating: priorityRating,
+          active: p.p_active !== false,
+          updated_at: new Date().toISOString(),
+        });
+        syncMockFieldSubunits(db, field, field.supports_halves);
+        audit('field', field.id, 'updated', { previous, current: field });
+        saveDB(db);
+        return { data: field, error: null };
+      }
+
+      syncMockFieldSubunits(db, field, false);
+      db.fields = (db.fields || []).filter((item) => String(item.id) !== String(p.p_field_id));
+      audit('field', field.id, 'deleted', { previous: field });
+      saveDB(db);
+      return { data: { id: field.id, organization_id: orgId, deleted: true }, error: null };
     }
 
     if (
