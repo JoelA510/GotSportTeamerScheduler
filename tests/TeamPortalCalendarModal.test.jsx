@@ -1,6 +1,6 @@
 import React from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CalendarModal } from '../frontend/src/pages/TeamPortalPage.jsx';
 
 const mocks = vi.hoisted(() => ({
@@ -13,9 +13,19 @@ vi.mock('../frontend/src/lib/supabaseClient.js', () => ({
   },
 }));
 
+const originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+
 describe('CalendarModal', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    if (originalClipboard) {
+      Object.defineProperty(navigator, 'clipboard', originalClipboard);
+    } else {
+      Reflect.deleteProperty(navigator, 'clipboard');
+    }
   });
 
   it('does not fabricate a mock calendar token when a team has no token', () => {
@@ -61,5 +71,27 @@ describe('CalendarModal', () => {
     );
     expect(screen.getByText(/New link generated/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Copy Link' })).toBeEnabled();
+  });
+
+  it('catches rejected clipboard copy attempts', async () => {
+    const writeText = vi.fn(() => Promise.reject(new Error('permission denied')));
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    });
+
+    render(
+      <CalendarModal
+        team={{ id: 'team-1', calendar_token: 'secure-calendar-token' }}
+        onClose={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Copy Link' }));
+
+    expect(writeText).toHaveBeenCalledWith(
+      'webcal://localhost:3000/functions/v1/calendar-feed?token=secure-calendar-token'
+    );
+    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
   });
 });

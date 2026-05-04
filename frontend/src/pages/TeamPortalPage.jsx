@@ -392,7 +392,7 @@ export function CalendarModal({ team, onClose }) {
               variant="primary"
               disabled={!calendarToken}
               onClick={() => {
-                if (calendarUrl) navigator.clipboard.writeText(calendarUrl);
+                if (calendarUrl) navigator.clipboard?.writeText(calendarUrl).catch(() => {});
               }}
             >
               Copy Link
