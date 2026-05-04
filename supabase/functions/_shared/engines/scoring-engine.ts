@@ -1,5 +1,4 @@
-// @ts-expect-error [Deno] .ts extension required for Edge Functions
-import { Team, Slot, PracticeAssignment, GameAssignment } from '../schemas/scoring.ts';
+import type { Team, Slot, PracticeAssignment, GameAssignment } from '../schemas/scoring.ts';
 
 export type Severity = 'info' | 'warning' | 'error';
 
