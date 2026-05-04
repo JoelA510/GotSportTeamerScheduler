@@ -14,10 +14,10 @@ LANGUAGE sql
 STABLE
 SET search_path = public
 AS $$
-  SELECT nullif(current_setting('request.jwt.claim.role', true), '')::text;
+  SELECT (current_setting('request.jwt.claims', true)::jsonb ->> 'role')::text;
 $$;
 
-GRANT EXECUTE ON FUNCTION public.current_user_role() TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.current_user_role() TO authenticated;
 
 COMMENT ON FUNCTION public.current_user_role() IS
   'Legacy JWT role helper restored by rollback. Current code should prefer is_org_member/is_org_admin.';
