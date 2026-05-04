@@ -6,6 +6,15 @@ import { PERMISSIONS, hasPermission } from '../constants/permissions.js';
 import { Trophy, CheckCircle2 } from 'lucide-react';
 import { logger } from '../lib/logger.js';
 
+const parseScoreInput = (score) => {
+  if (score === '' || score === null || score === undefined) return null;
+  const parsed = parseInt(score, 10);
+  return Number.isNaN(parsed) ? null : parsed;
+};
+
+const getRpcScore = (data, key, fallback) =>
+  data && Object.prototype.hasOwnProperty.call(data, key) ? data[key] : fallback;
+
 export default function LeagueStandings() {
   const { user, isImpersonating } = useAuth();
   const { currentOrganization, orgMember } = useOrganization();
@@ -67,21 +76,38 @@ export default function LeagueStandings() {
   }, [currentOrganization?.id]);
 
   const handleScoreUpdate = async (gameId, homeScore, awayScore) => {
+    if (!currentOrganization?.id) return;
     try {
       setUpdatingGameId(gameId);
-      const hScore = homeScore === '' ? null : parseInt(homeScore, 10);
-      const aScore = awayScore === '' ? null : parseInt(awayScore, 10);
+      const hScore = parseScoreInput(homeScore);
+      const aScore = parseScoreInput(awayScore);
 
-      const { error } = await supabase
-        .from('games')
-        .update({ score_home: hScore, score_away: aScore })
-        .eq('id', gameId);
+      const { data, error } = await supabase.rpc('update_game_score', {
+        p_organization_id: currentOrganization.id,
+        p_game_id: gameId,
+        p_score_home: hScore,
+        p_score_away: aScore,
+        p_metadata: {
+          ...(isImpersonating && {
+            target_user_id: user.profile.id,
+            impersonated_by: user.id,
+            admin_email: user.email,
+          }),
+        },
+      });
 
       if (error) throw error;
 
+      const persistedHomeScore = getRpcScore(data, 'score_home', hScore);
+      const persistedAwayScore = getRpcScore(data, 'score_away', aScore);
+
       // Update local game state
       setGames((prev) =>
-        prev.map((g) => (g.id === gameId ? { ...g, score_home: hScore, score_away: aScore } : g))
+        prev.map((g) =>
+          g.id === gameId
+            ? { ...g, score_home: persistedHomeScore, score_away: persistedAwayScore }
+            : g
+        )
       );
 
       // Refresh Standings View since data changed
@@ -94,22 +120,6 @@ export default function LeagueStandings() {
         .order('goal_differential', { ascending: false });
 
       if (standingsData) setStandings(standingsData);
-
-      // Audit score update
-      await supabase.rpc('record_audit_event', {
-        p_organization_id: currentOrganization?.id,
-        p_action: 'competition.score_updated',
-        p_metadata: {
-          game_id: gameId,
-          score_home: hScore,
-          score_away: aScore,
-          ...(isImpersonating && {
-            target_user_id: user.profile.id,
-            impersonated_by: user.id,
-            admin_email: user.email,
-          }),
-        },
-      });
     } catch (err) {
       logger.error(err);
       alert('Failed to update score.');
