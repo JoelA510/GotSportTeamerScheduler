@@ -477,51 +477,57 @@ export default function TeamAnalysisPage() {
       }
 
       try {
-        const divisionQuery = existingRow?.id
-          ? supabase.from('divisions').update(payload).eq('id', existingRow.id)
-          : supabase.from('divisions').upsert(payload, { onConflict: 'season_settings_id,name' });
-
-        const { data, error } = await divisionQuery
-          .select(
-            `
-            id,
-            organization_id,
-            season_settings_id,
-            name,
-            max_roster_size,
-            min_roster_size,
-            target_team_size,
-            team_count_override,
-            min_teams,
-            max_teams
-          `
-          )
-          .single();
+        const { data, error } = await supabase.rpc('admin_upsert_division_settings', {
+          p_organization_id: payload.organization_id,
+          p_season_settings_id: payload.season_settings_id,
+          p_division_id: existingRow?.id || null,
+          p_name: payload.name,
+          p_max_roster_size: payload.max_roster_size,
+          p_min_roster_size: payload.min_roster_size,
+          p_target_team_size: payload.target_team_size,
+          p_team_count_override: payload.team_count_override,
+          p_min_teams: payload.min_teams,
+          p_max_teams: payload.max_teams,
+        });
 
         if (error) {
           if (!silent) setConfigSaveMessage(`Save failed: ${error.message}`);
           throw error;
         }
 
+        const savedDivision =
+          data ||
+          (IS_MOCK_MODE
+            ? {
+                id: existingRow?.id || `${payload.season_settings_id}:${payload.name}`,
+                ...payload,
+              }
+            : null);
+
+        if (!savedDivision?.id) {
+          throw new Error('Division settings save did not return a division row.');
+        }
+
         setDivisionRows((prev) => {
           const withoutCurrent = (prev || []).filter(
             (row) =>
-              String(row.id) !== String(data.id) &&
+              String(row.id) !== String(savedDivision.id) &&
               !(
-                String(row.season_settings_id) === String(data.season_settings_id) &&
-                String(row.name).trim().toLowerCase() === String(data.name).trim().toLowerCase()
+                String(row.season_settings_id) === String(savedDivision.season_settings_id) &&
+                String(row.name).trim().toLowerCase() ===
+                  String(savedDivision.name).trim().toLowerCase()
               )
           );
-          return [...withoutCurrent, data].sort((a, b) =>
+          return [...withoutCurrent, savedDivision].sort((a, b) =>
             String(a.name).localeCompare(String(b.name))
           );
         });
         setConfigs((prev) => ({
           ...prev,
-          [program.id]: configFromDivisionRow(program, data),
+          [program.id]: configFromDivisionRow(program, savedDivision),
         }));
         if (!silent) setConfigSaveMessage('Rules saved.');
-        return data;
+        return savedDivision;
       } finally {
         if (!silent) setSavingConfigId(null);
       }
