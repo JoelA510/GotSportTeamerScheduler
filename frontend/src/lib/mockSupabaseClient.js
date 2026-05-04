@@ -1452,6 +1452,20 @@ export const mockSupabase = {
       return { data: registration.id, error: null };
     }
 
+    if (name === 'admin_create_registration_form') {
+      const form = {
+        id: mockId(),
+        organization_id: params.p_organization_id,
+        title: params.p_title,
+      };
+
+      db.registration_forms = db.registration_forms || [];
+      db.registration_forms.unshift(form);
+      saveDB(db);
+
+      return { data: form, error: null };
+    }
+
     if (
       (import.meta.env.DEV || import.meta.env.VITE_USE_MOCK_SUPABASE === 'true') &&
       name === 'update_game_score'
@@ -2992,7 +3006,6 @@ export const mockSupabase = {
       return { data: { id: mockId('eval-') }, error: null };
     }
 
-    logger.warn(`[Mock Supabase] RPC "${name}" not implemented — returning empty success`);
     return { data: null, error: null };
   },
   functions: {

@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabaseClient.js';
-import { IS_MOCK_MODE } from '../config.js';
 import { useOrganization } from '../contexts/OrganizationContext.jsx';
 import { useAuth } from '../contexts/AuthContext.jsx';
 import Button from '../components/ui/Button.jsx';
@@ -91,7 +90,7 @@ export default function RegistrationForms() {
           admin_email: user.email,
         }),
       };
-      const { data, error } = await supabase.rpc('admin_create_registration_form', {
+      const { error } = await supabase.rpc('admin_create_registration_form', {
         p_organization_id: currentOrganization.id,
         p_title: editingForm.title,
         p_description: editingForm.description || null,
@@ -102,26 +101,10 @@ export default function RegistrationForms() {
       });
       if (error) throw error;
 
-      const savedForm =
-        data ||
-        (IS_MOCK_MODE
-          ? {
-              id: `mock-form-${Date.now()}`,
-              ...editingForm,
-              organization_id: currentOrganization.id,
-              status: 'open',
-              created_at: new Date().toISOString(),
-            }
-          : null);
-
       setMessage({ type: 'success', text: 'Form saved successfully!' });
       setTimeout(() => {
         setShowEditor(false);
-        if (IS_MOCK_MODE && savedForm) {
-          setForms((prev) => [savedForm, ...prev]);
-        } else {
-          loadForms();
-        }
+        loadForms();
         setMessage(null);
       }, 1500);
     } catch (err) {
