@@ -155,7 +155,7 @@ When the answer is "Edge Function," still keep the function thin: authenticate, 
 
 Edge Functions are the single most expensive free-tier line item if they runaway (per-invocation CPU, egress, and cold-start minutes). Keep function bodies small and reuse RPCs.
 
-- **Asset-size discipline** for the frontend sits in [`operations/bundle-budget.md`](../operations/bundle-budget.md). The Edge Function layer has an analogous budget, but the canonical document for it (`docs/operations/edge-function-budget.md`) is **not yet written** — Wave 9a owns that authoring work. When it lands, cross-link from here.
+- **Asset-size discipline** for the frontend sits in [`operations/bundle-budget.md`](../operations/bundle-budget.md). Edge Function cost and complexity discipline is covered in [`operations/edge-function-budget.md`](../operations/edge-function-budget.md).
 - Avoid importing heavyweight deps into Edge Functions. Prefer `std@` and `esm.sh` with a pinned version; `_shared/import_map.json` exists specifically so shared deps load once.
 - Do not log PII into `console.*` — BetterStack ingestion is structured and regulated by the `logtail.ts` helper. Raw `console.error` in an Edge Function still reaches the Supabase log pipeline; treat it with the same scrutiny.
 
