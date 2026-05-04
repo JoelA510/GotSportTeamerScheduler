@@ -1453,17 +1453,14 @@ export const mockSupabase = {
     }
 
     if (name === 'admin_create_registration_form') {
-      const form = {
+      db.registration_forms.unshift({
         id: mockId(),
         organization_id: params.p_organization_id,
         title: params.p_title,
-      };
-
-      db.registration_forms = db.registration_forms || [];
-      db.registration_forms.unshift(form);
+      });
       saveDB(db);
 
-      return { data: form, error: null };
+      return { data: null, error: null };
     }
 
     if (
