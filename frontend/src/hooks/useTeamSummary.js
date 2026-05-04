@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabaseClient.js';
 import { logger } from '../lib/logger.js';
 // Use absolute import via configured alias
@@ -29,14 +29,18 @@ export function useTeamSummary() {
   const [error, _setError] = useState(null);
   const [status, setStatus] = useState('idle'); // idle, running, completed, error
   const [progress, setProgress] = useState(0);
+  const lastKnownStatusRef = useRef('idle');
 
   useEffect(() => {
-    let pollInterval;
+    let pollTimeout;
+    let cancelled = false;
 
     if (!currentOrganization?.id || !currentSeasonSetting?.id) {
       setSummary(EMPTY_SUMMARY);
       setLoading(false);
       setStatus('idle');
+      lastKnownStatusRef.current = 'idle';
+      _setError(null);
       setProgress(0);
       return;
     }
@@ -55,20 +59,24 @@ export function useTeamSummary() {
         runQuery = scopeSchedulerRunsToActiveSeason(runQuery, currentSeasonSetting.id);
 
         const { data, error: queryError } = await runQuery.limit(1).single();
+        if (cancelled) return 'cancelled';
 
         if (queryError) {
           if (queryError.code === 'PGRST116') {
             setSummary(EMPTY_SUMMARY);
             setLoading(false);
             setStatus('idle');
-            return;
+            lastKnownStatusRef.current = 'idle';
+            _setError(null);
+            return 'idle';
           }
           throw queryError;
         }
 
         // Update status and progress
+        _setError(null);
         setStatus(data.status);
-        // Assume progress is stored in metrics or calculate it (mocking for now if not present)
+        lastKnownStatusRef.current = data.status;
         const currentProgress = data.metrics?.progress || (data.status === 'completed' ? 100 : 0);
         setProgress(currentProgress);
 
@@ -81,21 +89,31 @@ export function useTeamSummary() {
           // but we have status to show progress bar
           setLoading(true);
         }
+        return data.status;
       } catch (err) {
         logger.error('Failed to fetch team summary:', JSON.stringify(err, null, 2));
+        if (!cancelled) {
+          _setError(err);
+          setLoading(false);
+          setStatus('error');
+        }
+        return lastKnownStatusRef.current === 'running' ? 'running' : 'error';
       }
     }
 
-    setLoading(true);
-    fetchLatestRun();
+    const schedulePollIfRunning = async () => {
+      const latestStatus = await fetchLatestRun();
+      if (!cancelled && latestStatus === 'running') {
+        pollTimeout = setTimeout(schedulePollIfRunning, 2000);
+      }
+    };
 
-    // Poll if running
-    pollInterval = setInterval(() => {
-      fetchLatestRun();
-    }, 2000);
+    setLoading(true);
+    schedulePollIfRunning();
 
     return () => {
-      if (pollInterval) clearInterval(pollInterval);
+      cancelled = true;
+      if (pollTimeout) clearTimeout(pollTimeout);
     };
   }, [currentOrganization?.id, currentSeasonSetting?.id]);
 
