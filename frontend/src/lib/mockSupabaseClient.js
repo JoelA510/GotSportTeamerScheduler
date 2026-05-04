@@ -533,7 +533,6 @@ const realtimeCallbacks = [];
 let pendingAuthEvents = [];
 
 const triggerRealtimeEvent = (table, event, payload) => {
-  logger.log(`[Mock Supabase] Triggering Realtime ${event} for ${table}`, payload);
   realtimeCallbacks.forEach((cb) => {
     if (cb.table === table && (cb.event === '*' || cb.event === event)) {
       // Include eventType in payload so Supabase Realtime subscription handlers can read it
@@ -543,7 +542,6 @@ const triggerRealtimeEvent = (table, event, payload) => {
 };
 
 const triggerAuthEvent = (event, session) => {
-  logger.log(`[Mock Supabase] Triggering ${event}`);
   if (mockSubscriptionCallback) {
     mockSubscriptionCallback(event, session);
   } else {
@@ -622,12 +620,6 @@ const saveDB = (db) => {
 // Initial state load
 if (typeof window !== 'undefined') {
   window.__MOCK_DB__ = getDB();
-  logger.log(
-    '[Mock Supabase] DB Initialized. Tables:',
-    Object.keys(/** @type {Object} */ (window.__MOCK_DB__))
-      .map((k) => `${k}(${/** @type {any} */ (window.__MOCK_DB__)[k]?.length || 0})`)
-      .join(', ')
-  );
 }
 
 export const getMockData = (table, col, val) => {
@@ -934,7 +926,6 @@ const createMockQuery = (table, data = null) => {
 export const mockSupabase = {
   auth: {
     signInWithPassword: async ({ email, password }) => {
-      logger.log('[Mock Supabase] Login attempt:', email);
       const testPassword = import.meta.env.VITE_TEST_PASSWORD || 'test-password-123';
       if (password === testPassword) {
         const role = email.split('@')[0];
@@ -987,7 +978,6 @@ export const mockSupabase = {
       return { error: null };
     },
     onAuthStateChange: (callback) => {
-      logger.log('[Mock Supabase] onAuthStateChange listener registered');
       mockSubscriptionCallback = callback;
       let session = null;
       if (typeof window !== 'undefined') {
@@ -1313,7 +1303,6 @@ export const mockSupabase = {
         };
       },
       send: ({ type, event, payload }) => {
-        logger.log(`[Mock Supabase] Broadcasting ${event} on channel ${name}`, payload);
         realtimeCallbacks.forEach((cb) => {
           // If the listener is for this channel name (or table) and event type
           if (cb.table === name || cb.table === table) {
@@ -1452,6 +1441,17 @@ export const mockSupabase = {
       return { data: registration.id, error: null };
     }
 
+    if (name === 'admin_create_registration_form') {
+      db.registration_forms.unshift({
+        id: mockId(),
+        organization_id: params.p_organization_id,
+        title: params.p_title,
+      });
+      saveDB(db);
+
+      return { data: null, error: null };
+    }
+
     if (
       (import.meta.env.DEV || import.meta.env.VITE_USE_MOCK_SUPABASE === 'true') &&
       name === 'update_game_score'
@@ -1485,7 +1485,6 @@ export const mockSupabase = {
       db.audit_log.push(event);
       saveDB(db);
 
-      logger.log(`[Mock Supabase] Audit event recorded: ${p_action}`, event);
       return { data: true, error: null };
     }
 
@@ -2992,12 +2991,10 @@ export const mockSupabase = {
       return { data: { id: mockId('eval-') }, error: null };
     }
 
-    logger.warn(`[Mock Supabase] RPC "${name}" not implemented — returning empty success`);
     return { data: null, error: null };
   },
   functions: {
     invoke: async (name, options) => {
-      logger.log(`[Mock Supabase] functions.invoke("${name}")`, options?.body);
       if (name === 'import-validation') {
         const body = options?.body || {};
         const aliases = HEADER_ALIASES;

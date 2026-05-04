@@ -15,9 +15,9 @@ import { mockSupabase } from './mockSupabaseClient.js';
 
 if (IS_MOCK_MODE) {
   logger.log('[Supabase] Initializing MOCK client');
-  logger.warn('Using mock Supabase client due to missing or placeholder environment variables.');
+  logger.warn('[Supabase] Mock client active');
 } else {
-  logger.log('[Supabase] Initializing REAL client →', SUPABASE_URL);
+  logger.log('[Supabase] Initializing REAL client', SUPABASE_URL);
 }
 
 /**

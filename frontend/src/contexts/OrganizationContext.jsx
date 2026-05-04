@@ -38,7 +38,7 @@ export const OrganizationProvider = ({ children }) => {
   const [orgMember, setOrgMember] = useState(null);
   const [availableSeasons, setAvailableSeasons] = useState([]);
   const [currentSeasonSetting, setCurrentSeasonSetting] = useState(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   // Surfaced so AppContent can render a diagnostic instead of hanging on a
   // stuck LoadingScreen when the initial org fetch fails (e.g. stale RLS
   // policy returning 500 before the latest migration is applied).
