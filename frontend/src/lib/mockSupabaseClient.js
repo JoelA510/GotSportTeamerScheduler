@@ -1334,23 +1334,23 @@ export const mockSupabase = {
       const userId = storedSession ? JSON.parse(storedSession)?.user?.id : 'mock-admin-id';
 
       if (!userId) {
-        return { data: null, error: { message: 'Not authenticated' } };
+        return { data: null, error: { message: 'Auth required' } };
       }
       if (!p_name || typeof p_name !== 'string' || !p_name.trim()) {
-        return { data: null, error: { message: 'Organization name is required' } };
+        return { data: null, error: { message: 'Name required' } };
       }
       if (
         !p_slug ||
         typeof p_slug !== 'string' ||
         !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(p_slug.trim())
       ) {
-        return { data: null, error: { message: 'Invalid slug format' } };
+        return { data: null, error: { message: 'Invalid slug' } };
       }
       if (!p_timezone || typeof p_timezone !== 'string' || !p_timezone.trim()) {
-        return { data: null, error: { message: 'Timezone is required' } };
+        return { data: null, error: { message: 'Timezone required' } };
       }
       if (!Number.isInteger(p_season_year) || p_season_year < 2000 || p_season_year > 3000) {
-        return { data: null, error: { message: 'Invalid season year' } };
+        return { data: null, error: { message: 'Invalid year' } };
       }
 
       const normalizedSlug = p_slug.trim();
@@ -1358,7 +1358,7 @@ export const mockSupabase = {
         (org) => String(org.slug || '').toLowerCase() === normalizedSlug.toLowerCase()
       );
       if (existing) {
-        return { data: null, error: { message: 'duplicate key value violates unique constraint' } };
+        return { data: null, error: { message: 'duplicate key value' } };
       }
 
       const orgId = mockId();
@@ -1466,6 +1466,28 @@ export const mockSupabase = {
       return { data: inviteId, error: null };
     }
 
+    if (name === 'admin_upsert_organization_schema') {
+      const p = params || {};
+      const rows = db.organization_schemas || (db.organization_schemas = []);
+      let row = rows.find(
+        (item) =>
+          item.organization_id === p.p_organization_id && item.entity_type === p.p_entity_type
+      );
+
+      if (!row) {
+        row = {
+          id: mockId(),
+          organization_id: p.p_organization_id,
+          entity_type: p.p_entity_type,
+        };
+        rows.push(row);
+      }
+      row.schema_definition = p.p_schema_definition || {};
+      saveDB(db);
+
+      return { data: row, error: null };
+    }
+
     if (
       (import.meta.env.DEV || import.meta.env.VITE_USE_MOCK_SUPABASE === 'true') &&
       name === 'update_game_score'
@@ -1505,7 +1527,7 @@ export const mockSupabase = {
     if (name === 'fail_stale_import_jobs') {
       const { p_organization_id, p_stale_before } = params || {};
       if (!p_organization_id) {
-        return { data: null, error: { message: 'organization_id is required' } };
+        return { data: null, error: { message: 'org required' } };
       }
 
       const staleBefore = p_stale_before
@@ -1530,7 +1552,7 @@ export const mockSupabase = {
           last_heartbeat_at: heartbeat.toISOString(),
           stale_before: staleBefore.toISOString(),
           failed_at: now,
-          message: 'Import job stopped sending progress heartbeats and was failed for retry',
+          message: 'stale import failed',
         };
 
         job.status = 'failed';
@@ -1655,7 +1677,7 @@ export const mockSupabase = {
       if (!['coaches', 'fields'].includes(importType)) {
         return {
           data: null,
-          error: { message: 'Deferred apply is only available for coach and field imports' },
+          error: { message: 'unsupported import type' },
         };
       }
       if (importType === 'coaches' && job.job_type !== 'registration') {
@@ -1719,7 +1741,7 @@ export const mockSupabase = {
       if (!['coaches', 'fields'].includes(importType)) {
         return {
           data: null,
-          error: { message: 'Deferred cancellation is only available for coach and field imports' },
+          error: { message: 'unsupported import type' },
         };
       }
       if (job.status !== 'ready_to_apply') {
@@ -2134,7 +2156,7 @@ export const mockSupabase = {
           invalidRows += 1;
           row.validation_errors = [
             {
-              message: 'Coach row is missing full_name/email or has an invalid status',
+              message: 'invalid coach row',
               source_row_number: row.source_row_number,
             },
           ];
@@ -2148,7 +2170,7 @@ export const mockSupabase = {
           crossOrgConflictRows += 1;
           row.validation_errors = [
             {
-              message: 'Coach email already belongs to another organization',
+              message: 'duplicate coach email',
               source_row_number: row.source_row_number,
             },
           ];
@@ -2294,7 +2316,7 @@ export const mockSupabase = {
       if (records.length === 0) {
         return {
           data: null,
-          error: { message: 'Import job has no coach application records to roll back' },
+          error: { message: 'no coach rollback records' },
         };
       }
 
@@ -2432,8 +2454,7 @@ export const mockSupabase = {
           invalidRows += 1;
           row.validation_errors = [
             {
-              message:
-                'Field row is missing required location/field/slot data or has an invalid slot window',
+              message: 'invalid field row',
               source_row_number: row.source_row_number,
             },
           ];
@@ -2612,7 +2633,7 @@ export const mockSupabase = {
       if (records.length === 0) {
         return {
           data: null,
-          error: { message: 'Import job has no field application records to roll back' },
+          error: { message: 'no field rollback records' },
         };
       }
 
@@ -2739,7 +2760,7 @@ export const mockSupabase = {
         ) {
           return {
             data: null,
-            error: { message: 'Coach lead references a division outside its organization' },
+            error: { message: 'invalid division scope' },
           };
         }
 
@@ -2753,7 +2774,7 @@ export const mockSupabase = {
         ) {
           return {
             data: null,
-            error: { message: 'Coach lead references a player outside its organization' },
+            error: { message: 'invalid player scope' },
           };
         }
       }
@@ -2841,7 +2862,7 @@ export const mockSupabase = {
           String(item.profile_id) === String(session?.user?.id)
       );
       if (!['admin', 'tenant_admin'].includes(String(member?.role || ''))) {
-        return { data: null, error: { message: 'Access denied: admin role required' } };
+        return { data: null, error: { message: 'admin required' } };
       }
 
       const coach = (db.coaches || []).find(
@@ -2914,7 +2935,7 @@ export const mockSupabase = {
           String(item.profile_id) === String(session?.user?.id)
       );
       if (!['admin', 'tenant_admin'].includes(String(member?.role || ''))) {
-        return { data: null, error: { message: 'Access denied: admin role required' } };
+        return { data: null, error: { message: 'admin required' } };
       }
 
       const team = (db.teams || []).find(

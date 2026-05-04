@@ -63,6 +63,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Added shared per-user rate limiting to the `fairness-scoring` Edge Function.
 - Routed organization invite revocation through an org-admin `revoke_org_invite` RPC with audit logging and removed the direct invite DELETE policy.
+- Routed settings schema-builder saves through an org-admin `admin_upsert_organization_schema` RPC with validation and audit logging, leaving `organization_schemas` read-only for org members.
 - Routed team-generation division rule saves through an org-admin RPC with atomic `settings.updated` audit logging instead of direct browser writes to `divisions`.
 - Routed registration-form creation through an org-admin RPC with atomic `registration.form_created` audit logging instead of direct browser writes to `registration_forms`.
 - Routed league standings score entry through an org-scoped schedule-manager RPC with atomic audit logging instead of direct browser writes to `games`.

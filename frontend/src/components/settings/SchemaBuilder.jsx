@@ -137,14 +137,11 @@ export function SchemaBuilder() {
     setError(null);
 
     try {
-      const { error: saveError } = await supabase.from('organization_schemas').upsert(
-        {
-          organization_id: currentOrganization.id,
-          entity_type: activeTab,
-          schema_definition: schemas[activeTab],
-        },
-        { onConflict: 'organization_id,entity_type' }
-      );
+      const { error: saveError } = await supabase.rpc('admin_upsert_organization_schema', {
+        p_organization_id: currentOrganization.id,
+        p_entity_type: activeTab,
+        p_schema_definition: schemas[activeTab],
+      });
 
       if (saveError) throw saveError;
 

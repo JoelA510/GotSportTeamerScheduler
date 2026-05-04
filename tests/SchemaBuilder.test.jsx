@@ -5,6 +5,7 @@ import { SchemaBuilder } from '../frontend/src/components/settings/SchemaBuilder
 
 const mocks = vi.hoisted(() => ({
   from: vi.fn(),
+  rpc: vi.fn(),
   log: vi.fn(),
   error: vi.fn(),
 }));
@@ -20,6 +21,7 @@ vi.mock('../frontend/src/contexts/OrganizationContext.jsx', () => ({
 vi.mock('../frontend/src/lib/supabaseClient.js', () => ({
   supabase: {
     from: mocks.from,
+    rpc: mocks.rpc,
   },
 }));
 
@@ -33,6 +35,7 @@ vi.mock('../frontend/src/lib/logger.js', () => ({
 describe('SchemaBuilder', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.rpc.mockResolvedValue({ data: { changed: true }, error: null });
     mocks.from.mockReturnValue({
       select: vi.fn().mockReturnValue({
         eq: vi.fn().mockResolvedValue({
@@ -47,7 +50,6 @@ describe('SchemaBuilder', () => {
           error: null,
         }),
       }),
-      upsert: vi.fn().mockResolvedValue({ error: null }),
     });
   });
 
@@ -114,6 +116,24 @@ describe('SchemaBuilder', () => {
 
     await waitFor(() => {
       expect(screen.queryByText('emergency_contact')).not.toBeInTheDocument();
+    });
+  });
+
+  it('saves drafted attributes through the org-scoped schema RPC', async () => {
+    vi.spyOn(window, 'alert').mockImplementation(() => {});
+    render(<SchemaBuilder />);
+
+    await screen.findByText('jersey_size');
+    fireEvent.click(screen.getByRole('button', { name: 'Finalize PLAYER Schema' }));
+
+    await waitFor(() => {
+      expect(mocks.rpc).toHaveBeenCalledWith('admin_upsert_organization_schema', {
+        p_organization_id: 'org-1',
+        p_entity_type: 'player',
+        p_schema_definition: {
+          jersey_size: 'string',
+        },
+      });
     });
   });
 });
