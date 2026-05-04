@@ -39,6 +39,9 @@ describe('mock facility admin rpcs', () => {
       supports_halves: true,
       priority_rating: 3,
     });
+    expect(getMockData('field_subunits').filter((row) => row.field_id === field.id)).toHaveLength(
+      2
+    );
 
     const { data: updated, error: updateError } = await supabase.rpc('admin_update_field', {
       p_organization_id: 'org-1',
@@ -53,6 +56,9 @@ describe('mock facility admin rpcs', () => {
     });
     expect(updateError).toBeNull();
     expect(updated).toMatchObject({ name: 'Renamed Field', active: false, size: '11v11' });
+    expect(getMockData('field_subunits').filter((row) => row.field_id === field.id)).toHaveLength(
+      0
+    );
 
     const { data: deleted, error: deleteError } = await supabase.rpc('admin_delete_field', {
       p_organization_id: 'org-1',

@@ -625,6 +625,37 @@ const saveDB = (db) => {
   }
 };
 
+const syncMockFieldSubunits = (db, field, supportsHalves) => {
+  db.field_subunits = db.field_subunits || [];
+
+  if (supportsHalves) {
+    ['A', 'B'].forEach((label) => {
+      const exists = db.field_subunits.some(
+        (subunit) =>
+          String(subunit.field_id) === String(field.id) && String(subunit.label) === label
+      );
+      if (exists) return;
+
+      const subunit = {
+        id: `sub-${field.id}-${label.toLowerCase()}`,
+        field_id: field.id,
+        label,
+        organization_id: field.organization_id || 'org-1',
+      };
+      db.field_subunits.push(subunit);
+      triggerRealtimeEvent('field_subunits', 'INSERT', { new: subunit, old: null });
+    });
+    return;
+  }
+
+  db.field_subunits = db.field_subunits.filter((subunit) => {
+    if (String(subunit.field_id) !== String(field.id)) return true;
+
+    triggerRealtimeEvent('field_subunits', 'DELETE', { new: null, old: subunit });
+    return false;
+  });
+};
+
 // Initial state load
 if (typeof window !== 'undefined') {
   window.__MOCK_DB__ = getDB();
@@ -1659,6 +1690,7 @@ export const mockSupabase = {
         };
         db.fields = db.fields || [];
         db.fields.push(field);
+        syncMockFieldSubunits(db, field, field.supports_halves);
         audit('field', field.id, 'created', { current: field });
         saveDB(db);
         return { data: field, error: null };
@@ -1690,11 +1722,13 @@ export const mockSupabase = {
           active: p.p_active !== false,
           updated_at: new Date().toISOString(),
         });
+        syncMockFieldSubunits(db, field, field.supports_halves);
         audit('field', field.id, 'updated', { previous, current: field });
         saveDB(db);
         return { data: field, error: null };
       }
 
+      syncMockFieldSubunits(db, field, false);
       db.fields = (db.fields || []).filter((item) => String(item.id) !== String(p.p_field_id));
       audit('field', field.id, 'deleted', { previous: field });
       saveDB(db);
