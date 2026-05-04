@@ -62,6 +62,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 
 - Added shared per-user rate limiting to the `fairness-scoring` Edge Function.
+- Routed admin compliance medical-clearance updates through an org-admin RPC with atomic audit logging instead of direct browser writes to `registrations`.
 - Routed setup wizard telemetry writes through the org-scoped `log_telemetry_event` RPC.
 - Linked persisted practice assignment rows to their scheduler run id so practice schedules can reload by the latest org-scoped run after apply.
 - Hardened the game persistence Edge Function so service-role RPC calls are scoped to the requested organization, season, and assignment teams before writing.

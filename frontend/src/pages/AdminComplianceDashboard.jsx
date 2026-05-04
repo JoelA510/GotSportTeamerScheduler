@@ -70,6 +70,7 @@ export default function AdminComplianceDashboard() {
   }, [currentOrganization?.id, selectedFormId]);
 
   const toggleMedicalStatus = async (regId, currentStatus) => {
+    if (!currentOrganization?.id) return;
     const newStatus = !currentStatus;
     // Optimistic Update
     setRegistrations((prev) =>
@@ -77,19 +78,11 @@ export default function AdminComplianceDashboard() {
     );
 
     try {
-      const { error } = await supabase
-        .from('registrations')
-        .update({ medical_cleared: newStatus })
-        .eq('id', regId);
-      if (error) throw error;
-
-      // Log audit event
-      await supabase.rpc('record_audit_event', {
-        p_organization_id: currentOrganization?.id,
-        p_action: 'compliance.medical_update',
+      const { data, error } = await supabase.rpc('admin_update_registration_medical_status', {
+        p_organization_id: currentOrganization.id,
+        p_registration_id: regId,
+        p_medical_cleared: newStatus,
         p_metadata: {
-          registration_id: regId,
-          new_status: newStatus,
           ...(isImpersonating && {
             target_user_id: user.profile.id,
             impersonated_by: user.id,
@@ -97,6 +90,12 @@ export default function AdminComplianceDashboard() {
           }),
         },
       });
+      if (error) throw error;
+
+      const persistedStatus = data?.medical_cleared ?? newStatus;
+      setRegistrations((prev) =>
+        prev.map((r) => (r.id === regId ? { ...r, medical_cleared: persistedStatus } : r))
+      );
     } catch (err) {
       logger.error(err);
       // Rollback

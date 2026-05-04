@@ -17,9 +17,15 @@ describe('Core Engine Performance Benchmarks', () => {
     const override = Number(process.env.PERF_TEAM_GEN_MAX_MS);
     if (Number.isFinite(override) && override > 0) return override;
 
-    // Shared runners and coverage instrumentation can be much slower.
+    const isFocusedPerformanceRun = process.argv.some((arg) =>
+      /(^|[/\\])performance\.test\.js$/.test(arg)
+    );
+
+    // Keep the focused benchmark strict. The aggregate Vitest suite runs many
+    // worker files at once, so wall-clock timing includes CPU contention.
     const isCoverageRun = process.env.npm_lifecycle_event === 'test:coverage';
-    return isCoverageRun ? 20000 : 3000;
+    if (isFocusedPerformanceRun) return 3000;
+    return isCoverageRun ? 20000 : 10000;
   };
 
   it(
