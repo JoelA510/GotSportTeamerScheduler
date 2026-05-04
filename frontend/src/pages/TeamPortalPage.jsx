@@ -219,24 +219,35 @@ export default function TeamPortalPage() {
               Players
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {roster.map((player) => (
-                <div
-                  key={player.id}
-                  className="bg-bg-surface p-4 rounded-lg border border-border-subtle flex justify-between items-center"
-                >
-                  <div>
-                    <div className="font-bold text-text-primary">
-                      {player.first_name} {player.last_name}
-                    </div>
-                    <div className="text-sm text-text-secondary">Player</div>
-                  </div>
+              {roster.map((player) => {
+                const isMedicalCleared = player.medical_cleared === true;
+                const canViewMedicalClearance = player.medical_clearance_visible === true;
+
+                return (
                   <div
-                    className={`text-xs font-bold px-2 py-1 rounded-full ${player.id === 'player-1' ? 'bg-status-warning-bg text-status-warning' : 'bg-status-success-bg text-status-success'}`}
+                    key={player.id}
+                    className="bg-bg-surface p-4 rounded-lg border border-border-subtle flex justify-between items-center"
                   >
-                    Medical Clearance: {player.id === 'player-1' ? 'Pending' : 'Yes'}
+                    <div>
+                      <div className="font-bold text-text-primary">
+                        {player.first_name} {player.last_name}
+                      </div>
+                      <div className="text-sm text-text-secondary">Player</div>
+                    </div>
+                    {canViewMedicalClearance && (
+                      <div
+                        className={`text-xs font-bold px-2 py-1 rounded-full ${
+                          isMedicalCleared
+                            ? 'bg-status-success-bg text-status-success'
+                            : 'bg-status-warning-bg text-status-warning'
+                        }`}
+                      >
+                        Medical Clearance: {isMedicalCleared ? 'Yes' : 'Pending'}
+                      </div>
+                    )}
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </div>
