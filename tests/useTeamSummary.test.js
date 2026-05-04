@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { useTeamSummary } from '../frontend/src/hooks/useTeamSummary.js';
 import { supabase } from '../frontend/src/lib/supabaseClient.js';
 import { useOrganization } from '../frontend/src/contexts/OrganizationContext.jsx';
@@ -42,6 +42,7 @@ describe('useTeamSummary', () => {
   });
 
   it('scopes team scheduler reads to the active organization and season', async () => {
+    const timeoutSpy = vi.spyOn(globalThis, 'setTimeout');
     const runBuilder = createQueryBuilder({
       data: {
         id: 'team-run-1',
@@ -68,15 +69,89 @@ describe('useTeamSummary', () => {
 
     const { result, unmount } = renderHook(() => useTeamSummary());
 
-    await waitFor(() => expect(result.current.loading).toBe(false));
-    unmount();
+    try {
+      await waitFor(() => expect(result.current.loading).toBe(false));
 
-    expect(result.current.summary.runId).toBe('team-run-1');
-    expect(runBuilder.eq).toHaveBeenCalledWith('organization_id', 'org-1');
-    expect(runBuilder.eq).toHaveBeenCalledWith('run_type', 'team');
-    expect(runBuilder.in).toHaveBeenCalledWith('status', ['completed', 'running']);
-    expect(runBuilder.or).toHaveBeenCalledWith(
-      'season_settings_id.eq.season-1,season_id.eq.season-1'
-    );
+      expect(result.current.summary.runId).toBe('team-run-1');
+      expect(runBuilder.eq).toHaveBeenCalledWith('organization_id', 'org-1');
+      expect(runBuilder.eq).toHaveBeenCalledWith('run_type', 'team');
+      expect(runBuilder.in).toHaveBeenCalledWith('status', ['completed', 'running']);
+      expect(runBuilder.or).toHaveBeenCalledWith(
+        'season_settings_id.eq.season-1,season_id.eq.season-1'
+      );
+      expect(timeoutSpy).not.toHaveBeenCalledWith(expect.any(Function), 2000);
+    } finally {
+      unmount();
+      timeoutSpy.mockRestore();
+    }
+  });
+
+  it('polls only while the latest team run is running', async () => {
+    const timeoutSpy = vi.spyOn(globalThis, 'setTimeout');
+    const transientError = new Error('temporary network failure');
+    const runBuilder = createQueryBuilder({
+      data: {
+        id: 'team-run-running',
+        status: 'running',
+        metrics: { progress: 35 },
+        results: {},
+      },
+      error: null,
+    });
+
+    // @ts-expect-error [MOCK] - query builder only implements methods exercised by this hook.
+    vi.mocked(supabase.from).mockReturnValue(runBuilder);
+
+    const { result, unmount } = renderHook(() => useTeamSummary());
+
+    try {
+      await waitFor(() => expect(result.current.status).toBe('running'));
+
+      expect(result.current.loading).toBe(true);
+      expect(result.current.progress).toBe(35);
+      expect(timeoutSpy).toHaveBeenCalledWith(expect.any(Function), 2000);
+
+      const firstPollIndex = timeoutSpy.mock.calls.findIndex(([, delay]) => delay === 2000);
+      const firstPoll = timeoutSpy.mock.calls[firstPollIndex][0];
+      const firstPollId = timeoutSpy.mock.results[firstPollIndex].value;
+      clearTimeout(firstPollId);
+
+      runBuilder.single.mockRejectedValueOnce(transientError);
+
+      await act(async () => {
+        await firstPoll();
+      });
+
+      await waitFor(() => expect(result.current.status).toBe('error'));
+      expect(result.current.loading).toBe(false);
+      expect(result.current.error).toBe(transientError);
+      expect(timeoutSpy.mock.calls.filter(([, delay]) => delay === 2000)).toHaveLength(2);
+    } finally {
+      unmount();
+      timeoutSpy.mockRestore();
+    }
+  });
+
+  it('surfaces initial fetch errors without scheduling more polling', async () => {
+    const timeoutSpy = vi.spyOn(globalThis, 'setTimeout');
+    const fetchError = new Error('database unavailable');
+    const runBuilder = createQueryBuilder({ data: null, error: null });
+    runBuilder.single.mockRejectedValue(fetchError);
+
+    // @ts-expect-error [MOCK] - query builder only implements methods exercised by this hook.
+    vi.mocked(supabase.from).mockReturnValue(runBuilder);
+
+    const { result, unmount } = renderHook(() => useTeamSummary());
+
+    try {
+      await waitFor(() => expect(result.current.status).toBe('error'));
+
+      expect(result.current.loading).toBe(false);
+      expect(result.current.error).toBe(fetchError);
+      expect(timeoutSpy).not.toHaveBeenCalledWith(expect.any(Function), 2000);
+    } finally {
+      unmount();
+      timeoutSpy.mockRestore();
+    }
   });
 });
