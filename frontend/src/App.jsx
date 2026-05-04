@@ -11,7 +11,6 @@ import LoadingScreen from './components/LoadingScreen.jsx';
 import OrganizationFetchError from './components/OrganizationFetchError.jsx';
 import ProtectedRoute from './components/ProtectedRoute.jsx';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
-import ThemeToggle from './components/ThemeToggle.jsx';
 import { PERMISSIONS } from './constants/permissions.js';
 
 // Layouts
@@ -34,6 +33,7 @@ const RegistrationForms = lazy(() => import('./pages/RegistrationForms.jsx'));
 const EnterpriseDashboard = lazy(() => import('./pages/EnterpriseDashboard.jsx'));
 const LeagueStandings = lazy(() => import('./pages/LeagueStandings.jsx'));
 const SetupWizard = lazy(() => import('./pages/SetupWizard.jsx'));
+const ThemeToggle = lazy(() => import('./components/ThemeToggle.jsx'));
 const ResetPassword = lazy(() => import('./pages/ResetPassword.jsx'));
 const AuditLogPage = lazy(() => import('./pages/AuditLogPage.jsx'));
 const AnalyticalDashboard = lazy(() => import('./pages/AnalyticalDashboard.jsx'));
