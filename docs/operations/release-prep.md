@@ -3,7 +3,7 @@
 # Release Prep Closure
 
 **Last refreshed:** 2026-05-04
-**Status:** Code-completable release-prep hardening is current through PR #262; not a final release sign-off.
+**Status:** Code-completable release-prep hardening is current through PR #266; not a final release sign-off.
 
 This page closes the current release-prep documentation drift. It does not
 replace the final review-pass sign-off, and it does not claim production
@@ -12,16 +12,17 @@ security, database, or observability settings that were not directly verified.
 ## Verified Evidence
 
 - **Current repo head:** local `main` and `origin/main` are at
-  `d31716147e4703dd4943018ef155d14d84cf5bef`, the squash merge for PR #262
-  (`fix(import): route job lifecycle writes through rpc`).
+  `6b84a5cbe7ba0a2cde239e5367e1cd52a3df46ea`, the squash merge for PR #266
+  (`fix(db): drop legacy current user role helper`).
 - **Recent merged production-readiness PRs:** #257 registration-form writes, #258
   invite revoke, #259 schema-builder saves, #260 facility mutations, #261 team
-  portal communication writes, and #262 import job lifecycle writes all route
-  their browser mutations through org-scoped/admin RPC surfaces.
-- **Frontend direct-write scan:** `rg` found no routed app-code direct
-  `insert`/`update`/`upsert`/`delete` calls under `frontend/src`; the only match
-  was inside `frontend/src/lib/mockSupabaseClient.js`, which implements mock RPC
-  behavior for tests.
+  portal communication writes, #262 import job lifecycle writes, #263 release
+  evidence refresh, #264 Edge Function budget guidance, #265 legacy evaluation
+  RPC overload removal, and #266 legacy `current_user_role()` removal.
+- **Frontend direct-write scan:** `rg -U` found no routed Supabase
+  `insert`/`update`/`upsert`/`delete` calls under `frontend/src` outside the mock
+  client. The only generic mutation matches in app code were local cache
+  `Map.delete()` operations in `frontend/src/lib/cache.js`.
 - **Vercel project:** `secureyourtech/squadlogic`
   (`prj_tdCn9qLkRFB9LFAVmp2AKJCkcDJ9`) exists, reports framework `vite`, and
   reports Node `24.x`. Project domains reported by the connector are
@@ -29,23 +30,28 @@ security, database, or observability settings that were not directly verified.
   `squadlogic-secureyourtech.vercel.app`, and
   `squadlogic-git-main-secureyourtech.vercel.app`.
 - **Latest Vercel deployment visible in connector:** deployment
-  `dpl_9Yh4gDZvPB5SJqk2Y2XPct1Qt6Df` is `READY` for PR #262 commit
-  `2c1ed29648ba020bfd5eb2a050d7d0dba66331cd`; its target is `null`, so this is
+  `dpl_BiHCjxMUUktnxZHJRwij3NrWKqZa` is `READY` for PR #266 branch commit
+  `e6aacbdc050b94ff48c6897037341aa92515e66b`; its target is `null`, so this is
   preview evidence, not production evidence.
 - **Latest production-target Vercel deployment visible in connector:**
   deployment `dpl_EtxTonCsCxRVhWj3UjqEhLw5jZ8s` is `READY` for `main` commit
-  `ffbb67467864c852c14cfe3836a699d10e5dbcae` (PR #261). The PR #262 merge
-  commit `d31716147e4703dd4943018ef155d14d84cf5bef` was not visible as a
+  `ffbb67467864c852c14cfe3836a699d10e5dbcae` (PR #261). The PR #266 merge
+  commit `6b84a5cbe7ba0a2cde239e5367e1cd52a3df46ea` was not visible as a
   production-target deployment during this refresh.
 - **GitHub `main` branch protection:** GitHub API returned `404 Branch not
-protected` for `repos/JoelA510/SquadLogic/branches/main/protection` during PR
-  #261 and PR #262 merge checks.
-- **Repo migration inventory:** 72 SQL migration files are present locally; the
+  protected` for `repos/JoelA510/SquadLogic/branches/main/protection` during
+  this refresh after PR #266 merged.
+- **Repo migration inventory:** 74 SQL migration files are present locally; the
   latest file is
-  `supabase/migrations/20260504080000_import_job_lifecycle_rpcs.sql`.
+  `supabase/migrations/20260504100000_drop_current_user_role_helper.sql`.
+- **Repo pgTAP inventory:** 31 SQL test files are present under
+  `supabase/tests/`, covering RLS plus targeted RPC contracts added during the
+  production-readiness PR queue.
 - **CI and DB harness:** PR #209 restored hosted CI/E2E; PR #211 restored local
   and hosted pgTAP for DB-affecting PRs. PR #262 hosted checks reported
-  `Build & Test`, pgTAP, CodeQL, GitGuardian, and Vercel as passing.
+  `Build & Test`, pgTAP, CodeQL, GitGuardian, and Vercel as passing. PR #266
+  hosted checks reported `Build & Test`, pgTAP, CodeQL, GitGuardian, and Vercel
+  as passing before merge.
 - **Release checks available today:** `npm ci`, `npm run typecheck`,
   `npm run lint`, `npm run test`, `npm run test:coverage`,
   `npm run frontend:build`, `npm run check:bundle`,
@@ -67,10 +73,12 @@ protected` for `repos/JoelA510/SquadLogic/branches/main/protection` during PR
   Node 24 as a documented deployment setting. Changing either side requires a
   separate PR with the full build/test/E2E verification suite.
 - **Current main production deployment:** connector evidence did not show
-  `d31716147e4703dd4943018ef155d14d84cf5bef` as a production-target deployment
-  during this refresh. Operators must either wait for/trigger the production
-  deployment and record the resulting deployment id, or explicitly decide that a
-  later commit is the release candidate.
+  `6b84a5cbe7ba0a2cde239e5367e1cd52a3df46ea` as a production-target deployment
+  during this refresh. The latest production-target deployment visible in the
+  connector remains `dpl_EtxTonCsCxRVhWj3UjqEhLw5jZ8s` for PR #261 commit
+  `ffbb67467864c852c14cfe3836a699d10e5dbcae`. Operators must either
+  wait for/trigger the production deployment and record the resulting deployment
+  id, or explicitly decide that a later commit is the release candidate.
 - **Production Supabase advisor state:** production advisor output was not
   rechecked in this docs task. Use the Supabase dashboard/MCP before final
   release sign-off.
@@ -85,7 +93,7 @@ protected` for `repos/JoelA510/SquadLogic/branches/main/protection` during PR
   `main` was not protected.
 - Confirm the production-target Vercel deployment for the intended release
   commit. As of this refresh, the latest production-target deployment visible to
-  the connector was PR #261, not PR #262.
+  the connector was PR #261, not PR #266.
 - Confirm Vercel production/preview environment variables, especially
   `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_USE_MOCK_SUPABASE`, and
   `VITE_SENTRY_DSN`.

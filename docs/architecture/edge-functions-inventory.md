@@ -163,7 +163,7 @@ Edge Functions are the single most expensive free-tier line item if they runaway
 
 v1.1-deferred items surfaced while writing this inventory:
 
-- **pgTAP coverage is RLS-focused, not RPC- or Edge-Function-focused.** The four pgTAP suites in `supabase/tests/` validate policy behavior, not the specific RPC branches each Edge Function invokes. Gap to close in Wave 7b or later.
+- **pgTAP coverage is broader than the original RLS baseline but still not Edge-Function-complete.** The 31 SQL test files in `supabase/tests/` cover RLS plus many RPC contracts used by Edge Functions, but they do not execute every Edge handler branch directly. Continue adding targeted pgTAP or Deno tests when Edge/RPC contracts change.
 - **No observed invocation telemetry baseline.** We have the BetterStack hook but no dashboard that tracks per-function invocation counts or p95 latency. When that's in place it belongs in [`operations/`](../operations/) alongside `sentry-smoke.md`.
 - **`calendar-feed` token leakage risk.** The token is a plain UUID query parameter; any intermediary that logs URLs (browser history, proxy logs, analytics) could capture it. Mitigated by 90-day expiry + `rotate_calendar_token` RPC, but consider HMAC-signed tokens in v1.1.
 - **`auto-scheduler` is 800+ lines in a single file.** A lot of Hill Climbing detail lives inline. Candidate for extraction into `_shared/engines/` on the next refactor pass, similar to how the scoring engine lives there.

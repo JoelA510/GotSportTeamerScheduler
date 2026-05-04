@@ -2,7 +2,7 @@
 
 # Persistence RPC Layer
 
-> **Status**: Canonical reference for the RPC-based persistence model mandated by [`CLAUDE.md`](../../CLAUDE.md) §3 ("RPC Enforcement"). Grounded in the migrations under `supabase/migrations/` as of Wave 7a.
+> **Status**: Canonical reference for the RPC-based persistence model mandated by [`CLAUDE.md`](../../CLAUDE.md) §3 ("RPC Enforcement"). Grounded in the migrations under `supabase/migrations/` as of PR #266.
 
 ## 1. Purpose
 
@@ -241,6 +241,6 @@ When you need to add a new state-altering RPC, every item below must be satisfie
 
 v1.1-deferred items surfaced while writing this inventory. None block v1.0 production but should be tracked for later hardening.
 
-- **pgTAP coverage is seeded but thin.** `supabase/tests/` ships four pgTAP suites today (`rls_admin_vs_coach`, `rls_anonymous_gate`, `rls_cross_org_isolation`, `rls_service_role_bypass`). The RPC bodies themselves (e.g., `submit_registration`'s cross-org rejection path, `redeem_org_invite`'s single-use lock) are _not_ individually covered. Wave 7b or later should add per-RPC suites; see [`testing/e2e_master_plan.md`](../testing/e2e_master_plan.md).
+- **pgTAP coverage is broad but not exhaustive.** `supabase/tests/` now contains 31 SQL test files, including the original RLS suites plus targeted RPC contracts added during the production-readiness queue. Coverage is still not a formal branch-complete proof for every RPC path; future PRs should keep adding focused suites as sensitive mutation surfaces change.
 - **check_password_length_on_auth_users targets the auth schema.** It is SECURITY DEFINER and was pinned to `public` by 20260421001209, but it operates on `auth.users`; low-risk since the trigger body does no schema-sensitive lookups, but worth noting for a future audit.
 - **`record_audit_event` audit-action CHECK lag.** When a new `action` string is introduced, the CHECK constraint must be dropped and recreated in the same migration. Several migrations do this ad-hoc (`20260403000000`, `20260407000000`, `20260404100000`). A consolidated migration that sources the set from a single table would be cleaner; defer to v1.1.
