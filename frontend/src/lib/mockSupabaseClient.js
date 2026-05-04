@@ -1452,6 +1452,20 @@ export const mockSupabase = {
       return { data: null, error: null };
     }
 
+    if (name === 'revoke_org_invite') {
+      const { p_invite_id: inviteId, p_organization_id: orgId } = params || {};
+      const invite = db.organization_invites?.find(({ id }) => id === inviteId);
+
+      if (!invite || invite.organization_id !== orgId || invite.used_at) {
+        return { data: null, error: { message: 'Invite cannot be revoked' } };
+      }
+
+      db.organization_invites = db.organization_invites.filter(({ id }) => id !== inviteId);
+      saveDB(db);
+
+      return { data: inviteId, error: null };
+    }
+
     if (
       (import.meta.env.DEV || import.meta.env.VITE_USE_MOCK_SUPABASE === 'true') &&
       name === 'update_game_score'
