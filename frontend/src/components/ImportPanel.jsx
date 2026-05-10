@@ -19,6 +19,7 @@ import { downloadTemplate } from '../utils/csvTemplates.js';
 import { supabase } from '../lib/supabaseClient.js';
 import Button from './ui/Button.jsx';
 import ProgressBar from './ui/ProgressBar.jsx';
+import Tooltip from './ui/Tooltip.jsx';
 import ColumnMapper, { applyMapping, serializeCanonicalCsv } from './ColumnMapper.jsx';
 import { logger } from '../lib/logger.js';
 
@@ -32,6 +33,11 @@ const REQUIRED_HEADERS = {
 /** @type {readonly ImportType[]} */
 const IMPORT_TYPES = Object.freeze(['players', 'coaches', 'fields']);
 const COMPLETED_IMPORT_STATUSES = new Set(['completed', 'completed_with_warnings']);
+const IMPORT_TYPE_TOOLTIPS = {
+  players: 'Requires first name, last name, and date of birth columns.',
+  coaches: 'Requires full name and email columns.',
+  fields: 'Requires location, name, type, start, and end columns.',
+};
 
 /**
  * Smart Confidence Badge component for high-fidelity mapping indicators.
@@ -427,83 +433,104 @@ export default function ImportPanel({ onImport }) {
 
           {isReadyToApply ? (
             <div className="flex flex-wrap justify-center gap-4 w-full max-w-full">
-              <Button
-                variant="primary"
-                size="lg"
-                onClick={async () => {
-                  try {
-                    setError(null);
-                    await applyDeferredImport(workflowImportType);
-                  } catch (err) {
-                    setError(err.message || `${workflowImportType} import apply failed.`);
-                  }
-                }}
+              <Tooltip
+                content={`Apply the validated ${workflowImportType === 'fields' ? 'field' : 'coach'} import.`}
+                className="w-full sm:w-auto"
               >
-                Apply {workflowImportType === 'fields' ? 'Field Import' : 'Coach Import'}
-              </Button>
-              <Button
-                variant="secondary"
-                size="lg"
-                onClick={async () => {
-                  try {
-                    setError(null);
-                    await cancelDeferredImport(workflowImportType);
-                    setFile(null);
-                    setPreviewData(null);
-                    setOriginalParse(null);
-                  } catch (err) {
-                    setError(err.message || `${workflowImportType} import cancellation failed.`);
-                  }
-                }}
-              >
-                Cancel Deferred Import
-              </Button>
+                <Button
+                  variant="primary"
+                  size="lg"
+                  className="w-full sm:w-auto"
+                  onClick={async () => {
+                    try {
+                      setError(null);
+                      await applyDeferredImport(workflowImportType);
+                    } catch (err) {
+                      setError(err.message || `${workflowImportType} import apply failed.`);
+                    }
+                  }}
+                >
+                  Apply {workflowImportType === 'fields' ? 'Field Import' : 'Coach Import'}
+                </Button>
+              </Tooltip>
+              <Tooltip content="Cancel this validated import." className="w-full sm:w-auto">
+                <Button
+                  variant="secondary"
+                  size="lg"
+                  className="w-full sm:w-auto"
+                  onClick={async () => {
+                    try {
+                      setError(null);
+                      await cancelDeferredImport(workflowImportType);
+                      setFile(null);
+                      setPreviewData(null);
+                      setOriginalParse(null);
+                    } catch (err) {
+                      setError(err.message || `${workflowImportType} import cancellation failed.`);
+                    }
+                  }}
+                >
+                  Cancel Deferred Import
+                </Button>
+              </Tooltip>
             </div>
           ) : isComplete ? (
             <div className="flex flex-wrap justify-center gap-4 w-full max-w-full">
               {canRollbackImport && (
+                <Tooltip
+                  content={`Roll back this ${workflowImportType === 'fields' ? 'field' : 'coach'} import.`}
+                  className="w-full sm:w-auto"
+                >
+                  <Button
+                    variant="danger"
+                    size="lg"
+                    className="w-full sm:w-auto"
+                    onClick={async () => {
+                      try {
+                        setError(null);
+                        await rollbackImport(workflowImportType);
+                      } catch (err) {
+                        setError(err.message || `${workflowImportType} import rollback failed.`);
+                      }
+                    }}
+                  >
+                    Roll Back {workflowImportType === 'fields' ? 'Field Import' : 'Coach Import'}
+                  </Button>
+                </Tooltip>
+              )}
+              <Tooltip content="Reset and choose another CSV." className="w-full sm:w-auto">
                 <Button
-                  variant="danger"
+                  variant="secondary"
                   size="lg"
-                  onClick={async () => {
-                    try {
-                      setError(null);
-                      await rollbackImport(workflowImportType);
-                    } catch (err) {
-                      setError(err.message || `${workflowImportType} import rollback failed.`);
-                    }
+                  className="w-full sm:w-auto"
+                  onClick={() => {
+                    resetImport('all');
+                    setFile(null);
+                    setPreviewData(null);
+                    setOriginalParse(null);
                   }}
                 >
-                  Roll Back {workflowImportType === 'fields' ? 'Field Import' : 'Coach Import'}
+                  Upload Another File
                 </Button>
-              )}
-              <Button
-                variant="secondary"
-                size="lg"
-                onClick={() => {
-                  resetImport('all');
-                  setFile(null);
-                  setPreviewData(null);
-                  setOriginalParse(null);
-                }}
-              >
-                Upload Another File
-              </Button>
-              <Button
-                variant="primary"
-                size="lg"
-                onClick={() => {
-                  if (onImport && previewData) {
-                    onImport(previewData, importType);
-                  }
-                  resetImport('all');
-                  setFile(null);
-                  setPreviewData(null);
-                  setOriginalParse(null);
-                }}
-              >
-                Continue
-              </Button>
+              </Tooltip>
+              <Tooltip content="Continue to the next workflow step." className="w-full sm:w-auto">
+                <Button
+                  variant="primary"
+                  size="lg"
+                  className="w-full sm:w-auto"
+                  onClick={() => {
+                    if (onImport && previewData) {
+                      onImport(previewData, importType);
+                    }
+                    resetImport('all');
+                    setFile(null);
+                    setPreviewData(null);
+                    setOriginalParse(null);
+                  }}
+                >
+                  Continue
+                </Button>
+              </Tooltip>
             </div>
           ) : (
             <div className="flex items-center gap-3 bg-bg-surface px-4 py-2 rounded-lg border border-border-subtle max-w-full">
@@ -552,20 +579,23 @@ export default function ImportPanel({ onImport }) {
             </p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            <button
-              type="button"
-              aria-pressed={notifyOnComplete}
-              aria-label={
-                notifyOnComplete
-                  ? 'Disable import completion email notifications'
-                  : 'Notify when import completes'
-              }
-              className={`p-2 rounded-lg transition-colors ${notifyOnComplete ? 'bg-blue-500/20 text-blue-400' : 'bg-bg-surface text-text-muted hover:text-text-primary'}`}
-              onClick={() => setNotifyOnComplete(!notifyOnComplete)}
-              title={notifyOnComplete ? 'Disable notifications' : 'Notify when complete'}
+            <Tooltip
+              content={notifyOnComplete ? 'Disable notifications.' : 'Notify when complete.'}
             >
-              <Bell size={20} aria-hidden="true" />
-            </button>
+              <button
+                type="button"
+                aria-pressed={notifyOnComplete}
+                aria-label={
+                  notifyOnComplete
+                    ? 'Disable import completion email notifications'
+                    : 'Notify when import completes'
+                }
+                className={`p-2 rounded-lg transition-colors ${notifyOnComplete ? 'bg-blue-500/20 text-blue-400' : 'bg-bg-surface text-text-muted hover:text-text-primary'}`}
+                onClick={() => setNotifyOnComplete(!notifyOnComplete)}
+              >
+                <Bell size={20} aria-hidden="true" />
+              </button>
+            </Tooltip>
           </div>
         </div>
 
@@ -574,19 +604,19 @@ export default function ImportPanel({ onImport }) {
           className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8"
         >
           {IMPORT_TYPES.map((type) => (
-            <button
-              key={type}
-              type="button"
-              aria-pressed={importType === type}
-              onClick={() => {
-                setImportType(type);
-                setFile(null);
-                setPreviewData(null);
-                setError(null);
-                setMappingStage(null);
-                setOriginalParse(null);
-              }}
-              className={`
+            <Tooltip key={type} content={IMPORT_TYPE_TOOLTIPS[type]} className="w-full">
+              <button
+                type="button"
+                aria-pressed={importType === type}
+                onClick={() => {
+                  setImportType(type);
+                  setFile(null);
+                  setPreviewData(null);
+                  setError(null);
+                  setMappingStage(null);
+                  setOriginalParse(null);
+                }}
+                className={`
                                  w-full min-w-0 p-4 rounded-xl border transition-all duration-200 text-left relative overflow-hidden group
                                  ${
                                    importType === type
@@ -594,28 +624,29 @@ export default function ImportPanel({ onImport }) {
                                      : 'bg-bg-surface border-border-subtle hover:bg-bg-surface-hover hover:border-border-highlight'
                                  }
                              `}
-            >
-              <div className="relative z-10">
-                <div className="flex justify-between items-center gap-2 mb-1 min-w-0">
-                  <span
-                    className={`font-semibold capitalize truncate ${importType === type ? 'text-blue-400' : 'text-text-primary'}`}
-                  >
-                    {type}
-                  </span>
-                  {getImportedCount(type) > 0 && (
-                    <span className="shrink-0 text-xs bg-green-500/20 text-green-400 px-2 py-0.5 rounded-full flex items-center gap-1">
-                      <CheckCircle size={10} />
-                      {getImportedCount(type)}
+              >
+                <div className="relative z-10">
+                  <div className="flex justify-between items-center gap-2 mb-1 min-w-0">
+                    <span
+                      className={`font-semibold capitalize truncate ${importType === type ? 'text-blue-400' : 'text-text-primary'}`}
+                    >
+                      {type}
                     </span>
-                  )}
+                    {getImportedCount(type) > 0 && (
+                      <span className="shrink-0 text-xs bg-green-500/20 text-green-400 px-2 py-0.5 rounded-full flex items-center gap-1">
+                        <CheckCircle size={10} />
+                        {getImportedCount(type)}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-text-muted">
+                    {type === 'players' && 'Upload player registration data'}
+                    {type === 'coaches' && 'Upload coach assignments'}
+                    {type === 'fields' && 'Upload field configurations'}
+                  </p>
                 </div>
-                <p className="text-xs text-text-muted">
-                  {type === 'players' && 'Upload player registration data'}
-                  {type === 'coaches' && 'Upload coach assignments'}
-                  {type === 'fields' && 'Upload field configurations'}
-                </p>
-              </div>
-            </button>
+              </button>
+            </Tooltip>
           ))}
         </div>
 
@@ -641,14 +672,16 @@ export default function ImportPanel({ onImport }) {
               )}
             </span>
           </div>
-          <button
-            type="button"
-            onClick={() => downloadTemplate(importType)}
-            className="flex w-full sm:w-auto items-center justify-center gap-2 px-3 py-1.5 rounded-lg border border-border-subtle bg-bg-surface hover:bg-bg-surface-hover text-text-primary text-xs font-medium transition-colors"
-          >
-            <Download size={14} />
-            Download {importType} template
-          </button>
+          <Tooltip content={`Download a ${importType} CSV template.`} className="w-full sm:w-auto">
+            <button
+              type="button"
+              onClick={() => downloadTemplate(importType)}
+              className="flex w-full sm:w-auto items-center justify-center gap-2 px-3 py-1.5 rounded-lg border border-border-subtle bg-bg-surface hover:bg-bg-surface-hover text-text-primary text-xs font-medium transition-colors"
+            >
+              <Download size={14} />
+              Download {importType} template
+            </button>
+          </Tooltip>
         </div>
 
         {mappingStage ? (
@@ -750,63 +783,73 @@ export default function ImportPanel({ onImport }) {
                 className="flex flex-wrap gap-3 w-full xl:w-auto"
               >
                 {originalParse && (
+                  <Tooltip content="Review or edit column mapping." className="w-full sm:w-auto">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="w-full sm:w-auto"
+                      onClick={() => {
+                        // Re-open the mapper against the ORIGINAL raw parse,
+                        // not against previewData — previewData may be the
+                        // post-confirmation rewritten CSV with canonical
+                        // headers, which would present the user with
+                        // canonical names as "raw" and prevent reverting to
+                        // real source columns (Gemini review on #186).
+                        setMappingStage({
+                          rawHeaders: originalParse.headers,
+                          rawData: originalParse.data,
+                          sampleRows: originalParse.data.slice(0, 3),
+                          autoMatches: originalParse.mappings,
+                          smartMetadata: previewData.smartMetadata,
+                          missingHeaders: [],
+                        });
+                        setPreviewData(null);
+                      }}
+                    >
+                      <SlidersHorizontal size={14} className="mr-1" />
+                      Adjust mapping
+                    </Button>
+                  </Tooltip>
+                )}
+                {importType !== 'players' && (
+                  <Tooltip
+                    content="Validate without applying records."
+                    className="w-full sm:w-auto"
+                  >
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      className="w-full sm:w-auto"
+                      onClick={handleValidateOnlyImport}
+                    >
+                      Validate Only
+                    </Button>
+                  </Tooltip>
+                )}
+                <Tooltip content="Clear this file and choose another." className="w-full sm:w-auto">
                   <Button
                     variant="ghost"
                     size="sm"
                     className="w-full sm:w-auto"
                     onClick={() => {
-                      // Re-open the mapper against the ORIGINAL raw parse,
-                      // not against previewData — previewData may be the
-                      // post-confirmation rewritten CSV with canonical
-                      // headers, which would present the user with
-                      // canonical names as "raw" and prevent reverting to
-                      // real source columns (Gemini review on #186).
-                      setMappingStage({
-                        rawHeaders: originalParse.headers,
-                        rawData: originalParse.data,
-                        sampleRows: originalParse.data.slice(0, 3),
-                        autoMatches: originalParse.mappings,
-                        smartMetadata: previewData.smartMetadata,
-                        missingHeaders: [],
-                      });
+                      setFile(null);
                       setPreviewData(null);
+                      setOriginalParse(null);
                     }}
-                    title="Edit column mapping"
                   >
-                    <SlidersHorizontal size={14} className="mr-1" />
-                    Adjust mapping
+                    Cancel
                   </Button>
-                )}
-                {importType !== 'players' && (
+                </Tooltip>
+                <Tooltip content="Validate and import this CSV." className="w-full sm:w-auto">
                   <Button
-                    variant="secondary"
+                    variant="primary"
                     size="sm"
                     className="w-full sm:w-auto"
-                    onClick={handleValidateOnlyImport}
+                    onClick={handleStartImport}
                   >
-                    Validate Only
+                    Start Import
                   </Button>
-                )}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="w-full sm:w-auto"
-                  onClick={() => {
-                    setFile(null);
-                    setPreviewData(null);
-                    setOriginalParse(null);
-                  }}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  variant="primary"
-                  size="sm"
-                  className="w-full sm:w-auto"
-                  onClick={handleStartImport}
-                >
-                  Start Import
-                </Button>
+                </Tooltip>
               </div>
             </div>
             <div
