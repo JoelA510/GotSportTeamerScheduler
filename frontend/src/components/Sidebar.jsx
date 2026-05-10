@@ -15,6 +15,7 @@ import {
   History,
   FlaskConical,
   UserRoundCheck,
+  UserCircle,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext.jsx';
 import { useOrganization } from '../contexts/OrganizationContext.jsx';
@@ -53,7 +54,7 @@ const navItems = [
 ];
 
 export default function Sidebar({ isOpen, toggleSidebar }) {
-  const { signOut, isAdmin, isCoach, isImpersonating } = useAuth();
+  const { signOut, isAdmin, isCoach, isImpersonating, user } = useAuth();
   const {
     organizations,
     currentOrganization,
@@ -65,6 +66,20 @@ export default function Sidebar({ isOpen, toggleSidebar }) {
 
   const [isOrgMenuOpen, setIsOrgMenuOpen] = useState(false);
   const [isSeasonMenuOpen, setIsSeasonMenuOpen] = useState(false);
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+
+  const displayName =
+    user?.profile?.full_name ||
+    [user?.profile?.first_name, user?.profile?.last_name].filter(Boolean).join(' ') ||
+    user?.email ||
+    'Account';
+  const displayEmail = user?.email || user?.profile?.email || '';
+  const initials = displayName
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join('');
 
   return (
     <>
@@ -249,19 +264,77 @@ export default function Sidebar({ isOpen, toggleSidebar }) {
         </nav>
 
         {/* User Profile / Logout */}
-        <div className="p-4 border-t border-border-subtle">
+        <div className="p-4 border-t border-border-subtle relative">
           <button
-            onClick={signOut}
-            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-text-muted hover:text-status-error hover:bg-status-error-bg transition-all duration-200 group"
+            type="button"
+            aria-haspopup="menu"
+            aria-expanded={isUserMenuOpen}
+            aria-controls="sidebar-user-menu"
+            onClick={() => {
+              setIsUserMenuOpen((open) => !open);
+              setIsOrgMenuOpen(false);
+              setIsSeasonMenuOpen(false);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape') {
+                setIsUserMenuOpen(false);
+              }
+            }}
+            className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-text-secondary hover:text-text-primary hover:bg-bg-surface-hover transition-all duration-200 border border-border-subtle bg-bg-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
           >
-            <LogOut size={20} className="transition-colors group-hover:text-status-error" />
-            <span className="font-medium">Sign Out</span>
+            <span className="w-10 h-10 rounded-full bg-brand-500/20 text-brand-400 flex items-center justify-center font-bold shrink-0">
+              {initials || <UserCircle size={22} aria-hidden="true" />}
+            </span>
+            <span className="min-w-0 text-left">
+              <span className="block text-sm font-semibold truncate">{displayName}</span>
+              {displayEmail && (
+                <span className="block text-xs text-text-muted truncate">{displayEmail}</span>
+              )}
+            </span>
+            <ChevronDown
+              size={16}
+              className={`ml-auto text-text-muted transition-transform ${isUserMenuOpen ? 'rotate-180' : ''}`}
+              aria-hidden="true"
+            />
           </button>
+
+          {isUserMenuOpen && (
+            <div
+              id="sidebar-user-menu"
+              role="menu"
+              aria-label="User account menu"
+              className="absolute bottom-full left-4 right-4 mb-2 bg-bg-surface border border-border-subtle rounded-xl shadow-xl overflow-hidden z-50"
+            >
+              <NavLink
+                to="/account"
+                role="menuitem"
+                onClick={() => {
+                  setIsUserMenuOpen(false);
+                  if (window.innerWidth < 768) {
+                    toggleSidebar();
+                  }
+                }}
+                className="flex items-center gap-3 px-4 py-3 text-sm text-text-secondary hover:text-text-primary hover:bg-bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-inset"
+              >
+                <UserCircle size={18} aria-hidden="true" />
+                Account Settings
+              </NavLink>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={signOut}
+                className="w-full flex items-center gap-3 px-4 py-3 text-sm text-text-secondary hover:text-status-error hover:bg-status-error-bg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-inset"
+              >
+                <LogOut size={18} aria-hidden="true" />
+                Sign Out
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Mock Mode Dev Indicator */}
         {IS_MOCK_MODE && (
-          <div className="absolute bottom-20 left-4 right-4">
+          <div className="absolute bottom-32 left-4 right-4">
             <a
               href="https://github.com/JoelA510/SquadLogic/blob/main/docs/operations/ENVIRONMENT.md"
               target="_blank"
