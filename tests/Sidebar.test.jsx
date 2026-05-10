@@ -1,6 +1,6 @@
 import React from 'react';
 import { MemoryRouter } from 'react-router-dom';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import Sidebar from '../frontend/src/components/Sidebar.jsx';
 
@@ -76,5 +76,40 @@ describe('Sidebar', () => {
     fireEvent.click(menuButton);
     fireEvent.click(screen.getByRole('menuitem', { name: 'Sign Out' }));
     expect(mocks.signOut).toHaveBeenCalled();
+  });
+
+  it('supports arrow-key navigation and Escape dismissal inside the user menu', async () => {
+    render(
+      <MemoryRouter>
+        <Sidebar isOpen toggleSidebar={vi.fn()} />
+      </MemoryRouter>
+    );
+
+    const menuButton = screen.getByRole('button', { name: /casey coach/i });
+    fireEvent.keyDown(menuButton, { key: 'ArrowDown' });
+
+    const menu = await screen.findByRole('menu', { name: 'User account menu' });
+    const accountLink = screen.getByRole('menuitem', { name: 'Account Settings' });
+    const signOutButton = screen.getByRole('menuitem', { name: 'Sign Out' });
+
+    await waitFor(() => expect(accountLink).toHaveFocus());
+
+    fireEvent.keyDown(menu, { key: 'ArrowDown' });
+    expect(signOutButton).toHaveFocus();
+
+    fireEvent.keyDown(menu, { key: 'ArrowUp' });
+    expect(accountLink).toHaveFocus();
+
+    fireEvent.keyDown(menu, { key: 'End' });
+    expect(signOutButton).toHaveFocus();
+
+    fireEvent.keyDown(menu, { key: 'Home' });
+    expect(accountLink).toHaveFocus();
+
+    fireEvent.keyDown(accountLink, { key: 'Escape' });
+    await waitFor(() =>
+      expect(screen.queryByRole('menu', { name: 'User account menu' })).not.toBeInTheDocument()
+    );
+    expect(menuButton).toHaveFocus();
   });
 });

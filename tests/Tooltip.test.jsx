@@ -53,6 +53,9 @@ describe('Tooltip', () => {
     expect(wrapper).toHaveAttribute('aria-disabled', 'true');
     expect(wrapper).toHaveAttribute('aria-describedby', tooltip.id);
     expect(tooltip).toHaveTextContent('Unavailable until a file is selected');
+
+    wrapper.focus();
+    expect(wrapper).toHaveFocus();
   });
 
   it('does not treat aria-disabled="false" as disabled', () => {
@@ -70,5 +73,24 @@ describe('Tooltip', () => {
     expect(button).toHaveAttribute('aria-describedby');
     expect(wrapper).not.toHaveAttribute('tabindex');
     expect(wrapper).not.toHaveAttribute('aria-disabled');
+  });
+
+  it('preserves existing descriptions while adding tooltip descriptions', () => {
+    render(
+      <>
+        <p id="existing-description">Existing description</p>
+        <Tooltip content="Tooltip description">
+          <button type="button" aria-describedby="existing-description">
+            Action
+          </button>
+        </Tooltip>
+      </>
+    );
+
+    const button = screen.getByRole('button', { name: 'Action' });
+    const describedBy = button.getAttribute('aria-describedby');
+
+    expect(describedBy).toContain('existing-description');
+    expect(tooltipFor(button)).toHaveTextContent('Tooltip description');
   });
 });

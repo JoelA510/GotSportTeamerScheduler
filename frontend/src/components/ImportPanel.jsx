@@ -590,7 +590,7 @@ export default function ImportPanel({ onImport }) {
                     ? 'Disable import completion email notifications'
                     : 'Notify when import completes'
                 }
-                className={`p-2 rounded-lg transition-colors ${notifyOnComplete ? 'bg-blue-500/20 text-blue-400' : 'bg-bg-surface text-text-muted hover:text-text-primary'}`}
+                className={`p-2 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/80 focus-visible:ring-offset-2 focus-visible:ring-offset-bg-surface ${notifyOnComplete ? 'bg-blue-500/20 text-blue-400' : 'bg-bg-surface text-text-muted hover:text-text-primary'}`}
                 onClick={() => setNotifyOnComplete(!notifyOnComplete)}
               >
                 <Bell size={20} aria-hidden="true" />
@@ -617,7 +617,7 @@ export default function ImportPanel({ onImport }) {
                   setOriginalParse(null);
                 }}
                 className={`
-                                 w-full min-w-0 p-4 rounded-xl border transition-all duration-200 text-left relative overflow-hidden group
+                                 w-full min-w-0 p-4 rounded-xl border transition-all duration-200 text-left relative overflow-hidden group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/80 focus-visible:ring-offset-2 focus-visible:ring-offset-bg-surface
                                  ${
                                    importType === type
                                      ? 'bg-blue-500/10 border-blue-500/50 shadow-[0_0_20px_rgba(56,189,248,0.1)]'
@@ -676,9 +676,9 @@ export default function ImportPanel({ onImport }) {
             <button
               type="button"
               onClick={() => downloadTemplate(importType)}
-              className="flex w-full sm:w-auto items-center justify-center gap-2 px-3 py-1.5 rounded-lg border border-border-subtle bg-bg-surface hover:bg-bg-surface-hover text-text-primary text-xs font-medium transition-colors"
+              className="flex w-full sm:w-auto items-center justify-center gap-2 px-3 py-1.5 rounded-lg border border-border-subtle bg-bg-surface hover:bg-bg-surface-hover text-text-primary text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/80 focus-visible:ring-offset-2 focus-visible:ring-offset-bg-surface"
             >
-              <Download size={14} />
+              <Download size={14} aria-hidden="true" />
               Download {importType} template
             </button>
           </Tooltip>
