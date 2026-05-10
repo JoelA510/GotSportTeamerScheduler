@@ -78,7 +78,7 @@ export default function AccountSettingsPage() {
         .from('profiles')
         .update(updates)
         .eq('id', user.id)
-        .select('id, email, first_name, last_name, full_name, avatar_url')
+        .select('id, first_name, last_name, full_name, avatar_url')
         .maybeSingle();
 
       if (error) throw error;
@@ -151,7 +151,7 @@ export default function AccountSettingsPage() {
       if (error) throw error;
 
       setInviteCode('');
-      await Promise.resolve(refetchOrgs?.());
+      refetchOrgs?.();
       setInviteMessage({ type: 'success', text: 'Invite redeemed. Organization list refreshed.' });
     } catch (error) {
       logger.error('Account invite redemption failed', error);
