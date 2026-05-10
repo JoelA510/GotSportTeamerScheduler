@@ -5,7 +5,7 @@ BEGIN;
 \set squadlogic_fixture_include 1
 \ir _fixtures.sql
 
-SELECT plan(5);
+SELECT plan(7);
 
 SELECT ok(
     to_regprocedure('public.fail_stale_import_jobs(uuid,timestamptz)') IS NOT NULL,
@@ -20,6 +20,16 @@ SELECT ok(
 SELECT ok(
     to_regprocedure('public.update_import_job_progress(uuid,integer,integer,integer,jsonb)') IS NOT NULL,
     'update_import_job_progress(uuid, integer, integer, integer, jsonb) exists'
+);
+
+SELECT ok(
+    to_regprocedure('public.mark_import_job_ready_to_apply(uuid,text,jsonb)') IS NOT NULL,
+    'mark_import_job_ready_to_apply(uuid, text, jsonb) exists'
+);
+
+SELECT ok(
+    to_regprocedure('public.cancel_ready_import_job(uuid,text)') IS NOT NULL,
+    'cancel_ready_import_job(uuid, text) exists'
 );
 
 SELECT ok(
@@ -42,7 +52,13 @@ required_statuses(status) AS (
 SELECT ok(
     COALESCE(
         (
-            SELECT bool_and(position(quote_literal(required_statuses.status) in status_constraint.definition) > 0)
+            SELECT bool_and(
+                status_constraint.definition ~ (
+                    '(^|[^[:alnum:]_])'
+                    || quote_literal(required_statuses.status)
+                    || '([^[:alnum:]_]|$)'
+                )
+            )
             FROM status_constraint
             CROSS JOIN required_statuses
         ),

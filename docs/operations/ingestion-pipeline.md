@@ -77,9 +77,10 @@ supabase/migrations/20260504080000_import_job_lifecycle_rpcs.sql
 ```
 
 The deferred-apply status migration must run before the lifecycle RPC migration
-because `create_import_job`, `update_import_job_progress`, and
-`fail_import_job` insert or update `import_jobs.status` values including
-`importing`, `ready_to_apply`, and `failed`.
+because `mark_import_job_ready_to_apply`, `cancel_ready_import_job`,
+`create_import_job`, `update_import_job_progress`, and `fail_import_job` insert
+or update `import_jobs.status` values including `importing`,
+`ready_to_apply`, and `failed`.
 
 Run this SQL against the target Supabase database to confirm the expected
 function signatures are present:
@@ -89,7 +90,7 @@ select n.nspname, p.proname, p.oid::regprocedure
 from pg_proc p
 join pg_namespace n on n.oid = p.pronamespace
 where n.nspname = 'public'
-  and p.proname in ('fail_stale_import_jobs','create_import_job','update_import_job_progress','fail_import_job')
+  and p.proname in ('fail_stale_import_jobs','mark_import_job_ready_to_apply','cancel_ready_import_job','create_import_job','update_import_job_progress','fail_import_job')
 order by p.proname;
 ```
 
