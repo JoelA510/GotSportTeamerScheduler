@@ -65,6 +65,9 @@ describe('useSchedulerRun', () => {
     await waitFor(() => expect(result.current.loading).toBe(false));
 
     expect(result.current.data).toEqual({ runId: 'practice-run-1' });
+    expect(runBuilder.limit).toHaveBeenCalledWith(1);
+    expect(runBuilder.maybeSingle).toHaveBeenCalled();
+    expect(runBuilder.single).not.toHaveBeenCalled();
     expect(runBuilder.eq).toHaveBeenCalledWith('organization_id', 'org-1');
     expect(runBuilder.eq).toHaveBeenCalledWith('run_type', 'practice');
     expect(runBuilder.eq).toHaveBeenCalledWith('status', 'completed');
@@ -108,7 +111,7 @@ describe('useSchedulerRun', () => {
     const evaluationBuilder = createQueryBuilder({ data: evaluationRecord, error: null });
     const missingRunBuilder = createQueryBuilder({
       data: null,
-      error: { code: 'PGRST116', message: 'No rows found' },
+      error: null,
     });
     const builders = [runBuilder, evaluationBuilder, missingRunBuilder];
 
@@ -130,5 +133,8 @@ describe('useSchedulerRun', () => {
 
     await waitFor(() => expect(result.current.data).toBe(emptyState));
     expect(result.current.evaluation).toBeNull();
+    expect(missingRunBuilder.maybeSingle).toHaveBeenCalled();
+    expect(missingRunBuilder.single).not.toHaveBeenCalled();
+    expect(mapper).toHaveBeenCalledTimes(1);
   });
 });
