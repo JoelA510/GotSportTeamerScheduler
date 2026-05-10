@@ -361,7 +361,11 @@ Given('I am logged in as an administrator', async ({ page }) => {
     localStorage.setItem('squadlogic_active_org', 'org-1');
   });
   await page.reload();
-  await expect(page.getByRole('button', { name: /Sign Out/i })).toBeVisible({ timeout: 15000 });
+  await expect(page.getByRole('button', { name: /Mock Admin|admin@squadlogic\.app/i })).toBeVisible(
+    {
+      timeout: 15000,
+    }
+  );
 });
 
 Given('an organization has multiple fields configured', async ({ page }) => {
