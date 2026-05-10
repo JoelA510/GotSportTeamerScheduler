@@ -151,6 +151,12 @@ describe('AccountSettingsPage', () => {
   it('blocks mismatched password changes and associates the error with both fields', () => {
     render(<AccountSettingsPage />);
 
+    expect(screen.getByLabelText('New Password')).toHaveAttribute('autocomplete', 'new-password');
+    expect(screen.getByLabelText('Confirm Password')).toHaveAttribute(
+      'autocomplete',
+      'new-password'
+    );
+
     fireEvent.change(screen.getByLabelText('New Password'), {
       target: { value: 'long-password-123' },
     });
@@ -171,6 +177,20 @@ describe('AccountSettingsPage', () => {
       'account-password-message'
     );
     expect(mocks.updatePassword).not.toHaveBeenCalled();
+  });
+
+  it('announces invite code validation errors and links them to the input', () => {
+    render(<AccountSettingsPage />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Join' }));
+
+    const error = screen.getByRole('alert');
+    const inviteInput = screen.getByLabelText('Join Organization by Invite Code');
+
+    expect(error).toHaveAttribute('id', 'account-invite-message');
+    expect(error).toHaveTextContent('Enter an invite code.');
+    expect(inviteInput).toHaveAttribute('aria-describedby', 'account-invite-message');
+    expect(mocks.rpc).not.toHaveBeenCalled();
   });
 
   it('saves profile updates only for the authenticated profile id', async () => {

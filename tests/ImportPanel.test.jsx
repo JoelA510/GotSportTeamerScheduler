@@ -131,6 +131,8 @@ describe('ImportPanel', () => {
     const notifyButton = screen.getByRole('button', { name: /notify when import completes/i });
     expect(notifyButton).toHaveAttribute('type', 'button');
     expect(notifyButton).toHaveAttribute('aria-pressed', 'false');
+    expect(notifyButton).toHaveAccessibleName('Notify when import completes');
+    expect(notifyButton).toHaveClass('focus-visible:ring-2');
     expectTooltipFor(notifyButton, 'Notify when complete.');
 
     fireEvent.click(notifyButton);
@@ -140,6 +142,7 @@ describe('ImportPanel', () => {
     const coachesButton = screen.getByRole('button', { name: /^coaches\b/i });
     expect(playersButton).toHaveClass('w-full', 'min-w-0');
     expect(playersButton).toHaveAttribute('aria-pressed', 'true');
+    expect(playersButton).toHaveClass('focus-visible:ring-2');
     expectTooltipFor(playersButton, 'Requires first name, last name, and date of birth columns.');
     expect(coachesButton).toHaveAttribute('aria-pressed', 'false');
     expectTooltipFor(coachesButton, 'Requires full name and email columns.');
@@ -148,6 +151,8 @@ describe('ImportPanel', () => {
     expect(coachesButton).toHaveAttribute('aria-pressed', 'true');
 
     const templateButton = screen.getByRole('button', { name: /download coaches template/i });
+    expect(templateButton).toHaveAccessibleName('Download coaches template');
+    expect(templateButton).toHaveClass('focus-visible:ring-2');
     expectTooltipFor(templateButton, 'Download a coaches CSV template.');
 
     const fileInput = screen.getByLabelText(/browse files/i);
@@ -221,6 +226,10 @@ describe('ImportPanel', () => {
     expectTooltipFor(
       screen.getByRole('button', { name: /start import/i }),
       'Validate and import this CSV.'
+    );
+    expect(screen.getByRole('button', { name: /start import/i })).toHaveClass(
+      'focus-visible:ring-2',
+      'focus-visible:ring-brand-400'
     );
   });
 

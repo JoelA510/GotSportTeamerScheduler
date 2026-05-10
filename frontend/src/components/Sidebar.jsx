@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   LayoutDashboard,
   Upload,
@@ -67,6 +67,10 @@ export default function Sidebar({ isOpen, toggleSidebar }) {
   const [isOrgMenuOpen, setIsOrgMenuOpen] = useState(false);
   const [isSeasonMenuOpen, setIsSeasonMenuOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const pendingUserMenuFocusRef = useRef(null);
+  const userMenuButtonRef = useRef(null);
+  const accountMenuItemRef = useRef(null);
+  const signOutMenuItemRef = useRef(null);
 
   const displayName =
     user?.profile?.full_name ||
@@ -80,6 +84,64 @@ export default function Sidebar({ isOpen, toggleSidebar }) {
     .slice(0, 2)
     .map((part) => part[0]?.toUpperCase())
     .join('');
+
+  useEffect(() => {
+    const pendingFocus = pendingUserMenuFocusRef.current;
+    if (!isUserMenuOpen || !pendingFocus) return;
+
+    pendingUserMenuFocusRef.current = null;
+    const focusTarget =
+      pendingFocus === 'last' ? signOutMenuItemRef.current : accountMenuItemRef.current;
+    focusTarget?.focus();
+  }, [isUserMenuOpen]);
+
+  const closeUserMenu = ({ restoreFocus = false } = {}) => {
+    setIsUserMenuOpen(false);
+    pendingUserMenuFocusRef.current = null;
+    if (restoreFocus) {
+      userMenuButtonRef.current?.focus();
+    }
+  };
+
+  const openUserMenu = (focusTarget = null) => {
+    setIsUserMenuOpen(true);
+    setIsOrgMenuOpen(false);
+    setIsSeasonMenuOpen(false);
+    pendingUserMenuFocusRef.current = focusTarget;
+
+    if (isUserMenuOpen && focusTarget) {
+      const targetRef = focusTarget === 'last' ? signOutMenuItemRef : accountMenuItemRef;
+      targetRef.current?.focus();
+    }
+  };
+
+  const handleUserMenuKeyDown = (event) => {
+    const items = [accountMenuItemRef.current, signOutMenuItemRef.current].filter(Boolean);
+
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      closeUserMenu({ restoreFocus: true });
+      return;
+    }
+
+    if (items.length === 0) return;
+
+    const activeIndex = items.indexOf(document.activeElement);
+
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      items[(activeIndex + 1) % items.length]?.focus();
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      items[(activeIndex <= 0 ? items.length : activeIndex) - 1]?.focus();
+    } else if (event.key === 'Home') {
+      event.preventDefault();
+      items[0]?.focus();
+    } else if (event.key === 'End') {
+      event.preventDefault();
+      items[items.length - 1]?.focus();
+    }
+  };
 
   return (
     <>
@@ -266,18 +328,28 @@ export default function Sidebar({ isOpen, toggleSidebar }) {
         {/* User Profile / Logout */}
         <div className="p-4 border-t border-border-subtle relative">
           <button
+            ref={userMenuButtonRef}
             type="button"
             aria-haspopup="menu"
             aria-expanded={isUserMenuOpen}
             aria-controls="sidebar-user-menu"
             onClick={() => {
-              setIsUserMenuOpen((open) => !open);
-              setIsOrgMenuOpen(false);
-              setIsSeasonMenuOpen(false);
+              if (isUserMenuOpen) {
+                closeUserMenu();
+              } else {
+                openUserMenu();
+              }
             }}
             onKeyDown={(event) => {
               if (event.key === 'Escape') {
-                setIsUserMenuOpen(false);
+                event.preventDefault();
+                closeUserMenu();
+              } else if (event.key === 'ArrowDown') {
+                event.preventDefault();
+                openUserMenu('first');
+              } else if (event.key === 'ArrowUp') {
+                event.preventDefault();
+                openUserMenu('last');
               }
             }}
             className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-text-secondary hover:text-text-primary hover:bg-bg-surface-hover transition-all duration-200 border border-border-subtle bg-bg-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
@@ -303,13 +375,15 @@ export default function Sidebar({ isOpen, toggleSidebar }) {
               id="sidebar-user-menu"
               role="menu"
               aria-label="User account menu"
+              onKeyDown={handleUserMenuKeyDown}
               className="absolute bottom-full left-4 right-4 mb-2 bg-bg-surface border border-border-subtle rounded-xl shadow-xl overflow-hidden z-50"
             >
               <NavLink
+                ref={accountMenuItemRef}
                 to="/account"
                 role="menuitem"
                 onClick={() => {
-                  setIsUserMenuOpen(false);
+                  closeUserMenu();
                   if (window.innerWidth < 768) {
                     toggleSidebar();
                   }
@@ -320,9 +394,13 @@ export default function Sidebar({ isOpen, toggleSidebar }) {
                 Account Settings
               </NavLink>
               <button
+                ref={signOutMenuItemRef}
                 type="button"
                 role="menuitem"
-                onClick={signOut}
+                onClick={() => {
+                  closeUserMenu();
+                  signOut();
+                }}
                 className="w-full flex items-center gap-3 px-4 py-3 text-sm text-text-secondary hover:text-status-error hover:bg-status-error-bg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-inset"
               >
                 <LogOut size={18} aria-hidden="true" />
