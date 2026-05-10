@@ -82,10 +82,13 @@ export default function AccountSettingsPage() {
         .maybeSingle();
 
       if (error) throw error;
+      if (!data) {
+        throw new Error('No profile row was updated.');
+      }
 
       setProfileForm((current) => ({
         ...current,
-        ...getProfileForm({ profile: data || updates }),
+        ...getProfileForm({ profile: data }),
       }));
       setProfileMessage({ type: 'success', text: 'Profile saved.' });
     } catch (error) {
