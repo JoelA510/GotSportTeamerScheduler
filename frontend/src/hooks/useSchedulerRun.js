@@ -54,23 +54,23 @@ export function useSchedulerRun(runType, mapper, emptyState) {
 
         const { data: run, error: queryError } = await runQuery
           .limit(1)
-          .single()
+          .maybeSingle()
           // @ts-expect-error [SUP] abortSignal present but untyped in PostgREST builder
           .abortSignal(controller.signal);
 
         if (queryError) {
-          if (queryError.code === 'PGRST116') {
-            // No rows found -> return empty state
-            setData(emptyStateRef.current);
-            setEvaluation(null);
-            return;
-          }
           throw queryError;
+        }
+
+        if (!run) {
+          setData(emptyStateRef.current);
+          setEvaluation(null);
+          return;
         }
 
         // 2. Fetch associated evaluation (if any)
         let evalRecord = null;
-        if (run && run.id) {
+        if (run.id) {
           const { data: evalData } = await supabase
             .from('schedule_evaluations')
             .select('*')
