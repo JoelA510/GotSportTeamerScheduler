@@ -98,6 +98,17 @@ describe('ImportPanel', () => {
   it('uses keyboard-accessible controls for import notifications and file picking', () => {
     const { unmount } = render(<ImportPanel onImport={vi.fn()} />);
 
+    expect(screen.getByTestId('import-panel')).toHaveClass(
+      'max-w-full',
+      'min-w-0',
+      'overflow-visible'
+    );
+    expect(screen.getByTestId('import-type-selector')).toHaveClass(
+      'grid',
+      'grid-cols-1',
+      'sm:grid-cols-3'
+    );
+
     const notifyButton = screen.getByRole('button', { name: /notify when import completes/i });
     expect(notifyButton).toHaveAttribute('type', 'button');
     expect(notifyButton).toHaveAttribute('aria-pressed', 'false');
@@ -108,6 +119,7 @@ describe('ImportPanel', () => {
 
     const playersButton = screen.getByRole('button', { name: /^players\b/i });
     const coachesButton = screen.getByRole('button', { name: /^coaches\b/i });
+    expect(playersButton).toHaveClass('w-full', 'min-w-0');
     expect(playersButton).toHaveAttribute('aria-pressed', 'true');
     expect(coachesButton).toHaveAttribute('aria-pressed', 'false');
 
@@ -128,6 +140,47 @@ describe('ImportPanel', () => {
     expect(
       screen.getByRole('button', { name: /disable import completion email notifications/i })
     ).toHaveAttribute('title', 'Disable notifications');
+  });
+
+  it('keeps preview controls contained in responsive wrappers', async () => {
+    render(<ImportPanel onImport={vi.fn()} />);
+
+    const input = screen.getByLabelText(/browse files/i);
+    const file = new File(
+      ['first_name,last_name,date_of_birth\nAlex,Smith,2016-01-01'],
+      'players.csv',
+      {
+        type: 'text/csv',
+      }
+    );
+
+    fireEvent.change(input, { target: { files: [file] } });
+
+    await screen.findByText('players.csv');
+
+    expect(screen.getByTestId('import-preview-card')).toHaveClass(
+      'max-w-full',
+      'min-w-0',
+      'overflow-visible'
+    );
+    expect(screen.getByTestId('import-preview-header')).toHaveClass(
+      'flex-col',
+      'xl:flex-row',
+      'gap-4',
+      'min-w-0'
+    );
+    expect(screen.getByTestId('import-preview-file-summary')).toHaveClass('min-w-0');
+    expect(screen.getByTestId('import-preview-actions')).toHaveClass(
+      'flex-wrap',
+      'w-full',
+      'xl:w-auto'
+    );
+    expect(screen.getByTestId('import-preview-table-wrapper')).toHaveClass(
+      'overflow-x-auto',
+      'max-w-full',
+      'pt-12',
+      '-mt-12'
+    );
   });
 
   it('keeps the importing notification checkbox focusable', () => {

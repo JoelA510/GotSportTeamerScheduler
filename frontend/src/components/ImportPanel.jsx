@@ -382,7 +382,7 @@ export default function ImportPanel({ onImport }) {
 
   if (isImporting || isComplete || isReadyToApply) {
     return (
-      <section className="glass-panel p-8 rounded-xl border border-border-subtle relative overflow-hidden mb-10">
+      <section className="glass-panel p-4 sm:p-8 rounded-xl border border-border-subtle relative overflow-visible mb-10 max-w-full min-w-0">
         <div
           className={`absolute inset-0 bg-gradient-to-br ${theme.gradientFrom} ${theme.gradientTo} pointer-events-none opacity-50`}
         />
@@ -426,7 +426,7 @@ export default function ImportPanel({ onImport }) {
           )}
 
           {isReadyToApply ? (
-            <div className="flex flex-wrap justify-center gap-4">
+            <div className="flex flex-wrap justify-center gap-4 w-full max-w-full">
               <Button
                 variant="primary"
                 size="lg"
@@ -460,7 +460,7 @@ export default function ImportPanel({ onImport }) {
               </Button>
             </div>
           ) : isComplete ? (
-            <div className="flex flex-wrap justify-center gap-4">
+            <div className="flex flex-wrap justify-center gap-4 w-full max-w-full">
               {canRollbackImport && (
                 <Button
                   variant="danger"
@@ -506,7 +506,7 @@ export default function ImportPanel({ onImport }) {
               </Button>
             </div>
           ) : (
-            <div className="flex items-center gap-3 bg-bg-surface px-4 py-2 rounded-lg border border-border-subtle">
+            <div className="flex items-center gap-3 bg-bg-surface px-4 py-2 rounded-lg border border-border-subtle max-w-full">
               <label
                 htmlFor={notifyCheckboxId}
                 className="flex items-center gap-2 text-sm text-text-secondary cursor-pointer select-none rounded-sm focus-within:outline-none focus-within:ring-2 focus-within:ring-blue-400/80 focus-within:ring-offset-2 focus-within:ring-offset-bg-surface"
@@ -532,14 +532,17 @@ export default function ImportPanel({ onImport }) {
   }
 
   return (
-    <section className="glass-panel p-6 rounded-xl border border-border-subtle relative overflow-hidden mb-10">
+    <section
+      data-testid="import-panel"
+      className="glass-panel p-4 sm:p-6 rounded-xl border border-border-subtle relative overflow-visible mb-10 max-w-full min-w-0"
+    >
       <div
         className={`absolute inset-0 bg-gradient-to-br ${theme.gradientFrom} ${theme.gradientTo} pointer-events-none`}
       />
 
-      <div className="relative z-10">
-        <div className="flex justify-between items-start mb-6">
-          <div>
+      <div className="relative z-10 max-w-full min-w-0">
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4 mb-6 min-w-0">
+          <div className="min-w-0">
             <h2 className="text-2xl font-bold text-text-primary mb-2 flex items-center gap-2">
               <span className={`w-2 h-2 rounded-full ${theme.dotColor} ${theme.shadowColor}`} />
               Data Ingestion
@@ -548,7 +551,7 @@ export default function ImportPanel({ onImport }) {
               Import GotSport registration data to populate teams and players.
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             <button
               type="button"
               aria-pressed={notifyOnComplete}
@@ -566,7 +569,10 @@ export default function ImportPanel({ onImport }) {
           </div>
         </div>
 
-        <div className="flex gap-4 mb-8">
+        <div
+          data-testid="import-type-selector"
+          className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8"
+        >
           {IMPORT_TYPES.map((type) => (
             <button
               key={type}
@@ -581,7 +587,7 @@ export default function ImportPanel({ onImport }) {
                 setOriginalParse(null);
               }}
               className={`
-                                 flex-1 p-4 rounded-xl border transition-all duration-200 text-left relative overflow-hidden group
+                                 w-full min-w-0 p-4 rounded-xl border transition-all duration-200 text-left relative overflow-hidden group
                                  ${
                                    importType === type
                                      ? 'bg-blue-500/10 border-blue-500/50 shadow-[0_0_20px_rgba(56,189,248,0.1)]'
@@ -590,14 +596,14 @@ export default function ImportPanel({ onImport }) {
                              `}
             >
               <div className="relative z-10">
-                <div className="flex justify-between items-center mb-1">
+                <div className="flex justify-between items-center gap-2 mb-1 min-w-0">
                   <span
-                    className={`font-semibold capitalize ${importType === type ? 'text-blue-400' : 'text-text-primary'}`}
+                    className={`font-semibold capitalize truncate ${importType === type ? 'text-blue-400' : 'text-text-primary'}`}
                   >
                     {type}
                   </span>
                   {getImportedCount(type) > 0 && (
-                    <span className="text-xs bg-green-500/20 text-green-400 px-2 py-0.5 rounded-full flex items-center gap-1">
+                    <span className="shrink-0 text-xs bg-green-500/20 text-green-400 px-2 py-0.5 rounded-full flex items-center gap-1">
                       <CheckCircle size={10} />
                       {getImportedCount(type)}
                     </span>
@@ -615,7 +621,7 @@ export default function ImportPanel({ onImport }) {
 
         {/* Template download + defer-field hint */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6 p-3 bg-bg-surface/50 border border-border-subtle rounded-lg">
-          <div className="text-xs text-text-secondary flex items-start gap-2">
+          <div className="text-xs text-text-secondary flex items-start gap-2 min-w-0">
             <Info size={14} className="shrink-0 mt-0.5 text-blue-400" />
             <span>
               {importType === 'fields' ? (
@@ -638,7 +644,7 @@ export default function ImportPanel({ onImport }) {
           <button
             type="button"
             onClick={() => downloadTemplate(importType)}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-border-subtle bg-bg-surface hover:bg-bg-surface-hover text-text-primary text-xs font-medium transition-colors whitespace-nowrap"
+            className="flex w-full sm:w-auto items-center justify-center gap-2 px-3 py-1.5 rounded-lg border border-border-subtle bg-bg-surface hover:bg-bg-surface-hover text-text-primary text-xs font-medium transition-colors"
           >
             <Download size={14} />
             Download {importType} template
@@ -656,7 +662,7 @@ export default function ImportPanel({ onImport }) {
           />
         ) : !previewData ? (
           <div
-            className={`border-2 border-dashed rounded-xl p-12 text-center transition-all duration-300 ${
+            className={`border-2 border-dashed rounded-xl p-6 sm:p-12 text-center transition-all duration-300 max-w-full min-w-0 ${
               isDragging
                 ? 'border-blue-400 bg-blue-500/10 scale-[1.02]'
                 : 'border-border-subtle hover:border-border-highlight bg-bg-surface hover:bg-bg-surface-hover'
@@ -706,18 +712,32 @@ export default function ImportPanel({ onImport }) {
             </div>
           </div>
         ) : (
-          <div className="bg-bg-surface border border-border-subtle rounded-lg overflow-hidden animate-fadeIn">
-            <div className="p-4 border-b border-border-subtle flex justify-between items-center bg-bg-surface">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-blue-500/20 rounded-lg">
+          <div
+            data-testid="import-preview-card"
+            className="bg-bg-surface border border-border-subtle rounded-lg overflow-visible animate-fadeIn max-w-full min-w-0"
+          >
+            <div
+              data-testid="import-preview-header"
+              className="p-4 border-b border-border-subtle flex flex-col xl:flex-row xl:justify-between xl:items-center gap-4 bg-bg-surface min-w-0"
+            >
+              <div
+                data-testid="import-preview-file-summary"
+                className="flex items-start gap-3 min-w-0"
+              >
+                <div className="p-2 bg-blue-500/20 rounded-lg shrink-0">
                   <FileText className="text-blue-400" size={20} />
                 </div>
-                <div>
-                  <h3 className="text-lg font-semibold text-text-primary">{file.name}</h3>
-                  <p className="text-sm text-text-secondary flex items-center gap-2">
+                <div className="min-w-0 flex-1">
+                  <h3
+                    className="text-lg font-semibold text-text-primary truncate"
+                    title={file.name}
+                  >
+                    {file.name}
+                  </h3>
+                  <p className="text-sm text-text-secondary flex flex-wrap items-center gap-2 min-w-0">
                     {previewData.totalRows} rows detected
                     {previewData.smartMetadata && !previewData.smartMetadata.isFallback && (
-                      <span className="text-[10px] bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded border border-blue-500/30 flex items-center gap-1">
+                      <span className="text-[10px] bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded border border-blue-500/30 inline-flex items-center gap-1">
                         <BrainCircuit size={10} />
                         Smart Mapping Active ({previewData.smartMetadata.timing.toFixed(1)}ms)
                       </span>
@@ -725,11 +745,15 @@ export default function ImportPanel({ onImport }) {
                   </p>
                 </div>
               </div>
-              <div className="flex gap-3">
+              <div
+                data-testid="import-preview-actions"
+                className="flex flex-wrap gap-3 w-full xl:w-auto"
+              >
                 {originalParse && (
                   <Button
                     variant="ghost"
                     size="sm"
+                    className="w-full sm:w-auto"
                     onClick={() => {
                       // Re-open the mapper against the ORIGINAL raw parse,
                       // not against previewData — previewData may be the
@@ -754,13 +778,19 @@ export default function ImportPanel({ onImport }) {
                   </Button>
                 )}
                 {importType !== 'players' && (
-                  <Button variant="secondary" size="sm" onClick={handleValidateOnlyImport}>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="w-full sm:w-auto"
+                    onClick={handleValidateOnlyImport}
+                  >
                     Validate Only
                   </Button>
                 )}
                 <Button
                   variant="ghost"
                   size="sm"
+                  className="w-full sm:w-auto"
                   onClick={() => {
                     setFile(null);
                     setPreviewData(null);
@@ -769,13 +799,21 @@ export default function ImportPanel({ onImport }) {
                 >
                   Cancel
                 </Button>
-                <Button variant="primary" size="sm" onClick={handleStartImport}>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  className="w-full sm:w-auto"
+                  onClick={handleStartImport}
+                >
                   Start Import
                 </Button>
               </div>
             </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm text-text-secondary">
+            <div
+              data-testid="import-preview-table-wrapper"
+              className="overflow-x-auto max-w-full pt-12 -mt-12"
+            >
+              <table className="min-w-max w-full text-left text-sm text-text-secondary">
                 <thead className="bg-bg-surface text-xs uppercase font-semibold text-text-muted border-b border-border-subtle">
                   <tr>
                     {previewData.headers.slice(0, 5).map((header, i) => {
