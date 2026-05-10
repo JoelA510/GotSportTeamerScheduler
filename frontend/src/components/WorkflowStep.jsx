@@ -13,7 +13,8 @@ const WorkflowStep = ({
   const isActive = status === 'active';
   const isCompleted = status === 'completed';
 
-  const baseClasses = 'relative overflow-hidden transition-all duration-300 mb-6 p-6 group';
+  const baseClasses =
+    'relative transition-all duration-300 mb-6 p-4 sm:p-6 group min-w-0 overflow-visible';
 
   const statusStyles = {
     pending: 'glass-panel-premium opacity-70 hover:opacity-100 border-l-4 border-l-border-subtle',
@@ -56,7 +57,7 @@ const WorkflowStep = ({
         <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/10 blur-[50px] rounded-full -mr-10 -mt-10 pointer-events-none" />
       )}
 
-      <div className="flex items-start gap-4 relative z-10">
+      <div className="flex items-start gap-4 relative z-10 min-w-0">
         {/* Status Icon */}
         <div
           className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center transition-colors duration-300 ${iconStyles[status]}`}
@@ -65,15 +66,15 @@ const WorkflowStep = ({
         </div>
 
         {/* Content Header */}
-        <div className="flex-grow">
-          <div className="flex items-center justify-between mb-1">
+        <div className="flex-grow min-w-0">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-1 min-w-0">
             <h2
-              className={`text-xl font-display font-bold transition-colors ${isActive ? 'text-text-primary' : 'text-text-secondary'}`}
+              className={`text-xl font-display font-bold transition-colors min-w-0 ${isActive ? 'text-text-primary' : 'text-text-secondary'}`}
             >
               {title}
             </h2>
             <span
-              className={`text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-full ${
+              className={`shrink-0 self-start sm:self-auto text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-full ${
                 isActive
                   ? 'bg-brand-DEFAULT/10 text-brand-DEFAULT border border-brand-DEFAULT/20'
                   : isCompleted
@@ -95,10 +96,16 @@ const WorkflowStep = ({
 
       {/* Expanded Content */}
       <div
-        className={`grid transition-all duration-500 ease-in-out ${isActive ? 'grid-rows-[1fr] opacity-100 mt-6' : 'grid-rows-[0fr] opacity-0'}`}
+        className={`grid min-w-0 transition-all duration-500 ease-in-out ${
+          isActive
+            ? 'grid-rows-[1fr] opacity-100 mt-6 overflow-visible'
+            : 'grid-rows-[0fr] opacity-0 overflow-hidden'
+        }`}
       >
-        <div className="overflow-hidden">
-          <div className="pt-4 border-t border-border-subtle animate-slideUp">{children}</div>
+        <div className={`${isActive ? 'overflow-visible' : 'overflow-hidden'} min-w-0`}>
+          <div className="pt-4 border-t border-border-subtle animate-slideUp min-w-0">
+            {children}
+          </div>
         </div>
       </div>
     </div>
