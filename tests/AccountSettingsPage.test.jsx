@@ -56,6 +56,12 @@ vi.mock('../frontend/src/lib/supabaseClient.js', () => ({
   },
 }));
 
+vi.mock('../frontend/src/lib/logger.js', () => ({
+  logger: {
+    error: vi.fn(),
+  },
+}));
+
 const baseUser = {
   id: 'user-1',
   email: 'coach@example.com',
@@ -113,15 +119,18 @@ const resetMocks = (permissions = []) => {
 const mockProfileUpdate = (data = {}) => {
   const maybeSingle = vi.fn(() =>
     Promise.resolve({
-      data: {
-        id: 'user-1',
-        email: 'coach@example.com',
-        first_name: 'Jordan',
-        last_name: 'Coach',
-        full_name: 'Jordan Coach',
-        avatar_url: '',
-        ...data,
-      },
+      data:
+        data === null
+          ? null
+          : {
+              id: 'user-1',
+              email: 'coach@example.com',
+              first_name: 'Jordan',
+              last_name: 'Coach',
+              full_name: 'Jordan Coach',
+              avatar_url: '',
+              ...data,
+            },
       error: null,
     })
   );
@@ -211,6 +220,18 @@ describe('AccountSettingsPage', () => {
       expect(query.eq).toHaveBeenCalledWith('id', 'user-1');
     });
     expect(screen.getByRole('status')).toHaveTextContent('Profile saved.');
+  });
+
+  it('does not report profile save success when no profile row is updated', async () => {
+    mockProfileUpdate(null);
+    render(<AccountSettingsPage />);
+
+    fireEvent.change(screen.getByLabelText('First Name'), { target: { value: 'Jordan' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save Profile' }));
+
+    const error = await screen.findByRole('alert');
+    expect(error).toHaveTextContent('No profile row was updated.');
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
   });
 
   it('redeems invite codes and refreshes organizations without a page reload', async () => {
