@@ -28,7 +28,7 @@ const Button = ({
 }) => {
   // Elevated to z-20 to guarantee it sits above all glass panel pseudo-elements
   const baseStyles =
-    'relative z-20 font-display font-bold rounded-full transition-all transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 min-h-[44px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 focus-visible:ring-offset-bg-app';
+    'relative z-20 font-display font-bold rounded-full transition-all transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 min-h-[44px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400';
 
   const variants = {
     primary:

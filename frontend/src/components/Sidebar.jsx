@@ -69,8 +69,7 @@ export default function Sidebar({ isOpen, toggleSidebar }) {
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const pendingUserMenuFocusRef = useRef(null);
   const userMenuButtonRef = useRef(null);
-  const accountMenuItemRef = useRef(null);
-  const signOutMenuItemRef = useRef(null);
+  const userMenuRef = useRef(null);
 
   const displayName =
     user?.profile?.full_name ||
@@ -85,15 +84,26 @@ export default function Sidebar({ isOpen, toggleSidebar }) {
     .map((part) => part[0]?.toUpperCase())
     .join('');
 
+  const getUserMenuItems = () =>
+    Array.from(userMenuRef.current?.querySelectorAll('[role="menuitem"]') ?? []).filter(
+      (item) => !item.hasAttribute('disabled') && item.getAttribute('aria-disabled') !== 'true'
+    );
+
   useEffect(() => {
     const pendingFocus = pendingUserMenuFocusRef.current;
     if (!isUserMenuOpen || !pendingFocus) return;
 
     pendingUserMenuFocusRef.current = null;
-    const focusTarget =
-      pendingFocus === 'last' ? signOutMenuItemRef.current : accountMenuItemRef.current;
-    focusTarget?.focus();
+    const items = getUserMenuItems();
+    const targetIndex = pendingFocus === 'last' ? items.length - 1 : 0;
+    items[targetIndex]?.focus();
   }, [isUserMenuOpen]);
+
+  const focusUserMenuItem = (focusTarget) => {
+    const items = getUserMenuItems();
+    const targetIndex = focusTarget === 'last' ? items.length - 1 : 0;
+    items[targetIndex]?.focus();
+  };
 
   const closeUserMenu = ({ restoreFocus = false } = {}) => {
     setIsUserMenuOpen(false);
@@ -104,19 +114,20 @@ export default function Sidebar({ isOpen, toggleSidebar }) {
   };
 
   const openUserMenu = (focusTarget = null) => {
+    if (focusTarget && isUserMenuOpen) {
+      focusUserMenuItem(focusTarget);
+      pendingUserMenuFocusRef.current = null;
+    } else {
+      pendingUserMenuFocusRef.current = focusTarget;
+    }
+
     setIsUserMenuOpen(true);
     setIsOrgMenuOpen(false);
     setIsSeasonMenuOpen(false);
-    pendingUserMenuFocusRef.current = focusTarget;
-
-    if (isUserMenuOpen && focusTarget) {
-      const targetRef = focusTarget === 'last' ? signOutMenuItemRef : accountMenuItemRef;
-      targetRef.current?.focus();
-    }
   };
 
   const handleUserMenuKeyDown = (event) => {
-    const items = [accountMenuItemRef.current, signOutMenuItemRef.current].filter(Boolean);
+    const items = getUserMenuItems();
 
     if (event.key === 'Escape') {
       event.preventDefault();
@@ -373,13 +384,13 @@ export default function Sidebar({ isOpen, toggleSidebar }) {
           {isUserMenuOpen && (
             <div
               id="sidebar-user-menu"
+              ref={userMenuRef}
               role="menu"
               aria-label="User account menu"
               onKeyDown={handleUserMenuKeyDown}
               className="absolute bottom-full left-4 right-4 mb-2 bg-bg-surface border border-border-subtle rounded-xl shadow-xl overflow-hidden z-50"
             >
               <NavLink
-                ref={accountMenuItemRef}
                 to="/account"
                 role="menuitem"
                 onClick={() => {
@@ -394,7 +405,6 @@ export default function Sidebar({ isOpen, toggleSidebar }) {
                 Account Settings
               </NavLink>
               <button
-                ref={signOutMenuItemRef}
                 type="button"
                 role="menuitem"
                 onClick={() => {
