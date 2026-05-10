@@ -809,7 +809,10 @@ export default function ImportPanel({ onImport }) {
                 </Button>
               </div>
             </div>
-            <div data-testid="import-preview-table-wrapper" className="overflow-x-auto max-w-full">
+            <div
+              data-testid="import-preview-table-wrapper"
+              className="overflow-x-auto max-w-full pt-12 -mt-12"
+            >
               <table className="min-w-max w-full text-left text-sm text-text-secondary">
                 <thead className="bg-bg-surface text-xs uppercase font-semibold text-text-muted border-b border-border-subtle">
                   <tr>

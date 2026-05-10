@@ -177,7 +177,9 @@ describe('ImportPanel', () => {
     );
     expect(screen.getByTestId('import-preview-table-wrapper')).toHaveClass(
       'overflow-x-auto',
-      'max-w-full'
+      'max-w-full',
+      'pt-12',
+      '-mt-12'
     );
   });
 

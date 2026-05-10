@@ -6,7 +6,12 @@ import WorkflowStep from '../frontend/src/components/WorkflowStep.jsx';
 describe('WorkflowStep', () => {
   it('allows active expanded content to overflow for nested panels and tooltips', () => {
     render(
-      <WorkflowStep title="Data Import" description="Upload CSVs." status="active">
+      <WorkflowStep
+        title="Data Import"
+        description="Upload CSVs."
+        status="active"
+        onClick={() => {}}
+      >
         <div>Expanded child</div>
       </WorkflowStep>
     );
@@ -24,7 +29,12 @@ describe('WorkflowStep', () => {
 
   it('keeps inactive expanded content clipped for the collapsed animation', () => {
     render(
-      <WorkflowStep title="Data Import" description="Upload CSVs." status="pending">
+      <WorkflowStep
+        title="Data Import"
+        description="Upload CSVs."
+        status="pending"
+        onClick={() => {}}
+      >
         <div>Collapsed child</div>
       </WorkflowStep>
     );
