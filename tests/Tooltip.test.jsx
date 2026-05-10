@@ -23,7 +23,11 @@ describe('Tooltip', () => {
     expect(tooltip).toHaveAttribute('role', 'tooltip');
     expect(tooltip).toHaveTextContent('Helpful action');
     expect(tooltip).toHaveClass(
+      'invisible',
+      'delay-150',
+      'group-hover/tooltip:visible',
       'group-hover/tooltip:opacity-100',
+      'group-focus-within/tooltip:visible',
       'group-focus-within/tooltip:opacity-100'
     );
 
@@ -49,5 +53,22 @@ describe('Tooltip', () => {
     expect(wrapper).toHaveAttribute('aria-disabled', 'true');
     expect(wrapper).toHaveAttribute('aria-describedby', tooltip.id);
     expect(tooltip).toHaveTextContent('Unavailable until a file is selected');
+  });
+
+  it('does not treat aria-disabled="false" as disabled', () => {
+    render(
+      <Tooltip content="Still available">
+        <button type="button" aria-disabled="false">
+          Start Import
+        </button>
+      </Tooltip>
+    );
+
+    const button = screen.getByRole('button', { name: 'Start Import' });
+    const wrapper = button.parentElement;
+
+    expect(button).toHaveAttribute('aria-describedby');
+    expect(wrapper).not.toHaveAttribute('tabindex');
+    expect(wrapper).not.toHaveAttribute('aria-disabled');
   });
 });

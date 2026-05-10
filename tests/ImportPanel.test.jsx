@@ -48,7 +48,9 @@ const expectTooltipFor = (element, text) => {
 
   expect(tooltip).toBeInTheDocument();
   expect(tooltip).toHaveClass(
+    'group-hover/tooltip:visible',
     'group-hover/tooltip:opacity-100',
+    'group-focus-within/tooltip:visible',
     'group-focus-within/tooltip:opacity-100'
   );
   return tooltip;
@@ -138,9 +140,9 @@ describe('ImportPanel', () => {
     const coachesButton = screen.getByRole('button', { name: /^coaches\b/i });
     expect(playersButton).toHaveClass('w-full', 'min-w-0');
     expect(playersButton).toHaveAttribute('aria-pressed', 'true');
-    expectTooltipFor(playersButton, 'Use a player registration CSV.');
+    expectTooltipFor(playersButton, 'Requires first name, last name, and date of birth columns.');
     expect(coachesButton).toHaveAttribute('aria-pressed', 'false');
-    expectTooltipFor(coachesButton, 'Use a coach assignment CSV.');
+    expectTooltipFor(coachesButton, 'Requires full name and email columns.');
 
     fireEvent.click(coachesButton);
     expect(coachesButton).toHaveAttribute('aria-pressed', 'true');

@@ -34,9 +34,9 @@ const REQUIRED_HEADERS = {
 const IMPORT_TYPES = Object.freeze(['players', 'coaches', 'fields']);
 const COMPLETED_IMPORT_STATUSES = new Set(['completed', 'completed_with_warnings']);
 const IMPORT_TYPE_TOOLTIPS = {
-  players: 'Use a player registration CSV.',
-  coaches: 'Use a coach assignment CSV.',
-  fields: 'Use a field availability CSV.',
+  players: 'Requires first name, last name, and date of birth columns.',
+  coaches: 'Requires full name and email columns.',
+  fields: 'Requires location, name, type, start, and end columns.',
 };
 
 /**

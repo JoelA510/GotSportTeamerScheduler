@@ -11,6 +11,8 @@ const SIDE_CLASSES = {
 const mergeDescribedBy = (existing, tooltipId) =>
   [existing, tooltipId].filter(Boolean).join(' ') || undefined;
 
+const isAriaDisabled = (value) => value === true || value === 'true';
+
 export default function Tooltip({
   content,
   children,
@@ -26,10 +28,11 @@ export default function Tooltip({
   }
 
   const child = React.Children.only(children);
-  const disabled = Boolean(child?.props?.disabled || child?.props?.['aria-disabled']);
+  const childProps = React.isValidElement(child) ? child.props : {};
+  const disabled = childProps.disabled === true || isAriaDisabled(childProps['aria-disabled']);
   const childWithDescription = React.isValidElement(child)
     ? React.cloneElement(child, {
-        'aria-describedby': mergeDescribedBy(child.props['aria-describedby'], tooltipId),
+        'aria-describedby': mergeDescribedBy(childProps['aria-describedby'], tooltipId),
       })
     : child;
 
@@ -44,7 +47,7 @@ export default function Tooltip({
       <span
         id={tooltipId}
         role="tooltip"
-        className={`pointer-events-none absolute z-[100] max-w-[16rem] rounded-md border border-border-highlight bg-bg-surface px-3 py-2 text-xs leading-snug text-text-primary shadow-xl opacity-0 transition-opacity duration-150 group-hover/tooltip:opacity-100 group-focus-within/tooltip:opacity-100 ${SIDE_CLASSES[side]} ${tooltipClassName}`}
+        className={`pointer-events-none absolute z-[100] max-w-[16rem] rounded-md border border-border-highlight bg-bg-surface px-3 py-2 text-xs leading-snug text-text-primary shadow-xl invisible opacity-0 transition-opacity duration-150 delay-150 group-hover/tooltip:visible group-hover/tooltip:opacity-100 group-focus-within/tooltip:visible group-focus-within/tooltip:opacity-100 ${SIDE_CLASSES[side]} ${tooltipClassName}`}
       >
         {content}
       </span>
