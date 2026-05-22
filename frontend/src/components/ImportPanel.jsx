@@ -27,16 +27,19 @@ const REQUIRED_HEADERS = {
   players: ['first_name', 'last_name', 'date_of_birth'],
   coaches: ['full_name', 'email'],
   fields: ['location', 'name', 'type', 'start', 'end'],
+  field_availability: ['season_label', 'location', 'field_name', 'available_from', 'available_until'],
 };
 
-/** @typedef {'players' | 'coaches' | 'fields'} ImportType */
+/** @typedef {'players' | 'coaches' | 'fields' | 'field_availability'} ImportType */
 /** @type {readonly ImportType[]} */
-const IMPORT_TYPES = Object.freeze(['players', 'coaches', 'fields']);
+const IMPORT_TYPES = Object.freeze(['players', 'coaches', 'fields', 'field_availability']);
 const COMPLETED_IMPORT_STATUSES = new Set(['completed', 'completed_with_warnings']);
 const IMPORT_TYPE_TOOLTIPS = {
   players: 'Requires first name, last name, and date of birth columns.',
   coaches: 'Requires full name and email columns.',
   fields: 'Requires location, name, type, start, and end columns.',
+  field_availability:
+    'Requires season_label, location, field_name, available_from, and available_until columns.',
 };
 
 /**
@@ -112,6 +115,7 @@ export default function ImportPanel({ onImport }) {
     importedPlayers,
     importedCoaches,
     importedFields,
+    importedFieldAvailability,
     rollbackImport,
     telemetryLogs,
     activeJob,
@@ -134,7 +138,13 @@ export default function ImportPanel({ onImport }) {
       !coachRollbackComplete) ||
       (workflowImportType === 'fields' &&
         importedFields?.persistence?.durable &&
-        !fieldRollbackComplete));
+        !fieldRollbackComplete) ||
+      (workflowImportType === 'field_availability' &&
+        importedFieldAvailability?.persistence?.durable &&
+        !(
+          importedFieldAvailability?.persistence?.rollback?.status ===
+          'rolled_back'
+        )));
 
   const handleDragOver = (e) => {
     e.preventDefault();
@@ -434,7 +444,7 @@ export default function ImportPanel({ onImport }) {
           {isReadyToApply ? (
             <div className="flex flex-wrap justify-center gap-4 w-full max-w-full">
               <Tooltip
-                content={`Apply the validated ${workflowImportType === 'fields' ? 'field' : 'coach'} import.`}
+                content={`Apply the validated ${workflowImportType === 'fields' ? 'field' : workflowImportType === 'field_availability' ? 'field availability' : 'coach'} import.`}
                 className="w-full sm:w-auto"
               >
                 <Button
@@ -450,7 +460,12 @@ export default function ImportPanel({ onImport }) {
                     }
                   }}
                 >
-                  Apply {workflowImportType === 'fields' ? 'Field Import' : 'Coach Import'}
+                  Apply{' '}
+                  {workflowImportType === 'fields'
+                    ? 'Field Import'
+                    : workflowImportType === 'field_availability'
+                      ? 'Field Availability Import'
+                      : 'Coach Import'}
                 </Button>
               </Tooltip>
               <Tooltip content="Cancel this validated import." className="w-full sm:w-auto">
@@ -478,7 +493,7 @@ export default function ImportPanel({ onImport }) {
             <div className="flex flex-wrap justify-center gap-4 w-full max-w-full">
               {canRollbackImport && (
                 <Tooltip
-                  content={`Roll back this ${workflowImportType === 'fields' ? 'field' : 'coach'} import.`}
+                  content={`Roll back this ${workflowImportType === 'fields' ? 'field' : workflowImportType === 'field_availability' ? 'field availability' : 'coach'} import.`}
                   className="w-full sm:w-auto"
                 >
                   <Button
@@ -494,7 +509,12 @@ export default function ImportPanel({ onImport }) {
                       }
                     }}
                   >
-                    Roll Back {workflowImportType === 'fields' ? 'Field Import' : 'Coach Import'}
+                    Roll Back{' '}
+                    {workflowImportType === 'fields'
+                      ? 'Field Import'
+                      : workflowImportType === 'field_availability'
+                        ? 'Field Availability Import'
+                        : 'Coach Import'}
                   </Button>
                 </Tooltip>
               )}
@@ -601,7 +621,7 @@ export default function ImportPanel({ onImport }) {
 
         <div
           data-testid="import-type-selector"
-          className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8"
+          className="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-8"
         >
           {IMPORT_TYPES.map((type) => (
             <Tooltip key={type} content={IMPORT_TYPE_TOOLTIPS[type]} className="w-full">
@@ -643,6 +663,8 @@ export default function ImportPanel({ onImport }) {
                     {type === 'players' && 'Upload player registration data'}
                     {type === 'coaches' && 'Upload coach assignments'}
                     {type === 'fields' && 'Upload field configurations'}
+                    {type === 'field_availability' &&
+                      'Upload seasonal availability metadata (not schedule slots)'}
                   </p>
                 </div>
               </button>
@@ -663,6 +685,11 @@ export default function ImportPanel({ onImport }) {
                   </span>{' '}
                   at <span className="font-mono text-brand-400">/fields</span> — useful if your
                   permits aren&apos;t finalized.
+                </>
+              ) : importType === 'field_availability' ? (
+                <>
+                  Seasonal availability metadata — not finalized schedule slots. No explicit
+                  day/time slots were provided; schedule slots were not created.
                 </>
               ) : (
                 <>
