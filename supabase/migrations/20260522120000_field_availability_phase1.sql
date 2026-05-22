@@ -168,6 +168,7 @@ DECLARE
   v_approval_status text;
   v_goal_equipment text;
   v_goal_status text;
+  v_requirement_status text;
   v_blackout_months text;
   v_scenario_name text;
   v_scenario_id uuid;
@@ -264,9 +265,19 @@ BEGIN
 
     v_goal_equipment := public.import_payload_text(v_payload, 'goal_equipment');
     v_goal_status := public.import_payload_text(v_payload, 'goal_status');
+    v_requirement_status := CASE
+      WHEN v_goal_status IS NULL THEN NULL
+      WHEN lower(trim(v_goal_status)) IN ('required') THEN 'required'
+      WHEN lower(trim(v_goal_status)) IN ('recommended') THEN 'recommended'
+      WHEN lower(trim(v_goal_status)) IN ('blocked') THEN 'blocked'
+      WHEN lower(trim(v_goal_status)) IN ('not approved', 'not_approved', 'not-approved') THEN 'not_approved'
+      WHEN lower(trim(v_goal_status)) IN ('needs purchase', 'needs_purchase', 'need purchase', 'need_purchase', 'purchase needed') THEN 'needs_purchase'
+      WHEN lower(trim(v_goal_status)) IN ('available') THEN 'available'
+      ELSE NULL
+    END;
     IF v_goal_equipment IS NOT NULL OR v_goal_status IS NOT NULL THEN
       INSERT INTO public.field_equipment_requirements (organization_id, profile_id, goal_equipment, requirement_status, notes)
-      VALUES (v_job.organization_id, v_profile_id, v_goal_equipment, lower(v_goal_status), NULL);
+      VALUES (v_job.organization_id, v_profile_id, v_goal_equipment, v_requirement_status, NULL);
       v_inserted_requirements := v_inserted_requirements + 1;
     END IF;
 

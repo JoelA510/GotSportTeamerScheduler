@@ -249,6 +249,7 @@ export function ImportProvider({ children }) {
   const [importedPlayers, setImportedPlayers] = useState(null);
   const [importedCoaches, setImportedCoaches] = useState(null);
   const [importedFields, setImportedFields] = useState(null);
+  const [importedFieldAvailability, setImportedFieldAvailability] = useState(null);
   const [importedData, setImportedData] = useState(null); // Legacy/General
   const [organizationSchemas, setOrganizationSchemas] = useState({
     player: {},
@@ -271,6 +272,7 @@ export function ImportProvider({ children }) {
     if (type === 'players') setImportedPlayers(data);
     if (type === 'coaches') setImportedCoaches(data);
     if (type === 'fields') setImportedFields(data);
+    if (type === 'field_availability') setImportedFieldAvailability(data);
     setImportedData(data);
   }, []);
 
@@ -440,7 +442,7 @@ export function ImportProvider({ children }) {
           if (latestPlayers) setImportedPlayers(latestPlayers.data);
           if (latestCoaches) setImportedCoaches(latestCoaches.data);
           if (latestFields) setImportedFields(latestFields.data);
-          if (latestFieldAvailability) setImportedFields(latestFieldAvailability.data);
+          if (latestFieldAvailability) setImportedFieldAvailability(latestFieldAvailability.data);
           if (latestPlayers) setImportedData(latestPlayers.data);
         }
       } catch (e) {
@@ -937,7 +939,12 @@ export function ImportProvider({ children }) {
 
   const applyDeferredImport = useCallback(
     async (type = 'coaches') => {
-      const deferredState = type === 'coaches' ? importedCoaches : importedFields;
+      const deferredState =
+        type === 'coaches'
+          ? importedCoaches
+          : type === 'field_availability'
+            ? importedFieldAvailability
+            : importedFields;
       const deferredJobId = deferredState?.importJobId;
       if (!deferredJobId) {
         throw new Error('No validated import job is ready to apply');
@@ -985,12 +992,24 @@ export function ImportProvider({ children }) {
         throw err;
       }
     },
-    [addLog, completeImport, importedCoaches, importedFields, setImportDataForType]
+    [
+      addLog,
+      completeImport,
+      importedCoaches,
+      importedFieldAvailability,
+      importedFields,
+      setImportDataForType,
+    ]
   );
 
   const cancelDeferredImport = useCallback(
     async (type = 'coaches') => {
-      const deferredState = type === 'coaches' ? importedCoaches : importedFields;
+      const deferredState =
+        type === 'coaches'
+          ? importedCoaches
+          : type === 'field_availability'
+            ? importedFieldAvailability
+            : importedFields;
       const deferredJobId = deferredState?.importJobId;
       if (!deferredJobId) {
         throw new Error('No validated import job is ready to cancel');
@@ -1026,7 +1045,7 @@ export function ImportProvider({ children }) {
         throw err;
       }
     },
-    [addLog, importedCoaches, importedFields, setImportDataForType]
+    [addLog, importedCoaches, importedFieldAvailability, importedFields, setImportDataForType]
   );
 
   const rollbackImport = useCallback(
@@ -1034,7 +1053,12 @@ export function ImportProvider({ children }) {
       if (!['coaches', 'fields', 'field_availability'].includes(type)) {
         throw new Error(`Rollback is not available for ${type} imports yet`);
       }
-      const rollbackState = type === 'coaches' ? importedCoaches : importedFields;
+      const rollbackState =
+        type === 'coaches'
+          ? importedCoaches
+          : type === 'field_availability'
+            ? importedFieldAvailability
+            : importedFields;
       const rollbackJobId = rollbackState?.importJobId;
       if (!rollbackJobId) {
         throw new Error(`No completed ${type} import job is available to roll back`);
@@ -1065,13 +1089,15 @@ export function ImportProvider({ children }) {
         const rollbackSucceeded = rollbackResult?.status === 'rolled_back';
         if (rollbackSucceeded) {
           if (type === 'coaches') setImportedCoaches(null);
-          if (type === 'fields' || type === 'field_availability') setImportedFields(null);
+          if (type === 'fields') setImportedFields(null);
+          if (type === 'field_availability') setImportedFieldAvailability(null);
           setImportedData(null);
           setActiveJobId(null);
           setActiveJob(null);
         } else {
           if (type === 'coaches') setImportedCoaches(rollbackData);
-          if (type === 'fields' || type === 'field_availability') setImportedFields(rollbackData);
+          if (type === 'fields') setImportedFields(rollbackData);
+          if (type === 'field_availability') setImportedFieldAvailability(rollbackData);
           setImportedData(rollbackData);
         }
         setIsImporting(false);
@@ -1098,7 +1124,7 @@ export function ImportProvider({ children }) {
         throw err;
       }
     },
-    [addLog, importedCoaches, importedFields]
+    [addLog, importedCoaches, importedFieldAvailability, importedFields]
   );
 
   const resetImport = useCallback(async (type = 'all') => {
@@ -1116,7 +1142,8 @@ export function ImportProvider({ children }) {
     } else {
       if (type === 'players') setImportedPlayers(null);
       if (type === 'coaches') setImportedCoaches(null);
-      if (type === 'fields' || type === 'field_availability') setImportedFields(null);
+      if (type === 'fields') setImportedFields(null);
+      if (type === 'field_availability') setImportedFieldAvailability(null);
     }
   }, []);
 
