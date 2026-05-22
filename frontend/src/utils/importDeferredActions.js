@@ -1,13 +1,15 @@
 const FINALIZE_RPC_BY_TYPE = {
   coaches: 'finalize_coach_import_job',
   fields: 'finalize_field_import_job',
+  field_availability: 'finalize_field_availability_import_job',
 };
-const DEFERRED_IMPORT_TYPES = new Set(['coaches', 'fields']);
+const DEFERRED_IMPORT_TYPES = new Set(['coaches', 'fields', 'field_availability']);
 
 const getDeferredImportTypeFromJob = (job) => {
   const deferredType = job?.warning_summary?.deferred_apply?.import_type;
   if (DEFERRED_IMPORT_TYPES.has(deferredType)) return deferredType;
   if (job?.job_type === 'fields') return 'fields';
+  if (job?.job_type === 'field_availability') return 'field_availability';
   return null;
 };
 

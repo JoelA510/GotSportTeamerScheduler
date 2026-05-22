@@ -5,8 +5,16 @@ import { useFields } from '../hooks/useFields.js';
 import { logger } from '../lib/logger.js';
 
 export default function FieldManagementPage() {
-  const { locations, fields, loading, addLocation, addField, updateField, deleteField } =
-    useFields();
+  const {
+    locations,
+    fields,
+    availabilityProfiles,
+    loading,
+    addLocation,
+    addField,
+    updateField,
+    deleteField,
+  } = useFields();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingField, setEditingField] = useState(null);
@@ -127,6 +135,32 @@ export default function FieldManagementPage() {
         <Button variant="primary" className="flex items-center gap-2" onClick={handleAddNew}>
           <Plus size={18} /> Add Field
         </Button>
+      </div>
+
+
+
+      <div className="bg-bg-surface border border-border-subtle rounded-xl p-5">
+        <h2 className="text-lg font-semibold text-text-primary mb-1">Seasonal availability</h2>
+        <p className="text-sm text-text-secondary mb-4">Seasonal availability metadata — not finalized schedule slots.</p>
+        <p className="text-xs text-text-muted mb-4">No explicit day/time slots were provided; schedule slots were not created.</p>
+        <div className="space-y-2">
+          {availabilityProfiles.length === 0 && (
+            <div className="text-sm text-text-muted">No seasonal availability profiles imported yet.</div>
+          )}
+          {availabilityProfiles.map((profile) => (
+            <div key={profile.id} className="border border-border-subtle rounded-lg p-3">
+              <div className="text-sm font-semibold">{profile.location} — {profile.field_name}</div>
+              <div className="text-xs text-text-secondary">{profile.season_label} • {profile.record_status} • {profile.available_from} to {profile.available_until}</div>
+              <div className="text-xs text-text-secondary">
+                Formats: {(profile.field_availability_profile_formats || []).map((f) => `${f.format_code} (${f.format_quantity})`).join(', ') || '—'}
+                {' '}| Capacity: {profile.teams_per_hour || '—'} tph / {profile.aggregate_teams_per_hour || '—'} aggregate
+              </div>
+              <div className="text-xs text-text-secondary">
+                Blackouts: {(profile.field_blackout_windows || []).length} • Equipment flags: {(profile.field_equipment_requirements || []).map((r) => `${r.goal_equipment || 'equipment'}:${r.requirement_status || 'n/a'}`).join(', ') || '—'}
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

@@ -6,6 +6,7 @@ import { logger } from '../lib/logger.js';
 export function useFields() {
   const [locations, setLocations] = useState([]);
   const [fields, setFields] = useState([]);
+  const [availabilityProfiles, setAvailabilityProfiles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const { currentOrganization } = useOrganization();
@@ -47,6 +48,20 @@ export function useFields() {
 
       if (fieldError) throw fieldError;
       setFields(fieldData || []);
+
+      const { data: availabilityData, error: availabilityError } = await supabase
+        .from('field_availability_profiles')
+        .select(`
+          *,
+          field_availability_profile_formats ( id, format_code, format_quantity, format_order ),
+          field_blackout_windows ( id, blackout_from, blackout_until, reason ),
+          field_equipment_requirements ( id, goal_equipment, requirement_status )
+        `)
+        .eq('organization_id', currentOrganization.id)
+        .order('available_from');
+
+      if (availabilityError) throw availabilityError;
+      setAvailabilityProfiles(availabilityData || []);
     } catch (err) {
       logger.error('Error fetching field data:', err);
       setError(err.message);
@@ -127,6 +142,7 @@ export function useFields() {
   return {
     locations,
     fields,
+    availabilityProfiles,
     loading,
     error,
     addLocation,

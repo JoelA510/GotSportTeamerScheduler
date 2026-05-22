@@ -47,6 +47,7 @@ const REQUIRED_FIELDS: Record<string, string[]> = {
   players: ['first_name', 'last_name', 'date_of_birth'],
   coaches: ['full_name', 'email'],
   fields: ['location', 'name', 'type', 'start', 'end'],
+  field_availability: ['season_label', 'location', 'field_name', 'available_from', 'available_until'],
 };
 
 // GotSport header alias map (strict matching, not fuzzy .includes())
@@ -169,6 +170,47 @@ const HEADER_ALIASES: Record<string, string> = {
   guardian_phone: 'guardian_phone',
   'parent phone': 'parent_phone',
   parent_phone: 'parent_phone',
+
+  season_label: 'season_label',
+  'season label': 'season_label',
+  record_status: 'record_status',
+  'record status': 'record_status',
+  blackout_months: 'blackout_months',
+  'blackout months': 'blackout_months',
+  teams_per_hour: 'teams_per_hour',
+  'teams per hour': 'teams_per_hour',
+  aggregate_teams_per_hour: 'aggregate_teams_per_hour',
+  'aggregate teams per hour': 'aggregate_teams_per_hour',
+  capacity_basis: 'capacity_basis',
+  'capacity basis': 'capacity_basis',
+  restroom_potty: 'restroom_potty',
+  'restroom potty': 'restroom_potty',
+  goal_equipment: 'goal_equipment',
+  'goal equipment': 'goal_equipment',
+  goal_status: 'goal_status',
+  'goal status': 'goal_status',
+  approval_status: 'approval_status',
+  'approval status': 'approval_status',
+  use_context: 'use_context',
+  'use context': 'use_context',
+  day_constraints: 'day_constraints',
+  'day constraints': 'day_constraints',
+  move_to_location: 'move_to_location',
+  'move to location': 'move_to_location',
+  current_app_import_status: 'current_app_import_status',
+  'current app import status': 'current_app_import_status',
+  available_from: 'available_from',
+  'available from': 'available_from',
+  available_until: 'available_until',
+  'available until': 'available_until',
+  availability_rule: 'availability_rule',
+  'availability rule': 'availability_rule',
+  primary_format: 'primary_format',
+  'primary format': 'primary_format',
+  format_quantity: 'format_quantity',
+  'format quantity': 'format_quantity',
+  secondary_format: 'secondary_format',
+  'secondary format': 'secondary_format',
 };
 
 function normalizeHeader(header: string): string {
@@ -329,12 +371,36 @@ function validateRow(
     }
   }
 
+
+  if (importType === 'field_availability') {
+    const availableFrom = row['available_from'];
+    const availableUntil = row['available_until'];
+    if (availableFrom && Number.isNaN(new Date(availableFrom).getTime())) {
+      errors.push({ row: rowIndex + 1, field: 'available_from', message: `Invalid available_from date: ${availableFrom}` });
+    }
+    if (availableUntil && Number.isNaN(new Date(availableUntil).getTime())) {
+      errors.push({ row: rowIndex + 1, field: 'available_until', message: `Invalid available_until date: ${availableUntil}` });
+    }
+    if (availableFrom && availableUntil && new Date(availableUntil) < new Date(availableFrom)) {
+      errors.push({ row: rowIndex + 1, field: 'available_until', message: 'available_until must be on/after available_from' });
+    }
+    const tph = row['teams_per_hour'];
+    if (tph) {
+      const n = Number.parseInt(tph, 10);
+      if (!Number.isInteger(n) || n < 1) errors.push({ row: rowIndex + 1, field: 'teams_per_hour', message: 'teams_per_hour must be a positive integer' });
+    }
+    const atph = row['aggregate_teams_per_hour'];
+    if (atph) {
+      const n = Number.parseInt(atph, 10);
+      if (!Number.isInteger(n) || n < 1) errors.push({ row: rowIndex + 1, field: 'aggregate_teams_per_hour', message: 'aggregate_teams_per_hour must be a positive integer' });
+    }
+  }
   return errors;
 }
 
 // --- Request Schema ---
 const ImportValidationPayload = z.object({
-  import_type: z.enum(['players', 'coaches', 'fields']),
+  import_type: z.enum(['players', 'coaches', 'fields', 'field_availability']),
   organization_id: z.string().uuid(),
   rows: z.array(z.record(z.unknown())).max(MAX_ROWS, `Maximum ${MAX_ROWS} rows per import`),
   file_name: z.string().max(255),
@@ -431,7 +497,7 @@ serve(async (req: Request) => {
       );
     }
 
-    const expectedJobType = body.import_type === 'fields' ? 'fields' : 'registration';
+    const expectedJobType = body.import_type === 'fields' ? 'fields' : body.import_type === 'field_availability' ? 'field_availability' : 'registration';
     if (job.job_type !== expectedJobType) {
       return jsonResponse(
         {
