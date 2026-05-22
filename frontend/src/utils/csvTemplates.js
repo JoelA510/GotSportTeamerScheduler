@@ -65,6 +65,63 @@ export const CSV_TEMPLATES = {
     ],
     filename: 'squadlogic-fields-template.csv',
   },
+  field_availability: {
+    headers: [
+      'season_label',
+      'record_status',
+      'location',
+      'name',
+      'surface_type',
+      'primary_format',
+      'format_quantity',
+      'secondary_format',
+      'available_from',
+      'available_until',
+      'availability_rule',
+      'blackout_months',
+      'teams_per_hour',
+      'aggregate_teams_per_hour',
+      'capacity_basis',
+      'lighted',
+      'restroom_potty',
+      'goal_equipment',
+      'goal_status',
+      'approval_status',
+      'use_context',
+      'day_constraints',
+      'move_to_location',
+      'current_app_import_status',
+      'notes',
+    ],
+    example: [
+      'Fall 2026',
+      'active',
+      'San Lorenzo',
+      'Main Field',
+      'grass',
+      '7v7',
+      '2',
+      '',
+      '2026-08-01',
+      '2026-11-30',
+      'seasonal',
+      'none',
+      '6',
+      '8',
+      'field',
+      'yes',
+      'yes',
+      'portable',
+      'ready',
+      'approved',
+      'practice',
+      'weekdays',
+      '',
+      'pending',
+      '',
+    ],
+    filename: 'squadlogic-field-availability-template.csv',
+  },
 };
 
 /**
@@ -89,7 +146,7 @@ function toCsv(rows) {
 
 /**
  * Generate a template CSV and trigger a browser download.
- * @param {'players'|'coaches'|'fields'} type
+ * @param {'players'|'coaches'|'fields'|'field_availability'} type
  */
 export function downloadTemplate(type) {
   const tmpl = CSV_TEMPLATES[type];

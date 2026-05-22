@@ -43,6 +43,8 @@ const ImportContext = createContext({
   setImportedCoaches: (_data) => {},
   importedFields: null,
   setImportedFields: (_data) => {},
+  importedFieldAvailability: null,
+  setImportedFieldAvailability: (_data) => {},
   rollbackImport: async (_type) => {},
   telemetryLogs: [],
   organizationSchemas: {},
@@ -649,6 +651,13 @@ export function ImportProvider({ children }) {
               players: ['first_name', 'last_name', 'date_of_birth'],
               coaches: ['full_name', 'email'],
               fields: ['location', 'name', 'type', 'start', 'end'],
+              field_availability: [
+                'season_label',
+                'location',
+                'name',
+                'available_from',
+                'available_until',
+              ],
             };
 
             const requiredForType = REQUIRED_HEADERS[type] || [];
@@ -1137,6 +1146,7 @@ export function ImportProvider({ children }) {
       setImportedPlayers(null);
       setImportedCoaches(null);
       setImportedFields(null);
+      setImportedFieldAvailability(null);
       setActiveJobId(null);
       setActiveJob(null);
     } else {
@@ -1160,6 +1170,12 @@ export function ImportProvider({ children }) {
     () => maskDataInternal(importedFields, organizationSchemas?.field),
     [importedFields, organizationSchemas?.field]
   );
+  // Keep field availability unmasked because it is infrastructure metadata
+  // (season windows/capacity), not PII-bearing person records.
+  const maskedImportedFieldAvailability = useMemo(
+    () => importedFieldAvailability,
+    [importedFieldAvailability]
+  );
   const maskedImportedData = useMemo(
     () =>
       maskDataInternal(
@@ -1175,6 +1191,10 @@ export function ImportProvider({ children }) {
   const stableSetImportedPlayers = useCallback((data) => setImportedPlayers(data), []);
   const stableSetImportedCoaches = useCallback((data) => setImportedCoaches(data), []);
   const stableSetImportedFields = useCallback((data) => setImportedFields(data), []);
+  const stableSetImportedFieldAvailability = useCallback(
+    (data) => setImportedFieldAvailability(data),
+    []
+  );
 
   const value = useMemo(
     () => ({
@@ -1196,6 +1216,8 @@ export function ImportProvider({ children }) {
       setImportedCoaches: stableSetImportedCoaches,
       importedFields: maskedImportedFields,
       setImportedFields: stableSetImportedFields,
+      importedFieldAvailability: maskedImportedFieldAvailability,
+      setImportedFieldAvailability: stableSetImportedFieldAvailability,
       rollbackImport,
       telemetryLogs,
       organizationSchemas,
@@ -1221,6 +1243,8 @@ export function ImportProvider({ children }) {
       stableSetImportedCoaches,
       maskedImportedFields,
       stableSetImportedFields,
+      maskedImportedFieldAvailability,
+      stableSetImportedFieldAvailability,
       rollbackImport,
       telemetryLogs,
       organizationSchemas,

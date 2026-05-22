@@ -3818,7 +3818,7 @@ export const mockSupabase = {
           players: ['first_name', 'last_name', 'date_of_birth'],
           coaches: ['full_name', 'email'],
           fields: ['location', 'name', 'type', 'start', 'end'],
-          field_availability: ['season_label', 'location', 'field_name', 'available_from', 'available_until'],
+          field_availability: ['season_label', 'location', 'name', 'available_from', 'available_until'],
         };
         const normalizeHeader = (header) => aliases[String(header).toLowerCase().trim()] || header;
         const sanitize = (value) =>

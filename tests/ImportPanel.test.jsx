@@ -72,6 +72,7 @@ describe('ImportPanel', () => {
       importedPlayers: null,
       importedCoaches: null,
       importedFields: null,
+      importedFieldAvailability: null,
       rollbackImport: mocks.rollbackImport,
       telemetryLogs: [],
       activeJob: null,
@@ -125,7 +126,7 @@ describe('ImportPanel', () => {
     expect(screen.getByTestId('import-type-selector')).toHaveClass(
       'grid',
       'grid-cols-1',
-      'sm:grid-cols-3'
+      'sm:grid-cols-4'
     );
 
     const notifyButton = screen.getByRole('button', { name: /notify when import completes/i });
@@ -140,12 +141,17 @@ describe('ImportPanel', () => {
 
     const playersButton = screen.getByRole('button', { name: /^players\b/i });
     const coachesButton = screen.getByRole('button', { name: /^coaches\b/i });
+    const fieldAvailabilityButton = screen.getByRole('button', { name: /^field_availability\b/i });
     expect(playersButton).toHaveClass('w-full', 'min-w-0');
     expect(playersButton).toHaveAttribute('aria-pressed', 'true');
     expect(playersButton).toHaveClass('focus-visible:ring-2');
     expectTooltipFor(playersButton, 'Requires first name, last name, and date of birth columns.');
     expect(coachesButton).toHaveAttribute('aria-pressed', 'false');
     expectTooltipFor(coachesButton, 'Requires full name and email columns.');
+    expectTooltipFor(
+      fieldAvailabilityButton,
+      'Requires season_label, location, name, available_from, and available_until columns.'
+    );
 
     fireEvent.click(coachesButton);
     expect(coachesButton).toHaveAttribute('aria-pressed', 'true');
@@ -298,6 +304,28 @@ describe('ImportPanel', () => {
     expectTooltipFor(
       screen.getByRole('button', { name: /cancel deferred import/i }),
       'Cancel this validated import.'
+    );
+  });
+
+  it('supports deferred field availability action controls and copy', () => {
+    mocks.importState = {
+      ...mocks.importState,
+      importStatus: 'ready_to_apply',
+      progress: 100,
+      importedFieldAvailability: { persistence: { durable: true } },
+      activeJob: {
+        warning_summary: {
+          deferred_apply: {
+            import_type: 'field_availability',
+          },
+        },
+      },
+    };
+
+    render(<ImportPanel onImport={vi.fn()} />);
+    expectTooltipFor(
+      screen.getByRole('button', { name: /apply field availability import/i }),
+      'Apply the validated field availability import.'
     );
   });
 
