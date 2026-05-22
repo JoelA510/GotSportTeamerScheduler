@@ -27,7 +27,7 @@ const REQUIRED_HEADERS = {
   players: ['first_name', 'last_name', 'date_of_birth'],
   coaches: ['full_name', 'email'],
   fields: ['location', 'name', 'type', 'start', 'end'],
-  field_availability: ['season_label', 'location', 'field_name', 'available_from', 'available_until'],
+  field_availability: ['season_label', 'location', 'name', 'available_from', 'available_until'],
 };
 
 /** @typedef {'players' | 'coaches' | 'fields' | 'field_availability'} ImportType */
@@ -39,7 +39,7 @@ const IMPORT_TYPE_TOOLTIPS = {
   coaches: 'Requires full name and email columns.',
   fields: 'Requires location, name, type, start, and end columns.',
   field_availability:
-    'Requires season_label, location, field_name, available_from, and available_until columns.',
+    'Requires season_label, location, name, available_from, and available_until columns.',
 };
 
 /**

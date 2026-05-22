@@ -70,7 +70,7 @@ export const CSV_TEMPLATES = {
       'season_label',
       'record_status',
       'location',
-      'field_name',
+      'name',
       'surface_type',
       'primary_format',
       'format_quantity',

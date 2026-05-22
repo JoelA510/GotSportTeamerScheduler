@@ -654,7 +654,7 @@ export function ImportProvider({ children }) {
               field_availability: [
                 'season_label',
                 'location',
-                'field_name',
+                'name',
                 'available_from',
                 'available_until',
               ],

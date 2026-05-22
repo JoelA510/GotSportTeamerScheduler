@@ -150,7 +150,7 @@ describe('ImportPanel', () => {
     expectTooltipFor(coachesButton, 'Requires full name and email columns.');
     expectTooltipFor(
       fieldAvailabilityButton,
-      'Requires season_label, location, field_name, available_from, and available_until columns.'
+      'Requires season_label, location, name, available_from, and available_until columns.'
     );
 
     fireEvent.click(coachesButton);
