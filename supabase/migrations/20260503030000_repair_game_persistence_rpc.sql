@@ -208,8 +208,8 @@ BEGIN
 
     IF v_org_id IS NOT NULL
        AND v_effective_role <> 'service_role'
-       AND NOT public.is_org_member(v_org_id) THEN
-        RAISE EXCEPTION 'caller is not a member of organization %', v_org_id
+       AND NOT public.is_org_admin(v_org_id) THEN
+        RAISE EXCEPTION 'caller is not an admin of organization %', v_org_id
             USING ERRCODE = '42501';
     END IF;
 
@@ -246,8 +246,8 @@ BEGIN
     END IF;
 
     IF v_effective_role <> 'service_role'
-       AND NOT public.is_org_member(v_org_id) THEN
-        RAISE EXCEPTION 'caller is not a member of organization %', v_org_id
+       AND NOT public.is_org_admin(v_org_id) THEN
+        RAISE EXCEPTION 'caller is not an admin of organization %', v_org_id
             USING ERRCODE = '42501';
     END IF;
 
