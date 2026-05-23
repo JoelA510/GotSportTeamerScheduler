@@ -34,6 +34,22 @@ const FIELD_DEFS = {
     required: [{ key: 'name', label: 'Field Name' }],
     optional: [],
   },
+  field_availability: {
+    required: [
+      { key: 'season_label', label: 'Season' },
+      { key: 'location', label: 'Location' },
+      { key: 'name', label: 'Field Name' },
+      { key: 'available_from', label: 'Available From' },
+      { key: 'available_until', label: 'Available Until' },
+    ],
+    optional: [
+      { key: 'primary_format', label: 'Primary Format' },
+      { key: 'secondary_format', label: 'Secondary Format' },
+      { key: 'record_status', label: 'Record Status' },
+      { key: 'blackout_months', label: 'Blackout Months' },
+      { key: 'goal_equipment', label: 'Equipment' },
+    ],
+  },
 };
 
 const STORAGE_KEY = (type) => `squadlogic:import-mapping:${type}`;
