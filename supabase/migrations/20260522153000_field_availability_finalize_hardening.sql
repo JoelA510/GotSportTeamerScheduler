@@ -203,14 +203,18 @@ BEGIN
 
   DELETE FROM public.field_availability_scenarios s
   WHERE s.organization_id = v_job.organization_id
-    AND EXISTS (
+    AND s.id IN (
+      SELECT DISTINCT m.scenario_id
+      FROM public.field_availability_scenario_members m
+      JOIN public.import_application_records r ON r.target_id = m.profile_id
+      WHERE r.import_job_id = p_import_job_id
+        AND r.import_type='field_availability'
+        AND r.target_table='field_availability_profiles'
+        AND r.rolled_back_at IS NULL
+    )
+    AND NOT EXISTS (
       SELECT 1 FROM public.field_availability_scenario_members m
-      JOIN public.field_availability_profiles p ON p.id = m.profile_id
       WHERE m.scenario_id = s.id
-    ) = false
-    AND EXISTS (
-      SELECT 1 FROM public.import_application_records r
-      WHERE r.import_job_id = p_import_job_id AND r.import_type='field_availability' AND r.target_table='field_availability_scenario_members' AND r.rolled_back_at IS NULL
     );
   GET DIAGNOSTICS v_deleted_scenarios = ROW_COUNT;
 
