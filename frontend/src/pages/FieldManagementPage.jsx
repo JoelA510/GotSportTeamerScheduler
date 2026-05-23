@@ -12,9 +12,9 @@ const MONTH_MARKERS = [
 ];
 
 function hasMonthToken(profile, monthKey) {
-  const value = `${profile?.blackout_months || ''} ${profile?.month_indicators || ''}`.toLowerCase();
-  if (!value) return false;
-  return value.includes(monthKey) || value.includes(monthKey.slice(0, 3));
+  const value = `${profile?.blackout_months || ''} ${profile?.month_indicators || ''}`;
+  const short = monthKey.slice(0, 3);
+  return new RegExp(`\\b(${monthKey}|${short})\\b`, 'i').test(value);
 }
 
 function badgeClass() {
