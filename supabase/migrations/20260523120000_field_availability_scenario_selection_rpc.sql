@@ -100,11 +100,16 @@ BEGIN
   END IF;
 
   UPDATE public.field_availability_scenarios s
-  SET is_active = (s.id = p_scenario_id)
+  SET is_active = false
   WHERE s.organization_id = p_organization_id
     AND s.season_label = p_season_label
     AND s.exclusivity_group = p_exclusivity_group
-    AND s.is_active IS DISTINCT FROM (s.id = p_scenario_id);
+    AND s.is_active;
+
+  UPDATE public.field_availability_scenarios s
+  SET is_active = true
+  WHERE s.id = p_scenario_id
+    AND NOT s.is_active;
 
   PERFORM public.record_audit_event(
     p_organization_id,
