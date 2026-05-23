@@ -855,19 +855,19 @@ export default function ImportPanel({ onImport }) {
               </div>
               <div className="w-full xl:w-auto xl:text-right">
                 {importType === 'field_availability' && (
-                  <div className="mb-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
-                    This import stores seasonal field availability metadata. It does not create practice or game slots.
-                  </div>
-                )}
-                {importType === 'field_availability' && (
-                  <p className="mb-2 text-xs text-text-secondary">
-                    Required fields: {Object.values(REQUIRED_FIELD_LABELS.field_availability).join(', ')}
-                  </p>
-                )}
-                {showFieldAvailabilityMissingSlotCopy && (
-                  <p className="mb-2 text-xs text-text-secondary">
-                    No explicit day/time slots were provided; schedule slots were not created.
-                  </p>
+                  <>
+                    <div className="mb-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+                      This import stores seasonal field availability metadata. It does not create practice or game slots.
+                    </div>
+                    <p className="mb-2 text-xs text-text-secondary">
+                      Required fields: {Object.values(REQUIRED_FIELD_LABELS.field_availability).join(', ')}
+                    </p>
+                    {showFieldAvailabilityMissingSlotCopy && (
+                      <p className="mb-2 text-xs text-text-secondary">
+                        No explicit day/time slots were provided; schedule slots were not created.
+                      </p>
+                    )}
+                  </>
                 )}
               </div>
               <div
