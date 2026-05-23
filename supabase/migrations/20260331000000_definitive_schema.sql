@@ -1116,7 +1116,25 @@ CREATE POLICY "Registration Forms: admins manage"
 CREATE POLICY "Registrations: users own"
     ON public.registrations FOR ALL TO authenticated
     USING (
-        profile_id = auth.uid() OR
+        (
+            profile_id = auth.uid()
+            AND is_org_member(organization_id)
+        ) OR
+        (
+            is_org_member(organization_id) AND
+            EXISTS (
+                SELECT 1 FROM public.organization_members om
+                WHERE om.profile_id = auth.uid()
+                  AND om.organization_id = registrations.organization_id
+                  AND om.role = 'admin'
+            )
+        )
+    )
+    WITH CHECK (
+        (
+            profile_id = auth.uid()
+            AND is_org_member(organization_id)
+        ) OR
         (
             is_org_member(organization_id) AND
             EXISTS (
