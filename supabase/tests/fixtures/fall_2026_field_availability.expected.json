@@ -1,0 +1,10 @@
+{
+  "expectedCounts": {
+    "profiles": 15,
+    "blackouts": 4,
+    "equipment_requirements": 10,
+    "practice_slots": 0,
+    "game_slots": 0,
+    "canyon_potential_profiles": 4
+  }
+}
