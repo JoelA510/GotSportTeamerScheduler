@@ -157,7 +157,7 @@ export default function FieldManagementPage() {
 
 
       <section className="bg-bg-surface border border-border-subtle rounded-xl p-5" aria-labelledby="seasonal-availability-heading">
-        <h2 className="text-lg font-semibold text-text-primary mb-1">Seasonal availability</h2>
+        <h2 id="seasonal-availability-heading" className="text-lg font-semibold text-text-primary mb-1">Seasonal availability</h2>
         <p className="text-sm text-text-secondary mb-4">Seasonal availability metadata — not finalized schedule slots.</p>
         <p className="text-xs text-text-muted mb-4">No explicit day/time slots were provided; schedule slots were not created.</p>
         <div className="space-y-4">
