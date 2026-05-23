@@ -12,7 +12,6 @@
 --    -- Expected rows:
 --    --   raw-imports org-member select
 --    --   raw-imports org-member insert
---    --   raw-imports org-member delete
 --
 -- 3. Cross-org leak smoke (requires two test users, USER_A in ORG_A,
 --    USER_B in ORG_B, with at least one object at path '<ORG_A_uuid>/test.csv'):

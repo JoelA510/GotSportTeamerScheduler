@@ -51,14 +51,5 @@ create policy "raw-imports org-member insert"
     )
   );
 
--- 4. Allow org-members to delete their own org's objects (e.g. retention cron in Wave 6b).
-create policy "raw-imports org-member delete"
-  on storage.objects for delete
-  using (
-    bucket_id = 'raw-imports'
-    and (storage.foldername(name))[1]::uuid in (
-      select organization_id
-      from public.organization_members
-      where profile_id = auth.uid()
-    )
-  );
+-- 4. Do NOT grant end-user DELETE on raw-imports objects.
+--    Retention cleanup should run via service-role automation instead.
