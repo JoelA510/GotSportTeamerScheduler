@@ -42,7 +42,7 @@ SELECT is((SELECT requirement_status FROM public.field_equipment_requirements fe
 
 SELECT is((SELECT count(*) FROM public.field_blackout_windows bw JOIN public.field_availability_profiles p ON p.id=bw.profile_id WHERE p.location='San Lorenzo' AND bw.blackout_from='2026-09-01' AND bw.blackout_until='2026-09-30')::int,1,'San Lorenzo closed in September only');
 SELECT is((SELECT count(*) FROM public.field_availability_profiles WHERE location IN ('Five Canyons Upper','Five Canyons Lower','Bret Harte') AND available_from='2026-09-01')::int,3,'Five Canyons and Bret Harte exclude August via September start');
-SELECT is((SELECT count(*) FROM public.field_availability_scenarios s JOIN public.field_availability_scenario_members m ON m.scenario_id=s.id WHERE s.scenario_name='Canyon Potential' AND s.scenario_group='canyon')::int,4,'Canyon potential rows are scenario-grouped');
+SELECT is((SELECT count(*) FROM public.field_availability_scenarios s JOIN public.field_availability_scenario_members m ON m.scenario_id=s.id WHERE s.name='Canyon Potential' AND s.exclusivity_group='canyon')::int,4,'Canyon potential rows are scenario-grouped');
 SELECT throws_ok($$ SELECT public.finalize_field_availability_import_job('11111111-3333-3333-3333-777777777772','[]'::jsonb) $$,'42501',NULL,'org isolation enforced for finalize');
 SELECT throws_ok($$ SELECT public.finalize_field_import_job('11111111-3333-3333-3333-777777777771','[]'::jsonb) $$,'22023',NULL,'legacy finalizer rejects availability jobs');
 SELECT is((SELECT count(*) FROM public.practice_slots WHERE organization_id='a1111111-1111-1111-1111-111111111111')::int,0,'no practice slot creation');
