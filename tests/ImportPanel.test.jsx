@@ -281,6 +281,74 @@ describe('ImportPanel', () => {
     );
   });
 
+
+  it('field_availability preview does not require day/start/end and shows metadata warning copy', async () => {
+    mocks.parse.mockImplementation((_file, options) => {
+      options.complete({
+        data: [
+          {
+            season_label: 'Fall 2026',
+            location: 'San Lorenzo',
+            name: 'Main Field',
+            primary_format: '11v11',
+            available_from: '2026-08-01',
+            available_until: '2026-11-30',
+            blackout_months: 'Sep',
+            record_status: 'active',
+            goal_equipment: 'portable goals',
+          },
+        ],
+        meta: { fields: ['season_label', 'location', 'name', 'primary_format', 'available_from', 'available_until', 'blackout_months', 'record_status', 'goal_equipment'] },
+      });
+    });
+
+    render(<ImportPanel onImport={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: /field_availability/i }));
+
+    const input = screen.getByLabelText(/browse files/i);
+    const file = new File(['x'], 'availability.csv', { type: 'text/csv' });
+    fireEvent.change(input, { target: { files: [file] } });
+
+    await screen.findByText('availability.csv');
+    expect(screen.queryByTestId('import-error-banner')).not.toBeInTheDocument();
+    expect(screen.getByText(/stores seasonal field availability metadata/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/No explicit day\/time slots were provided; schedule slots were not created\./i).length).toBeGreaterThan(0);
+    expect(screen.getByText(/Required fields: Season, Location, Field Name, Available From, Available Until/i)).toBeInTheDocument();
+  });
+
+  it('fields preview still requires slot fields', async () => {
+    mocks.parse.mockImplementation((_file, options) => {
+      options.complete({
+        data: [{ location: 'North Park', name: 'Field 1', type: 'grass' }],
+        meta: { fields: ['location', 'name', 'type'] },
+      });
+    });
+
+    render(<ImportPanel onImport={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: /fields/i }));
+
+    const input = screen.getByLabelText(/browse files/i);
+    fireEvent.change(input, { target: { files: [new File(['x'], 'fields.csv', { type: 'text/csv' })] } });
+
+    await waitFor(() => expect(screen.getByRole('heading', { name: /map your columns/i })).toBeInTheDocument());
+  });
+
+  it('field_availability missing available_from triggers mapping/validation path', async () => {
+    mocks.parse.mockImplementation((_file, options) => {
+      options.complete({
+        data: [{ season_label: 'Fall 2026', location: 'North Park', name: 'Field 1', available_until: '2026-11-30' }],
+        meta: { fields: ['season_label', 'location', 'name', 'available_until'] },
+      });
+    });
+
+    render(<ImportPanel onImport={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: /field_availability/i }));
+
+    const input = screen.getByLabelText(/browse files/i);
+    fireEvent.change(input, { target: { files: [new File(['x'], 'availability.csv', { type: 'text/csv' })] } });
+
+    await waitFor(() => expect(screen.getByRole('heading', { name: /map your columns/i })).toBeInTheDocument());
+  });
   it('describes deferred import action controls', () => {
     mocks.importState = {
       ...mocks.importState,

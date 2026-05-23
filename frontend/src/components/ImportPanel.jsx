@@ -45,6 +45,30 @@ const IMPORT_TYPE_TOOLTIPS = {
 /**
  * Smart Confidence Badge component for high-fidelity mapping indicators.
  */
+
+const REQUIRED_FIELD_LABELS = {
+  field_availability: {
+    season_label: 'Season',
+    location: 'Location',
+    name: 'Field Name',
+    available_from: 'Available From',
+    available_until: 'Available Until',
+  },
+};
+
+const FIELD_AVAILABILITY_PREVIEW_FIELDS = [
+  'season_label',
+  'location',
+  'name',
+  'primary_format',
+  'secondary_format',
+  'available_from',
+  'available_until',
+  'blackout_months',
+  'record_status',
+  'goal_equipment',
+];
+
 const SmartBadge = ({ score, rationale }) => {
   const tooltipId = React.useId();
   const matchPercent = (score * 100).toFixed(0);
@@ -396,6 +420,31 @@ export default function ImportPanel({ onImport }) {
     }
   };
 
+
+  const previewHeaders = React.useMemo(() => {
+    if (!previewData?.headers) return [];
+    if (importType !== 'field_availability') return previewData.headers.slice(0, 5);
+
+    const normalizedHeaderMap = new Map(
+      previewData.headers.map((header) => {
+        const canonical = previewData.smartMetadata?.mappings?.[header] || header.toLowerCase().trim();
+        return [canonical, header];
+      })
+    );
+
+    return FIELD_AVAILABILITY_PREVIEW_FIELDS.filter((field) => normalizedHeaderMap.has(field)).map((field) => normalizedHeaderMap.get(field));
+  }, [previewData, importType]);
+
+  const showFieldAvailabilityMissingSlotCopy =
+    importType === 'field_availability' &&
+    previewData?.headers &&
+    ['day', 'start', 'end'].some(
+      (field) =>
+        !previewData.headers
+          .map((header) => previewData.smartMetadata?.mappings?.[header] || header.toLowerCase().trim())
+          .includes(field)
+    );
+
   if (isImporting || isComplete || isReadyToApply) {
     return (
       <section className="glass-panel p-4 sm:p-8 rounded-xl border border-border-subtle relative overflow-visible mb-10 max-w-full min-w-0">
@@ -688,8 +737,7 @@ export default function ImportPanel({ onImport }) {
                 </>
               ) : importType === 'field_availability' ? (
                 <>
-                  Seasonal availability metadata — not finalized schedule slots. No explicit
-                  day/time slots were provided; schedule slots were not created.
+                  Seasonal availability metadata — not finalized schedule slots. No explicit day/time slots were provided; schedule slots were not created.
                 </>
               ) : (
                 <>
@@ -805,6 +853,23 @@ export default function ImportPanel({ onImport }) {
                   </p>
                 </div>
               </div>
+              <div className="w-full xl:w-auto xl:text-right">
+                {importType === 'field_availability' && (
+                  <div className="mb-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+                    This import stores seasonal field availability metadata. It does not create practice or game slots.
+                  </div>
+                )}
+                {importType === 'field_availability' && (
+                  <p className="mb-2 text-xs text-text-secondary">
+                    Required fields: {Object.values(REQUIRED_FIELD_LABELS.field_availability).join(', ')}
+                  </p>
+                )}
+                {showFieldAvailabilityMissingSlotCopy && (
+                  <p className="mb-2 text-xs text-text-secondary">
+                    No explicit day/time slots were provided; schedule slots were not created.
+                  </p>
+                )}
+              </div>
               <div
                 data-testid="import-preview-actions"
                 className="flex flex-wrap gap-3 w-full xl:w-auto"
@@ -886,7 +951,7 @@ export default function ImportPanel({ onImport }) {
               <table className="min-w-max w-full text-left text-sm text-text-secondary">
                 <thead className="bg-bg-surface text-xs uppercase font-semibold text-text-muted border-b border-border-subtle">
                   <tr>
-                    {previewData.headers.slice(0, 5).map((header, i) => {
+                    {previewHeaders.map((header, i) => {
                       const confidence = previewData.smartMetadata?.confidence[header] || 0;
                       const rationale = previewData.smartMetadata?.rationales[header] || '';
 
@@ -903,7 +968,7 @@ export default function ImportPanel({ onImport }) {
                         </th>
                       );
                     })}
-                    {previewData.headers.length > 5 && <th className="px-4 py-4 w-10">...</th>}
+                    {importType !== 'field_availability' && previewData.headers.length > 5 && <th className="px-4 py-4 w-10">...</th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border-subtle">
@@ -911,7 +976,7 @@ export default function ImportPanel({ onImport }) {
                     const rowError = previewData.validationErrors?.find((ve) => ve.row === i + 2);
                     return (
                       <tr key={i} className="hover:bg-bg-surface-hover transition-colors">
-                        {previewData.headers.slice(0, 5).map((header, j) => {
+                        {previewHeaders.map((header, j) => {
                           const mapped =
                             previewData.smartMetadata?.mappings[header] ||
                             header.toLowerCase().trim();
@@ -926,7 +991,7 @@ export default function ImportPanel({ onImport }) {
                             </td>
                           );
                         })}
-                        {previewData.headers.length > 5 && <td className="px-4 py-3">...</td>}
+                        {importType !== 'field_availability' && previewData.headers.length > 5 && <td className="px-4 py-3">...</td>}
                       </tr>
                     );
                   })}
