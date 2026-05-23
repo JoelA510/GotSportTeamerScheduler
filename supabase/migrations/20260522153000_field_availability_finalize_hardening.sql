@@ -101,6 +101,7 @@ DECLARE
   v_location text; v_field_name text; v_avail_from date; v_avail_until date;
   v_primary_format text; v_secondary_format text; v_format_qty integer;
   v_record_status text; v_approval_status text; v_goal_equipment text; v_goal_status text; v_requirement_status text; v_blackout_months text; v_scenario_name text; v_scenario_id uuid;
+  v_member_inserted boolean := false; v_member_row_count integer := 0;
   v_row_errors jsonb;
 BEGIN
   IF jsonb_typeof(COALESCE(p_validation_errors, '[]'::jsonb)) <> 'array' THEN RAISE EXCEPTION 'p_validation_errors must be a jsonb array' USING ERRCODE = '22023'; END IF;
@@ -155,12 +156,16 @@ BEGIN
     IF position('nov' in v_blackout_months) > 0 THEN INSERT INTO public.field_blackout_windows (organization_id, profile_id, blackout_from, blackout_until, reason) VALUES (v_job.organization_id,v_profile_id,'2026-11-01','2026-11-30','blackout_months'); v_inserted_blackouts := v_inserted_blackouts + 1; END IF;
 
     v_scenario_name := public.import_payload_text(v_payload, 'scenario_name');
+    v_member_inserted := false;
     IF v_scenario_name IS NOT NULL THEN
       INSERT INTO public.field_availability_scenarios (organization_id, season_label, name, exclusivity_group)
       VALUES (v_job.organization_id, COALESCE(public.import_payload_text(v_payload,'season_label'),'Unspecified Season'), v_scenario_name, public.import_payload_text(v_payload, 'scenario_group'))
       ON CONFLICT (organization_id, season_label, name) DO UPDATE SET exclusivity_group = EXCLUDED.exclusivity_group RETURNING id INTO v_scenario_id;
       INSERT INTO public.field_availability_scenario_members (organization_id, scenario_id, profile_id, membership_status) VALUES (v_job.organization_id,v_scenario_id,v_profile_id,'included') ON CONFLICT (scenario_id, profile_id) DO NOTHING;
-      v_inserted_scenarios := v_inserted_scenarios + 1; v_inserted_members := v_inserted_members + 1;
+      GET DIAGNOSTICS v_member_row_count = ROW_COUNT;
+      v_member_inserted := v_member_row_count > 0;
+      v_inserted_scenarios := v_inserted_scenarios + 1;
+      IF v_member_inserted THEN v_inserted_members := v_inserted_members + 1; END IF;
     END IF;
 
     INSERT INTO public.import_application_records (organization_id, import_job_id, import_type, target_table, target_id, operation, previous_payload, applied_payload, applied_at, applied_by)
@@ -168,9 +173,14 @@ BEGIN
       (v_job.organization_id,p_import_job_id,'field_availability','field_availability_profiles',v_profile_id,'inserted',NULL,to_jsonb((SELECT p FROM public.field_availability_profiles p WHERE p.id=v_profile_id)),v_now,auth.uid()),
       (v_job.organization_id,p_import_job_id,'field_availability','field_availability_profile_formats',v_profile_id,'inserted',NULL,NULL,v_now,auth.uid()),
       (v_job.organization_id,p_import_job_id,'field_availability','field_blackout_windows',v_profile_id,'inserted',NULL,NULL,v_now,auth.uid()),
-      (v_job.organization_id,p_import_job_id,'field_availability','field_equipment_requirements',v_profile_id,'inserted',NULL,NULL,v_now,auth.uid()),
-      (v_job.organization_id,p_import_job_id,'field_availability','field_availability_scenario_members',v_profile_id,'inserted',NULL,NULL,v_now,auth.uid())
+      (v_job.organization_id,p_import_job_id,'field_availability','field_equipment_requirements',v_profile_id,'inserted',NULL,NULL,v_now,auth.uid())
     ON CONFLICT (import_job_id, target_table, target_id) DO NOTHING;
+
+    IF v_member_inserted THEN
+      INSERT INTO public.import_application_records (organization_id, import_job_id, import_type, target_table, target_id, operation, previous_payload, applied_payload, applied_at, applied_by)
+      VALUES (v_job.organization_id,p_import_job_id,'field_availability','field_availability_scenario_members',v_profile_id,'inserted',NULL,NULL,v_now,auth.uid())
+      ON CONFLICT (import_job_id, target_table, target_id) DO NOTHING;
+    END IF;
 
     UPDATE public.staging_import_rows SET applied_at=v_now, applied_by=auth.uid() WHERE id=v_row.id;
   END LOOP;
