@@ -223,8 +223,8 @@ SELECT is(
         SELECT count(*)
         FROM public.get_team_portal_medical_status('aaaaaaaa-0000-0000-0000-000000000001')
     )::int,
-    2,
-    'assigned coach can see medical status for the full team roster'
+    0,
+    'assigned coach does not receive full-roster medical status'
 );
 
 RESET ROLE;
