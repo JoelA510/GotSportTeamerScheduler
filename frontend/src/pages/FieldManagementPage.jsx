@@ -4,6 +4,23 @@ import { MapPin, Plus, Edit2, Trash2, X, Check } from 'lucide-react';
 import { useFields } from '../hooks/useFields.js';
 import { logger } from '../lib/logger.js';
 
+const MONTH_MARKERS = [
+  { key: 'august', label: 'Aug' },
+  { key: 'september', label: 'Sep' },
+  { key: 'october', label: 'Oct' },
+  { key: 'november', label: 'Nov' },
+];
+
+function hasMonthToken(profile, monthKey) {
+  const value = `${profile?.blackout_months || ''} ${profile?.month_indicators || ''}`.toLowerCase();
+  if (!value) return false;
+  return value.includes(monthKey) || value.includes(monthKey.slice(0, 3));
+}
+
+function badgeClass() {
+  return 'inline-flex items-center px-2 py-0.5 rounded-full border border-border-subtle text-xs text-text-primary bg-bg-app';
+}
+
 export default function FieldManagementPage() {
   const {
     locations,
@@ -139,29 +156,71 @@ export default function FieldManagementPage() {
 
 
 
-      <div className="bg-bg-surface border border-border-subtle rounded-xl p-5">
+      <section className="bg-bg-surface border border-border-subtle rounded-xl p-5" aria-labelledby="seasonal-availability-heading">
         <h2 className="text-lg font-semibold text-text-primary mb-1">Seasonal availability</h2>
         <p className="text-sm text-text-secondary mb-4">Seasonal availability metadata — not finalized schedule slots.</p>
         <p className="text-xs text-text-muted mb-4">No explicit day/time slots were provided; schedule slots were not created.</p>
-        <div className="space-y-2">
+        <div className="space-y-4">
           {availabilityProfiles.length === 0 && (
-            <div className="text-sm text-text-muted">No seasonal availability profiles imported yet.</div>
+            <div className="text-sm text-text-muted" role="status">No seasonal availability profiles imported yet.</div>
           )}
-          {availabilityProfiles.map((profile) => (
-            <div key={profile.id} className="border border-border-subtle rounded-lg p-3">
-              <div className="text-sm font-semibold">{profile.location} — {profile.field_name}</div>
-              <div className="text-xs text-text-secondary">{profile.season_label} • {profile.record_status} • {profile.available_from} to {profile.available_until}</div>
-              <div className="text-xs text-text-secondary">
-                Formats: {(profile.field_availability_profile_formats || []).map((f) => `${f.format_code} (${f.format_quantity})`).join(', ') || '—'}
-                {' '}| Capacity: {profile.teams_per_hour || '—'} tph / {profile.aggregate_teams_per_hour || '—'} aggregate
-              </div>
-              <div className="text-xs text-text-secondary">
-                Blackouts: {(profile.field_blackout_windows || []).length} • Equipment flags: {(profile.field_equipment_requirements || []).map((r) => `${r.goal_equipment || 'equipment'}:${r.requirement_status || 'n/a'}`).join(', ') || '—'}
+          {Object.entries(
+            availabilityProfiles.reduce((acc, profile) => {
+              const season = profile.season_label || 'Unlabeled season';
+              if (!acc[season]) acc[season] = [];
+              acc[season].push(profile);
+              return acc;
+            }, {})
+          ).map(([season, seasonProfiles]) => (
+            <div key={season} className="border border-border-subtle rounded-lg p-3">
+              <h3 className="text-sm font-semibold text-text-primary mb-2">{season}</h3>
+              <div className="space-y-2">
+                {seasonProfiles.map((profile) => (
+                  <article key={profile.id} className="border border-border-subtle rounded-lg p-3 bg-bg-app">
+                    <div className="text-sm font-semibold">{profile.location} — {profile.field_name}</div>
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      <span className={badgeClass()}>Status: {profile.record_status || 'unknown'}</span>
+                      <span className={badgeClass()}>Approval: {profile.approval_status || 'n/a'}</span>
+                      <span className={badgeClass()}>Date window: {profile.available_from || '—'} to {profile.available_until || '—'}</span>
+                      {profile.record_status === 'potential' && <span className={badgeClass()}>Potential state</span>}
+                      {profile.record_status === 'conditional' && <span className={badgeClass()}>Conditional state</span>}
+                      {profile.record_status === 'excluded' && <span className={badgeClass()}>Excluded state</span>}
+                    </div>
+                    <div className="mt-2 text-xs text-text-secondary">Month indicators:</div>
+                    <div className="flex flex-wrap gap-2 mt-1">
+                      {MONTH_MARKERS.map((month) => (
+                        <span key={`${profile.id}-${month.key}`} className={badgeClass()}>
+                          {month.label}: {hasMonthToken(profile, month.key) ? 'Yes' : 'No'}
+                        </span>
+                      ))}
+                    </div>
+                    <div className="text-xs text-text-secondary mt-2">
+                      Formats and quantities: {(profile.field_availability_profile_formats || []).map((f) => `${f.format_code || 'format'} (${f.format_quantity || '—'})`).join(', ') || '—'}
+                    </div>
+                    <div className="text-xs text-text-secondary mt-1">
+                      teams_per_hour: {profile.teams_per_hour || '—'} • aggregate_teams_per_hour: {profile.aggregate_teams_per_hour || '—'}
+                    </div>
+                    <div className="text-xs text-text-secondary mt-1">
+                      Blackouts: {(profile.field_blackout_windows || []).map((b) => `${b.blackout_from || '—'} to ${b.blackout_until || '—'}${b.reason ? ` (${b.reason})` : ''}`).join('; ') || 'None provided'}
+                    </div>
+                    <div className="text-xs text-text-secondary mt-1">
+                      Equipment flags: {(profile.field_equipment_requirements || []).map((r) => `${r.goal_equipment || 'equipment'} (${r.requirement_status || 'n/a'})`).join(', ') || 'None provided'}
+                    </div>
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      <span className={badgeClass()}>Lighted: {profile.lighted === true ? 'Yes' : 'No/Unknown'}</span>
+                      <span className={badgeClass()}>Restroom: {profile.restroom === true ? 'Yes' : 'No/Unknown'}</span>
+                      <span className={badgeClass()}>Potty: {profile.potty === true ? 'Yes' : 'No/Unknown'}</span>
+                    </div>
+                    <div className="text-xs text-text-secondary mt-1">
+                      Day constraints: {profile.day_constraints || 'None'} • Move-to-location: {profile.move_to_location || 'None'}
+                    </div>
+                  </article>
+                ))}
               </div>
             </div>
           ))}
         </div>
-      </div>
+      </section>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {fields.map((field) => (
