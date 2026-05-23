@@ -67,7 +67,7 @@ BEGIN
             -- This allows simple read/write if the user is a member of the organization.
             -- Note: More granular roles (admin/coach) can be checked within the app if needed, 
             -- but for multi-tenancy, org membership is the primary gate.
-            EXECUTE format('CREATE POLICY "org_member_access" ON public.%I FOR ALL TO authenticated USING (is_org_member(organization_id))', t_name);
+            EXECUTE format('CREATE POLICY "org_member_access" ON public.%I FOR SELECT TO authenticated USING (is_org_member(organization_id))', t_name);
         END IF;
     END LOOP;
 END$$;
