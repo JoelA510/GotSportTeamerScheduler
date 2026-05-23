@@ -253,8 +253,8 @@ BEGIN
             USING ERRCODE = 'P0002';
     END IF;
 
-    IF NOT public.is_org_member(v_org_id) THEN
-        RAISE EXCEPTION 'Access denied: user is not a member of organization %', v_org_id
+    IF NOT public.is_org_admin(v_org_id) THEN
+        RAISE EXCEPTION 'Access denied: user is not an admin of organization %', v_org_id
             USING ERRCODE = '42501';
     END IF;
 

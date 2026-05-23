@@ -5,7 +5,7 @@ BEGIN;
 \set squadlogic_fixture_include 1
 \ir _fixtures.sql
 
-SELECT plan(16);
+SELECT plan(17);
 
 INSERT INTO public.players (
     id,
@@ -153,6 +153,24 @@ SELECT throws_ok(
     'RPC rejects a lead whose player belongs to another organization'
 );
 
+
+SET LOCAL "request.jwt.claims" TO '{"sub":"33333333-3333-3333-3333-333333333333"}';
+
+SELECT throws_ok(
+    $$
+        SELECT public.set_import_job_coach_lead_summary(
+            'aaaabbbb-1111-1111-1111-111111111111',
+            '{"status":"blocked"}'::jsonb,
+            'completed'
+        )
+    $$,
+    '42501',
+    NULL,
+    'Org member without admin role cannot update import coach lead summaries'
+);
+
+SET LOCAL "request.jwt.claims" TO '{"sub":"11111111-1111-1111-1111-111111111111"}';
+
 SELECT lives_ok(
     $$
         SELECT public.set_import_job_coach_lead_summary(
@@ -161,7 +179,7 @@ SELECT lives_ok(
             'completed_with_warnings'
         )
     $$,
-    'org member can atomically persist a coach lead import summary'
+    'org admin can atomically persist a coach lead import summary'
 );
 
 SELECT is(
