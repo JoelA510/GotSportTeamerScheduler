@@ -165,10 +165,7 @@ export default function ImportPanel({ onImport }) {
         !fieldRollbackComplete) ||
       (workflowImportType === 'field_availability' &&
         importedFieldAvailability?.persistence?.durable &&
-        !(
-          importedFieldAvailability?.persistence?.rollback?.status ===
-          'rolled_back'
-        )));
+        !(importedFieldAvailability?.persistence?.rollback?.status === 'rolled_back')));
 
   const handleDragOver = (e) => {
     e.preventDefault();
@@ -420,19 +417,21 @@ export default function ImportPanel({ onImport }) {
     }
   };
 
-
   const previewHeaders = React.useMemo(() => {
     if (!previewData?.headers) return [];
     if (importType !== 'field_availability') return previewData.headers.slice(0, 5);
 
     const normalizedHeaderMap = new Map(
       previewData.headers.map((header) => {
-        const canonical = previewData.smartMetadata?.mappings?.[header] || header.toLowerCase().trim();
+        const canonical =
+          previewData.smartMetadata?.mappings?.[header] || header.toLowerCase().trim();
         return [canonical, header];
       })
     );
 
-    return FIELD_AVAILABILITY_PREVIEW_FIELDS.filter((field) => normalizedHeaderMap.has(field)).map((field) => normalizedHeaderMap.get(field));
+    return FIELD_AVAILABILITY_PREVIEW_FIELDS.filter((field) => normalizedHeaderMap.has(field)).map(
+      (field) => normalizedHeaderMap.get(field)
+    );
   }, [previewData, importType]);
 
   const showFieldAvailabilityMissingSlotCopy =
@@ -441,7 +440,9 @@ export default function ImportPanel({ onImport }) {
     ['day', 'start', 'end'].some(
       (field) =>
         !previewData.headers
-          .map((header) => previewData.smartMetadata?.mappings?.[header] || header.toLowerCase().trim())
+          .map(
+            (header) => previewData.smartMetadata?.mappings?.[header] || header.toLowerCase().trim()
+          )
           .includes(field)
     );
 
@@ -737,7 +738,8 @@ export default function ImportPanel({ onImport }) {
                 </>
               ) : importType === 'field_availability' ? (
                 <>
-                  Seasonal availability metadata — not finalized schedule slots. No explicit day/time slots were provided; schedule slots were not created.
+                  Seasonal availability metadata — not finalized schedule slots. No explicit
+                  day/time slots were provided; schedule slots were not created.
                 </>
               ) : (
                 <>
@@ -857,10 +859,12 @@ export default function ImportPanel({ onImport }) {
                 {importType === 'field_availability' && (
                   <>
                     <div className="mb-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
-                      This import stores seasonal field availability metadata. It does not create practice or game slots.
+                      This import stores seasonal field availability metadata. It does not create
+                      practice or game slots.
                     </div>
                     <p className="mb-2 text-xs text-text-secondary">
-                      Required fields: {Object.values(REQUIRED_FIELD_LABELS.field_availability).join(', ')}
+                      Required fields:{' '}
+                      {Object.values(REQUIRED_FIELD_LABELS.field_availability).join(', ')}
                     </p>
                     {showFieldAvailabilityMissingSlotCopy && (
                       <p className="mb-2 text-xs text-text-secondary">
@@ -968,7 +972,9 @@ export default function ImportPanel({ onImport }) {
                         </th>
                       );
                     })}
-                    {importType !== 'field_availability' && previewData.headers.length > 5 && <th className="px-4 py-4 w-10">...</th>}
+                    {importType !== 'field_availability' && previewData.headers.length > 5 && (
+                      <th className="px-4 py-4 w-10">...</th>
+                    )}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border-subtle">
@@ -991,7 +997,9 @@ export default function ImportPanel({ onImport }) {
                             </td>
                           );
                         })}
-                        {importType !== 'field_availability' && previewData.headers.length > 5 && <td className="px-4 py-3">...</td>}
+                        {importType !== 'field_availability' && previewData.headers.length > 5 && (
+                          <td className="px-4 py-3">...</td>
+                        )}
                       </tr>
                     );
                   })}

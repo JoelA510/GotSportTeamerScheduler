@@ -21,13 +21,31 @@ describe('field availability lifecycle', () => {
   it('invalid seasonal rows produce warnings and do not create slots', async () => {
     const basePractice = getMockData('practice_slots').length;
     const baseGame = getMockData('game_slots').length;
-    const { data: job } = await supabase.rpc('create_import_job', { p_organization_id: 'org-1', p_import_type: 'field_availability', p_file_name: 'invalid-fa.csv' });
+    const { data: job } = await supabase.rpc('create_import_job', {
+      p_organization_id: 'org-1',
+      p_import_type: 'field_availability',
+      p_file_name: 'invalid-fa.csv',
+    });
     await supabase.from('staging_import_rows').insert({
-      id: 'row-invalid', import_job_id: job.id, organization_id: 'org-1', import_type: 'field_availability', raw_payload: {},
-      normalized_payload: { season_label: 'Fall 2026', location: '', field_name: 'Bad', available_from: '2026-11-30', available_until: '2026-08-01', teams_per_hour: '0' },
+      id: 'row-invalid',
+      import_job_id: job.id,
+      organization_id: 'org-1',
+      import_type: 'field_availability',
+      raw_payload: {},
+      normalized_payload: {
+        season_label: 'Fall 2026',
+        location: '',
+        field_name: 'Bad',
+        available_from: '2026-11-30',
+        available_until: '2026-08-01',
+        teams_per_hour: '0',
+      },
       validation_errors: [],
     });
-    const res = await supabase.rpc('finalize_field_availability_import_job', { p_import_job_id: job.id, p_validation_errors: [] });
+    const res = await supabase.rpc('finalize_field_availability_import_job', {
+      p_import_job_id: job.id,
+      p_validation_errors: [],
+    });
     expect(res.error).toBeNull();
     expect(res.data.status).toBe('completed_with_warnings');
     expect(res.data.invalid_rows).toBeGreaterThan(0);
@@ -37,26 +55,57 @@ describe('field availability lifecycle', () => {
 
   it('deferred apply routes to finalize_field_availability_import_job and rollback rpc works', async () => {
     const { data: job } = await supabase.rpc('create_import_job', {
-      p_organization_id: 'org-1', p_import_type: 'field_availability', p_file_name: 'fa.csv',
+      p_organization_id: 'org-1',
+      p_import_type: 'field_availability',
+      p_file_name: 'fa.csv',
     });
     await supabase.from('staging_import_rows').insert({
-      id: 'row1', import_job_id: job.id, organization_id: 'org-1', import_type: 'field_availability', raw_payload: {},
+      id: 'row1',
+      import_job_id: job.id,
+      organization_id: 'org-1',
+      import_type: 'field_availability',
+      raw_payload: {},
       normalized_payload: {
-        season_label: 'Fall 2026', location: 'San Lorenzo', field_name: 'Main', available_from: '2026-08-01', available_until: '2026-10-31',
-        primary_format: '11v11', secondary_format: '9v9', format_quantity: '1', blackout_months: 'Sept',
-        goal_equipment: 'sturdy goals', goal_status: 'needs purchase', scenario_name: 'Canyon A', scenario_group: 'canyon'
+        season_label: 'Fall 2026',
+        location: 'San Lorenzo',
+        field_name: 'Main',
+        available_from: '2026-08-01',
+        available_until: '2026-10-31',
+        primary_format: '11v11',
+        secondary_format: '9v9',
+        format_quantity: '1',
+        blackout_months: 'Sept',
+        goal_equipment: 'sturdy goals',
+        goal_status: 'needs purchase',
+        scenario_name: 'Canyon A',
+        scenario_group: 'canyon',
       },
       validation_errors: [],
     });
-    await supabase.rpc('mark_import_job_ready_to_apply', { p_import_job_id: job.id, p_import_type: 'field_availability', p_validation_errors: [] });
-    const result = await finalizeDeferredImportJob({ supabase, type: 'field_availability', importJobId: job.id, validationErrors: [] });
+    await supabase.rpc('mark_import_job_ready_to_apply', {
+      p_import_job_id: job.id,
+      p_import_type: 'field_availability',
+      p_validation_errors: [],
+    });
+    const result = await finalizeDeferredImportJob({
+      supabase,
+      type: 'field_availability',
+      importJobId: job.id,
+      validationErrors: [],
+    });
     expect(result.inserted_profiles).toBe(1);
 
     const profile = getMockData('field_availability_profiles')[0];
     expect(profile).toBeTruthy();
-    expect(getMockData('field_blackout_windows').some((b) => b.profile_id === profile.id && b.blackout_from === '2026-09-01')).toBe(true);
+    expect(
+      getMockData('field_blackout_windows').some(
+        (b) => b.profile_id === profile.id && b.blackout_from === '2026-09-01'
+      )
+    ).toBe(true);
 
-    const rb = await supabase.rpc('rollback_field_availability_import_job', { p_import_job_id: job.id });
+    const rb = await supabase.rpc('rollback_field_availability_import_job', {
+      p_import_job_id: job.id,
+    });
     expect(rb.error).toBeNull();
     expect(getMockData('field_availability_profiles').length).toBe(0);
     expect(getMockData('field_availability_profile_formats').length).toBe(0);
@@ -67,31 +116,69 @@ describe('field availability lifecycle', () => {
 
   it('deferred cancel works for field_availability', async () => {
     const { data: job } = await supabase.rpc('create_import_job', {
-      p_organization_id: 'org-1', p_import_type: 'field_availability', p_file_name: 'cancel-fa.csv',
+      p_organization_id: 'org-1',
+      p_import_type: 'field_availability',
+      p_file_name: 'cancel-fa.csv',
     });
     await supabase.from('staging_import_rows').insert({
-      id: 'row-cancel', import_job_id: job.id, organization_id: 'org-1', import_type: 'field_availability', raw_payload: {},
-      normalized_payload: { season_label: 'Fall 2026', location: 'Five Canyons', field_name: 'Upper', available_from: '2026-09-01', available_until: '2026-11-30' },
+      id: 'row-cancel',
+      import_job_id: job.id,
+      organization_id: 'org-1',
+      import_type: 'field_availability',
+      raw_payload: {},
+      normalized_payload: {
+        season_label: 'Fall 2026',
+        location: 'Five Canyons',
+        field_name: 'Upper',
+        available_from: '2026-09-01',
+        available_until: '2026-11-30',
+      },
       validation_errors: [],
     });
-    const ready = await supabase.rpc('mark_import_job_ready_to_apply', { p_import_job_id: job.id, p_import_type: 'field_availability', p_validation_errors: [] });
+    const ready = await supabase.rpc('mark_import_job_ready_to_apply', {
+      p_import_job_id: job.id,
+      p_import_type: 'field_availability',
+      p_validation_errors: [],
+    });
     expect(ready.error).toBeNull();
-    const canceled = await supabase.rpc('cancel_ready_import_job', { p_import_job_id: job.id, p_import_type: 'field_availability' });
+    const canceled = await supabase.rpc('cancel_ready_import_job', {
+      p_import_job_id: job.id,
+      p_import_type: 'field_availability',
+    });
     expect(canceled.error).toBeNull();
     expect(canceled.data.status).toBe('canceled');
   });
 
   it('blackout month parsing supports Aug/Sep/Oct/Nov tokens', async () => {
     const { data: job } = await supabase.rpc('create_import_job', {
-      p_organization_id: 'org-1', p_import_type: 'field_availability', p_file_name: 'months.csv',
+      p_organization_id: 'org-1',
+      p_import_type: 'field_availability',
+      p_file_name: 'months.csv',
     });
     await supabase.from('staging_import_rows').insert({
-      id: 'row-months', import_job_id: job.id, organization_id: 'org-1', import_type: 'field_availability', raw_payload: {},
-      normalized_payload: { season_label: 'Fall 2026', location: 'San Lorenzo', field_name: 'Main', available_from: '2026-08-01', available_until: '2026-11-30', blackout_months: 'Aug, Sept, Oct, Nov' },
+      id: 'row-months',
+      import_job_id: job.id,
+      organization_id: 'org-1',
+      import_type: 'field_availability',
+      raw_payload: {},
+      normalized_payload: {
+        season_label: 'Fall 2026',
+        location: 'San Lorenzo',
+        field_name: 'Main',
+        available_from: '2026-08-01',
+        available_until: '2026-11-30',
+        blackout_months: 'Aug, Sept, Oct, Nov',
+      },
       validation_errors: [],
     });
-    await supabase.rpc('finalize_field_availability_import_job', { p_import_job_id: job.id, p_validation_errors: [] });
-    const wins = getMockData('field_blackout_windows').map((w) => [w.blackout_from, w.blackout_until]);
+    await supabase.rpc('finalize_field_availability_import_job', {
+      p_import_job_id: job.id,
+      p_validation_errors: [],
+    });
+    const wins = getMockData('field_blackout_windows').map((w) => [
+      w.blackout_from,
+      w.blackout_until,
+    ]);
     expect(wins).toContainEqual(['2026-08-01', '2026-08-31']);
     expect(wins).toContainEqual(['2026-09-01', '2026-09-30']);
     expect(wins).toContainEqual(['2026-10-01', '2026-10-31']);
@@ -100,35 +187,200 @@ describe('field availability lifecycle', () => {
 
   it('Fall 2026 fixture regression pack preserves counts and edge-cases', async () => {
     const rows = [
-      { location: 'Stanton Elementary', field_name: 'Main', available_from: '2026-08-01', available_until: '2026-11-30', primary_format: '7v7', secondary_format: '9v9', teams_per_hour: '2', goal_equipment: 'sturdy goals', goal_status: 'needs sturdy goals', restroom_potty: 'true' },
-      { location: 'Jensen Ranch', field_name: 'Main', available_from: '2026-08-01', available_until: '2026-11-30', primary_format: '7v7', secondary_format: '9v9', teams_per_hour: '2', goal_equipment: 'sturdy goals', goal_status: 'not approved', restroom_potty: 'true' },
-      { location: 'Vannoy Back Field 7', field_name: 'Field 7', available_from: '2026-08-01', available_until: '2026-11-30', primary_format: '5v5', teams_per_hour: '4', use_context: 'Academy', goal_equipment: 'PUGG / Bownets / Forza', goal_status: 'available' },
-      { location: 'Vannoy Front Field 1', field_name: 'Field 1', available_from: '2026-08-01', available_until: '2026-11-30', primary_format: '7v7', teams_per_hour: '1', goal_equipment: 'sturdy goals', goal_status: 'needs sturdy goals', restroom_potty: 'true' },
-      { location: 'Independent Field 6', field_name: 'Field 6', available_from: '2026-08-01', available_until: '2026-11-30', primary_format: '4v4', teams_per_hour: '2', use_context: 'Boys & Girls', day_constraints: 'Sat/Sun', move_to_location: 'Vannoy', goal_equipment: 'PUGG or sturdy goals', goal_status: 'recommended' },
-      { location: 'Five Canyons Upper', field_name: 'Upper', available_from: '2026-09-01', available_until: '2026-11-30', primary_format: '9v9', secondary_format: '7v7', teams_per_hour: '2', blackout_months: 'Aug' },
-      { location: 'Five Canyons Lower', field_name: 'Lower', available_from: '2026-09-01', available_until: '2026-11-30', primary_format: '9v9', secondary_format: '7v7', teams_per_hour: '2', blackout_months: 'Aug' },
-      { location: 'Bret Harte', field_name: 'Main', available_from: '2026-09-01', available_until: '2026-11-30', primary_format: '11v11', teams_per_hour: '2', blackout_months: 'Aug', goal_status: 'available' },
-      { location: 'San Lorenzo', field_name: 'Main', available_from: '2026-08-01', available_until: '2026-10-31', primary_format: '11v11', teams_per_hour: '2', blackout_months: 'Sep' },
-      { location: 'Creekside', field_name: 'Field 1', available_from: '2026-08-01', available_until: '2026-11-30', record_status: 'excluded' },
-      { location: 'Proctor', field_name: 'Field 1', available_from: '2026-08-01', available_until: '2026-11-30', record_status: 'excluded' },
-      { location: 'Canyon', field_name: 'Turf 11v11 Pods', available_from: '2026-08-01', available_until: '2026-11-30', primary_format: '11v11', format_quantity: '4', aggregate_teams_per_hour: '8', record_status: 'potential', approval_status: 'pending', scenario_name: 'Canyon Potential', scenario_group: 'canyon', goal_status: 'available' },
-      { location: 'Canyon', field_name: 'Turf 9v9 Pods', available_from: '2026-08-01', available_until: '2026-11-30', primary_format: '9v9', format_quantity: '4', aggregate_teams_per_hour: '8', record_status: 'potential', approval_status: 'pending', scenario_name: 'Canyon Potential', scenario_group: 'canyon', goal_equipment: 'sturdy 9v9 goals with wheels/locks', goal_status: 'required' },
-      { location: 'Canyon', field_name: 'Turf Mixed Combination', available_from: '2026-08-01', available_until: '2026-11-30', primary_format: '11v11', secondary_format: '9v9', format_quantity: '4', aggregate_teams_per_hour: '8', record_status: 'potential', approval_status: 'pending', scenario_name: 'Canyon Potential', scenario_group: 'canyon', goal_equipment: 'sturdy 9v9 goals with wheels/locks', goal_status: 'required' },
-      { location: 'Canyon', field_name: 'Grass 11v11', available_from: '2026-08-01', available_until: '2026-11-30', primary_format: '11v11', format_quantity: '1', teams_per_hour: '2', record_status: 'potential', approval_status: 'pending', scenario_name: 'Canyon Potential', scenario_group: 'canyon', goal_status: 'available' },
+      {
+        location: 'Stanton Elementary',
+        field_name: 'Main',
+        available_from: '2026-08-01',
+        available_until: '2026-11-30',
+        primary_format: '7v7',
+        secondary_format: '9v9',
+        teams_per_hour: '2',
+        goal_equipment: 'sturdy goals',
+        goal_status: 'needs sturdy goals',
+        restroom_potty: 'true',
+      },
+      {
+        location: 'Jensen Ranch',
+        field_name: 'Main',
+        available_from: '2026-08-01',
+        available_until: '2026-11-30',
+        primary_format: '7v7',
+        secondary_format: '9v9',
+        teams_per_hour: '2',
+        goal_equipment: 'sturdy goals',
+        goal_status: 'not approved',
+        restroom_potty: 'true',
+      },
+      {
+        location: 'Vannoy Back Field 7',
+        field_name: 'Field 7',
+        available_from: '2026-08-01',
+        available_until: '2026-11-30',
+        primary_format: '5v5',
+        teams_per_hour: '4',
+        use_context: 'Academy',
+        goal_equipment: 'PUGG / Bownets / Forza',
+        goal_status: 'available',
+      },
+      {
+        location: 'Vannoy Front Field 1',
+        field_name: 'Field 1',
+        available_from: '2026-08-01',
+        available_until: '2026-11-30',
+        primary_format: '7v7',
+        teams_per_hour: '1',
+        goal_equipment: 'sturdy goals',
+        goal_status: 'needs sturdy goals',
+        restroom_potty: 'true',
+      },
+      {
+        location: 'Independent Field 6',
+        field_name: 'Field 6',
+        available_from: '2026-08-01',
+        available_until: '2026-11-30',
+        primary_format: '4v4',
+        teams_per_hour: '2',
+        use_context: 'Boys & Girls',
+        day_constraints: 'Sat/Sun',
+        move_to_location: 'Vannoy',
+        goal_equipment: 'PUGG or sturdy goals',
+        goal_status: 'recommended',
+      },
+      {
+        location: 'Five Canyons Upper',
+        field_name: 'Upper',
+        available_from: '2026-09-01',
+        available_until: '2026-11-30',
+        primary_format: '9v9',
+        secondary_format: '7v7',
+        teams_per_hour: '2',
+        blackout_months: 'Aug',
+      },
+      {
+        location: 'Five Canyons Lower',
+        field_name: 'Lower',
+        available_from: '2026-09-01',
+        available_until: '2026-11-30',
+        primary_format: '9v9',
+        secondary_format: '7v7',
+        teams_per_hour: '2',
+        blackout_months: 'Aug',
+      },
+      {
+        location: 'Bret Harte',
+        field_name: 'Main',
+        available_from: '2026-09-01',
+        available_until: '2026-11-30',
+        primary_format: '11v11',
+        teams_per_hour: '2',
+        blackout_months: 'Aug',
+        goal_status: 'available',
+      },
+      {
+        location: 'San Lorenzo',
+        field_name: 'Main',
+        available_from: '2026-08-01',
+        available_until: '2026-10-31',
+        primary_format: '11v11',
+        teams_per_hour: '2',
+        blackout_months: 'Sep',
+      },
+      {
+        location: 'Creekside',
+        field_name: 'Field 1',
+        available_from: '2026-08-01',
+        available_until: '2026-11-30',
+        record_status: 'excluded',
+      },
+      {
+        location: 'Proctor',
+        field_name: 'Field 1',
+        available_from: '2026-08-01',
+        available_until: '2026-11-30',
+        record_status: 'excluded',
+      },
+      {
+        location: 'Canyon',
+        field_name: 'Turf 11v11 Pods',
+        available_from: '2026-08-01',
+        available_until: '2026-11-30',
+        primary_format: '11v11',
+        format_quantity: '4',
+        aggregate_teams_per_hour: '8',
+        record_status: 'potential',
+        approval_status: 'pending',
+        scenario_name: 'Canyon Potential',
+        scenario_group: 'canyon',
+        goal_status: 'available',
+      },
+      {
+        location: 'Canyon',
+        field_name: 'Turf 9v9 Pods',
+        available_from: '2026-08-01',
+        available_until: '2026-11-30',
+        primary_format: '9v9',
+        format_quantity: '4',
+        aggregate_teams_per_hour: '8',
+        record_status: 'potential',
+        approval_status: 'pending',
+        scenario_name: 'Canyon Potential',
+        scenario_group: 'canyon',
+        goal_equipment: 'sturdy 9v9 goals with wheels/locks',
+        goal_status: 'required',
+      },
+      {
+        location: 'Canyon',
+        field_name: 'Turf Mixed Combination',
+        available_from: '2026-08-01',
+        available_until: '2026-11-30',
+        primary_format: '11v11',
+        secondary_format: '9v9',
+        format_quantity: '4',
+        aggregate_teams_per_hour: '8',
+        record_status: 'potential',
+        approval_status: 'pending',
+        scenario_name: 'Canyon Potential',
+        scenario_group: 'canyon',
+        goal_equipment: 'sturdy 9v9 goals with wheels/locks',
+        goal_status: 'required',
+      },
+      {
+        location: 'Canyon',
+        field_name: 'Grass 11v11',
+        available_from: '2026-08-01',
+        available_until: '2026-11-30',
+        primary_format: '11v11',
+        format_quantity: '1',
+        teams_per_hour: '2',
+        record_status: 'potential',
+        approval_status: 'pending',
+        scenario_name: 'Canyon Potential',
+        scenario_group: 'canyon',
+        goal_status: 'available',
+      },
     ];
     const basePractice = getMockData('practice_slots').length;
     const baseGame = getMockData('game_slots').length;
-    const { data: job } = await supabase.rpc('create_import_job', { p_organization_id: 'org-1', p_import_type: 'field_availability', p_file_name: 'fall-2026-pack.csv' });
-    await supabase.from('staging_import_rows').insert(rows.map((row, idx) => ({
-      id: `fall26-${idx + 1}`,
-      import_job_id: job.id,
-      organization_id: 'org-1',
-      import_type: 'field_availability',
-      raw_payload: {},
-      normalized_payload: { season_label: 'Fall 2026', ...row },
-      validation_errors: [],
-    })));
-    const finalize = await supabase.rpc('finalize_field_availability_import_job', { p_import_job_id: job.id, p_validation_errors: [] });
+    const { data: job } = await supabase.rpc('create_import_job', {
+      p_organization_id: 'org-1',
+      p_import_type: 'field_availability',
+      p_file_name: 'fall-2026-pack.csv',
+    });
+    await supabase.from('staging_import_rows').insert(
+      rows.map((row, idx) => ({
+        id: `fall26-${idx + 1}`,
+        import_job_id: job.id,
+        organization_id: 'org-1',
+        import_type: 'field_availability',
+        raw_payload: {},
+        normalized_payload: { season_label: 'Fall 2026', ...row },
+        validation_errors: [],
+      }))
+    );
+    const finalize = await supabase.rpc('finalize_field_availability_import_job', {
+      p_import_job_id: job.id,
+      p_validation_errors: [],
+    });
     expect(finalize.error).toBeNull();
     expect(finalize.data.invalid_rows).toBe(0);
     expect(getMockData('field_availability_profiles').length).toBe(15);
@@ -136,11 +388,31 @@ describe('field availability lifecycle', () => {
     expect(getMockData('field_equipment_requirements').length).toBe(10);
     expect(getMockData('practice_slots').length).toBe(basePractice);
     expect(getMockData('game_slots').length).toBe(baseGame);
-    expect(getMockData('field_blackout_windows').some((b) => b.blackout_from === '2026-09-01' && b.blackout_until === '2026-09-30')).toBe(true);
-    expect(getMockData('field_availability_profiles').filter((p) => ['Five Canyons Upper', 'Five Canyons Lower', 'Bret Harte'].includes(p.location) && p.available_from === '2026-09-01').length).toBe(3);
-    expect(getMockData('field_availability_profiles').filter((p) => ['Creekside', 'Proctor'].includes(p.location) && p.record_status === 'active').length).toBe(0);
-    expect(getMockData('field_availability_profiles').filter((p) => p.location === 'Canyon' && p.record_status === 'potential' && p.approval_status === 'pending').length).toBe(4);
+    expect(
+      getMockData('field_blackout_windows').some(
+        (b) => b.blackout_from === '2026-09-01' && b.blackout_until === '2026-09-30'
+      )
+    ).toBe(true);
+    expect(
+      getMockData('field_availability_profiles').filter(
+        (p) =>
+          ['Five Canyons Upper', 'Five Canyons Lower', 'Bret Harte'].includes(p.location) &&
+          p.available_from === '2026-09-01'
+      ).length
+    ).toBe(3);
+    expect(
+      getMockData('field_availability_profiles').filter(
+        (p) => ['Creekside', 'Proctor'].includes(p.location) && p.record_status === 'active'
+      ).length
+    ).toBe(0);
+    expect(
+      getMockData('field_availability_profiles').filter(
+        (p) =>
+          p.location === 'Canyon' &&
+          p.record_status === 'potential' &&
+          p.approval_status === 'pending'
+      ).length
+    ).toBe(4);
     expect(getMockData('field_availability_scenario_members').length).toBe(4);
   });
-
 });

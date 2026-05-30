@@ -51,12 +51,14 @@ export function useFields() {
 
       const { data: availabilityData, error: availabilityError } = await supabase
         .from('field_availability_profiles')
-        .select(`
+        .select(
+          `
           *,
           field_availability_profile_formats ( id, format_code, format_quantity, format_order ),
           field_blackout_windows ( id, blackout_from, blackout_until, reason ),
           field_equipment_requirements ( id, goal_equipment, requirement_status )
-        `)
+        `
+        )
         .eq('organization_id', currentOrganization.id)
         .order('available_from');
 

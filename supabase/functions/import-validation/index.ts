@@ -47,7 +47,13 @@ const REQUIRED_FIELDS: Record<string, string[]> = {
   players: ['first_name', 'last_name', 'date_of_birth'],
   coaches: ['full_name', 'email'],
   fields: ['location', 'name', 'type', 'start', 'end'],
-  field_availability: ['season_label', 'location', 'field_name', 'available_from', 'available_until'],
+  field_availability: [
+    'season_label',
+    'location',
+    'field_name',
+    'available_from',
+    'available_until',
+  ],
 };
 
 // GotSport header alias map (strict matching, not fuzzy .includes())
@@ -371,28 +377,49 @@ function validateRow(
     }
   }
 
-
   if (importType === 'field_availability') {
     const availableFrom = row['available_from'];
     const availableUntil = row['available_until'];
     if (availableFrom && Number.isNaN(new Date(availableFrom).getTime())) {
-      errors.push({ row: rowIndex + 1, field: 'available_from', message: `Invalid available_from date: ${availableFrom}` });
+      errors.push({
+        row: rowIndex + 1,
+        field: 'available_from',
+        message: `Invalid available_from date: ${availableFrom}`,
+      });
     }
     if (availableUntil && Number.isNaN(new Date(availableUntil).getTime())) {
-      errors.push({ row: rowIndex + 1, field: 'available_until', message: `Invalid available_until date: ${availableUntil}` });
+      errors.push({
+        row: rowIndex + 1,
+        field: 'available_until',
+        message: `Invalid available_until date: ${availableUntil}`,
+      });
     }
     if (availableFrom && availableUntil && new Date(availableUntil) < new Date(availableFrom)) {
-      errors.push({ row: rowIndex + 1, field: 'available_until', message: 'available_until must be on/after available_from' });
+      errors.push({
+        row: rowIndex + 1,
+        field: 'available_until',
+        message: 'available_until must be on/after available_from',
+      });
     }
     const tph = row['teams_per_hour'];
     if (tph) {
       const n = Number.parseInt(tph, 10);
-      if (!Number.isInteger(n) || n < 1) errors.push({ row: rowIndex + 1, field: 'teams_per_hour', message: 'teams_per_hour must be a positive integer' });
+      if (!Number.isInteger(n) || n < 1)
+        errors.push({
+          row: rowIndex + 1,
+          field: 'teams_per_hour',
+          message: 'teams_per_hour must be a positive integer',
+        });
     }
     const atph = row['aggregate_teams_per_hour'];
     if (atph) {
       const n = Number.parseInt(atph, 10);
-      if (!Number.isInteger(n) || n < 1) errors.push({ row: rowIndex + 1, field: 'aggregate_teams_per_hour', message: 'aggregate_teams_per_hour must be a positive integer' });
+      if (!Number.isInteger(n) || n < 1)
+        errors.push({
+          row: rowIndex + 1,
+          field: 'aggregate_teams_per_hour',
+          message: 'aggregate_teams_per_hour must be a positive integer',
+        });
     }
   }
   return errors;
@@ -497,7 +524,12 @@ serve(async (req: Request) => {
       );
     }
 
-    const expectedJobType = body.import_type === 'fields' ? 'fields' : body.import_type === 'field_availability' ? 'field_availability' : 'registration';
+    const expectedJobType =
+      body.import_type === 'fields'
+        ? 'fields'
+        : body.import_type === 'field_availability'
+          ? 'field_availability'
+          : 'registration';
     if (job.job_type !== expectedJobType) {
       return jsonResponse(
         {
