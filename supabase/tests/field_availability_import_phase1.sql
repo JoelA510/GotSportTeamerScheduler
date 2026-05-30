@@ -7,7 +7,7 @@ SELECT plan(17);
 INSERT INTO public.import_jobs (id, organization_id, job_type, storage_path, status, created_by, total_rows)
 VALUES
 ('11111111-3333-3333-3333-777777777771','a1111111-1111-1111-1111-111111111111','field_availability','orga/fall2026.csv','importing','11111111-1111-1111-1111-111111111111',9),
-('11111111-3333-3333-3333-777777777772','b1111111-1111-1111-1111-111111111111','field_availability','orgb/fall2026.csv','importing','22222222-2222-2222-2222-222222222222',1);
+('11111111-3333-3333-3333-777777777772','b2222222-2222-2222-2222-222222222222','field_availability','orgb/fall2026.csv','importing','22222222-2222-2222-2222-222222222222',1);
 
 INSERT INTO public.staging_import_rows (organization_id, import_job_id, import_type, source_row_number, raw_payload, normalized_payload, validation_errors)
 VALUES
