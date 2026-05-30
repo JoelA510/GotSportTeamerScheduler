@@ -97,3 +97,64 @@ Bundle: unchanged (test-only scope).
 | 2026-04-30 | WAVE-7a-DOC-NOTE | **DONE** | Noted payload-based repair for `import_efficiency_metrics` view semantics in test/docs and confirmed `security_invoker` remains retained for caller-scoped enforcement. |
 | 2026-05-02 | CI-HARDENING | **DONE** | **[Release hygiene PR #209]** Switched CI to reproducible `npm ci`, added concurrency and docs-only diff checks, retained full Node/build/test matrix for code/config/workflow changes, preserved Playwright/bundle/coverage artifacts, and stabilized the full E2E run on hosted CI. |
 | 2026-05-02 | PGTAP-HARNESS | **DONE** | **[Release hygiene PR #211]** Added local Supabase config, pinned Supabase CLI `2.95.4`, repaired fresh migration replay, restored full and targeted pgTAP commands, and kept RLS/RBAC regression coverage runnable locally and in the DB workflow. |
+
+## 2026-05-30 — GotSport teaming enablement (CVSC pilot)
+
+Branch `claude/confident-bohr-fUYqh`. Enables teaming from the CVSC pilot's
+separate GotSport player and coach exports, with configurable age cutoffs,
+play-up rules, division auto-create, and storage-minimizing import. See
+`docs/architecture/gotsport-import-contract.md`.
+
+Core (pure, framework-agnostic) + 38 new unit cases:
+
+- `packages/core/src/ageGroups.js` — configurable birth-year vs school-year
+  (Aug–Jul) age derivation, multi-year band birthdate windows, name/gender parse.
+- `packages/core/src/playUp.js` — sanctioned play-up (coaching parent or
+  qualifying buddy) vs blocked play-up/play-down; diagnostics + remap.
+- `packages/core/src/coachLinking.js` — project imported coaches onto their
+  player-children so the generator anchors a team per coaching family.
+- `packages/core/src/teamingPipeline.js` — compose the above before `generateTeams`.
+
+Import canonicalization (data minimization):
+
+- `frontend/src/utils/gotsportCanonicalizer.js` — client-side whitelist that
+  drops medical/insurance/waiver/financial-aid/guardian-demographic columns
+  before upload, disambiguates the duplicate `Playing Up` / `Preferred Co-Coach`
+  headers, and derives registration_status/placement_eligible, guardian_contacts,
+  skill_tier, and coach→child/co-coach links. Wired into `ImportContext`.
+
+Frontend wiring:
+
+- `useTeamAnalysis` uses the cutoff-aware deriver (removed the dead even-year
+  `Math.ceil(age/2)*2` formula).
+- `useConflicts` no longer flags sanctioned play-ups (still flags play-downs and
+  unsanctioned play-ups).
+- `TeamAnalysisPage` loads `coach_team_requests` and runs the teaming pipeline
+  before generation (guarded fallback to the raw roster).
+
+Database — additive, applied to the connected project `mmwupqsjkikqzvmdvuzm`
+and smoke-verified (0 new security advisories):
+
+- `season_settings.age_cutoff_mode` (default `school_year_aug_jul`).
+- `divisions` age band + birthdate window columns.
+- `players` / `coaches` canonical registration fields.
+- `coach_team_requests` table (org-membership RLS).
+- `upsert_division_for_import(...)` RPC (idempotent division auto-create).
+
+Verification: 567 unit tests pass; frontend build clean; `check:advisors` and
+`check:bundle` pass.
+
+Known follow-ups:
+
+- The connected pilot DB's migration history diverges from the repo and is
+  missing the import-finalize pipeline (`finalize_import_job`,
+  `staging_import_rows`, import helper fns). The additive schema + auto-create
+  RPC were applied directly; folding division auto-create + the new canonical
+  fields INTO `finalize_import_job` / `finalize_coach_import_job` (and resolving
+  coach→child / co-coach into `coach_team_requests` during coach finalize) should
+  land once that pipeline is deployed to the project.
+- Wire an explicit "sync divisions" call to `upsert_division_for_import` from
+  the import/teaming flow (RPC is in place; the canonicalizer already emits
+  `division_name` + `age_group_label` + `gender`).
+- `npm run lint` / `npm run typecheck` show pre-existing repo-wide noise in a
+  fresh environment; every file changed here is prettier/eslint clean.

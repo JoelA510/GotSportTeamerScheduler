@@ -154,15 +154,27 @@ export default function FieldManagementPage() {
         </Button>
       </div>
 
-
-
-      <section className="bg-bg-surface border border-border-subtle rounded-xl p-5" aria-labelledby="seasonal-availability-heading">
-        <h2 id="seasonal-availability-heading" className="text-lg font-semibold text-text-primary mb-1">Seasonal availability</h2>
-        <p className="text-sm text-text-secondary mb-4">Seasonal availability metadata — not finalized schedule slots.</p>
-        <p className="text-xs text-text-muted mb-4">No explicit day/time slots were provided; schedule slots were not created.</p>
+      <section
+        className="bg-bg-surface border border-border-subtle rounded-xl p-5"
+        aria-labelledby="seasonal-availability-heading"
+      >
+        <h2
+          id="seasonal-availability-heading"
+          className="text-lg font-semibold text-text-primary mb-1"
+        >
+          Seasonal availability
+        </h2>
+        <p className="text-sm text-text-secondary mb-4">
+          Seasonal availability metadata — not finalized schedule slots.
+        </p>
+        <p className="text-xs text-text-muted mb-4">
+          No explicit day/time slots were provided; schedule slots were not created.
+        </p>
         <div className="space-y-4">
           {availabilityProfiles.length === 0 && (
-            <div className="text-sm text-text-muted" role="status">No seasonal availability profiles imported yet.</div>
+            <div className="text-sm text-text-muted" role="status">
+              No seasonal availability profiles imported yet.
+            </div>
           )}
           {Object.entries(
             availabilityProfiles.reduce((acc, profile) => {
@@ -176,15 +188,33 @@ export default function FieldManagementPage() {
               <h3 className="text-sm font-semibold text-text-primary mb-2">{season}</h3>
               <div className="space-y-2">
                 {seasonProfiles.map((profile) => (
-                  <article key={profile.id} className="border border-border-subtle rounded-lg p-3 bg-bg-app">
-                    <div className="text-sm font-semibold">{profile.location} — {profile.field_name}</div>
+                  <article
+                    key={profile.id}
+                    className="border border-border-subtle rounded-lg p-3 bg-bg-app"
+                  >
+                    <div className="text-sm font-semibold">
+                      {profile.location} — {profile.field_name}
+                    </div>
                     <div className="flex flex-wrap gap-2 mt-2">
-                      <span className={badgeClass()}>Status: {profile.record_status || 'unknown'}</span>
-                      <span className={badgeClass()}>Approval: {profile.approval_status || 'n/a'}</span>
-                      <span className={badgeClass()}>Date window: {profile.available_from || '—'} to {profile.available_until || '—'}</span>
-                      {profile.record_status === 'potential' && <span className={badgeClass()}>Potential state</span>}
-                      {profile.record_status === 'conditional' && <span className={badgeClass()}>Conditional state</span>}
-                      {profile.record_status === 'excluded' && <span className={badgeClass()}>Excluded state</span>}
+                      <span className={badgeClass()}>
+                        Status: {profile.record_status || 'unknown'}
+                      </span>
+                      <span className={badgeClass()}>
+                        Approval: {profile.approval_status || 'n/a'}
+                      </span>
+                      <span className={badgeClass()}>
+                        Date window: {profile.available_from || '—'} to{' '}
+                        {profile.available_until || '—'}
+                      </span>
+                      {profile.record_status === 'potential' && (
+                        <span className={badgeClass()}>Potential state</span>
+                      )}
+                      {profile.record_status === 'conditional' && (
+                        <span className={badgeClass()}>Conditional state</span>
+                      )}
+                      {profile.record_status === 'excluded' && (
+                        <span className={badgeClass()}>Excluded state</span>
+                      )}
                     </div>
                     <div className="mt-2 text-xs text-text-secondary">Month indicators:</div>
                     <div className="flex flex-wrap gap-2 mt-1">
@@ -195,24 +225,47 @@ export default function FieldManagementPage() {
                       ))}
                     </div>
                     <div className="text-xs text-text-secondary mt-2">
-                      Formats and quantities: {(profile.field_availability_profile_formats || []).map((f) => `${f.format_code || 'format'} (${f.format_quantity || '—'})`).join(', ') || '—'}
+                      Formats and quantities:{' '}
+                      {(profile.field_availability_profile_formats || [])
+                        .map((f) => `${f.format_code || 'format'} (${f.format_quantity || '—'})`)
+                        .join(', ') || '—'}
                     </div>
                     <div className="text-xs text-text-secondary mt-1">
-                      teams_per_hour: {profile.teams_per_hour || '—'} • aggregate_teams_per_hour: {profile.aggregate_teams_per_hour || '—'}
+                      teams_per_hour: {profile.teams_per_hour || '—'} • aggregate_teams_per_hour:{' '}
+                      {profile.aggregate_teams_per_hour || '—'}
                     </div>
                     <div className="text-xs text-text-secondary mt-1">
-                      Blackouts: {(profile.field_blackout_windows || []).map((b) => `${b.blackout_from || '—'} to ${b.blackout_until || '—'}${b.reason ? ` (${b.reason})` : ''}`).join('; ') || 'None provided'}
+                      Blackouts:{' '}
+                      {(profile.field_blackout_windows || [])
+                        .map(
+                          (b) =>
+                            `${b.blackout_from || '—'} to ${b.blackout_until || '—'}${b.reason ? ` (${b.reason})` : ''}`
+                        )
+                        .join('; ') || 'None provided'}
                     </div>
                     <div className="text-xs text-text-secondary mt-1">
-                      Equipment flags: {(profile.field_equipment_requirements || []).map((r) => `${r.goal_equipment || 'equipment'} (${r.requirement_status || 'n/a'})`).join(', ') || 'None provided'}
+                      Equipment flags:{' '}
+                      {(profile.field_equipment_requirements || [])
+                        .map(
+                          (r) =>
+                            `${r.goal_equipment || 'equipment'} (${r.requirement_status || 'n/a'})`
+                        )
+                        .join(', ') || 'None provided'}
                     </div>
                     <div className="flex flex-wrap gap-2 mt-2">
-                      <span className={badgeClass()}>Lighted: {profile.lighted === true ? 'Yes' : 'No/Unknown'}</span>
-                      <span className={badgeClass()}>Restroom: {profile.restroom === true ? 'Yes' : 'No/Unknown'}</span>
-                      <span className={badgeClass()}>Potty: {profile.potty === true ? 'Yes' : 'No/Unknown'}</span>
+                      <span className={badgeClass()}>
+                        Lighted: {profile.lighted === true ? 'Yes' : 'No/Unknown'}
+                      </span>
+                      <span className={badgeClass()}>
+                        Restroom: {profile.restroom === true ? 'Yes' : 'No/Unknown'}
+                      </span>
+                      <span className={badgeClass()}>
+                        Potty: {profile.potty === true ? 'Yes' : 'No/Unknown'}
+                      </span>
                     </div>
                     <div className="text-xs text-text-secondary mt-1">
-                      Day constraints: {profile.day_constraints || 'None'} • Move-to-location: {profile.move_to_location || 'None'}
+                      Day constraints: {profile.day_constraints || 'None'} • Move-to-location:{' '}
+                      {profile.move_to_location || 'None'}
                     </div>
                   </article>
                 ))}
