@@ -15,6 +15,7 @@ import { useOrganization } from './OrganizationContext.jsx';
 import { matchHeaders, SYSTEM_COLUMNS } from '../utils/telemetryUtils.js';
 import {
   canonicalizeForUpload,
+  isSensitiveHeader,
   makeDedupeHeaderTransformer,
 } from '../utils/gotsportCanonicalizer.js';
 import {
@@ -566,12 +567,18 @@ export function ImportProvider({ children }) {
           transformHeader: makeDedupeHeaderTransformer(),
           complete: async (results) => {
             const { meta } = results;
-            // For player/coach imports, drop everything except the whitelisted
-            // canonical fields BEFORE upload — sensitive registration data
-            // (medical, insurance, waivers, financial aid, guardian demographics)
-            // never leaves the browser.
-            const isCanonicalized = type === 'players' || type === 'coaches';
-            const data = isCanonicalized ? canonicalizeForUpload(type, results.data) : results.data;
+            // For player/coach imports, strip sensitive registration columns
+            // (medical, insurance, financial/payment, identity documents,
+            // waivers, non-teaming demographics) BEFORE upload so they never
+            // leave the browser. Kept columns retain their original headers, so
+            // downstream header recognition is unchanged.
+            const isPrivacyFiltered = type === 'players' || type === 'coaches';
+            const data = isPrivacyFiltered
+              ? canonicalizeForUpload(type, results.data)
+              : results.data;
+            if (isPrivacyFiltered && Array.isArray(meta.fields)) {
+              meta.fields = meta.fields.filter((h) => !isSensitiveHeader(h));
+            }
 
             // Check hard limits for DoS mitigation
             if (meta.fields.length > MAX_COLS) {
@@ -647,11 +654,7 @@ export function ImportProvider({ children }) {
 
             setActiveJob((prev) => ({ ...(prev || {}), ...efficiencyJob }));
 
-            // Canonicalized rows are already keyed by canonical field names, so
-            // header normalization is an identity for them.
-            const normalizeHeader = isCanonicalized
-              ? (h) => h
-              : (h) => mappings[h] || h.toLowerCase().trim();
+            const normalizeHeader = (h) => mappings[h] || h.toLowerCase().trim();
 
             // Phase 5 Vibe Audit: Detect if a key must go into JSONB vs root table
             const _shouldGoToCustomAttributes = (mappedKey) => {
@@ -679,9 +682,7 @@ export function ImportProvider({ children }) {
             };
 
             const requiredForType = REQUIRED_HEADERS[type] || [];
-            const normalizedFileHeaders = isCanonicalized
-              ? Object.keys(data[0] || {})
-              : meta.fields.map(normalizeHeader);
+            const normalizedFileHeaders = meta.fields.map(normalizeHeader);
 
             const missingHeaders = requiredForType.filter(
               (req) => !normalizedFileHeaders.includes(req)
