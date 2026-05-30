@@ -22,6 +22,7 @@
 - [Multi-Tenancy](architecture/multi_tenancy.md) — Organization scoping, `organization_members`, tenant isolation guarantees.
 - [Persistence RPC Layer](architecture/persistence-rpc-layer.md) — Canonical inventory of every `SECURITY DEFINER` RPC, contract pattern, and checklist for adding a new one.
 - [Edge Functions Inventory](architecture/edge-functions-inventory.md) — Every deployed Edge Function, its inputs/outputs, RLS interaction, and the RPC vs Edge-Function decision rule.
+- [GotSport Import Contract](architecture/gotsport-import-contract.md) — Whitelisted player/coach fields kept vs. dropped, age-cutoff modes, play-up rules, division auto-create, and coach→team linkage.
 - [Team Generation](architecture/team-generation.md) — Algorithm design for converting registrations into balanced teams.
 - [Practice Scheduling](architecture/practice-scheduling.md) — Practice slot allocation and conflict resolution.
 - [Game Scheduling](architecture/game-scheduling.md) — Game slot allocation and matchup fairness.
