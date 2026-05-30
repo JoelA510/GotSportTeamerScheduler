@@ -181,7 +181,24 @@ export function canonicalizePlayerRow(row) {
     registration_status,
     placement_eligible,
     guardian_contacts: buildGuardianContacts(map),
-    buddy_request_name: clean(findByPattern(map, /buddy request/)) || null,
+    // Accept the common buddy header variants (Buddy ID, Buddy, friend, ...) as
+    // well as the long CVSC "If you have a buddy request..." question.
+    buddy_request_name:
+      clean(
+        get(
+          map,
+          'buddy',
+          'buddy request',
+          'buddy id',
+          'buddy_id',
+          'buddy external id',
+          'buddy registration id',
+          'friend',
+          'friend request'
+        )
+      ) ||
+      clean(findByPattern(map, /buddy request for this player|if you have a buddy|buddy name/)) ||
+      null,
     experience_years,
     skill_tier: ['novice', 'developing', 'advanced'].includes(explicitSkill)
       ? explicitSkill

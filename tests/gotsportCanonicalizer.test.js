@@ -89,6 +89,23 @@ test('player canonicalization maps and derives the right values', () => {
   assert.equal(out.play_up_requested, false);
 });
 
+test('recognizes the common "Buddy ID" / Division headers (non-CVSC exports)', () => {
+  const row = {
+    'First Name': 'Avery',
+    'Last Name': 'Adams',
+    'Date of Birth': '2016-04-02',
+    'Registration ID': 'GS-BUDDY-A',
+    Division: 'U8 Coed',
+    'Buddy ID': 'GS-BUDDY-B',
+  };
+  const out = canonicalizePlayerRow(row);
+  assert.equal(out.buddy_request_name, 'GS-BUDDY-B');
+  assert.equal(out.division_name, 'U8 Coed');
+  assert.equal(out.external_registration_id, 'GS-BUDDY-A');
+  // The flat upload row must carry buddy_request (consumed by materialization).
+  assert.equal(flattenCanonicalPlayer(out).buddy_request, 'GS-BUDDY-B');
+});
+
 test('flattenCanonicalPlayer emits the keys the finalize RPC consumes', () => {
   const flat = flattenCanonicalPlayer(canonicalizePlayerRow(playerRow));
   // guardian_* (consumed by finalize + coach-lead builder) and the richer guardian1_*
