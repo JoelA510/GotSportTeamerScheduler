@@ -97,3 +97,13 @@ test('classifyPlayerPlacement honors the sanctioned flag', () => {
   assert.equal(classifyPlayerPlacement({ naturalAge: 11, bounds }), PLACEMENT.PLAY_DOWN_BLOCKED);
   assert.equal(classifyPlayerPlacement({ naturalAge: 10, bounds }), PLACEMENT.IN_BAND);
 });
+
+test('an in-band NON-coach buddy does not sanction a play-up', () => {
+  const players = [
+    { id: 'inband', division: 'U10B', dob: '2016-04-01' }, // in-band, not a coach child
+    { id: 'buddy', division: 'U10B', dob: '2017-04-01', buddyId: 'inband' }, // age 9 wants up
+  ];
+  const { players: out } = run(players);
+  const buddy = out.find((p) => p.id === 'buddy');
+  assert.equal(buddy.placement, PLACEMENT.PLAY_UP_BLOCKED);
+});

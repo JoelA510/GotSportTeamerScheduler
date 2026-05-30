@@ -231,6 +231,10 @@ function toGeneratorPlayer(row, sourceIndex, division) {
     parseBooleanLike(row.willing_to_coach) ||
     parseBooleanLike(row.coach_volunteer) ||
     parseBooleanLike(row['Willing to Coach']);
+  // Carry DOB + play-up signals so the play-up/play-down classifier has an age
+  // to work with (without these every player resolves to "unknown").
+  const dateOfBirth = firstNonEmpty(row, ['date_of_birth', 'DOB', 'Birthdate', 'dob', 'birthdate']);
+  const playUpRequested = parseBooleanLike(row.play_up_requested);
 
   return {
     id,
@@ -238,6 +242,8 @@ function toGeneratorPlayer(row, sourceIndex, division) {
     firstName,
     lastName,
     name: `${firstName} ${lastName}`.trim() || 'Unnamed Player',
+    ...(dateOfBirth ? { date_of_birth: dateOfBirth } : {}),
+    ...(playUpRequested ? { play_up_requested: true } : {}),
     ...(skillRating !== undefined ? { skillRating } : {}),
     ...(coachId || willingToCoach ? { coachId: String(coachId || `coach-${id}`) } : {}),
   };

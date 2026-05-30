@@ -292,10 +292,18 @@ export function flattenCanonicalPlayer(c) {
     registration_status: flatStr(c.registration_status),
     placement_eligible: flatBool(c.placement_eligible),
     buddy_request_name: flatStr(c.buddy_request_name),
+    // Also emit the key the finalize RPC + buddy-materialization read.
+    buddy_request: flatStr(c.buddy_request_name),
     experience_years: flatStr(c.experience_years),
     skill_tier: flatStr(c.skill_tier),
     willing_to_coach: flatBool(c.willing_to_coach),
     play_up_requested: flatBool(c.play_up_requested),
+    // guardian1_* is the richer shape; guardian_* are the keys the finalize RPC
+    // and coach-lead builder consume (so parent contacts land in
+    // players.guardian_contacts and willing_to_coach rows can create leads).
+    guardian_name: flatStr(guardians[0]?.name),
+    guardian_email: flatStr(guardians[0]?.email),
+    guardian_phone: flatStr(guardians[0]?.phone),
     guardian1_name: flatStr(guardians[0]?.name),
     guardian1_email: flatStr(guardians[0]?.email),
     guardian1_phone: flatStr(guardians[0]?.phone),

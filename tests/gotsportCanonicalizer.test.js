@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   canonicalizePlayerRow,
   canonicalizeCoachRow,
+  flattenCanonicalPlayer,
   makeDedupeHeaderTransformer,
   PLAYER_ALLOWLIST,
   COACH_ALLOWLIST,
@@ -86,6 +87,18 @@ test('player canonicalization maps and derives the right values', () => {
   assert.equal(out.skill_tier, 'developing');
   assert.equal(out.willing_to_coach, true);
   assert.equal(out.play_up_requested, false);
+});
+
+test('flattenCanonicalPlayer emits the keys the finalize RPC consumes', () => {
+  const flat = flattenCanonicalPlayer(canonicalizePlayerRow(playerRow));
+  // guardian_* (consumed by finalize + coach-lead builder) and the richer guardian1_*
+  assert.equal(flat.guardian_name, 'Pat Stripe');
+  assert.equal(flat.guardian_email, 'pat@example.com');
+  assert.equal(flat.guardian_phone, '555-0001');
+  assert.equal(flat.guardian1_name, 'Pat Stripe');
+  // buddy_request is what the finalize RPC + buddy materialization read.
+  assert.equal(flat.buddy_request, 'Alex Rivera');
+  assert.equal(flat.buddy_request_name, 'Alex Rivera');
 });
 
 test('eligibility reflects waitlist and payment status', () => {

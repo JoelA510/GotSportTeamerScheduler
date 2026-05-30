@@ -84,18 +84,20 @@ CREATE INDEX IF NOT EXISTS coach_team_requests_player_idx ON public.coach_team_r
 
 ALTER TABLE public.coach_team_requests ENABLE ROW LEVEL SECURITY;
 
+-- Admin-gated: these child-link records drive coach anchoring and play-up
+-- sanctions on the teaming page (admin-only), so only org admins may write them.
 DO $$
 BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM pg_policies
     WHERE schemaname = 'public'
       AND tablename = 'coach_team_requests'
-      AND policyname = 'Enforce Org Membership: ALL'
+      AND policyname = 'Org admins manage coach_team_requests'
   ) THEN
-    CREATE POLICY "Enforce Org Membership: ALL" ON public.coach_team_requests
+    CREATE POLICY "Org admins manage coach_team_requests" ON public.coach_team_requests
       FOR ALL TO authenticated
-      USING (is_org_member(organization_id))
-      WITH CHECK (is_org_member(organization_id));
+      USING (is_org_admin(organization_id))
+      WITH CHECK (is_org_admin(organization_id));
   END IF;
 END $$;
 

@@ -36,6 +36,18 @@ BEGIN
       USING ERRCODE = '42501';
   END IF;
 
+  -- The season must belong to the same organization, otherwise an admin of one
+  -- org could create/update a division under another org's season.
+  IF NOT EXISTS (
+    SELECT 1 FROM public.season_settings s
+    WHERE s.id = p_season_settings_id
+      AND s.organization_id = p_organization_id
+  ) THEN
+    RAISE EXCEPTION 'season % does not belong to organization %',
+      p_season_settings_id, p_organization_id
+      USING ERRCODE = '42501';
+  END IF;
+
   IF p_name IS NULL OR btrim(p_name) = '' THEN
     RAISE EXCEPTION 'division name is required';
   END IF;

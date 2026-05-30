@@ -199,7 +199,9 @@ export function applyPlayUpEligibility({
       diagnostics.counts.inBand += 1;
     } else if (rawPlacement === 'up') {
       // Route A: parent coaches this (older) division.
-      // Route B: buddied with a player who legitimately belongs to this division.
+      // Route B: buddied with a COACH'S CHILD who legitimately belongs to this
+      // division (a coach child is sanctioned to be there; an in-band non-coach
+      // buddy does not, by itself, sanction a play-up).
       let buddySanction = false;
       if (player.buddyId) {
         const buddy = byId.get(String(player.buddyId));
@@ -208,7 +210,8 @@ export function applyPlayUpEligibility({
           buddy &&
           buddyInfo &&
           String(buddy.division).toLowerCase() === String(player.division).toLowerCase() &&
-          (buddyInfo.legitInRegistered || buddyInfo.isCoachChild)
+          buddyInfo.isCoachChild &&
+          buddyInfo.rawPlacement !== 'down'
         ) {
           buddySanction = true;
         }
