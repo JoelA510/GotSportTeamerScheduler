@@ -37,8 +37,8 @@ describe('useTeamAnalysis', () => {
 
   it('processes imported players into program groups', async () => {
     const mockPlayers = [
-      { 'First Name': 'Alice', 'Last Name': 'Smith', Birthdate: '2016-01-01', Gender: 'f' }, // Age 9 (2025-2016) -> U10 Girls
-      { 'First Name': 'Bob', 'Last Name': 'Brown', Birthdate: '2018-06-15', Gender: 'm' }, // Age 7 (2025-2018) -> U8 Boys
+      { 'First Name': 'Alice', 'Last Name': 'Smith', Birthdate: '2016-01-01', Gender: 'f' }, // Age 9 (2025-2016) -> U9 Girls
+      { 'First Name': 'Bob', 'Last Name': 'Brown', Birthdate: '2018-06-15', Gender: 'm' }, // Age 7 (2025-2018) -> U7 Boys
     ];
 
     // @ts-expect-error [MOCK] - partial mock for test isolation; context return value requires more comprehensive type mapping for full coverage
@@ -56,8 +56,8 @@ describe('useTeamAnalysis', () => {
     );
 
     const programNames = result.current.programs.map((p) => p.name);
-    expect(programNames).toContain('U10 Girls');
-    expect(programNames).toContain('U8 Boys');
+    expect(programNames).toContain('U9 Girls');
+    expect(programNames).toContain('U7 Boys');
   });
 
   it('reports missing DOB/Gender as validation errors', async () => {

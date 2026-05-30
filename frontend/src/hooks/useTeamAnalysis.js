@@ -2,6 +2,7 @@ import { useState, useMemo, useCallback } from 'react';
 import { useImport } from '../contexts/ImportContext.jsx';
 import { useOrganization } from '../contexts/OrganizationContext.jsx';
 import { logger } from '../lib/logger.js';
+import { computeAgeGroup } from '../../../packages/core/src/ageGroups.js';
 
 export function useTeamAnalysis() {
   const { importedPlayers } = useImport();
@@ -36,12 +37,21 @@ export function useTeamAnalysis() {
         }
 
         const seasonYear = currentSeasonSetting?.season_year || new Date().getFullYear();
-        const dob = new Date(player['Birthdate']);
-        const age = seasonYear - dob.getFullYear();
+        const group = computeAgeGroup({
+          dob: player['Birthdate'],
+          seasonYear,
+          cutoffMode: currentSeasonSetting?.age_cutoff_mode,
+        });
+        if (!group) {
+          errors.push({
+            type: 'invalid_dob',
+            message: `Player ${player['First Name']} ${player['Last Name']} has an unparseable birthdate`,
+            player,
+          });
+          return;
+        }
         const gender = player['Gender'] === 'm' ? 'Boys' : 'Girls';
-
-        let uGroup = 'U' + Math.ceil(age / 2) * 2;
-        if (age < 4) uGroup = 'U4';
+        const uGroup = group.ageGroup;
 
         const programName = `${uGroup} ${gender}`;
         const programId = programName.replace(/\s+/g, '_').toLowerCase();
@@ -64,7 +74,7 @@ export function useTeamAnalysis() {
         errors,
       };
     },
-    [currentSeasonSetting?.season_year]
+    [currentSeasonSetting?.season_year, currentSeasonSetting?.age_cutoff_mode]
   );
 
   // Process imported data into programs and errors (Memoized)
