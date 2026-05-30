@@ -186,9 +186,11 @@ export function applyPlayUpEligibility({
     const { naturalAge, registered, rawPlacement, isCoachChild } = info;
     const genderHint = registered ? registered.gender : null;
 
+    /** @type {string} */
     let placement = PLACEMENT.UNKNOWN;
     let sanctioned = false;
     let needsReview = false;
+    /** @type {string|null} */
     let reviewReason = null;
     let effectiveDivision = player.division;
 

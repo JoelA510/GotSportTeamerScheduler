@@ -14,6 +14,10 @@ import { withTimeout } from '../lib/withTimeout.js';
 import { useOrganization } from './OrganizationContext.jsx';
 import { matchHeaders, SYSTEM_COLUMNS } from '../utils/telemetryUtils.js';
 import {
+  canonicalizeForUpload,
+  makeDedupeHeaderTransformer,
+} from '../utils/gotsportCanonicalizer.js';
+import {
   buildCoachLeadPayload,
   getExternalRegistrationId,
   hasCoachLeadIntent,
@@ -22,7 +26,8 @@ import {
 const MAX_ROWS = 10000;
 const MAX_COLS = 1200;
 const PLAYER_LOOKUP_CHUNK_SIZE = 500;
-const canDeferImport = (type) => type === 'coaches' || type === 'fields' || type === 'field_availability';
+const canDeferImport = (type) =>
+  type === 'coaches' || type === 'fields' || type === 'field_availability';
 
 const ImportContext = createContext({
   isImporting: false,
@@ -556,8 +561,17 @@ export function ImportProvider({ children }) {
         Papa.parse(file, {
           header: true,
           skipEmptyLines: true,
+          // Disambiguate GotSport's repeated headers (e.g. "Playing Up" appears
+          // once per coached player) so duplicate columns never collide.
+          transformHeader: makeDedupeHeaderTransformer(),
           complete: async (results) => {
-            const { data, meta } = results;
+            const { meta } = results;
+            // For player/coach imports, drop everything except the whitelisted
+            // canonical fields BEFORE upload — sensitive registration data
+            // (medical, insurance, waivers, financial aid, guardian demographics)
+            // never leaves the browser.
+            const isCanonicalized = type === 'players' || type === 'coaches';
+            const data = isCanonicalized ? canonicalizeForUpload(type, results.data) : results.data;
 
             // Check hard limits for DoS mitigation
             if (meta.fields.length > MAX_COLS) {
@@ -633,7 +647,11 @@ export function ImportProvider({ children }) {
 
             setActiveJob((prev) => ({ ...(prev || {}), ...efficiencyJob }));
 
-            const normalizeHeader = (h) => mappings[h] || h.toLowerCase().trim();
+            // Canonicalized rows are already keyed by canonical field names, so
+            // header normalization is an identity for them.
+            const normalizeHeader = isCanonicalized
+              ? (h) => h
+              : (h) => mappings[h] || h.toLowerCase().trim();
 
             // Phase 5 Vibe Audit: Detect if a key must go into JSONB vs root table
             const _shouldGoToCustomAttributes = (mappedKey) => {
@@ -661,7 +679,9 @@ export function ImportProvider({ children }) {
             };
 
             const requiredForType = REQUIRED_HEADERS[type] || [];
-            const normalizedFileHeaders = meta.fields.map(normalizeHeader);
+            const normalizedFileHeaders = isCanonicalized
+              ? Object.keys(data[0] || {})
+              : meta.fields.map(normalizeHeader);
 
             const missingHeaders = requiredForType.filter(
               (req) => !normalizedFileHeaders.includes(req)
@@ -889,7 +909,9 @@ export function ImportProvider({ children }) {
                 );
 
                 if (finalizeError) {
-                  throw new Error(finalizeError.message || 'Field availability import finalization failed');
+                  throw new Error(
+                    finalizeError.message || 'Field availability import finalization failed'
+                  );
                 }
 
                 persistenceResult = finalizeResult;
@@ -897,7 +919,9 @@ export function ImportProvider({ children }) {
                 addLog(
                   `Field availability updated: ${finalizeResult?.inserted_profiles ?? 0} profiles, ${finalizeResult?.inserted_blackouts ?? 0} blackouts, ${finalizeResult?.inserted_requirements ?? 0} equipment requirements.`
                 );
-                addLog('No explicit day/time slots were provided; schedule slots were not created.');
+                addLog(
+                  'No explicit day/time slots were provided; schedule slots were not created.'
+                );
               }
 
               const importData = {
@@ -910,7 +934,11 @@ export function ImportProvider({ children }) {
                 data: normalizedData,
                 validationErrors,
                 persistence: {
-                  durable: type === 'players' || type === 'coaches' || type === 'fields' || type === 'field_availability',
+                  durable:
+                    type === 'players' ||
+                    type === 'coaches' ||
+                    type === 'fields' ||
+                    type === 'field_availability',
                   result: persistenceResult,
                 },
               };
@@ -1079,7 +1107,11 @@ export function ImportProvider({ children }) {
 
       try {
         const rpcName =
-          type === 'coaches' ? 'rollback_coach_import_job' : type === 'field_availability' ? 'rollback_field_availability_import_job' : 'rollback_field_import_job';
+          type === 'coaches'
+            ? 'rollback_coach_import_job'
+            : type === 'field_availability'
+              ? 'rollback_field_availability_import_job'
+              : 'rollback_field_import_job';
         const { data: rollbackResult, error: rollbackError } = await supabase.rpc(rpcName, {
           p_import_job_id: rollbackJobId,
         });
@@ -1121,8 +1153,8 @@ export function ImportProvider({ children }) {
           type === 'coaches'
             ? `Coach import rolled back: ${rollbackResult?.deleted_coaches ?? 0} deleted, ${rollbackResult?.restored_coaches ?? 0} restored.`
             : type === 'field_availability'
-            ? `Field availability import rolled back: ${rollbackResult?.deleted_profiles ?? 0} profiles deleted.`
-            : `Field import rolled back: ${rollbackResult?.deleted_fields ?? 0} fields, ${rollbackResult?.deleted_practice_slots ?? 0} practice slots, ${rollbackResult?.deleted_game_slots ?? 0} game slots deleted.`
+              ? `Field availability import rolled back: ${rollbackResult?.deleted_profiles ?? 0} profiles deleted.`
+              : `Field import rolled back: ${rollbackResult?.deleted_fields ?? 0} fields, ${rollbackResult?.deleted_practice_slots ?? 0} practice slots, ${rollbackResult?.deleted_game_slots ?? 0} game slots deleted.`
         );
         return rollbackResult;
       } catch (err) {
