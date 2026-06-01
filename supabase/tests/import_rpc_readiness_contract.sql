@@ -5,7 +5,7 @@ BEGIN;
 \set squadlogic_fixture_include 1
 \ir _fixtures.sql
 
-SELECT plan(7);
+SELECT plan(11);
 
 SELECT ok(
     to_regprocedure('public.fail_stale_import_jobs(uuid,timestamptz)') IS NOT NULL,
@@ -35,6 +35,26 @@ SELECT ok(
 SELECT ok(
     to_regprocedure('public.fail_import_job(uuid,text,jsonb)') IS NOT NULL,
     'fail_import_job(uuid, text, jsonb) exists'
+);
+
+SELECT ok(
+    to_regprocedure('public.finalize_import_job(uuid,jsonb)') IS NOT NULL,
+    'finalize_import_job(uuid, jsonb) exists'
+);
+
+SELECT ok(
+    to_regprocedure('public.materialize_import_buddy_pairs(uuid)') IS NOT NULL,
+    'materialize_import_buddy_pairs(uuid) exists'
+);
+
+SELECT ok(
+    to_regprocedure('public.upsert_coach_leads(jsonb)') IS NOT NULL,
+    'upsert_coach_leads(jsonb) exists'
+);
+
+SELECT ok(
+    to_regprocedure('public.set_import_job_coach_lead_summary(uuid,jsonb,text)') IS NOT NULL,
+    'set_import_job_coach_lead_summary(uuid, jsonb, text) exists'
 );
 
 WITH status_constraint AS (
