@@ -24,6 +24,7 @@
 | Vercel env vars     | `VITE_SUPABASE_URL` + `VITE_SUPABASE_ANON_KEY` set, `VITE_USE_MOCK_SUPABASE` absent            | Vercel dashboard → Settings → Environment Variables |
 | Supabase project    | `ACTIVE_HEALTHY`                                                                                | Supabase dashboard or MCP `get_project`             |
 | Database migrations | Production has all repo-required migrations applied; local repo currently has 49 migration files | Supabase dashboard → Database → Migrations          |
+| Import lifecycle RPCs | All import RPCs resolve in PostgREST *before* deploying a frontend that calls them; reload schema after applying migrations | Run the readiness query in [`ingestion-pipeline.md`](./ingestion-pipeline.md) §1.4.1          |
 
 Roles and their permissions are defined in `frontend/src/constants/permissions.js`.
 
@@ -114,6 +115,12 @@ Users will see the mock client with seed data. No real data is lost. The Supabas
 - **Production migrations/advisors** — verify the production database has the
   current 49-file migration set applied and that security/performance advisor
   output matches the release-readiness summary.
+- **Import lifecycle RPCs** — confirm the import lifecycle migrations are applied
+  and the PostgREST schema cache is reloaded _before_ deploying any frontend
+  bundle that calls `create_import_job` / `fail_stale_import_jobs` and the other
+  import RPCs. A 404 / `Could not find public.create_import_job(...)` in the
+  browser console means the database is behind the deployed bundle. Use the
+  readiness check in [`ingestion-pipeline.md`](./ingestion-pipeline.md) §1.4.1.
 - **Sentry** — set and smoke-test `VITE_SENTRY_DSN` if production error
   collection is required for the release.
 - **Raw import retention** — configure `SUPABASE_URL` and

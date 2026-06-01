@@ -71,27 +71,41 @@ public.create_import_job(...)`, verify that these migrations have been applied
 in order:
 
 ```text
+supabase/migrations/20260502000000_import_finalize_pipeline.sql
+supabase/migrations/20260503000000_secure_coach_lead_scoping.sql
+supabase/migrations/20260503080000_player_import_buddy_materialization.sql
 supabase/migrations/20260503090000_import_deferred_apply_status.sql
 supabase/migrations/20260503100000_import_stale_job_cleanup.sql
 supabase/migrations/20260504080000_import_job_lifecycle_rpcs.sql
 ```
 
-The deferred-apply status migration must run before the lifecycle RPC migration
-because `mark_import_job_ready_to_apply`, `cancel_ready_import_job`,
-`create_import_job`, `update_import_job_progress`, and `fail_import_job` insert
-or update `import_jobs.status` values including `importing`,
-`ready_to_apply`, and `failed`.
+The migrations above must be applied in chronological order. The deferred-apply
+status migration (`20260503090000`) must precede the lifecycle RPC migration
+(`20260504080000`) because `create_import_job`, `update_import_job_progress`,
+`fail_import_job`, `mark_import_job_ready_to_apply`, and `cancel_ready_import_job`
+insert or update `import_jobs.status` values including `importing`,
+`ready_to_apply`, and `failed`. Finalization (`finalize_import_job`), buddy
+materialization (`materialize_import_buddy_pairs`), and coach-lead capture
+(`upsert_coach_leads`, `set_import_job_coach_lead_summary`) come from the earlier
+`20260502000000`, `20260503080000`, and `20260503000000` migrations and must also
+be present before a player import can finish.
 
-Run this SQL against the target Supabase database to confirm the expected
-function signatures are present:
+Run this SQL against the target Supabase database to confirm every import
+lifecycle RPC signature is present (each row should report `present = true`):
 
 ```sql
-select n.nspname, p.proname, p.oid::regprocedure
-from pg_proc p
-join pg_namespace n on n.oid = p.pronamespace
-where n.nspname = 'public'
-  and p.proname in ('fail_stale_import_jobs','mark_import_job_ready_to_apply','cancel_ready_import_job','create_import_job','update_import_job_progress','fail_import_job')
-order by p.proname;
+select fn, to_regprocedure('public.' || fn) is not null as present
+from unnest(array[
+  'fail_stale_import_jobs(uuid,timestamptz)',
+  'create_import_job(uuid,text,text)',
+  'update_import_job_progress(uuid,integer,integer,integer,jsonb)',
+  'fail_import_job(uuid,text,jsonb)',
+  'finalize_import_job(uuid,jsonb)',
+  'materialize_import_buddy_pairs(uuid)',
+  'upsert_coach_leads(jsonb)',
+  'set_import_job_coach_lead_summary(uuid,jsonb,text)'
+]) as fn
+order by fn;
 ```
 
 After applying missing migrations, reload the PostgREST schema cache so RPC
@@ -100,6 +114,21 @@ discovery sees the new functions:
 ```sql
 notify pgrst, 'reload schema';
 ```
+
+**Deployment order (prevents recurrence).** Apply the import lifecycle
+migrations _before_ deploying any frontend bundle that calls these RPCs —
+otherwise the browser issues `POST /rest/v1/rpc/create_import_job` against a
+database that has not yet defined it and PostgREST returns
+`404 Could not find public.create_import_job(...) in the schema cache`.
+
+- **Preferred:** run `supabase db push --linked` against the production project
+  before the Vercel frontend deploy, then confirm with the readiness query above.
+- **Emergency (SQL Editor):** paste the full migration files listed above in
+  chronological order, then run `notify pgrst, 'reload schema';`.
+- **Migration history:** if you applied SQL by hand, only run
+  `supabase migration repair --status applied <version>` _after_ the readiness
+  query confirms the functions actually exist — repairing history first records
+  migrations as applied when they are not.
 
 ### 1.5 Notifications & Audit
 
