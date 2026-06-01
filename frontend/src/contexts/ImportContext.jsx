@@ -19,6 +19,11 @@ import {
   makeDedupeHeaderTransformer,
 } from '../utils/gotsportCanonicalizer.js';
 import {
+  REQUIRED_HEADERS,
+  findMissingRequiredHeaders,
+  describeHeaderParse,
+} from '../utils/importHeaders.js';
+import {
   buildCoachLeadPayload,
   getExternalRegistrationId,
   hasCoachLeadIntent,
@@ -654,8 +659,6 @@ export function ImportProvider({ children }) {
 
             setActiveJob((prev) => ({ ...(prev || {}), ...efficiencyJob }));
 
-            const normalizeHeader = (h) => mappings[h] || h.toLowerCase().trim();
-
             // Phase 5 Vibe Audit: Detect if a key must go into JSONB vs root table
             const _shouldGoToCustomAttributes = (mappedKey) => {
               // If it's a known custom field, yes.
@@ -668,36 +671,31 @@ export function ImportProvider({ children }) {
             const normalizedData = [];
             const validationErrors = [];
 
-            const REQUIRED_HEADERS = {
-              players: ['first_name', 'last_name', 'date_of_birth'],
-              coaches: ['full_name', 'email'],
-              fields: ['location', 'name', 'type', 'start', 'end'],
-              field_availability: [
-                'season_label',
-                'location',
-                'name',
-                'available_from',
-                'available_until',
-              ],
-            };
-
             const requiredForType = REQUIRED_HEADERS[type] || [];
-            const normalizedFileHeaders = meta.fields.map(normalizeHeader);
-
-            const missingHeaders = requiredForType.filter(
-              (req) => !normalizedFileHeaders.includes(req)
-            );
+            const missingHeaders = findMissingRequiredHeaders(meta.fields, type, mappings);
             if (missingHeaders.length > 0) {
+              const headerDiagnostics = describeHeaderParse({
+                fields: meta.fields,
+                meta,
+                parseErrors: results.errors,
+                mappings,
+              });
+              const collapsedHint =
+                meta.fields.length <= 1
+                  ? ` The file did not split into columns (detected ${meta.fields.length}). It may be tab-delimited or have encoding/quoting issues — re-save as CSV (UTF-8, comma-delimited) and try again.`
+                  : '';
               await failImportJob({
                 supabase,
                 importJobId: job.id,
                 stage: 'header_validation',
-                message: `Missing required columns: ${missingHeaders.join(', ')}`,
-                errorSummary: { missing_columns: missingHeaders },
+                message: `Missing required columns: ${missingHeaders.join(', ')}.${collapsedHint}`,
+                errorSummary: { missing_columns: missingHeaders, ...headerDiagnostics },
               });
               setImportStatus('error');
               setIsImporting(false);
-              addLog(`Import failed: Missing required columns: ${missingHeaders.join(', ')}`);
+              addLog(
+                `Import failed: Missing required columns: ${missingHeaders.join(', ')}.${collapsedHint}`
+              );
               return;
             }
 

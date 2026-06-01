@@ -16,7 +16,11 @@
 
 function clean(value) {
   if (value === null || value === undefined) return '';
-  return String(value).trim();
+  // Strip a leading UTF-8 BOM so a byte-order mark on the first CSV header
+  // (common in GotSport / Excel exports) never breaks header recognition.
+  let s = String(value);
+  if (s.charCodeAt(0) === 0xfeff) s = s.slice(1);
+  return s.trim();
 }
 
 /**
@@ -110,12 +114,14 @@ const SENSITIVE_PATTERNS = [
   // Waivers / consent forms / signatures
   /waiver/,
   /release\s*form/,
-  /consent\s*form/,
+  /\bconsent\b/,
   /acknowledg/,
   /signature/,
   /e[\s-]?signature/,
   /terms\s*(and|&)?\s*conditions?/,
   /agree.*terms/,
+  // Emergency contacts (not needed for teaming/scheduling — data minimization)
+  /emergency\s*contact/,
 ];
 
 /**
