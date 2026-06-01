@@ -99,6 +99,8 @@ from unnest(array[
   'fail_stale_import_jobs(uuid,timestamptz)',
   'create_import_job(uuid,text,text)',
   'update_import_job_progress(uuid,integer,integer,integer,jsonb)',
+  'mark_import_job_ready_to_apply(uuid,text,jsonb)',
+  'cancel_ready_import_job(uuid,text)',
   'fail_import_job(uuid,text,jsonb)',
   'finalize_import_job(uuid,jsonb)',
   'materialize_import_buddy_pairs(uuid)',
