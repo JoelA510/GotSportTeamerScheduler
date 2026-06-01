@@ -585,6 +585,27 @@ export function ImportProvider({ children }) {
               meta.fields = meta.fields.filter((h) => !isSensitiveHeader(h));
             }
 
+            // Guard an unreadable header row (empty file, wrong delimiter, or
+            // encoding/quoting damage) before any meta.fields access below.
+            if (!Array.isArray(meta.fields) || meta.fields.length === 0) {
+              await failImportJob({
+                supabase,
+                importJobId: job.id,
+                stage: 'header_validation',
+                message:
+                  'No columns were detected in the file. It may be empty, not comma-delimited, or mis-encoded — re-save as CSV (UTF-8, comma-delimited) and try again.',
+                errorSummary: describeHeaderParse({
+                  fields: meta.fields,
+                  meta,
+                  parseErrors: results.errors,
+                }),
+              });
+              setImportStatus('error');
+              setIsImporting(false);
+              addLog('Import failed: no columns were detected in the file.');
+              return;
+            }
+
             // Check hard limits for DoS mitigation
             if (meta.fields.length > MAX_COLS) {
               await failImportJob({
@@ -678,11 +699,10 @@ export function ImportProvider({ children }) {
                 fields: meta.fields,
                 meta,
                 parseErrors: results.errors,
-                mappings,
               });
               const collapsedHint =
-                meta.fields.length <= 1
-                  ? ` The file did not split into columns (detected ${meta.fields.length}). It may be tab-delimited or have encoding/quoting issues — re-save as CSV (UTF-8, comma-delimited) and try again.`
+                (meta?.fields?.length ?? 0) <= 1
+                  ? ` The file did not split into columns (detected ${meta?.fields?.length ?? 0}). It may be tab-delimited or have encoding/quoting issues — re-save as CSV (UTF-8, comma-delimited) and try again.`
                   : '';
               await failImportJob({
                 supabase,

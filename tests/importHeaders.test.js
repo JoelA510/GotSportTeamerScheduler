@@ -120,20 +120,28 @@ describe('importHeaders', () => {
     ]);
   });
 
-  it('describeHeaderParse returns a bounded, PII-free diagnostic', () => {
+  it('describeHeaderParse emits only non-PII shape signals (never header/cell values)', () => {
     const collapsed = [GOTSPORT_HEADERS.join(',')];
     const diag = describeHeaderParse({
       fields: collapsed,
       meta: { delimiter: ',' },
       parseErrors: [{ message: 'Too many fields: expected 1 field but parsed 95' }],
-      mappings: {},
     });
-    expect(diag.column_count).toBe(1);
-    expect(diag.detected_delimiter).toBe(',');
-    expect(diag.parse_error_count).toBe(1);
-    expect(diag.first_parse_error).toContain('Too many fields');
-    expect(diag.headers_seen).toHaveLength(1);
-    expect(diag.headers_seen[0].length).toBeLessThanOrEqual(80); // truncated
+    // Exact shape — guards against re-introducing raw header/cell fields.
+    expect(diag).toEqual({
+      column_count: 1,
+      detected_delimiter: ',',
+      parse_error_count: 1,
+      first_parse_error: 'Too many fields: expected 1 field but parsed 95',
+      max_header_length: collapsed[0].length,
+      min_header_length: collapsed[0].length,
+    });
+    // A header-less upload makes PapaParse treat a data row as "headers", so the
+    // persisted diagnostic must never contain raw field text.
+    const serialized = JSON.stringify(diag);
+    for (const value of ['First Name', 'DOB', 'Registration ID', 'Email']) {
+      expect(serialized).not.toContain(value);
+    }
   });
 
   it('normalizeImportHeader prefers the matcher mapping, else lowercased raw', () => {

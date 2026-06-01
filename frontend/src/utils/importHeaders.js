@@ -52,34 +52,33 @@ export function findMissingRequiredHeaders(fields, type, mappings) {
   return required.filter((req) => !normalized.includes(req));
 }
 
-/** Trim a header for diagnostics so long free-text columns don't bloat the log. */
-function previewHeader(h) {
-  const s = String(h ?? '');
-  return s.length > 80 ? `${s.slice(0, 77)}...` : s;
-}
-
 /**
  * Build a compact, PII-free diagnostic describing what PapaParse produced, so a
- * header-validation failure is debuggable from the persisted error summary.
- * @param {{ fields?: string[], meta?: { delimiter?: string }, parseErrors?: any[], mappings?: Record<string,string> }} input
+ * header-validation failure is debuggable from the persisted `error_summary`.
+ *
+ * Header NAMES / values are deliberately NOT included: a malformed upload (a
+ * file saved without a header row, or collapsed by the wrong delimiter) can make
+ * PapaParse treat a data row as the header, so echoing field values could
+ * persist names / emails / DOBs into the database — exactly what the client-side
+ * privacy filter exists to prevent. We emit only non-identifying shape signals
+ * (counts, detected delimiter, parser-error text, header-length extremes).
+ * @param {{ fields?: string[], meta?: { delimiter?: string }, parseErrors?: any[] }} input
  * @returns {Record<string, unknown>}
  */
-export function describeHeaderParse({
-  fields = [],
-  meta = {},
-  parseErrors = [],
-  mappings = {},
-} = {}) {
-  const sample = (fields || []).slice(0, 25);
+export function describeHeaderParse({ fields = [], meta = {}, parseErrors = [] } = {}) {
+  const list = Array.isArray(fields) ? fields : [];
+  const lengths = list.map((h) => String(h ?? '').length);
   return {
-    column_count: (fields || []).length,
+    column_count: list.length,
     detected_delimiter: meta?.delimiter ?? null,
     parse_error_count: Array.isArray(parseErrors) ? parseErrors.length : 0,
     first_parse_error:
       Array.isArray(parseErrors) && parseErrors.length > 0
         ? String(parseErrors[0]?.message || parseErrors[0]?.code || parseErrors[0]).slice(0, 160)
         : null,
-    headers_seen: sample.map(previewHeader),
-    normalized_seen: sample.map((h) => normalizeImportHeader(mappings, h)),
+    // A lone, very long "column" is the signature of a wrong-delimiter / no-split
+    // parse. Lengths carry no PII, unlike the header text itself.
+    max_header_length: lengths.length ? Math.max(...lengths) : 0,
+    min_header_length: lengths.length ? Math.min(...lengths) : 0,
   };
 }

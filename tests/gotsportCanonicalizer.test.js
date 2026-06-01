@@ -56,6 +56,9 @@ test('isSensitiveHeader flags sensitive columns', () => {
     'Emergency Contact Name',
     'Emergency Contact One First Name',
     'Emergency Contact Two Phone Number',
+    'Emergency Phone',
+    'Emergency Relation',
+    'Emergency Name',
   ]) {
     assert.equal(isSensitiveHeader(h), true, `expected sensitive: ${h}`);
   }

@@ -121,7 +121,7 @@ const SENSITIVE_PATTERNS = [
   /terms\s*(and|&)?\s*conditions?/,
   /agree.*terms/,
   // Emergency contacts (not needed for teaming/scheduling — data minimization)
-  /emergency\s*contact/,
+  /emergency/,
 ];
 
 /**
