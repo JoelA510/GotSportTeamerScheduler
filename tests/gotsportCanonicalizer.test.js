@@ -52,6 +52,13 @@ test('isSensitiveHeader flags sensitive columns', () => {
     'Waiver Signed',
     'Consent Form',
     'E-Signature',
+    'Photo Consent: I give consent for my player to be photographed',
+    'Emergency Contact Name',
+    'Emergency Contact One First Name',
+    'Emergency Contact Two Phone Number',
+    'Emergency Phone',
+    'Emergency Relation',
+    'Emergency Name',
   ]) {
     assert.equal(isSensitiveHeader(h), true, `expected sensitive: ${h}`);
   }
@@ -84,7 +91,6 @@ test('isSensitiveHeader keeps teaming-relevant columns (no false positives)', ()
     'Preferred Co-Coach',
     'Team',
     'Club',
-    'Emergency Contact Name',
   ]) {
     assert.equal(isSensitiveHeader(h), false, `expected kept: ${h}`);
   }
@@ -93,6 +99,12 @@ test('isSensitiveHeader keeps teaming-relevant columns (no false positives)', ()
 test('isSensitiveHeader ignores the dedupe __n suffix', () => {
   assert.equal(isSensitiveHeader('Medical Conditions__2'), true);
   assert.equal(isSensitiveHeader('Playing Up__2'), false);
+});
+
+test('isSensitiveHeader strips a leading UTF-8 BOM before matching', () => {
+  const bom = String.fromCharCode(0xfeff);
+  assert.equal(isSensitiveHeader(`${bom}Medical Conditions`), true);
+  assert.equal(isSensitiveHeader(`${bom}First Name`), false);
 });
 
 test('stripSensitiveColumns drops sensitive keys, preserves the rest verbatim', () => {

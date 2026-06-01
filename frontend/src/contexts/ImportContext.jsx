@@ -19,6 +19,11 @@ import {
   makeDedupeHeaderTransformer,
 } from '../utils/gotsportCanonicalizer.js';
 import {
+  REQUIRED_HEADERS,
+  findMissingRequiredHeaders,
+  describeHeaderParse,
+} from '../utils/importHeaders.js';
+import {
   buildCoachLeadPayload,
   getExternalRegistrationId,
   hasCoachLeadIntent,
@@ -580,6 +585,27 @@ export function ImportProvider({ children }) {
               meta.fields = meta.fields.filter((h) => !isSensitiveHeader(h));
             }
 
+            // Guard an unreadable header row (empty file, wrong delimiter, or
+            // encoding/quoting damage) before any meta.fields access below.
+            if (!Array.isArray(meta.fields) || meta.fields.length === 0) {
+              await failImportJob({
+                supabase,
+                importJobId: job.id,
+                stage: 'header_validation',
+                message:
+                  'No columns were detected in the file. It may be empty, not comma-delimited, or mis-encoded — re-save as CSV (UTF-8, comma-delimited) and try again.',
+                errorSummary: describeHeaderParse({
+                  fields: meta.fields,
+                  meta,
+                  parseErrors: results.errors,
+                }),
+              });
+              setImportStatus('error');
+              setIsImporting(false);
+              addLog('Import failed: no columns were detected in the file.');
+              return;
+            }
+
             // Check hard limits for DoS mitigation
             if (meta.fields.length > MAX_COLS) {
               await failImportJob({
@@ -654,8 +680,6 @@ export function ImportProvider({ children }) {
 
             setActiveJob((prev) => ({ ...(prev || {}), ...efficiencyJob }));
 
-            const normalizeHeader = (h) => mappings[h] || h.toLowerCase().trim();
-
             // Phase 5 Vibe Audit: Detect if a key must go into JSONB vs root table
             const _shouldGoToCustomAttributes = (mappedKey) => {
               // If it's a known custom field, yes.
@@ -668,36 +692,30 @@ export function ImportProvider({ children }) {
             const normalizedData = [];
             const validationErrors = [];
 
-            const REQUIRED_HEADERS = {
-              players: ['first_name', 'last_name', 'date_of_birth'],
-              coaches: ['full_name', 'email'],
-              fields: ['location', 'name', 'type', 'start', 'end'],
-              field_availability: [
-                'season_label',
-                'location',
-                'name',
-                'available_from',
-                'available_until',
-              ],
-            };
-
             const requiredForType = REQUIRED_HEADERS[type] || [];
-            const normalizedFileHeaders = meta.fields.map(normalizeHeader);
-
-            const missingHeaders = requiredForType.filter(
-              (req) => !normalizedFileHeaders.includes(req)
-            );
+            const missingHeaders = findMissingRequiredHeaders(meta.fields, type, mappings);
             if (missingHeaders.length > 0) {
+              const headerDiagnostics = describeHeaderParse({
+                fields: meta.fields,
+                meta,
+                parseErrors: results.errors,
+              });
+              const collapsedHint =
+                (meta?.fields?.length ?? 0) <= 1
+                  ? ` The file did not split into columns (detected ${meta?.fields?.length ?? 0}). It may be tab-delimited or have encoding/quoting issues — re-save as CSV (UTF-8, comma-delimited) and try again.`
+                  : '';
               await failImportJob({
                 supabase,
                 importJobId: job.id,
                 stage: 'header_validation',
-                message: `Missing required columns: ${missingHeaders.join(', ')}`,
-                errorSummary: { missing_columns: missingHeaders },
+                message: `Missing required columns: ${missingHeaders.join(', ')}.${collapsedHint}`,
+                errorSummary: { missing_columns: missingHeaders, ...headerDiagnostics },
               });
               setImportStatus('error');
               setIsImporting(false);
-              addLog(`Import failed: Missing required columns: ${missingHeaders.join(', ')}`);
+              addLog(
+                `Import failed: Missing required columns: ${missingHeaders.join(', ')}.${collapsedHint}`
+              );
               return;
             }
 
