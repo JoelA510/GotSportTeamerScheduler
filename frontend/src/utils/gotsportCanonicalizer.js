@@ -32,14 +32,14 @@ function clean(value) {
  * @returns {(header: string) => string}
  */
 export function makeDedupeHeaderTransformer() {
-  let counts = new Map();
+  const counts = new Map();
   return (header, index) => {
     // PapaParse invokes transformHeader twice over the header row (it runs the
     // header pass more than once). The counter is reset on the first column so
     // each pass dedupes independently — otherwise every UNIQUE header is
     // spuriously suffixed `__2` on the second pass, which silently breaks all
     // header recognition and fails every import at validation.
-    if (index === 0) counts = new Map();
+    if (index === 0) counts.clear();
     const h = clean(header);
     const key = h.toLowerCase();
     const n = (counts.get(key) ?? 0) + 1;
