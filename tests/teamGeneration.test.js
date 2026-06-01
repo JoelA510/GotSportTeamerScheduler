@@ -66,6 +66,7 @@ test('distributes players evenly across teams', () => {
     teamsWithoutCoach: 3,
     coverageRate: 0,
     needsAdditionalCoaches: true,
+    additionalCoachesNeeded: 3,
   });
   // Assert roster balance aggregates — totalPlayers and totalCapacity are fixed regardless
   // of how the algorithm distributes players across teams.
@@ -156,6 +157,7 @@ test('respects coach assignments when creating teams', () => {
     teamsWithoutCoach: 0,
     coverageRate: 1,
     needsAdditionalCoaches: false,
+    additionalCoachesNeeded: 0,
   });
   assert.deepEqual(rosterBalanceByDivision.U10.teamStats[0], {
     teamId: 'U10-T01',
@@ -433,6 +435,7 @@ test('reports unmatched buddy requests for missing or non-reciprocal pairs', () 
     teamsWithoutCoach: 1,
     coverageRate: 0,
     needsAdditionalCoaches: true,
+    additionalCoachesNeeded: 1,
   });
   assert.deepEqual(rosterBalanceByDivision.U10.summary.teamsNeedingPlayers, ['U10-T01']);
 });
@@ -458,6 +461,7 @@ test('flags self-referential buddy requests for review', () => {
     teamsWithoutCoach: 1,
     coverageRate: 0,
     needsAdditionalCoaches: true,
+    additionalCoachesNeeded: 1,
   });
   assert.deepEqual(rosterBalanceByDivision.U10.teamStats[0], {
     teamId: 'U10-T01',
@@ -493,8 +497,33 @@ test('marks divisions that need additional coaches when team count exceeds volun
     teamsWithoutCoach: 1,
     coverageRate: 0.5,
     needsAdditionalCoaches: true,
+    additionalCoachesNeeded: 1,
   });
   assert.deepEqual(rosterBalanceByDivision.U10.summary.totalCapacity, 6);
+});
+
+test('flags coachless teams with coachNeeded and reports additional coaches needed', () => {
+  const players = [
+    { id: 'a', division: 'U10', coachId: 'coach-1' },
+    { id: 'b', division: 'U10' },
+    { id: 'c', division: 'U10' },
+    { id: 'd', division: 'U10' },
+    { id: 'e', division: 'U10' },
+    { id: 'f', division: 'U10' },
+  ];
+  const { teamsByDivision, coachCoverageByDivision } = generateTeams({
+    players,
+    divisionConfigs: { U10: { id: 'U10', teamsCount: 2, slotsPerWeek: 2, maxRosterSize: 3 } },
+    random: createDeterministicRandom(),
+  });
+  const teams = teamsByDivision.U10;
+  const coached = teams.filter((t) => t.coachId);
+  const coachless = teams.filter((t) => !t.coachId);
+  assert.equal(coached.length, 1);
+  assert.equal(coachless.length, 1);
+  assert.equal(coached[0].coachNeeded, false);
+  assert.equal(coachless[0].coachNeeded, true);
+  assert.equal(coachCoverageByDivision.U10.additionalCoachesNeeded, 1);
 });
 
 test('honors minimum roster size by reducing avoidable underfilled teams', () => {

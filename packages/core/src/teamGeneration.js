@@ -41,6 +41,7 @@ import { EVALUATOR_REGISTRY } from './evaluators/index.js';
  *     teamsWithoutCoach: number,
  *     coverageRate: number,
  *     needsAdditionalCoaches: boolean,
+ *     additionalCoachesNeeded: number,
  *   }>,
  *   rosterBalanceByDivision: Record<string, {
  *     teamStats: Array<{
@@ -219,6 +220,7 @@ export function generateTeams({
       name: team.name,
       division: team.division,
       coachId: team.coachId,
+      coachNeeded: !team.coachId,
       assistantCoachIds: team.assistantCoachIds ? [...team.assistantCoachIds] : [],
       skillTotal: team.skillTotal,
       players: team.players.map((player) => structuredClone(player)),
@@ -252,6 +254,7 @@ export function generateTeams({
       teamsWithoutCoach,
       coverageRate,
       needsAdditionalCoaches: teamsWithoutCoach > 0,
+      additionalCoachesNeeded: teamsWithoutCoach,
     };
 
     const teamStats = teams.map((team) => {
