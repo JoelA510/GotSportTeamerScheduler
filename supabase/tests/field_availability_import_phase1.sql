@@ -34,7 +34,7 @@ SELECT is((public.finalize_field_availability_import_job('11111111-3333-3333-333
 SELECT is((SELECT status FROM public.import_jobs WHERE id='11111111-3333-3333-3333-777777777771'),'completed','job status completed');
 SELECT is((SELECT count(*) FROM public.field_blackout_windows)::int,4,'expected blackout windows created (San Lorenzo Sep + Five Canyons/Bret Aug markers)');
 SELECT is((SELECT count(*) FROM public.field_availability_profiles)::int,15,'expected profile count imported');
-SELECT is((SELECT count(*) FROM public.field_equipment_requirements)::int,10,'expected equipment requirement count');
+SELECT is((SELECT count(*) FROM public.field_equipment_requirements)::int,9,'expected equipment requirement count (rows 1-5 and 12-15 carry goal_equipment/goal_status)');
 SELECT is((SELECT count(*) FROM public.field_availability_profiles WHERE location IN ('Creekside','Proctor') AND record_status='active')::int,0,'exclusions do not become active');
 SELECT is((SELECT count(*) FROM public.field_availability_profiles WHERE location='Canyon' AND record_status='potential' AND approval_status='pending')::int,4,'Canyon rows remain potential/pending');
 SELECT is((SELECT requirement_status FROM public.field_equipment_requirements fer JOIN public.field_availability_profiles p ON p.id=fer.profile_id WHERE p.location='Jensen Ranch' AND p.field_name='Main' LIMIT 1),'not_approved','Jensen not approved goal normalizes');
