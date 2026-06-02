@@ -21,13 +21,20 @@
 --    rebuild converge regardless of which historical name guarded the table
 --    ("org_member_access", "Enforce Org Membership: ALL", "Strict org access on
 --    <t>", "Unified org access on <t>", ...).
+--    Deliberately EXCLUDED: facility + RPC-only-write tables (locations, fields,
+--    field_subunits, practice_slots, event_rsvps, team_messages,
+--    field_availability_*). Those already enforce member-select + writes only via
+--    SECURITY DEFINER admin RPCs (direct admin writes are blocked there by
+--    design, and their own migrations own those policies) -- a blanket
+--    admin-write policy here would both drop their named member-select policy and
+--    re-open direct writes.
 DO $$
 DECLARE
   t text;
   pol text;
   tables text[] := ARRAY[
-    'email_log','export_jobs','field_subunits','game_slots','games',
-    'player_buddies','practice_assignments','practice_slots','staging_players','team_players',
+    'email_log','export_jobs','game_slots','games',
+    'player_buddies','practice_assignments','staging_players','team_players',
     'players','evaluation_runs','evaluation_findings','evaluation_metrics','evaluation_run_events'
   ];
 BEGIN
