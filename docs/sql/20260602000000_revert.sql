@@ -1,0 +1,14 @@
+-- Revert for 20260602000000_field_availability_finalize_applied_payload_fix.sql
+--
+-- The forward migration only changed finalize_field_availability_import_job so
+-- the profile_formats / blackout_windows / equipment_requirements /
+-- scenario_members ledger rows pass '{}'::jsonb instead of an explicit NULL for
+-- import_application_records.applied_payload (a NOT NULL DEFAULT '{}' column).
+--
+-- To revert, restore the immediately-prior definition by re-applying the
+-- finalize_field_availability_import_job CREATE OR REPLACE block verbatim from:
+--   supabase/migrations/20260522153000_field_availability_finalize_hardening.sql
+--
+-- WARNING: that prior definition contains the not-null violation this migration
+-- fixes, so reverting makes field-availability finalize fail again. Revert only
+-- if THIS migration is itself implicated in an incident.

@@ -75,6 +75,23 @@ interface RunMetadata {
   completedAt?: string;
 }
 
+async function resolveOrgIdFromSeasonSettingsId(
+  supabaseClient: SupabaseClient,
+  seasonSettingsId: string
+): Promise<string | null> {
+  const { data, error } = await supabaseClient
+    .from('season_settings')
+    .select('organization_id')
+    .eq('id', seasonSettingsId)
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  return (data as { organization_id?: string } | null)?.organization_id ?? null;
+}
+
 async function persistPracticeSnapshot(
   supabaseClient: SupabaseClient,
   snapshot: {
@@ -223,6 +240,21 @@ if (!supabaseUrl || !serviceRoleKey) {
     }
 
     const assignmentRows = body.snapshot.payload.assignmentRows;
+    const seasonSettingsId =
+      typeof body.runMetadata?.seasonSettingsId === 'string'
+        ? body.runMetadata.seasonSettingsId
+        : undefined;
+
+    if (seasonSettingsId) {
+      const seasonOrgId = await resolveOrgIdFromSeasonSettingsId(serviceClient, seasonSettingsId);
+      if (!seasonOrgId || !userOrgIds.includes(seasonOrgId)) {
+        return jsonResponse(
+          { status: 'error', message: 'Access denied: season belongs to a different organization' },
+          403
+        );
+      }
+    }
+
     if (assignmentRows.length > 0) {
       const teamIds = [
         ...new Set(assignmentRows.map((r) => r.team_id).filter(Boolean)),
