@@ -29,6 +29,7 @@
  * @property {string} [age_group] - Age group classification
  * @property {string} [organization_id] - UUID
  * @property {string} [coachId] - UUID of the assigned head coach (engine terminology)
+ * @property {boolean} [coachNeeded] - True when the team has no head coach yet (placeholder slot)
  * @property {string} [head_coach_id] - UUID of the assigned head coach (DB terminology)
  * @property {string[]} [assistantCoachIds] - Array of assistant coach IDs
  * @property {number} [skillTotal] - Total skill rating of all players

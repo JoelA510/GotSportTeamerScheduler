@@ -772,6 +772,13 @@ export default function TeamAnalysisPage() {
         divisionConfigs: { [selectedProgramKey]: divisionConfig },
         seed: config.seed,
       });
+      const generatedTeams = result.teamsByDivision?.[selectedProgramKey] ?? [];
+      if (generatedTeams.length === 0) {
+        throw new Error(
+          `No teams could be generated for ${selectedProgram.name}. Check that players are imported for this program and that the roster settings allow at least one team.`
+        );
+      }
+      const coverage = result.coachCoverageByDivision?.[selectedProgramKey] ?? null;
       const now = new Date().toISOString();
       const snapshot = buildTeamReviewSnapshot({
         generatedResult: result,
@@ -803,7 +810,18 @@ export default function TeamAnalysisPage() {
         programName: selectedProgram.name,
       });
       setManualTeams(null);
-      setReviewMessage('Team review staged. Sync to Supabase to apply it.');
+      const coachNote = coverage
+        ? coverage.teamsWithoutCoach > 0
+          ? ` ${coverage.teamsWithCoach}/${coverage.totalTeams} teams have a coach — ${coverage.additionalCoachesNeeded} more coach${
+              coverage.additionalCoachesNeeded === 1 ? '' : 'es'
+            } needed (uncovered teams are flagged "Coach needed").`
+          : ` All ${coverage.totalTeams} teams have a coach.`
+        : '';
+      setReviewMessage(
+        `Team review staged: ${generatedTeams.length} team${
+          generatedTeams.length === 1 ? '' : 's'
+        }.${coachNote} Sync to Supabase to apply it.`
+      );
     } catch (err) {
       console.error('Generation failed:', err);
       setGenerationError(err?.message || 'Team generation failed.');
