@@ -10,14 +10,12 @@ VALUES
 ('70000000-0000-0000-0000-000000000002','a1111111-1111-1111-1111-111111111111','Fall 2026','Canyon Approved','canyon',false),
 ('70000000-0000-0000-0000-000000000003','a1111111-1111-1111-1111-111111111111','Fall 2026','Lights Potential','lights',false),
 ('70000000-0000-0000-0000-000000000004','a1111111-1111-1111-1111-111111111111','Fall 2026','Lights Approved','lights',false),
-('70000000-0000-0000-0000-000000000005','b1111111-1111-1111-1111-111111111111','Fall 2026','Other Org Canyon','canyon',false);
+('70000000-0000-0000-0000-000000000005','b2222222-2222-2222-2222-222222222222','Fall 2026','Other Org Canyon','canyon',false);
 
-INSERT INTO public.field_availability_scenario_members (organization_id, scenario_id, profile_id, membership_status)
-VALUES
-('a1111111-1111-1111-1111-111111111111','70000000-0000-0000-0000-000000000001','60111111-0000-0000-0000-000000000001','included'),
-('a1111111-1111-1111-1111-111111111111','70000000-0000-0000-0000-000000000002','60111111-0000-0000-0000-000000000002','included'),
-('a1111111-1111-1111-1111-111111111111','70000000-0000-0000-0000-000000000003','60111111-0000-0000-0000-000000000003','included'),
-('a1111111-1111-1111-1111-111111111111','70000000-0000-0000-0000-000000000004','60111111-0000-0000-0000-000000000004','included');
+-- Scenario membership rows are intentionally omitted: the selection RPC operates
+-- only on field_availability_scenarios, and seeding members would require
+-- fixed-id field_availability_profiles that the shared fixtures do not provide.
+-- Membership behavior is covered in field_availability_import_phase1.sql.
 
 SET LOCAL role = 'authenticated';
 SET LOCAL "request.jwt.claims" TO '{"sub":"11111111-1111-1111-1111-111111111111"}';
