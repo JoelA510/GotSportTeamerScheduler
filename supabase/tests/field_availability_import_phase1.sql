@@ -7,7 +7,7 @@ SELECT plan(19);
 INSERT INTO public.import_jobs (id, organization_id, job_type, storage_path, status, created_by, total_rows)
 VALUES
 ('11111111-3333-3333-3333-777777777771','a1111111-1111-1111-1111-111111111111','field_availability','orga/fall2026.csv','importing','11111111-1111-1111-1111-111111111111',9),
-('11111111-3333-3333-3333-777777777772','b1111111-1111-1111-1111-111111111111','field_availability','orgb/fall2026.csv','importing','22222222-2222-2222-2222-222222222222',1);
+('11111111-3333-3333-3333-777777777772','b2222222-2222-2222-2222-222222222222','field_availability','orgb/fall2026.csv','importing','22222222-2222-2222-2222-222222222222',1);
 
 INSERT INTO public.staging_import_rows (organization_id, import_job_id, import_type, source_row_number, raw_payload, normalized_payload, validation_errors)
 VALUES
@@ -34,7 +34,7 @@ SELECT is((public.finalize_field_availability_import_job('11111111-3333-3333-333
 SELECT is((SELECT status FROM public.import_jobs WHERE id='11111111-3333-3333-3333-777777777771'),'completed','job status completed');
 SELECT is((SELECT count(*) FROM public.field_blackout_windows)::int,4,'expected blackout windows created (San Lorenzo Sep + Five Canyons/Bret Aug markers)');
 SELECT is((SELECT count(*) FROM public.field_availability_profiles)::int,15,'expected profile count imported');
-SELECT is((SELECT count(*) FROM public.field_equipment_requirements)::int,10,'expected equipment requirement count');
+SELECT is((SELECT count(*) FROM public.field_equipment_requirements)::int,9,'expected equipment requirement count (rows 1-5 and 12-15 carry goal_equipment/goal_status)');
 SELECT is((SELECT count(*) FROM public.field_availability_profiles WHERE location IN ('Creekside','Proctor') AND record_status='active')::int,0,'exclusions do not become active');
 SELECT is((SELECT count(*) FROM public.field_availability_profiles WHERE location='Canyon' AND record_status='potential' AND approval_status='pending')::int,4,'Canyon rows remain potential/pending');
 SELECT is((SELECT requirement_status FROM public.field_equipment_requirements fer JOIN public.field_availability_profiles p ON p.id=fer.profile_id WHERE p.location='Jensen Ranch' AND p.field_name='Main' LIMIT 1),'not_approved','Jensen not approved goal normalizes');

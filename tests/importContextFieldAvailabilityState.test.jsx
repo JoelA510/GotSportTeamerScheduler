@@ -24,7 +24,12 @@ vi.mock('../frontend/src/lib/supabaseClient.js', () => ({
         })),
       })),
     })),
-    channel: vi.fn(() => ({ on: vi.fn().mockReturnThis(), subscribe: vi.fn(), unsubscribe: vi.fn(), send: vi.fn() })),
+    channel: vi.fn(() => ({
+      on: vi.fn().mockReturnThis(),
+      subscribe: vi.fn(),
+      unsubscribe: vi.fn(),
+      send: vi.fn(),
+    })),
     removeChannel: vi.fn(),
     functions: { invoke: vi.fn() },
   },

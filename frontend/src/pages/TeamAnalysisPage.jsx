@@ -17,6 +17,7 @@ import { Edit2, Save, ArrowRight } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient.js';
 import { IS_MOCK_MODE } from '../config.js';
 import { generateTeams } from '../../../packages/core/src/teamGeneration.js';
+import { prepareTeamingInput } from '../../../packages/core/src/teamingPipeline.js';
 import { mapSchedulerRunToSummary } from '../../../packages/core/src/utils/teamSummaryMapper.js';
 import { PERMISSIONS } from '../constants/permissions.js';
 import { getPersistenceEndpoint, triggerTeamPersistence } from '../utils/teamPersistenceClient.js';
@@ -230,6 +231,10 @@ function toGeneratorPlayer(row, sourceIndex, division) {
     parseBooleanLike(row.willing_to_coach) ||
     parseBooleanLike(row.coach_volunteer) ||
     parseBooleanLike(row['Willing to Coach']);
+  // Carry DOB + play-up signals so the play-up/play-down classifier has an age
+  // to work with (without these every player resolves to "unknown").
+  const dateOfBirth = firstNonEmpty(row, ['date_of_birth', 'DOB', 'Birthdate', 'dob', 'birthdate']);
+  const playUpRequested = parseBooleanLike(row.play_up_requested);
 
   return {
     id,
@@ -237,6 +242,8 @@ function toGeneratorPlayer(row, sourceIndex, division) {
     firstName,
     lastName,
     name: `${firstName} ${lastName}`.trim() || 'Unnamed Player',
+    ...(dateOfBirth ? { date_of_birth: dateOfBirth } : {}),
+    ...(playUpRequested ? { play_up_requested: true } : {}),
     ...(skillRating !== undefined ? { skillRating } : {}),
     ...(coachId || willingToCoach ? { coachId: String(coachId || `coach-${id}`) } : {}),
   };
@@ -702,6 +709,52 @@ export default function TeamAnalysisPage() {
         selectedProgramKey,
         savedDivision.id
       );
+
+      // Coach-anchored teaming + play-up/play-down eligibility. Imported coaches
+      // (via coach_team_requests) drive which players anchor a coach's team, and
+      // a coach-child or qualifying buddy sanctions a play-up. Guarded so the
+      // page falls back to the raw roster if coach links are unavailable.
+      let preparedPlayers = generatorPlayers;
+      try {
+        const { data: coachLinks } = await supabase
+          .from('coach_team_requests')
+          .select('coach_id, player_id, preferred_co_coach_id')
+          .eq('organization_id', currentOrganization.id);
+        const coachesById = new Map();
+        for (const link of coachLinks || []) {
+          if (!link.player_id) continue;
+          const entry = coachesById.get(link.coach_id) || {
+            id: link.coach_id,
+            children: [],
+            preferred_co_coach_id: link.preferred_co_coach_id || null,
+          };
+          entry.children.push({ player_id: link.player_id });
+          coachesById.set(link.coach_id, entry);
+        }
+        const prepared = prepareTeamingInput({
+          players: generatorPlayers,
+          coaches: [...coachesById.values()],
+          divisions: [
+            {
+              id: selectedProgramKey,
+              name: selectedProgram.name,
+              min_age: savedDivision.min_age,
+              max_age: savedDivision.max_age,
+              birthdate_start: savedDivision.birthdate_start,
+              birthdate_end: savedDivision.birthdate_end,
+              gender_policy: savedDivision.gender_policy,
+            },
+          ],
+          seasonYear: currentSeasonSetting?.season_year,
+          cutoffMode: currentSeasonSetting?.age_cutoff_mode,
+          // Single-division flow: annotate eligibility, do not remap across divisions.
+          remapBlocked: false,
+        });
+        preparedPlayers = prepared.players;
+      } catch (pipelineErr) {
+        console.warn('Teaming pipeline (coach links / play-up) skipped:', pipelineErr?.message);
+      }
+
       const divisionConfig = {
         id: selectedProgramKey,
         name: selectedProgram.name,
@@ -715,10 +768,17 @@ export default function TeamAnalysisPage() {
         maxTeams: config.maxTeams,
       };
       const result = generateTeams({
-        players: generatorPlayers,
+        players: preparedPlayers,
         divisionConfigs: { [selectedProgramKey]: divisionConfig },
         seed: config.seed,
       });
+      const generatedTeams = result.teamsByDivision?.[selectedProgramKey] ?? [];
+      if (generatedTeams.length === 0) {
+        throw new Error(
+          `No teams could be generated for ${selectedProgram.name}. Check that players are imported for this program and that the roster settings allow at least one team.`
+        );
+      }
+      const coverage = result.coachCoverageByDivision?.[selectedProgramKey] ?? null;
       const now = new Date().toISOString();
       const snapshot = buildTeamReviewSnapshot({
         generatedResult: result,
@@ -750,7 +810,18 @@ export default function TeamAnalysisPage() {
         programName: selectedProgram.name,
       });
       setManualTeams(null);
-      setReviewMessage('Team review staged. Sync to Supabase to apply it.');
+      const coachNote = coverage
+        ? coverage.teamsWithoutCoach > 0
+          ? ` ${coverage.teamsWithCoach}/${coverage.totalTeams} teams have a coach — ${coverage.additionalCoachesNeeded} more coach${
+              coverage.additionalCoachesNeeded === 1 ? '' : 'es'
+            } needed (uncovered teams are flagged "Coach needed").`
+          : ` All ${coverage.totalTeams} teams have a coach.`
+        : '';
+      setReviewMessage(
+        `Team review staged: ${generatedTeams.length} team${
+          generatedTeams.length === 1 ? '' : 's'
+        }.${coachNote} Sync to Supabase to apply it.`
+      );
     } catch (err) {
       console.error('Generation failed:', err);
       setGenerationError(err?.message || 'Team generation failed.');
@@ -762,6 +833,8 @@ export default function TeamAnalysisPage() {
     canManageTeams,
     currentOrganization?.id,
     currentSeasonSetting?.id,
+    currentSeasonSetting?.season_year,
+    currentSeasonSetting?.age_cutoff_mode,
     authUser,
     importedPlayerRows,
     resolveGeneratorPlayers,

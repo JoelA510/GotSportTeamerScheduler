@@ -2033,7 +2033,12 @@ export const mockSupabase = {
       }
 
       const now = new Date().toISOString();
-      const jobType = importType === 'fields' ? 'fields' : importType === 'field_availability' ? 'field_availability' : 'registration';
+      const jobType =
+        importType === 'fields'
+          ? 'fields'
+          : importType === 'field_availability'
+            ? 'field_availability'
+            : 'registration';
       const job = {
         id: mockId('import-job-'),
         organization_id: p_organization_id,
@@ -2359,7 +2364,9 @@ export const mockSupabase = {
       if (!['coaches', 'fields', 'field_availability'].includes(importType)) {
         return {
           data: null,
-          error: { message: 'Only coach, field, and field_availability imports support deferred apply' },
+          error: {
+            message: 'Only coach, field, and field_availability imports support deferred apply',
+          },
         };
       }
       if (importType === 'coaches' && job.job_type !== 'registration') {
@@ -2426,7 +2433,10 @@ export const mockSupabase = {
       if (!['coaches', 'fields', 'field_availability'].includes(importType)) {
         return {
           data: null,
-          error: { message: 'Only coach, field, and field_availability imports support deferred cancellation' },
+          error: {
+            message:
+              'Only coach, field, and field_availability imports support deferred cancellation',
+          },
         };
       }
       if (job.status !== 'ready_to_apply') {
@@ -3299,13 +3309,19 @@ export const mockSupabase = {
       return { data: result, error: null };
     }
 
-
     if (name === 'finalize_field_availability_import_job') {
       const { p_import_job_id, p_validation_errors } = params || {};
-      const job = (db.import_jobs || []).find((item) => String(item.id) === String(p_import_job_id));
+      const job = (db.import_jobs || []).find(
+        (item) => String(item.id) === String(p_import_job_id)
+      );
       if (!job) return { data: null, error: { message: 'Import job not found' } };
       const now = new Date().toISOString();
-      const stagedRows = (db.staging_import_rows || []).filter((row) => String(row.import_job_id) === String(p_import_job_id) && row.import_type === 'field_availability' && !row.applied_at);
+      const stagedRows = (db.staging_import_rows || []).filter(
+        (row) =>
+          String(row.import_job_id) === String(p_import_job_id) &&
+          row.import_type === 'field_availability' &&
+          !row.applied_at
+      );
       db.field_availability_profiles = db.field_availability_profiles || [];
       db.field_availability_profile_formats = db.field_availability_profile_formats || [];
       db.field_blackout_windows = db.field_blackout_windows || [];
@@ -3323,7 +3339,11 @@ export const mockSupabase = {
         if (/\bnov(ember)?\b/.test(t)) out.push(['2026-11-01', '2026-11-30']);
         return out;
       };
-      const norm = (v) => String(v || '').trim().toLowerCase().replace(/[-\s]+/g, '_');
+      const norm = (v) =>
+        String(v || '')
+          .trim()
+          .toLowerCase()
+          .replace(/[-\s]+/g, '_');
       const normApproval = (v, record) => {
         const n = norm(v);
         if (['approved', 'pending', 'not_approved', 'not_applicable'].includes(n)) return n;
@@ -3333,17 +3353,35 @@ export const mockSupabase = {
       };
       const normRecord = (v) => {
         const n = norm(v);
-        return ['active', 'inactive', 'potential', 'conditional', 'excluded'].includes(n) ? n : 'active';
+        return ['active', 'inactive', 'potential', 'conditional', 'excluded'].includes(n)
+          ? n
+          : 'active';
       };
       const normReq = (v) => {
         const n = norm(v);
-        if (['required','recommended','blocked','not_approved','needs_purchase','available'].includes(n)) return n;
-        if (['needs_purchase','needssturdygoals','needs_sturdy_goals'].includes(n)) return 'needs_purchase';
+        if (
+          [
+            'required',
+            'recommended',
+            'blocked',
+            'not_approved',
+            'needs_purchase',
+            'available',
+          ].includes(n)
+        )
+          return n;
+        if (['needs_purchase', 'needssturdygoals', 'needs_sturdy_goals'].includes(n))
+          return 'needs_purchase';
         if (['needed'].includes(n)) return 'required';
         return n || null;
       };
 
-      let inserted = 0; let invalid = 0; let formats=0; let blackouts=0; let reqs=0; let members=0;
+      let inserted = 0;
+      let invalid = 0;
+      let formats = 0;
+      let blackouts = 0;
+      let reqs = 0;
+      let members = 0;
       stagedRows.forEach((row) => {
         const payload = row.normalized_payload || {};
         const location = payload.location;
@@ -3352,43 +3390,200 @@ export const mockSupabase = {
         const au = payload.available_until;
         const t1 = af ? Date.parse(af) : NaN;
         const t2 = au ? Date.parse(au) : NaN;
-        const tph = payload.teams_per_hour ? parseInt(payload.teams_per_hour,10) : null;
-        const atph = payload.aggregate_teams_per_hour ? parseInt(payload.aggregate_teams_per_hour,10) : null;
-        if (!location || !fieldName || !af || !au || Number.isNaN(t1) || Number.isNaN(t2) || t2 < t1 || (tph !== null && tph < 1) || (atph !== null && atph < 1)) {
+        const tph = payload.teams_per_hour ? parseInt(payload.teams_per_hour, 10) : null;
+        const atph = payload.aggregate_teams_per_hour
+          ? parseInt(payload.aggregate_teams_per_hour, 10)
+          : null;
+        if (
+          !location ||
+          !fieldName ||
+          !af ||
+          !au ||
+          Number.isNaN(t1) ||
+          Number.isNaN(t2) ||
+          t2 < t1 ||
+          (tph !== null && tph < 1) ||
+          (atph !== null && atph < 1)
+        ) {
           invalid += 1;
-          row.validation_errors = [{ message: 'Availability row missing required location/field/date range or has invalid capacities', source_row_number: row.source_row_number }];
+          row.validation_errors = [
+            {
+              message:
+                'Availability row missing required location/field/date range or has invalid capacities',
+              source_row_number: row.source_row_number,
+            },
+          ];
           return;
         }
-        const profile = { id: mockId(), organization_id: job.organization_id, season_label: payload.season_label || 'Unspecified Season', field_id: null, location, field_name: fieldName, surface_type: payload.surface_type || null, record_status: normRecord(payload.record_status), approval_status: normApproval(payload.approval_status, payload.record_status), available_from: af, available_until: au, availability_rule: payload.availability_rule || null, teams_per_hour: tph, aggregate_teams_per_hour: atph, capacity_basis: payload.capacity_basis || null, lighted: payload.lighted || null, restroom_potty: payload.restroom_potty || null, goal_status: payload.goal_status || null, use_context: payload.use_context || null, day_constraints: payload.day_constraints || null, move_to_location: payload.move_to_location || null, current_app_import_status: payload.current_app_import_status || null, notes: payload.notes || null, created_at: now, updated_at: now };
+        const profile = {
+          id: mockId(),
+          organization_id: job.organization_id,
+          season_label: payload.season_label || 'Unspecified Season',
+          field_id: null,
+          location,
+          field_name: fieldName,
+          surface_type: payload.surface_type || null,
+          record_status: normRecord(payload.record_status),
+          approval_status: normApproval(payload.approval_status, payload.record_status),
+          available_from: af,
+          available_until: au,
+          availability_rule: payload.availability_rule || null,
+          teams_per_hour: tph,
+          aggregate_teams_per_hour: atph,
+          capacity_basis: payload.capacity_basis || null,
+          lighted: payload.lighted || null,
+          restroom_potty: payload.restroom_potty || null,
+          goal_status: payload.goal_status || null,
+          use_context: payload.use_context || null,
+          day_constraints: payload.day_constraints || null,
+          move_to_location: payload.move_to_location || null,
+          current_app_import_status: payload.current_app_import_status || null,
+          notes: payload.notes || null,
+          created_at: now,
+          updated_at: now,
+        };
         db.field_availability_profiles.push(profile);
-        if (payload.primary_format) { db.field_availability_profile_formats.push({ id: mockId(), organization_id: job.organization_id, profile_id: profile.id, format_code: payload.primary_format, format_quantity: parseInt(payload.format_quantity || '1',10), format_order: 1 }); formats += 1; }
-        if (payload.secondary_format) { db.field_availability_profile_formats.push({ id: mockId(), organization_id: job.organization_id, profile_id: profile.id, format_code: payload.secondary_format, format_quantity: parseInt(payload.format_quantity || '1',10), format_order: 2 }); formats += 1; }
-        parseMonthWindows(payload.blackout_months).forEach(([from,to]) => { db.field_blackout_windows.push({ id: mockId(), organization_id: job.organization_id, profile_id: profile.id, blackout_from: from, blackout_until: to, reason: String(payload.blackout_months) }); blackouts +=1; });
-        if (payload.goal_equipment || payload.goal_status) { db.field_equipment_requirements.push({ id: mockId(), organization_id: job.organization_id, profile_id: profile.id, goal_equipment: payload.goal_equipment || null, requirement_status: normReq(payload.goal_status), notes: null }); reqs += 1; }
-        if (payload.scenario_name) {
-          let scenario = db.field_availability_scenarios.find((s) => String(s.organization_id)===String(job.organization_id) && s.season_label === (payload.season_label || 'Unspecified Season') && s.name === payload.scenario_name);
-          if (!scenario) { scenario = { id: mockId(), organization_id: job.organization_id, season_label: payload.season_label || 'Unspecified Season', name: payload.scenario_name, exclusivity_group: payload.scenario_group || null, is_active: false, created_at: now }; db.field_availability_scenarios.push(scenario); }
-          db.field_availability_scenario_members.push({ id: mockId(), organization_id: job.organization_id, scenario_id: scenario.id, profile_id: profile.id, membership_status: 'included', created_at: now }); members +=1;
+        if (payload.primary_format) {
+          db.field_availability_profile_formats.push({
+            id: mockId(),
+            organization_id: job.organization_id,
+            profile_id: profile.id,
+            format_code: payload.primary_format,
+            format_quantity: parseInt(payload.format_quantity || '1', 10),
+            format_order: 1,
+          });
+          formats += 1;
         }
-        db.import_application_records.push({ id: mockId(), organization_id: job.organization_id, import_job_id: p_import_job_id, import_type: 'field_availability', target_table: 'field_availability_profiles', target_id: profile.id, operation: 'inserted', previous_payload: null, applied_payload: { ...profile }, applied_at: now, applied_by: 'mock-admin-id', rolled_back_at: null });
-        row.applied_at = now; row.applied_by = 'mock-admin-id'; inserted += 1;
+        if (payload.secondary_format) {
+          db.field_availability_profile_formats.push({
+            id: mockId(),
+            organization_id: job.organization_id,
+            profile_id: profile.id,
+            format_code: payload.secondary_format,
+            format_quantity: parseInt(payload.format_quantity || '1', 10),
+            format_order: 2,
+          });
+          formats += 1;
+        }
+        parseMonthWindows(payload.blackout_months).forEach(([from, to]) => {
+          db.field_blackout_windows.push({
+            id: mockId(),
+            organization_id: job.organization_id,
+            profile_id: profile.id,
+            blackout_from: from,
+            blackout_until: to,
+            reason: String(payload.blackout_months),
+          });
+          blackouts += 1;
+        });
+        if (payload.goal_equipment || payload.goal_status) {
+          db.field_equipment_requirements.push({
+            id: mockId(),
+            organization_id: job.organization_id,
+            profile_id: profile.id,
+            goal_equipment: payload.goal_equipment || null,
+            requirement_status: normReq(payload.goal_status),
+            notes: null,
+          });
+          reqs += 1;
+        }
+        if (payload.scenario_name) {
+          let scenario = db.field_availability_scenarios.find(
+            (s) =>
+              String(s.organization_id) === String(job.organization_id) &&
+              s.season_label === (payload.season_label || 'Unspecified Season') &&
+              s.name === payload.scenario_name
+          );
+          if (!scenario) {
+            scenario = {
+              id: mockId(),
+              organization_id: job.organization_id,
+              season_label: payload.season_label || 'Unspecified Season',
+              name: payload.scenario_name,
+              exclusivity_group: payload.scenario_group || null,
+              is_active: false,
+              created_at: now,
+            };
+            db.field_availability_scenarios.push(scenario);
+          }
+          db.field_availability_scenario_members.push({
+            id: mockId(),
+            organization_id: job.organization_id,
+            scenario_id: scenario.id,
+            profile_id: profile.id,
+            membership_status: 'included',
+            created_at: now,
+          });
+          members += 1;
+        }
+        db.import_application_records.push({
+          id: mockId(),
+          organization_id: job.organization_id,
+          import_job_id: p_import_job_id,
+          import_type: 'field_availability',
+          target_table: 'field_availability_profiles',
+          target_id: profile.id,
+          operation: 'inserted',
+          previous_payload: null,
+          applied_payload: { ...profile },
+          applied_at: now,
+          applied_by: 'mock-admin-id',
+          rolled_back_at: null,
+        });
+        row.applied_at = now;
+        row.applied_by = 'mock-admin-id';
+        inserted += 1;
       });
-      const status = (Array.isArray(p_validation_errors) && p_validation_errors.length) || invalid > 0 ? 'completed_with_warnings' : 'completed';
-      Object.assign(job, { status, completed_at: now, progress_percent: 100, processed_rows: inserted });
+      const status =
+        (Array.isArray(p_validation_errors) && p_validation_errors.length) || invalid > 0
+          ? 'completed_with_warnings'
+          : 'completed';
+      Object.assign(job, {
+        status,
+        completed_at: now,
+        progress_percent: 100,
+        processed_rows: inserted,
+      });
       saveDB(db);
-      return { data: { status, inserted_profiles: inserted, inserted_formats: formats, inserted_blackouts: blackouts, inserted_requirements: reqs, inserted_scenario_members: members, invalid_rows: invalid }, error: null };
+      return {
+        data: {
+          status,
+          inserted_profiles: inserted,
+          inserted_formats: formats,
+          inserted_blackouts: blackouts,
+          inserted_requirements: reqs,
+          inserted_scenario_members: members,
+          invalid_rows: invalid,
+        },
+        error: null,
+      };
     }
 
     if (name === 'rollback_field_availability_import_job') {
       const { p_import_job_id } = params || {};
       const now = new Date().toISOString();
-      const records = (db.import_application_records || []).filter((r) => String(r.import_job_id)===String(p_import_job_id) && r.import_type === 'field_availability' && !r.rolled_back_at);
+      const records = (db.import_application_records || []).filter(
+        (r) =>
+          String(r.import_job_id) === String(p_import_job_id) &&
+          r.import_type === 'field_availability' &&
+          !r.rolled_back_at
+      );
       records.forEach((record) => {
-        db.field_availability_profiles = (db.field_availability_profiles || []).filter((p) => String(p.id) !== String(record.target_id));
-        db.field_availability_profile_formats = (db.field_availability_profile_formats || []).filter((f) => String(f.profile_id) !== String(record.target_id));
-        db.field_blackout_windows = (db.field_blackout_windows || []).filter((b) => String(b.profile_id) !== String(record.target_id));
-        db.field_equipment_requirements = (db.field_equipment_requirements || []).filter((e) => String(e.profile_id) !== String(record.target_id));
-        db.field_availability_scenario_members = (db.field_availability_scenario_members || []).filter((m) => String(m.profile_id) !== String(record.target_id));
+        db.field_availability_profiles = (db.field_availability_profiles || []).filter(
+          (p) => String(p.id) !== String(record.target_id)
+        );
+        db.field_availability_profile_formats = (
+          db.field_availability_profile_formats || []
+        ).filter((f) => String(f.profile_id) !== String(record.target_id));
+        db.field_blackout_windows = (db.field_blackout_windows || []).filter(
+          (b) => String(b.profile_id) !== String(record.target_id)
+        );
+        db.field_equipment_requirements = (db.field_equipment_requirements || []).filter(
+          (e) => String(e.profile_id) !== String(record.target_id)
+        );
+        db.field_availability_scenario_members = (
+          db.field_availability_scenario_members || []
+        ).filter((m) => String(m.profile_id) !== String(record.target_id));
         record.rolled_back_at = now;
       });
       saveDB(db);
@@ -3818,7 +4013,13 @@ export const mockSupabase = {
           players: ['first_name', 'last_name', 'date_of_birth'],
           coaches: ['full_name', 'email'],
           fields: ['location', 'name', 'type', 'start', 'end'],
-          field_availability: ['season_label', 'location', 'name', 'available_from', 'available_until'],
+          field_availability: [
+            'season_label',
+            'location',
+            'name',
+            'available_from',
+            'available_until',
+          ],
         };
         const normalizeHeader = (header) => aliases[String(header).toLowerCase().trim()] || header;
         const sanitize = (value) =>
