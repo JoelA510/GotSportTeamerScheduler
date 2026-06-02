@@ -4,7 +4,11 @@
 -- at but did not actually fix: those either edited already-applied (immutable)
 -- migrations or dropped policy names that do not match the live database, so the
 -- permissive member-write policies survived. This migration targets the ACTUAL
--- live policy/function names verified against the running project.
+-- live policy/function names verified against the running project, and -- so a
+-- fresh `supabase db reset` converges to the same end state -- defensively
+-- clears every existing policy on each table before recreating the canonical
+-- split (the live DB has drifted from the migration chain, and historical
+-- migrations named the member-write policy several different ways).
 --
 -- Why this is safe: all org-scoped domain-state persistence goes through
 -- SECURITY DEFINER RPCs and service-role Edge Functions, both of which bypass
@@ -12,12 +16,15 @@
 -- only reads). The permissive member-write policies were pure attack surface.
 
 -- 1. Member-read / admin-write split on org-scoped domain tables -------------
---    Live state: each table below is guarded by a single permissive ALL policy
---    named either "org_member_access" or "Enforce Org Membership: ALL" using
---    is_org_member(). Replace it with member-read + admin-write.
+--    Intended end state per table: exactly two policies -- SELECT for members,
+--    ALL for admins. Drop every existing policy first so prod and a fresh
+--    rebuild converge regardless of which historical name guarded the table
+--    ("org_member_access", "Enforce Org Membership: ALL", "Strict org access on
+--    <t>", "Unified org access on <t>", ...).
 DO $$
 DECLARE
   t text;
+  pol text;
   tables text[] := ARRAY[
     'email_log','export_jobs','field_subunits','game_slots','games',
     'player_buddies','practice_assignments','practice_slots','staging_players','team_players',
@@ -25,12 +32,13 @@ DECLARE
   ];
 BEGIN
   FOREACH t IN ARRAY tables LOOP
-    -- Remove whichever permissive ALL policy currently guards the table.
-    EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I', 'org_member_access', t);
-    EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I', 'Enforce Org Membership: ALL', t);
-    -- Idempotent re-create of the split policies.
-    EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I', t || '_select_member', t);
-    EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I', t || '_write_admin', t);
+    EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', t);
+    FOR pol IN
+      SELECT policyname FROM pg_policies
+      WHERE schemaname = 'public' AND tablename = t
+    LOOP
+      EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I', pol, t);
+    END LOOP;
     EXECUTE format(
       'CREATE POLICY %I ON public.%I FOR SELECT TO authenticated '
       'USING (public.is_org_member(organization_id))',
@@ -48,6 +56,10 @@ END$$;
 --    require existing players to belong to the org and already be linked to the
 --    caller. The registration UI only offers already-linked players, so
 --    legitimate flows are unaffected -- this only blocks forged player IDs.
+--    A division is required only when creating a NEW player, so org-level forms
+--    (no division) remain valid for already-linked players; existence is decided
+--    via FOUND, not the nullable division_id. A best-effort audit event is
+--    written on success.
 CREATE OR REPLACE FUNCTION public.submit_registration(
   p_organization_id uuid,
   p_form_id uuid,
@@ -79,26 +91,34 @@ BEGIN
           USING ERRCODE = '42501';
     END IF;
 
-    -- Form must belong to the org and be open.
+    -- Form must belong to the org and be open. Decide existence via FOUND, not
+    -- the nullable division_id (org-level forms legitimately have NULL division).
     SELECT rf.division_id INTO v_division_id
     FROM public.registration_forms rf
     WHERE rf.id = p_form_id
       AND rf.organization_id = p_organization_id
       AND rf.status = 'open';
 
-    IF v_division_id IS NULL THEN
+    IF NOT FOUND THEN
         RAISE EXCEPTION 'Invalid or closed registration form for organization %', p_organization_id
           USING ERRCODE = '22023';
     END IF;
 
     IF v_player_id IS NULL THEN
-        IF p_first_name IS NULL OR p_last_name IS NULL THEN
+        IF p_first_name IS NULL OR btrim(p_first_name) = ''
+           OR p_last_name IS NULL OR btrim(p_last_name) = '' THEN
             RAISE EXCEPTION 'New player registration requires first and last name.'
               USING ERRCODE = '22023';
         END IF;
 
+        -- Creating a new player requires a division; only division-bound forms can.
+        IF v_division_id IS NULL THEN
+            RAISE EXCEPTION 'Cannot register a new player: form % is not bound to a division. Ask an admin to set the form''s division.', p_form_id
+              USING ERRCODE = '22023';
+        END IF;
+
         INSERT INTO public.players (organization_id, first_name, last_name, division_id)
-        VALUES (p_organization_id, p_first_name, p_last_name, v_division_id)
+        VALUES (p_organization_id, btrim(p_first_name), btrim(p_last_name), v_division_id)
         RETURNING id INTO v_player_id;
     ELSE
         -- Existing player must belong to the org and already be linked to the caller.
@@ -132,6 +152,17 @@ BEGIN
         p_organization_id, p_form_id, v_player_id, p_profile_id, p_responses, true, now()
     )
     RETURNING id INTO v_registration_id;
+
+    -- Best-effort audit (do not fail the registration if the helper is absent).
+    IF EXISTS (SELECT 1 FROM pg_proc WHERE proname = 'record_audit_event') THEN
+        PERFORM public.record_audit_event(
+            p_organization_id,
+            'registration.submitted',
+            'registration',
+            v_registration_id,
+            jsonb_build_object('form_id', p_form_id, 'player_id', v_player_id)
+        );
+    END IF;
 
     RETURN v_registration_id;
 EXCEPTION
@@ -185,8 +216,14 @@ BEGIN
     UPDATE public.import_jobs
     SET
         status = COALESCE(p_status, status),
+        -- Guard against a JSON null / non-object warning_summary: jsonb_set on a
+        -- scalar would error, so normalize to an object first.
         warning_summary = jsonb_set(
-            COALESCE(warning_summary, '{}'::jsonb),
+            CASE
+                WHEN warning_summary IS NULL OR jsonb_typeof(warning_summary) <> 'object'
+                THEN '{}'::jsonb
+                ELSE warning_summary
+            END,
             '{coach_leads}',
             p_summary,
             true
@@ -197,31 +234,32 @@ $function$;
 
 -- 4. Tighten registrations RLS: self branch requires org membership + WITH CHECK
 --    Prevents cross-tenant inserts/updates by spoofing profile_id = auth.uid()
---    with an arbitrary organization_id.
-DROP POLICY IF EXISTS "registrations_user_own_or_admin" ON public.registrations;
+--    with an arbitrary organization_id. Drop every existing registrations policy
+--    first (incl. the legacy "Registrations: users own" FOR ALL policy, which
+--    has no WITH CHECK) so the new policy is authoritative on prod and fresh
+--    builds alike.
+DO $$
+DECLARE
+  pol text;
+BEGIN
+  ALTER TABLE public.registrations ENABLE ROW LEVEL SECURITY;
+  FOR pol IN
+    SELECT policyname FROM pg_policies
+    WHERE schemaname = 'public' AND tablename = 'registrations'
+  LOOP
+    EXECUTE format('DROP POLICY IF EXISTS %I ON public.registrations', pol);
+  END LOOP;
+END$$;
+
 CREATE POLICY "registrations_user_own_or_admin"
     ON public.registrations FOR ALL TO authenticated
     USING (
         (profile_id = auth.uid() AND public.is_org_member(organization_id))
-        OR (
-            public.is_org_member(organization_id) AND EXISTS (
-                SELECT 1 FROM public.organization_members om
-                WHERE om.profile_id = auth.uid()
-                  AND om.organization_id = registrations.organization_id
-                  AND om.role = 'admin'
-            )
-        )
+        OR public.is_org_admin(organization_id)
     )
     WITH CHECK (
         (profile_id = auth.uid() AND public.is_org_member(organization_id))
-        OR (
-            public.is_org_member(organization_id) AND EXISTS (
-                SELECT 1 FROM public.organization_members om
-                WHERE om.profile_id = auth.uid()
-                  AND om.organization_id = registrations.organization_id
-                  AND om.role = 'admin'
-            )
-        )
+        OR public.is_org_admin(organization_id)
     );
 
 -- 5. Remove end-user DELETE on the raw-imports storage bucket ----------------
