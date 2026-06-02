@@ -219,7 +219,7 @@ describe('AccountSettingsPage', () => {
       });
       expect(query.eq).toHaveBeenCalledWith('id', 'user-1');
     });
-    expect(screen.getByRole('status')).toHaveTextContent('Profile saved.');
+    expect(await screen.findByRole('status')).toHaveTextContent('Profile saved.');
   });
 
   it('does not report profile save success when no profile row is updated', async () => {
@@ -246,7 +246,7 @@ describe('AccountSettingsPage', () => {
       expect(mocks.rpc).toHaveBeenCalledWith('redeem_org_invite', { p_code: 'JOIN-123' });
       expect(mocks.refetchOrgs).toHaveBeenCalled();
     });
-    expect(screen.getByRole('status')).toHaveTextContent(
+    expect(await screen.findByRole('status')).toHaveTextContent(
       'Invite redeemed. Organization list refreshed.'
     );
     expect(screen.getByLabelText('Join Organization by Invite Code')).toHaveValue('');
