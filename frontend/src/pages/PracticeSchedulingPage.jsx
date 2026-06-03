@@ -605,8 +605,10 @@ export default function PracticeSchedulingPage() {
     <div className="animate-fadeIn space-y-8 max-w-[65ch] mx-auto w-full">
       <div className="flex justify-between items-start mb-8">
         <div>
-          <h1 className="text-3xl font-display font-bold text-white mb-2">Practice Scheduling</h1>
-          <p className="text-white/60">Configure and optimize team field assignments.</p>
+          <h1 className="text-3xl font-display font-bold text-text-primary mb-2">
+            Practice Scheduling
+          </h1>
+          <p className="text-text-muted">Configure and optimize team field assignments.</p>
         </div>
         {canManageSchedule && (
           <div className="flex gap-3">
@@ -648,11 +650,11 @@ export default function PracticeSchedulingPage() {
             <section
               aria-label="Practice schedule review"
               role="region"
-              className="mt-4 rounded-xl border border-white/10 bg-white/5 p-4"
+              className="mt-4 rounded-xl border border-border-subtle bg-bg-glass p-4"
             >
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <h3 className="text-base font-semibold text-white">
+                  <h3 className="text-base font-semibold text-text-primary">
                     {applyStatus === 'applied'
                       ? 'Practice Schedule Applied'
                       : applyStatus === 'discarded'
@@ -661,7 +663,7 @@ export default function PracticeSchedulingPage() {
                           ? 'Optimization Cancelled'
                           : 'Review Practice Changes'}
                   </h3>
-                  <p className="mt-1 text-sm text-white/60">
+                  <p className="mt-1 text-sm text-text-muted">
                     {reviewAssignments?.length
                       ? `${reviewAssignments.length} assignments are staged for persistence.`
                       : 'No practice assignment changes are currently staged.'}
@@ -707,10 +709,10 @@ export default function PracticeSchedulingPage() {
                 <Calendar size={120} className="text-brand-400" />
               </div>
               <div className="max-w-md mx-auto relative z-10">
-                <h2 className="text-2xl font-display font-bold text-white mb-4">
+                <h2 className="text-2xl font-display font-bold text-text-primary mb-4">
                   Ready to Schedule Practices?
                 </h2>
-                <p className="text-white/60 mb-8">
+                <p className="text-text-muted mb-8">
                   You haven&apos;t generated any teams yet. Practice scheduling requires assigned
                   teams to calculate field availability and distribution.
                 </p>
@@ -734,7 +736,7 @@ export default function PracticeSchedulingPage() {
             }}
           />
 
-          <div className="bg-white/5 border border-white/10 rounded-xl overflow-hidden shadow-2xl backdrop-blur-sm mt-8">
+          <div className="bg-bg-glass border border-border-subtle rounded-xl overflow-hidden shadow-md mt-8">
             {statusMessage && (
               <div
                 role="status"

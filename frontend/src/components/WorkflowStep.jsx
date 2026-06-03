@@ -27,7 +27,7 @@ const WorkflowStep = ({
 
   const iconStyles = {
     pending: 'bg-bg-surface text-text-muted',
-    active: 'bg-brand-DEFAULT text-white shadow-lg shadow-brand-glow', // Keep text-white for active icon as it has solid bg
+    active: 'bg-brand-DEFAULT text-white shadow-lg', // Keep text-white for active icon as it has solid bg
     completed: 'bg-status-success text-white',
     locked: 'bg-bg-surface text-text-muted',
   };

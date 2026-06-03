@@ -68,7 +68,7 @@ export default function AccountModule() {
         </div>
       </div>
 
-      <div className="border-t border-white/10 pt-6">
+      <div className="border-t border-border-subtle pt-6">
         <h3 className="text-lg font-medium text-text-primary mb-4">Change Password</h3>
         <form onSubmit={handlePasswordUpdate} className="space-y-4">
           {message.text && (

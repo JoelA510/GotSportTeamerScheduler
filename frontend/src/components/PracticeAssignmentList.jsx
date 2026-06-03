@@ -60,7 +60,7 @@ export default function PracticeAssignmentList({
                 : `Lock practice slot for ${teamName}`;
 
               return (
-                <tr key={assignment.id} className="hover:bg-white/5 transition-colors group">
+                <tr key={assignment.id} className="hover:bg-bg-glass transition-colors group">
                   <td className="p-4">
                     <div className="font-bold text-text-primary">{teamName}</div>
                     <div className="text-xs text-text-secondary">

@@ -94,7 +94,7 @@ const SmartBadge = ({ score, rationale }) => {
       <div
         id={tooltipId}
         role="tooltip"
-        className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 w-48 p-2 bg-bg-surface border border-border-highlight rounded-lg shadow-xl opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 pointer-events-none transition-opacity z-50 text-text-primary text-[11px] leading-snug"
+        className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 w-48 p-2 bg-bg-surface border border-border-highlight rounded-lg shadow-md opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 pointer-events-none transition-opacity z-50 text-text-primary text-[11px] leading-snug"
       >
         <div className="flex items-start gap-1.5">
           <Info size={12} className="shrink-0 mt-0.5 text-blue-400" />

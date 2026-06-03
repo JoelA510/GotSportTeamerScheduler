@@ -7,7 +7,7 @@ const ShadowBanner = () => {
   if (!isImpersonating || !impersonatedUser) return null;
 
   return (
-    <div className="fixed top-0 left-0 right-0 z-[9999] flex items-center justify-between px-6 py-2 bg-amber-500/10 border-b border-amber-500/30 backdrop-blur-xl shadow-[0_0_20px_rgba(245,158,11,0.2)]">
+    <div className="fixed top-0 left-0 right-0 z-[9999] flex items-center justify-between px-6 py-2 bg-amber-500/10 border-b border-amber-500/30 shadow-[0_0_20px_rgba(245,158,11,0.2)]">
       <div className="flex items-center gap-3">
         <div className="p-1.5 rounded-lg bg-amber-500/20 text-amber-500 border border-amber-500/30 animate-pulse">
           <Shield className="w-4 h-4" />
@@ -16,7 +16,7 @@ const ShadowBanner = () => {
           <span className="text-[10px] font-bold uppercase tracking-widest text-amber-500/80 leading-tight">
             Active Shadow Session
           </span>
-          <span className="text-sm font-medium text-white/90 leading-tight">
+          <span className="text-sm font-medium text-text-secondary leading-tight">
             Viewing as{' '}
             <span className="text-amber-400 font-bold">
               {impersonatedUser.full_name || impersonatedUser.email}

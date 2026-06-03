@@ -14,10 +14,6 @@ vi.mock('../frontend/src/components/settings/modules/AccountModule.jsx', () => (
   default: () => <div>Account module content</div>,
 }));
 
-vi.mock('../frontend/src/components/settings/modules/BrandingModule.jsx', () => ({
-  default: () => <div>Branding module content</div>,
-}));
-
 vi.mock('../frontend/src/components/settings/modules/SeasonModule.jsx', () => ({
   default: () => <div>Season module content</div>,
 }));
@@ -53,16 +49,16 @@ describe('GeneralSettings', () => {
     accountTab.focus();
     fireEvent.keyDown(accountTab, { key: 'ArrowRight' });
 
-    const brandingTab = screen.getByRole('tab', { name: 'Branding & Theme' });
-    expect(brandingTab).toHaveAttribute('aria-selected', 'true');
-    expect(brandingTab).toHaveFocus();
-    expect(screen.getByText('Branding module content')).toBeInTheDocument();
-
-    fireEvent.keyDown(brandingTab, { key: 'End' });
-
     const seasonTab = screen.getByRole('tab', { name: 'Season & Calendar' });
     expect(seasonTab).toHaveAttribute('aria-selected', 'true');
     expect(seasonTab).toHaveFocus();
     expect(screen.getByText('Season module content')).toBeInTheDocument();
+
+    fireEvent.keyDown(seasonTab, { key: 'Home' });
+
+    expect(screen.getByRole('tab', { name: 'League Identity' })).toHaveAttribute(
+      'aria-selected',
+      'true'
+    );
   });
 });

@@ -1,6 +1,5 @@
 import React, { useCallback, useRef, useState } from 'react';
-import { Globe, User, Palette, Calendar } from 'lucide-react';
-import BrandingModule from './modules/BrandingModule.jsx';
+import { Globe, User, Calendar } from 'lucide-react';
 import SeasonModule from './modules/SeasonModule.jsx';
 import AccountModule from './modules/AccountModule.jsx';
 import { useTheme } from '../../contexts/ThemeContext.jsx';
@@ -8,7 +7,6 @@ import { useTheme } from '../../contexts/ThemeContext.jsx';
 const SUB_TABS = [
   { id: 'identity', label: 'League Identity', icon: Globe },
   { id: 'account', label: 'Account & Security', icon: User },
-  { id: 'branding', label: 'Branding & Theme', icon: Palette },
   { id: 'season', label: 'Season & Calendar', icon: Calendar },
 ];
 
@@ -86,8 +84,6 @@ export default function GeneralSettings() {
         );
       case 'account':
         return <AccountModule />;
-      case 'branding':
-        return <BrandingModule />;
       case 'season':
         return <SeasonModule />;
       default:
@@ -119,7 +115,7 @@ export default function GeneralSettings() {
             className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs font-medium whitespace-nowrap transition-all border ${
               activeSubTab === tab.id
                 ? 'bg-brand-500/20 text-brand-400 border-brand-500/30'
-                : 'bg-bg-surface/50 text-text-muted border-white/5 hover:bg-bg-surface hover:text-text-primary'
+                : 'bg-bg-surface/50 text-text-muted border-border-subtle hover:bg-bg-surface hover:text-text-primary'
             }`}
           >
             <tab.icon size={14} aria-hidden="true" />
@@ -132,7 +128,7 @@ export default function GeneralSettings() {
         id="general-settings-panel"
         role="tabpanel"
         aria-labelledby={`general-settings-tab-${activeSubTab}`}
-        className="pt-2 border-t border-white/5"
+        className="pt-2 border-t border-border-subtle"
       >
         {renderSubContent()}
       </div>

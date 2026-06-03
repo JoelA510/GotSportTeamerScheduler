@@ -137,8 +137,8 @@ export default function RegistrationFlow() {
 
   if (success) {
     return (
-      <div className="max-w-2xl mx-auto mt-12 bg-bg-surface border border-border-highlight rounded-2xl p-8 text-center shadow-2xl relative overflow-hidden">
-        <div className="absolute inset-0 bg-brand-glow backdrop-blur-3xl z-0 pointer-events-none" />
+      <div className="max-w-2xl mx-auto mt-12 bg-bg-surface border border-border-highlight rounded-2xl p-8 text-center shadow-md relative overflow-hidden">
+        <div className="absolute inset-0 bg-brand-glow z-0 pointer-events-none" />
         <div className="relative z-10 flex flex-col items-center">
           <CheckCircle2 size={64} className="text-status-success mb-6" />
           <h2 className="text-3xl font-display font-bold text-text-primary mb-4">
@@ -157,7 +157,7 @@ export default function RegistrationFlow() {
   return (
     <div className="max-w-3xl mx-auto space-y-8 animate-fadeIn">
       {/* Header */}
-      <div className="bg-bg-surface/80 backdrop-blur-md border border-border-subtle rounded-2xl p-8 shadow-xl relative overflow-hidden">
+      <div className="bg-bg-surface/80 border border-border-subtle rounded-2xl p-8 shadow-md relative overflow-hidden">
         <div className="absolute top-0 right-0 w-64 h-64 bg-brand-glow rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none" />
         <div className="relative z-10">
           <h1 className="text-3xl lg:text-4xl font-display font-bold text-text-primary mb-2 tracking-tight">
@@ -190,7 +190,7 @@ export default function RegistrationFlow() {
         </div>
       </div>
 
-      <div className="bg-bg-surface border border-border-subtle rounded-2xl p-6 lg:p-10 shadow-xl">
+      <div className="bg-bg-surface border border-border-subtle rounded-2xl p-6 lg:p-10 shadow-md">
         {error && (
           <div className="mb-6 p-4 bg-status-error-bg border border-status-error/30 text-status-error rounded-xl text-sm font-medium text-center">
             {error}

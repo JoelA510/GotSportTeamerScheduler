@@ -188,7 +188,7 @@ const SettingsAuditLog = () => {
           </div>
         </div>
       ) : filteredLogs.length === 0 ? (
-        <div className="text-center py-32 border-2 border-dashed border-border-subtle rounded-2xl bg-white/[0.02]">
+        <div className="text-center py-32 border-2 border-dashed border-border-subtle rounded-2xl bg-bg-glass">
           <Clock size={48} className="mx-auto text-text-muted mb-4 opacity-10" />
           <p className="text-text-secondary font-semibold text-lg">No audit events found</p>
           <p className="text-text-muted text-sm mt-1 max-w-xs mx-auto">
@@ -198,11 +198,11 @@ const SettingsAuditLog = () => {
           </p>
         </div>
       ) : (
-        <div className="overflow-hidden rounded-2xl border border-white/10 bg-black/30 shadow-2xl backdrop-blur-sm">
+        <div className="overflow-hidden rounded-2xl border border-border-subtle bg-black/30 shadow-md">
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="border-b border-white/10 bg-white/[0.03]">
+                <tr className="border-b border-border-subtle bg-bg-glass">
                   <th className="px-6 py-4 text-[11px] font-bold text-text-muted uppercase tracking-widest">
                     Timestamp
                   </th>
@@ -217,9 +217,9 @@ const SettingsAuditLog = () => {
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-white/5">
+              <tbody className="divide-y divide-border-subtle">
                 {filteredLogs.map((log) => (
-                  <tr key={log.id} className="hover:bg-white/[0.04] transition-all group">
+                  <tr key={log.id} className="hover:bg-bg-glass transition-all group">
                     <td className="px-6 py-5 whitespace-nowrap">
                       <div className="flex flex-col">
                         <span className="text-sm text-text-primary font-medium">
@@ -266,7 +266,7 @@ const SettingsAuditLog = () => {
               </tbody>
             </table>
           </div>
-          <div className="px-6 py-4 bg-white/[0.02] border-t border-white/5 flex justify-between items-center">
+          <div className="px-6 py-4 bg-bg-glass border-t border-border-subtle flex justify-between items-center">
             <span className="text-xs text-text-muted">
               Showing {filteredLogs.length} of {logs.length} events
             </span>

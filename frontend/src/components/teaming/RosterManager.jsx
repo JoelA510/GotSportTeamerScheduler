@@ -279,7 +279,7 @@ export default function RosterManager({ initialTeams, onTeamsChange }) {
   return (
     <div className="w-full">
       {hasConflicts && (
-        <div className="bg-status-error-bg backdrop-blur-md text-white p-4 border border-status-error rounded-xl mb-6 flex flex-col gap-2 shadow-[0_0_30px_rgba(239,68,68,0.3)] animate-fadeIn">
+        <div className="bg-status-error-bg text-text-primary p-4 border border-status-error rounded-xl mb-6 flex flex-col gap-2 shadow-[0_0_30px_rgba(239,68,68,0.3)] animate-fadeIn">
           <div className="flex items-center gap-2 font-bold uppercase tracking-widest text-status-error">
             <ShieldAlert size={20} />
             Conflict Detected
@@ -331,7 +331,7 @@ export default function RosterManager({ initialTeams, onTeamsChange }) {
 
         <DragOverlay>
           {activePlayer ? (
-            <div className="p-3 bg-bg-surface border border-blue-500 rounded-md shadow-2xl flex items-center justify-between opacity-90 scale-105 transform rotate-2">
+            <div className="p-3 bg-bg-surface border border-blue-500 rounded-md shadow-md flex items-center justify-between opacity-90 scale-105 transform rotate-2">
               <div className="flex items-center gap-3">
                 <GripVertical size={16} className="text-blue-400" />
                 <div className="flex flex-col">

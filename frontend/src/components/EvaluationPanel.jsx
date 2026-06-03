@@ -138,23 +138,23 @@ export default function EvaluationPanel({
   if (loading && !evaluation) {
     return (
       <div
-        className="glass-panel p-6 rounded-xl border border-white/10 animate-pulse transition-all duration-500"
+        className="glass-panel p-6 rounded-xl border border-border-subtle animate-pulse transition-all duration-500"
         role="status"
         aria-busy="true"
         aria-label="Fairness scoring engine is evaluating data"
       >
         <div className="flex items-center gap-6">
-          <div className="w-12 h-12 rounded-lg bg-white/5 flex items-center justify-center border border-white/5">
+          <div className="w-12 h-12 rounded-lg bg-bg-glass flex items-center justify-center border border-border-subtle">
             <Activity
               className="w-6 h-6 text-indigo-400 rotate-12 transition-transform duration-1000 animate-spin"
               aria-hidden="true"
             />
           </div>
           <div className="flex-1 space-y-3">
-            <div className="h-5 w-48 bg-white/10 rounded-full" />
-            <div className="h-4 w-64 bg-white/5 rounded-full" />
+            <div className="h-5 w-48 bg-bg-surface-hover rounded-full" />
+            <div className="h-4 w-64 bg-bg-glass rounded-full" />
           </div>
-          <div className="h-10 w-32 bg-white/5 rounded-lg" />
+          <div className="h-10 w-32 bg-bg-glass rounded-lg" />
         </div>
       </div>
     );
@@ -196,7 +196,7 @@ export default function EvaluationPanel({
 
   return (
     <div
-      className="glass-panel p-6 rounded-xl border border-white/10 relative overflow-hidden transition-all duration-300 hover:shadow-2xl hover:shadow-indigo-500/10"
+      className="glass-panel p-6 rounded-xl border border-border-subtle relative overflow-hidden transition-all duration-300 hover:shadow-md hover:shadow-indigo-500/10"
       aria-live="polite"
     >
       {/* Background Micro-Gradient */}
@@ -209,14 +209,14 @@ export default function EvaluationPanel({
             aria-hidden="true"
           >
             {loading ? (
-              <Loader2 className="w-6 h-6 text-white animate-spin" aria-hidden="true" />
+              <Loader2 className="w-6 h-6 text-text-primary animate-spin" aria-hidden="true" />
             ) : (
               <span className={currentStatus.color}>{currentStatus.icon}</span>
             )}
           </div>
           <div>
             <div className="flex items-center gap-3">
-              <h2 className="text-xl font-display font-bold text-white tracking-tight">
+              <h2 className="text-xl font-display font-bold text-text-primary tracking-tight">
                 Fairness Scoring Engine
               </h2>
               <span
@@ -225,12 +225,12 @@ export default function EvaluationPanel({
                 {currentStatus.label}
               </span>
             </div>
-            <div className="text-sm text-white/50 mt-1.5 flex items-center gap-3">
+            <div className="text-sm text-text-muted mt-1.5 flex items-center gap-3">
               <span>
                 Fairness Index:{' '}
-                <span className="text-white font-mono font-bold">{score.toFixed(1)}%</span>
+                <span className="text-text-primary font-mono font-bold">{score.toFixed(1)}%</span>
               </span>
-              <span className="w-1 h-1 rounded-full bg-white/20" />
+              <span className="w-1 h-1 rounded-full bg-bg-surface-hover" />
               <span>
                 Issues:{' '}
                 <span
@@ -241,7 +241,7 @@ export default function EvaluationPanel({
               </span>
               {evaluation?.metrics?.executionTimeMs && (
                 <>
-                  <span className="w-1 h-1 rounded-full bg-white/20" />
+                  <span className="w-1 h-1 rounded-full bg-bg-surface-hover" />
                   <span className="text-[10px] opacity-40 font-mono tracking-tighter">
                     LATENCY: {evaluation.metrics.executionTimeMs}ms
                   </span>
@@ -264,7 +264,7 @@ export default function EvaluationPanel({
             title="Persist evaluation results to the audit trail"
             aria-busy={persisting}
             aria-describedby="save-audit-desc"
-            className="flex items-center gap-2.5 bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-2.5 rounded-lg shadow-xl shadow-indigo-600/30 transition-all hover:scale-[1.03] active:scale-[0.97] disabled:opacity-40 disabled:hover:scale-100 disabled:cursor-not-allowed group font-display font-bold"
+            className="flex items-center gap-2.5 bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-2.5 rounded-lg shadow-md shadow-indigo-600/30 transition-all hover:scale-[1.03] active:scale-[0.97] disabled:opacity-40 disabled:hover:scale-100 disabled:cursor-not-allowed group font-display font-bold"
           >
             {persisting ? (
               <Loader2 size={18} className="animate-spin" aria-hidden="true" />

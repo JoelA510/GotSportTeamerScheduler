@@ -228,7 +228,7 @@ export default function AdminReportingDashboard() {
       {/* Metric Cards Top Row */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div
-          className="bg-bg-surface border border-border-highlight rounded-xl p-6 shadow-xl relative overflow-hidden group bg-bg-card"
+          className="bg-bg-surface border border-border-highlight rounded-xl p-6 shadow-md relative overflow-hidden group bg-bg-card"
           data-testid="metric-card-total-players"
         >
           <div className="absolute top-0 right-0 w-32 h-32 bg-brand-glow rounded-full blur-3xl -mr-10 -mt-10 transition-transform group-hover:scale-110" />
@@ -246,7 +246,7 @@ export default function AdminReportingDashboard() {
           </div>
         </div>
         <div
-          className="bg-bg-surface border border-border-highlight rounded-xl p-6 shadow-xl relative overflow-hidden group bg-bg-card"
+          className="bg-bg-surface border border-border-highlight rounded-xl p-6 shadow-md relative overflow-hidden group bg-bg-card"
           data-testid="metric-card-active-teams"
         >
           <div className="absolute top-0 right-0 w-32 h-32 bg-status-success-bg rounded-full blur-3xl -mr-10 -mt-10 transition-transform group-hover:scale-110" />
@@ -264,7 +264,7 @@ export default function AdminReportingDashboard() {
           </div>
         </div>
         <div
-          className="bg-bg-surface border border-border-highlight rounded-xl p-6 shadow-xl relative overflow-hidden group bg-bg-card"
+          className="bg-bg-surface border border-border-highlight rounded-xl p-6 shadow-md relative overflow-hidden group bg-bg-card"
           data-testid="metric-card-staff-admins"
         >
           <div className="absolute top-0 right-0 w-32 h-32 bg-brand-glow rounded-full blur-3xl -mr-10 -mt-10 transition-transform group-hover:scale-110" />
@@ -281,7 +281,7 @@ export default function AdminReportingDashboard() {
       {/* Charts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Compliance Chart */}
-        <div className="bg-bg-surface border border-border-subtle rounded-xl p-6 shadow-xl">
+        <div className="bg-bg-surface border border-border-subtle rounded-xl p-6 shadow-md">
           <h3 className="text-lg font-bold text-text-primary mb-6">Form Compliance Status</h3>
           <div className="h-64">
             {compliance.length > 0 ? (
@@ -332,7 +332,7 @@ export default function AdminReportingDashboard() {
         </div>
 
         {/* Teams by Division / Facility Pie */}
-        <div className="bg-bg-surface border border-border-subtle rounded-xl p-6 shadow-xl">
+        <div className="bg-bg-surface border border-border-subtle rounded-xl p-6 shadow-md">
           <h3 className="text-lg font-bold text-text-primary mb-6">Teams by Division</h3>
           <div className="h-64">
             {standings.length > 0 ? (
@@ -371,7 +371,7 @@ export default function AdminReportingDashboard() {
         </div>
 
         {/* Facility Usage Full Width */}
-        <div className="bg-bg-surface border border-border-subtle rounded-xl p-6 shadow-xl lg:col-span-2">
+        <div className="bg-bg-surface border border-border-subtle rounded-xl p-6 shadow-md lg:col-span-2">
           <h3 className="text-lg font-bold text-text-primary mb-6 flex items-center gap-2">
             <MapPin size={18} /> Facility Usage (Total Events)
           </h3>

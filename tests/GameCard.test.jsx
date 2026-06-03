@@ -125,7 +125,7 @@ describe('GameCardPreview', () => {
     render(<GameCardPreview assignment={ASSIGNMENT} />);
     const preview = screen.getByTestId('game-card-preview');
     expect(preview.className).toContain('rotate-2');
-    expect(preview.className).toContain('shadow-2xl');
+    expect(preview.className).toContain('shadow-md');
     expect(preview.className).toContain('border-blue-500');
   });
 });

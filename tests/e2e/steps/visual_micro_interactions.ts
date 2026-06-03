@@ -51,29 +51,6 @@ Then('the sidebar overlay should automatically close', async ({ page }) => {
   await expect(sidebar).not.toBeInViewport();
 });
 
-When('I click the floating "Theme Toggle" button', async ({ page }) => {
-  await page
-    .getByRole('button', { name: /current theme/i })
-    .first()
-    .click({ force: true });
-});
-
-Then(
-  'the application background and panel styles should change to the {string} theme',
-  async ({ page }, theme: string) => {
-    const html = page.locator('html').first();
-    await expect(html).toHaveAttribute('data-theme', theme.toLowerCase());
-  }
-);
-
-Then(
-  'the application should cycle to the {string} theme with vibrant gradients',
-  async ({ page }, theme: string) => {
-    const html = page.locator('html').first();
-    await expect(html).toHaveAttribute('data-theme', theme.toLowerCase());
-  }
-);
-
 When('a React component throws an unexpected rendering error', async ({ page }) => {
   await page.evaluate(() => {
     localStorage.setItem('__FORCE_ERROR__', 'true');
@@ -91,11 +68,4 @@ Then('I should see the {string} glassmorphism error panel', async ({ page }, tex
 
 Then('I should be safely redirected to the Dashboard', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Season Setup Workflow' }).first()).toBeVisible();
-});
-
-When('I click the toggle again', async ({ page }) => {
-  await page
-    .getByRole('button', { name: /current theme/i })
-    .first()
-    .click({ force: true });
 });

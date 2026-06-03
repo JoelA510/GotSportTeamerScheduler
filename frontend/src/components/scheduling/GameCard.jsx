@@ -109,7 +109,7 @@ GameCard.propTypes = {
 export function GameCardPreview({ assignment }) {
   return (
     <div
-      className="p-3 bg-bg-surface border border-blue-500 rounded-lg shadow-2xl opacity-90 scale-105 transform rotate-2"
+      className="p-3 bg-bg-surface border border-blue-500 rounded-lg shadow-md opacity-90 scale-105 transform rotate-2"
       data-testid="game-card-preview"
     >
       <div className="flex items-center gap-2">

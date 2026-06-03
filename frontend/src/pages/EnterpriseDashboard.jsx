@@ -202,7 +202,7 @@ export default function EnterpriseDashboard() {
 
       {/* K-Anonymity Warning */}
       {isLowSample && (
-        <div className="p-4 bg-status-warning-bg border border-status-warning/50 text-status-warning rounded-xl text-sm font-medium flex items-center gap-2 shadow-lg backdrop-blur-md">
+        <div className="p-4 bg-status-warning-bg border border-status-warning/50 text-status-warning rounded-xl text-sm font-medium flex items-center gap-2 shadow-lg">
           <Lock size={16} /> Sub-population threshold active (K-Anonymity rules applied). Aggregated
           charting features are masked.
         </div>
@@ -210,7 +210,7 @@ export default function EnterpriseDashboard() {
 
       {/* Primary KPI Row */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-bg-surface border border-white/5 bg-white/5 backdrop-blur-xl rounded-2xl p-6 shadow-2xl relative overflow-hidden group">
+        <div className="bg-bg-surface border border-border-subtle bg-bg-glass rounded-2xl p-6 shadow-md relative overflow-hidden group">
           <div className="absolute top-0 right-0 w-32 h-32 bg-brand-glow rounded-full blur-[60px] opacity-30 transition-transform group-hover:scale-150" />
           <div className="flex flex-col relative z-10">
             <span className="text-text-muted text-sm font-bold uppercase tracking-wider mb-2 flex items-center gap-2">
@@ -221,7 +221,7 @@ export default function EnterpriseDashboard() {
             </span>
           </div>
         </div>
-        <div className="bg-bg-surface border border-white/5 bg-white/5 backdrop-blur-xl rounded-2xl p-6 shadow-2xl relative overflow-hidden group">
+        <div className="bg-bg-surface border border-border-subtle bg-bg-glass rounded-2xl p-6 shadow-md relative overflow-hidden group">
           <div className="absolute top-0 right-0 w-32 h-32 bg-status-success rounded-full blur-[60px] opacity-20 transition-transform group-hover:scale-150" />
           <div className="flex flex-col relative z-10">
             <span className="text-text-muted text-sm font-bold uppercase tracking-wider mb-2 flex items-center gap-2">
@@ -232,7 +232,7 @@ export default function EnterpriseDashboard() {
             </span>
           </div>
         </div>
-        <div className="bg-bg-surface border border-white/5 bg-white/5 backdrop-blur-xl rounded-2xl p-6 shadow-2xl relative overflow-hidden group">
+        <div className="bg-bg-surface border border-border-subtle bg-bg-glass rounded-2xl p-6 shadow-md relative overflow-hidden group">
           <div className="absolute top-0 right-0 w-32 h-32 bg-brand-glow rounded-full blur-[60px] opacity-30 transition-transform group-hover:scale-150" />
           <div className="flex flex-col relative z-10">
             <span className="text-text-muted text-sm font-bold uppercase tracking-wider mb-2 flex items-center gap-2">
@@ -248,7 +248,7 @@ export default function EnterpriseDashboard() {
       {/* Visualizations Row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Radar Chart */}
-        <div className="bg-bg-surface border border-white/5 bg-white/5 backdrop-blur-xl rounded-2xl p-6 shadow-2xl">
+        <div className="bg-bg-surface border border-border-subtle bg-bg-glass rounded-2xl p-6 shadow-md">
           <h3 className="text-lg font-bold text-text-primary mb-6">Organization Readiness</h3>
           <div className="h-80 w-full relative">
             <AccessibleDataTable
@@ -295,7 +295,7 @@ export default function EnterpriseDashboard() {
         </div>
 
         {/* Dynamic Attribute Chart */}
-        <div className="bg-bg-surface border border-white/5 bg-white/5 backdrop-blur-xl rounded-2xl p-6 shadow-2xl flex flex-col relative">
+        <div className="bg-bg-surface border border-border-subtle bg-bg-glass rounded-2xl p-6 shadow-md flex flex-col relative">
           <div className="flex items-center justify-between mb-6">
             <h3 className="text-lg font-bold text-text-primary">Fluid Attributes Distribution</h3>
             {attributeOptions.length > 0 && !isLowSample && (

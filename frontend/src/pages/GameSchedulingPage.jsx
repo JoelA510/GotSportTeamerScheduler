@@ -667,8 +667,10 @@ export default function GameSchedulingPage() {
     <div className="animate-fadeIn space-y-8">
       <div className="flex justify-between items-start mb-8">
         <div>
-          <h1 className="text-3xl font-display font-bold text-white mb-2">Game Scheduling</h1>
-          <p className="text-white/60">
+          <h1 className="text-3xl font-display font-bold text-text-primary mb-2">
+            Game Scheduling
+          </h1>
+          <p className="text-text-muted">
             Generate, review, and apply the master competition schedule.
           </p>
         </div>
@@ -689,7 +691,7 @@ export default function GameSchedulingPage() {
       <GameConflictBanner warnings={reviewSnapshot?.warnings ?? game?.warnings ?? []} />
 
       {(applyStatus !== 'idle' || statusMessage || applyError || schedulerReadinessMessage) && (
-        <section className="glass-panel p-4 border border-white/10" aria-live="polite">
+        <section className="glass-panel p-4 border border-border-subtle" aria-live="polite">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-start gap-3 text-sm">
               {applyStatus === 'applied' ? (
@@ -700,7 +702,7 @@ export default function GameSchedulingPage() {
                 <RotateCcw size={18} className="text-cyan-400 mt-0.5" />
               )}
               <div>
-                <p className="font-semibold text-white">
+                <p className="font-semibold text-text-primary">
                   {isReviewing
                     ? `${reviewAssignments.length} game assignment${reviewAssignments.length === 1 ? '' : 's'} staged for review`
                     : applyStatus === 'applied'
@@ -711,7 +713,7 @@ export default function GameSchedulingPage() {
                           ? 'Game schedule review discarded'
                           : 'Game schedule workflow'}
                 </p>
-                <p className={applyError ? 'text-red-300' : 'text-white/60'}>
+                <p className={applyError ? 'text-red-300' : 'text-text-muted'}>
                   {applyError ||
                     statusMessage ||
                     schedulerReadinessMessage ||
@@ -754,14 +756,14 @@ export default function GameSchedulingPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2">
-          <div className="bg-white/5 border border-white/10 rounded-xl overflow-hidden shadow-2xl backdrop-blur-sm">
-            <div className="px-6 py-4 border-b border-white/10 flex justify-between items-center bg-white/5">
+          <div className="bg-bg-glass border border-border-subtle rounded-xl overflow-hidden shadow-md">
+            <div className="px-6 py-4 border-b border-border-subtle flex justify-between items-center bg-bg-glass">
               <div className="flex gap-4">
                 <button
                   type="button"
                   onClick={() => setActiveTab('full')}
                   className={`text-sm font-semibold transition-colors ${
-                    activeTab === 'full' ? 'text-blue-400' : 'text-white/40 hover:text-white/60'
+                    activeTab === 'full' ? 'text-blue-400' : 'text-text-muted hover:text-text-muted'
                   }`}
                 >
                   Full Schedule
@@ -770,7 +772,7 @@ export default function GameSchedulingPage() {
                   type="button"
                   onClick={() => setActiveTab('team')}
                   className={`text-sm font-semibold transition-colors ${
-                    activeTab === 'team' ? 'text-blue-400' : 'text-white/40 hover:text-white/60'
+                    activeTab === 'team' ? 'text-blue-400' : 'text-text-muted hover:text-text-muted'
                   }`}
                 >
                   By Team
@@ -851,8 +853,10 @@ function GameScheduleList({ assignments, timezone, onEditSchedule }) {
           <Trophy size={120} className="text-brand-400" />
         </div>
         <div className="max-w-md mx-auto relative z-10">
-          <h2 className="text-2xl font-display font-bold text-white mb-4">No Game Schedule Yet</h2>
-          <p className="text-white/60 mb-8">
+          <h2 className="text-2xl font-display font-bold text-text-primary mb-4">
+            No Game Schedule Yet
+          </h2>
+          <p className="text-text-muted mb-8">
             The game schedule has not been generated for the current season. Run the scheduler on
             the right once teams and field availability are finalized.
           </p>
@@ -893,7 +897,7 @@ function GameScheduleList({ assignments, timezone, onEditSchedule }) {
           {assignments.map((a) => (
             <tr
               key={a.id ?? `${a.homeTeamId}-${a.awayTeamId}-${a.slotId}`}
-              className="hover:bg-white/5"
+              className="hover:bg-bg-glass"
             >
               <td className="p-4 text-text-primary font-medium">
                 {a.homeTeamName ?? a.homeTeamId ?? 'Home'} vs{' '}
@@ -930,7 +934,7 @@ function TeamScheduleSelector({
   return (
     <div className="p-6">
       <div className="mb-6">
-        <label className="block text-xs font-semibold uppercase tracking-wider text-white/40 mb-2">
+        <label className="block text-xs font-semibold uppercase tracking-wider text-text-muted mb-2">
           Select Team
         </label>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
@@ -942,7 +946,7 @@ function TeamScheduleSelector({
               className={`px-3 py-2 rounded text-xs font-medium transition-all ${
                 selectedTeamId === team.id
                   ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/20'
-                  : 'bg-white/5 text-white/60 hover:bg-white/10'
+                  : 'bg-bg-glass text-text-muted hover:bg-bg-surface-hover'
               }`}
             >
               {team.name}
@@ -951,7 +955,7 @@ function TeamScheduleSelector({
         </div>
       </div>
 
-      <div className="mt-8 border-t border-white/5 pt-8">
+      <div className="mt-8 border-t border-border-subtle pt-8">
         {selectedTeamId ? (
           <TeamScheduleView assignments={assignments} teamId={selectedTeamId} timezone={timezone} />
         ) : assignments.length === 0 ? (
@@ -960,10 +964,10 @@ function TeamScheduleSelector({
               <Trophy size={120} className="text-brand-400" />
             </div>
             <div className="max-w-md mx-auto relative z-10">
-              <h2 className="text-2xl font-display font-bold text-white mb-4">
+              <h2 className="text-2xl font-display font-bold text-text-primary mb-4">
                 No Game Schedule Yet
               </h2>
-              <p className="text-white/60 mb-8">
+              <p className="text-text-muted mb-8">
                 The game schedule has not been generated for the current season. You can generate a
                 new schedule once teams and field availability are finalized.
               </p>

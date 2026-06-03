@@ -159,7 +159,7 @@ export default function LeagueStandings() {
         {divisions.map((division) => (
           <div
             key={division}
-            className="bg-bg-surface border border-border-subtle rounded-xl overflow-hidden shadow-xl"
+            className="bg-bg-surface border border-border-subtle rounded-xl overflow-hidden shadow-md"
           >
             <div className="bg-bg-app px-6 py-4 border-b border-border-subtle flex items-center justify-between">
               <h2 className="text-lg font-bold text-text-primary uppercase tracking-wide">
@@ -226,7 +226,7 @@ export default function LeagueStandings() {
       </div>
 
       {/* Recent Games Section - visible to all roles */}
-      <div className="bg-bg-surface border border-border-subtle rounded-xl p-6 shadow-xl mt-12">
+      <div className="bg-bg-surface border border-border-subtle rounded-xl p-6 shadow-md mt-12">
         <h2 className="text-xl font-bold text-text-primary mb-6 flex items-center gap-2">
           <CheckCircle2 className="text-text-muted w-5 h-5" /> Recent Games{' '}
           {canEditScores && '- Score Entry'}

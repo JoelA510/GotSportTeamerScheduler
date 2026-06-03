@@ -83,7 +83,7 @@ export default function GameConflictBanner({ warnings, onConflictClick = undefin
 
   return (
     <div
-      className="bg-status-error-bg backdrop-blur-md text-white p-4 border border-status-error rounded-xl mb-6 flex flex-col gap-2 shadow-[0_0_30px_rgba(239,68,68,0.3)] animate-fadeIn"
+      className="bg-status-error-bg text-text-primary p-4 border border-status-error rounded-xl mb-6 flex flex-col gap-2 shadow-[0_0_30px_rgba(239,68,68,0.3)] animate-fadeIn"
       data-testid="game-conflict-banner"
       role="alert"
     >

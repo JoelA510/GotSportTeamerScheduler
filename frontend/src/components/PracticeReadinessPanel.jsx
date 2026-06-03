@@ -45,10 +45,10 @@ export default function PracticeReadinessPanel({
   if (dashboardLoading.practice) {
     return (
       <div className="glass-panel p-8 animate-pulse">
-        <div className="h-6 w-1/3 bg-white/10 rounded mb-4" />
+        <div className="h-6 w-1/3 bg-bg-surface-hover rounded mb-4" />
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="h-24 bg-white/5 rounded-lg" />
+            <div key={i} className="h-24 bg-bg-glass rounded-lg" />
           ))}
         </div>
       </div>

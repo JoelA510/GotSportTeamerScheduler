@@ -55,10 +55,10 @@ export default function OrganizationCreation() {
 
   return (
     <div className="min-h-screen bg-bg-main flex items-center justify-center p-6 animate-fadeIn">
-      <div className="max-w-2xl w-full glass-panel-premium overflow-hidden flex flex-col shadow-2xl">
+      <div className="max-w-2xl w-full glass-panel-premium overflow-hidden flex flex-col shadow-md">
         {/* Header */}
-        <div className="p-8 border-b border-white/5 bg-white/5 flex items-center gap-4">
-          <div className="w-12 h-12 bg-brand-500/20 text-brand-400 rounded-2xl flex items-center justify-center shadow-glow-brand">
+        <div className="p-8 border-b border-border-subtle bg-bg-glass flex items-center gap-4">
+          <div className="w-12 h-12 bg-brand-500/20 text-brand-400 rounded-2xl flex items-center justify-center">
             <Rocket size={24} />
           </div>
           <div>
@@ -72,7 +72,7 @@ export default function OrganizationCreation() {
         </div>
 
         {/* Tabs */}
-        <div className="flex border-b border-white/5">
+        <div className="flex border-b border-border-subtle">
           <TabButton active={tab === 'create'} onClick={() => setTab('create')} icon={Plus}>
             Create new
           </TabButton>
@@ -306,7 +306,7 @@ function CreateOrganizationForm() {
           </div>
         </div>
 
-        <div className="pt-6 border-t border-white/5 flex justify-end">
+        <div className="pt-6 border-t border-border-subtle flex justify-end">
           <Button
             type="submit"
             variant="primary"
@@ -324,7 +324,7 @@ function CreateOrganizationForm() {
         </div>
       </form>
 
-      <div className="px-8 py-4 bg-brand-500/5 border-t border-white/5 text-[10px] text-text-muted uppercase tracking-widest text-center italic">
+      <div className="px-8 py-4 bg-brand-500/5 border-t border-border-subtle text-[10px] text-text-muted uppercase tracking-widest text-center italic">
         Admin session established. All fields recorded in the central audit log.
       </div>
     </>
@@ -411,7 +411,7 @@ function JoinWithInviteForm({ initialCode }) {
         </p>
       </div>
 
-      <div className="pt-4 border-t border-white/5 flex justify-end">
+      <div className="pt-4 border-t border-border-subtle flex justify-end">
         <Button
           type="submit"
           variant="primary"

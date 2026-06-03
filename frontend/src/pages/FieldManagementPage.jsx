@@ -386,8 +386,8 @@ export default function FieldManagementPage() {
 
       {/* Edit Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-          <div className="bg-bg-app border border-border-subtle rounded-xl p-6 w-full max-w-md shadow-2xl animate-scaleIn">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-bg-app border border-border-subtle rounded-xl p-6 w-full max-w-md shadow-md animate-scaleIn">
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-xl font-bold text-text-primary">
                 {editingField ? 'Edit Field' : 'Add New Field'}

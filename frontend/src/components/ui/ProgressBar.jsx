@@ -10,7 +10,7 @@ const ProgressBar = ({ progress, label, showPercentage = true, className = '' })
           <span className="text-sm font-bold text-blue-400">{Math.round(progress)}%</span>
         )}
       </div>
-      <div className="h-4 bg-black/40 rounded-full overflow-hidden border border-white/5 relative">
+      <div className="h-4 bg-black/40 rounded-full overflow-hidden border border-border-subtle relative">
         {/* Background Glow */}
         <div className="absolute inset-0 bg-blue-500/5" />
 

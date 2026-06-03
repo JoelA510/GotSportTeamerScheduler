@@ -317,11 +317,11 @@ export default function OutputGenerationPanel({
   };
 
   return (
-    <div className="glass-panel p-6 rounded-xl border border-white/10 relative overflow-hidden">
+    <div className="glass-panel p-6 rounded-xl border border-border-subtle relative overflow-hidden">
       <div className="absolute inset-0 bg-gradient-to-br from-orange-500/5 to-red-500/5 pointer-events-none" />
 
       <div className="relative z-10">
-        <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+        <h2 className="text-xl font-bold text-text-primary mb-4 flex items-center gap-2">
           <span className="w-2 h-2 rounded-full bg-orange-400 shadow-[0_0_10px_rgba(251,146,60,0.5)]" />
           Output Generation
         </h2>
@@ -333,7 +333,7 @@ export default function OutputGenerationPanel({
               data-testid="generate-csvs-btn"
               onClick={handleGenerate}
               disabled={status === 'generating' || status === 'uploading'}
-              className="relative z-20 bg-white/10 hover:bg-white/20 text-white px-4 py-2 rounded-lg transition-colors"
+              className="relative z-20 bg-bg-surface-hover hover:bg-bg-surface-hover text-text-primary px-4 py-2 rounded-lg transition-colors"
             >
               {status === 'generating' ? 'Generating...' : 'Generate CSVs'}
             </button>
@@ -369,8 +369,8 @@ export default function OutputGenerationPanel({
             </div>
           )}
 
-          <div className="pt-4 border-t border-white/10 mt-4">
-            <h3 className="text-lg font-bold text-white mb-4">Coach Communications</h3>
+          <div className="pt-4 border-t border-border-subtle mt-4">
+            <h3 className="text-lg font-bold text-text-primary mb-4">Coach Communications</h3>
             <button
               type="button"
               data-testid="generate-emails-btn"
