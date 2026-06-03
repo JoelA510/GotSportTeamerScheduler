@@ -27,7 +27,7 @@ const WorkflowStep = ({
 
   const iconStyles = {
     pending: 'bg-bg-surface text-text-muted',
-    active: 'bg-brand-DEFAULT text-white shadow-lg', // Keep text-white for active icon as it has solid bg
+    active: 'bg-brand text-white shadow-lg', // Keep text-white for active icon as it has solid bg
     completed: 'bg-status-success text-white',
     locked: 'bg-bg-surface text-text-muted',
   };
@@ -76,7 +76,7 @@ const WorkflowStep = ({
             <span
               className={`shrink-0 self-start sm:self-auto text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-full ${
                 isActive
-                  ? 'bg-brand-DEFAULT/10 text-brand-DEFAULT border border-brand-DEFAULT/20'
+                  ? 'bg-brand/10 text-brand border border-brand/20'
                   : isCompleted
                     ? 'bg-status-success/10 text-status-success border border-status-success/20'
                     : 'bg-bg-surface text-text-muted border border-border-subtle'

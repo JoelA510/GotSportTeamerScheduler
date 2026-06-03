@@ -280,7 +280,7 @@ export default function AuditLogPage() {
                     onClick={() => setCurrentPage(pageNum)}
                     className={`w-8 h-8 rounded-md text-xs font-medium transition-all ${
                       currentPage === pageNum
-                        ? 'bg-primary-500 text-white shadow-lg shadow-primary-500/20'
+                        ? 'bg-brand text-white shadow-md'
                         : 'text-text-muted hover:bg-bg-surface-hover'
                     }`}
                   >

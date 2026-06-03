@@ -190,7 +190,7 @@ export default function SetupWizard() {
               <div
                 key={s}
                 aria-hidden="true"
-                className={`h-1.5 w-12 rounded-full transition-all duration-500 ${s <= step ? 'bg-brand-400' : 'bg-bg-surface-hover'}`}
+                className={`h-1.5 w-12 rounded-full transition-all duration-500 ${s <= step ? 'bg-brand-400' : 'bg-border-subtle'}`}
               />
             ))}
           </div>
@@ -286,7 +286,7 @@ export default function SetupWizard() {
                       onChange={() => handleToggle(flag)}
                     />
                     <div
-                      className={`w-12 h-6 rounded-full relative transition-colors ${localFlags[flag] ? 'bg-brand-500' : 'bg-bg-surface-hover'}`}
+                      className={`w-12 h-6 rounded-full relative transition-colors ${localFlags[flag] ? 'bg-brand' : 'bg-border-subtle'}`}
                     >
                       <div
                         className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${localFlags[flag] ? 'translate-x-6' : 'translate-x-0'}`}

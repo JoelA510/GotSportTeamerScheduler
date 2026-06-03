@@ -199,7 +199,7 @@ export function SchemaBuilder() {
             className={`flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-bold transition-all duration-300 ${
               activeTab === tab.id
                 ? 'bg-sky-500 text-white shadow-lg shadow-sky-500/20'
-                : 'text-text-muted hover:text-text-muted hover:bg-bg-glass'
+                : 'text-text-muted hover:text-text-primary hover:bg-bg-glass'
             }`}
           >
             <tab.icon className="w-4 h-4" aria-hidden="true" />
@@ -296,7 +296,7 @@ export function SchemaBuilder() {
                   placeholder="e.g. jersey_size"
                   value={newFieldName}
                   onChange={(e) => setNewFieldName(e.target.value)}
-                  className="w-full bg-bg-glass border border-border-subtle rounded-xl px-4 py-3 text-sm text-text-primary focus:border-indigo-500/50 outline-none transition-all placeholder:text-text-muted"
+                  className="w-full bg-bg-surface border border-border-subtle rounded-xl px-4 py-3 text-sm text-text-primary focus:border-indigo-500/50 outline-none transition-all placeholder:text-text-muted"
                 />
               </div>
 
@@ -311,7 +311,7 @@ export function SchemaBuilder() {
                   id="schema-field-type"
                   value={newFieldType}
                   onChange={(e) => setNewFieldType(e.target.value)}
-                  className="w-full bg-bg-glass border border-border-subtle rounded-xl px-4 py-3 text-sm text-text-primary focus:border-indigo-500/50 outline-none transition-all"
+                  className="w-full bg-bg-surface border border-border-subtle rounded-xl px-4 py-3 text-sm text-text-primary focus:border-indigo-500/50 outline-none transition-all"
                 >
                   <option value="string">String (Text)</option>
                   <option value="number">Number (Decimal/Integer)</option>
