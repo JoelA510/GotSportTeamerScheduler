@@ -43,7 +43,7 @@ export default function TeamingConfiguration({
             id="target-team-size"
             type="number"
             min="1"
-            className="w-full bg-bg-base border border-border-subtle rounded-lg px-3 py-2 text-text-primary focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+            className="w-full bg-bg-surface border border-border-subtle rounded-lg px-3 py-2 text-text-primary focus:ring-2 focus:ring-blue-500 outline-none transition-all"
             value={config?.targetTeamSize ?? ''}
             onChange={(e) => handleNumberChange('targetTeamSize', e.target.value)}
           />
@@ -62,7 +62,7 @@ export default function TeamingConfiguration({
               id="min-roster"
               type="number"
               min="1"
-              className="w-full bg-bg-base border border-border-subtle rounded-lg px-3 py-2 text-text-primary focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+              className="w-full bg-bg-surface border border-border-subtle rounded-lg px-3 py-2 text-text-primary focus:ring-2 focus:ring-blue-500 outline-none transition-all"
               value={config?.minRosterSize ?? ''}
               onChange={(e) => handleNumberChange('minRosterSize', e.target.value)}
             />
@@ -78,7 +78,7 @@ export default function TeamingConfiguration({
               id="max-roster"
               type="number"
               min="1"
-              className="w-full bg-bg-base border border-border-subtle rounded-lg px-3 py-2 text-text-primary focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+              className="w-full bg-bg-surface border border-border-subtle rounded-lg px-3 py-2 text-text-primary focus:ring-2 focus:ring-blue-500 outline-none transition-all"
               value={config?.maxRosterSize ?? ''}
               onChange={(e) => handleNumberChange('maxRosterSize', e.target.value)}
             />
@@ -98,7 +98,7 @@ export default function TeamingConfiguration({
               type="number"
               min="1"
               placeholder="Auto"
-              className="w-full bg-bg-base border border-border-subtle rounded-lg px-3 py-2 text-text-primary focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+              className="w-full bg-bg-surface border border-border-subtle rounded-lg px-3 py-2 text-text-primary focus:ring-2 focus:ring-blue-500 outline-none transition-all"
               value={config?.minTeams ?? ''}
               onChange={(e) => handleNumberChange('minTeams', e.target.value)}
             />
@@ -115,7 +115,7 @@ export default function TeamingConfiguration({
               type="number"
               min="1"
               placeholder="Auto"
-              className="w-full bg-bg-base border border-border-subtle rounded-lg px-3 py-2 text-text-primary focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+              className="w-full bg-bg-surface border border-border-subtle rounded-lg px-3 py-2 text-text-primary focus:ring-2 focus:ring-blue-500 outline-none transition-all"
               value={config?.maxTeams ?? ''}
               onChange={(e) => handleNumberChange('maxTeams', e.target.value)}
             />
@@ -135,7 +135,7 @@ export default function TeamingConfiguration({
               type="number"
               min="1"
               placeholder="Auto"
-              className="flex-1 bg-bg-base border border-border-subtle rounded-lg px-3 py-2 text-text-primary focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+              className="flex-1 bg-bg-surface border border-border-subtle rounded-lg px-3 py-2 text-text-primary focus:ring-2 focus:ring-blue-500 outline-none transition-all"
               value={config?.teamCountOverride ?? ''}
               onChange={(e) => handleNumberChange('teamCountOverride', e.target.value)}
             />
@@ -164,7 +164,7 @@ export default function TeamingConfiguration({
               id="random-seed"
               type="text"
               placeholder="e.g. 12345"
-              className="w-full bg-bg-base border border-border-subtle rounded-lg px-3 py-2 text-text-primary focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+              className="w-full bg-bg-surface border border-border-subtle rounded-lg px-3 py-2 text-text-primary focus:ring-2 focus:ring-blue-500 outline-none transition-all"
               value={config?.seed || ''}
               onChange={(e) => handleTextChange('seed', e.target.value)}
             />

@@ -190,7 +190,7 @@ export default function AdminReportingDashboard() {
     'var(--color-primary)',
     'var(--color-status-success)',
     'var(--color-text-accent)',
-    'var(--color-primary-400)',
+    'var(--color-brand-400)',
     'var(--color-status-warning)',
   ];
 
@@ -228,7 +228,7 @@ export default function AdminReportingDashboard() {
       {/* Metric Cards Top Row */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div
-          className="bg-bg-surface border border-border-highlight rounded-xl p-6 shadow-md relative overflow-hidden group bg-bg-card"
+          className="bg-bg-surface border border-border-highlight rounded-xl p-6 shadow-md relative overflow-hidden group bg-bg-surface"
           data-testid="metric-card-total-players"
         >
           <div className="absolute top-0 right-0 w-32 h-32 bg-brand-glow rounded-full blur-3xl -mr-10 -mt-10 transition-transform group-hover:scale-110" />
@@ -246,7 +246,7 @@ export default function AdminReportingDashboard() {
           </div>
         </div>
         <div
-          className="bg-bg-surface border border-border-highlight rounded-xl p-6 shadow-md relative overflow-hidden group bg-bg-card"
+          className="bg-bg-surface border border-border-highlight rounded-xl p-6 shadow-md relative overflow-hidden group bg-bg-surface"
           data-testid="metric-card-active-teams"
         >
           <div className="absolute top-0 right-0 w-32 h-32 bg-status-success-bg rounded-full blur-3xl -mr-10 -mt-10 transition-transform group-hover:scale-110" />
@@ -264,7 +264,7 @@ export default function AdminReportingDashboard() {
           </div>
         </div>
         <div
-          className="bg-bg-surface border border-border-highlight rounded-xl p-6 shadow-md relative overflow-hidden group bg-bg-card"
+          className="bg-bg-surface border border-border-highlight rounded-xl p-6 shadow-md relative overflow-hidden group bg-bg-surface"
           data-testid="metric-card-staff-admins"
         >
           <div className="absolute top-0 right-0 w-32 h-32 bg-brand-glow rounded-full blur-3xl -mr-10 -mt-10 transition-transform group-hover:scale-110" />

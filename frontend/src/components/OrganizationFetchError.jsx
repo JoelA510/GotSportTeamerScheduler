@@ -28,7 +28,7 @@ export default function OrganizationFetchError({ error, onRetry }) {
     : 'If the problem persists, try signing out and back in.';
 
   return (
-    <div className="min-h-screen bg-bg-main flex items-center justify-center p-6 animate-fadeIn">
+    <div className="min-h-screen bg-bg-app flex items-center justify-center p-6 animate-fadeIn">
       <div className="max-w-md w-full glass-panel-premium p-10 space-y-6">
         <div className="flex items-start gap-4">
           <div className="p-3 bg-red-500/10 text-red-400 rounded-2xl shrink-0">

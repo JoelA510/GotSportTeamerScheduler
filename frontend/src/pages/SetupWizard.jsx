@@ -162,7 +162,7 @@ export default function SetupWizard() {
   return (
     <main
       role="main"
-      className="min-h-screen bg-bg-main flex items-center justify-center p-6 animate-fadeIn"
+      className="min-h-screen bg-bg-app flex items-center justify-center p-6 animate-fadeIn"
     >
       <div className="max-w-3xl w-full bg-bg-surface border border-border-subtle rounded-3xl shadow-md overflow-hidden flex flex-col min-h-[600px]">
         {/* Header / Progress */}

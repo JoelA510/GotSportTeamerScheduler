@@ -415,7 +415,7 @@ export default function FieldManagementPage() {
                   {!isAddingLocation && (
                     <button
                       onClick={() => setIsAddingLocation(true)}
-                      className="text-xs text-brand-400 hover:text-brand-300 flex items-center"
+                      className="text-xs text-brand-400 hover:text-brand-400 flex items-center"
                     >
                       <Plus size={12} className="mr-1" /> Add New Location
                     </button>

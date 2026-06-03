@@ -28,7 +28,7 @@ export default function TeamScheduleView({ assignments, teamId, timezone }) {
         return (
           <div
             key={`${game.slotId}-${index}`}
-            className="flex justify-between items-center p-3 bg-bg-surface border border-border-subtle rounded-md hover:border-border-default transition-colors"
+            className="flex justify-between items-center p-3 bg-bg-surface border border-border-subtle rounded-md hover:border-border-subtle transition-colors"
           >
             <div>
               <div className="font-medium text-text-primary">
@@ -41,7 +41,7 @@ export default function TeamScheduleView({ assignments, teamId, timezone }) {
                 {dateStr} • {formatTime(game.start, timezone)}
               </div>
             </div>
-            <div className="text-xs font-mono text-text-muted bg-bg-base px-2 py-1 rounded">
+            <div className="text-xs font-mono text-text-muted bg-bg-surface px-2 py-1 rounded">
               Field {game.fieldId}
             </div>
           </div>
