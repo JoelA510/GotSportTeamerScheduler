@@ -208,7 +208,7 @@ const captureCoachLeadsForImport = async ({
       leads_submitted: 0,
       message: err.message,
     };
-    addLog(`Warning: Coach lead capture failed: ${err.message}`);
+    addLog(`Coach leads were NOT saved (players still imported): ${err.message}`);
     await persistCoachLeadSummary({
       importJobId,
       summary,
@@ -242,7 +242,7 @@ const materializeBuddyPairsForImport = async ({ importJobId, addLog }) => {
       status: 'failed',
       message: err.message,
     };
-    addLog(`Warning: Buddy pair materialization failed: ${err.message}`);
+    addLog(`Buddy pairs were NOT saved (players still imported): ${err.message}`);
     return summary;
   }
 };
@@ -520,7 +520,7 @@ export function ImportProvider({ children }) {
       localStorage.setItem('importStatus', status);
       addLog(
         status === 'completed_with_warnings'
-          ? `Import for ${type} applied with warnings.`
+          ? `Import for ${type} applied with warnings — check the import log; some related data may not have been saved.`
           : `Import for ${type} applied successfully.`
       );
 
@@ -878,6 +878,26 @@ export function ImportProvider({ children }) {
                   if (coachLeadSummary.status !== 'completed') {
                     effectiveStatus = 'completed_with_warnings';
                   }
+                }
+
+                // Surface genuine sub-step failures distinctly from benign partial
+                // warnings. Players are already persisted, so we keep the import
+                // successful, but we must not let a swallowed RPC failure look like
+                // a clean success — record what did NOT save so it can be retried.
+                const incompleteSecondarySteps = [];
+                if (buddyPairSummary?.status === 'failed')
+                  incompleteSecondarySteps.push('buddy pairs');
+                if (coachLeadSummary?.status === 'failed')
+                  incompleteSecondarySteps.push('coach leads');
+                if (incompleteSecondarySteps.length > 0) {
+                  effectiveStatus = 'completed_with_warnings';
+                  persistenceResult = {
+                    ...(persistenceResult || {}),
+                    incomplete_steps: incompleteSecondarySteps,
+                  };
+                  addLog(
+                    `Players were imported, but these steps did NOT save and can be retried: ${incompleteSecondarySteps.join(', ')}.`
+                  );
                 }
               } else if (type === 'coaches') {
                 addLog('Applying validated coaches to the coach database...');

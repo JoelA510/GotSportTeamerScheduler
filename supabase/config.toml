@@ -404,3 +404,32 @@ s3_secret_key = "env(S3_SECRET_KEY)"
 # declarative_schema_path = "./database"
 # JSON string passed through to pg-delta SQL formatting.
 # format_options = "{\"keywordCase\":\"upper\",\"indent\":2,\"maxWidth\":80,\"commaStyle\":\"trailing\"}"
+
+# ── Edge Functions ───────────────────────────────────────────
+# Per-function settings so `supabase functions deploy` (bulk, run from CI) is
+# deterministic and matches the live configuration. calendar-feed is
+# intentionally public (no JWT); auto-scheduler and fairness-scoring resolve
+# `zod` via the shared import map. Without these, a bulk deploy would reset
+# every function to verify_jwt=true (breaking calendar-feed) and drop the maps.
+[functions.calendar-feed]
+verify_jwt = false
+
+[functions.import-validation]
+verify_jwt = true
+
+[functions.team-persistence]
+verify_jwt = true
+
+[functions.practice-persistence]
+verify_jwt = true
+
+[functions.game-persistence]
+verify_jwt = true
+
+[functions.auto-scheduler]
+verify_jwt = true
+import_map = "./functions/import_map.json"
+
+[functions.fairness-scoring]
+verify_jwt = true
+import_map = "./functions/import_map.json"
