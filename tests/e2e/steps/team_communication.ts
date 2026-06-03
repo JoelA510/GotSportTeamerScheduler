@@ -210,13 +210,12 @@ When(
     await btn.scrollIntoViewIfNeeded();
     await page.waitForTimeout(150);
     await btn.click();
-    const isActive = async () =>
-      (await btn.getAttribute('class'))?.includes('shadow-glow') ?? false;
+    const isActive = async () => (await btn.getAttribute('class'))?.includes('scale-105') ?? false;
     if (!(await isActive())) {
       await expect(btn).toBeEnabled({ timeout: 10000 });
       await btn.click();
     }
-    await expect(btn).toHaveClass(/shadow-glow/, { timeout: 10000 });
+    await expect(btn).toHaveClass(/scale-105/, { timeout: 10000 });
 
     // CRITICAL FIX: Allow the mock Supabase client and React state to settle
     // before proceeding to the next click, preventing read-modify-write race conditions.
@@ -240,7 +239,7 @@ Then(
 
     // Check that it does NOT have grayscale (meaning it is active)
     await expect(button).not.toHaveClass(/grayscale/, { timeout: 10000 });
-    await expect(button).toHaveClass(/shadow-glow/, { timeout: 10000 });
+    await expect(button).toHaveClass(/scale-105/, { timeout: 10000 });
   }
 );
 

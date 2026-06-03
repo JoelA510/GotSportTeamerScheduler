@@ -36,8 +36,8 @@ function ConflictItem({ warning, onConflictClick }) {
       type="button"
       onClick={() => onConflictClick?.(warning)}
       disabled={!onConflictClick}
-      className={`font-mono text-sm bg-black/20 p-3 rounded-lg border flex items-center justify-between w-full text-left transition-colors ${
-        onConflictClick ? 'cursor-pointer hover:bg-black/30' : 'cursor-default'
+      className={`font-mono text-sm bg-bg-glass p-3 rounded-lg border flex items-center justify-between w-full text-left transition-colors ${
+        onConflictClick ? 'cursor-pointer hover:bg-bg-surface-hover' : 'cursor-default'
       } ${severity === 'error' ? 'border-status-error/30' : 'border-status-warning/30'}`}
       data-testid={`conflict-item-${warning.type}`}
     >
@@ -83,7 +83,7 @@ export default function GameConflictBanner({ warnings, onConflictClick = undefin
 
   return (
     <div
-      className="bg-status-error-bg backdrop-blur-md text-white p-4 border border-status-error rounded-xl mb-6 flex flex-col gap-2 shadow-[0_0_30px_rgba(239,68,68,0.3)] animate-fadeIn"
+      className="bg-status-error-bg text-text-primary p-4 border border-status-error rounded-xl mb-6 flex flex-col gap-2 shadow-[0_0_30px_rgba(239,68,68,0.3)] animate-fadeIn"
       data-testid="game-conflict-banner"
       role="alert"
     >

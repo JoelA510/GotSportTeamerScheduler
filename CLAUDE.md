@@ -175,20 +175,23 @@ Permissions are defined in `frontend/src/constants/permissions.js` and enforced 
 
 ---
 
-## 6. Design System — "Deep Space Glass"
+## 6. Design System — Flat Light Theme
 
-Defined in `frontend/src/index.css`. Themes are controlled via `data-theme` attribute on `:root`:
-
-- **`dark`** (default) — Deep navy backgrounds, sky-blue accents
-- **`light`** — Slate/white backgrounds, ocean-blue accents
-- **`party`** — Purple/fuchsia backgrounds, pink accents
-- **`club`** — Dynamic club branding (with `data-club-mode` light/dark sub-modes)
+Defined in `frontend/src/index.css`. The app uses a **single, flat light theme**.
+All design tokens live on `:root` — there is **no `data-theme` attribute, no theme
+switcher, and no per-org (club) branding**. (The app previously shipped a
+multi-theme "Deep Space Glass" system — dark/light/party/club with a frosted-glass
+aesthetic — which has been removed in favor of a clean, flat light look.)
 
 ### CSS Utilities (always prefer these over custom styles)
 
-- `.glass-panel` / `.glass-panel-premium` — Frosted glass containers
-- `.card-glass` — Inner card surfaces
-- `.glass-button` / `.glass-button-secondary` — Interactive buttons
+The `.glass-*` class names are retained for compatibility but now render **flat**
+(solid surfaces, 1px borders, subtle shadows — no `backdrop-filter`, gradients, or
+glow):
+
+- `.glass-panel` / `.glass-panel-premium` / `.glass-panel-enterprise` — Flat card/panel containers
+- `.card-glass` — Inner (subtly recessed) card surfaces
+- `.glass-button` / `.glass-button-secondary` — Interactive buttons (solid primary / outlined secondary)
 - `.glass-input` — Form inputs
 - `.text-display` — Display typography (Outfit font)
 - `.text-accent` / `.text-muted` — Text color utilities
@@ -196,17 +199,17 @@ Defined in `frontend/src/index.css`. Themes are controlled via `data-theme` attr
 
 ### Design Tokens (CSS Variables)
 
-All colors use CSS custom properties that auto-switch with theme:
+All colors use CSS custom properties defined once on `:root`:
 
 - Backgrounds: `var(--color-bg-app)`, `var(--color-bg-surface)`, `var(--color-bg-glass)`
 - Text: `var(--color-text-primary)`, `var(--color-text-secondary)`, `var(--color-text-muted)`, `var(--color-text-accent)`
 - Brand: `var(--color-primary)`, `var(--color-primary-400)`, `var(--color-primary-600)`
 - Status: `var(--color-status-success)`, `var(--color-status-warning)`, `var(--color-status-error)`
-- Effects: `var(--shadow-soft)`, `var(--shadow-glow)`, `var(--backdrop-blur)`
+- Effects: `var(--shadow-soft)`, `var(--shadow-md)` (`--shadow-glow` / `--backdrop-blur` are kept as `none` for compatibility)
 - Spacing: `var(--space-1)` through `var(--space-16)` (4px grid)
 - Radius: `var(--radius-sm)` through `var(--radius-full)`
 
-**Do NOT introduce new color values or inline style overrides** — update shared tokens in `index.css` instead.
+**Do NOT introduce new color values, dark-theme styles, or inline style overrides** — update shared tokens in `index.css` instead. For dark-era Tailwind overlays, use semantic tokens (`bg-bg-surface`, `border-border-subtle`, `text-text-*`) rather than `*-white/NN` literals, which are invisible on the light theme.
 
 ---
 

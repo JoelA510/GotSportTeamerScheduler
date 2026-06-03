@@ -33,10 +33,6 @@ vi.mock('../frontend/src/contexts/ThemeContext.jsx', () => ({
   ThemeProvider: ({ children }) => children,
 }));
 
-vi.mock('../frontend/src/components/ThemeToggle.jsx', () => ({
-  default: () => null,
-}));
-
 vi.mock('../frontend/src/components/auth/ShadowBanner.jsx', () => ({
   default: () => null,
 }));

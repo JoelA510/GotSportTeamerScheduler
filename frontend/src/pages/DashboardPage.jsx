@@ -154,7 +154,7 @@ export default function DashboardPage() {
                     {readinessScore}%
                   </span>
                 </div>
-                <div className="w-full bg-white/5 h-2 rounded-full overflow-hidden">
+                <div className="w-full bg-bg-glass h-2 rounded-full overflow-hidden">
                   <div
                     className={`h-full transition-all duration-500 ${readinessScore >= 70 ? 'bg-green-500' : 'bg-amber-500'}`}
                     style={{ width: `${readinessScore}%` }}
@@ -214,7 +214,7 @@ function StatusItem({ icon, label, status, isReady }) {
       <div className="flex items-center gap-3">
         <div
           className={`p-2 rounded-md transition-colors ${
-            isReady ? 'bg-green-500/10 text-green-400' : 'bg-white/5 text-text-muted'
+            isReady ? 'bg-green-500/10 text-green-400' : 'bg-bg-glass text-text-muted'
           }`}
         >
           {icon}
@@ -225,7 +225,7 @@ function StatusItem({ icon, label, status, isReady }) {
       </div>
       <span
         className={`text-xs font-semibold px-2 py-1 rounded-full ${
-          isReady ? 'bg-green-500/10 text-green-400' : 'bg-white/5 text-text-muted'
+          isReady ? 'bg-green-500/10 text-green-400' : 'bg-bg-glass text-text-muted'
         }`}
       >
         {status}

@@ -90,7 +90,7 @@ export default function TeamOverviewPanel({ totals, divisions, generatedAt, time
                     {Math.round((division.playersAssigned / (division.totalTeams * 12)) * 100)}%
                   </span>
                 </div>
-                <div className="w-full bg-white/5 h-1.5 rounded-full overflow-hidden">
+                <div className="w-full bg-bg-glass h-1.5 rounded-full overflow-hidden">
                   <div
                     className="h-full bg-brand-500 rounded-full"
                     style={{

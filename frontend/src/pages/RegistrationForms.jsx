@@ -126,7 +126,7 @@ export default function RegistrationForms() {
           </Button>
         </div>
 
-        <div className="bg-bg-surface border border-border-subtle rounded-2xl p-8 shadow-xl space-y-6">
+        <div className="bg-bg-surface border border-border-subtle rounded-2xl p-8 shadow-md space-y-6">
           <div className="space-y-4">
             <div>
               <label

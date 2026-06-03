@@ -158,10 +158,7 @@ export default function Sidebar({ isOpen, toggleSidebar }) {
     <>
       {/* Overlay for mobile */}
       {isOpen && (
-        <div
-          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40 md:hidden"
-          onClick={toggleSidebar}
-        />
+        <div className="fixed inset-0 bg-black/50 z-40 md:hidden" onClick={toggleSidebar} />
       )}
 
       <aside
@@ -176,7 +173,7 @@ export default function Sidebar({ isOpen, toggleSidebar }) {
       >
         {/* Logo Area */}
         <div className="p-6 border-b border-border-subtle flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-brand-600 to-brand-400 flex items-center justify-center shadow-lg shadow-brand-glow">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-brand-600 to-brand-400 flex items-center justify-center shadow-lg">
             <span className="text-white font-bold text-xl">S</span>
           </div>
           <div>
@@ -214,7 +211,7 @@ export default function Sidebar({ isOpen, toggleSidebar }) {
             </button>
 
             {isOrgMenuOpen && organizations.length > 0 && (
-              <div className="absolute top-full left-0 right-0 mt-1 bg-bg-surface border border-border-subtle rounded-lg shadow-xl overflow-hidden z-50 backdrop-blur-xl">
+              <div className="absolute top-full left-0 right-0 mt-1 bg-bg-surface border border-border-subtle rounded-lg shadow-md overflow-hidden z-50">
                 {organizations.map((member) => {
                   const org = member.organizations;
                   const isSelected = currentOrganization?.id === org?.id;
@@ -264,7 +261,7 @@ export default function Sidebar({ isOpen, toggleSidebar }) {
             </button>
 
             {isSeasonMenuOpen && availableSeasons.length > 0 && (
-              <div className="absolute top-full left-0 right-0 mt-1 bg-bg-surface border border-border-subtle rounded-lg shadow-xl overflow-hidden z-50 backdrop-blur-xl">
+              <div className="absolute top-full left-0 right-0 mt-1 bg-bg-surface border border-border-subtle rounded-lg shadow-md overflow-hidden z-50">
                 {availableSeasons.map((season) => {
                   const isSelected = currentSeasonSetting?.id === season.id;
                   return (
@@ -388,7 +385,7 @@ export default function Sidebar({ isOpen, toggleSidebar }) {
               role="menu"
               aria-label="User account menu"
               onKeyDown={handleUserMenuKeyDown}
-              className="absolute bottom-full left-4 right-4 mb-2 bg-bg-surface border border-border-subtle rounded-xl shadow-xl overflow-hidden z-50"
+              className="absolute bottom-full left-4 right-4 mb-2 bg-bg-surface border border-border-subtle rounded-xl shadow-md overflow-hidden z-50"
             >
               <NavLink
                 to="/account"
@@ -427,7 +424,7 @@ export default function Sidebar({ isOpen, toggleSidebar }) {
               href="https://github.com/JoelA510/SquadLogic/blob/main/docs/operations/ENVIRONMENT.md"
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold backdrop-blur-xl border transition-colors hover:border-amber-400/50"
+              className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold border transition-colors hover:border-amber-400/50"
               style={{
                 color: '#fbbf24',
                 background: 'rgba(251, 191, 36, 0.08)',

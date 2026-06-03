@@ -37,8 +37,8 @@ export default function AutoSchedulerPanel({
             <Zap size={20} className="text-cyan-400" aria-hidden="true" />
           </div>
           <div>
-            <h3 className="text-lg font-display font-bold text-white">{title}</h3>
-            <p className="text-sm text-white/50">{description}</p>
+            <h3 className="text-lg font-display font-bold text-text-primary">{title}</h3>
+            <p className="text-sm text-text-muted">{description}</p>
           </div>
         </div>
 
@@ -84,31 +84,31 @@ export default function AutoSchedulerPanel({
       {/* Progress indicator */}
       {isRunning && progress && (
         <div
-          className="mt-4 p-4 rounded-lg bg-white/5 border border-white/10"
+          className="mt-4 p-4 rounded-lg bg-bg-glass border border-border-subtle"
           role="status"
           aria-live="polite"
           aria-label="Optimization progress"
         >
           <div className="flex items-center gap-3 mb-2">
             <Loader2 size={16} className="text-cyan-400 animate-spin" aria-hidden="true" />
-            <span className="text-sm text-white/70">{runningLabel}</span>
+            <span className="text-sm text-text-secondary">{runningLabel}</span>
           </div>
           <div className="grid grid-cols-3 gap-4 text-center">
             <div>
-              <div className="text-xs text-white/40 uppercase tracking-wider">Iterations</div>
-              <div className="text-lg font-display font-bold text-white">
+              <div className="text-xs text-text-muted uppercase tracking-wider">Iterations</div>
+              <div className="text-lg font-display font-bold text-text-primary">
                 {progress.iteration?.toLocaleString() ?? '—'}
               </div>
             </div>
             <div>
-              <div className="text-xs text-white/40 uppercase tracking-wider">Best Score</div>
+              <div className="text-xs text-text-muted uppercase tracking-wider">Best Score</div>
               <div className="text-lg font-display font-bold text-cyan-400">
                 {progress.bestScore != null ? `${(progress.bestScore * 100).toFixed(1)}%` : '—'}
               </div>
             </div>
             <div>
-              <div className="text-xs text-white/40 uppercase tracking-wider">Elapsed</div>
-              <div className="text-lg font-display font-bold text-white">
+              <div className="text-xs text-text-muted uppercase tracking-wider">Elapsed</div>
+              <div className="text-lg font-display font-bold text-text-primary">
                 {progress.elapsedMs != null ? `${(progress.elapsedMs / 1000).toFixed(1)}s` : '—'}
               </div>
             </div>
@@ -129,21 +129,23 @@ export default function AutoSchedulerPanel({
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-center">
             <div>
-              <div className="text-xs text-white/40 uppercase tracking-wider">{assignedLabel}</div>
-              <div className="text-lg font-display font-bold text-white">
+              <div className="text-xs text-text-muted uppercase tracking-wider">
+                {assignedLabel}
+              </div>
+              <div className="text-lg font-display font-bold text-text-primary">
                 {result.assignments?.length ?? 0}
               </div>
             </div>
             <div>
-              <div className="text-xs text-white/40 uppercase tracking-wider">
+              <div className="text-xs text-text-muted uppercase tracking-wider">
                 {unassignedLabel}
               </div>
-              <div className="text-lg font-display font-bold text-white">
+              <div className="text-lg font-display font-bold text-text-primary">
                 {result.unassigned?.length ?? 0}
               </div>
             </div>
             <div>
-              <div className="text-xs text-white/40 uppercase tracking-wider">Score</div>
+              <div className="text-xs text-text-muted uppercase tracking-wider">Score</div>
               <div className="text-lg font-display font-bold text-cyan-400">
                 {result.optimization?.bestScore != null
                   ? `${(result.optimization.bestScore * 100).toFixed(1)}%`
@@ -151,7 +153,7 @@ export default function AutoSchedulerPanel({
               </div>
             </div>
             <div>
-              <div className="text-xs text-white/40 uppercase tracking-wider">Improvement</div>
+              <div className="text-xs text-text-muted uppercase tracking-wider">Improvement</div>
               <div className="text-lg font-display font-bold text-emerald-400">
                 {result.optimization?.improvement != null
                   ? `+${(result.optimization.improvement * 100).toFixed(1)}%`
@@ -160,7 +162,7 @@ export default function AutoSchedulerPanel({
             </div>
           </div>
           {result.optimization && (
-            <p className="mt-3 text-xs text-white/40">
+            <p className="mt-3 text-xs text-text-muted">
               {result.optimization.iterations?.toLocaleString()} iterations in{' '}
               {(result.optimization.elapsedMs / 1000).toFixed(1)}s
               {result.optimization.restarts > 0 &&

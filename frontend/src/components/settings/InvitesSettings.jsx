@@ -273,7 +273,7 @@ export default function InvitesSettings() {
           {invites.map((inv) => {
             const isExpired = inv.expires_at && new Date(inv.expires_at) < new Date();
             const status = inv.used_at
-              ? { label: 'Redeemed', color: 'text-text-muted', bg: 'bg-white/5' }
+              ? { label: 'Redeemed', color: 'text-text-muted', bg: 'bg-bg-glass' }
               : isExpired
                 ? { label: 'Expired', color: 'text-amber-400', bg: 'bg-amber-500/10' }
                 : { label: 'Active', color: 'text-green-400', bg: 'bg-green-500/10' };

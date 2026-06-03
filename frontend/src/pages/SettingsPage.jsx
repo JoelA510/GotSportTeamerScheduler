@@ -57,7 +57,7 @@ export default function SettingsPage() {
       <div
         role="tablist"
         aria-label="Organization settings tabs"
-        className="flex border-b border-white/5 mb-8 overflow-x-auto scrollbar-hide"
+        className="flex border-b border-border-subtle mb-8 overflow-x-auto scrollbar-hide"
       >
         {tabs.map((tab) => (
           <button
@@ -109,7 +109,7 @@ export default function SettingsPage() {
         id={`panel-${activeTab}`}
         role="tabpanel"
         aria-labelledby={`tab-${activeTab}`}
-        className="bg-bg-surface p-8 rounded-2xl border border-white/5 shadow-xl glass-effect min-h-[400px]"
+        className="bg-bg-surface p-8 rounded-2xl border border-border-subtle shadow-md glass-effect min-h-[400px]"
       >
         {renderContent()}
       </div>

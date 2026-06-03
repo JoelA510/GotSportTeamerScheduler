@@ -11,7 +11,7 @@ import { logger } from '../lib/logger.js';
 function ErrorFallback({ error: _error, resetError: _resetError }) {
   return (
     <div className="min-h-screen bg-bg-app flex items-center justify-center p-4">
-      <div className="max-w-md w-full bg-bg-surface/50 backdrop-blur-xl border border-border-subtle rounded-3xl p-8 text-center shadow-2xl">
+      <div className="max-w-md w-full bg-bg-surface/50 border border-border-subtle rounded-3xl p-8 text-center shadow-md">
         <div className="w-20 h-20 bg-status-error-bg rounded-2xl flex items-center justify-center mx-auto mb-6">
           <ShieldAlert className="text-status-error" size={40} />
         </div>
@@ -23,7 +23,7 @@ function ErrorFallback({ error: _error, resetError: _resetError }) {
         </p>
         <button
           onClick={() => (window.location.href = '/')}
-          className="w-full bg-brand-600 hover:bg-brand-500 text-white font-semibold py-3 px-6 rounded-xl transition-all shadow-lg shadow-brand-glow"
+          className="w-full bg-brand-600 hover:bg-brand-500 text-white font-semibold py-3 px-6 rounded-xl transition-all shadow-lg"
         >
           Return Home
         </button>

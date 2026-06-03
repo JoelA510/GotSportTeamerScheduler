@@ -126,7 +126,7 @@ export default function FeatureFlagSettings() {
               className={`p-4 rounded-xl border transition-all ${
                 isEnabled
                   ? 'bg-brand-glow/5 border-brand-500/30'
-                  : 'bg-bg-surface border-white/5 opacity-80'
+                  : 'bg-bg-surface border-border-subtle opacity-80'
               }`}
             >
               <div className="flex items-start justify-between gap-4">
@@ -154,7 +154,7 @@ export default function FeatureFlagSettings() {
                   aria-describedby={descriptionId}
                   onClick={() => handleToggle(flag)}
                   className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-bg-surface ${
-                    isEnabled ? 'bg-brand-500' : 'bg-white/10'
+                    isEnabled ? 'bg-brand' : 'bg-border-subtle'
                   }`}
                 >
                   <span
@@ -170,7 +170,7 @@ export default function FeatureFlagSettings() {
         })}
       </div>
 
-      <div className="flex justify-end gap-3 pt-6 border-t border-white/10 mt-8">
+      <div className="flex justify-end gap-3 pt-6 border-t border-border-subtle mt-8">
         <Button
           variant="secondary"
           size="md"

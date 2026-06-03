@@ -160,11 +160,11 @@ export function SchemaBuilder() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-white tracking-tight flex items-center gap-3">
+          <h2 className="text-2xl font-bold text-text-primary tracking-tight flex items-center gap-3">
             <Database className="text-sky-400 w-7 h-7" aria-hidden="true" />
             Dynamic Schema Architect
           </h2>
-          <p className="text-white/40 text-sm mt-1">
+          <p className="text-text-muted text-sm mt-1">
             Define organization-scoped custom attributes with enterprise validation.
           </p>
         </div>
@@ -178,7 +178,7 @@ export function SchemaBuilder() {
 
       {/* Tabs */}
       <div
-        className="flex p-1 bg-white/5 border border-white/10 rounded-2xl w-fit"
+        className="flex p-1 bg-bg-glass border border-border-subtle rounded-2xl w-fit"
         role="tablist"
         aria-label="Schema entity tabs"
         onKeyDown={handleTabKeyDown}
@@ -199,7 +199,7 @@ export function SchemaBuilder() {
             className={`flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-bold transition-all duration-300 ${
               activeTab === tab.id
                 ? 'bg-sky-500 text-white shadow-lg shadow-sky-500/20'
-                : 'text-white/40 hover:text-white/60 hover:bg-white/5'
+                : 'text-text-muted hover:text-text-primary hover:bg-bg-glass'
             }`}
           >
             <tab.icon className="w-4 h-4" aria-hidden="true" />
@@ -217,15 +217,15 @@ export function SchemaBuilder() {
         {/* Field List */}
         <div className="lg:col-span-2 glass-panel-enterprise p-6 space-y-6">
           <div className="flex items-center justify-between">
-            <h3 className="text-lg font-bold text-white">Current Attributes</h3>
-            <span className="text-[10px] font-bold text-white/20 uppercase tracking-widest">
+            <h3 className="text-lg font-bold text-text-primary">Current Attributes</h3>
+            <span className="text-[10px] font-bold text-text-muted uppercase tracking-widest">
               {Object.keys(schemas[activeTab]).length} Defined Fields
             </span>
           </div>
 
           <div className="space-y-3">
             {attributeEntries.length === 0 ? (
-              <div className="py-12 flex flex-col items-center justify-center text-white/20 border-2 border-dashed border-white/5 rounded-2xl">
+              <div className="py-12 flex flex-col items-center justify-center text-text-muted border-2 border-dashed border-border-subtle rounded-2xl">
                 <Settings className="w-12 h-12 mb-3 opacity-10" aria-hidden="true" />
                 <p className="text-sm font-medium">
                   No custom attributes defined for {activeTab}s.
@@ -235,12 +235,12 @@ export function SchemaBuilder() {
               attributeEntries.map(([name, type]) => (
                 <div
                   key={name}
-                  className="flex items-center justify-between p-4 rounded-xl bg-white/5 border border-white/5 group hover:border-white/20 transition-all duration-300"
+                  className="flex items-center justify-between p-4 rounded-xl bg-bg-glass border border-border-subtle group hover:border-border-highlight transition-all duration-300"
                 >
                   <div className="flex items-center gap-4">
                     <div className="w-2 h-2 rounded-full bg-sky-500 shadow-[0_0_8px_rgba(14,165,233,0.4)]" />
                     <div>
-                      <p className="text-sm font-bold text-white tracking-tight">{name}</p>
+                      <p className="text-sm font-bold text-text-primary tracking-tight">{name}</p>
                       <p className="text-[10px] font-bold text-sky-400/60 uppercase tracking-widest">
                         {type}
                       </p>
@@ -250,7 +250,7 @@ export function SchemaBuilder() {
                     type="button"
                     aria-label={`Remove ${name} ${activeTab} attribute`}
                     onClick={() => handleRemoveField(name)}
-                    className="p-2 text-white/20 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-bg-surface"
+                    className="p-2 text-text-muted hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-bg-surface"
                   >
                     <Trash2 className="w-4 h-4" aria-hidden="true" />
                   </button>
@@ -277,7 +277,7 @@ export function SchemaBuilder() {
         {/* Add Field Sidepanel */}
         <div className="space-y-6">
           <div className="glass-panel-enterprise p-6 space-y-6 border-indigo-500/10 bg-indigo-500/5">
-            <h3 className="text-lg font-bold text-white flex items-center gap-2">
+            <h3 className="text-lg font-bold text-text-primary flex items-center gap-2">
               <Plus className="w-5 h-5 text-indigo-400" aria-hidden="true" />
               New Attribute
             </h3>
@@ -286,7 +286,7 @@ export function SchemaBuilder() {
               <div>
                 <label
                   htmlFor="schema-field-name"
-                  className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-1.5 block"
+                  className="text-[10px] font-bold text-text-muted uppercase tracking-widest mb-1.5 block"
                 >
                   Field Identity
                 </label>
@@ -296,14 +296,14 @@ export function SchemaBuilder() {
                   placeholder="e.g. jersey_size"
                   value={newFieldName}
                   onChange={(e) => setNewFieldName(e.target.value)}
-                  className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:border-indigo-500/50 outline-none transition-all placeholder:text-white/10"
+                  className="w-full bg-bg-surface border border-border-subtle rounded-xl px-4 py-3 text-sm text-text-primary focus:border-indigo-500/50 outline-none transition-all placeholder:text-text-muted"
                 />
               </div>
 
               <div>
                 <label
                   htmlFor="schema-field-type"
-                  className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-1.5 block"
+                  className="text-[10px] font-bold text-text-muted uppercase tracking-widest mb-1.5 block"
                 >
                   Data Structure
                 </label>
@@ -311,7 +311,7 @@ export function SchemaBuilder() {
                   id="schema-field-type"
                   value={newFieldType}
                   onChange={(e) => setNewFieldType(e.target.value)}
-                  className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:border-indigo-500/50 outline-none transition-all"
+                  className="w-full bg-bg-surface border border-border-subtle rounded-xl px-4 py-3 text-sm text-text-primary focus:border-indigo-500/50 outline-none transition-all"
                 >
                   <option value="string">String (Text)</option>
                   <option value="number">Number (Decimal/Integer)</option>
@@ -337,11 +337,11 @@ export function SchemaBuilder() {
             </div>
           </div>
 
-          <div className="p-5 rounded-2xl bg-white/5 border border-white/5">
+          <div className="p-5 rounded-2xl bg-bg-glass border border-border-subtle">
             <div className="flex gap-3">
               <Shield className="w-5 h-5 text-sky-400 shrink-0" aria-hidden="true" />
-              <p className="text-[11px] leading-relaxed text-white/60">
-                <strong className="text-white">Governance Note:</strong> Changes to schema
+              <p className="text-[11px] leading-relaxed text-text-muted">
+                <strong className="text-text-primary">Governance Note:</strong> Changes to schema
                 definitions are audited in{' '}
                 <code className="text-sky-300">organization_schema_history</code>. System fields are
                 immutable.

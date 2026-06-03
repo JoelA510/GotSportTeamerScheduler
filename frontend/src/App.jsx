@@ -11,7 +11,6 @@ import LoadingScreen from './components/LoadingScreen.jsx';
 import OrganizationFetchError from './components/OrganizationFetchError.jsx';
 import ProtectedRoute from './components/ProtectedRoute.jsx';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
-import ThemeToggle from './components/ThemeToggle.jsx';
 import { PERMISSIONS } from './constants/permissions.js';
 
 // Layouts
@@ -226,7 +225,6 @@ function AppContent() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>
-      <ThemeToggle />
     </Suspense>
   );
 }

@@ -5,7 +5,7 @@ import { formatDateTime } from '../utils/formatters.js';
 export default function PersistenceHistoryList({ history }) {
   return (
     <article
-      className="bg-white/5 border border-white/10 rounded-lg p-5 flex flex-col gap-2"
+      className="bg-bg-glass border border-border-subtle rounded-lg p-5 flex flex-col gap-2"
       aria-labelledby="persistence-history-heading"
     >
       <h3 className="text-base font-semibold text-blue-300 m-0" id="persistence-history-heading">
@@ -16,7 +16,7 @@ export default function PersistenceHistoryList({ history }) {
           {history.map((run) => (
             <li
               key={run.runId}
-              className="p-3 rounded-md bg-white/5 shadow-sm border border-white/5"
+              className="p-3 rounded-md bg-bg-glass shadow-sm border border-border-subtle"
             >
               <div className="flex justify-between mb-1">
                 <span className="text-blue-300 font-mono text-sm">{run.runId}</span>
@@ -28,13 +28,13 @@ export default function PersistenceHistoryList({ history }) {
                   {run.status.toUpperCase()}
                 </span>
               </div>
-              <p className="text-xs text-white/50 m-0">{formatDateTime(run.startedAt)}</p>
-              <p className="text-sm text-white/80 mt-1">Updated {run.updatedTeams} teams</p>
+              <p className="text-xs text-text-muted m-0">{formatDateTime(run.startedAt)}</p>
+              <p className="text-sm text-text-secondary mt-1">Updated {run.updatedTeams} teams</p>
             </li>
           ))}
         </ul>
       ) : (
-        <div className="p-8 text-center text-white/30 italic border border-dashed border-white/10 rounded-lg">
+        <div className="p-8 text-center text-text-muted italic border border-dashed border-border-subtle rounded-lg">
           No sync history available.
         </div>
       )}

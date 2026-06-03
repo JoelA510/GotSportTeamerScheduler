@@ -357,8 +357,8 @@ export function CalendarModal({ team, onClose }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-      <div className="bg-bg-app border border-border-subtle rounded-xl p-6 w-full max-w-md shadow-2xl">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="bg-bg-app border border-border-subtle rounded-xl p-6 w-full max-w-md shadow-md">
         <h3 className="text-xl font-bold text-text-primary mb-4">Calendar Subscription</h3>
         <label
           htmlFor="team-calendar-subscription-link"
@@ -450,7 +450,7 @@ function RsvpButton({ active, type, onClick }) {
       aria-pressed={active}
       className={`relative z-20 flex-1 flex flex-col items-center gap-1 p-2 rounded transition-all duration-200 ${
         active
-          ? `${config.bg} ${config.color} border-current shadow-glow scale-105`
+          ? `${config.bg} ${config.color} border-current scale-105`
           : 'bg-bg-surface/20 text-text-muted border-transparent grayscale hover:grayscale-0 hover:bg-bg-surface/40'
       } border`}
       title={config.label}

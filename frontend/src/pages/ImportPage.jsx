@@ -17,8 +17,8 @@ export default function ImportPage() {
   return (
     <div className="animate-fadeIn">
       <div className="mb-8">
-        <h1 className="text-3xl font-display font-bold text-white mb-2">Data Import</h1>
-        <p className="text-white/60">
+        <h1 className="text-3xl font-display font-bold text-text-primary mb-2">Data Import</h1>
+        <p className="text-text-muted">
           Upload player and coach data from GotSport CSVs to initialize the season.
         </p>
       </div>

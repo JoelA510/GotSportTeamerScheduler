@@ -69,7 +69,7 @@ export default function AuditLogPage() {
   const formatMetadata = (metadata) => {
     if (!metadata) return null;
     return (
-      <pre className="text-[10px] bg-black/20 p-2 rounded max-h-24 overflow-y-auto font-mono text-text-muted">
+      <pre className="text-[10px] bg-bg-glass p-2 rounded max-h-24 overflow-y-auto font-mono text-text-muted">
         {JSON.stringify(metadata, null, 2)}
       </pre>
     );
@@ -79,7 +79,7 @@ export default function AuditLogPage() {
     <div className="animate-fadeIn space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 py-2">
         <div>
-          <h1 className="text-3xl font-display font-bold text-white flex items-center gap-3">
+          <h1 className="text-3xl font-display font-bold text-text-primary flex items-center gap-3">
             <History className="text-primary-500" />
             Audit Explorer
           </h1>
@@ -88,16 +88,16 @@ export default function AuditLogPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-3 bg-white/5 backdrop-blur-md p-1.5 rounded-lg border border-white/10 shadow-lg">
+        <div className="flex items-center gap-3 bg-bg-glass p-1.5 rounded-lg border border-border-subtle shadow-lg">
           <History className="w-5 h-5 text-primary-500" />
-          <span className="text-sm font-medium text-white/90">
+          <span className="text-sm font-medium text-text-secondary">
             {totalCount.toLocaleString()} Total Events
           </span>
         </div>
       </div>
 
       {/* Filter Bar */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 bg-bg-card/40 backdrop-blur-xl border border-border-default/50 p-4 rounded-xl shadow-inner-glass">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 bg-bg-card/40 border border-border-default/50 p-4 rounded-xl shadow-inner-glass">
         <div className="relative">
           <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
           <select
@@ -156,11 +156,11 @@ export default function AuditLogPage() {
       </div>
 
       {/* Table Section */}
-      <div className="bg-bg-card/40 backdrop-blur-xl border border-border-default/50 rounded-xl overflow-hidden shadow-2xl relative">
+      <div className="bg-bg-card/40 border border-border-default/50 rounded-xl overflow-hidden shadow-md relative">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="border-b border-border-default/50 bg-white/5">
+              <tr className="border-b border-border-default/50 bg-bg-glass">
                 <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wider text-text-muted">
                   Timestamp
                 </th>
@@ -183,7 +183,7 @@ export default function AuditLogPage() {
                 Array.from({ length: 5 }).map((_, i) => (
                   <tr key={i} className="animate-pulse">
                     <td colSpan={5} className="px-6 py-8 h-16">
-                      <div className="h-4 bg-white/10 rounded w-full"></div>
+                      <div className="h-4 bg-bg-surface-hover rounded w-full"></div>
                     </td>
                   </tr>
                 ))
@@ -200,7 +200,7 @@ export default function AuditLogPage() {
                 logs.map((log) => {
                   const isImpersonated = !!log.metadata?.impersonated_by;
                   return (
-                    <tr key={log.id} className="hover:bg-white/5 transition-colors group">
+                    <tr key={log.id} className="hover:bg-bg-glass transition-colors group">
                       <td className="px-6 py-4 text-sm text-text-primary whitespace-nowrap">
                         {new Date(log.created_at).toLocaleString()}
                       </td>
@@ -248,7 +248,7 @@ export default function AuditLogPage() {
         </div>
 
         {/* Pagination Footer */}
-        <div className="px-6 py-4 bg-black/20 border-t border-border-default/50 flex items-center justify-between">
+        <div className="px-6 py-4 bg-bg-glass border-t border-border-default/50 flex items-center justify-between">
           <div className="text-xs text-text-muted">
             Showing{' '}
             <span className="font-semibold text-text-primary">{currentPage * PAGE_SIZE + 1}</span>{' '}
@@ -280,8 +280,8 @@ export default function AuditLogPage() {
                     onClick={() => setCurrentPage(pageNum)}
                     className={`w-8 h-8 rounded-md text-xs font-medium transition-all ${
                       currentPage === pageNum
-                        ? 'bg-primary-500 text-white shadow-lg shadow-primary-500/20'
-                        : 'text-text-muted hover:bg-white/10'
+                        ? 'bg-brand text-white shadow-md'
+                        : 'text-text-muted hover:bg-bg-surface-hover'
                     }`}
                   >
                     {pageNum + 1}

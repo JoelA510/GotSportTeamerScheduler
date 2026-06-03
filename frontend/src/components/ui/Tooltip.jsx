@@ -47,7 +47,7 @@ export default function Tooltip({
       <span
         id={tooltipId}
         role="tooltip"
-        className={`pointer-events-none absolute z-[100] max-w-[16rem] rounded-md border border-border-highlight bg-bg-surface px-3 py-2 text-xs leading-snug text-text-primary shadow-xl invisible opacity-0 transition-opacity duration-150 delay-150 group-hover/tooltip:visible group-hover/tooltip:opacity-100 group-focus-within/tooltip:visible group-focus-within/tooltip:opacity-100 ${SIDE_CLASSES[side]} ${tooltipClassName}`}
+        className={`pointer-events-none absolute z-[100] max-w-[16rem] rounded-md border border-border-highlight bg-bg-surface px-3 py-2 text-xs leading-snug text-text-primary shadow-md invisible opacity-0 transition-opacity duration-150 delay-150 group-hover/tooltip:visible group-hover/tooltip:opacity-100 group-focus-within/tooltip:visible group-focus-within/tooltip:opacity-100 ${SIDE_CLASSES[side]} ${tooltipClassName}`}
       >
         {content}
       </span>

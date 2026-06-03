@@ -18,7 +18,6 @@ import { PERMISSIONS } from '../constants/permissions.js';
 import Button from '../components/ui/Button.jsx';
 import { supabase } from '../lib/supabaseClient.js';
 import { logger } from '../lib/logger.js';
-import BrandingModule from '../components/settings/modules/BrandingModule.jsx';
 import { createWebCryptoId } from '../utils/webCryptoId.js';
 import { logSetupWizardTelemetry } from '../utils/setupTelemetry.js';
 
@@ -29,7 +28,7 @@ const ErrorBanner = ({ message, onRetry, onClose }) => (
   <div
     role="alert"
     aria-live="assertive"
-    className="mb-6 p-4 rounded-2xl bg-red-500/10 border border-red-500/20 backdrop-blur-xl animate-fadeIn flex items-start gap-4"
+    className="mb-6 p-4 rounded-2xl bg-red-500/10 border border-red-500/20 animate-fadeIn flex items-start gap-4"
   >
     <div className="p-2 bg-red-500/20 text-red-400 rounded-xl">
       <XCircle size={20} />
@@ -165,9 +164,9 @@ export default function SetupWizard() {
       role="main"
       className="min-h-screen bg-bg-main flex items-center justify-center p-6 animate-fadeIn"
     >
-      <div className="max-w-3xl w-full bg-bg-surface border border-white/5 rounded-3xl shadow-2xl overflow-hidden glass-effect flex flex-col min-h-[600px]">
+      <div className="max-w-3xl w-full bg-bg-surface border border-border-subtle rounded-3xl shadow-md overflow-hidden flex flex-col min-h-[600px]">
         {/* Header / Progress */}
-        <div className="p-8 border-b border-white/5 flex items-center justify-between">
+        <div className="p-8 border-b border-border-subtle flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-brand-500/20 text-brand-400 rounded-xl flex items-center justify-center">
               <Rocket size={24} />
@@ -184,14 +183,14 @@ export default function SetupWizard() {
             aria-valuenow={step}
             aria-valuemin={1}
             aria-valuemax={3}
-            aria-label={`Step ${step} of 3: ${step === 1 ? 'Branding' : step === 2 ? 'Architecture' : 'Launch'}`}
+            aria-label={`Step ${step} of 3: ${step === 1 ? 'Identity' : step === 2 ? 'Architecture' : 'Launch'}`}
             className="flex gap-2"
           >
             {[1, 2, 3].map((s) => (
               <div
                 key={s}
                 aria-hidden="true"
-                className={`h-1.5 w-12 rounded-full transition-all duration-500 ${s <= step ? 'bg-brand-400' : 'bg-white/10'}`}
+                className={`h-1.5 w-12 rounded-full transition-all duration-500 ${s <= step ? 'bg-brand-400' : 'bg-border-subtle'}`}
               />
             ))}
           </div>
@@ -217,8 +216,7 @@ export default function SetupWizard() {
                   Welcome to the Enterprise Tier
                 </h2>
                 <p className="text-text-muted">
-                  Refine your league&apos;s identity and branding before activating advanced
-                  features.
+                  Refine your league&apos;s identity before activating advanced features.
                 </p>
               </div>
 
@@ -233,9 +231,6 @@ export default function SetupWizard() {
                     onChange={(e) => setLocalLeagueName(e.target.value)}
                     className="w-full bg-bg-surface border border-border-subtle rounded-xl px-4 py-3 text-text-primary focus:outline-none focus:border-brand-400 transition-colors"
                   />
-                </div>
-                <div className="max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
-                  <BrandingModule />
                 </div>
               </div>
             </section>
@@ -267,11 +262,11 @@ export default function SetupWizard() {
                     className={`p-5 rounded-2xl border cursor-pointer transition-all flex items-start gap-4 ${
                       localFlags[flag]
                         ? 'bg-brand-glow/10 border-brand-500/40 shadow-lg shadow-brand-500/5'
-                        : 'bg-white/5 border-white/5 hover:border-white/20'
+                        : 'bg-bg-glass border-border-subtle hover:border-border-highlight'
                     }`}
                   >
                     <div
-                      className={`mt-1 p-2 rounded-lg ${localFlags[flag] ? 'bg-brand-500/20 text-brand-400' : 'bg-white/10 text-white/40'}`}
+                      className={`mt-1 p-2 rounded-lg ${localFlags[flag] ? 'bg-brand-500/20 text-brand-400' : 'bg-bg-surface-hover text-text-muted'}`}
                     >
                       <Shield size={20} />
                     </div>
@@ -291,7 +286,7 @@ export default function SetupWizard() {
                       onChange={() => handleToggle(flag)}
                     />
                     <div
-                      className={`w-12 h-6 rounded-full relative transition-colors ${localFlags[flag] ? 'bg-brand-500' : 'bg-white/10'}`}
+                      className={`w-12 h-6 rounded-full relative transition-colors ${localFlags[flag] ? 'bg-brand' : 'bg-border-subtle'}`}
                     >
                       <div
                         className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${localFlags[flag] ? 'translate-x-6' : 'translate-x-0'}`}
@@ -333,7 +328,7 @@ export default function SetupWizard() {
                 </p>
               </div>
 
-              <div className="p-6 bg-white/5 border border-white/5 rounded-2xl text-left space-y-4">
+              <div className="p-6 bg-bg-glass border border-border-subtle rounded-2xl text-left space-y-4">
                 <div className="flex justify-between items-center px-2">
                   <span className="text-sm font-medium text-text-secondary">
                     Selected Architectures
@@ -346,7 +341,7 @@ export default function SetupWizard() {
                   {ALL_FLAGS.filter((f) => localFlags[f]).map((f) => (
                     <div
                       key={f}
-                      className="text-[10px] text-text-muted truncate bg-white/5 p-2 rounded-lg border border-white/5"
+                      className="text-[10px] text-text-muted truncate bg-bg-glass p-2 rounded-lg border border-border-subtle"
                     >
                       {f.replace(/_/g, ' ')}
                     </div>
@@ -371,7 +366,7 @@ export default function SetupWizard() {
         </div>
 
         {/* Footer */}
-        <div className="p-8 border-t border-white/5 flex gap-4 bg-bg-surface/50">
+        <div className="p-8 border-t border-border-subtle flex gap-4 bg-bg-surface/50">
           {step > 1 && (
             <Button
               variant="secondary"
@@ -393,12 +388,7 @@ export default function SetupWizard() {
               <ChevronRight size={18} className="group-hover:translate-x-1 transition-transform" />
             </Button>
           ) : (
-            <Button
-              variant="primary"
-              onClick={finalizeSetup}
-              disabled={saving}
-              className="px-8 shadow-glow-brand"
-            >
+            <Button variant="primary" onClick={finalizeSetup} disabled={saving} className="px-8">
               {saving ? 'Finalizing...' : 'Complete Setup'}
             </Button>
           )}

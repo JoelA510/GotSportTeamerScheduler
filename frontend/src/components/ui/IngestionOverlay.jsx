@@ -46,19 +46,19 @@ export function IngestionOverlay() {
       }`}
     >
       <div
-        className={`glass-panel-enterprise p-0 overflow-hidden w-80 border border-white/10 ${
+        className={`glass-panel-enterprise p-0 overflow-hidden w-80 border border-border-subtle ${
           isImporting ? 'animate-squadlogic-pulse' : ''
         }`}
       >
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-white/5 bg-white/5">
+        <div className="flex items-center justify-between p-4 border-b border-border-subtle bg-bg-glass">
           <div className="flex items-center gap-3">
-            <div className={`p-2 rounded-lg bg-black/20 ${getStatusColor()}`}>
+            <div className={`p-2 rounded-lg bg-bg-glass ${getStatusColor()}`}>
               {getStatusIcon()}
             </div>
             <div>
-              <h3 className="text-sm font-bold text-white tracking-tight">{overlayTitle}</h3>
-              <p className="text-[10px] uppercase tracking-widest text-white/40 font-semibold">
+              <h3 className="text-sm font-bold text-text-primary tracking-tight">{overlayTitle}</h3>
+              <p className="text-[10px] uppercase tracking-widest text-text-muted font-semibold">
                 Enterprise Observability
               </p>
             </div>
@@ -69,7 +69,7 @@ export function IngestionOverlay() {
               aria-label={isMinimized ? 'Expand import status' : 'Minimize import status'}
               aria-expanded={!isMinimized}
               onClick={() => setIsMinimized(!isMinimized)}
-              className="p-1.5 hover:bg-white/10 rounded-md transition-colors text-white/60"
+              className="p-1.5 hover:bg-bg-surface-hover rounded-md transition-colors text-text-muted"
             >
               <ChevronRight
                 className={`w-4 h-4 transition-transform duration-300 ${isMinimized ? 'rotate-90' : '-rotate-90'}`}
@@ -80,7 +80,7 @@ export function IngestionOverlay() {
               type="button"
               aria-label="Dismiss import status"
               onClick={() => setIsVisible(false)}
-              className="p-1.5 hover:bg-white/10 rounded-md transition-colors text-white/60"
+              className="p-1.5 hover:bg-bg-surface-hover rounded-md transition-colors text-text-muted"
             >
               <X className="w-4 h-4" aria-hidden="true" />
             </button>
@@ -92,10 +92,10 @@ export function IngestionOverlay() {
             {/* Progress Section */}
             <div className="space-y-2">
               <div className="flex justify-between text-xs font-medium">
-                <span className="text-white/60">Real-time Progress</span>
+                <span className="text-text-muted">Real-time Progress</span>
                 <span className={getStatusColor()}>{progress}%</span>
               </div>
-              <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
+              <div className="h-1.5 w-full bg-bg-glass rounded-full overflow-hidden">
                 <div
                   role="progressbar"
                   aria-label={`${overlayTitle} progress`}
@@ -110,24 +110,24 @@ export function IngestionOverlay() {
 
             {/* Metrics Grid */}
             <div className="grid grid-cols-2 gap-3">
-              <div className="p-3 rounded-xl bg-white/5 border border-white/5 space-y-1">
-                <p className="text-[10px] text-white/40 font-bold uppercase tracking-wider">
+              <div className="p-3 rounded-xl bg-bg-glass border border-border-subtle space-y-1">
+                <p className="text-[10px] text-text-muted font-bold uppercase tracking-wider">
                   Efficiency
                 </p>
                 <div className="flex items-center gap-2">
                   <BarChart3 className="w-4 h-4 text-sky-400/80" aria-hidden="true" />
-                  <span className="text-sm font-bold text-white">
+                  <span className="text-sm font-bold text-text-primary">
                     {activeJob?.efficiency_metadata?.efficiency || '100'}%
                   </span>
                 </div>
               </div>
-              <div className="p-3 rounded-xl bg-white/5 border border-white/5 space-y-1">
-                <p className="text-[10px] text-white/40 font-bold uppercase tracking-wider">
+              <div className="p-3 rounded-xl bg-bg-glass border border-border-subtle space-y-1">
+                <p className="text-[10px] text-text-muted font-bold uppercase tracking-wider">
                   Latency
                 </p>
                 <div className="flex items-center gap-1.5">
                   <Activity className="w-4 h-4 text-emerald-400/80" aria-hidden="true" />
-                  <span className="text-sm font-bold text-white">
+                  <span className="text-sm font-bold text-text-primary">
                     {activeJob?.efficiency_metadata?.latency?.toFixed(1) || '0.0'}ms
                   </span>
                 </div>
@@ -158,7 +158,7 @@ export function IngestionOverlay() {
 
             {/* Phase 5: Needs Confirmation (Indigo Accent) */}
             {activeJob?.efficiency_metadata?.needs_confirmation?.length > 0 && (
-              <div className="space-y-2 pt-2 border-t border-white/5">
+              <div className="space-y-2 pt-2 border-t border-border-subtle">
                 <div className="flex items-center gap-2">
                   <AlertCircle className="w-3 h-3 text-indigo-400" aria-hidden="true" />
                   <span className="text-[10px] text-indigo-400 font-bold uppercase tracking-widest">

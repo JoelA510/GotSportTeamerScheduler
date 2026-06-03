@@ -13,13 +13,6 @@ Feature: App Shell Visuals and Responsiveness
     When I click a navigation link like "Team Management"
     Then the sidebar overlay should automatically close
 
-  Scenario: Global Theme Toggling
-    Given I am logged into SquadLogic as "admin"
-    When I click the floating "Theme Toggle" button
-    Then the application background and panel styles should change to the "Light" theme
-    When I click the toggle again
-    Then the application should cycle to the "Party" theme with vibrant gradients
-
   Scenario: Global Error Boundary Fallback
     Given I am logged into SquadLogic as "admin"
     And I navigate to the Dashboard
