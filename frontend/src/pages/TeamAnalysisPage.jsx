@@ -1181,7 +1181,7 @@ export default function TeamAnalysisPage() {
               </p>
             </div>
             {manualSaveMessage && (
-              <div className="mb-4 rounded-lg border border-border-subtle bg-bg-base px-4 py-3 text-sm text-text-secondary">
+              <div className="mb-4 rounded-lg border border-border-subtle bg-bg-surface px-4 py-3 text-sm text-text-secondary">
                 {manualSaveMessage}
               </div>
             )}
@@ -1233,7 +1233,7 @@ export default function TeamAnalysisPage() {
                 {activeTeams.map((generatedTeam) => (
                   <div
                     key={generatedTeam.id}
-                    className="rounded-lg border border-border-subtle bg-bg-base px-4 py-3"
+                    className="rounded-lg border border-border-subtle bg-bg-surface px-4 py-3"
                   >
                     <div className="font-semibold text-text-primary">{generatedTeam.name}</div>
                     <div className="text-sm text-text-secondary">

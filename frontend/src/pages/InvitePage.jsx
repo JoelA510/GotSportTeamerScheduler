@@ -85,7 +85,7 @@ export default function InvitePage() {
 
   if (state.status === 'success') {
     return (
-      <div className="min-h-screen bg-bg-main flex items-center justify-center p-6 animate-fadeIn">
+      <div className="min-h-screen bg-bg-app flex items-center justify-center p-6 animate-fadeIn">
         <div className="max-w-md w-full glass-panel-premium p-10 text-center space-y-6">
           <div className="w-20 h-20 bg-green-500/20 text-green-400 rounded-full flex items-center justify-center mx-auto animate-bounce">
             <CheckCircle size={48} />
@@ -100,7 +100,7 @@ export default function InvitePage() {
   // error
   const msg = state.error?.message || 'Could not redeem this invite code.';
   return (
-    <div className="min-h-screen bg-bg-main flex items-center justify-center p-6 animate-fadeIn">
+    <div className="min-h-screen bg-bg-app flex items-center justify-center p-6 animate-fadeIn">
       <div className="max-w-md w-full glass-panel-premium p-10 space-y-6">
         <div className="flex items-start gap-4">
           <div className="p-3 bg-red-500/10 text-red-400 rounded-2xl shrink-0">

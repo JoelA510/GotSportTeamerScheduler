@@ -75,7 +75,7 @@ export default function TimeSlotDropZone({
             <div
               id={invalidTooltipId}
               role="tooltip"
-              className="absolute right-0 top-5 bg-bg-surface border border-border-default rounded px-2 py-1 text-xs text-text-secondary whitespace-nowrap shadow-lg z-10 opacity-0 pointer-events-none transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+              className="absolute right-0 top-5 bg-bg-surface border border-border-subtle rounded px-2 py-1 text-xs text-text-secondary whitespace-nowrap shadow-lg z-10 opacity-0 pointer-events-none transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
             >
               {invalidReason}
             </div>

@@ -82,14 +82,14 @@ export default function PracticeOverridePanel({
         </div>
       </div>
 
-      <div className="flex flex-wrap items-end gap-4 mb-8 p-4 bg-bg-surface-hover border border-border-default rounded-lg">
+      <div className="flex flex-wrap items-end gap-4 mb-8 p-4 bg-bg-surface-hover border border-border-subtle rounded-lg">
         <div className="flex-1 min-w-[200px]">
           <label className="block text-xs font-semibold text-text-muted mb-2 uppercase tracking-wide">
             Select Team
           </label>
           <select
             data-testid="team-select"
-            className="w-full bg-bg-input border border-border-default rounded-md px-3 py-2 text-text-primary focus:border-blue-500 focus:outline-none transition-colors appearance-none"
+            className="w-full bg-bg-surface border border-border-subtle rounded-md px-3 py-2 text-text-primary focus:border-blue-500 focus:outline-none transition-colors appearance-none"
             value={selectedTeamId}
             onChange={(e) => setSelectedTeamId(e.target.value)}
           >
@@ -108,7 +108,7 @@ export default function PracticeOverridePanel({
           </label>
           <select
             data-testid="slot-select"
-            className="w-full bg-bg-input border border-border-default rounded-md px-3 py-2 text-text-primary focus:border-blue-500 focus:outline-none transition-colors appearance-none"
+            className="w-full bg-bg-surface border border-border-subtle rounded-md px-3 py-2 text-text-primary focus:border-blue-500 focus:outline-none transition-colors appearance-none"
             value={selectedSlotId}
             onChange={(e) => setSelectedSlotId(e.target.value)}
           >

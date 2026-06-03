@@ -17,6 +17,7 @@
 
   --color-brand: var(--color-primary);
   --color-brand-400: var(--color-primary-400);
+  --color-brand-500: var(--color-primary);
   --color-brand-600: var(--color-primary-600);
   --color-brand-glow: var(--color-primary-glow);
 

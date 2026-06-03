@@ -54,7 +54,7 @@ export default function OrganizationCreation() {
   const [tab, setTab] = useState(() => (initialInvite ? 'join' : 'create'));
 
   return (
-    <div className="min-h-screen bg-bg-main flex items-center justify-center p-6 animate-fadeIn">
+    <div className="min-h-screen bg-bg-app flex items-center justify-center p-6 animate-fadeIn">
       <div className="max-w-2xl w-full glass-panel-premium overflow-hidden flex flex-col shadow-md">
         {/* Header */}
         <div className="p-8 border-b border-border-subtle bg-bg-glass flex items-center gap-4">

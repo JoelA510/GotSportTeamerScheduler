@@ -80,7 +80,7 @@ export default function AuditLogPage() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 py-2">
         <div>
           <h1 className="text-3xl font-display font-bold text-text-primary flex items-center gap-3">
-            <History className="text-primary-500" />
+            <History className="text-brand-500" />
             Audit Explorer
           </h1>
           <p className="text-text-muted mt-1 italic opacity-80">
@@ -89,7 +89,7 @@ export default function AuditLogPage() {
         </div>
 
         <div className="flex items-center gap-3 bg-bg-glass p-1.5 rounded-lg border border-border-subtle shadow-lg">
-          <History className="w-5 h-5 text-primary-500" />
+          <History className="w-5 h-5 text-brand-500" />
           <span className="text-sm font-medium text-text-secondary">
             {totalCount.toLocaleString()} Total Events
           </span>
@@ -97,11 +97,11 @@ export default function AuditLogPage() {
       </div>
 
       {/* Filter Bar */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 bg-bg-card/40 border border-border-default/50 p-4 rounded-xl shadow-inner-glass">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 bg-bg-surface/40 border border-border-subtle/50 p-4 rounded-xl">
         <div className="relative">
           <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
           <select
-            className="w-full bg-bg-input/50 border border-border-default rounded-lg pl-10 pr-4 py-2 text-sm text-text-primary focus:ring-2 focus:ring-primary-500 transition-all outline-none appearance-none cursor-pointer"
+            className="w-full bg-bg-surface/50 border border-border-subtle rounded-lg pl-10 pr-4 py-2 text-sm text-text-primary focus:ring-2 focus:ring-brand-500 transition-all outline-none appearance-none cursor-pointer"
             value={actionFilter}
             onChange={(e) => setActionFilter(e.target.value)}
           >
@@ -125,7 +125,7 @@ export default function AuditLogPage() {
           <input
             type="checkbox"
             id="impersonatedOnly"
-            className="w-4 h-4 rounded border-border-default bg-bg-input text-primary-600 focus:ring-primary-500"
+            className="w-4 h-4 rounded border-border-subtle bg-bg-surface text-brand-600 focus:ring-brand-500"
             checked={impersonatedOnly}
             onChange={(e) => setImpersonatedOnly(e.target.checked)}
           />
@@ -156,11 +156,11 @@ export default function AuditLogPage() {
       </div>
 
       {/* Table Section */}
-      <div className="bg-bg-card/40 border border-border-default/50 rounded-xl overflow-hidden shadow-md relative">
+      <div className="bg-bg-surface/40 border border-border-subtle/50 rounded-xl overflow-hidden shadow-md relative">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="border-b border-border-default/50 bg-bg-glass">
+              <tr className="border-b border-border-subtle/50 bg-bg-glass">
                 <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wider text-text-muted">
                   Timestamp
                 </th>
@@ -178,7 +178,7 @@ export default function AuditLogPage() {
                 </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-border-default/30">
+            <tbody className="divide-y divide-border-subtle/30">
               {loading ? (
                 Array.from({ length: 5 }).map((_, i) => (
                   <tr key={i} className="animate-pulse">
@@ -204,7 +204,7 @@ export default function AuditLogPage() {
                       <td className="px-6 py-4 text-sm text-text-primary whitespace-nowrap">
                         {new Date(log.created_at).toLocaleString()}
                       </td>
-                      <td className="px-6 py-4 text-sm font-mono text-primary-400">
+                      <td className="px-6 py-4 text-sm font-mono text-brand-400">
                         {log.user_id?.slice(0, 8)}...
                       </td>
                       <td className="px-6 py-4">
@@ -248,7 +248,7 @@ export default function AuditLogPage() {
         </div>
 
         {/* Pagination Footer */}
-        <div className="px-6 py-4 bg-bg-glass border-t border-border-default/50 flex items-center justify-between">
+        <div className="px-6 py-4 bg-bg-glass border-t border-border-subtle/50 flex items-center justify-between">
           <div className="text-xs text-text-muted">
             Showing{' '}
             <span className="font-semibold text-text-primary">{currentPage * PAGE_SIZE + 1}</span>{' '}

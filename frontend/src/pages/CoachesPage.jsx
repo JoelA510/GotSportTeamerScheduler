@@ -566,7 +566,7 @@ export default function CoachesPage() {
 
       <div className="overflow-x-auto rounded-lg border border-border-highlight bg-bg-surface">
         <table className="min-w-full divide-y divide-border-subtle">
-          <thead className="bg-bg-card">
+          <thead className="bg-bg-surface">
             <tr>
               <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-text-muted">
                 Coach
@@ -644,7 +644,7 @@ export default function CoachesPage() {
                         {coach.programNames.map((program) => (
                           <span
                             key={program}
-                            className="rounded-full border border-border-subtle bg-bg-card px-2 py-1 text-xs text-text-secondary"
+                            className="rounded-full border border-border-subtle bg-bg-surface px-2 py-1 text-xs text-text-secondary"
                           >
                             {program}
                           </span>
@@ -699,7 +699,7 @@ export default function CoachesPage() {
                             value={coach.status}
                             onChange={(event) => handleStatusChange(coach, event.target.value)}
                             disabled={pendingAction === `status:${coach.id}`}
-                            className="w-full rounded-lg border border-border-subtle bg-bg-card px-3 py-2 text-sm text-text-primary outline-none transition-colors focus:border-brand-400/60 disabled:cursor-not-allowed disabled:opacity-60"
+                            className="w-full rounded-lg border border-border-subtle bg-bg-surface px-3 py-2 text-sm text-text-primary outline-none transition-colors focus:border-brand-400/60 disabled:cursor-not-allowed disabled:opacity-60"
                             aria-label={`Status for ${coach.fullName}`}
                           >
                             {STATUS_OPTIONS.map((status) => (
@@ -726,7 +726,7 @@ export default function CoachesPage() {
                                 }))
                               }
                               disabled={!canAssignCoachToTeam(coach)}
-                              className="w-full rounded-lg border border-border-subtle bg-bg-card px-3 py-2 text-sm text-text-primary outline-none transition-colors focus:border-brand-400/60 disabled:cursor-not-allowed disabled:opacity-60"
+                              className="w-full rounded-lg border border-border-subtle bg-bg-surface px-3 py-2 text-sm text-text-primary outline-none transition-colors focus:border-brand-400/60 disabled:cursor-not-allowed disabled:opacity-60"
                               aria-label={`Assign team to ${coach.fullName}`}
                             >
                               <option value="">Select team</option>
