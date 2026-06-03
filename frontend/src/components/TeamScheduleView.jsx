@@ -28,7 +28,7 @@ export default function TeamScheduleView({ assignments, teamId, timezone }) {
         return (
           <div
             key={`${game.slotId}-${index}`}
-            className="flex justify-between items-center p-3 bg-bg-surface border border-border-subtle rounded-md hover:border-border-subtle transition-colors"
+            className="flex justify-between items-center p-3 bg-bg-surface border border-border-subtle rounded-md hover:border-border-highlight transition-colors"
           >
             <div>
               <div className="font-medium text-text-primary">
