@@ -333,7 +333,7 @@ export default function OutputGenerationPanel({
               data-testid="generate-csvs-btn"
               onClick={handleGenerate}
               disabled={status === 'generating' || status === 'uploading'}
-              className="relative z-20 bg-bg-surface-hover hover:bg-bg-surface-hover text-text-primary px-4 py-2 rounded-lg transition-colors"
+              className="relative z-20 bg-bg-surface hover:bg-bg-surface-hover text-text-primary px-4 py-2 rounded-lg transition-colors"
             >
               {status === 'generating' ? 'Generating...' : 'Generate CSVs'}
             </button>

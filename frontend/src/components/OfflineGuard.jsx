@@ -62,16 +62,15 @@ export default function OfflineGuard({ children }) {
         aria-labelledby="offline-guard-title"
         aria-describedby="offline-guard-desc"
         className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
-        style={{ backgroundColor: 'rgba(0, 0, 0, 0.6)', backdropFilter: 'blur(8px)' }}
+        style={{ backgroundColor: 'rgba(0, 0, 0, 0.6)' }}
       >
         {/* Glassmorphic card */}
         <div
           className="max-w-md w-full rounded-3xl p-8 text-center animate-fadeIn"
           style={{
-            background: 'var(--color-bg-glass)',
-            backdropFilter: 'blur(24px)',
+            background: 'var(--color-bg-surface)',
             border: '1px solid var(--color-border-subtle)',
-            boxShadow: 'var(--shadow-glow)',
+            boxShadow: 'var(--shadow-md)',
           }}
         >
           {/* Icon badge */}
@@ -137,7 +136,7 @@ export default function OfflineGuard({ children }) {
               style={{
                 background: 'var(--color-primary)',
                 color: '#fff',
-                boxShadow: 'var(--shadow-glow)',
+                boxShadow: 'var(--shadow-md)',
                 opacity: isRetrying ? 0.7 : 1,
               }}
             >

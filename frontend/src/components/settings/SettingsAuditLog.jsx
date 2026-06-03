@@ -127,7 +127,7 @@ const SettingsAuditLog = () => {
 
     // Fallback for complex metadata structure
     return (
-      <pre className="text-[10px] text-text-muted bg-black/40 p-2 rounded max-h-24 overflow-y-auto font-mono scrollbar-thin">
+      <pre className="text-[10px] text-text-muted bg-bg-glass p-2 rounded max-h-24 overflow-y-auto font-mono scrollbar-thin">
         {JSON.stringify(metadata, null, 2)}
       </pre>
     );
@@ -198,7 +198,7 @@ const SettingsAuditLog = () => {
           </p>
         </div>
       ) : (
-        <div className="overflow-hidden rounded-2xl border border-border-subtle bg-black/30 shadow-md">
+        <div className="overflow-hidden rounded-2xl border border-border-subtle bg-bg-glass shadow-md">
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>

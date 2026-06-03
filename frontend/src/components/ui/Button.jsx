@@ -32,9 +32,9 @@ const Button = ({
 
   const variants = {
     primary:
-      'bg-gradient-to-r from-blue-500 to-cyan-400 hover:from-blue-400 hover:to-cyan-300 text-white shadow-[0_0_20px_rgba(56,189,248,0.4)] hover:shadow-[0_0_30px_rgba(56,189,248,0.6)] hover:-translate-y-0.5 border border-border-subtle',
+      'bg-gradient-to-r from-blue-500 to-cyan-400 hover:from-blue-400 hover:to-cyan-300 text-white shadow-sm hover:shadow-md hover:-translate-y-0.5 border border-border-subtle',
     secondary:
-      'bg-bg-surface-hover hover:bg-bg-surface-hover text-text-primary border border-border-subtle hover:border-border-highlight',
+      'bg-bg-surface hover:bg-bg-surface-hover text-text-primary border border-border-subtle hover:border-border-highlight',
     danger:
       'bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 hover:border-red-500/40',
     ghost: 'text-text-secondary hover:text-text-primary hover:bg-bg-glass',

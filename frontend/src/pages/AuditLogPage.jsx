@@ -69,7 +69,7 @@ export default function AuditLogPage() {
   const formatMetadata = (metadata) => {
     if (!metadata) return null;
     return (
-      <pre className="text-[10px] bg-black/20 p-2 rounded max-h-24 overflow-y-auto font-mono text-text-muted">
+      <pre className="text-[10px] bg-bg-glass p-2 rounded max-h-24 overflow-y-auto font-mono text-text-muted">
         {JSON.stringify(metadata, null, 2)}
       </pre>
     );
@@ -248,7 +248,7 @@ export default function AuditLogPage() {
         </div>
 
         {/* Pagination Footer */}
-        <div className="px-6 py-4 bg-black/20 border-t border-border-default/50 flex items-center justify-between">
+        <div className="px-6 py-4 bg-bg-glass border-t border-border-default/50 flex items-center justify-between">
           <div className="text-xs text-text-muted">
             Showing{' '}
             <span className="font-semibold text-text-primary">{currentPage * PAGE_SIZE + 1}</span>{' '}

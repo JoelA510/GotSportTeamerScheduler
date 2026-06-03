@@ -21,8 +21,13 @@
   --color-brand-glow: var(--color-primary-glow);
 
   --color-status-success: var(--color-status-success);
+  --color-status-success-bg: var(--color-status-success-bg);
   --color-status-warning: var(--color-status-warning);
+  --color-status-warning-bg: var(--color-status-warning-bg);
   --color-status-error: var(--color-status-error);
+  --color-status-error-bg: var(--color-status-error-bg);
+  --color-status-pending: var(--color-status-pending);
+  --color-status-pending-bg: var(--color-status-pending-bg);
 
   /* Font Family */
   --font-display: 'Outfit', sans-serif;

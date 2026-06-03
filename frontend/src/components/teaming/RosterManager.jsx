@@ -288,7 +288,7 @@ export default function RosterManager({ initialTeams, onTeamsChange }) {
             {conflicts.map((c, i) => (
               <div
                 key={i}
-                className="font-mono text-sm bg-black/20 p-3 rounded-lg border border-status-error/30 flex items-center justify-between"
+                className="font-mono text-sm bg-bg-glass p-3 rounded-lg border border-status-error/30 flex items-center justify-between"
               >
                 <span className="text-text-secondary">{c.message}</span>
                 <span

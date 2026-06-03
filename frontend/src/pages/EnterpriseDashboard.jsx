@@ -266,7 +266,7 @@ export default function EnterpriseDashboard() {
                 role="img"
                 aria-label="Radar chart showing organization readiness across Compliance, Staffing, Balance, and Skill Variability."
               >
-                <PolarGrid stroke="rgba(255,255,255,0.1)" />
+                <PolarGrid stroke="var(--color-border-subtle)" />
                 <PolarAngleAxis
                   dataKey="subject"
                   tick={{ fill: 'var(--color-text-secondary)', fontSize: 13 }}
@@ -282,10 +282,9 @@ export default function EnterpriseDashboard() {
                 />
                 <Tooltip
                   contentStyle={{
-                    backgroundColor: 'rgba(0,0,0,0.8)',
-                    borderColor: 'rgba(255,255,255,0.1)',
+                    backgroundColor: 'var(--color-bg-surface)',
+                    borderColor: 'var(--color-border-subtle)',
                     borderRadius: '12px',
-                    backdropFilter: 'blur(8px)',
                   }}
                   itemStyle={{ color: 'var(--color-text-primary)' }}
                 />
@@ -346,7 +345,7 @@ export default function EnterpriseDashboard() {
                   >
                     <CartesianGrid
                       strokeDasharray="3 3"
-                      stroke="rgba(255,255,255,0.05)"
+                      stroke="var(--color-border-subtle)"
                       vertical={false}
                     />
                     <XAxis
@@ -359,12 +358,11 @@ export default function EnterpriseDashboard() {
                       tick={{ fill: 'var(--color-text-muted)' }}
                     />
                     <Tooltip
-                      cursor={{ fill: 'rgba(255,255,255,0.05)' }}
+                      cursor={{ fill: 'rgba(15,23,42,0.05)' }}
                       contentStyle={{
-                        backgroundColor: 'rgba(0,0,0,0.8)',
-                        borderColor: 'rgba(255,255,255,0.1)',
+                        backgroundColor: 'var(--color-bg-surface)',
+                        borderColor: 'var(--color-border-subtle)',
                         borderRadius: '12px',
-                        backdropFilter: 'blur(8px)',
                       }}
                       itemStyle={{ color: 'var(--color-text-primary)' }}
                     />

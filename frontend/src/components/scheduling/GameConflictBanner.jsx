@@ -36,8 +36,8 @@ function ConflictItem({ warning, onConflictClick }) {
       type="button"
       onClick={() => onConflictClick?.(warning)}
       disabled={!onConflictClick}
-      className={`font-mono text-sm bg-black/20 p-3 rounded-lg border flex items-center justify-between w-full text-left transition-colors ${
-        onConflictClick ? 'cursor-pointer hover:bg-black/30' : 'cursor-default'
+      className={`font-mono text-sm bg-bg-glass p-3 rounded-lg border flex items-center justify-between w-full text-left transition-colors ${
+        onConflictClick ? 'cursor-pointer hover:bg-bg-surface-hover' : 'cursor-default'
       } ${severity === 'error' ? 'border-status-error/30' : 'border-status-warning/30'}`}
       data-testid={`conflict-item-${warning.type}`}
     >
