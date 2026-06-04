@@ -231,7 +231,7 @@ export default function ColumnMapper({
     return (
       <div
         key={field.key}
-        className="flex flex-col lg:flex-row gap-3 lg:items-center py-3 border-b border-border-subtle/40 last:border-b-0"
+        className="flex flex-col lg:flex-row gap-3 lg:items-center min-w-0 py-3 border-b border-border-subtle/40 last:border-b-0"
       >
         <div className="lg:w-44 shrink-0 flex items-center gap-2">
           <span className="text-sm font-medium text-text-primary">{field.label}</span>
@@ -246,7 +246,7 @@ export default function ColumnMapper({
           )}
         </div>
 
-        <div className="flex-1 flex flex-col sm:flex-row sm:items-center gap-2">
+        <div className="flex-1 min-w-0 flex flex-col sm:flex-row sm:items-center gap-2">
           {canCompose && (
             <div
               className="flex items-center gap-1 text-[11px] text-text-muted"
@@ -288,7 +288,7 @@ export default function ColumnMapper({
           )}
 
           {isComposite ? (
-            <div className="flex-1 flex items-center gap-1.5">
+            <div className="flex-1 min-w-0 flex flex-col sm:flex-row sm:items-center gap-1.5">
               <select
                 aria-label={`${field.label} first source column`}
                 value={entry.columns?.[0] || ''}
@@ -298,7 +298,7 @@ export default function ColumnMapper({
                     columns: [e.target.value, entry.columns?.[1] || ''],
                   })
                 }
-                className="flex-1 bg-bg-surface border border-border-subtle rounded px-2 py-1.5 text-sm text-text-primary"
+                className="w-full sm:flex-1 min-w-0 bg-bg-surface border border-border-subtle rounded px-2 py-1.5 text-sm text-text-primary"
               >
                 <option value="">— choose column —</option>
                 {rawHeaders.map((h) => (
@@ -307,7 +307,9 @@ export default function ColumnMapper({
                   </option>
                 ))}
               </select>
-              <span className="text-text-muted text-xs">+</span>
+              <span className="text-text-muted text-xs text-center shrink-0" aria-hidden="true">
+                +
+              </span>
               <select
                 aria-label={`${field.label} second source column`}
                 value={entry.columns?.[1] || ''}
@@ -317,7 +319,7 @@ export default function ColumnMapper({
                     columns: [entry.columns?.[0] || '', e.target.value],
                   })
                 }
-                className="flex-1 bg-bg-surface border border-border-subtle rounded px-2 py-1.5 text-sm text-text-primary"
+                className="w-full sm:flex-1 min-w-0 bg-bg-surface border border-border-subtle rounded px-2 py-1.5 text-sm text-text-primary"
               >
                 <option value="">— choose column —</option>
                 {rawHeaders.map((h) => (
@@ -335,7 +337,7 @@ export default function ColumnMapper({
                 const v = e.target.value;
                 setField(field.key, v ? { kind: 'single', column: v } : null);
               }}
-              className="flex-1 bg-bg-surface border border-border-subtle rounded px-2 py-1.5 text-sm text-text-primary"
+              className="flex-1 min-w-0 w-full bg-bg-surface border border-border-subtle rounded px-2 py-1.5 text-sm text-text-primary"
             >
               <option value="">— not mapped —</option>
               {rawHeaders.map((h) => {
@@ -351,7 +353,7 @@ export default function ColumnMapper({
           )}
         </div>
 
-        <div className="lg:w-56 shrink-0 text-xs text-text-secondary">
+        <div className="lg:w-56 shrink-0 min-w-0 text-xs text-text-secondary break-words">
           <span className="text-text-muted mr-1">preview:</span>
           <span className="font-mono">{renderPreview(entry)}</span>
         </div>
