@@ -52,6 +52,18 @@ function firstNonEmpty(row, keys) {
   return null;
 }
 
+// GotSport exports the player's age in an "age group" column but no
+// division/program column. Derive the playing division from it: a player of
+// age N plays in U(N+1) (e.g. a 7-year-old → "U8"). Kept in sync with the
+// import's division assignment and the divisions seeded for the season.
+function ageGroupDivisionName(row) {
+  const raw = firstNonEmpty(row, ['age group', 'age_group', 'ageGroup', 'Age Group', 'age']);
+  if (raw == null) return null;
+  const n = Number.parseInt(String(raw).trim(), 10);
+  if (!Number.isInteger(n) || n <= 0 || n > 25) return null;
+  return `U${n + 1}`;
+}
+
 function resolveDivisionName(row) {
   return (
     firstNonEmpty(row, [
@@ -62,7 +74,9 @@ function resolveDivisionName(row) {
       'Group',
       'Program',
       'program',
-    ]) || 'Unassigned'
+    ]) ||
+    ageGroupDivisionName(row) ||
+    'Unassigned'
   );
 }
 
