@@ -11,6 +11,7 @@ import { supabase } from '../lib/supabaseClient.js';
 import { useOrganization } from '../contexts/OrganizationContext.jsx';
 import { PERMISSIONS } from '../constants/permissions.js';
 import { useAutoScheduler } from '../hooks/useAutoScheduler.js';
+import { useAutoRunOnNavigate } from '../hooks/useAutoRunOnNavigate.js';
 import { persistPracticeScheduleReview } from '../utils/practicePersistenceClient.js';
 
 const DAY_LABELS = {
@@ -437,6 +438,15 @@ export default function PracticeSchedulingPage() {
     schoolDayEnd,
     timezone,
   ]);
+
+  // Auto-run when arriving from the dashboard "Run Practice Scheduling" button.
+  // Fires once the page is ready (slots loaded, permission granted); otherwise
+  // the readiness message explains what is missing.
+  useAutoRunOnNavigate({
+    intentKey: 'autoRunPractice',
+    ready: !schedulerDisabled,
+    onRun: handleAutoGenerate,
+  });
 
   const cancelAutoScheduler = useCallback(() => {
     autoScheduler.cancel();

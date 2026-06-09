@@ -3,6 +3,7 @@ import { DndContext, DragOverlay } from '@dnd-kit/core';
 import { generateRoundRobinWeeks, scheduleGames } from '@squadlogic/core/gameScheduling.js';
 import { evaluateGameSchedule } from '@squadlogic/core/gameMetrics.js';
 import { useDashboardData } from '../hooks/useDashboardData.js';
+import { useAutoRunOnNavigate } from '../hooks/useAutoRunOnNavigate.js';
 import TeamScheduleView from '../components/TeamScheduleView.jsx';
 import AutoSchedulerPanel from '../components/scheduling/AutoSchedulerPanel.jsx';
 import GameScheduleGrid from '../components/scheduling/GameScheduleGrid.jsx';
@@ -456,6 +457,15 @@ export default function GameSchedulingPage() {
       setApplyError(err.message || 'Game schedule generation failed.');
     }
   }, [fieldById, gameSlots, schedulerDisabled, schedulerTeams, slotById, teamById]);
+
+  // Auto-run when arriving from the dashboard "Run Game Scheduling" button.
+  // Fires once the page is ready (teams + slots loaded, permission granted);
+  // otherwise the readiness message explains what is missing.
+  useAutoRunOnNavigate({
+    intentKey: 'autoRunGames',
+    ready: !schedulerDisabled,
+    onRun: handleAutoGenerate,
+  });
 
   const handleCancelAutoScheduler = useCallback(() => {
     setSchedulerStatus('idle');
