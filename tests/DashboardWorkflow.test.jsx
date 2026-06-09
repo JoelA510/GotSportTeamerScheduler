@@ -92,4 +92,14 @@ describe('DashboardWorkflow run buttons', () => {
     renderWorkflow();
     expect(screen.getByTestId('step-run-teaming')).toBeDisabled();
   });
+
+  it('flips scheduling buttons to Re-run from generatedAt (not a missing lastCalculated)', () => {
+    renderWorkflow({
+      teamData: { generatedAt: '2026-01-01T00:00:00Z', totals: {}, divisions: [] },
+      practiceData: { snapshot: {}, generatedAt: '2026-01-02T00:00:00Z' },
+      gameData: { snapshot: {}, generatedAt: '2026-01-03T00:00:00Z' },
+    });
+    expect(screen.getByTestId('step-run-practice')).toHaveTextContent('Re-run Practice Scheduling');
+    expect(screen.getByTestId('step-run-games')).toHaveTextContent('Re-run Game Scheduling');
+  });
 });

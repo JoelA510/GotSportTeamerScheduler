@@ -866,6 +866,10 @@ export default function TeamAnalysisPage() {
     importedPlayerRows.length > 0 &&
     canManageTeams &&
     Boolean(currentOrganization?.id) &&
+    // Division settings must be loaded — handleGenerateTeams -> saveDivisionConfig
+    // throws while divisionRows === null, and the one-shot intent would be
+    // consumed without retrying once settings arrive.
+    divisionRows !== null &&
     !isGenerating;
   useAutoRunOnNavigate({
     intentKey: 'autoRunTeaming',

@@ -274,14 +274,12 @@ const DashboardWorkflow = ({
           <div className="flex justify-end pt-4 mt-6 border-t border-border-subtle">
             <StepRunButton
               label={
-                practiceData?.lastCalculated
-                  ? 'Re-run Practice Scheduling'
-                  : 'Run Practice Scheduling'
+                practiceData?.generatedAt ? 'Re-run Practice Scheduling' : 'Run Practice Scheduling'
               }
               onRun={() => navigate('/schedule/practice', { state: { autoRunPractice: true } })}
               disabled={!teamsReady || !canManageSchedule}
               disabledReason={schedulingDisabledReason}
-              hasExisting={Boolean(practiceData?.lastCalculated)}
+              hasExisting={Boolean(practiceData?.generatedAt)}
               testId="step-run-practice"
             />
           </div>
