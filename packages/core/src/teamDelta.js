@@ -25,7 +25,7 @@ function addToBucket(bucket, key, value) {
 
 /**
  * @param {{
- *   players?: Array<{ id: string, division?: string }>,
+ *   players?: Array<{ id: string, division?: string, coachId?: string, coach_id?: string, assistantCoachId?: string, assistant_coach_id?: string }>,
  *   existingSnapshot?: any,
  *   generationMode?: string,
  *   changePolicy?: { lockManualAssignments?: boolean },
@@ -75,6 +75,23 @@ export function reconcileTeamDeltas({
       continue;
     }
     incomingById.set(id, player);
+  }
+
+  // A coach/assistant is "active" if any incoming player still references them. Coaches are carried
+  // on player records as coachId/assistantCoachId (and a coach may also be a player), so the active
+  // set is built from player ids AND those coach fields — not player ids alone.
+  const activeCoachIds = new Set();
+  for (const player of incoming) {
+    for (const value of [
+      player?.id,
+      player?.coachId,
+      player?.coach_id,
+      player?.assistantCoachId,
+      player?.assistant_coach_id,
+    ]) {
+      const coachId = toIdString(value);
+      if (coachId) activeCoachIds.add(coachId);
+    }
   }
 
   /** @type {string[]} */
@@ -140,8 +157,10 @@ export function reconcileTeamDeltas({
   const coachDeltas = [];
   for (const [division, teams] of Object.entries(normalized.teamsByDivision)) {
     for (const team of teams) {
-      const coachDropped = team.coachId != null && !incomingById.has(team.coachId);
-      const droppedAssistantCoachIds = team.assistantCoachIds.filter((id) => !incomingById.has(id));
+      const coachDropped = team.coachId != null && !activeCoachIds.has(team.coachId);
+      const droppedAssistantCoachIds = team.assistantCoachIds.filter(
+        (id) => !activeCoachIds.has(id)
+      );
       if (coachDropped || droppedAssistantCoachIds.length > 0) {
         coachDeltas.push({
           teamId: team.id,

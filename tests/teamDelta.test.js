@@ -255,3 +255,17 @@ test('reconcileTeamDeltas reports coachDropped:false when the coach is still reg
   assert.equal(delta.coachDropped, false);
   assert.deepEqual(delta.droppedAssistantCoachIds, ['asst-1']);
 });
+
+test('reconcileTeamDeltas keeps a coach active when referenced by a child player coachId', () => {
+  // coach-1 is not itself a player id in the incoming data; it is referenced via p1.coachId.
+  const result = reconcileTeamDeltas({
+    players: [{ id: 'p1', division: 'U10', coachId: 'coach-1' }],
+    existingSnapshot: baseSnapshot,
+    generationMode: 'published',
+  });
+
+  const delta = result.coachDeltas.find((d) => d.teamId === 'team-1');
+  assert.ok(delta, 'a coach delta exists because asst-1 dropped');
+  assert.equal(delta.coachDropped, false);
+  assert.deepEqual(delta.droppedAssistantCoachIds, ['asst-1']);
+});

@@ -234,11 +234,47 @@ function normalizeFromTeamsByDivision(teamsByDivision, diagnostics, orphanedPlay
 }
 
 /**
- * Normalize the persistence / review relational shape (teamRows + teamPlayerRows). Assistant
- * rows (`role: 'assistant_coach'`) become `assistantCoachIds`; player rows with an unresolved
- * `team_id` are surfaced as orphans.
+ * Resolve a relational team's division to the generator division key. Prefers an explicit display
+ * `division`, then a `divisionKeyById` mapping of `division_id`, then the raw `division_id` (with a
+ * diagnostic — generator players/configs are keyed by the division key, not the UUID), then
+ * 'unknown'.
  */
-function normalizeFromRelationalRows(teamRows, teamPlayerRows, diagnostics, orphanedPlayers) {
+function resolveDivisionKey(teamRow, divisionKeyById, teamId, diagnostics) {
+  const displayDivision = coerceId(teamRow.division);
+  if (displayDivision) return displayDivision;
+  const divisionId = coerceId(teamRow.division_id);
+  if (divisionId) {
+    const mapped = divisionKeyById && divisionKeyById[divisionId];
+    if (mapped) return String(mapped);
+    diagnostics.push({
+      code: 'division-id-without-key',
+      severity: 'info',
+      message: `team ${teamId} is keyed by division_id "${divisionId}" with no display division or divisionKeyById mapping`,
+    });
+    return divisionId;
+  }
+  return 'unknown';
+}
+
+/**
+ * Normalize the persistence / review relational shape (teamRows + teamPlayerRows). Assistants come
+ * from both `role: 'assistant_coach'` player rows AND a team row's `assistant_coach_ids` column;
+ * player rows with an unresolved `team_id` are surfaced as orphans. `divisionKeyById` maps a raw
+ * `division_id` back to the generator division key when a row carries no display `division`.
+ *
+ * @param {any[]} teamRows
+ * @param {any[]} teamPlayerRows
+ * @param {SnapshotDiagnostic[]} diagnostics
+ * @param {OrphanedSnapshotPlayer[]} orphanedPlayers
+ * @param {Record<string, string>} divisionKeyById
+ */
+function normalizeFromRelationalRows(
+  teamRows,
+  teamPlayerRows,
+  diagnostics,
+  orphanedPlayers,
+  divisionKeyById
+) {
   /** @type {Map<string, NormalizedSnapshotPlayer[]>} */
   const playersByTeam = new Map();
   /** @type {Map<string, string[]>} */
@@ -290,7 +326,7 @@ function normalizeFromRelationalRows(teamRows, teamPlayerRows, diagnostics, orph
       continue;
     }
     knownTeamIds.add(id);
-    const division = String(firstDefined(teamRow.division, teamRow.division_id, 'unknown'));
+    const division = resolveDivisionKey(teamRow, divisionKeyById, id, diagnostics);
     const rawPlayers = playersByTeam.get(id) ?? [];
     const seen = new Set();
     const players = [];
@@ -312,7 +348,11 @@ function normalizeFromRelationalRows(teamRows, teamPlayerRows, diagnostics, orph
       name: teamRow.name,
       division,
       coachId: coerceId(teamRow.coach_id),
-      assistantCoachIds: dedupeIds(assistantsByTeam.get(id) ?? []),
+      assistantCoachIds: dedupeIds([
+        ...(assistantsByTeam.get(id) ?? []),
+        ...(Array.isArray(teamRow.assistant_coach_ids) ? teamRow.assistant_coach_ids : []),
+        ...(Array.isArray(teamRow.assistantCoachIds) ? teamRow.assistantCoachIds : []),
+      ]),
       locked: teamRow.locked,
       players,
     });
@@ -359,7 +399,7 @@ function detectCrossTeamDuplicates(teamsByDivision, diagnostics) {
  * Never throws on malformed rows — it records diagnostics instead (rule 7).
  *
  * @param {any} existingSnapshot
- * @param {{ status?: string, runId?: string }} [options]
+ * @param {{ status?: string, runId?: string, divisionKeyById?: Record<string, string> }} [options]
  * @returns {NormalizedSnapshot}
  */
 export function normalizeExistingSnapshot(existingSnapshot, options = {}) {
@@ -428,7 +468,8 @@ export function normalizeExistingSnapshot(existingSnapshot, options = {}) {
       payload.teamRows,
       payload.teamPlayerRows,
       diagnostics,
-      orphanedPlayers
+      orphanedPlayers,
+      options.divisionKeyById ?? {}
     );
   } else if (hasTeamsByDivision) {
     // An explicitly empty teamsByDivision is a valid (empty) snapshot, not an error.

@@ -212,3 +212,47 @@ test('indexTeamSnapshot returns empty lookups for a null/undefined snapshot', ()
     assert.deepEqual(index.divisions, []);
   }
 });
+
+test('normalizeExistingSnapshot merges assistants from a team row assistant_coach_ids column', () => {
+  const result = normalizeExistingSnapshot({
+    payload: {
+      teamRows: [
+        { id: 't1', division: 'U10', coach_id: 'c1', assistant_coach_ids: ['asst-row-1'] },
+      ],
+      teamPlayerRows: [
+        { team_id: 't1', player_id: 'asst-role-1', role: 'assistant_coach', source: 'auto' },
+        { team_id: 't1', player_id: 'p1', role: 'player', source: 'auto' },
+      ],
+    },
+  });
+
+  const team = result.teamsByDivision.U10[0];
+  assert.deepEqual(team.assistantCoachIds.sort(), ['asst-role-1', 'asst-row-1']);
+  assert.deepEqual(
+    team.players.map((p) => p.id),
+    ['p1']
+  );
+});
+
+test('normalizeExistingSnapshot maps division_id to a generator key via divisionKeyById', () => {
+  const mapped = normalizeExistingSnapshot(
+    {
+      payload: {
+        teamRows: [{ id: 't1', division_id: 'uuid-div-10' }],
+        teamPlayerRows: [{ team_id: 't1', player_id: 'p1', role: 'player', source: 'auto' }],
+      },
+    },
+    { divisionKeyById: { 'uuid-div-10': 'U10' } }
+  );
+  assert.ok(mapped.teamsByDivision.U10, 'team is keyed by the generator division key');
+  assert.ok(!mapped.diagnostics.some((d) => d.code === 'division-id-without-key'));
+
+  const unmapped = normalizeExistingSnapshot({
+    payload: {
+      teamRows: [{ id: 't1', division_id: 'uuid-div-10' }],
+      teamPlayerRows: [{ team_id: 't1', player_id: 'p1', role: 'player', source: 'auto' }],
+    },
+  });
+  assert.ok(unmapped.teamsByDivision['uuid-div-10'], 'falls back to the raw division_id key');
+  assert.ok(unmapped.diagnostics.some((d) => d.code === 'division-id-without-key'));
+});
