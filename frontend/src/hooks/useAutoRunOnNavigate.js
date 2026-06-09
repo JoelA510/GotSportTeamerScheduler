@@ -23,6 +23,16 @@ export function useAutoRunOnNavigate({ intentKey, ready, onRun }) {
   const intentRef = useRef(false);
   const consumedRef = useRef(false);
 
+  // Always invoke the latest onRun without making it a fire-effect dependency.
+  // Handlers like handleGenerateTeams change identity whenever their inputs
+  // change; keeping onRun out of the fire effect's deps guarantees the run
+  // fires exactly once on the first ready transition (never again when the
+  // handler is recreated) and avoids re-running the effect on every render.
+  const onRunRef = useRef(onRun);
+  useEffect(() => {
+    onRunRef.current = onRun;
+  }, [onRun]);
+
   // Capture the intent on the first render that carries it, then strip it from
   // history state so a refresh or back-navigation does not replay the run.
   // Declaring the deps is safe: once the intent is stripped, later runs find no
@@ -38,13 +48,14 @@ export function useAutoRunOnNavigate({ intentKey, ready, onRun }) {
     }
   }, [location, intentKey, navigate]);
 
-  // Fire once, the first time the page reports it is ready to run.
+  // Fire once, the first time the page reports it is ready to run. consumedRef
+  // is set before the call and never reset, so this can fire at most once.
   useEffect(() => {
-    if (intentRef.current && !consumedRef.current && ready && typeof onRun === 'function') {
+    if (intentRef.current && !consumedRef.current && ready) {
       consumedRef.current = true;
-      onRun();
+      onRunRef.current?.();
     }
-  }, [ready, onRun]);
+  }, [ready]);
 }
 
 export default useAutoRunOnNavigate;
