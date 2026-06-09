@@ -14,6 +14,8 @@ import Button from './ui/Button.jsx';
 import ProgressBar from './ui/ProgressBar.jsx';
 import { FeatureGuard } from './ui/FeatureGuard.jsx';
 import { FEATURE_FLAGS } from '../constants/featureFlags.js';
+import StepRunButton from './workflow/StepRunButton.jsx';
+import { usePermission } from '../hooks/usePermission.js';
 
 const DashboardWorkflow = ({
   loading,
@@ -35,6 +37,22 @@ const DashboardWorkflow = ({
     return saved ? parseInt(saved, 10) : 1;
   });
   const activeStep = controlledActiveStep !== undefined ? controlledActiveStep : internalActiveStep;
+
+  // Permission + dependency gating for the per-step Run buttons. Teaming needs
+  // team-management; scheduling needs schedule-management AND generated teams
+  // (you cannot schedule practices/games before rosters exist).
+  const { can, PERMISSIONS } = usePermission();
+  const canManageTeams = can(PERMISSIONS.MANAGE_ALL_TEAMS) || can(PERMISSIONS.MANAGE_ORGANIZATION);
+  const canManageSchedule = can(PERMISSIONS.MANAGE_SCHEDULE);
+  const teamsReady = Boolean(teamData?.generatedAt);
+  const teamingDisabledReason = !canManageTeams
+    ? 'You need team-management permission to run teaming.'
+    : '';
+  const schedulingDisabledReason = !teamsReady
+    ? 'Generate teams first to enable scheduling.'
+    : !canManageSchedule
+      ? 'You need schedule-management permission to run scheduling.'
+      : '';
 
   useEffect(() => {
     if (controlledActiveStep === undefined) {
@@ -148,9 +166,19 @@ const DashboardWorkflow = ({
                   {importedData.totalRows} records imported and ready for processing. Click below to
                   generate team structures based on the imported data.
                 </p>
-                <Button variant="primary" size="lg" onClick={() => navigate('/teams')}>
-                  Open Team Builder
-                </Button>
+                <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                  <StepRunButton
+                    label="Start Teaming"
+                    size="lg"
+                    onRun={() => navigate('/teams', { state: { autoRunTeaming: true } })}
+                    disabled={!canManageTeams}
+                    disabledReason={teamingDisabledReason}
+                    testId="step-run-teaming"
+                  />
+                  <Button variant="secondary" size="lg" onClick={() => navigate('/teams')}>
+                    Open Team Builder
+                  </Button>
+                </div>
               </div>
             ) : (
               <>
@@ -173,7 +201,15 @@ const DashboardWorkflow = ({
                   />
                 </FeatureGuard>
                 <TeamPersistencePanel teamPersistenceSnapshot={persistenceSnapshot} />
-                <div className="flex justify-end pt-4 border-t border-border-subtle">
+                <div className="flex flex-col sm:flex-row gap-3 justify-between pt-4 border-t border-border-subtle">
+                  <StepRunButton
+                    label="Re-run Teaming"
+                    onRun={() => navigate('/teams', { state: { autoRunTeaming: true } })}
+                    disabled={!canManageTeams}
+                    disabledReason={teamingDisabledReason}
+                    hasExisting
+                    testId="step-rerun-teaming"
+                  />
                   <Button variant="primary" size="lg" onClick={() => handleStepChange(3)}>
                     Confirm Teams & Proceed
                   </Button>
@@ -212,9 +248,14 @@ const DashboardWorkflow = ({
               <code>generate_practice_slots.js</code> script. Ensure you have run the generator
               before proceeding.
             </p>
-            <Button variant="secondary" onClick={() => handleStepChange(4)}>
-              Mark as Configured
-            </Button>
+            <div className="flex flex-col sm:flex-row gap-3 justify-center">
+              <Button variant="secondary" onClick={() => navigate('/fields')}>
+                Open Field Management
+              </Button>
+              <Button variant="primary" onClick={() => handleStepChange(4)}>
+                Fields Configured — Continue
+              </Button>
+            </div>
           </div>
         </WorkflowStep>
 
@@ -230,6 +271,18 @@ const DashboardWorkflow = ({
             dashboardLoading={{ practice: false }}
             timezone={timezone}
           />
+          <div className="flex justify-end pt-4 mt-6 border-t border-border-subtle">
+            <StepRunButton
+              label={
+                practiceData?.generatedAt ? 'Re-run Practice Scheduling' : 'Run Practice Scheduling'
+              }
+              onRun={() => navigate('/schedule/practice', { state: { autoRunPractice: true } })}
+              disabled={!teamsReady || !canManageSchedule}
+              disabledReason={schedulingDisabledReason}
+              hasExisting={Boolean(practiceData?.generatedAt)}
+              testId="step-run-practice"
+            />
+          </div>
         </WorkflowStep>
 
         {/* Step 5: Game Scheduling */}
@@ -245,7 +298,15 @@ const DashboardWorkflow = ({
             generatedAt={gameData.generatedAt}
             timezone={timezone}
           />
-          <div className="flex justify-end pt-4 mt-6 border-t border-border-subtle">
+          <div className="flex flex-col sm:flex-row gap-3 justify-between pt-4 mt-6 border-t border-border-subtle">
+            <StepRunButton
+              label={gameData?.generatedAt ? 'Re-run Game Scheduling' : 'Run Game Scheduling'}
+              onRun={() => navigate('/schedule/game', { state: { autoRunGames: true } })}
+              disabled={!teamsReady || !canManageSchedule}
+              disabledReason={schedulingDisabledReason}
+              hasExisting={Boolean(gameData?.generatedAt)}
+              testId="step-run-games"
+            />
             <Button variant="primary" size="lg" onClick={() => handleStepChange(6)}>
               Proceed to Output
             </Button>

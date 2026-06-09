@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom';
 import { useDashboardData } from '../hooks/useDashboardData.js';
 import { useTeamPersistence } from '../hooks/useTeamPersistence.js';
+import { useAutoRunOnNavigate } from '../hooks/useAutoRunOnNavigate.js';
 import { useImport } from '../contexts/ImportContext.jsx';
 import { useOrganization } from '../contexts/OrganizationContext.jsx';
 import { useAuth } from '../contexts/AuthContext.jsx';
@@ -856,6 +857,25 @@ export default function TeamAnalysisPage() {
     session?.user,
     selectedProgram,
   ]);
+
+  // Auto-run teaming when arriving from the dashboard "Start Teaming" button.
+  // Fires once a program is selected and players are loaded; if no program can
+  // be resolved the user simply lands on the page with the normal control.
+  const teamingAutoRunReady =
+    Boolean(selectedProgram) &&
+    importedPlayerRows.length > 0 &&
+    canManageTeams &&
+    Boolean(currentOrganization?.id) &&
+    // Division settings must be loaded — handleGenerateTeams -> saveDivisionConfig
+    // throws while divisionRows === null, and the one-shot intent would be
+    // consumed without retrying once settings arrive.
+    divisionRows !== null &&
+    !isGenerating;
+  useAutoRunOnNavigate({
+    intentKey: 'autoRunTeaming',
+    ready: teamingAutoRunReady,
+    onRun: handleGenerateTeams,
+  });
 
   // Combined loading state for better UX
   const isActuallyGenerating = useMemo(() => {
