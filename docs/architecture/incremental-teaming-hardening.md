@@ -233,7 +233,7 @@ indexTeamSnapshot(normalized) => { teamsById, playersById, teamIdByPlayerId, div
 reconcileTeamDeltas({ players, existingSnapshot, generationMode, changePolicy?, divisionConfigs? }) => {
   preservedTeamsByDivision,     // team shells kept (even if empty); rosters reduced to active players
   activeLockedPlayerIds,        // per-player lock OR manual assignment in review/published/locked
-  unassignedPlayersByDivision,  // late: registered now, absent from snapshot
+  unassignedPlayersByDivision,  // late arrivals + players who moved divisions (need placement here)
   droppedPlayersByDivision,     // in snapshot, no longer registered
   changedDivisionPlayers,       // [{ playerId, fromDivision, toDivision }]
   orphanedSnapshotPlayers,

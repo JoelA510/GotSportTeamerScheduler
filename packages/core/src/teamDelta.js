@@ -99,11 +99,14 @@ export function reconcileTeamDeltas({
         }
         const incomingDivision = toIdString(incomingPlayer.division) ?? division;
         if (incomingDivision !== division) {
+          // The player moved divisions: drop them from the old team's active roster and let the
+          // late/unassigned pass surface them in their new division.
           changedDivisionPlayers.push({
             playerId: player.id,
             fromDivision: division,
             toDivision: incomingDivision,
           });
+          continue;
         }
         const locked =
           player.locked || (lockManualAssignments && player.assignment_source === 'manual');
@@ -114,12 +117,14 @@ export function reconcileTeamDeltas({
     });
   }
 
-  // Late / unassigned players: present now, absent from the snapshot (rule 2).
+  // Late / unassigned players: registered in a division where the snapshot does not already
+  // place them — new arrivals (rule 2) and players who changed divisions.
   /** @type {Record<string, string[]>} */
   const unassignedPlayersByDivision = {};
   for (const [id, player] of incomingById) {
-    if (index.teamIdByPlayerId[id]) continue;
+    const snapshotPlayer = index.playersById[id];
     const division = toIdString(player.division) ?? 'unknown';
+    if (snapshotPlayer && snapshotPlayer.division === division) continue;
     addToBucket(unassignedPlayersByDivision, division, id);
     if (knownDivisions.size > 0 && !knownDivisions.has(division)) {
       diagnostics.push({

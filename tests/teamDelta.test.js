@@ -168,6 +168,13 @@ test('reconcileTeamDeltas flags players whose division changed', () => {
   assert.deepEqual(result.changedDivisionPlayers, [
     { playerId: 'p1', fromDivision: 'U10', toDivision: 'U12' },
   ]);
+  // The moved player leaves the old team's active roster...
+  assert.deepEqual(
+    result.preservedTeamsByDivision.U10[0].players.map((p) => p.id),
+    ['p2']
+  );
+  // ...and is surfaced as unassigned in the new division.
+  assert.deepEqual(result.unassignedPlayersByDivision.U12, ['p1']);
 });
 
 test('reconcileTeamDeltas honors a per-player locked flag even in draft mode', () => {
