@@ -23,8 +23,10 @@ export function useAutoRunOnNavigate({ intentKey, ready, onRun }) {
   const intentRef = useRef(false);
   const consumedRef = useRef(false);
 
-  // Capture the intent once on mount, then strip it from history state so a
-  // refresh or back-navigation does not replay the run.
+  // Capture the intent on the first render that carries it, then strip it from
+  // history state so a refresh or back-navigation does not replay the run.
+  // Declaring the deps is safe: once the intent is stripped, later runs find no
+  // intent and no-op (intentRef stays captured for the fire effect below).
   useEffect(() => {
     if (location.state && location.state[intentKey]) {
       intentRef.current = true;
@@ -34,9 +36,7 @@ export function useAutoRunOnNavigate({ intentKey, ready, onRun }) {
         state: Object.keys(rest).length > 0 ? rest : null,
       });
     }
-    // Intent is a one-shot captured on mount only.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [location, intentKey, navigate]);
 
   // Fire once, the first time the page reports it is ready to run.
   useEffect(() => {
