@@ -33,7 +33,7 @@ export function createDeterministicRandom(seedState = 42) {
  * as "no request".
  * @param {{ id: string, division?: string, buddyId?: string, coachId?: string, skillRating?: number }} options
  */
-export function makeGenerationPlayer(options) {
+export function makeGenerationPlayer(options = /** @type {any} */ ({})) {
   const { id, division = 'U10', buddyId, coachId, skillRating } = options;
   if (!id) {
     throw new Error('makeGenerationPlayer requires an id');

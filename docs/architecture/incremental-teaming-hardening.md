@@ -1,4 +1,4 @@
-[← Back to Documentation Index](docs/README.md)
+[← Back to Documentation Index](../README.md)
 ---
 
 # Incremental Teaming Hardening — Design & PR Sequence
