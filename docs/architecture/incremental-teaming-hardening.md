@@ -213,6 +213,40 @@ repo conventions during each PR. A canonical example snapshot lives in
 
 ---
 
+## 6a. Implemented in PR 02 — snapshot & delta helpers
+
+PR 02 landed the two pure helpers below in `packages/core/src` (no `generateTeams` change). They
+implement §5 phase 1 against the real persisted shapes: the design `existingSnapshot` in §6 and the
+relational persistence/review payload (`{ payload: { teamRows, teamPlayerRows } }`) are both accepted,
+and `null`/malformed input yields diagnostics rather than throwing.
+
+```js
+normalizeExistingSnapshot(existingSnapshot, options?) => {
+  status, runId,
+  teamsByDivision,   // canonical NormalizedTeam[] per division (camelCase; assistants flattened)
+  orphanedPlayers,   // [{ playerId, teamId }] — player rows with no resolvable team
+  diagnostics,       // [{ code, severity, message }]
+}
+
+indexTeamSnapshot(normalized) => { teamsById, playersById, teamIdByPlayerId, divisions }
+
+reconcileTeamDeltas({ players, existingSnapshot, generationMode, changePolicy?, divisionConfigs? }) => {
+  preservedTeamsByDivision,     // team shells kept (even if empty); rosters reduced to active players
+  activeLockedPlayerIds,        // per-player lock OR manual assignment in review/published/locked
+  unassignedPlayersByDivision,  // late arrivals + players who moved divisions (need placement here)
+  droppedPlayersByDivision,     // in snapshot, no longer registered
+  changedDivisionPlayers,       // [{ playerId, fromDivision, toDivision }]
+  orphanedSnapshotPlayers,
+  coachDeltas,                  // [{ teamId, division, coachId, coachDropped, droppedAssistantCoachIds }]
+  diagnostics,
+}
+```
+
+These are not wired into `generateTeams` yet (PR 04). `coachDeltas` is **detection only** —
+continuity and backfill land in PR 06.
+
+---
+
 ## 7. PR sequence
 
 | PR  | Title                                       | New modules (core)                        | Touches `generateTeams`? |
