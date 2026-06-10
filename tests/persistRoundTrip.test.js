@@ -9,6 +9,7 @@
  */
 import { test } from 'vitest';
 import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
 import { generateTeams } from '../packages/core/src/teamGeneration.js';
 import {
   buildExistingSnapshotForRerun,
@@ -284,7 +285,7 @@ test('full round-trip: persist → reload → re-run preserves UUIDs/locks/assis
 test('a payload that omits assistant_coach_ids preserves the stored value (old-client safety)', () => {
   const db = createDb();
   const fresh = generate(FRESH_ROSTER);
-  const review = buildReview(fresh, 'run-1', () => crypto.randomUUID());
+  const review = buildReview(fresh, 'run-1', () => randomUUID());
   persistReview(db, review, '2026-06-10T01:00:00Z');
   const before = db.teams.find((team) => Array.isArray(team.assistant_coach_ids));
   assert.deepEqual(before.assistant_coach_ids, [ASSISTANT_UUID]);
@@ -318,7 +319,7 @@ test('a non-UUID assistant id is excluded relationally but still round-trips via
     { id: 'p3', division: DIVISION_KEY },
     { id: 'p4', division: DIVISION_KEY },
   ]);
-  const review = buildReview(fresh, 'run-1', () => crypto.randomUUID());
+  const review = buildReview(fresh, 'run-1', () => randomUUID());
   // The relational row carries only UUID assistants (coach_id convention)…
   for (const row of review.payload.teamRows) {
     assert.deepEqual(row.assistant_coach_ids, [], 'non-UUID assistant filtered from the uuid[]');
@@ -336,7 +337,7 @@ test('a non-UUID assistant id is excluded relationally but still round-trips via
 test('payloadByDivision from newest-per-division runs spans divisions beyond the recent window', () => {
   const db = createDb();
   const fresh = generate(FRESH_ROSTER);
-  const review = buildReview(fresh, 'run-u10', () => crypto.randomUUID());
+  const review = buildReview(fresh, 'run-u10', () => randomUUID());
   persistReview(db, review, '2026-06-10T01:00:00Z');
 
   // Bury the U10 run under many newer U12 runs (more than any bounded window).
@@ -347,7 +348,7 @@ test('payloadByDivision from newest-per-division runs spans divisions beyond the
         organizationId: ORG_ID,
         status: 'completed',
         parameters: { selectedProgramId: 'U12' },
-        results: { teams: [{ id: crypto.randomUUID(), division: 'U12', players: [] }] },
+        results: { teams: [{ id: randomUUID(), division: 'U12', players: [] }] },
         createdAt: `2026-06-11T0${Math.floor(i / 10)}:${String(i % 10)}0:00Z`,
       },
       teams: [],
@@ -375,7 +376,7 @@ test('payloadByDivision from newest-per-division runs spans divisions beyond the
 
 test('generationSummary is persisted in run metrics with the per-division changes', () => {
   const fresh = generate(FRESH_ROSTER);
-  const review = buildReview(fresh, 'run-1', () => crypto.randomUUID());
+  const review = buildReview(fresh, 'run-1', () => randomUUID());
   const summary = review.runMetadata.metrics.generationSummary;
   assert.ok(summary, 'review snapshot carries the structured generation summary');
   const division = summary.divisions.find((entry) => entry.divisionId === DIVISION_KEY);
@@ -398,7 +399,7 @@ test('generationSummary is persisted in run metrics with the per-division change
     FRESH_ROSTER.map((player) => ({ ...player })),
     existingSnapshot
   );
-  const rerunReview = buildReview(rerun, 'run-2', () => crypto.randomUUID());
+  const rerunReview = buildReview(rerun, 'run-2', () => randomUUID());
   const rerunSummary = rerunReview.runMetadata.metrics.generationSummary;
   const rerunDivision = rerunSummary.divisions.find((entry) => entry.divisionId === DIVISION_KEY);
   assert.ok(rerunDivision.changes, 'incremental summary carries per-division changes');

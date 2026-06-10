@@ -37,9 +37,13 @@ async function fetchLatestRunsPerDivision(organizationId, seasonSettingsId) {
       p_organization_id: organizationId,
       p_season_settings_id: seasonSettingsId ?? null,
     });
-    if (error || !Array.isArray(data)) return null;
-    return data;
-  } catch {
+    if (error) {
+      logger.warn('get_latest_team_runs_per_division unavailable; using windowed runs:', error);
+      return null;
+    }
+    return Array.isArray(data) ? data : null;
+  } catch (err) {
+    logger.warn('get_latest_team_runs_per_division failed; using windowed runs:', err);
     return null;
   }
 }
