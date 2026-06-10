@@ -1,5 +1,22 @@
 @import 'tailwindcss';
 
+/* Self-hosted Public Sans (variable weight 100–900, latin subset).
+   CSP is font-src 'self', so fonts must ship with the bundle. */
+@font-face {
+  font-family: 'Public Sans';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('./assets/fonts/PublicSans-latin.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Public Sans';
+  font-style: italic;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('./assets/fonts/PublicSans-Italic-latin.woff2') format('woff2');
+}
+
 @theme {
   /* Colors — mapped to CSS variables defined in :root below */
   --color-bg-app: var(--color-bg-app);
@@ -31,7 +48,7 @@
   --color-status-pending-bg: var(--color-status-pending-bg);
 
   /* Font Family */
-  --font-display: 'Outfit', sans-serif;
+  --font-display: var(--font-family-base);
 
   /* Animations */
   --animate-fadeIn: fadeIn 0.4s ease-out forwards;
@@ -114,8 +131,10 @@
   --radius-full: 9999px;
 
   /* Shared Typography */
-  --font-family-base: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --font-family-display: 'Outfit', var(--font-family-base);
+  --font-family-base:
+    'Public Sans', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI',
+    sans-serif;
+  --font-family-display: var(--font-family-base);
 
   /* Backgrounds */
   --color-bg-app: #f1f5f9;

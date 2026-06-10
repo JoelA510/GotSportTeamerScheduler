@@ -1,6 +1,9 @@
 # SquadLogic
 
-![SquadLogic Logo](frontend/src/assets/Logo.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="frontend/public/SL-Logo-dark.png" />
+  <img src="frontend/public/SL-Logo.png" alt="SquadLogic Logo" width="180" height="180" />
+</picture>
 
 > **Focus on the Field.**
 >
@@ -18,7 +21,7 @@
 
 ## 🚀 Overview
 
-SquadLogic is a comprehensive tool for youth sports administrators. It simplifies the complex logistics of organizing leagues by automating team generation, practice scheduling, and game scheduling. Built with a modern tech stack and a "Deep Space Glass" design system, it offers a premium, intuitive user experience.
+SquadLogic is a comprehensive tool for youth sports administrators. It simplifies the complex logistics of organizing leagues by automating team generation, practice scheduling, and game scheduling. Built with a modern tech stack and the cobalt "Lightning-class" design system (light & dark themes), it offers a premium, intuitive user experience.
 
 > **Status:** v1.0 GA is deployed. Current release-readiness work is focused on CI/CD reproducibility, pgTAP reliability, durable import persistence, and final validation. See [`docs/operations/production-cutover.md`](docs/operations/production-cutover.md) for the launch runbook.
 

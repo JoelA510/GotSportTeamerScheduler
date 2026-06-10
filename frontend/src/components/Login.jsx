@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { supabase } from '../lib/supabaseClient.js';
 import { useAuth } from '../contexts/AuthContext.jsx';
-import logo from '../assets/logo_draft_modern.png';
+import logo from '../assets/SL-Logo.png';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -89,7 +89,6 @@ export default function Login() {
             style={{
               width: '120px',
               height: 'auto',
-              filter: 'drop-shadow(0 0 20px rgba(56, 189, 248, 0.5))',
             }}
           />
           <div>
