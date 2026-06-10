@@ -2,11 +2,12 @@
 
 # Incremental Teaming Hardening — Design & PR Sequence
 
-> **Status:** Foundation / design document. This page is the design baseline for a phased
-> hardening effort that adds **snapshot-aware, incremental** team generation on top of the
-> current fresh allocator. It is introduced alongside characterization tests in the
-> foundation PR and **describes no production behavior change by itself** — later PRs
-> implement the phases below.
+> **Status:** Implemented. This page is both the original design baseline _and_ the as-shipped
+> reference for **snapshot-aware, incremental** team generation layered on top of the fresh
+> allocator. The phased effort (PRs 01–09) is complete: §6a–§6g document each phase as shipped, §6h
+> is the consolidated `changePolicy` reference, and §4's fresh-path invariants remain guaranteed by
+> the characterization suite. The fresh allocator's behavior is unchanged whenever no snapshot is
+> supplied. (§5–§6 retain the original forward-looking plan/target shapes for historical context.)
 
 The current allocator (`packages/core/src/teamGeneration.js`) is a **fresh allocator**: every
 run treats all players as unassigned and builds teams from scratch. That is correct for the
@@ -470,37 +471,64 @@ snapshot into the `teamsByDivision` shape `normalizeExistingSnapshot` already ac
 - **UUIDs preserved end-to-end.** `buildTeamReviewSnapshot` keeps `isUuid(team.id) ? team.id :
 idFactory()` — a preserved team re-uses its persisted UUID; only a genuinely new team mints one.
   Tests assert **zero** id-factory calls for an all-preserved re-run.
-- **Full authoritative payload.** The review payload lists _every_ team in the result and _every_
-  player on each team (one `team_players` row per roster player). The persistence RPC
-  `persist_team_schedule` is **UPSERT-only** (`INSERT … ON CONFLICT DO UPDATE`, **no DELETE**), so a
-  full snapshot can only re-assert preserved rows — it can never delete a preserved assignment.
-  Partial payloads are therefore never sent (sending a subset would silently strand assignments).
+- **Full authoritative payload (required).** The review payload lists _every_ team in the result and
+  _every_ player on each team (one `team_players` row per roster player). The persistence RPC
+  `persist_team_schedule` **replaces each submitted team's roster**: for a team present in the payload
+  it `DELETE`s the memberships absent from the incoming rows and upserts the rest (a team _not_ in the
+  payload is left untouched). Sending the full authoritative roster per submitted team is therefore
+  **mandatory** — a partial roster would delete the omitted assignments. A welcome consequence: a
+  player dropped on a re-run is also removed from the DB (their preserved team is in the payload and
+  they are not in the incoming rows), so `droppedPlayersRemoved` matches the persisted state.
 
 ### Documented follow-up gaps (out of scope for PR 08; need a DB write path, tracked for PR 09 / later)
 
-1. **Dropped-player rows linger relationally.** Because the RPC never `DELETE`s, a player removed on a
-   re-run is gone from the in-memory rosters (and counted in `droppedPlayersRemoved`), but their old
-   `team_players` row survives in the DB. Closing this needs a delete-reconciliation path — e.g. a
-   delete-missing step scoped to the division, or a `persist_team_schedule` variant that prunes rows
-   absent from an authoritative payload. Until then, treat `droppedPlayersRemoved` as the source of
-   truth for "who left", not the raw `team_players` table.
-2. **Assistant-coach assignments are read-preserved but not write-persisted.**
+1. **Assistant-coach assignments are not write-persisted (and are dropped on re-run).**
    `buildExistingSnapshotForRerun` reconstructs assistants from `assistant_coach` role rows and core
    carries/backfills them in-session, but `buildTeamReviewSnapshot` writes only `role: 'player'` rows
-   plus the head `teams.coach_id`. An assistant introduced purely by core backfill is therefore not
-   yet round-tripped to a dedicated persisted assistant row. Persisting assistants needs an
-   `assistant_coach` write path (role rows or a `team.assistant_coach_ids` column).
-3. **Run-window bound (residual).** `payloadByDivision` is built from a bounded window of recent runs
+   plus the head `teams.coach_id`. Because the RPC replaces each submitted team's roster, any
+   pre-existing `assistant_coach` row for a submitted team is also deleted on the next persist.
+   Persisting assistants needs an `assistant_coach` write path (role rows or a
+   `team.assistant_coach_ids` column).
+2. **Run-window bound (residual).** `payloadByDivision` is built from a bounded window of recent runs
    (currently the newest 20). A very high-churn org that has logged more than 20 team runs without
    touching a given division since its last persist will not find that division's payload and will
    re-run it fresh (a page reload after persisting it brings it back into the window). Fully removing
    the bound needs a per-division "latest run" query (e.g. a `DISTINCT ON (division)` RPC) rather than
    a fixed `limit`. The initial-load and post-sync freshness races are already closed (see §6g).
-4. **Division-key form is consistent-by-convention, not enforced.** The snapshot's `division` is
+3. **Division-key form is consistent-by-convention, not enforced.** The snapshot's `division` is
    whatever `selectedProgram.id` resolved to at write time (an age-group key like `U10`, or a
    `division_id` UUID), and `divisionConfigs` is keyed by the same value end-to-end, so they always
    align today. A future caller that keyed `divisionConfigs` differently from `selectedProgram.id`
    would need the `changePolicy.divisionKeyById` remap (already supported by core) to bridge them.
+
+---
+
+## 6h. `changePolicy` reference (as shipped)
+
+The complete, as-implemented `changePolicy` surface accepted by `generateTeams({ changePolicy })`.
+This supersedes the forward-looking target shape sketched in §6 (which still lists some never-shipped
+fields). All keys are optional; omitting `changePolicy` entirely is equivalent to `{}`.
+
+| Key                               | Type                      | Default                                                     | Effect                                                                                                                                                                                                  |
+| --------------------------------- | ------------------------- | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `teamCountPolicy`                 | string                    | derived from `generationMode` (see below)                   | `auto` (ignore snapshot, fresh), `preserve-existing` (keep the team count), `preserve-or-expand` (add teams only when capacity requires), `preserve-with-overflow` (never add teams; overflow instead). |
+| `lockManualAssignments`           | boolean                   | `true` in `review`/`published`/`locked`, `false` in `draft` | Forces (or releases) the "manual `assignment_source` is locked" rule independent of the mode. A locked player is never moved.                                                                           |
+| `allowOverCapAssignments`         | boolean                   | `false`                                                     | Permits seating a late player beyond `maxRosterSize` (the resulting over-cap roster is reported in `capacityViolations`).                                                                               |
+| `coachReplacementMap`             | `{ [oldCoachId]: newId }` | `{}`                                                        | Explicit head-coach swaps; always wins unless the target already anchors another team (→ `manualReview`).                                                                                               |
+| `allowHouseholdCoachReplacement`  | boolean                   | `false`                                                     | When a head coach drops and **exactly one** preserved child now carries a different active coach, promote that parent.                                                                                  |
+| `allowLateCoachAttachToChildTeam` | boolean                   | `true`                                                      | Lets a late head coach attach to their child's coachless preserved team (single-candidate only).                                                                                                        |
+| `allowAssistantShellCreation`     | boolean                   | `false`                                                     | When set, an assistant-only late unit with no backfill target may create a new shell instead of overflowing.                                                                                            |
+| `divisionKeyById`                 | `{ [division_id]: key }`  | `{}`                                                        | Maps a persisted relational `division_id` (UUID) back to the generator division key when a snapshot team row carries no display `division`.                                                             |
+
+**`teamCountPolicy` default by mode:** no `existingSnapshot` → `auto` (fresh); `existingSnapshot` +
+`generationMode: 'draft'` → `preserve-or-expand`; `existingSnapshot` + `review`/`published`/`locked` →
+`preserve-existing`. An explicit `auto` with a snapshot discards the snapshot and runs fresh.
+
+**Locked-team exception (coach policies).** A snapshot team with `locked: true` is exempt from _all_
+coach mutation: `applyCoachContinuity` leaves its `coachId` untouched and merely reports a drop
+(`coachInactive`) when the coach is gone. So `coachReplacementMap`, `allowHouseholdCoachReplacement`,
+and `allowLateCoachAttachToChildTeam` have **no effect on a locked team** — unlock it (or fix the
+roster upstream) before expecting a coach change to apply.
 
 ---
 

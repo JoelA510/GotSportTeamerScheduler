@@ -24,7 +24,7 @@
 - [Edge Functions Inventory](architecture/edge-functions-inventory.md) — Every deployed Edge Function, its inputs/outputs, RLS interaction, and the RPC vs Edge-Function decision rule.
 - [GotSport Import Contract](architecture/gotsport-import-contract.md) — Whitelisted player/coach fields kept vs. dropped, age-cutoff modes, play-up rules, division auto-create, and coach→team linkage.
 - [Team Generation](architecture/team-generation.md) — Algorithm design for converting registrations into balanced teams.
-- [Incremental Teaming Hardening](architecture/incremental-teaming-hardening.md) — Snapshot-aware / incremental team generation design, invariants, and phased PR sequence.
+- [Incremental Teaming Hardening](architecture/incremental-teaming-hardening.md) — Snapshot-aware / incremental team generation (shipped): re-run policies, the `changePolicy` reference, change diagnostics, persistence invariants, and the per-PR implementation notes.
 - [Practice Scheduling](architecture/practice-scheduling.md) — Practice slot allocation and conflict resolution.
 - [Game Scheduling](architecture/game-scheduling.md) — Game slot allocation and matchup fairness.
 - [Evaluation Pipeline](architecture/evaluation-pipeline.md) — Scoring engine, metrics, findings, and `evaluation_runs` persistence.
