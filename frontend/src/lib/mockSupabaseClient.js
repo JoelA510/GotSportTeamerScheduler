@@ -8,6 +8,7 @@
  */
 import { logger } from './logger.js';
 import { HEADER_ALIASES, RESERVED_KEYS } from '../utils/telemetryUtils.js';
+import { selectLatestTeamRunsPerDivision } from '../utils/schedulerRunFilters.js';
 
 const mockId = (prefix = '') =>
   prefix + (crypto.randomUUID?.() || crypto.getRandomValues(new Uint32Array(4)).join('-'));
@@ -4003,42 +4004,20 @@ export const mockSupabase = {
     }
 
     if (name === 'get_latest_team_runs_per_division') {
-      // Mirrors the SQL DISTINCT ON: the single newest team run per division for the org
-      // (optionally season-scoped). Division resolution matches the DB function:
-      // parameters.selectedProgramId first, then the first persisted team's display division.
+      // Org/season scope, then defer to the shared mirror of the SQL DISTINCT ON
+      // (newest run per division; empty-results runs skipped; selectedProgramId →
+      // first team's division/division_id) so mock and tests share one contract.
       const orgId = params?.p_organization_id;
       const seasonId = params?.p_season_settings_id ?? null;
-      const runs = (db.scheduler_runs || [])
-        .filter(
-          (run) =>
-            run.run_type === 'team' &&
-            String(run.organization_id) === String(orgId) &&
-            (seasonId === null ||
-              String(run.season_settings_id) === String(seasonId) ||
-              String(run.season_id) === String(seasonId))
-        )
-        .sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')));
-      const byDivision = new Map();
-      for (const run of runs) {
-        // Mirrors the SQL: runs without persisted teams cannot seed a re-run, so a
-        // failed/queued attempt never shadows an older completed snapshot.
-        if (!Array.isArray(run.results?.teams) || run.results.teams.length === 0) continue;
-        const division =
-          run.parameters?.selectedProgramId ??
-          run.results?.teams?.[0]?.division ??
-          run.results?.teams?.[0]?.division_id ??
-          null;
-        if (division == null || byDivision.has(String(division))) continue;
-        byDivision.set(String(division), {
-          id: run.id,
-          status: run.status,
-          division: String(division),
-          parameters: run.parameters ?? {},
-          results: run.results ?? {},
-          created_at: run.created_at,
-        });
-      }
-      return { data: [...byDivision.values()], error: null };
+      const runs = (db.scheduler_runs || []).filter(
+        (run) =>
+          run.run_type === 'team' &&
+          String(run.organization_id) === String(orgId) &&
+          (seasonId === null ||
+            String(run.season_settings_id) === String(seasonId) ||
+            String(run.season_id) === String(seasonId))
+      );
+      return { data: selectLatestTeamRunsPerDivision(runs), error: null };
     }
 
     return { data: null, error: null };

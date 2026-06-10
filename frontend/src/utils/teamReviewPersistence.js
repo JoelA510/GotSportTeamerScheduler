@@ -175,9 +175,13 @@ export function buildTeamReviewSnapshot(
       // role rows are structurally impossible there. UUID-only, matching the
       // coach_id convention; non-UUID assistant ids still round-trip via the
       // inline results.teams JSON that the re-run path reads.
-      assistant_coach_ids: (Array.isArray(team.assistantCoachIds) ? team.assistantCoachIds : [])
-        .map((id) => String(id))
-        .filter(isUuid),
+      assistant_coach_ids: [
+        ...new Set(
+          (Array.isArray(team.assistantCoachIds) ? team.assistantCoachIds : [])
+            .map((id) => String(id))
+            .filter(isUuid)
+        ),
+      ],
     };
   });
 

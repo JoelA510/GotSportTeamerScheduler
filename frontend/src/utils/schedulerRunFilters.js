@@ -37,3 +37,52 @@ export function buildPayloadByDivision(runs) {
   }
   return byDivision;
 }
+
+/**
+ * Resolve a scheduler run's division key the way `get_latest_team_runs_per_division` does:
+ * a non-empty `parameters.selectedProgramId`, else the first persisted team carrying a non-empty
+ * `division` / `division_id`. Returns `null` when nothing resolves. Pure.
+ *
+ * @param {{ parameters?: any, results?: { teams?: any[] } }} run
+ * @returns {string | null}
+ */
+export function resolveTeamRunDivision(run) {
+  const selected = run?.parameters?.selectedProgramId;
+  if (typeof selected === 'string' && selected.trim() !== '') return selected;
+  for (const team of run?.results?.teams ?? []) {
+    const division = team?.division ?? team?.division_id;
+    if (division != null && String(division).trim() !== '') return String(division);
+  }
+  return null;
+}
+
+/**
+ * Pure JS mirror of the `get_latest_team_runs_per_division` RPC, used by the mock Supabase client
+ * and the round-trip tests so all three (SQL, mock, test) encode ONE contract: the single newest
+ * team run per division, newest-first. Runs without a persisted team array are skipped (a
+ * failed/queued attempt must never shadow an older completed snapshot). Pure.
+ *
+ * @param {Array<{ id?: string, status?: string, parameters?: any, results?: any, created_at?: string }>} runs
+ * @returns {Array<{ id: any, status: any, division: string, parameters: any, results: any, created_at: any }>}
+ */
+export function selectLatestTeamRunsPerDivision(runs) {
+  const sorted = [...(Array.isArray(runs) ? runs : [])].sort((a, b) =>
+    String(b?.created_at ?? '').localeCompare(String(a?.created_at ?? ''))
+  );
+  const byDivision = new Map();
+  for (const run of sorted) {
+    const teams = run?.results?.teams;
+    if (!Array.isArray(teams) || teams.length === 0) continue; // no snapshot to seed a re-run
+    const division = resolveTeamRunDivision(run);
+    if (division == null || byDivision.has(division)) continue; // newest already won this division
+    byDivision.set(division, {
+      id: run.id,
+      status: run.status,
+      division,
+      parameters: run.parameters ?? {},
+      results: run.results ?? {},
+      created_at: run.created_at,
+    });
+  }
+  return [...byDivision.values()];
+}

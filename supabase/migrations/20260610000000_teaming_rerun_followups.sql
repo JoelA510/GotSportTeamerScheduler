@@ -702,40 +702,64 @@ LANGUAGE sql
 STABLE
 SET search_path = public
 AS $$
-    SELECT DISTINCT ON (runs.division)
-        runs.id,
-        runs.status,
-        runs.division,
-        runs.parameters,
-        runs.results,
-        runs.created_at
+    -- Outer sort: rows are returned newest-first, because the frontend
+    -- (buildPayloadByDivision) re-keys by each run's own team division fields
+    -- under a first-run-wins rule — a division-ASC order would let an older run
+    -- win a shared key.
+    SELECT picked.*
     FROM (
-        SELECT
-            sr.id,
-            sr.status::text AS status,
-            sr.parameters,
-            sr.results,
-            sr.created_at::timestamptz AS created_at,
-            COALESCE(
-                NULLIF(sr.parameters->>'selectedProgramId', ''),
-                sr.results->'teams'->0->>'division',
-                sr.results->'teams'->0->>'division_id'
-            ) AS division
-          FROM public.scheduler_runs sr
-         WHERE sr.run_type = 'team'
-           AND sr.organization_id = p_organization_id
-           -- Only runs that actually carry a persisted team snapshot can seed a
-           -- re-run; a failed/queued attempt with empty results must not shadow
-           -- an older completed snapshot for the same division.
-           AND jsonb_array_length(COALESCE(sr.results->'teams', '[]'::jsonb)) > 0
-           AND (
-                p_season_settings_id IS NULL
-                OR sr.season_settings_id = p_season_settings_id
-                OR sr.season_id = p_season_settings_id
-           )
-    ) runs
-    WHERE runs.division IS NOT NULL
-    ORDER BY runs.division, runs.created_at DESC;
+        SELECT DISTINCT ON (runs.division)
+            runs.id,
+            runs.status,
+            runs.division,
+            runs.parameters,
+            runs.results,
+            runs.created_at
+        FROM (
+            SELECT
+                sr.id,
+                sr.status::text AS status,
+                sr.parameters,
+                sr.results,
+                sr.created_at::timestamptz AS created_at,
+                COALESCE(
+                    NULLIF(sr.parameters->>'selectedProgramId', ''),
+                    -- First team carrying a division key (not just teams[0]) —
+                    -- mirrors the frontend's per-team division derivation.
+                    (
+                        SELECT COALESCE(
+                                   NULLIF(t.value->>'division', ''),
+                                   NULLIF(t.value->>'division_id', '')
+                               )
+                          FROM jsonb_array_elements(sr.results->'teams') AS t(value)
+                         WHERE COALESCE(
+                                   NULLIF(t.value->>'division', ''),
+                                   NULLIF(t.value->>'division_id', '')
+                               ) IS NOT NULL
+                         LIMIT 1
+                    )
+                ) AS division
+              FROM public.scheduler_runs sr
+             WHERE sr.run_type = 'team'
+               AND sr.organization_id = p_organization_id
+               -- Only runs that actually carry a persisted team snapshot can seed
+               -- a re-run; a failed/queued attempt with empty results must not
+               -- shadow an older completed snapshot. The typeof guard keeps a
+               -- legacy/malformed row (results.teams as a non-array, e.g. a JSON
+               -- object or null) from erroring the whole function.
+               AND jsonb_typeof(sr.results->'teams') = 'array'
+               AND jsonb_array_length(sr.results->'teams') > 0
+               AND (
+                    p_season_settings_id IS NULL
+                    OR sr.season_settings_id = p_season_settings_id
+                    OR sr.season_id = p_season_settings_id
+               )
+        ) runs
+        WHERE runs.division IS NOT NULL
+        -- id DESC: deterministic tie-break when two runs share created_at.
+        ORDER BY runs.division, runs.created_at DESC, runs.id DESC
+    ) picked
+    ORDER BY picked.created_at DESC, picked.id DESC;
 $$;
 
 REVOKE EXECUTE ON FUNCTION public.get_latest_team_runs_per_division(uuid, uuid) FROM PUBLIC, anon;

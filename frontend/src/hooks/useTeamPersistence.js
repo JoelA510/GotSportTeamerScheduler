@@ -79,7 +79,11 @@ export function useTeamPersistence() {
         // Fetch a wider window than we display so payloadByDivision (below) can preserve a
         // re-run of a division whose last run is older than the few most-recent ones. Very
         // high-churn orgs (>20 recent runs without touching a division) may still need a reload.
-        const { data: runs, error } = await runQuery.limit(20);
+        // The windowed history read and the per-division RPC are independent — issue them together.
+        const [{ data: runs, error }, latestPerDivision] = await Promise.all([
+          runQuery.limit(20),
+          fetchLatestRunsPerDivision(currentOrganization.id, currentSeasonSetting.id),
+        ]);
 
         if (error) {
           logger.error('Error fetching persistence history:', error);
@@ -98,10 +102,6 @@ export function useTeamPersistence() {
 
         // Per-division preservation map: prefer the unbounded newest-per-division RPC; fall back
         // to the bounded window above when the RPC is unavailable.
-        const latestPerDivision = await fetchLatestRunsPerDivision(
-          currentOrganization.id,
-          currentSeasonSetting.id
-        );
         const runsForDivisionMap =
           latestPerDivision && latestPerDivision.length > 0 ? latestPerDivision : runs;
 

@@ -15,7 +15,12 @@ import {
   buildExistingSnapshotForRerun,
   buildTeamReviewSnapshot,
 } from '../frontend/src/utils/teamReviewPersistence.js';
-import { buildPayloadByDivision } from '../frontend/src/utils/schedulerRunFilters.js';
+import {
+  buildPayloadByDivision,
+  selectLatestTeamRunsPerDivision,
+} from '../frontend/src/utils/schedulerRunFilters.js';
+
+const UUIDISH = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 import { createDeterministicRandom } from './fixtures/incrementalTeamingFixtures.js';
 
 const DIVISION_KEY = 'U10';
@@ -59,7 +64,6 @@ function simulatePersistTeamSchedule(db, { runData, teams, teamPlayers }) {
     // strings, unknown ids, and cross-org coaches are all dropped (they
     // round-trip via the results JSON only). Absent key → NULL → COALESCE
     // preserves the stored value.
-    const UUIDISH = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     const isOrgCoach = (id) =>
       db.coaches.some((coach) => coach.id === id && coach.organization_id === ORG_ID);
     const sanitizedAssistants = Array.isArray(row.assistant_coach_ids)
@@ -139,20 +143,9 @@ function persistReview(db, review, createdAt) {
 function loadPersistenceSnapshot(db) {
   const runs = [...db.scheduler_runs].sort((a, b) => b.created_at.localeCompare(a.created_at));
   const lastRun = runs[0];
-  // Newest run per division — what get_latest_team_runs_per_division returns.
-  // Runs without persisted teams are skipped so a failed/queued attempt cannot
-  // shadow an older completed snapshot for the same division.
-  const byDivision = new Map();
-  for (const run of runs) {
-    if (!Array.isArray(run.results?.teams) || run.results.teams.length === 0) continue;
-    const division =
-      run.parameters?.selectedProgramId ??
-      run.results?.teams?.[0]?.division ??
-      run.results?.teams?.[0]?.division_id ??
-      null;
-    if (division == null || byDivision.has(String(division))) continue;
-    byDivision.set(String(division), run);
-  }
+  // The division map is seeded by the same shared mirror the mock client + hook use, so the test
+  // exercises the real get_latest_team_runs_per_division contract (newest-per-division, empty runs
+  // skipped) rather than a hand-copied second implementation.
   return {
     lastRunId: lastRun?.id ?? null,
     runHistory: runs.map((run) => ({ runId: run.id, status: run.status })),
@@ -161,7 +154,7 @@ function loadPersistenceSnapshot(db) {
       teamRows: lastRun?.results?.teams || [],
       teamPlayerRows: lastRun?.results?.team_players || [],
     },
-    payloadByDivision: buildPayloadByDivision([...byDivision.values()]),
+    payloadByDivision: buildPayloadByDivision(selectLatestTeamRunsPerDivision(db.scheduler_runs)),
   };
 }
 
