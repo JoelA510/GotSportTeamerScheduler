@@ -1,8 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabaseClient.js';
 import { logger } from '../lib/logger.js';
 import { useOrganization } from '../contexts/OrganizationContext.jsx';
-import { scopeSchedulerRunsToActiveSeason } from '../utils/schedulerRunFilters.js';
+import {
+  scopeSchedulerRunsToActiveSeason,
+  buildPayloadByDivision,
+} from '../utils/schedulerRunFilters.js';
 
 const EMPTY_PERSISTENCE_SNAPSHOT = {
   manualOverrides: [],
@@ -16,12 +19,19 @@ const EMPTY_PERSISTENCE_SNAPSHOT = {
     teamRows: [],
     teamPlayerRows: [],
   },
+  // Most-recent persisted payload PER division (a run persists one division). `payload` only
+  // surfaces the single most-recent run; this lets a re-run of ANY previously-persisted division
+  // — not just the most-recently-persisted one — still find its teams to preserve.
+  payloadByDivision: {},
 };
 
 export function useTeamPersistence() {
   const { currentOrganization, currentSeasonSetting } = useOrganization();
   const [persistenceSnapshot, setPersistenceSnapshot] = useState(EMPTY_PERSISTENCE_SNAPSHOT);
   const [loading, setLoading] = useState(true);
+  // Bumping refreshKey re-runs the fetch effect — e.g. after a sync persists a new run, so a
+  // same-session re-run sees the just-persisted teams instead of the stale pre-sync snapshot.
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     if (!currentOrganization?.id || !currentSeasonSetting?.id) {
@@ -43,15 +53,18 @@ export function useTeamPersistence() {
 
         runQuery = scopeSchedulerRunsToActiveSeason(runQuery, currentSeasonSetting.id);
 
-        const { data: runs, error } = await runQuery.limit(5);
+        // Fetch a wider window than we display so payloadByDivision (below) can preserve a
+        // re-run of a division whose last run is older than the few most-recent ones. Very
+        // high-churn orgs (>20 recent runs without touching a division) may still need a reload.
+        const { data: runs, error } = await runQuery.limit(20);
 
         if (error) {
           logger.error('Error fetching persistence history:', error);
           return;
         }
 
-        // Map runs to the format expected by TeamPersistencePanel
-        const history = runs.map((run) => ({
+        // Map the few most-recent runs to the format expected by TeamPersistencePanel.
+        const history = runs.slice(0, 5).map((run) => ({
           runId: run.id,
           status: run.status,
           startedAt: run.started_at,
@@ -95,6 +108,7 @@ export function useTeamPersistence() {
             teamRows: lastRun?.results?.teams || [],
             teamPlayerRows: lastRun?.results?.team_players || [],
           },
+          payloadByDivision: buildPayloadByDivision(runs),
         });
       } catch (err) {
         logger.error('Failed to init persistence snapshot:', err);
@@ -104,7 +118,9 @@ export function useTeamPersistence() {
     }
 
     fetchPersistenceHistory();
-  }, [currentOrganization?.id, currentSeasonSetting?.id]);
+  }, [currentOrganization?.id, currentSeasonSetting?.id, refreshKey]);
 
-  return { persistenceSnapshot, loading };
+  const refresh = useCallback(() => setRefreshKey((key) => key + 1), []);
+
+  return { persistenceSnapshot, loading, refresh };
 }
