@@ -1,8 +1,11 @@
 import { useMemo } from 'react';
+import { getCanonicalBuddyId } from '@squadlogic/core/buddyLinking.js';
 
 /**
  * Reactive conflict detection hook for roster assignments.
  * Scans teams and players for buddy separations, gender mismatches, and age mismatches.
+ * Buddy links are read through the core canonical helper so `buddyId` and `buddy_id`
+ * variants are treated identically to generation.
  *
  * @param {Array} teams - Array of team objects with { id, name, gender, minAge, maxAge, players[] }
  * @returns {{ conflicts: Array, hasConflicts: boolean }}
@@ -26,11 +29,14 @@ export function useConflicts(teams) {
       });
     });
 
+    const playersById = new Map(allPlayers.map((p) => [String(p.id), p]));
+
     allPlayers.forEach((p1) => {
       // --- Buddy Separation Check ---
-      if (p1.buddyId && !checkedBuddies.has(p1.id)) {
-        const p2 = allPlayers.find((p) => p.id === p1.buddyId);
-        if (p2 && p2.buddyId === p1.id) {
+      const p1BuddyId = getCanonicalBuddyId(p1);
+      if (p1BuddyId && !checkedBuddies.has(p1.id)) {
+        const p2 = playersById.get(p1BuddyId);
+        if (p2 && getCanonicalBuddyId(p2) === String(p1.id)) {
           checkedBuddies.add(p1.id);
           checkedBuddies.add(p2.id);
 

@@ -23,6 +23,8 @@ export const TEAM_GENERATION = {
   REASON_ExhaustedRetries: 'exhausted retries',
   REASON_CoachCapacity: 'coach-capacity',
   REASON_Balancing: 'balancing assignment',
+  REASON_BuddyTargetCapacity: 'buddy-target-capacity',
+  REASON_BuddyTargetLocked: 'buddy-target-locked',
   REASON_Unknown: 'unknown',
 
   // Limits

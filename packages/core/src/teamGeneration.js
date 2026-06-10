@@ -11,6 +11,7 @@ import { PlayerSchema } from './schemas/index.js';
 import { EVALUATOR_REGISTRY } from './evaluators/index.js';
 import { buildAssignmentUnits, calculateUnitSkill } from './assignmentUnits.js';
 import { reconcileTeamDeltas } from './teamDelta.js';
+import { getCanonicalBuddyId } from './buddyLinking.js';
 
 /** @typedef {import('./types.js').Player} Player */
 /** @typedef {import('./types.js').Team} Team */
@@ -322,6 +323,9 @@ export function generateTeams({
       division: team.division,
       coachId: team.coachId,
       coachNeeded: !team.coachId,
+      // Round-trips the snapshot team lock so persistence does not silently drop it
+      // (always false in fresh generation).
+      locked: Boolean(team.locked),
       assistantCoachIds: team.assistantCoachIds ? [...team.assistantCoachIds] : [],
       skillTotal: team.skillTotal,
       players: team.players.map((player) => structuredClone(player)),
@@ -485,6 +489,7 @@ export function generateTeams({
         newTeamsCreated: stats.newTeamsCreated,
         latePlayersAssigned: stats.latePlayersAssigned,
         latePlayersOverflowed: stats.latePlayersOverflowed,
+        buddyTargetAssignments: stats.buddyTargetAssignments ?? [],
         droppedPlayersRemoved: (reconciliation.droppedPlayersByDivision[division] ?? []).length,
         manualAssignmentsPreserved,
         capacityViolations,
@@ -548,6 +553,7 @@ function rehydratePreservedTeams(preservedTeams, playerCloneById) {
     name: team.name,
     division: team.division,
     coachId: team.coachId ?? null,
+    locked: Boolean(team.locked),
     assistantCoachIds: Array.isArray(team.assistantCoachIds) ? [...team.assistantCoachIds] : [],
     players: team.players
       .map((player) => {
@@ -827,10 +833,23 @@ function buildTeamsForDivisionIncremental({
     name: team.name ?? `${division} Team ${String(index + 1).padStart(2, '0')}`,
     division,
     coachId: team.coachId ?? null,
+    locked: Boolean(team.locked),
     assistantCoachIds: [...team.assistantCoachIds],
     players: [...team.players],
     skillTotal: calculateUnitSkill(team.players),
   }));
+
+  // Historical buddy lookup: preserved player id → { teamId, player } (this division only).
+  // The player object is kept so targeting can verify the request is RECIPROCAL.
+  const preservedBuddyTargets = new Map();
+  for (const team of preservedTeams) {
+    for (const player of team.players) {
+      const id = String(player.id).trim();
+      if (!preservedBuddyTargets.has(id)) {
+        preservedBuddyTargets.set(id, { teamId: team.id, player });
+      }
+    }
+  }
 
   const overflow = [];
   let teamIndex = teams.length;
@@ -856,13 +875,36 @@ function buildTeamsForDivisionIncremental({
 
   const { units, buddyDiagnostics } = buildAssignmentUnits(latePlayers);
   const coachUnits = [];
+  const targetedBuddyUnits = [];
   const generalUnits = [];
   for (const unit of units) {
     if (unit.type === 'coach' || unit.type === 'assistant') {
       coachUnits.push(unit);
-    } else {
-      generalUnits.push(unit);
+      continue;
     }
+    // Historical buddy routing: a late solo player whose RECIPROCAL buddy is already preserved
+    // on a team becomes a targeted-buddy unit aimed at that team. (Coach anchoring takes
+    // precedence; late mutual pairs stay mutual-buddy units; one-sided requests are NOT honored —
+    // matching fresh generation's mutual-only policy.)
+    if (unit.type === 'general' && unit.players.length === 1) {
+      const latePlayer = unit.players[0];
+      const buddyId = getCanonicalBuddyId(latePlayer);
+      const target = buddyId ? preservedBuddyTargets.get(buddyId) : undefined;
+      if (target && getCanonicalBuddyId(target.player) === String(latePlayer.id).trim()) {
+        targetedBuddyUnits.push({ ...unit, type: 'targeted-buddy', targetTeamId: target.teamId });
+        continue;
+      }
+    }
+    generalUnits.push(unit);
+  }
+
+  // The unit builder diagnosed these buddies as 'missing-player' (they are not late players) —
+  // they are in fact preserved; the routing outcome is reported instead.
+  if (targetedBuddyUnits.length > 0) {
+    const targetedPlayerIds = new Set(targetedBuddyUnits.map((unit) => unit.players[0].id));
+    buddyDiagnostics.unmatchedRequests = buddyDiagnostics.unmatchedRequests.filter(
+      (entry) => !(entry.reason === 'missing-player' && targetedPlayerIds.has(entry.playerId))
+    );
   }
 
   // Late coach/assistant units first: join their preserved team when one exists; otherwise a new
@@ -878,8 +920,20 @@ function buildTeamsForDivisionIncremental({
       targetTeam =
         teams.find(
           (t) =>
-            t.assistantCoachIds && t.assistantCoachIds.some((id) => assistantCoachIds.includes(id))
+            !t.locked &&
+            t.assistantCoachIds &&
+            t.assistantCoachIds.some((id) => assistantCoachIds.includes(id))
         ) ?? createTeam(null);
+    }
+
+    // A locked preserved team accepts no late additions — not even its own coach's child.
+    if (targetTeam && targetTeam.locked) {
+      overflow.push({
+        players: unit,
+        reason: TEAM_GENERATION.REASON_CoachCapacity,
+        metadata: { coachId, locked: true },
+      });
+      continue;
     }
 
     if (!targetTeam) {
@@ -922,13 +976,62 @@ function buildTeamsForDivisionIncremental({
     }
   }
 
+  // Targeted-buddy units: route the late player onto their buddy's preserved team when capacity
+  // and policy allow; otherwise overflow with a specific reason. Existing rosters are NEVER
+  // reshuffled to make room.
+  const buddyTargetAssignments = [];
+  for (const assignmentUnit of targetedBuddyUnits) {
+    const unit = assignmentUnit.players;
+    const targetTeam = teams.find((team) => team.id === assignmentUnit.targetTeamId);
+    if (!targetTeam || targetTeam.locked) {
+      overflow.push({
+        players: unit,
+        reason: TEAM_GENERATION.REASON_BuddyTargetLocked,
+        metadata: {
+          targetTeamId: assignmentUnit.targetTeamId,
+          buddyId: unit[0].buddyId,
+        },
+      });
+      continue;
+    }
+
+    const assigned = assignUnitToTeam({
+      unit,
+      unitSkillTotal: assignmentUnit.skillTotal,
+      team: targetTeam,
+      maxRosterSize: effectiveMaxRosterSize,
+      reason: TEAM_GENERATION.REASON_BuddyRequest,
+    });
+
+    if (assigned) {
+      buddyTargetAssignments.push({
+        playerId: unit[0].id,
+        buddyId: unit[0].buddyId,
+        teamId: targetTeam.id,
+      });
+    } else {
+      overflow.push({
+        players: unit,
+        reason: TEAM_GENERATION.REASON_BuddyTargetCapacity,
+        metadata: {
+          targetTeamId: targetTeam.id,
+          buddyId: unit[0].buddyId,
+          playerCount: targetTeam.players.length,
+          maxRosterSize,
+        },
+      });
+    }
+  }
+
   generalUnits.sort((a, b) => b.skillTotal - a.skillTotal);
 
   for (const assignmentUnit of generalUnits) {
     const unit = assignmentUnit.players;
     const skillTotal = assignmentUnit.skillTotal;
+    // Locked preserved teams accept no late additions (filtered per unit so teams created
+    // during expansion remain candidates).
     let team = pickTeamWithMostCapacity({
-      teams,
+      teams: teams.filter((candidate) => !candidate.locked),
       unit,
       unitSkillTotal: skillTotal,
       maxRosterSize: effectiveMaxRosterSize,
@@ -965,6 +1068,7 @@ function buildTeamsForDivisionIncremental({
     newTeamsCreated: teams.length - preservedTeams.length,
     latePlayersAssigned: latePlayers.length - latePlayersOverflowed,
     latePlayersOverflowed,
+    buddyTargetAssignments,
   };
 
   return { teams, overflow, buddyDiagnostics, incrementalStats };
