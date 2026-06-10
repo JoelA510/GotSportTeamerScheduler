@@ -4020,8 +4020,14 @@ export const mockSupabase = {
         .sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')));
       const byDivision = new Map();
       for (const run of runs) {
+        // Mirrors the SQL: runs without persisted teams cannot seed a re-run, so a
+        // failed/queued attempt never shadows an older completed snapshot.
+        if (!Array.isArray(run.results?.teams) || run.results.teams.length === 0) continue;
         const division =
-          run.parameters?.selectedProgramId ?? run.results?.teams?.[0]?.division ?? null;
+          run.parameters?.selectedProgramId ??
+          run.results?.teams?.[0]?.division ??
+          run.results?.teams?.[0]?.division_id ??
+          null;
         if (division == null || byDivision.has(String(division))) continue;
         byDivision.set(String(division), {
           id: run.id,

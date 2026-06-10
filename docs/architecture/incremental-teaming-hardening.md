@@ -492,7 +492,8 @@ idFactory()` — a preserved team re-uses its persisted UUID; only a genuinely n
    treat NULL like `{}`) now carries the list: `buildTeamReviewSnapshot` writes the UUID subset on
    every team row (the `coach_id` convention — non-UUID import-era ids round-trip via the inline
    results JSON the re-run path reads), and the redefined `persist_team_schedule`
-   validates/sanitizes it (string array, UUID-filtered, deduped, ≤ 50 entries) and
+   validates/sanitizes it (string array, UUID-filtered, **restricted to coaches that exist in the
+   run organization** — the column grants portal/RLS access — deduped, ≤ 50 entries) and
    upserts it with `COALESCE(EXCLUDED…, teams.assistant_coach_ids)` — so an older client whose
    payload omits the key can never wipe a stored list. `tests/persistRoundTrip.test.js` proves the
    full DB round-trip (including old-client safety).

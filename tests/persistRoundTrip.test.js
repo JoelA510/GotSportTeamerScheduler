@@ -25,7 +25,7 @@ const U10_CONFIG = { id: DIVISION_KEY, teamsCount: 2, slotsPerWeek: 4, maxRoster
 
 /** In-memory relational state mirroring the tables the RPC touches. */
 function createDb() {
-  return { scheduler_runs: [], teams: [], team_players: [] };
+  return { scheduler_runs: [], teams: [], team_players: [], coaches: [] };
 }
 
 /**
@@ -54,15 +54,20 @@ function simulatePersistTeamSchedule(db, { runData, teams, teamPlayers }) {
   else db.scheduler_runs.push(runRow);
 
   for (const row of teams) {
-    // Mirrors the SQL: a deduped uuid[] — non-UUID strings are dropped (they
+    // Mirrors the SQL: a deduped uuid[] restricted to coaches that EXIST and
+    // belong to the run org (the column grants portal/RLS access) — non-UUID
+    // strings, unknown ids, and cross-org coaches are all dropped (they
     // round-trip via the results JSON only). Absent key → NULL → COALESCE
     // preserves the stored value.
     const UUIDISH = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const isOrgCoach = (id) =>
+      db.coaches.some((coach) => coach.id === id && coach.organization_id === ORG_ID);
     const sanitizedAssistants = Array.isArray(row.assistant_coach_ids)
       ? [
           ...new Set(
             row.assistant_coach_ids.filter(
-              (value) => typeof value === 'string' && UUIDISH.test(value.trim())
+              (value) =>
+                typeof value === 'string' && UUIDISH.test(value.trim()) && isOrgCoach(value)
             )
           ),
         ]
@@ -135,9 +140,16 @@ function loadPersistenceSnapshot(db) {
   const runs = [...db.scheduler_runs].sort((a, b) => b.created_at.localeCompare(a.created_at));
   const lastRun = runs[0];
   // Newest run per division — what get_latest_team_runs_per_division returns.
+  // Runs without persisted teams are skipped so a failed/queued attempt cannot
+  // shadow an older completed snapshot for the same division.
   const byDivision = new Map();
   for (const run of runs) {
-    const division = run.parameters?.selectedProgramId ?? run.results?.teams?.[0]?.division ?? null;
+    if (!Array.isArray(run.results?.teams) || run.results.teams.length === 0) continue;
+    const division =
+      run.parameters?.selectedProgramId ??
+      run.results?.teams?.[0]?.division ??
+      run.results?.teams?.[0]?.division_id ??
+      null;
     if (division == null || byDivision.has(String(division))) continue;
     byDivision.set(String(division), run);
   }
@@ -192,6 +204,7 @@ const FRESH_ROSTER = [
 
 test('full round-trip: persist → reload → re-run preserves UUIDs/locks/assistants and deletes dropped rows', () => {
   const db = createDb();
+  db.coaches.push({ id: ASSISTANT_UUID, organization_id: ORG_ID });
 
   // --- First pass: fresh generation, manual move, persist. ---
   const fresh = generate(FRESH_ROSTER);
@@ -284,6 +297,7 @@ test('full round-trip: persist → reload → re-run preserves UUIDs/locks/assis
 
 test('a payload that omits assistant_coach_ids preserves the stored value (old-client safety)', () => {
   const db = createDb();
+  db.coaches.push({ id: ASSISTANT_UUID, organization_id: ORG_ID });
   const fresh = generate(FRESH_ROSTER);
   const review = buildReview(fresh, 'run-1', () => randomUUID());
   persistReview(db, review, '2026-06-10T01:00:00Z');
@@ -332,6 +346,58 @@ test('a non-UUID assistant id is excluded relationally but still round-trips via
     (team) => team.assistantCoachIds
   );
   assert.deepEqual(assistants, ['asst-import-7'], 'JSON round-trip preserves the non-UUID id');
+});
+
+test('cross-org and unknown assistant ids never land in the access-granting column', () => {
+  const db = createDb();
+  const CROSS_ORG_COACH = 'c4055046-0000-4000-8000-0000000000c1';
+  const UNKNOWN_UUID = 'de2d0000-0000-4000-8000-0000000000d1';
+  db.coaches.push({ id: ASSISTANT_UUID, organization_id: ORG_ID });
+  db.coaches.push({ id: CROSS_ORG_COACH, organization_id: 'some-other-org' });
+
+  const fresh = generate(FRESH_ROSTER);
+  const review = buildReview(fresh, 'run-1', () => randomUUID());
+  // A hostile/buggy payload injects a foreign coach and an unknown uuid alongside the real one.
+  for (const row of review.payload.teamRows) {
+    if (row.assistant_coach_ids.length > 0) {
+      row.assistant_coach_ids = [ASSISTANT_UUID, CROSS_ORG_COACH, UNKNOWN_UUID];
+    }
+  }
+  persistReview(db, review, '2026-06-10T01:00:00Z');
+
+  const stored = db.teams.find((team) => (team.assistant_coach_ids ?? []).length > 0);
+  assert.deepEqual(
+    stored.assistant_coach_ids,
+    [ASSISTANT_UUID],
+    'only the same-org existing coach survives — assistant_coach_ids grants portal/RLS access'
+  );
+});
+
+test('an empty newer run does not shadow the older completed snapshot for its division', () => {
+  const db = createDb();
+  db.coaches.push({ id: ASSISTANT_UUID, organization_id: ORG_ID });
+  const fresh = generate(FRESH_ROSTER);
+  const review = buildReview(fresh, 'run-u10', () => randomUUID());
+  persistReview(db, review, '2026-06-10T01:00:00Z');
+
+  // A newer failed/queued U10 attempt persists a run row with NO teams.
+  simulatePersistTeamSchedule(db, {
+    runData: {
+      id: 'run-u10-failed',
+      organizationId: ORG_ID,
+      status: 'failed',
+      parameters: { selectedProgramId: DIVISION_KEY },
+      results: {},
+      createdAt: '2026-06-10T02:00:00Z',
+    },
+    teams: [],
+    teamPlayers: [],
+  });
+
+  const reloaded = loadPersistenceSnapshot(db);
+  const snapshot = buildExistingSnapshotForRerun(reloaded, { divisionKey: DIVISION_KEY });
+  assert.ok(snapshot, 'the older completed snapshot is still found');
+  assert.equal(snapshot.teamsByDivision[DIVISION_KEY].length, 2, 'both teams preserved');
 });
 
 test('payloadByDivision from newest-per-division runs spans divisions beyond the recent window', () => {

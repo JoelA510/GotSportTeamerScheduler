@@ -510,12 +510,24 @@ BEGIN
             NULLIF(item.value->>'notes', '') AS notes,
             CASE
                 WHEN jsonb_typeof(item.value->'assistant_coach_ids') = 'array' THEN
+                    -- SECURITY: assistant_coach_ids grants portal/RLS access
+                    -- (event_rsvps / team_messages policies match coaches
+                    -- against it), so only coaches that EXIST and belong to
+                    -- THIS organization may land in the column. Anything else
+                    -- (unknown id, cross-org coach, non-UUID) is dropped — it
+                    -- still round-trips via the results JSON.
                     COALESCE(
-                        (SELECT array_agg(DISTINCT (el.value #>> '{}')::uuid)
-                           FROM jsonb_array_elements(item.value->'assistant_coach_ids') AS el(value)
-                          WHERE jsonb_typeof(el.value) = 'string'
-                            AND (el.value #>> '{}') ~*
-                                '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'),
+                        (SELECT array_agg(DISTINCT c.id)
+                           FROM (
+                                SELECT (el.value #>> '{}')::uuid AS candidate_id
+                                  FROM jsonb_array_elements(item.value->'assistant_coach_ids') AS el(value)
+                                 WHERE jsonb_typeof(el.value) = 'string'
+                                   AND (el.value #>> '{}') ~*
+                                       '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+                           ) candidates
+                           JOIN public.coaches c
+                             ON c.id = candidates.candidate_id
+                            AND c.organization_id = v_org_id),
                         '{}'::uuid[]
                     )
                 -- Absent key (or json null) stays NULL so the upsert below
@@ -706,11 +718,16 @@ AS $$
             sr.created_at::timestamptz AS created_at,
             COALESCE(
                 NULLIF(sr.parameters->>'selectedProgramId', ''),
-                sr.results->'teams'->0->>'division'
+                sr.results->'teams'->0->>'division',
+                sr.results->'teams'->0->>'division_id'
             ) AS division
           FROM public.scheduler_runs sr
          WHERE sr.run_type = 'team'
            AND sr.organization_id = p_organization_id
+           -- Only runs that actually carry a persisted team snapshot can seed a
+           -- re-run; a failed/queued attempt with empty results must not shadow
+           -- an older completed snapshot for the same division.
+           AND jsonb_array_length(COALESCE(sr.results->'teams', '[]'::jsonb)) > 0
            AND (
                 p_season_settings_id IS NULL
                 OR sr.season_settings_id = p_season_settings_id
