@@ -19,6 +19,18 @@ test('createAssignmentUnit fills defaults and derives an id from player ids', ()
   assert.equal(unit.targetTeamId, null);
   assert.equal(unit.skillTotal, 0);
   assert.deepEqual(unit.diagnostics, []);
+
+  // skillTotal auto-derives from players when not provided; empty init is tolerated.
+  const skilled = createAssignmentUnit({
+    players: [
+      { id: 'a', skillRating: 3 },
+      { id: 'b', skillRating: 2 },
+    ],
+  });
+  assert.equal(skilled.skillTotal, 5);
+  const empty = createAssignmentUnit();
+  assert.deepEqual(empty.players, []);
+  assert.equal(empty.skillTotal, 0);
 });
 
 test('getSkillRating and calculateUnitSkill sum finite skillRatings, defaulting to 0', () => {

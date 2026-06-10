@@ -34,7 +34,7 @@
  * @returns {number}
  */
 export function getSkillRating(player) {
-  return typeof player.skillRating === 'number' && Number.isFinite(player.skillRating)
+  return player && typeof player.skillRating === 'number' && Number.isFinite(player.skillRating)
     ? player.skillRating
     : 0;
 }
@@ -49,11 +49,12 @@ export function calculateUnitSkill(players) {
 }
 
 /**
- * Build a typed assignment unit, filling defaults. `id` defaults to the joined player ids.
- * @param {Partial<AssignmentUnit> & { players: any[] }} init
+ * Build a typed assignment unit, filling defaults. `id` defaults to the joined player ids and
+ * `skillTotal` defaults to the sum of the players' skill ratings.
+ * @param {Partial<AssignmentUnit>} [init]
  * @returns {AssignmentUnit}
  */
-export function createAssignmentUnit(init) {
+export function createAssignmentUnit(init = {}) {
   const players = init.players ?? [];
   return {
     id: init.id ?? players.map((player) => player.id).join('+'),
@@ -65,7 +66,7 @@ export function createAssignmentUnit(init) {
     locked: init.locked ?? false,
     hardConstraints: init.hardConstraints ?? [],
     softConstraints: init.softConstraints ?? [],
-    skillTotal: init.skillTotal ?? 0,
+    skillTotal: init.skillTotal ?? calculateUnitSkill(players),
     diagnostics: init.diagnostics ?? [],
   };
 }
@@ -91,19 +92,17 @@ function classifyUnit(players) {
         `Conflicting coach assignments for players in unit: ${players.map((player) => player.id).join(', ')}`
       );
     }
-    const coachId = coachIds.size > 0 ? [...coachIds][0] : null;
+    const coachId = coachIds.size > 0 ? coachIds.values().next().value : null;
     return createAssignmentUnit({
       type: coachId ? 'coach' : 'assistant',
       players,
       coachId,
       assistantCoachIds: [...assistantCoachIds],
-      skillTotal: calculateUnitSkill(players),
     });
   }
   return createAssignmentUnit({
     type: players.length > 1 ? 'mutual-buddy' : 'general',
     players,
-    skillTotal: calculateUnitSkill(players),
   });
 }
 
