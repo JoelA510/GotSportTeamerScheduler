@@ -1,7 +1,17 @@
-[← Back to Documentation Index](docs/README.md)
+[← Back to Documentation Index](../README.md)
+
 ---
 
 # Team Generation Design
+
+> **Update — snapshot-aware re-runs.** The allocator described here is the **fresh** (from-scratch)
+> design, and it is exactly what runs on the first teaming pass / when no prior snapshot is supplied.
+> Since the incremental-teaming hardening effort, `generateTeams` _also_ supports **snapshot-aware,
+> incremental** re-runs that preserve existing team UUIDs, manual roster moves, and coach assignments
+> (reconciling only late registrations / drops / buddy & coach deltas) instead of rebuilding from
+> scratch. For that behavior — policies, diagnostics, and persistence invariants — see
+> [`incremental-teaming-hardening.md`](incremental-teaming-hardening.md). The sections below remain the
+> reference for the underlying fresh allocation.
 
 This document translates the roadmap's team formation phase into actionable plans for the SquadLogic. It assumes the data model described in `docs/architecture/data-modeling.md` and focuses on how to transform cleaned registration data into balanced rosters that honor mutual buddy requests and coach commitments.
 
@@ -38,7 +48,7 @@ This document translates the roadmap's team formation phase into actionable plan
 5. **Fairness metrics & diagnostics**
    - After allocation, compute per-team roster counts, number of buddy pairs, and presence of volunteer coaches.
    - Log unmatched buddy requests, overflow players, and divisions that exceed configured roster caps.
-   - Store diagnostics in a `scheduler_runs` entry (`run_type = 'team'`) for audit history (future enhancement).
+   - Store diagnostics in a `scheduler_runs` entry (`run_type = 'team'`) for audit history. (Implemented — persisted runs feed the snapshot-aware re-run path; see `incremental-teaming-hardening.md`.)
 
 ## Outputs
 
@@ -80,7 +90,7 @@ This document translates the roadmap's team formation phase into actionable plan
 1. Present team rosters in the admin UI with sortable columns (player name, buddy code, skill tier).
 2. Allow drag-and-drop or action buttons to swap players across teams, updating `team_players` and logging adjustments.
 3. Provide quick filters for overflow units so admins can resolve outstanding assignments before locking rosters.
-4. Once approved, mark the run as `finalized` to prevent automated reshuffles without explicit reset.
+4. Once approved, mark the run as `finalized`. A subsequent re-run is **snapshot-aware** (see [`incremental-teaming-hardening.md`](incremental-teaming-hardening.md)): it preserves approved rosters, manual moves, and team IDs rather than reshuffling them — a full fresh rebuild requires an explicit reset (an `auto` team-count policy or discarding the snapshot).
 
 ## Quality Checks
 
@@ -93,7 +103,7 @@ This document translates the roadmap's team formation phase into actionable plan
 
 - Expose a serverless function (e.g., `/api/team-generation/run`) that triggers the workflow and writes results to Supabase.
 - Use Supabase Realtime or polling to update the UI with progress states (`queued`, `running`, `completed`, `needs_manual_action`).
-- Gate reruns behind an admin confirmation to avoid overwriting manual adjustments without exporting a diff.
+- Re-runs are snapshot-aware: they preserve manual adjustments and existing team IDs and report a structured change diff (`changeDiagnosticsByDivision`) instead of overwriting silently. Gating a re-run behind an admin confirmation is still good practice for published rosters.
 
 ## Acceptance Criteria & Test Harness Outline
 
