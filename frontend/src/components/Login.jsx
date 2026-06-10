@@ -239,13 +239,10 @@ export default function Login() {
           <button
             type="submit"
             disabled={loading}
-            className="action-button primary-button"
+            className="btn btn-primary lg"
             style={{
               marginTop: '1.5rem',
               width: '100%',
-              justifyContent: 'center',
-              padding: '1rem',
-              fontSize: '1.1rem',
             }}
           >
             {loading

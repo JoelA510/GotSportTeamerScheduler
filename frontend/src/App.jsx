@@ -41,6 +41,7 @@ const OrganizationCreation = lazy(() => import('./pages/OrganizationCreation.jsx
 const InvitePage = lazy(() => import('./pages/InvitePage.jsx'));
 import ShadowBanner from './components/auth/ShadowBanner.jsx';
 import OfflineGuard from './components/OfflineGuard.jsx';
+import ToastHost from './components/ui/ToastHost.jsx';
 
 function AppContent() {
   const { session, loading } = useAuth();
@@ -236,11 +237,13 @@ function App() {
         <OrganizationProvider>
           <ImportProvider>
             <ThemeProvider>
-              <ErrorBoundary>
-                <OfflineGuard>
-                  <AppContent />
-                </OfflineGuard>
-              </ErrorBoundary>
+              <ToastHost>
+                <ErrorBoundary>
+                  <OfflineGuard>
+                    <AppContent />
+                  </OfflineGuard>
+                </ErrorBoundary>
+              </ToastHost>
             </ThemeProvider>
           </ImportProvider>
         </OrganizationProvider>

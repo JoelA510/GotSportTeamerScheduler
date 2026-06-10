@@ -175,41 +175,37 @@ Permissions are defined in `frontend/src/constants/permissions.js` and enforced 
 
 ---
 
-## 6. Design System — Flat Light Theme
+## 6. Design System — "Lightning-class" (Light + Dark)
 
-Defined in `frontend/src/index.css`. The app uses a **single, flat light theme**.
-All design tokens live on `:root` — there is **no `data-theme` attribute, no theme
-switcher, and no per-org (club) branding**. (The app previously shipped a
-multi-theme "Deep Space Glass" system — dark/light/party/club with a frosted-glass
-aesthetic — which has been removed in favor of a clean, flat light look.)
+Defined in `frontend/src/index.css` (tokens) plus `frontend/src/styles/{chrome,grid,page}.css`
+(component classes). The app ships a **cobalt light theme (default) and a dark theme**
+toggled via `data-theme="dark"` on `<html>`, driven by `ThemeContext.themeMode`
+(persisted to localStorage as `sl-theme`). The typeface is self-hosted **Public Sans**
+(variable woff2; CSP is `font-src 'self'` so never load remote fonts).
 
-### CSS Utilities (always prefer these over custom styles)
+### Token namespaces
 
-The `.glass-*` class names are retained for compatibility but now render **flat**
-(solid surfaces, 1px borders, subtle shadows — no `backdrop-filter`, gradients, or
-glow):
+Two namespaces coexist on `:root`; the dark block overrides only the prototype names:
 
-- `.glass-panel` / `.glass-panel-premium` / `.glass-panel-enterprise` — Flat card/panel containers
-- `.card-glass` — Inner (subtly recessed) card surfaces
-- `.glass-button` / `.glass-button-secondary` — Interactive buttons (solid primary / outlined secondary)
-- `.glass-input` — Form inputs
-- `.text-display` — Display typography (Outfit font)
-- `.text-accent` / `.text-muted` — Text color utilities
-- `.animate-fadeIn` / `.animate-slideUp` / `.animate-pulseGlow` — Animations
+- **Prototype tokens (source of truth)**: `--bg-app/--bg-shell/--bg-surface/--bg-sunken/--bg-hover/--bg-selected`,
+  `--border/--border-soft/--border-strong/--border-field`, `--text-primary/--text-secondary/--text-muted`,
+  `--primary/--primary-hover/--primary-weak/--primary-text`, status (`--success*/--warning*/--danger*/--neutral-weak`),
+  accents (`--accent-teal/violet/amber/rose/green`), `--ring`, `--shadow-xs…--shadow-pop`,
+  radii `--r-xs…--r-full`, layout metrics (`--topbar-h`, `--nav-w`, `--row-h`).
+- **Legacy aliases** (`--color-bg-app`, `--color-text-primary`, `--color-status-*`, `--shadow-soft`, …)
+  point at the prototype tokens so pre-redesign components and Tailwind utilities
+  (`bg-bg-surface`, `text-text-primary`, …) re-theme automatically.
 
-### Design Tokens (CSS Variables)
+### Component classes (always prefer these over custom styles)
 
-All colors use CSS custom properties defined once on `:root`:
+- Chrome (`styles/chrome.css`): `.app`/`.topbar`/`.nav*` shell, `.menu`/`.popover`, `.modal`/`.overlay`, `.toast`, `.avatar`, `.icon-btn`, `.role-banner`
+- Grid (`styles/grid.css`): `table.grid`, `.grid-toolbar/.grid-selbar/.grid-foot`, `.cell`, `.cbx`
+- Page (`styles/page.css`): `.page-head/.page-tabs/.page-body`, `.btn` (+`-primary/-default/-subtle/-danger/-ghost-danger`, `.sm/.lg`), `.badge`, `.chip`, `.card`, `.kpi`, `.field/.input/.select/.textarea/.toggle/.seg`, `.empty`, `.setup-step`, `.rf*` record fields, `.balance-*`/`.pchip`
+- UI primitives (`frontend/src/components/ui/`): `Button`, `Badge`, `Modal`, `Dropdown`, `Toggle`, `Tabs`, `Avatar`, `ToastHost` (+`useToast`), `Tooltip`, `ProgressBar`, `FeatureGuard`
+- Legacy utilities (`.glass-panel*`, `.card-glass`, `.glass-button*`, `.glass-input`, `.text-*`, `.animate-*`) are retained for compatibility and render flat in both themes
 
-- Backgrounds: `var(--color-bg-app)`, `var(--color-bg-surface)`, `var(--color-bg-glass)`
-- Text: `var(--color-text-primary)`, `var(--color-text-secondary)`, `var(--color-text-muted)`, `var(--color-text-accent)`
-- Brand: `var(--color-primary)`, `var(--color-primary-400)`, `var(--color-primary-600)`
-- Status: `var(--color-status-success)`, `var(--color-status-warning)`, `var(--color-status-error)`
-- Effects: `var(--shadow-soft)`, `var(--shadow-md)` (`--shadow-glow` / `--backdrop-blur` are kept as `none` for compatibility)
-- Spacing: `var(--space-1)` through `var(--space-16)` (4px grid)
-- Radius: `var(--radius-sm)` through `var(--radius-full)`
-
-**Do NOT introduce new color values, dark-theme styles, or inline style overrides** — update shared tokens in `index.css` instead. For dark-era Tailwind overlays, use semantic tokens (`bg-bg-surface`, `border-border-subtle`, `text-text-*`) rather than `*-white/NN` literals, which are invisible on the light theme.
+**Do NOT hardcode color values or inline style overrides** — use tokens, and verify every
+surface in both themes. New colors go into `index.css` (light **and** dark blocks).
 
 ---
 

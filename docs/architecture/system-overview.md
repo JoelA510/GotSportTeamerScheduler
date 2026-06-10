@@ -19,7 +19,7 @@ SquadLogic is a **monorepo SPA** (Single-Page Application) that converts raw Got
 │  ┌───────────────────────────────────────────────────┐  │
 │  │  React 19 + Vite 6 Frontend                       │  │
 │  │  • React Router v7 (lazy-loaded pages)            │  │
-│  │  • Deep Space Glass Design System (CSS + TW4)     │  │
+│  │  • Lightning-class Design System (CSS + TW4)     │  │
 │  │  • React Context (Auth, Org, Import, Theme)       │  │
 │  │  • FeatureGuard & FeatureFlagSchema (Zod)         │  │
 │  │  • @dnd-kit (drag-and-drop scheduling)            │  │
@@ -46,7 +46,7 @@ SquadLogic is a **monorepo SPA** (Single-Page Application) that converts raw Got
 | Layer            | Technology                                                                            |
 | ---------------- | ------------------------------------------------------------------------------------- |
 | Frontend         | React 19, Vite 6, react-router-dom v7                                                 |
-| Styling          | Tailwind CSS 4 (`@tailwindcss/vite`) + Vanilla CSS ("Deep Space Glass" design system) |
+| Styling          | Tailwind CSS 4 (`@tailwindcss/vite`) + Vanilla CSS ("Lightning-class" design system, light + dark) |
 | State Management | React Context (Auth, Import, Organization, Theme)                                     |
 | Backend          | Supabase (PostgreSQL, Edge Functions, Auth, Storage)                                  |
 | Unit Testing     | Vitest + @testing-library/react + jsdom                                               |

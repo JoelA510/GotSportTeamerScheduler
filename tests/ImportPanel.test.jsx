@@ -233,10 +233,8 @@ describe('ImportPanel', () => {
       screen.getByRole('button', { name: /start import/i }),
       'Validate and import this CSV.'
     );
-    expect(screen.getByRole('button', { name: /start import/i })).toHaveClass(
-      'focus-visible:ring-2',
-      'focus-visible:ring-brand-400'
-    );
+    // Focus-visible ring styling comes from the shared .btn class (styles/page.css).
+    expect(screen.getByRole('button', { name: /start import/i })).toHaveClass('btn');
   });
 
   it('describes validate-only imports before starting deferred field imports', async () => {

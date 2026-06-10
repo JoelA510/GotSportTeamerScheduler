@@ -10,8 +10,8 @@
     {
       "match": "^assets/index-.*\\.css$",
       "label": "main css",
-      "maxGzipBytes": 22000,
-      "rationale": "Current 17.82 KB; 22 KB cap leaves 4 KB for new components."
+      "maxGzipBytes": 30000,
+      "rationale": "Redesign ships the Lightning-class design system (light+dark tokens + chrome/grid/page component CSS) in the main stylesheet: 21.7 KB after Phase 1. 30 KB cap leaves ~8 KB for the remaining redesign phases; revisit after Phase 9."
     },
     {
       "match": "^assets/chart-vendor-.*\\.js$",

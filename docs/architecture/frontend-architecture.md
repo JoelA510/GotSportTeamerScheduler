@@ -39,7 +39,7 @@ State is managed entirely through **React Context** — no external state librar
 | `AuthContext`         | `contexts/AuthContext.jsx`         | Supabase auth session, user profile, login/logout   |
 | `OrganizationContext` | `contexts/OrganizationContext.jsx` | Active org selection, org membership, org switching |
 | `ImportContext`       | `contexts/ImportContext.jsx`       | CSV import state, parsed data, validation results   |
-| `ThemeContext`        | `contexts/ThemeContext.jsx`        | Theme selection (dark/light/party/club), timezone   |
+| `ThemeContext`        | `contexts/ThemeContext.jsx`        | Light/dark theme mode + legacy league/season state  |
 
 ## Custom Hooks (`frontend/src/hooks/`)
 
@@ -79,22 +79,29 @@ frontend/src/components/
 ├── OutputGenerationPanel.jsx   # CSV/email export generation
 ├── Sidebar.jsx                 # Navigation with org/season switcher
 ├── ProtectedRoute.jsx          # RBAC route guard
-├── ErrorBoundary.jsx           # Global error boundary (Deep Space Glass)
+├── ErrorBoundary.jsx           # Global error boundary
 └── ...                         # Other panels and shared components
 ```
 
-## Design System — "Deep Space Glass"
+## Design System — "Lightning-class"
 
-Defined in `frontend/src/index.css` with four themes controlled via `data-theme` attribute:
+Defined in `frontend/src/index.css` (tokens) and `frontend/src/styles/{chrome,grid,page}.css`
+(component classes). Two themes controlled via the `data-theme` attribute on `<html>`:
 
-- **`dark`** (default) — Deep navy backgrounds, sky-blue accents
-- **`light`** — Slate/white backgrounds, ocean-blue accents
-- **`party`** — Purple/fuchsia backgrounds, pink accents
-- **`club`** — Dynamic club branding (with `data-club-mode` light/dark sub-modes)
+- **light** (default, no attribute) — Cool gray-blue backgrounds, cobalt `#2a6fdb` primary
+- **`dark`** — Graphite backgrounds, lifted cobalt `#4f8ef7` primary
 
-Key CSS utilities: `.glass-panel`, `.glass-button`, `.glass-input`, `.card-glass`, `.animate-fadeIn`, `.animate-slideUp`.
+`ThemeContext.themeMode` drives the attribute and persists the choice to localStorage
+(`sl-theme`). The typeface is self-hosted Public Sans (variable woff2; CSP forbids
+remote fonts).
 
-All colors use CSS custom properties (e.g., `var(--color-bg-app)`, `var(--color-primary)`, `var(--color-text-accent)`) that auto-switch with theme.
+Key component classes: `.btn*`, `.badge`, `.card`, `.kpi`, `table.grid`, `.page-head`/`.page-tabs`,
+`.modal`/`.overlay`, `.menu`, `.toast`, plus legacy `.glass-panel`/`.glass-button`/`.glass-input`
+utilities retained for compatibility. Shared React primitives live in `frontend/src/components/ui/`
+(`Button`, `Badge`, `Modal`, `Dropdown`, `Toggle`, `Tabs`, `Avatar`, `ToastHost`).
+
+All colors use CSS custom properties — prototype tokens (`var(--bg-surface)`, `var(--primary)`)
+with legacy aliases (`var(--color-bg-app)`, `var(--color-primary)`) — that auto-switch with theme.
 
 ## Drag-and-Drop
 

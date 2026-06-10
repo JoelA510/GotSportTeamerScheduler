@@ -184,14 +184,10 @@ export default function ResetPassword() {
           <button
             type="submit"
             disabled={loading}
-            className="action-button primary-button"
+            className="btn btn-primary lg"
             style={{
               marginTop: '1rem',
               width: '100%',
-              justifyContent: 'center',
-              padding: '1rem',
-              fontSize: '1rem',
-              fontWeight: '600',
             }}
           >
             {loading ? 'Updating...' : 'Update Password'}
