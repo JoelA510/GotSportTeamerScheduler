@@ -239,6 +239,29 @@ test('reconcileTeamDeltas emits unknown-division only for late players outside d
   assert.ok(!known.diagnostics.some((d) => d.code === 'unknown-division'));
 });
 
+test('reconcileTeamDeltas preserves a cross-team duplicated player only on the first team', () => {
+  const result = reconcileTeamDeltas({
+    players: [{ id: 'dup', division: 'U10' }],
+    existingSnapshot: {
+      teamsByDivision: {
+        U10: [
+          { id: 'team-1', division: 'U10', players: [{ id: 'dup' }] },
+          { id: 'team-2', division: 'U10', players: [{ id: 'dup' }] },
+        ],
+      },
+    },
+    generationMode: 'review',
+  });
+
+  const [teamOne, teamTwo] = result.preservedTeamsByDivision.U10;
+  assert.deepEqual(
+    teamOne.players.map((p) => p.id),
+    ['dup']
+  );
+  assert.deepEqual(teamTwo.players, [], 'duplicate is not preserved on a second team');
+  assert.deepEqual(result.droppedPlayersByDivision, {}, 'duplicate is not also counted as dropped');
+});
+
 test('reconcileTeamDeltas reports coachDropped:false when the coach is still registered', () => {
   const result = reconcileTeamDeltas({
     players: [

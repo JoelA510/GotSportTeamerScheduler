@@ -28,7 +28,7 @@ function addToBucket(bucket, key, value) {
  *   players?: Array<{ id: string, division?: string, coachId?: string, coach_id?: string, assistantCoachId?: string, assistant_coach_id?: string }>,
  *   existingSnapshot?: any,
  *   generationMode?: string,
- *   changePolicy?: { lockManualAssignments?: boolean },
+ *   changePolicy?: { lockManualAssignments?: boolean, divisionKeyById?: Record<string, string> },
  *   divisionConfigs?: Record<string, any>,
  * }} [args]
  * @returns {{
@@ -50,14 +50,19 @@ export function reconcileTeamDeltas({
   divisionConfigs = {},
 } = {}) {
   const incoming = Array.isArray(players) ? players : [];
-  const normalized = normalizeExistingSnapshot(existingSnapshot, { status: generationMode });
+  const policy = changePolicy ?? {};
+  const normalized = normalizeExistingSnapshot(existingSnapshot, {
+    status: generationMode,
+    // Maps persisted division_id (UUID) → generator division key for relational snapshots.
+    divisionKeyById: policy.divisionKeyById,
+  });
   const index = indexTeamSnapshot(normalized);
   const mode = SNAPSHOT_STATUSES.includes(String(generationMode))
     ? String(generationMode)
     : normalized.status;
   const lockManualAssignments =
-    typeof changePolicy.lockManualAssignments === 'boolean'
-      ? changePolicy.lockManualAssignments
+    typeof policy.lockManualAssignments === 'boolean'
+      ? policy.lockManualAssignments
       : LOCKING_MODES.includes(mode);
   const knownDivisions = new Set(Object.keys(divisionConfigs ?? {}));
   const diagnostics = [...normalized.diagnostics];
@@ -103,12 +108,20 @@ export function reconcileTeamDeltas({
 
   // Preserve team shells; reduce each roster to players still in the incoming data
   // (rule 1 preserve metadata, rule 3 drop, rule 5 keep empty shells, rule 6 keep divisions).
+  // A player duplicated across snapshot teams (already diagnosed by the normalizer) is classified
+  // only on the FIRST team encountered — matching indexTeamSnapshot's first-write-wins lookup —
+  // so they cannot be preserved twice or double-counted as dropped/moved.
+  const processedSnapshotPlayerIds = new Set();
   /** @type {Record<string, any[]>} */
   const preservedTeamsByDivision = {};
   for (const [division, teams] of Object.entries(normalized.teamsByDivision)) {
     preservedTeamsByDivision[division] = teams.map((team) => {
       const activePlayers = [];
       for (const player of team.players) {
+        if (processedSnapshotPlayerIds.has(player.id)) {
+          continue;
+        }
+        processedSnapshotPlayerIds.add(player.id);
         const incomingPlayer = incomingById.get(player.id);
         if (!incomingPlayer) {
           addToBucket(droppedPlayersByDivision, division, player.id);
