@@ -491,11 +491,18 @@ test('changePolicy.divisionKeyById maps relational division_id rows to generator
   assert.equal(result.changeDiagnosticsByDivision.U10.latePlayersAssigned, 1);
 });
 
-test("routes a late player onto their buddy's preserved team when capacity allows", () => {
-  const players = [
-    ...makePlayers(ALL_NINE),
+/** Incoming players where preserved p4 reciprocates the late player's buddy request. */
+function playersWithReciprocalLateBuddy(extraIds = []) {
+  return [
+    ...makePlayers([...ALL_NINE, ...extraIds]).map((p) =>
+      p.id === 'p4' ? { ...p, buddyId: 'newbie' } : p
+    ),
     { id: 'newbie', division: 'U10', buddyId: 'p4' }, // p4 is preserved on Sharks
   ];
+}
+
+test("routes a late player onto their buddy's preserved team when capacity allows", () => {
+  const players = playersWithReciprocalLateBuddy();
   const result = generateTeams({
     players,
     divisionConfigs: { U10: U10_CONFIG },
@@ -524,10 +531,7 @@ test("routes a late player onto their buddy's preserved team when capacity allow
 test('overflows a late buddy with buddy-target-capacity when the target team is full (no reshuffle)', () => {
   const snapshot = threeTeamSnapshot();
   snapshot.teamsByDivision.U10[1].players.push({ id: 'p10' }); // Sharks now 4/4
-  const players = [
-    ...makePlayers([...ALL_NINE, 'p10']),
-    { id: 'newbie', division: 'U10', buddyId: 'p4' },
-  ];
+  const players = playersWithReciprocalLateBuddy(['p10']);
   const result = generateTeams({
     players,
     divisionConfigs: { U10: U10_CONFIG },
@@ -558,7 +562,7 @@ test('overflows a late buddy with buddy-target-capacity when the target team is 
 test('overflows a late buddy with buddy-target-locked when the target team is locked', () => {
   const snapshot = threeTeamSnapshot();
   snapshot.teamsByDivision.U10[1].locked = true; // Sharks locked against additions
-  const players = [...makePlayers(ALL_NINE), { id: 'newbie', division: 'U10', buddyId: 'p4' }];
+  const players = playersWithReciprocalLateBuddy();
   const result = generateTeams({
     players,
     divisionConfigs: { U10: U10_CONFIG },
@@ -572,6 +576,47 @@ test('overflows a late buddy with buddy-target-locked when the target team is lo
   assert.equal(overflow[0].reason, 'buddy-target-locked');
   const sharks = result.teamsByDivision.U10.find((t) => t.id === 'uuid-team-2');
   assert.ok(!sharks.players.some((p) => p.id === 'newbie'));
+});
+
+test('a one-sided late buddy request is NOT routed onto the preserved team', () => {
+  // p4 (preserved) never requested 'newbie' — mutual-only policy applies in incremental mode too.
+  const players = [...makePlayers(ALL_NINE), { id: 'newbie', division: 'U10', buddyId: 'p4' }];
+  const result = generateTeams({
+    players,
+    divisionConfigs: { U10: U10_CONFIG },
+    random: createDeterministicRandom(),
+    existingSnapshot: threeTeamSnapshot(),
+    generationMode: 'published',
+  });
+
+  assert.deepEqual(result.changeDiagnosticsByDivision.U10.buddyTargetAssignments, []);
+  // The player is still placed somewhere as a general unit (capacity exists).
+  const placed = result.teamsByDivision.U10.some((t) => t.players.some((p) => p.id === 'newbie'));
+  assert.ok(placed, 'one-sided requester is placed as a general unit');
+});
+
+test('a locked preserved team accepts no late players at all', () => {
+  const snapshot = threeTeamSnapshot();
+  snapshot.teamsByDivision.U10[1].locked = true; // Sharks (3/4) locked but with open capacity
+  // Fill the other two teams so the only capacity is on the locked team.
+  snapshot.teamsByDivision.U10[0].players.push({ id: 'p10' });
+  snapshot.teamsByDivision.U10[2].players.push({ id: 'p11' });
+  const players = makePlayers([...ALL_NINE, 'p10', 'p11', 'late-general']);
+
+  const result = generateTeams({
+    players,
+    divisionConfigs: { U10: U10_CONFIG },
+    random: createDeterministicRandom(),
+    existingSnapshot: snapshot,
+    generationMode: 'published',
+  });
+
+  const sharks = result.teamsByDivision.U10.find((t) => t.id === 'uuid-team-2');
+  assert.ok(
+    !sharks.players.some((p) => p.id === 'late-general'),
+    'locked team is not a candidate for general placement'
+  );
+  assert.equal(result.overflowSummaryByDivision.U10.totalPlayers, 1, 'late player overflows');
 });
 
 test('two late players with a reciprocal request stay a mutual-buddy unit (not targeted)', () => {

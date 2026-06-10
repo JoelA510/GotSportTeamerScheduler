@@ -98,6 +98,26 @@ test('normalizeBuddyLinks diagnoses one-sided, missing, self, and cross-division
   assert.ok(diagnostics.some((d) => d.code === 'cross-division-buddy'));
 });
 
+test('normalizeBuddyLinks does not flag one-sided when reciprocation arrives via a code', () => {
+  const { players: result, diagnostics } = normalizeBuddyLinks([
+    { id: 'a', division: 'U10', buddyId: 'b', mutual_buddy_code: 'P2' },
+    { id: 'b', division: 'U10', mutual_buddy_code: 'P2' },
+  ]);
+  // a→b directly; b→a via the shared code: fully mutual, no one-sided diagnostic.
+  assert.equal(result[1].buddyId, 'a');
+  assert.ok(!diagnostics.some((d) => d.code === 'one-sided-buddy'));
+});
+
+test('normalizeBuddyLinks diagnoses a 2-player code group with an unusable id', () => {
+  const { diagnostics } = normalizeBuddyLinks([
+    { id: 'a', division: 'U10', mutual_buddy_code: 'BROKEN' },
+    { division: 'U10', mutual_buddy_code: 'BROKEN' }, // malformed row: no id
+  ]);
+  assert.ok(
+    diagnostics.some((d) => d.code === 'buddy-code-unmatched' && d.message.includes('BROKEN'))
+  );
+});
+
 test('normalizeBuddyLinks lets an explicit buddyId win over a code', () => {
   const { players: result } = normalizeBuddyLinks([
     { id: 'a', division: 'U10', buddyId: 'c', mutual_buddy_code: 'PAIR' },

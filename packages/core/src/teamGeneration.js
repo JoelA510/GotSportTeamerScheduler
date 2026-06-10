@@ -11,6 +11,7 @@ import { PlayerSchema } from './schemas/index.js';
 import { EVALUATOR_REGISTRY } from './evaluators/index.js';
 import { buildAssignmentUnits, calculateUnitSkill } from './assignmentUnits.js';
 import { reconcileTeamDeltas } from './teamDelta.js';
+import { getCanonicalBuddyId } from './buddyLinking.js';
 
 /** @typedef {import('./types.js').Player} Player */
 /** @typedef {import('./types.js').Team} Team */
@@ -835,13 +836,14 @@ function buildTeamsForDivisionIncremental({
     skillTotal: calculateUnitSkill(team.players),
   }));
 
-  // Historical buddy lookup: preserved player id → preserved team id (this division only).
-  const preservedTeamIdByPlayerId = new Map();
+  // Historical buddy lookup: preserved player id → { teamId, player } (this division only).
+  // The player object is kept so targeting can verify the request is RECIPROCAL.
+  const preservedBuddyTargets = new Map();
   for (const team of preservedTeams) {
     for (const player of team.players) {
       const id = String(player.id).trim();
-      if (!preservedTeamIdByPlayerId.has(id)) {
-        preservedTeamIdByPlayerId.set(id, team.id);
+      if (!preservedBuddyTargets.has(id)) {
+        preservedBuddyTargets.set(id, { teamId: team.id, player });
       }
     }
   }
@@ -877,15 +879,17 @@ function buildTeamsForDivisionIncremental({
       coachUnits.push(unit);
       continue;
     }
-    // Historical buddy routing: a late solo player whose valid buddy is already preserved on a
-    // team becomes a targeted-buddy unit aimed at that team. (Coach anchoring takes precedence;
-    // late mutual pairs stay mutual-buddy units.)
+    // Historical buddy routing: a late solo player whose RECIPROCAL buddy is already preserved
+    // on a team becomes a targeted-buddy unit aimed at that team. (Coach anchoring takes
+    // precedence; late mutual pairs stay mutual-buddy units; one-sided requests are NOT honored —
+    // matching fresh generation's mutual-only policy.)
     if (unit.type === 'general' && unit.players.length === 1) {
-      const rawBuddyId = unit.players[0].buddyId;
+      const latePlayer = unit.players[0];
+      const rawBuddyId = latePlayer.buddyId;
       const buddyId = rawBuddyId == null ? undefined : String(rawBuddyId).trim();
-      const targetTeamId = buddyId ? preservedTeamIdByPlayerId.get(buddyId) : undefined;
-      if (targetTeamId) {
-        targetedBuddyUnits.push({ ...unit, type: 'targeted-buddy', targetTeamId });
+      const target = buddyId ? preservedBuddyTargets.get(buddyId) : undefined;
+      if (target && getCanonicalBuddyId(target.player) === String(latePlayer.id).trim()) {
+        targetedBuddyUnits.push({ ...unit, type: 'targeted-buddy', targetTeamId: target.teamId });
         continue;
       }
     }
@@ -914,8 +918,20 @@ function buildTeamsForDivisionIncremental({
       targetTeam =
         teams.find(
           (t) =>
-            t.assistantCoachIds && t.assistantCoachIds.some((id) => assistantCoachIds.includes(id))
+            !t.locked &&
+            t.assistantCoachIds &&
+            t.assistantCoachIds.some((id) => assistantCoachIds.includes(id))
         ) ?? createTeam(null);
+    }
+
+    // A locked preserved team accepts no late additions — not even its own coach's child.
+    if (targetTeam && targetTeam.locked) {
+      overflow.push({
+        players: unit,
+        reason: TEAM_GENERATION.REASON_CoachCapacity,
+        metadata: { coachId, locked: true },
+      });
+      continue;
     }
 
     if (!targetTeam) {
@@ -1010,8 +1026,10 @@ function buildTeamsForDivisionIncremental({
   for (const assignmentUnit of generalUnits) {
     const unit = assignmentUnit.players;
     const skillTotal = assignmentUnit.skillTotal;
+    // Locked preserved teams accept no late additions (filtered per unit so teams created
+    // during expansion remain candidates).
     let team = pickTeamWithMostCapacity({
-      teams,
+      teams: teams.filter((candidate) => !candidate.locked),
       unit,
       unitSkillTotal: skillTotal,
       maxRosterSize: effectiveMaxRosterSize,

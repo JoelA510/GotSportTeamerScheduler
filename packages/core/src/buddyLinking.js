@@ -116,6 +116,13 @@ export function normalizeBuddyLinks(players) {
     if (aId && bId && aId !== bId) {
       codeBuddyByPlayerId.set(aId, bId);
       codeBuddyByPlayerId.set(bId, aId);
+    } else {
+      diagnostics.push({
+        code: 'buddy-code-unmatched',
+        severity: 'warning',
+        message: `buddy code "${code}" could not be linked (missing or duplicate player ids)`,
+        playerIds: ids,
+      });
     }
   }
 
@@ -152,7 +159,8 @@ export function normalizeBuddyLinks(players) {
             playerIds: [id, direct],
           });
         } else {
-          const reciprocal = getCanonicalBuddyId(target);
+          // The reciprocation may arrive via the target's own direct reference OR a buddy code.
+          const reciprocal = getCanonicalBuddyId(target) ?? codeBuddyByPlayerId.get(direct);
           if (reciprocal !== id) {
             diagnostics.push({
               code: 'one-sided-buddy',
