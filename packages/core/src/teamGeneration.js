@@ -507,11 +507,16 @@ export function generateTeams({
         latePlayersOverflowed: overflowedPlayerCount,
       };
 
-      // A team-count change was "blocked" when at least one unit overflowed for capacity —
-      // either the policy forbids creating teams, or expansion hit maxTeams.
-      const teamCountChangeBlocked = overflow.some(
-        (entry) => entry.reason === TEAM_GENERATION.REASON_InsufficientCapacity
-      );
+      // A team-count change was "blocked" when a unit overflowed for capacity WHILE team
+      // creation was unavailable — the policy forbids it, or maxTeams is already reached.
+      // (An oversized unit overflowing under an expandable policy is NOT a blocked count.)
+      const creationUnavailable =
+        teamCountPolicy === 'preserve-existing' ||
+        teamCountPolicy === 'preserve-with-overflow' ||
+        (rosterConstraints.maxTeams ? teams.length >= rosterConstraints.maxTeams : false);
+      const teamCountChangeBlocked =
+        creationUnavailable &&
+        overflow.some((entry) => entry.reason === TEAM_GENERATION.REASON_InsufficientCapacity);
       // Preserved players whose assignment is locked (per-player lock, or manual assignments
       // in review/published/locked modes).
       const lockedAssignmentsPreserved = preservedTeamsInput.reduce(

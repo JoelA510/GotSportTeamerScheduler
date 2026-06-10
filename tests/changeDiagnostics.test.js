@@ -96,6 +96,36 @@ test('teamCountChangeBlocked is true when capacity overflow occurs under preserv
   assert.equal(open.changeDiagnosticsByDivision.U10.teamCountChangeBlocked, false);
 });
 
+test('an oversized unit overflowing under preserve-or-expand does not flag a blocked count', () => {
+  // A late mutual-buddy pair (unit size 2) can never fit a maxRosterSize of 1 — it overflows
+  // with insufficient-capacity even though team creation is fully available (no maxTeams).
+  const result = generateTeams({
+    players: [
+      { id: 'p1', division: 'U10' },
+      { id: 'late-a', division: 'U10', buddyId: 'late-b' },
+      { id: 'late-b', division: 'U10', buddyId: 'late-a' },
+    ],
+    divisionConfigs: { U10: { id: 'U10', teamsCount: 1, slotsPerWeek: 1, maxRosterSize: 1 } },
+    random: createDeterministicRandom(),
+    existingSnapshot: {
+      status: 'draft',
+      teamsByDivision: {
+        U10: [{ id: 'team-1', division: 'U10', players: [{ id: 'p1' }] }],
+      },
+    },
+    generationMode: 'draft', // preserve-or-expand, no maxTeams
+  });
+
+  const diag = result.changeDiagnosticsByDivision.U10;
+  assert.equal(diag.teamCountPolicy, 'preserve-or-expand');
+  assert.equal(result.overflowSummaryByDivision.U10.byReason['insufficient-capacity'].units, 1);
+  assert.equal(
+    diag.teamCountChangeBlocked,
+    false,
+    'expansion was available; the overflow is a unit-size problem, not a blocked count'
+  );
+});
+
 test('lockedAssignmentsPreserved counts manual locks in published mode', () => {
   const result = generateTeams({
     players: makePlayers(['p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7', 'p8']),
