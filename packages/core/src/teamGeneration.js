@@ -367,8 +367,13 @@ export function generateTeams({
       })),
     };
 
-    const uniqueCoachIds = new Set(teams.map((team) => team.coachId).filter(Boolean));
-    const teamsWithoutCoach = teams.filter((team) => !team.coachId).length;
+    // An inactive (dropped) coach on a locked team still counts as missing coverage.
+    const uniqueCoachIds = new Set(
+      teams
+        .map((team) => (team.coachId && !team.coachInactive ? team.coachId : null))
+        .filter(Boolean)
+    );
+    const teamsWithoutCoach = teams.filter((team) => !team.coachId || team.coachInactive).length;
     const teamsWithCoach = teams.length - teamsWithoutCoach;
     const coverageRate = teams.length > 0 ? Number((teamsWithCoach / teams.length).toFixed(4)) : 0;
 

@@ -44,16 +44,21 @@ export function applyCoachContinuity({ teams, divisionPlayers, changePolicy }) {
   const allowHousehold = policy.allowHouseholdCoachReplacement === true;
   const allowLateAttach = policy.allowLateCoachAttachToChildTeam !== false;
 
-  // An adult is an "active coach" when any incoming player of the division references them.
+  // An adult is an "active coach" when any incoming player of the division references them
+  // (both engine camelCase and import snake_case shapes count).
+  const playerCoachRef = (player) => coerceId(player?.coachId) ?? coerceId(player?.coach_id);
   const activeCoachIds = new Set();
   for (const player of divisionPlayers ?? []) {
-    const coachId = coerceId(player?.coachId);
+    const coachId = playerCoachRef(player);
     if (coachId) activeCoachIds.add(coachId);
   }
 
   const coachDrops = [];
   const coachReplacements = [];
   const manualReview = [];
+  // original coach id → replacement already applied, so a coach intentionally shared across
+  // multiple preserved teams replaces consistently on every one of them.
+  const appliedReplacements = new Map();
 
   // Coach ids currently anchoring a team in this division (kept up to date as we mutate),
   // so one adult is never silently attached to two teams.
@@ -70,7 +75,7 @@ export function applyCoachContinuity({ teams, divisionPlayers, changePolicy }) {
     const usable = new Set();
     const anchoredElsewhere = new Set();
     for (const player of team.players ?? []) {
-      const coachId = coerceId(player?.coachId);
+      const coachId = playerCoachRef(player);
       if (!coachId || !activeCoachIds.has(coachId)) continue;
       if (anchoredCoachIds.has(coachId)) {
         anchoredElsewhere.add(coachId);
@@ -101,7 +106,12 @@ export function applyCoachContinuity({ teams, divisionPlayers, changePolicy }) {
         ? coerceId(replacementMap[originalCoachId])
         : undefined;
     if (mappedReplacement) {
-      if (anchoredCoachIds.has(mappedReplacement) && mappedReplacement !== originalCoachId) {
+      const sameSharedReplacement = appliedReplacements.get(originalCoachId) === mappedReplacement;
+      if (
+        anchoredCoachIds.has(mappedReplacement) &&
+        mappedReplacement !== originalCoachId &&
+        !sameSharedReplacement
+      ) {
         manualReview.push({
           code: 'coach-replacement-target-anchored',
           teamId: team.id,
@@ -113,6 +123,7 @@ export function applyCoachContinuity({ teams, divisionPlayers, changePolicy }) {
       result.coachId = mappedReplacement;
       anchoredCoachIds.delete(originalCoachId);
       anchoredCoachIds.add(mappedReplacement);
+      appliedReplacements.set(originalCoachId, mappedReplacement);
       coachReplacements.push({
         teamId: team.id,
         fromCoachId: originalCoachId,

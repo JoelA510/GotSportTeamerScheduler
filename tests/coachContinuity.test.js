@@ -211,6 +211,33 @@ test('a lone candidate anchored elsewhere is surfaced instead of vanishing silen
   assert.ok(result.manualReview.some((m) => m.code === 'coach-candidates-anchored-elsewhere'));
 });
 
+test('snake_case coach_id references keep a preserved coach active', () => {
+  const result = applyCoachContinuity({
+    teams: [shellTeam({ coachId: 'c1', players: [{ id: 'p1', coach_id: 'c1' }] })],
+    divisionPlayers: [{ id: 'p1', coach_id: 'c1' }],
+    changePolicy: {},
+  });
+
+  assert.equal(result.teams[0].coachId, 'c1', 'import-shaped coach reference counts as active');
+  assert.deepEqual(result.coachDrops, []);
+});
+
+test('an explicit replacement applies consistently across teams sharing the same coach', () => {
+  const result = applyCoachContinuity({
+    teams: [
+      shellTeam({ id: 'team-1', coachId: 'coach-old' }),
+      shellTeam({ id: 'team-2', coachId: 'coach-old' }),
+    ],
+    divisionPlayers: [],
+    changePolicy: { coachReplacementMap: { 'coach-old': 'coach-new' } },
+  });
+
+  assert.equal(result.teams[0].coachId, 'coach-new');
+  assert.equal(result.teams[1].coachId, 'coach-new', 'shared anchor replaced on every team');
+  assert.equal(result.coachReplacements.length, 2);
+  assert.deepEqual(result.manualReview, []);
+});
+
 // ---------- generateTeams integration (incremental) ----------
 
 function snapshotWith(teams) {
@@ -346,6 +373,11 @@ test('integration: a locked team with a dropped coach is emitted coach-needed', 
   const team = result.teamsByDivision.U10[0];
   assert.equal(team.coachId, 'coach-gone', 'locked coach assignment untouched');
   assert.equal(team.coachNeeded, true, 'inactive coach surfaces as coach-needed');
+  // The coverage summary agrees with the team flag.
+  const coverage = result.coachCoverageByDivision.U10;
+  assert.equal(coverage.teamsWithoutCoach, 1);
+  assert.equal(coverage.needsAdditionalCoaches, true);
+  assert.equal(coverage.volunteerCoaches, 0, 'an inactive coach is not a volunteer');
 });
 
 test('integration: numeric coach ids match their continuity-attached team', () => {
