@@ -9,7 +9,8 @@ import { FEATURE_DEFAULTS, GENDER_MODELS } from '../constants/featureFlags.js';
  * format ('split' | 'coed', default 'split').
  */
 export function useFeatures() {
-  const { featureFlags = {}, updateFeatureFlags, loading } = useOrganization();
+  // Tolerate render outside OrganizationProvider (isolated component tests).
+  const { featureFlags = {}, updateFeatureFlags, loading } = useOrganization() || {};
 
   return useMemo(() => {
     const effective = { ...FEATURE_DEFAULTS, ...featureFlags };

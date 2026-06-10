@@ -4,6 +4,8 @@ import { useDraggable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 import { GripVertical, Clock, MapPin } from 'lucide-react';
 import { formatTime } from '../../utils/formatters.js';
+import { useFeatures } from '../../hooks/useFeatures.js';
+import { divisionDisplayName } from '../../utils/divisions.js';
 
 /**
  * GameCard — a draggable card representing a single game assignment in the schedule grid.
@@ -22,6 +24,9 @@ export default function GameCard({
     data: assignment,
     disabled: isDragDisabled,
   });
+  const { genderModel } = useFeatures();
+  // Engine identity stays gendered; only the label collapses under co-ed.
+  const divisionLabel = divisionDisplayName(assignment.division || '', genderModel) || '—';
 
   const style = {
     transform: transform ? CSS.Transform.toString(transform) : undefined,
@@ -78,7 +83,7 @@ export default function GameCard({
           Field {assignment.fieldId}
         </span>
         <span className="px-1.5 py-0.5 rounded bg-bg-surface-hover text-text-muted text-[10px] font-medium">
-          {assignment.division}
+          {divisionLabel}
         </span>
       </div>
     </div>

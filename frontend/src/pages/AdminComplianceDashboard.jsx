@@ -1,9 +1,142 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../lib/supabaseClient.js';
 import { useOrganization } from '../contexts/OrganizationContext.jsx';
 import { useAuth } from '../contexts/AuthContext.jsx';
-import { Search, CheckCircle2, AlertCircle, ClipboardCheck, History, Eye } from 'lucide-react';
+import {
+  Search,
+  CheckCircle2,
+  AlertCircle,
+  ClipboardCheck,
+  History,
+  Eye,
+  Check,
+} from 'lucide-react';
 import { logger } from '../lib/logger.js';
+import DataGrid from '../components/grid/DataGrid.jsx';
+import { usePlayersData } from '../hooks/usePlayersData.js';
+import { useFeatures } from '../hooks/useFeatures.js';
+import { FEATURE_FLAGS } from '../constants/featureFlags.js';
+import { divisionDisplayName } from '../utils/divisions.js';
+
+/**
+ * One-click compliance toggle cell (paid / waiver / medical). Audited via
+ * the admin_update_player RPC with optimistic UI from usePlayersData.
+ */
+function ComplianceToggle({ row, field, onToggle }) {
+  const on = !!row[field];
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      aria-label={`${field.replace(/_/g, ' ')} for ${row._name}`}
+      className={`badge ${on ? 'success' : 'neutral'}`}
+      style={{ cursor: 'pointer', border: 'none' }}
+      onClick={() => onToggle(row.id, field, !on)}
+    >
+      {on ? <Check size={11} aria-hidden="true" /> : null}
+      {on ? 'Received' : 'Missing'}
+    </button>
+  );
+}
+
+/** Roster-wide compliance grid over players.paid/waiver/medical booleans. */
+function PlayerComplianceGrid() {
+  const { players, divisions, loading, updatePlayer } = usePlayersData();
+  const { isEnabled, genderModel } = useFeatures();
+  const [search, setSearch] = useState('');
+  const medicalOn = isEnabled(FEATURE_FLAGS.MEDICAL_FORMS);
+
+  const divisionNameById = useMemo(() => {
+    const map = new Map();
+    divisions.forEach((division) => {
+      map.set(division.id, divisionDisplayName(division.name, genderModel));
+    });
+    return map;
+  }, [divisions, genderModel]);
+
+  const rows = useMemo(
+    () =>
+      players.map((player) => ({
+        ...player,
+        _name: `${player.first_name || ''} ${player.last_name || ''}`.trim(),
+        _division: divisionNameById.get(player.division_id) || '—',
+      })),
+    [players, divisionNameById]
+  );
+
+  const handleToggle = (playerId, field, next) => {
+    updatePlayer(playerId, { [field]: next });
+  };
+
+  const columns = useMemo(() => {
+    /** @type {any[]} */
+    const cols = [
+      { key: '_name', label: 'Player', width: 200 },
+      { key: '_division', label: 'Division', width: 110 },
+      {
+        key: 'paid',
+        label: 'Paid',
+        width: 110,
+        center: true,
+        render: (row) => <ComplianceToggle row={row} field="paid" onToggle={handleToggle} />,
+      },
+      {
+        key: 'waiver_received',
+        label: 'Waiver',
+        width: 110,
+        center: true,
+        render: (row) => (
+          <ComplianceToggle row={row} field="waiver_received" onToggle={handleToggle} />
+        ),
+      },
+    ];
+    if (medicalOn) {
+      cols.push({
+        key: 'medical_form_received',
+        label: 'Medical form',
+        width: 120,
+        center: true,
+        render: (row) => (
+          <ComplianceToggle row={row} field="medical_form_received" onToggle={handleToggle} />
+        ),
+      });
+    }
+    return cols;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [medicalOn]);
+
+  const outstanding = players.filter(
+    (player) =>
+      !player.paid || !player.waiver_received || (medicalOn && !player.medical_form_received)
+  ).length;
+
+  if (loading || players.length === 0) return null;
+
+  return (
+    <div className="card" style={{ overflow: 'hidden' }}>
+      <div className="card-head">
+        <h3>Roster compliance</h3>
+        <span className={`badge ${outstanding ? 'warning' : 'success'}`}>
+          {outstanding ? `${outstanding} outstanding` : 'All clear'}
+        </span>
+      </div>
+      <div style={{ height: 380, display: 'flex', flexDirection: 'column' }}>
+        <DataGrid
+          label="Roster compliance grid"
+          columns={columns}
+          rows={rows}
+          selectable={false}
+          dense
+          search={search}
+          setSearch={setSearch}
+          searchKeys={['_name', '_division']}
+          emptyText="No players on the roster yet"
+        />
+      </div>
+    </div>
+  );
+}
 
 export default function AdminComplianceDashboard() {
   const { currentOrganization } = useOrganization();
@@ -117,6 +250,9 @@ export default function AdminComplianceDashboard() {
         </div>
         <div className="flex gap-4">{/* Future: Add 'Create Form' button */}</div>
       </div>
+
+      {/* Roster-wide compliance booleans (players.paid/waiver/medical) */}
+      <PlayerComplianceGrid />
 
       <div className="bg-bg-surface border border-border-subtle rounded-xl p-6 shadow-md">
         <div className="flex flex-col md:flex-row justify-between items-center gap-4 mb-6">
