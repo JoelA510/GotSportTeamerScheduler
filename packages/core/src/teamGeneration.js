@@ -507,11 +507,25 @@ export function generateTeams({
         latePlayersOverflowed: overflowedPlayerCount,
       };
 
+      // A team-count change was "blocked" when at least one unit overflowed for capacity —
+      // either the policy forbids creating teams, or expansion hit maxTeams.
+      const teamCountChangeBlocked = overflow.some(
+        (entry) => entry.reason === TEAM_GENERATION.REASON_InsufficientCapacity
+      );
+      // Preserved players whose assignment is locked (per-player lock, or manual assignments
+      // in review/published/locked modes).
+      const lockedAssignmentsPreserved = preservedTeamsInput.reduce(
+        (sum, team) => sum + team.players.filter((player) => player.locked === true).length,
+        0
+      );
+
       changeDiagnosticsByDivision[division] = {
         mode: generationMode,
         teamCountPolicy,
         existingTeamsPreserved: stats.existingTeamsPreserved,
         newTeamsCreated: stats.newTeamsCreated,
+        teamCountChangeBlocked,
+        lockedAssignmentsPreserved,
         latePlayersAssigned: stats.latePlayersAssigned,
         latePlayersOverflowed: stats.latePlayersOverflowed,
         buddyTargetAssignments: stats.buddyTargetAssignments ?? [],
