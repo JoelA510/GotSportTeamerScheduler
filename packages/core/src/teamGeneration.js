@@ -130,6 +130,7 @@ export function generateTeams({
   // Snapshot-aware (incremental) generation setup. With no snapshot — or an explicit
   // teamCountPolicy of 'auto' — the fresh path below is used unchanged and no incremental
   // output keys are added.
+  changePolicy = changePolicy ?? {};
   const teamCountPolicy = resolveTeamCountPolicy({
     existingSnapshot,
     generationMode,
@@ -157,7 +158,8 @@ export function generateTeams({
     bucket.push(clone);
     playersByDivision.set(player.division, bucket);
     if (playerCloneById) {
-      playerCloneById.set(player.id, clone);
+      // Keyed by String(id) to match the id coercion used by reconcileTeamDeltas.
+      playerCloneById.set(String(player.id), clone);
     }
   }
 
@@ -442,7 +444,9 @@ export function generateTeams({
           sum + team.players.filter((player) => player.assignment_source === 'manual').length,
         0
       );
-      const capacityViolations = preservedTeamsInput
+      // Computed from the FINAL rosters so violations introduced by allowOverCapAssignments
+      // are reported alongside pre-existing over-cap preserved teams.
+      const capacityViolations = teams
         .filter((team) => team.players.length > maxRosterSize)
         .map((team) => ({
           teamId: team.id,

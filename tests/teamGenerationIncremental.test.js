@@ -300,6 +300,37 @@ test('allowOverCapAssignments permits placement beyond the cap when explicitly e
   assert.deepEqual(result.overflowByDivision.U10, []);
   const assigned = result.teamsByDivision.U10.find((t) => t.players.some((p) => p.id === 'late-1'));
   assert.ok(assigned, 'late player placed despite full teams');
+  // The roster pushed past cap by the late assignment is reported as a violation.
+  assert.ok(
+    result.changeDiagnosticsByDivision.U10.capacityViolations.some(
+      (v) => v.teamId === assigned.id && v.playerCount === 5
+    ),
+    'over-cap roster created via allowOverCapAssignments is flagged'
+  );
+});
+
+test('preserves players with non-string ids and tolerates changePolicy null', () => {
+  const snapshot = {
+    status: 'review',
+    teamsByDivision: {
+      U10: [{ id: 'team-1', division: 'U10', players: [{ id: 42 }, { id: 'p2' }] }],
+    },
+  };
+  const result = generateTeams({
+    players: [
+      { id: /** @type {any} */ (42), division: 'U10' },
+      { id: 'p2', division: 'U10' },
+    ],
+    divisionConfigs: { U10: U10_CONFIG },
+    random: createDeterministicRandom(),
+    existingSnapshot: snapshot,
+    generationMode: 'review',
+    changePolicy: /** @type {any} */ (null),
+  });
+
+  const roster = result.teamsByDivision.U10[0].players.map((p) => String(p.id)).sort();
+  assert.deepEqual(roster, ['42', 'p2'], 'numeric-id player is preserved, not silently dropped');
+  assert.equal(result.changeDiagnosticsByDivision.U10.droppedPlayersRemoved, 0);
 });
 
 test('a division present only in the snapshot remains in the output', () => {
