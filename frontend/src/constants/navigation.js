@@ -260,4 +260,5 @@ export const FULL_BLEED_ROUTES = new Set([
   '/scores',
   '/exports',
   '/admin/members',
+  '/settings',
 ]);

@@ -45,6 +45,7 @@ const BlackoutsPage = lazy(() => import('./pages/BlackoutsPage.jsx'));
 const ScoresPage = lazy(() => import('./pages/ScoresPage.jsx'));
 const ExportsPage = lazy(() => import('./pages/ExportsPage.jsx'));
 const MembersPage = lazy(() => import('./pages/MembersPage.jsx'));
+const FeaturesSetupPage = lazy(() => import('./pages/FeaturesSetupPage.jsx'));
 import OfflineGuard from './components/OfflineGuard.jsx';
 import ToastHost from './components/ui/ToastHost.jsx';
 
@@ -112,6 +113,14 @@ function AppContent() {
           element={
             <ProtectedRoute requiredPermission={PERMISSIONS.MANAGE_GLOBAL_SETTINGS}>
               <SetupWizard />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/setup/features"
+          element={
+            <ProtectedRoute requiredPermission={PERMISSIONS.MANAGE_GLOBAL_SETTINGS}>
+              <FeaturesSetupPage />
             </ProtectedRoute>
           }
         />
