@@ -25,6 +25,29 @@ const EMPTY_PERSISTENCE_SNAPSHOT = {
   payloadByDivision: {},
 };
 
+/**
+ * Newest run per division, unbounded: the `get_latest_team_runs_per_division` RPC (DISTINCT ON in
+ * the DB, SECURITY INVOKER so scheduler_runs RLS applies). Returns null when the RPC is
+ * unavailable (older DB, mock without the handler, transient error) — callers then fall back to
+ * deriving the map from the bounded recent-runs window.
+ */
+async function fetchLatestRunsPerDivision(organizationId, seasonSettingsId) {
+  try {
+    const { data, error } = await supabase.rpc('get_latest_team_runs_per_division', {
+      p_organization_id: organizationId,
+      p_season_settings_id: seasonSettingsId ?? null,
+    });
+    if (error) {
+      logger.warn('get_latest_team_runs_per_division unavailable; using windowed runs:', error);
+      return null;
+    }
+    return Array.isArray(data) ? data : null;
+  } catch (err) {
+    logger.warn('get_latest_team_runs_per_division failed; using windowed runs:', err);
+    return null;
+  }
+}
+
 export function useTeamPersistence() {
   const { currentOrganization, currentSeasonSetting } = useOrganization();
   const [persistenceSnapshot, setPersistenceSnapshot] = useState(EMPTY_PERSISTENCE_SNAPSHOT);
@@ -56,7 +79,11 @@ export function useTeamPersistence() {
         // Fetch a wider window than we display so payloadByDivision (below) can preserve a
         // re-run of a division whose last run is older than the few most-recent ones. Very
         // high-churn orgs (>20 recent runs without touching a division) may still need a reload.
-        const { data: runs, error } = await runQuery.limit(20);
+        // The windowed history read and the per-division RPC are independent — issue them together.
+        const [{ data: runs, error }, latestPerDivision] = await Promise.all([
+          runQuery.limit(20),
+          fetchLatestRunsPerDivision(currentOrganization.id, currentSeasonSetting.id),
+        ]);
 
         if (error) {
           logger.error('Error fetching persistence history:', error);
@@ -72,6 +99,11 @@ export function useTeamPersistence() {
           updatedPlayers: 0, // Not explicitly tracked in run results usually
           notes: run.status === 'completed' ? 'Scheduled successfully' : 'Run failed',
         }));
+
+        // Per-division preservation map: prefer the unbounded newest-per-division RPC; fall back
+        // to the bounded window above when the RPC is unavailable.
+        const runsForDivisionMap =
+          latestPerDivision && latestPerDivision.length > 0 ? latestPerDivision : runs;
 
         const lastRun = runs[0];
         const lastRunMetadata = lastRun
@@ -108,7 +140,7 @@ export function useTeamPersistence() {
             teamRows: lastRun?.results?.teams || [],
             teamPlayerRows: lastRun?.results?.team_players || [],
           },
-          payloadByDivision: buildPayloadByDivision(runs),
+          payloadByDivision: buildPayloadByDivision(runsForDivisionMap),
         });
       } catch (err) {
         logger.error('Failed to init persistence snapshot:', err);

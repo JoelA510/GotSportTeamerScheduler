@@ -20,6 +20,7 @@ import { IS_MOCK_MODE } from '../config.js';
 import { generateTeams } from '../../../packages/core/src/teamGeneration.js';
 import { prepareTeamingInput } from '../../../packages/core/src/teamingPipeline.js';
 import { mapSchedulerRunToSummary } from '../../../packages/core/src/utils/teamSummaryMapper.js';
+import { formatChangeNote } from '../../../packages/core/src/teamDiagnostics.js';
 import { PERMISSIONS } from '../constants/permissions.js';
 import { getPersistenceEndpoint, triggerTeamPersistence } from '../utils/teamPersistenceClient.js';
 import {
@@ -853,17 +854,8 @@ export default function TeamAnalysisPage() {
           : ` All ${coverage.totalTeams} teams have a coach.`
         : '';
       const changes = result.changeDiagnosticsByDivision?.[selectedProgramKey] ?? null;
-      const changeNote = changes
-        ? ` Incremental rerun: ${changes.existingTeamsPreserved} team${
-            changes.existingTeamsPreserved === 1 ? '' : 's'
-          } preserved, ${changes.latePlayersAssigned} late player${
-            changes.latePlayersAssigned === 1 ? '' : 's'
-          } seated, ${changes.droppedPlayersRemoved} dropped${
-            changes.manualReview?.length > 0
-              ? `, ${changes.manualReview.length} need manual review`
-              : ''
-          }.`
-        : '';
+      const formattedChangeNote = formatChangeNote(changes);
+      const changeNote = formattedChangeNote ? ` ${formattedChangeNote}` : '';
       setReviewMessage(
         `Team review staged: ${generatedTeams.length} team${
           generatedTeams.length === 1 ? '' : 's'

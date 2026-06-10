@@ -8,6 +8,7 @@
  */
 import { logger } from './logger.js';
 import { HEADER_ALIASES, RESERVED_KEYS } from '../utils/telemetryUtils.js';
+import { selectLatestTeamRunsPerDivision } from '../utils/schedulerRunFilters.js';
 
 const mockId = (prefix = '') =>
   prefix + (crypto.randomUUID?.() || crypto.getRandomValues(new Uint32Array(4)).join('-'));
@@ -4000,6 +4001,23 @@ export const mockSupabase = {
 
     if (name === 'persist_evaluation_run') {
       return { data: { id: mockId('eval-') }, error: null };
+    }
+
+    if (name === 'get_latest_team_runs_per_division') {
+      // Org/season scope, then defer to the shared mirror of the SQL DISTINCT ON
+      // (newest run per division; empty-results runs skipped; selectedProgramId →
+      // first team's division/division_id) so mock and tests share one contract.
+      const orgId = params?.p_organization_id;
+      const seasonId = params?.p_season_settings_id ?? null;
+      const runs = (db.scheduler_runs || []).filter(
+        (run) =>
+          run.run_type === 'team' &&
+          String(run.organization_id) === String(orgId) &&
+          (seasonId === null ||
+            String(run.season_settings_id) === String(seasonId) ||
+            String(run.season_id) === String(seasonId))
+      );
+      return { data: selectLatestTeamRunsPerDivision(runs), error: null };
     }
 
     return { data: null, error: null };
