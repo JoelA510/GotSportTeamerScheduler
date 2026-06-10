@@ -61,16 +61,24 @@ export function applyCoachContinuity({ teams, divisionPlayers, changePolicy }) {
     (teams ?? []).map((team) => coerceId(team.coachId)).filter(Boolean)
   );
 
-  /** Distinct active coach candidates carried by a team's preserved children. */
+  /**
+   * Distinct active coach candidates carried by a team's preserved children, split into the
+   * usable set and those excluded only because they already anchor another team (so a near-miss
+   * is still reportable instead of vanishing silently).
+   */
   const candidatesFor = (team) => {
-    const candidates = new Set();
+    const usable = new Set();
+    const anchoredElsewhere = new Set();
     for (const player of team.players ?? []) {
       const coachId = coerceId(player?.coachId);
-      if (coachId && activeCoachIds.has(coachId) && !anchoredCoachIds.has(coachId)) {
-        candidates.add(coachId);
+      if (!coachId || !activeCoachIds.has(coachId)) continue;
+      if (anchoredCoachIds.has(coachId)) {
+        anchoredElsewhere.add(coachId);
+      } else {
+        usable.add(coachId);
       }
     }
-    return [...candidates];
+    return { usable: [...usable], anchoredElsewhere: [...anchoredElsewhere] };
   };
 
   const nextTeams = (teams ?? []).map((team) => {
@@ -86,11 +94,22 @@ export function applyCoachContinuity({ teams, divisionPlayers, changePolicy }) {
       return result;
     }
 
-    // 1. Explicit replacement always wins.
-    const mappedReplacement = originalCoachId
-      ? coerceId(replacementMap[originalCoachId])
-      : undefined;
+    // 1. Explicit replacement always wins — unless the target already anchors another team,
+    //    which would silently violate the one-adult-one-anchor invariant.
+    const mappedReplacement =
+      originalCoachId && Object.prototype.hasOwnProperty.call(replacementMap, originalCoachId)
+        ? coerceId(replacementMap[originalCoachId])
+        : undefined;
     if (mappedReplacement) {
+      if (anchoredCoachIds.has(mappedReplacement) && mappedReplacement !== originalCoachId) {
+        manualReview.push({
+          code: 'coach-replacement-target-anchored',
+          teamId: team.id,
+          message: `replacement coach ${mappedReplacement} for team ${team.id} already anchors another team`,
+          candidateCoachIds: [mappedReplacement],
+        });
+        return result;
+      }
       result.coachId = mappedReplacement;
       anchoredCoachIds.delete(originalCoachId);
       anchoredCoachIds.add(mappedReplacement);
@@ -110,25 +129,31 @@ export function applyCoachContinuity({ teams, divisionPlayers, changePolicy }) {
       result.previousCoachId = originalCoachId;
       anchoredCoachIds.delete(originalCoachId);
 
-      const candidates = candidatesFor(result);
-      if (candidates.length === 1 && allowHousehold) {
-        result.coachId = candidates[0];
-        anchoredCoachIds.add(candidates[0]);
+      const { usable, anchoredElsewhere } = candidatesFor(result);
+      if (usable.length === 1 && allowHousehold) {
+        result.coachId = usable[0];
+        anchoredCoachIds.add(usable[0]);
         coachReplacements.push({
           teamId: team.id,
           fromCoachId: originalCoachId,
-          toCoachId: candidates[0],
+          toCoachId: usable[0],
         });
-      } else if (candidates.length >= 1) {
+      } else if (usable.length >= 1) {
         manualReview.push({
-          code:
-            candidates.length > 1 ? 'ambiguous-coach-replacement' : 'coach-replacement-candidate',
+          code: usable.length > 1 ? 'ambiguous-coach-replacement' : 'coach-replacement-candidate',
           teamId: team.id,
           message:
-            candidates.length > 1
-              ? `team ${team.id} lost coach ${originalCoachId} and has ${candidates.length} possible replacements`
-              : `team ${team.id} lost coach ${originalCoachId}; ${candidates[0]} could replace them (enable allowHouseholdCoachReplacement)`,
-          candidateCoachIds: candidates,
+            usable.length > 1
+              ? `team ${team.id} lost coach ${originalCoachId} and has ${usable.length} possible replacements`
+              : `team ${team.id} lost coach ${originalCoachId}; ${usable[0]} could replace them (enable allowHouseholdCoachReplacement)`,
+          candidateCoachIds: usable,
+        });
+      } else if (anchoredElsewhere.length > 0) {
+        manualReview.push({
+          code: 'coach-candidates-anchored-elsewhere',
+          teamId: team.id,
+          message: `team ${team.id} lost coach ${originalCoachId}; the only candidate(s) already anchor other teams`,
+          candidateCoachIds: anchoredElsewhere,
         });
       }
       return result;
@@ -136,17 +161,17 @@ export function applyCoachContinuity({ teams, divisionPlayers, changePolicy }) {
 
     // 3. Late head coach attaching to their child's coachless preserved team.
     if (!originalCoachId) {
-      const candidates = candidatesFor(result);
-      if (candidates.length === 1 && allowLateAttach) {
-        result.coachId = candidates[0];
-        anchoredCoachIds.add(candidates[0]);
-        coachReplacements.push({ teamId: team.id, fromCoachId: null, toCoachId: candidates[0] });
-      } else if (candidates.length > 1) {
+      const { usable } = candidatesFor(result);
+      if (usable.length === 1 && allowLateAttach) {
+        result.coachId = usable[0];
+        anchoredCoachIds.add(usable[0]);
+        coachReplacements.push({ teamId: team.id, fromCoachId: null, toCoachId: usable[0] });
+      } else if (usable.length > 1) {
         manualReview.push({
           code: 'ambiguous-coach-attachment',
           teamId: team.id,
-          message: `coachless team ${team.id} has ${candidates.length} possible coach attachments`,
-          candidateCoachIds: candidates,
+          message: `coachless team ${team.id} has ${usable.length} possible coach attachments`,
+          candidateCoachIds: usable,
         });
       }
     }

@@ -162,6 +162,55 @@ test('a locked team never has its coach mutated, even via the replacement map', 
   assert.deepEqual(result.coachDrops, [{ teamId: 'team-1', coachId: 'coach-gone' }]);
 });
 
+test('an explicit replacement target already anchoring another team goes to manual review', () => {
+  const result = applyCoachContinuity({
+    teams: [
+      shellTeam({ id: 'team-1', coachId: 'coach-z' }),
+      shellTeam({ id: 'team-2', coachId: 'coach-x' }),
+    ],
+    divisionPlayers: [
+      { id: 'p1', coachId: 'coach-z' },
+      { id: 'p2', coachId: 'coach-x' },
+    ],
+    changePolicy: { coachReplacementMap: { 'coach-x': 'coach-z' } },
+  });
+
+  assert.equal(result.teams[1].coachId, 'coach-x', 'no silent double anchoring');
+  assert.ok(result.manualReview.some((m) => m.code === 'coach-replacement-target-anchored'));
+});
+
+test('a pathological coach id never resolves through the prototype chain', () => {
+  const result = applyCoachContinuity({
+    teams: [shellTeam({ coachId: 'constructor' })],
+    divisionPlayers: [{ id: 'p1', coachId: 'constructor' }],
+    changePolicy: { coachReplacementMap: {} },
+  });
+
+  assert.equal(result.teams[0].coachId, 'constructor', 'no inherited-property replacement');
+  assert.deepEqual(result.coachReplacements, []);
+});
+
+test('a lone candidate anchored elsewhere is surfaced instead of vanishing silently', () => {
+  const result = applyCoachContinuity({
+    teams: [
+      shellTeam({ id: 'team-1', coachId: 'adult-1' }),
+      shellTeam({
+        id: 'team-2',
+        coachId: 'coach-gone',
+        players: [{ id: 'p2', coachId: 'adult-1' }],
+      }),
+    ],
+    divisionPlayers: [
+      { id: 'p1', coachId: 'adult-1' },
+      { id: 'p2', coachId: 'adult-1' },
+    ],
+    changePolicy: { allowHouseholdCoachReplacement: true },
+  });
+
+  assert.equal(result.teams[1].coachId, null);
+  assert.ok(result.manualReview.some((m) => m.code === 'coach-candidates-anchored-elsewhere'));
+});
+
 // ---------- generateTeams integration (incremental) ----------
 
 function snapshotWith(teams) {
@@ -275,6 +324,70 @@ test('integration: an assistant-only unit does not create a ghost team by defaul
 
   assert.equal(result.teamsByDivision.U10.length, 1, 'no ghost team');
   assert.equal(result.overflowSummaryByDivision.U10.totalPlayers, 1, 'late kid overflows');
+});
+
+test('integration: a locked team with a dropped coach is emitted coach-needed', () => {
+  const result = generateTeams({
+    players: [{ id: 'p1', division: 'U10' }],
+    divisionConfigs: { U10: U10_CONFIG },
+    random: createDeterministicRandom(),
+    existingSnapshot: snapshotWith([
+      {
+        id: 'team-1',
+        division: 'U10',
+        coachId: 'coach-gone',
+        locked: true,
+        players: [{ id: 'p1' }],
+      },
+    ]),
+    generationMode: 'published',
+  });
+
+  const team = result.teamsByDivision.U10[0];
+  assert.equal(team.coachId, 'coach-gone', 'locked coach assignment untouched');
+  assert.equal(team.coachNeeded, true, 'inactive coach surfaces as coach-needed');
+});
+
+test('integration: numeric coach ids match their continuity-attached team', () => {
+  const result = generateTeams({
+    players: [
+      { id: 'p1', division: 'U10', coachId: /** @type {any} */ (42) },
+      { id: 'late-kid', division: 'U10', coachId: /** @type {any} */ (42) },
+    ],
+    divisionConfigs: { U10: U10_CONFIG },
+    random: createDeterministicRandom(),
+    existingSnapshot: snapshotWith([{ id: 'team-1', division: 'U10', players: [{ id: 'p1' }] }]),
+    generationMode: 'draft',
+  });
+
+  assert.equal(result.teamsByDivision.U10.length, 1, 'no duplicate team for the same adult');
+  const team = result.teamsByDivision.U10[0];
+  assert.ok(
+    team.players.some((p) => p.id === 'late-kid'),
+    'late coach child joins the attached team'
+  );
+});
+
+test('integration: a snapshot-only division keeps its coach metadata intact', () => {
+  const result = generateTeams({
+    players: [{ id: 'a', division: 'U10' }],
+    divisionConfigs: {
+      U10: U10_CONFIG,
+      U12: { id: 'U12', teamsCount: 1, slotsPerWeek: 1, maxRosterSize: 4 },
+    },
+    random: createDeterministicRandom(),
+    existingSnapshot: {
+      status: 'published',
+      teamsByDivision: {
+        U12: [{ id: 'u12-1', division: 'U12', coachId: 'coach-u12', players: [{ id: 'q1' }] }],
+      },
+    },
+    generationMode: 'published',
+  });
+
+  const team = result.teamsByDivision.U12[0];
+  assert.equal(team.coachId, 'coach-u12', 'partial import does not wipe coach anchors');
+  assert.deepEqual(result.changeDiagnosticsByDivision.U12.coachDrops ?? [], []);
 });
 
 test('integration: fresh assistant-only units backfill existing teams instead of creating shells', () => {

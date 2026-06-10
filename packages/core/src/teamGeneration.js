@@ -276,8 +276,10 @@ export function generateTeams({
 
     // Coach continuity: explicit replacements, dropped-coach clearing with evidence-based
     // household replacement, and late coaches attaching to their child's coachless team.
+    // Skipped for snapshot-only divisions (no incoming players = no evidence; shells keep
+    // their coach metadata intact rather than mass-reporting drops on a partial import).
     let coachContinuity = null;
-    if (divisionIncremental) {
+    if (divisionIncremental && divisionPlayers.length > 0) {
       coachContinuity = applyCoachContinuity({
         teams: divisionIncremental.preservedTeams,
         divisionPlayers,
@@ -847,6 +849,7 @@ function buildTeamsForDivisionIncremental({
     name: team.name ?? `${division} Team ${String(index + 1).padStart(2, '0')}`,
     division,
     coachId: team.coachId ?? null,
+    coachInactive: Boolean(team.coachInactive),
     locked: Boolean(team.locked),
     assistantCoachIds: [...team.assistantCoachIds],
     players: [...team.players],
@@ -932,7 +935,12 @@ function buildTeamsForDivisionIncremental({
     let targetTeam = null;
 
     if (coachId) {
-      targetTeam = teams.find((team) => team.coachId === coachId) ?? createTeam(coachId);
+      // Canonical comparison: continuity writes trimmed string ids onto preserved shells while
+      // unit coach ids arrive raw from player records.
+      const coachKey = String(coachId).trim();
+      targetTeam =
+        teams.find((team) => team.coachId != null && String(team.coachId).trim() === coachKey) ??
+        createTeam(coachId);
     } else if (assistantCoachIds.length > 0) {
       // Backfill an existing team needing assistant coverage; a new unmanaged shell is created
       // only when the policy explicitly allows it. With neither, the unit places like a general
