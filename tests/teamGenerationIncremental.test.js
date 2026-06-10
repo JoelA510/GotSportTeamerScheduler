@@ -309,7 +309,7 @@ test('allowOverCapAssignments permits placement beyond the cap when explicitly e
   );
 });
 
-test('preserves players with non-string ids and tolerates changePolicy null', () => {
+test('preserves players with non-string or whitespace-padded ids; tolerates changePolicy null', () => {
   const snapshot = {
     status: 'review',
     teamsByDivision: {
@@ -319,7 +319,8 @@ test('preserves players with non-string ids and tolerates changePolicy null', ()
   const result = generateTeams({
     players: [
       { id: /** @type {any} */ (42), division: 'U10' },
-      { id: 'p2', division: 'U10' },
+      // Whitespace-padded incoming id must still match the trimmed snapshot id.
+      { id: ' p2 ', division: 'U10' },
     ],
     divisionConfigs: { U10: U10_CONFIG },
     random: createDeterministicRandom(),
@@ -328,8 +329,12 @@ test('preserves players with non-string ids and tolerates changePolicy null', ()
     changePolicy: /** @type {any} */ (null),
   });
 
-  const roster = result.teamsByDivision.U10[0].players.map((p) => String(p.id)).sort();
-  assert.deepEqual(roster, ['42', 'p2'], 'numeric-id player is preserved, not silently dropped');
+  const roster = result.teamsByDivision.U10[0].players.map((p) => String(p.id).trim()).sort();
+  assert.deepEqual(
+    roster,
+    ['42', 'p2'],
+    'numeric/padded-id players preserved, not silently dropped'
+  );
   assert.equal(result.changeDiagnosticsByDivision.U10.droppedPlayersRemoved, 0);
 });
 

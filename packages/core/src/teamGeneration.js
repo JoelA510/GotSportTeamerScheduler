@@ -158,8 +158,8 @@ export function generateTeams({
     bucket.push(clone);
     playersByDivision.set(player.division, bucket);
     if (playerCloneById) {
-      // Keyed by String(id) to match the id coercion used by reconcileTeamDeltas.
-      playerCloneById.set(String(player.id), clone);
+      // Keyed by String(id).trim() to match the id coercion used by reconcileTeamDeltas.
+      playerCloneById.set(String(player.id).trim(), clone);
     }
   }
 
