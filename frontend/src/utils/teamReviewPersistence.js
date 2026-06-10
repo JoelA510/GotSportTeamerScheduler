@@ -399,3 +399,102 @@ export function buildManualRosterSnapshot(
     },
   };
 }
+
+/**
+ * Relational `team_players.role` values that are NOT part of the active roster — coaches, not
+ * players. Mirrors the canonical role sets in packages/core/src/teamSnapshot.js so a head-coach or
+ * assistant row is never mis-seated as a rostered player (today persistence only writes
+ * `role: 'player'`, but §6g of the hardening doc contemplates persisting coach rows later).
+ */
+const NON_ROSTER_ROLES = new Set([
+  'assistant_coach',
+  'assistant coach',
+  'assistant',
+  'coach',
+  'head_coach',
+  'head coach',
+]);
+const ASSISTANT_COACH_ROLES = new Set(['assistant_coach', 'assistant coach', 'assistant']);
+const roleOf = (row) => String(row?.role ?? 'player').toLowerCase();
+
+/**
+ * Build an `existingSnapshot` (consumable by core `generateTeams`) from a previously persisted
+ * team snapshot, so a re-run PRESERVES team UUIDs, coach/assistant assignments, and manual roster
+ * moves instead of regenerating fresh. Division-scoped when `divisionKey` is supplied. Returns null
+ * when there is nothing to preserve (the first run for that division) — callers then fall back to
+ * fresh generation. Pure — no Supabase / React imports; DB-specific logic stays out of core.
+ *
+ * Tolerates both shapes a persisted snapshot can carry: generation-style team rows with an inline
+ * `players` array, and the relational `teamPlayerRows`. The relational `source` is authoritative
+ * for the manual/auto flag (it survives manual roster edits), so it wins when present. When a
+ * `payloadByDivision` map is present (see useTeamPersistence), the requested division's own
+ * most-recent payload is preferred over the single global `payload`.
+ *
+ * @param {any} baseSnapshot - persisted/review snapshot with `payload.teamRows` (+ optional `payload.teamPlayerRows`), and optional `payloadByDivision`.
+ * @param {{ divisionKey?: string }} [options]
+ * @returns {{ status: string, runId: string|null, teamsByDivision: Record<string, any[]> } | null}
+ */
+export function buildExistingSnapshotForRerun(baseSnapshot, { divisionKey } = {}) {
+  // Prefer the division's own most-recent persisted payload so re-running a division other than the
+  // single most-recently-persisted one still finds its teams; fall back to the global payload.
+  const payload =
+    (divisionKey != null && baseSnapshot?.payloadByDivision?.[divisionKey]) ||
+    baseSnapshot?.payload;
+  const teamRows = Array.isArray(payload?.teamRows) ? payload.teamRows : [];
+  if (teamRows.length === 0) return null;
+
+  const playerRowsByTeam = new Map();
+  for (const row of Array.isArray(payload?.teamPlayerRows) ? payload.teamPlayerRows : []) {
+    if (!row?.team_id) continue;
+    if (!playerRowsByTeam.has(row.team_id)) playerRowsByTeam.set(row.team_id, []);
+    playerRowsByTeam.get(row.team_id).push(row);
+  }
+
+  /** @type {Record<string, any[]>} */
+  const teamsByDivision = {};
+  for (const team of teamRows) {
+    const division = String(team?.division ?? team?.division_id ?? 'unknown');
+    if (divisionKey != null && division !== String(divisionKey)) continue;
+
+    const relationalRows = playerRowsByTeam.get(team.id) || [];
+    const relationalPlayers = relationalRows.filter((row) => !NON_ROSTER_ROLES.has(roleOf(row)));
+    const players =
+      relationalPlayers.length > 0
+        ? relationalPlayers.map((row) => ({
+            id: row.player_id,
+            assignment_source: row.source === 'manual' ? 'manual' : 'auto',
+            locked: Boolean(row.locked),
+          }))
+        : (Array.isArray(team.players) ? team.players : []).map((player) => ({
+            id: player.id,
+            assignment_source: player.assignment_source === 'manual' ? 'manual' : 'auto',
+            locked: Boolean(player.locked),
+          }));
+
+    const inlineAssistants = team.assistantCoachIds ?? team.assistant_coach_ids ?? [];
+    const relationalAssistants = relationalRows
+      .filter((row) => ASSISTANT_COACH_ROLES.has(roleOf(row)))
+      .map((row) => row.player_id);
+    const assistantCoachIds = [...new Set([...inlineAssistants, ...relationalAssistants])];
+
+    if (!teamsByDivision[division]) teamsByDivision[division] = [];
+    teamsByDivision[division].push({
+      id: team.id,
+      ...(team.generatorId ? { generatorId: team.generatorId } : {}),
+      ...(team.name != null ? { name: team.name } : {}),
+      division,
+      coachId: team.coachId ?? team.coach_id ?? null,
+      assistantCoachIds,
+      locked: Boolean(team.locked),
+      players,
+    });
+  }
+
+  if (Object.keys(teamsByDivision).length === 0) return null;
+
+  return {
+    status: baseSnapshot?.runHistory?.[0]?.status ?? 'review',
+    runId: baseSnapshot?.lastRunId ?? baseSnapshot?.runMetadata?.runId ?? null,
+    teamsByDivision,
+  };
+}

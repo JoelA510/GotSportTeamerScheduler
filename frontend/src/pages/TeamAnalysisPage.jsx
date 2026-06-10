@@ -23,6 +23,7 @@ import { mapSchedulerRunToSummary } from '../../../packages/core/src/utils/teamS
 import { PERMISSIONS } from '../constants/permissions.js';
 import { getPersistenceEndpoint, triggerTeamPersistence } from '../utils/teamPersistenceClient.js';
 import {
+  buildExistingSnapshotForRerun,
   buildManualRosterSnapshot,
   buildTeamReviewSnapshot,
   firstString,
@@ -305,7 +306,11 @@ function collectPlayerLookupKeys(rowsForProgram) {
 
 export default function TeamAnalysisPage() {
   const { team, loading, error: _error, timezone } = useDashboardData();
-  const { persistenceSnapshot, loading: _persistenceLoading } = useTeamPersistence();
+  const {
+    persistenceSnapshot,
+    loading: persistenceLoading,
+    refresh: refreshPersistence,
+  } = useTeamPersistence();
   const { importedData } = useImport();
   const { currentOrganization, currentSeasonSetting, permissions = [] } = useOrganization();
   const { session, user: authUser } = useAuth();
@@ -708,6 +713,12 @@ export default function TeamAnalysisPage() {
       if (!currentOrganization?.id) throw new Error('Select an active organization.');
       if (!canManageTeams) throw new Error('Admin team-management permission is required.');
       if (!selectedProgram) throw new Error('Select a program before generating teams.');
+      // Guard the initial-load race: until the persisted history has loaded, persistenceSnapshot is
+      // empty and a re-run would look like a first run (draft) and silently regenerate fresh —
+      // discarding the saved team UUIDs and manual moves. Make the admin wait the brief load window.
+      if (persistenceLoading) {
+        throw new Error('Still loading previously saved teams — please try again in a moment.');
+      }
 
       const selectedProgramKey = String(selectedProgram.id);
       const config = configs[selectedProgramKey] || createDefaultConfig(selectedProgram);
@@ -782,10 +793,19 @@ export default function TeamAnalysisPage() {
         minTeams: config.minTeams,
         maxTeams: config.maxTeams,
       };
+      // Snapshot-aware re-run: when a prior persisted snapshot exists for this division, preserve
+      // its team IDs, coach assignments, and manual roster moves rather than regenerating fresh.
+      // First runs (no prior snapshot) get a null snapshot → identical fresh behavior as before.
+      const existingSnapshot = buildExistingSnapshotForRerun(persistenceSnapshot, {
+        divisionKey: selectedProgramKey,
+      });
+      const generationMode = existingSnapshot ? 'review' : 'draft';
       const result = generateTeams({
         players: preparedPlayers,
         divisionConfigs: { [selectedProgramKey]: divisionConfig },
         seed: config.seed,
+        existingSnapshot,
+        generationMode,
       });
       const generatedTeams = result.teamsByDivision?.[selectedProgramKey] ?? [];
       if (generatedTeams.length === 0) {
@@ -832,10 +852,22 @@ export default function TeamAnalysisPage() {
             } needed (uncovered teams are flagged "Coach needed").`
           : ` All ${coverage.totalTeams} teams have a coach.`
         : '';
+      const changes = result.changeDiagnosticsByDivision?.[selectedProgramKey] ?? null;
+      const changeNote = changes
+        ? ` Incremental rerun: ${changes.existingTeamsPreserved} team${
+            changes.existingTeamsPreserved === 1 ? '' : 's'
+          } preserved, ${changes.latePlayersAssigned} late player${
+            changes.latePlayersAssigned === 1 ? '' : 's'
+          } seated, ${changes.droppedPlayersRemoved} dropped${
+            changes.manualReview?.length > 0
+              ? `, ${changes.manualReview.length} need manual review`
+              : ''
+          }.`
+        : '';
       setReviewMessage(
         `Team review staged: ${generatedTeams.length} team${
           generatedTeams.length === 1 ? '' : 's'
-        }.${coachNote} Sync to Supabase to apply it.`
+        }.${coachNote}${changeNote} Sync to Supabase to apply it.`
       );
     } catch (err) {
       console.error('Generation failed:', err);
@@ -852,6 +884,8 @@ export default function TeamAnalysisPage() {
     currentSeasonSetting?.age_cutoff_mode,
     authUser,
     importedPlayerRows,
+    persistenceSnapshot,
+    persistenceLoading,
     resolveGeneratorPlayers,
     saveDivisionConfig,
     session?.user,
@@ -916,7 +950,10 @@ export default function TeamAnalysisPage() {
       setStagedReview(null);
       setReviewMessage('Team review applied. Latest persisted teams will load from Supabase.');
     }
-  }, [stagedReview]);
+    // Pull the just-persisted run back into the hook so a same-session re-run preserves it
+    // instead of falling back to the stale pre-sync snapshot.
+    refreshPersistence();
+  }, [stagedReview, refreshPersistence]);
 
   const handleDiscardReview = useCallback(() => {
     setStagedReview(null);

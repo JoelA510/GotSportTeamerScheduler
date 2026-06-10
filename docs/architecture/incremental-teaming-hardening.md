@@ -1,5 +1,4 @@
-[← Back to Documentation Index](../README.md)
----
+## [← Back to Documentation Index](../README.md)
 
 # Incremental Teaming Hardening — Design & PR Sequence
 
@@ -277,7 +276,7 @@ generateTeams({ ..., existingSnapshot = null, generationMode = 'draft', changePo
 ```
 
 - `changePolicy.teamCountPolicy`: `'auto' | 'preserve-existing' | 'preserve-or-expand' |
-  'preserve-with-overflow'`. Defaults: no snapshot → `auto`; snapshot + review/published/locked →
+'preserve-with-overflow'`. Defaults: no snapshot → `auto`; snapshot + review/published/locked →
   `preserve-existing`; snapshot + draft → `preserve-or-expand`. An **explicit** `auto` with a
   snapshot falls back to fresh generation (snapshot ignored).
 - `changePolicy.allowOverCapAssignments`: opt-in to place late players beyond `maxRosterSize`.
@@ -370,25 +369,25 @@ are also emitted per division.
 parsing required; ids and counts only — no extra PII). Emitted only in incremental mode; fresh
 generation omits the key entirely.
 
-| Field | Type | Meaning |
-| --- | --- | --- |
-| `mode` | string | `generationMode` of the run (`draft`/`review`/`published`/`locked`). |
-| `teamCountPolicy` | string | Effective policy after defaulting. |
-| `existingTeamsPreserved` | number | Snapshot shells carried into the output. |
-| `newTeamsCreated` | number | Teams created this run (expansion or fresh-fallback divisions). |
-| `teamCountChangeBlocked` | boolean | At least one roster-cap-fittable unit overflowed for capacity while team creation was unavailable (policy forbids it, or `maxTeams` reached). Units larger than `maxRosterSize` never count — no team could seat them. |
-| `lockedAssignmentsPreserved` | number | Preserved players whose assignment is locked (per-player lock, or manual in review/published/locked). |
-| `manualAssignmentsPreserved` | number | Preserved players with `assignment_source: 'manual'`. |
-| `latePlayersAssigned` / `latePlayersOverflowed` | number | Late registrations placed vs overflowed. |
-| `droppedPlayersRemoved` | number | Snapshot players no longer registered (removed from rosters; shells kept). |
-| `buddyTargetAssignments` | `[{playerId, buddyId, teamId}]` | Late players routed onto their buddy's preserved team. |
-| `assistantBackfills` | `[{teamId, assistantCoachIds}]` | Assistant-only units backfilled onto preserved teams. |
-| `coachDrops` | `[{teamId, coachId}]` | Head coaches no longer referenced by any incoming player. |
-| `coachReplacements` | `[{teamId, fromCoachId, toCoachId}]` | Applied replacements/attachments (`fromCoachId: null` = late-coach attach). |
-| `manualReview` | `[{code, teamId, message, candidateCoachIds?}]` | Ambiguities requiring an admin decision — distinguishable from hard errors. |
-| `capacityViolations` | `[{teamId, playerCount, maxRosterSize}]` | Final rosters above cap (pre-existing or `allowOverCapAssignments`). |
-| `minRosterWarnings` | `string[]` (team ids) | Teams below `minRosterSize` (warning — preserved teams are never collapsed). |
-| `structuralWarnings` | `string[]` | e.g. snapshot-only division with no division config. |
+| Field                                           | Type                                            | Meaning                                                                                                                                                                                                                |
+| ----------------------------------------------- | ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `mode`                                          | string                                          | `generationMode` of the run (`draft`/`review`/`published`/`locked`).                                                                                                                                                   |
+| `teamCountPolicy`                               | string                                          | Effective policy after defaulting.                                                                                                                                                                                     |
+| `existingTeamsPreserved`                        | number                                          | Snapshot shells carried into the output.                                                                                                                                                                               |
+| `newTeamsCreated`                               | number                                          | Teams created this run (expansion or fresh-fallback divisions).                                                                                                                                                        |
+| `teamCountChangeBlocked`                        | boolean                                         | At least one roster-cap-fittable unit overflowed for capacity while team creation was unavailable (policy forbids it, or `maxTeams` reached). Units larger than `maxRosterSize` never count — no team could seat them. |
+| `lockedAssignmentsPreserved`                    | number                                          | Preserved players whose assignment is locked (per-player lock, or manual in review/published/locked).                                                                                                                  |
+| `manualAssignmentsPreserved`                    | number                                          | Preserved players with `assignment_source: 'manual'`.                                                                                                                                                                  |
+| `latePlayersAssigned` / `latePlayersOverflowed` | number                                          | Late registrations placed vs overflowed.                                                                                                                                                                               |
+| `droppedPlayersRemoved`                         | number                                          | Snapshot players no longer registered (removed from rosters; shells kept).                                                                                                                                             |
+| `buddyTargetAssignments`                        | `[{playerId, buddyId, teamId}]`                 | Late players routed onto their buddy's preserved team.                                                                                                                                                                 |
+| `assistantBackfills`                            | `[{teamId, assistantCoachIds}]`                 | Assistant-only units backfilled onto preserved teams.                                                                                                                                                                  |
+| `coachDrops`                                    | `[{teamId, coachId}]`                           | Head coaches no longer referenced by any incoming player.                                                                                                                                                              |
+| `coachReplacements`                             | `[{teamId, fromCoachId, toCoachId}]`            | Applied replacements/attachments (`fromCoachId: null` = late-coach attach).                                                                                                                                            |
+| `manualReview`                                  | `[{code, teamId, message, candidateCoachIds?}]` | Ambiguities requiring an admin decision — distinguishable from hard errors.                                                                                                                                            |
+| `capacityViolations`                            | `[{teamId, playerCount, maxRosterSize}]`        | Final rosters above cap (pre-existing or `allowOverCapAssignments`).                                                                                                                                                   |
+| `minRosterWarnings`                             | `string[]` (team ids)                           | Teams below `minRosterSize` (warning — preserved teams are never collapsed).                                                                                                                                           |
+| `structuralWarnings`                            | `string[]`                                      | e.g. snapshot-only division with no division config.                                                                                                                                                                   |
 
 **Overflow reason codes** (`overflowByDivision[].reason`, machine-readable kebab-case):
 `insufficient-capacity`, `coach-capacity`, `buddy-target-capacity`, `buddy-target-locked`.
@@ -410,33 +409,128 @@ manually"; anything in `manualReview` is a decision the engine deliberately refu
 
 ---
 
+## 6g. Implemented in PR 08 — frontend & persistence integration
+
+PR 08 wires the incremental engine into the only place teams are actually generated for admins
+(`TeamAnalysisPage`) and proves the persistence round-trip preserves identity. **No core changes** —
+the integration lives entirely in the frontend/persistence layer, keeping core free of Supabase/React
+imports (the §4 / risk-register invariant).
+
+### Admin re-run flow
+
+`handleGenerateTeams` now derives an `existingSnapshot` from the division's previously persisted run
+before calling `generateTeams`:
+
+```text
+useTeamPersistence() → persistenceSnapshot
+  → buildExistingSnapshotForRerun(persistenceSnapshot, { divisionKey })  // frontend util, pure
+    → existingSnapshot | null
+generationMode = existingSnapshot ? 'review' : 'draft'
+generateTeams({ players, divisionConfigs, existingSnapshot, generationMode })
+  → result.changeDiagnosticsByDivision  → appended to the staged review message
+```
+
+- **First run** (no persisted snapshot for the division) → `buildExistingSnapshotForRerun` returns
+  `null` → `generationMode: 'draft'` → byte-identical fresh behavior (the §4 invariant holds).
+- **Re-run** (a prior snapshot exists) → `generationMode: 'review'` → preserved UUIDs, manual locks,
+  coach/assistant continuity, and a `changeDiagnosticsByDivision` summary surfaced in the review banner.
+
+The coach reference travels on the **player** rows: `prepareTeamingInput` → `linkCoachesToPlayers`
+projects each coach onto their child as `player.coachId`, so on a re-run the returning child still
+carries the reference and `applyCoachContinuity` recognizes the head coach as active and keeps the
+anchor (a coach absent from the new import is, correctly, treated as dropped).
+
+**Multi-division persistence.** Each persisted run holds a single division (the page generates one
+program at a time), and `useTeamPersistence` only surfaces the most-recent run as `payload`. To keep
+re-runs working for _every_ previously-persisted division — not just the most recent — the hook also
+exposes `payloadByDivision` (`buildPayloadByDivision` in `schedulerRunFilters.js`): a division →
+`{ teamRows, teamPlayerRows }` map built from the recent run window (newest run wins per division).
+`buildExistingSnapshotForRerun` prefers that division-scoped payload, so re-running U10 after
+persisting U12 still finds U10's teams instead of silently regenerating fresh (the risk-register
+"re-run silently discards manual moves" failure mode). Two freshness races are also closed:
+`handleGenerateTeams` refuses to run while the snapshot is still loading (the empty initial snapshot
+would otherwise look like a first run), and a successful sync calls the hook's `refresh()` so a
+same-session re-run sees the just-persisted teams.
+
+### `buildExistingSnapshotForRerun(baseSnapshot, { divisionKey })` — frontend util
+
+Pure (`frontend/src/utils/teamReviewPersistence.js`, no Supabase/React imports). Reverses a persisted
+snapshot into the `teamsByDivision` shape `normalizeExistingSnapshot` already accepts:
+
+| Concern         | Behavior                                                                                                                                                                                                              |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Shape tolerance | Reads `payload.teamRows` (generation teams w/ inline `players`) + optional relational `payload.teamPlayerRows`.                                                                                                       |
+| Source of truth | Relational `source` wins for the manual/auto flag (survives manual roster edits); inline `players` is the fallback when no relational rows exist.                                                                     |
+| Assistants      | `assistantCoachIds` reconstructed from `assistant_coach` role rows (case-insensitive, ∪ any inline `assistantCoachIds`); coach/head-coach role rows are kept out of the roster `players` (mirrors `teamSnapshot.js`). |
+| Scoping         | Prefers the requested division's own most-recent payload (`payloadByDivision[divisionKey]`) over the single global `payload`, then filters to `divisionKey`.                                                          |
+| Empty           | Returns `null` when there is nothing to preserve (first run) → caller falls back to fresh draft.                                                                                                                      |
+
+### Persistence invariants (UUID preservation + full authoritative payload)
+
+- **UUIDs preserved end-to-end.** `buildTeamReviewSnapshot` keeps `isUuid(team.id) ? team.id :
+idFactory()` — a preserved team re-uses its persisted UUID; only a genuinely new team mints one.
+  Tests assert **zero** id-factory calls for an all-preserved re-run.
+- **Full authoritative payload.** The review payload lists _every_ team in the result and _every_
+  player on each team (one `team_players` row per roster player). The persistence RPC
+  `persist_team_schedule` is **UPSERT-only** (`INSERT … ON CONFLICT DO UPDATE`, **no DELETE**), so a
+  full snapshot can only re-assert preserved rows — it can never delete a preserved assignment.
+  Partial payloads are therefore never sent (sending a subset would silently strand assignments).
+
+### Documented follow-up gaps (out of scope for PR 08; need a DB write path, tracked for PR 09 / later)
+
+1. **Dropped-player rows linger relationally.** Because the RPC never `DELETE`s, a player removed on a
+   re-run is gone from the in-memory rosters (and counted in `droppedPlayersRemoved`), but their old
+   `team_players` row survives in the DB. Closing this needs a delete-reconciliation path — e.g. a
+   delete-missing step scoped to the division, or a `persist_team_schedule` variant that prunes rows
+   absent from an authoritative payload. Until then, treat `droppedPlayersRemoved` as the source of
+   truth for "who left", not the raw `team_players` table.
+2. **Assistant-coach assignments are read-preserved but not write-persisted.**
+   `buildExistingSnapshotForRerun` reconstructs assistants from `assistant_coach` role rows and core
+   carries/backfills them in-session, but `buildTeamReviewSnapshot` writes only `role: 'player'` rows
+   plus the head `teams.coach_id`. An assistant introduced purely by core backfill is therefore not
+   yet round-tripped to a dedicated persisted assistant row. Persisting assistants needs an
+   `assistant_coach` write path (role rows or a `team.assistant_coach_ids` column).
+3. **Run-window bound (residual).** `payloadByDivision` is built from a bounded window of recent runs
+   (currently the newest 20). A very high-churn org that has logged more than 20 team runs without
+   touching a given division since its last persist will not find that division's payload and will
+   re-run it fresh (a page reload after persisting it brings it back into the window). Fully removing
+   the bound needs a per-division "latest run" query (e.g. a `DISTINCT ON (division)` RPC) rather than
+   a fixed `limit`. The initial-load and post-sync freshness races are already closed (see §6g).
+4. **Division-key form is consistent-by-convention, not enforced.** The snapshot's `division` is
+   whatever `selectedProgram.id` resolved to at write time (an age-group key like `U10`, or a
+   `division_id` UUID), and `divisionConfigs` is keyed by the same value end-to-end, so they always
+   align today. A future caller that keyed `divisionConfigs` differently from `selectedProgram.id`
+   would need the `changePolicy.divisionKeyById` remap (already supported by core) to bridge them.
+
+---
+
 ## 7. PR sequence
 
-| PR  | Title                                       | New modules (core)                        | Touches `generateTeams`? |
-| --- | ------------------------------------------- | ----------------------------------------- | ------------------------ |
-| 01  | Foundation & characterization               | — (docs + tests + fixtures)               | No                       |
-| 02  | Snapshot normalization & delta core         | `teamSnapshot.js`, `teamDelta.js`         | No (exports only)        |
-| 03  | Typed assignment units                      | `assignmentUnits.js`                       | Internal refactor only   |
-| 04  | Structural stability & incremental gen      | —                                          | Yes (additive params)    |
-| 05  | Buddy normalization & historical routing    | `buddyLinking.js`                          | Yes                      |
-| 06  | Coach continuity & assistant backfill       | `coachContinuity.js`                       | Yes                      |
-| 07  | Change diagnostics & summaries              | —                                          | Yes (output only)        |
-| 08  | Frontend & persistence integration          | — (frontend + persistence)                 | No (consumer side)       |
-| 09  | E2E hardening sweep, docs, interaction audit| —                                          | No                       |
+| PR  | Title                                        | New modules (core)                | Touches `generateTeams`? |
+| --- | -------------------------------------------- | --------------------------------- | ------------------------ |
+| 01  | Foundation & characterization                | — (docs + tests + fixtures)       | No                       |
+| 02  | Snapshot normalization & delta core          | `teamSnapshot.js`, `teamDelta.js` | No (exports only)        |
+| 03  | Typed assignment units                       | `assignmentUnits.js`              | Internal refactor only   |
+| 04  | Structural stability & incremental gen       | —                                 | Yes (additive params)    |
+| 05  | Buddy normalization & historical routing     | `buddyLinking.js`                 | Yes                      |
+| 06  | Coach continuity & assistant backfill        | `coachContinuity.js`              | Yes                      |
+| 07  | Change diagnostics & summaries               | —                                 | Yes (output only)        |
+| 08  | Frontend & persistence integration           | — (frontend + persistence)        | No (consumer side)       |
+| 09  | E2E hardening sweep, docs, interaction audit | —                                 | No                       |
 
 ---
 
 ## 8. Risk register
 
-| Risk                                                                   | Mitigation                                                                                  |
-| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| Re-run silently discards manual moves or published team IDs            | Preserve UUIDs end-to-end (PR 08); honor `assignment_source: 'manual'` as locked.            |
-| Fresh-path regression while adding incremental branches                | Characterization suite (§4) + `auto`/no-snapshot defaults; assert byte-identical fresh runs. |
-| Partial persistence payload deletes preserved `team_players` rows      | PR 08 sends a **full authoritative** snapshot; add tests asserting no preserved rows dropped.|
-| Core picks up Supabase/React imports during integration                | Keep snapshot/delta/buddy/coach helpers pure; integration lives in frontend/persistence.     |
-| Coach identity collapsed across distinct team requests                 | Explicit replacement evidence only (`coachReplacementMap` / household key); diagnose ambiguity.|
-| Buddy field name drift (`buddyId` / `buddy_id` / `mutual_buddy_code`)  | Canonicalize once in `buddyLinking.js`; reuse in `useConflicts` (PR 05).                     |
-| Late buddy/coach changes reshuffle published rosters                   | Never reshuffle locked/published players; route to capacity or overflow with a reason.        |
+| Risk                                                                  | Mitigation                                                                                      |
+| --------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| Re-run silently discards manual moves or published team IDs           | Preserve UUIDs end-to-end (PR 08); honor `assignment_source: 'manual'` as locked.               |
+| Fresh-path regression while adding incremental branches               | Characterization suite (§4) + `auto`/no-snapshot defaults; assert byte-identical fresh runs.    |
+| Partial persistence payload deletes preserved `team_players` rows     | PR 08 sends a **full authoritative** snapshot; add tests asserting no preserved rows dropped.   |
+| Core picks up Supabase/React imports during integration               | Keep snapshot/delta/buddy/coach helpers pure; integration lives in frontend/persistence.        |
+| Coach identity collapsed across distinct team requests                | Explicit replacement evidence only (`coachReplacementMap` / household key); diagnose ambiguity. |
+| Buddy field name drift (`buddyId` / `buddy_id` / `mutual_buddy_code`) | Canonicalize once in `buddyLinking.js`; reuse in `useConflicts` (PR 05).                        |
+| Late buddy/coach changes reshuffle published rosters                  | Never reshuffle locked/published players; route to capacity or overflow with a reason.          |
 
 ---
 
