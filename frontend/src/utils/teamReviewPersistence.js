@@ -1,3 +1,5 @@
+import { summarizeTeamGeneration } from '../../../packages/core/src/teamDiagnostics.js';
+
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export function isUuid(value) {
@@ -168,6 +170,12 @@ export function buildTeamReviewSnapshot(
       division: divisionKey,
       name: team.name,
       coach_id: isUuid(team.coachId) ? team.coachId : null,
+      // Assistants persist as id metadata on the team row (uuid[] in the DB) —
+      // team_players.player_id is FK-bound to players, so assistant (coach-id)
+      // role rows are structurally impossible there. UUID-only, matching the
+      // coach_id convention; non-UUID assistant ids still round-trip via the
+      // inline results.teams JSON that the re-run path reads.
+      assistant_coach_ids: (team.assistantCoachIds ?? []).map((id) => String(id)).filter(isUuid),
     };
   });
 
@@ -213,11 +221,23 @@ export function buildTeamReviewSnapshot(
     (sum, summary) => sum + (summary?.totalPlayers || 0),
     0
   );
+  // Persist the structured generation summary (incl. per-division incremental
+  // `changes` for snapshot-aware re-runs) alongside the raw results, so audit
+  // history carries an analysis-ready digest. Computed from the remapped
+  // results so any team ids it references are the persisted UUIDs. Non-fatal:
+  // a summary failure must never block persistence.
+  let generationSummary = null;
+  try {
+    generationSummary = summarizeTeamGeneration(results);
+  } catch {
+    generationSummary = null;
+  }
   const metrics = {
     progress: 100,
     generatedTeams: teamRows.length,
     assignedPlayers: teamPlayerRows.length,
     overflowPlayers,
+    ...(generationSummary ? { generationSummary } : {}),
   };
   const parameters = {
     source: 'team_analysis_review',

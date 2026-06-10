@@ -286,3 +286,31 @@ function normalizeReasonCounts({ byReason, fallbackByReason, field }) {
     return acc;
   }, {});
 }
+
+/**
+ * Format a division's incremental change diagnostics as the short, admin-facing
+ * sentence shown after a snapshot-aware re-run (e.g. in the staged-review
+ * banner). Returns '' when there are no change diagnostics (fresh generation),
+ * so callers can append it unconditionally.
+ *
+ * @param {{
+ *   existingTeamsPreserved?: number,
+ *   latePlayersAssigned?: number,
+ *   droppedPlayersRemoved?: number,
+ *   manualReview?: Array<unknown>,
+ * } | null | undefined} changes - one division's entry from `changeDiagnosticsByDivision`.
+ * @returns {string}
+ */
+export function formatChangeNote(changes) {
+  if (!changes || typeof changes !== 'object') return '';
+  const plural = (count, noun) => `${count} ${noun}${count === 1 ? '' : 's'}`;
+  const preserved = changes.existingTeamsPreserved ?? 0;
+  const late = changes.latePlayersAssigned ?? 0;
+  const dropped = changes.droppedPlayersRemoved ?? 0;
+  const manualReviewCount = Array.isArray(changes.manualReview) ? changes.manualReview.length : 0;
+  const manualNote = manualReviewCount > 0 ? `, ${manualReviewCount} need manual review` : '';
+  return `Incremental rerun: ${plural(preserved, 'team')} preserved, ${plural(
+    late,
+    'late player'
+  )} seated, ${dropped} dropped${manualNote}.`;
+}

@@ -4002,6 +4002,39 @@ export const mockSupabase = {
       return { data: { id: mockId('eval-') }, error: null };
     }
 
+    if (name === 'get_latest_team_runs_per_division') {
+      // Mirrors the SQL DISTINCT ON: the single newest team run per division for the org
+      // (optionally season-scoped). Division resolution matches the DB function:
+      // parameters.selectedProgramId first, then the first persisted team's display division.
+      const orgId = params?.p_organization_id;
+      const seasonId = params?.p_season_settings_id ?? null;
+      const runs = (db.scheduler_runs || [])
+        .filter(
+          (run) =>
+            run.run_type === 'team' &&
+            String(run.organization_id) === String(orgId) &&
+            (seasonId === null ||
+              String(run.season_settings_id) === String(seasonId) ||
+              String(run.season_id) === String(seasonId))
+        )
+        .sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')));
+      const byDivision = new Map();
+      for (const run of runs) {
+        const division =
+          run.parameters?.selectedProgramId ?? run.results?.teams?.[0]?.division ?? null;
+        if (division == null || byDivision.has(String(division))) continue;
+        byDivision.set(String(division), {
+          id: run.id,
+          status: run.status,
+          division: String(division),
+          parameters: run.parameters ?? {},
+          results: run.results ?? {},
+          created_at: run.created_at,
+        });
+      }
+      return { data: [...byDivision.values()], error: null };
+    }
+
     return { data: null, error: null };
   },
   functions: {

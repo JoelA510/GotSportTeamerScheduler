@@ -401,6 +401,10 @@ generation omits the key entirely.
 as `divisions[i].changes` and adds incremental totals (`latePlayersAssigned`,
 `latePlayersOverflowed`, `droppedPlayersRemoved`, `manualReviewCount`) — both only when the
 result came from an incremental run; the fresh-generation summary shape is unchanged.
+**Production consumers** (teaming follow-ups PR): `buildTeamReviewSnapshot` persists the summary as
+`metrics.generationSummary` on every team run (computed from the remapped results so team ids are
+the persisted UUIDs; non-fatal on failure), and `formatChangeNote(changes)` renders the one-line
+admin note shown in the staged-review banner.
 
 **Admin interpretation example**: after a published-mode rerun, `existingTeamsPreserved: 3,
 newTeamsCreated: 0, latePlayersAssigned: 2, latePlayersOverflowed: 1, teamCountChangeBlocked: true`
@@ -480,26 +484,32 @@ idFactory()` — a preserved team re-uses its persisted UUID; only a genuinely n
   player dropped on a re-run is also removed from the DB (their preserved team is in the payload and
   they are not in the incoming rows), so `droppedPlayersRemoved` matches the persisted state.
 
-### Documented follow-up gaps (out of scope for PR 08; need a DB write path, tracked for PR 09 / later)
+### Closed follow-ups (teaming follow-ups PR, migration `20260610000000_teaming_rerun_followups.sql`)
 
-1. **Assistant-coach assignments are not write-persisted (and are dropped on re-run).**
-   `buildExistingSnapshotForRerun` reconstructs assistants from `assistant_coach` role rows and core
-   carries/backfills them in-session, but `buildTeamReviewSnapshot` writes only `role: 'player'` rows
-   plus the head `teams.coach_id`. Because the RPC replaces each submitted team's roster, any
-   pre-existing `assistant_coach` row for a submitted team is also deleted on the next persist.
-   Persisting assistants needs an `assistant_coach` write path (role rows or a
-   `team.assistant_coach_ids` column).
-2. **Run-window bound (residual).** `payloadByDivision` is built from a bounded window of recent runs
-   (currently the newest 20). A very high-churn org that has logged more than 20 team runs without
-   touching a given division since its last persist will not find that division's payload and will
-   re-run it fresh (a page reload after persisting it brings it back into the window). Fully removing
-   the bound needs a per-division "latest run" query (e.g. a `DISTINCT ON (division)` RPC) rather than
-   a fixed `limit`. The initial-load and post-sync freshness races are already closed (see §6g).
-3. **Division-key form is consistent-by-convention, not enforced.** The snapshot's `division` is
+1. **Assistant-coach write-persistence — closed.** `team_players.player_id` is FK-bound to `players`
+   while assistant ids are coach ids, so relational `assistant_coach` role rows are structurally
+   impossible. Instead, `teams.assistant_coach_ids` (nullable `uuid[]`; NULL = never set, readers
+   treat NULL like `{}`) now carries the list: `buildTeamReviewSnapshot` writes the UUID subset on
+   every team row (the `coach_id` convention — non-UUID import-era ids round-trip via the inline
+   results JSON the re-run path reads), and the redefined `persist_team_schedule`
+   validates/sanitizes it (string array, UUID-filtered, deduped, ≤ 50 entries) and
+   upserts it with `COALESCE(EXCLUDED…, teams.assistant_coach_ids)` — so an older client whose
+   payload omits the key can never wipe a stored list. `tests/persistRoundTrip.test.js` proves the
+   full DB round-trip (including old-client safety).
+2. **Run-window bound — closed.** `get_latest_team_runs_per_division` (SECURITY INVOKER `DISTINCT ON`
+   over `scheduler_runs`; RLS applies to the caller) returns the single newest team run per division,
+   unbounded. `useTeamPersistence` prefers it for `payloadByDivision` and falls back to the bounded
+   20-run window only when the RPC is unavailable (older DB / transient error). The mock client
+   implements the same RPC for E2E parity.
+
+### Remaining documented limitation
+
+1. **Division-key form is consistent-by-convention, not enforced.** The snapshot's `division` is
    whatever `selectedProgram.id` resolved to at write time (an age-group key like `U10`, or a
    `division_id` UUID), and `divisionConfigs` is keyed by the same value end-to-end, so they always
-   align today. A future caller that keyed `divisionConfigs` differently from `selectedProgram.id`
-   would need the `changePolicy.divisionKeyById` remap (already supported by core) to bridge them.
+   align today (pinned by the division-key contract assertions in `tests/persistRoundTrip.test.js`).
+   A future caller that keyed `divisionConfigs` differently from `selectedProgram.id` would need the
+   `changePolicy.divisionKeyById` remap (already supported by core) to bridge them.
 
 ---
 

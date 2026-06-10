@@ -25,6 +25,25 @@ const EMPTY_PERSISTENCE_SNAPSHOT = {
   payloadByDivision: {},
 };
 
+/**
+ * Newest run per division, unbounded: the `get_latest_team_runs_per_division` RPC (DISTINCT ON in
+ * the DB, SECURITY INVOKER so scheduler_runs RLS applies). Returns null when the RPC is
+ * unavailable (older DB, mock without the handler, transient error) — callers then fall back to
+ * deriving the map from the bounded recent-runs window.
+ */
+async function fetchLatestRunsPerDivision(organizationId, seasonSettingsId) {
+  try {
+    const { data, error } = await supabase.rpc('get_latest_team_runs_per_division', {
+      p_organization_id: organizationId,
+      p_season_settings_id: seasonSettingsId ?? null,
+    });
+    if (error || !Array.isArray(data)) return null;
+    return data;
+  } catch {
+    return null;
+  }
+}
+
 export function useTeamPersistence() {
   const { currentOrganization, currentSeasonSetting } = useOrganization();
   const [persistenceSnapshot, setPersistenceSnapshot] = useState(EMPTY_PERSISTENCE_SNAPSHOT);
@@ -73,6 +92,15 @@ export function useTeamPersistence() {
           notes: run.status === 'completed' ? 'Scheduled successfully' : 'Run failed',
         }));
 
+        // Per-division preservation map: prefer the unbounded newest-per-division RPC; fall back
+        // to the bounded window above when the RPC is unavailable.
+        const latestPerDivision = await fetchLatestRunsPerDivision(
+          currentOrganization.id,
+          currentSeasonSetting.id
+        );
+        const runsForDivisionMap =
+          latestPerDivision && latestPerDivision.length > 0 ? latestPerDivision : runs;
+
         const lastRun = runs[0];
         const lastRunMetadata = lastRun
           ? {
@@ -108,7 +136,7 @@ export function useTeamPersistence() {
             teamRows: lastRun?.results?.teams || [],
             teamPlayerRows: lastRun?.results?.team_players || [],
           },
-          payloadByDivision: buildPayloadByDivision(runs),
+          payloadByDivision: buildPayloadByDivision(runsForDivisionMap),
         });
       } catch (err) {
         logger.error('Failed to init persistence snapshot:', err);
