@@ -329,6 +329,41 @@ rosters are **never reshuffled** to make room. Fresh (no-snapshot) buddy behavio
 
 ---
 
+## 6e. Implemented in PR 06 — coach continuity & assistant backfill
+
+`packages/core/src/coachContinuity.js` reconciles coach deltas against the rehydrated preserved
+shells before placement — **explicit/evidence-based only**; ambiguity becomes a `manualReview`
+entry, never a guess:
+
+1. **Explicit replacement** (`changePolicy.coachReplacementMap` `{oldId: newId}`) always wins.
+2. **Dropped head coach** (no incoming player references them): roster and shell preserved, the
+   anchor is cleared (`previousCoachId` keeps the history), `coachNeeded` becomes true, and the
+   drop is recorded in `coachDrops`. With `allowHouseholdCoachReplacement: true` and EXACTLY ONE
+   of the team's preserved children now carrying a different active `coachId` (the other parent
+   stepping up), the replacement applies; multiple candidates → `ambiguous-coach-replacement`.
+3. **Late head coach** whose child sits on a coachless preserved team attaches to that team
+   (`allowLateCoachAttachToChildTeam`, default true), unless the adult already anchors another
+   team or multiple candidates exist (→ manual review). Distinct teams sharing one `coachId` in
+   the snapshot are never collapsed.
+4. **Locked teams** never have their coach mutated (a dropped coach is flagged
+   `coachInactive` → `coachNeeded`).
+
+**Assistant backfill** (both fresh and incremental placement): an assistant-only unit backfills,
+in order — a team already carrying that assistant → a coached team without assistants → a coachless
+team needing adult coverage. A new unmanaged shell is created only when
+`changePolicy.allowAssistantShellCreation: true` (incremental; fresh generation keeps its
+last-resort fallback). Otherwise the unit places like a general unit, with assistant metadata
+merged after successful placement. Backfills onto preserved teams are recorded in
+`changeDiagnostics.assistantBackfills`; `coachDrops`, `coachReplacements`, and `manualReview`
+are also emitted per division.
+
+> **Adult identity vs team-request anchor:** a `coachId` is an adult identity carried on player
+> records. The continuity layer never collapses distinct preserved teams that share an adult, and
+> never attaches one adult to a second team automatically — multi-team coaching remains an
+> explicit, preserved-from-snapshot (or manual) decision.
+
+---
+
 ## 7. PR sequence
 
 | PR  | Title                                       | New modules (core)                        | Touches `generateTeams`? |
