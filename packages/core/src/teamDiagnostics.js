@@ -50,6 +50,7 @@ const EMPTY_ROSTER_BALANCE = {
  *     overflowPlayers: number,
  *     overflowByReason: Record<string, number>,
  *     overflowPlayersByReason: Record<string, number>,
+ *     changes?: Record<string, any>,
  *   }>,
  *   totals: {
  *     divisions: number,
@@ -58,6 +59,10 @@ const EMPTY_ROSTER_BALANCE = {
  *     overflowPlayers: number,
  *     divisionsNeedingCoaches: number,
  *     divisionsWithOpenRosterSlots: number,
+ *     latePlayersAssigned?: number,
+ *     latePlayersOverflowed?: number,
+ *     droppedPlayersRemoved?: number,
+ *     manualReviewCount?: number,
  *   },
  * }}
  */
