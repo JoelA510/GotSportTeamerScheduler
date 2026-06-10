@@ -105,7 +105,8 @@ test('preserves team count, ids, and names after a player drops (published defau
 
 test('preserves coach metadata and manual assignment_source on preserved players', () => {
   const result = generateTeams({
-    players: makePlayers(ALL_NINE),
+    // p1 still references coach-1, so the coach is active and the anchor is preserved.
+    players: makePlayers(ALL_NINE).map((p) => (p.id === 'p1' ? { ...p, coachId: 'coach-1' } : p)),
     divisionConfigs: { U10: U10_CONFIG },
     random: createDeterministicRandom(),
     existingSnapshot: threeTeamSnapshot(),

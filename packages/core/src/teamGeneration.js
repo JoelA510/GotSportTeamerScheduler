@@ -12,6 +12,7 @@ import { EVALUATOR_REGISTRY } from './evaluators/index.js';
 import { buildAssignmentUnits, calculateUnitSkill } from './assignmentUnits.js';
 import { reconcileTeamDeltas } from './teamDelta.js';
 import { getCanonicalBuddyId } from './buddyLinking.js';
+import { applyCoachContinuity } from './coachContinuity.js';
 
 /** @typedef {import('./types.js').Player} Player */
 /** @typedef {import('./types.js').Team} Team */
@@ -29,12 +30,16 @@ import { getCanonicalBuddyId } from './buddyLinking.js';
  * @param {any} [params.existingSnapshot=null] - Existing roster snapshot to preserve (see teamSnapshot.js).
  *   When null, generation is fully fresh and output is identical to previous releases.
  * @param {string} [params.generationMode='draft'] - 'draft' | 'review' | 'published' | 'locked'.
- * @param {{ teamCountPolicy?: string, allowOverCapAssignments?: boolean, lockManualAssignments?: boolean, divisionKeyById?: Record<string, string> }} [params.changePolicy={}]
+ * @param {{ teamCountPolicy?: string, allowOverCapAssignments?: boolean, lockManualAssignments?: boolean, divisionKeyById?: Record<string, string>, coachReplacementMap?: Record<string, string>, allowHouseholdCoachReplacement?: boolean, allowLateCoachAttachToChildTeam?: boolean, allowAssistantShellCreation?: boolean }} [params.changePolicy={}]
  *   - `teamCountPolicy`: 'auto' | 'preserve-existing' | 'preserve-or-expand' | 'preserve-with-overflow'.
  *     Defaults: no snapshot → 'auto'; snapshot + review/published/locked → 'preserve-existing';
  *     snapshot + draft → 'preserve-or-expand'.
  *   - `divisionKeyById`: maps persisted division_id (UUID) → generator division key, required when
  *     a relational snapshot's team rows carry only `division_id`.
+ *   - Coach continuity (PR 06): `coachReplacementMap` ({oldId: newId}, explicit, always wins),
+ *     `allowHouseholdCoachReplacement` (default false), `allowLateCoachAttachToChildTeam`
+ *     (default true), `allowAssistantShellCreation` (default false — assistant-only late units
+ *     backfill existing teams or place as general units instead of creating shells).
  * @returns {{
  *   teamsByDivision: Record<string, Array<Team>>,
  *   overflowByDivision: Record<string, Array<{ players: Array<Player>, reason: string, metadata?: Object }>>,
@@ -265,8 +270,23 @@ export function generateTeams({
             .filter(Boolean),
           teamCountPolicy,
           allowOverCapAssignments: changePolicy.allowOverCapAssignments === true,
+          allowAssistantShellCreation: changePolicy.allowAssistantShellCreation === true,
         }
       : null;
+
+    // Coach continuity: explicit replacements, dropped-coach clearing with evidence-based
+    // household replacement, and late coaches attaching to their child's coachless team.
+    // Skipped for snapshot-only divisions (no incoming players = no evidence; shells keep
+    // their coach metadata intact rather than mass-reporting drops on a partial import).
+    let coachContinuity = null;
+    if (divisionIncremental && divisionPlayers.length > 0) {
+      coachContinuity = applyCoachContinuity({
+        teams: divisionIncremental.preservedTeams,
+        divisionPlayers,
+        changePolicy,
+      });
+      divisionIncremental.preservedTeams = coachContinuity.teams;
+    }
 
     let effectiveConfig = config;
     let rosterConstraints;
@@ -322,7 +342,7 @@ export function generateTeams({
       name: team.name,
       division: team.division,
       coachId: team.coachId,
-      coachNeeded: !team.coachId,
+      coachNeeded: !team.coachId || Boolean(team.coachInactive),
       // Round-trips the snapshot team lock so persistence does not silently drop it
       // (always false in fresh generation).
       locked: Boolean(team.locked),
@@ -347,8 +367,13 @@ export function generateTeams({
       })),
     };
 
-    const uniqueCoachIds = new Set(teams.map((team) => team.coachId).filter(Boolean));
-    const teamsWithoutCoach = teams.filter((team) => !team.coachId).length;
+    // An inactive (dropped) coach on a locked team still counts as missing coverage.
+    const uniqueCoachIds = new Set(
+      teams
+        .map((team) => (team.coachId && !team.coachInactive ? team.coachId : null))
+        .filter(Boolean)
+    );
+    const teamsWithoutCoach = teams.filter((team) => !team.coachId || team.coachInactive).length;
     const teamsWithCoach = teams.length - teamsWithoutCoach;
     const coverageRate = teams.length > 0 ? Number((teamsWithCoach / teams.length).toFixed(4)) : 0;
 
@@ -490,6 +515,10 @@ export function generateTeams({
         latePlayersAssigned: stats.latePlayersAssigned,
         latePlayersOverflowed: stats.latePlayersOverflowed,
         buddyTargetAssignments: stats.buddyTargetAssignments ?? [],
+        assistantBackfills: stats.assistantBackfills ?? [],
+        coachDrops: coachContinuity?.coachDrops ?? [],
+        coachReplacements: coachContinuity?.coachReplacements ?? [],
+        manualReview: coachContinuity?.manualReview ?? [],
         droppedPlayersRemoved: (reconciliation.droppedPlayersByDivision[division] ?? []).length,
         manualAssignmentsPreserved,
         capacityViolations,
@@ -691,30 +720,16 @@ function buildTeamsForDivision({
         targetTeam = createTeam(coachId);
       }
     } else if (assistantCoachIds.length > 0) {
-      // If unit only has assistant coach request, try to find a team with that assistant
-      // or any team? For now, if they *only* have assistant, we might need a strategy.
-      // Strategy: treat first assistant as "anchor" if no head coach?
-      // Or find a team that already has this assistant assigned?
-      // Since we process sequentially, maybe we just pick a team or create one?
-      // Current simplified logic: If no head coach, treating primarily as "needs placement".
-      // But if they requested an assistant, they should be with that assistant.
-      // We'll search for team with this assistant or create/pick one.
-      // IMPORTANT: We need to store assistant identifiers on the team to match future requests.
-
-      // Find team with ANY of these assistants
-      targetTeam = teams.find(
-        (t) =>
-          t.assistantCoachIds && t.assistantCoachIds.some((id) => assistantCoachIds.includes(id))
-      );
-
-      if (!targetTeam) {
-        // Pick a team?? Or create new?
-        // If they are assistants, maybe they are volunteering to HELP.
-        // Let's create a new team or pick latest?
-        // For now, let's treat them as needing a team.
-        // We'll CreateTeam(null) if none found, effectively making them a team with assistants but no head yet.
-        targetTeam = createTeam(null);
-      }
+      // Assistant-only units BACKFILL existing teams needing assistant coverage before any new
+      // shell is created: a team already carrying this assistant, then a coached team without
+      // assistants, then a coachless team needing adult coverage.
+      targetTeam =
+        findAssistantBackfillTeam({
+          teams,
+          assistantCoachIds,
+          unitSize: unit.length,
+          maxRosterSize,
+        }) ?? createTeam(null);
     }
 
     if (!targetTeam && !coachId && assistantCoachIds.length === 0) {
@@ -823,7 +838,13 @@ function buildTeamsForDivisionIncremental({
   globalStats,
   incremental,
 }) {
-  const { preservedTeams, latePlayers, teamCountPolicy, allowOverCapAssignments } = incremental;
+  const {
+    preservedTeams,
+    latePlayers,
+    teamCountPolicy,
+    allowOverCapAssignments,
+    allowAssistantShellCreation,
+  } = incremental;
   const { maxTeams } = rosterConstraints;
   const allowTeamCreation = teamCountPolicy === 'preserve-or-expand';
   const effectiveMaxRosterSize = allowOverCapAssignments ? Number.MAX_SAFE_INTEGER : maxRosterSize;
@@ -833,11 +854,15 @@ function buildTeamsForDivisionIncremental({
     name: team.name ?? `${division} Team ${String(index + 1).padStart(2, '0')}`,
     division,
     coachId: team.coachId ?? null,
+    coachInactive: Boolean(team.coachInactive),
     locked: Boolean(team.locked),
     assistantCoachIds: [...team.assistantCoachIds],
     players: [...team.players],
     skillTotal: calculateUnitSkill(team.players),
   }));
+
+  const preservedTeamIdSet = new Set(preservedTeams.map((team) => team.id));
+  const assistantBackfills = [];
 
   // Historical buddy lookup: preserved player id → { teamId, player } (this division only).
   // The player object is kept so targeting can verify the request is RECIPROCAL.
@@ -915,15 +940,30 @@ function buildTeamsForDivisionIncremental({
     let targetTeam = null;
 
     if (coachId) {
-      targetTeam = teams.find((team) => team.coachId === coachId) ?? createTeam(coachId);
-    } else if (assistantCoachIds.length > 0) {
+      // Canonical comparison: continuity writes trimmed string ids onto preserved shells while
+      // unit coach ids arrive raw from player records.
+      const coachKey = String(coachId).trim();
       targetTeam =
-        teams.find(
-          (t) =>
-            !t.locked &&
-            t.assistantCoachIds &&
-            t.assistantCoachIds.some((id) => assistantCoachIds.includes(id))
-        ) ?? createTeam(null);
+        teams.find((team) => team.coachId != null && String(team.coachId).trim() === coachKey) ??
+        createTeam(coachKey);
+    } else if (assistantCoachIds.length > 0) {
+      // Backfill an existing team needing assistant coverage; a new unmanaged shell is created
+      // only when the policy explicitly allows it. With neither, the unit places like a general
+      // unit (assistant metadata still merges after placement).
+      targetTeam = findAssistantBackfillTeam({
+        teams,
+        assistantCoachIds,
+        unitSize: unit.length,
+        maxRosterSize: effectiveMaxRosterSize,
+        excludeLocked: true,
+      });
+      if (!targetTeam && allowAssistantShellCreation === true) {
+        targetTeam = createTeam(null);
+      }
+      if (!targetTeam) {
+        generalUnits.push(assignmentUnit);
+        continue;
+      }
     }
 
     // A locked preserved team accepts no late additions — not even its own coach's child.
@@ -973,6 +1013,12 @@ function buildTeamsForDivisionIncremental({
       if (!targetTeam.assistantCoachIds.includes(acid)) {
         targetTeam.assistantCoachIds.push(acid);
       }
+    }
+    if (!coachId && assistantCoachIds.length > 0 && preservedTeamIdSet.has(targetTeam.id)) {
+      assistantBackfills.push({
+        teamId: targetTeam.id,
+        assistantCoachIds: assistantCoachIds.map((id) => String(id).trim()),
+      });
     }
   }
 
@@ -1053,13 +1099,32 @@ function buildTeamsForDivisionIncremental({
       continue;
     }
 
-    assignUnitToTeam({
+    const assigned = assignUnitToTeam({
       unit,
       unitSkillTotal: skillTotal,
       team,
       maxRosterSize: effectiveMaxRosterSize,
       reason: TEAM_GENERATION.REASON_Balancing,
     });
+
+    // A demoted assistant-only unit still carries its assistant metadata onto the team it joins.
+    if (
+      assigned &&
+      assignmentUnit.assistantCoachIds &&
+      assignmentUnit.assistantCoachIds.length > 0
+    ) {
+      const cleanAssistantIds = assignmentUnit.assistantCoachIds.map((id) => String(id).trim());
+      const existingAssistantIds = team.assistantCoachIds.map((id) => String(id).trim());
+      for (const acid of cleanAssistantIds) {
+        if (!existingAssistantIds.includes(acid)) {
+          team.assistantCoachIds.push(acid);
+          existingAssistantIds.push(acid);
+        }
+      }
+      if (preservedTeamIdSet.has(team.id)) {
+        assistantBackfills.push({ teamId: team.id, assistantCoachIds: cleanAssistantIds });
+      }
+    }
   }
 
   const latePlayersOverflowed = overflow.reduce((sum, entry) => sum + entry.players.length, 0);
@@ -1069,6 +1134,7 @@ function buildTeamsForDivisionIncremental({
     latePlayersAssigned: latePlayers.length - latePlayersOverflowed,
     latePlayersOverflowed,
     buddyTargetAssignments,
+    assistantBackfills,
   };
 
   return { teams, overflow, buddyDiagnostics, incrementalStats };
@@ -1162,6 +1228,40 @@ function pickTeamWithMostCapacity({
 
   const index = Math.floor(random() * bestCandidates.length);
   return bestCandidates[index].team;
+}
+
+/**
+ * Find a team an assistant-only unit should BACKFILL, in priority order:
+ *   1. a team already carrying one of these assistants;
+ *   2. a team with a head coach but no assistants;
+ *   3. a coachless team needing adult coverage.
+ * Only teams with capacity for the unit qualify; locked teams are excluded when requested.
+ * Returns null when no existing team qualifies (callers decide whether a new shell is allowed).
+ */
+function findAssistantBackfillTeam({
+  teams,
+  assistantCoachIds,
+  unitSize,
+  maxRosterSize,
+  excludeLocked = false,
+}) {
+  const eligible = teams.filter(
+    (team) => !(excludeLocked && team.locked) && team.players.length + unitSize <= maxRosterSize
+  );
+  // Canonical comparison so numeric / padded assistant ids still match.
+  const canonicalAssistantIds = assistantCoachIds.map((id) => String(id).trim());
+  return (
+    eligible.find(
+      (team) =>
+        team.assistantCoachIds &&
+        team.assistantCoachIds.some((id) => canonicalAssistantIds.includes(String(id).trim()))
+    ) ??
+    eligible.find(
+      (team) => team.coachId && (!team.assistantCoachIds || team.assistantCoachIds.length === 0)
+    ) ??
+    eligible.find((team) => !team.coachId) ??
+    null
+  );
 }
 
 function summarizeOverflow(entries) {
