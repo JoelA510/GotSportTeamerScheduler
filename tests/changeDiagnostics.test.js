@@ -124,6 +124,26 @@ test('an oversized unit overflowing under preserve-or-expand does not flag a blo
     false,
     'expansion was available; the overflow is a unit-size problem, not a blocked count'
   );
+
+  // Even under a preserving policy, an oversized unit does not flag a blocked count —
+  // no new team could ever seat it.
+  const preserving = generateTeams({
+    players: [
+      { id: 'p1', division: 'U10' },
+      { id: 'late-a', division: 'U10', buddyId: 'late-b' },
+      { id: 'late-b', division: 'U10', buddyId: 'late-a' },
+    ],
+    divisionConfigs: { U10: { id: 'U10', teamsCount: 1, slotsPerWeek: 1, maxRosterSize: 1 } },
+    random: createDeterministicRandom(),
+    existingSnapshot: {
+      status: 'published',
+      teamsByDivision: {
+        U10: [{ id: 'team-1', division: 'U10', players: [{ id: 'p1' }] }],
+      },
+    },
+    generationMode: 'published',
+  });
+  assert.equal(preserving.changeDiagnosticsByDivision.U10.teamCountChangeBlocked, false);
 });
 
 test('lockedAssignmentsPreserved counts manual locks in published mode', () => {

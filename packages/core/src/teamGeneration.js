@@ -514,9 +514,14 @@ export function generateTeams({
         teamCountPolicy === 'preserve-existing' ||
         teamCountPolicy === 'preserve-with-overflow' ||
         (rosterConstraints.maxTeams ? teams.length >= rosterConstraints.maxTeams : false);
+      // Units larger than the roster cap never count: no new team could seat them anyway.
       const teamCountChangeBlocked =
         creationUnavailable &&
-        overflow.some((entry) => entry.reason === TEAM_GENERATION.REASON_InsufficientCapacity);
+        overflow.some(
+          (entry) =>
+            entry.reason === TEAM_GENERATION.REASON_InsufficientCapacity &&
+            entry.players.length <= maxRosterSize
+        );
       // Preserved players whose assignment is locked (per-player lock, or manual assignments
       // in review/published/locked modes).
       let lockedAssignmentsPreserved = 0;

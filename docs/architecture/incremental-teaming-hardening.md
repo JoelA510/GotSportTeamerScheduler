@@ -376,7 +376,7 @@ generation omits the key entirely.
 | `teamCountPolicy` | string | Effective policy after defaulting. |
 | `existingTeamsPreserved` | number | Snapshot shells carried into the output. |
 | `newTeamsCreated` | number | Teams created this run (expansion or fresh-fallback divisions). |
-| `teamCountChangeBlocked` | boolean | At least one unit overflowed for capacity while team creation was unavailable (policy forbids it, or `maxTeams` reached). |
+| `teamCountChangeBlocked` | boolean | At least one roster-cap-fittable unit overflowed for capacity while team creation was unavailable (policy forbids it, or `maxTeams` reached). Units larger than `maxRosterSize` never count — no team could seat them. |
 | `lockedAssignmentsPreserved` | number | Preserved players whose assignment is locked (per-player lock, or manual in review/published/locked). |
 | `manualAssignmentsPreserved` | number | Preserved players with `assignment_source: 'manual'`. |
 | `latePlayersAssigned` / `latePlayersOverflowed` | number | Late registrations placed vs overflowed. |
