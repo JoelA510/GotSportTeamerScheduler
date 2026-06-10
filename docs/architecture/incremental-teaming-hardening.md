@@ -247,6 +247,26 @@ continuity and backfill land in PR 06.
 
 ---
 
+## 6b. Implemented in PR 03 — typed assignment units
+
+PR 03 extracted the generator's implicit "a unit is an array of players" model into a typed
+`packages/core/src/assignmentUnits.js` (no behavior change — the characterization and existing
+generation tests pass unchanged):
+
+```js
+buildAssignmentUnits(players) => { units: AssignmentUnit[], buddyDiagnostics }
+createAssignmentUnit(init)   => AssignmentUnit   // factory with defaults
+getSkillRating(player) / calculateUnitSkill(players)
+```
+
+Each `AssignmentUnit` is `{ id, type, players, targetTeamId, coachId, assistantCoachIds, locked,
+hardConstraints, softConstraints, skillTotal, diagnostics }`. Fresh generation emits only
+`'general' | 'mutual-buddy' | 'coach' | 'assistant'` units; `'targeted-buddy'` and `'locked'` are
+reserved for snapshot-aware placement (PR 04/05). `generateTeams` partitions units by `type` and
+feeds `unit.players` into the unchanged placement / scoring helpers.
+
+---
+
 ## 7. PR sequence
 
 | PR  | Title                                       | New modules (core)                        | Touches `generateTeams`? |

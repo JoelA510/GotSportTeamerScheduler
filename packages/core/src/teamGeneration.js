@@ -9,6 +9,7 @@
 import { TEAM_GENERATION } from './constants.js';
 import { PlayerSchema } from './schemas/index.js';
 import { EVALUATOR_REGISTRY } from './evaluators/index.js';
+import { buildAssignmentUnits } from './assignmentUnits.js';
 
 /** @typedef {import('./types.js').Player} Player */
 /** @typedef {import('./types.js').Team} Team */
@@ -446,41 +447,22 @@ function buildTeamsForDivision({
     }
   }
 
-  const { units, buddyDiagnostics } = createAssignmentUnits(players);
+  const { units, buddyDiagnostics } = buildAssignmentUnits(players);
   const coachUnits = [];
   const generalUnits = [];
 
   for (const unit of units) {
-    const coachPlayers = unit.filter((player) => player.coachId || player.assistantCoachId);
-    if (coachPlayers.length > 0) {
-      const coachIdsInUnit = new Set(coachPlayers.map((player) => player.coachId).filter(Boolean));
-      const assistantCoachIdsInUnit = new Set(
-        coachPlayers.map((player) => player.assistantCoachId).filter(Boolean)
-      );
-
-      if (coachIdsInUnit.size > 1) {
-        throw new Error(
-          `Conflicting coach assignments for players in unit: ${unit.map((player) => player.id).join(', ')}`
-        );
-      }
-
-      const headCoachId = coachIdsInUnit.size > 0 ? [...coachIdsInUnit][0] : null;
-      // Assistant coaches are cumulative for the unit
-      const assistantCoachIds = [...assistantCoachIdsInUnit];
-
-      coachUnits.push({
-        coachId: headCoachId,
-        assistantCoachIds,
-        unit,
-        skillTotal: calculateUnitSkill(unit),
-      });
+    if (unit.type === 'coach' || unit.type === 'assistant') {
+      coachUnits.push(unit);
     } else {
-      generalUnits.push({ unit, skillTotal: calculateUnitSkill(unit) });
+      generalUnits.push(unit);
     }
   }
 
   // Assign players that require a specific coach first.
-  for (const { coachId, assistantCoachIds, unit, skillTotal } of coachUnits) {
+  for (const assignmentUnit of coachUnits) {
+    const { coachId, assistantCoachIds, skillTotal } = assignmentUnit;
+    const unit = assignmentUnit.players;
     let targetTeam = null;
 
     if (coachId) {
@@ -564,7 +546,9 @@ function buildTeamsForDivision({
 
   generalUnits.sort((a, b) => b.skillTotal - a.skillTotal);
 
-  for (const { unit, skillTotal } of generalUnits) {
+  for (const assignmentUnit of generalUnits) {
+    const unit = assignmentUnit.players;
+    const skillTotal = assignmentUnit.skillTotal;
     const team = pickTeamWithMostCapacity({
       teams,
       unit,
@@ -594,73 +578,6 @@ function buildTeamsForDivision({
   }
 
   return { teams, overflow, buddyDiagnostics };
-}
-
-/**
- * Group players into assignment units based on mutual buddy requests.
- *
- * @param {Array<Player>} players - Filtered list of players for a division.
- * @returns {{
- *   units: Array<Array<Player>>,
- *   buddyDiagnostics: {
- *     mutualPairs: Array<{ playerIds: Array<string> }>,
- *     unmatchedRequests: Array<{ playerId: string, requestedBuddyId: string, reason: string }>
- *   }
- * }}
- */
-function createAssignmentUnits(players) {
-  const units = [];
-  const visited = new Set();
-  const playersById = new Map(players.map((player) => [player.id, player]));
-  const buddyDiagnostics = {
-    mutualPairs: [],
-    unmatchedRequests: [],
-  };
-  const recordedUnmatched = new Set();
-  const addUnmatchedRequest = (playerId, requestedBuddyId, reason) => {
-    const key =
-      reason === 'self-reference' ? `${playerId}::self` : `${playerId}::${requestedBuddyId}`;
-    if (!recordedUnmatched.has(key)) {
-      buddyDiagnostics.unmatchedRequests.push({
-        playerId,
-        requestedBuddyId,
-        reason,
-      });
-      recordedUnmatched.add(key);
-    }
-  };
-
-  for (const player of players) {
-    if (visited.has(player.id)) {
-      continue;
-    }
-
-    const buddyId = player.buddyId;
-    if (buddyId) {
-      if (buddyId === player.id) {
-        addUnmatchedRequest(player.id, buddyId, 'self-reference');
-      } else if (playersById.has(buddyId)) {
-        const buddy = playersById.get(buddyId);
-        if (buddy.buddyId === player.id && !visited.has(buddy.id)) {
-          units.push([player, buddy]);
-          visited.add(player.id);
-          visited.add(buddy.id);
-          const pair = [player.id, buddy.id].sort();
-          buddyDiagnostics.mutualPairs.push({ playerIds: pair });
-          continue;
-        }
-
-        addUnmatchedRequest(player.id, buddyId, 'not-reciprocated');
-      } else {
-        addUnmatchedRequest(player.id, buddyId, 'missing-player');
-      }
-    }
-
-    units.push([player]);
-    visited.add(player.id);
-  }
-
-  return { units, buddyDiagnostics };
 }
 
 /**
@@ -849,10 +766,6 @@ function normalizeOptionalPositiveInteger(value, context) {
   return Math.trunc(numberValue);
 }
 
-function calculateUnitSkill(unit) {
-  return unit.reduce((total, player) => total + getSkillRating(player), 0);
-}
-
 /**
  * @param {Object} params
  * @param {string} params.division
@@ -876,12 +789,6 @@ function generateTeamName({ division, teamIndex, divisionConfig }) {
   }
 
   return `${division} Team ${String(teamIndex).padStart(2, '0')}`;
-}
-
-function getSkillRating(player) {
-  return typeof player.skillRating === 'number' && Number.isFinite(player.skillRating)
-    ? player.skillRating
-    : 0;
 }
 
 /**
