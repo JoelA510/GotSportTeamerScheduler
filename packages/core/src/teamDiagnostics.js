@@ -32,6 +32,8 @@ const EMPTY_ROSTER_BALANCE = {
  * @param {Record<string, Object>} result.coachCoverageByDivision
  * @param {Record<string, Object>} result.rosterBalanceByDivision
  * @param {Record<string, Object>} [result.overflowSummaryByDivision]
+ * @param {Record<string, Object> | null} [result.changeDiagnosticsByDivision] - Present only for
+ *   snapshot-aware (incremental) runs.
  * @returns {{
  *   divisions: Array<{
  *     divisionId: string,
