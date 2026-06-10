@@ -157,6 +157,17 @@ const initialMockData = {
       organization_id: 'org-1',
       team_id: '00000000-0000-0000-0000-000000000001',
       division_id: 'U8 Boys',
+      gender: 'm',
+      status: 'active',
+      years_played: 2,
+      rating: 3,
+      jersey_number: 7,
+      paid: true,
+      waiver_received: true,
+      medical_form_received: false,
+      willing_to_coach: false,
+      buddy_request: 'Jamie Jones',
+      guardian_contacts: [{ name: 'Dana Smith', email: 'dana.smith@example.com' }],
     },
     {
       id: 'player-2',
@@ -165,6 +176,16 @@ const initialMockData = {
       organization_id: 'org-1',
       team_id: '00000000-0000-0000-0000-000000000001',
       division_id: 'U8 Boys',
+      gender: 'f',
+      status: 'waitlist',
+      years_played: 0,
+      rating: null,
+      jersey_number: null,
+      paid: false,
+      waiver_received: false,
+      medical_form_received: false,
+      willing_to_coach: true,
+      guardian_contacts: [],
     },
   ],
   coaches: [
@@ -2482,6 +2503,125 @@ export const mockSupabase = {
       return { data: result, error: null };
     }
 
+    if (name === 'admin_update_player' || name === 'coach_update_player_compliance') {
+      const { p_player_id, p_patch } = params || {};
+      const player = (db.players || []).find((item) => String(item.id) === String(p_player_id));
+      if (!player) {
+        return { data: null, error: { message: `player ${p_player_id} not found` } };
+      }
+      const allowed =
+        name === 'coach_update_player_compliance'
+          ? ['paid', 'waiver_received', 'medical_form_received']
+          : [
+              'first_name',
+              'last_name',
+              'preferred_name',
+              'gender',
+              'grade',
+              'notes',
+              'buddy_request',
+              'status',
+              'rating',
+              'years_played',
+              'jersey_number',
+              'paid',
+              'waiver_received',
+              'medical_form_received',
+              'willing_to_coach',
+              'division_id',
+              'team_id',
+              'date_of_birth',
+            ];
+      const rejected = Object.keys(p_patch || {}).find((key) => !allowed.includes(key));
+      if (rejected) {
+        return { data: null, error: { message: `field ${rejected} is not editable` } };
+      }
+      Object.assign(player, p_patch, { updated_at: new Date().toISOString() });
+      db.audit_log = db.audit_log || [];
+      db.audit_log.push({
+        id: mockId(),
+        organization_id: player.organization_id,
+        action: name === 'admin_update_player' ? 'player.updated' : 'player.compliance_updated',
+        metadata: { patch: p_patch, player_id: p_player_id },
+        created_at: new Date().toISOString(),
+      });
+      saveDB(db);
+      return { data: { ...player }, error: null };
+    }
+
+    if (name === 'admin_bulk_update_players') {
+      const { p_player_ids, p_patch } = params || {};
+      const ids = (p_player_ids || []).map(String);
+      let count = 0;
+      (db.players || []).forEach((player) => {
+        if (ids.includes(String(player.id))) {
+          Object.assign(player, p_patch, { updated_at: new Date().toISOString() });
+          count += 1;
+        }
+      });
+      db.audit_log = db.audit_log || [];
+      db.audit_log.push({
+        id: mockId(),
+        organization_id: 'org-1',
+        action: 'player.bulk_updated',
+        metadata: { patch: p_patch, player_count: count },
+        created_at: new Date().toISOString(),
+      });
+      saveDB(db);
+      return { data: count, error: null };
+    }
+
+    if (name === 'admin_create_player') {
+      const { p_organization_id, p_fields } = params || {};
+      const now = new Date().toISOString();
+      const player = {
+        id: mockId(),
+        organization_id: p_organization_id,
+        first_name: p_fields?.first_name || 'New',
+        last_name: p_fields?.last_name || 'Player',
+        status: p_fields?.status || 'pending',
+        paid: false,
+        waiver_received: false,
+        medical_form_received: false,
+        created_at: now,
+        updated_at: now,
+        ...p_fields,
+      };
+      db.players = db.players || [];
+      db.players.push(player);
+      db.audit_log = db.audit_log || [];
+      db.audit_log.push({
+        id: mockId(),
+        organization_id: p_organization_id,
+        action: 'player.created',
+        metadata: { fields: p_fields },
+        created_at: now,
+      });
+      saveDB(db);
+      return { data: { ...player }, error: null };
+    }
+
+    if (name === 'admin_delete_players') {
+      const { p_player_ids } = params || {};
+      const ids = (p_player_ids || []).map(String);
+      const before = (db.players || []).length;
+      db.players = (db.players || []).filter((player) => !ids.includes(String(player.id)));
+      db.team_players = (db.team_players || []).filter(
+        (row) => !ids.includes(String(row.player_id))
+      );
+      const count = before - db.players.length;
+      db.audit_log = db.audit_log || [];
+      db.audit_log.push({
+        id: mockId(),
+        organization_id: 'org-1',
+        action: 'player.deleted',
+        metadata: { player_count: count, player_ids: ids },
+        created_at: new Date().toISOString(),
+      });
+      saveDB(db);
+      return { data: count, error: null };
+    }
+
     if (name === 'finalize_import_job') {
       const { p_import_job_id, p_validation_errors } = params || {};
       const job = (db.import_jobs || []).find(
@@ -2501,6 +2641,33 @@ export const mockSupabase = {
       let updatedPlayers = 0;
       db.players = db.players || [];
 
+      // Org division format ('split' default): derived division names are
+      // gendered (U8B/U8G) under split, age-only (U8) under coed.
+      const orgRow = (db.organizations || []).find(
+        (item) => String(item.id) === String(job.organization_id)
+      );
+      const genderModel = orgRow?.feature_flags?.gender_model === 'coed' ? 'coed' : 'split';
+      const seasonRow = (db.season_settings || []).find(
+        (item) =>
+          String(item.organization_id) === String(job.organization_id) && item.status === 'active'
+      );
+
+      const deriveDivision = (payload) => {
+        const ageText = String(payload.age_group ?? payload['age group'] ?? payload.age ?? '');
+        if (!/^[0-9]+$/.test(ageText)) return null;
+        const base = `U${Number(ageText) + 1}`;
+        if (genderModel === 'coed') return { name: base, gender_policy: 'coed' };
+        const g = String(payload.gender || '')
+          .toLowerCase()
+          .charAt(0);
+        if (g === 'm' || g === 'b') return { name: `${base}B`, gender_policy: 'boys' };
+        if (g === 'f' || g === 'g') return { name: `${base}G`, gender_policy: 'girls' };
+        return { name: base, gender_policy: 'coed' };
+      };
+
+      const truthy = (value) =>
+        ['true', 't', 'yes', 'y', '1'].includes(String(value ?? '').toLowerCase());
+
       stagedRows.forEach((row) => {
         const payload = row.normalized_payload || {};
         const externalId =
@@ -2509,11 +2676,25 @@ export const mockSupabase = {
           payload.registration_id ||
           payload.player_id ||
           null;
-        const division = (db.divisions || []).find(
+        const derived = deriveDivision(payload);
+        let division = (db.divisions || []).find(
           (item) =>
             String(item.organization_id) === String(job.organization_id) &&
-            String(item.name).toLowerCase() === String(payload.division_name || '').toLowerCase()
+            [String(payload.division_name || '').toLowerCase(), derived?.name?.toLowerCase()]
+              .filter(Boolean)
+              .includes(String(item.name).toLowerCase())
         );
+        if (!division && derived && seasonRow) {
+          division = {
+            id: mockId(),
+            organization_id: job.organization_id,
+            season_settings_id: seasonRow.id,
+            name: derived.name,
+            gender_policy: derived.gender_policy,
+          };
+          db.divisions = db.divisions || [];
+          db.divisions.push(division);
+        }
         const existing =
           externalId &&
           db.players.find(
@@ -2527,12 +2708,42 @@ export const mockSupabase = {
           'yes',
           'y',
           '1',
+          'maybe',
           'coach',
           'head coach',
           'assistant coach',
           'volunteer',
           'willing',
         ].includes(String(payload.willing_to_coach || '').toLowerCase());
+        const yearsText = String(payload.years_played ?? '');
+        const guardians = [];
+        const g1Name = [payload.guardian_1_first_name, payload.guardian_1_last_name]
+          .filter(Boolean)
+          .join(' ');
+        if (g1Name || payload.guardian_1_email) {
+          guardians.push({
+            name: g1Name || undefined,
+            email: payload.guardian_1_email || undefined,
+            alternate_email: payload.guardian_1_alternate_email || undefined,
+          });
+        }
+        const g2Name = [payload.guardian_2_first_name, payload.guardian_2_last_name]
+          .filter(Boolean)
+          .join(' ');
+        if (g2Name || payload.guardian_2_email) {
+          guardians.push({
+            name: g2Name || undefined,
+            email: payload.guardian_2_email || undefined,
+            alternate_email: payload.guardian_2_alternate_email || undefined,
+          });
+        }
+        if (guardians.length === 0 && (payload.guardian_name || payload.guardian_email)) {
+          guardians.push({
+            name: payload.guardian_name || undefined,
+            email: payload.guardian_email || undefined,
+            phone: payload.guardian_phone || undefined,
+          });
+        }
         const basePlayer = {
           organization_id: job.organization_id,
           division_id: division?.id || payload.division_id || existing?.division_id || null,
@@ -2551,10 +2762,19 @@ export const mockSupabase = {
           )
             ? String(payload.skill_tier).toLowerCase()
             : null,
+          years_played: /^[0-9]{1,2}$/.test(yearsText) ? Number(yearsText) : null,
+          paid:
+            truthy(payload.payment_status) ||
+            String(payload.payment_status || '').toLowerCase() === 'paid',
+          status: truthy(payload.waitlist) ? 'waitlist' : 'active',
           coach_volunteer: willingToCoach,
           willing_to_coach: willingToCoach,
           buddy_request: payload.buddy_request || null,
           mutual_buddy_code: payload.mutual_buddy_code || payload.buddy_code || null,
+          guardian_contacts: guardians,
+          custom_attributes: {
+            ...(payload.play_up ? { play_up: payload.play_up } : {}),
+          },
           import_source: 'gotsport',
           last_imported_at: now,
         };

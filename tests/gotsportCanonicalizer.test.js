@@ -35,7 +35,7 @@ test('isSensitiveHeader flags sensitive columns', () => {
     'Health Notes',
     'Insurance Provider',
     'Policy Number',
-    'Payment Status',
+    'Payment Plan',
     'Amount Paid',
     'Outstanding Balance',
     'Financial Aid',
@@ -91,6 +91,9 @@ test('isSensitiveHeader keeps teaming-relevant columns (no false positives)', ()
     'Preferred Co-Coach',
     'Team',
     'Club',
+    'Waitlist',
+    // Allowlisted: PAID/UNPAID boolean compliance signal (no amounts).
+    'Payment Status',
   ]) {
     assert.equal(isSensitiveHeader(h), false, `expected kept: ${h}`);
   }
@@ -114,13 +117,21 @@ test('stripSensitiveColumns drops sensitive keys, preserves the rest verbatim', 
       'Last Name': 'Smith',
       'Date of Birth': '2015-01-01',
       'Medical Conditions': 'asthma',
-      'Payment Status': 'paid',
+      'Payment Plan': '2026 U07B Academy Registration',
+      'Payment Status': 'PAID',
       'Insurance Provider': 'Acme',
     },
   ];
   const out = stripSensitiveColumns(rows);
   assert.deepEqual(out, [
-    { 'First Name': 'Alex', 'Last Name': 'Smith', 'Date of Birth': '2015-01-01' },
+    {
+      'First Name': 'Alex',
+      'Last Name': 'Smith',
+      'Date of Birth': '2015-01-01',
+      // Payment Status is an allowlisted PAID/UNPAID compliance boolean — no
+      // amounts or instruments — consumed by the players.paid roster flag.
+      'Payment Status': 'PAID',
+    },
   ]);
 });
 

@@ -4,8 +4,8 @@
     {
       "match": "^assets/index-.*\\.js$",
       "label": "main entry",
-      "maxGzipBytes": 131000,
-      "rationale": "Current 127.20 KB after deferred import lifecycle state; cap leaves <1 KB headroom after lazy-loading deferred RPC helpers. Tighten in v1.1 once chart-vendor route-splits."
+      "maxGzipBytes": 140000,
+      "rationale": "Redesign: 131.1 KB after the Lightning-class chrome (TopBar/SideNav/navigation) plus expanded mock-client seeds & RPC handlers, which ship in main because supabaseClient imports the mock statically. 140 KB cap leaves ~9 KB for remaining phases; follow-ups: dynamic-import the mock client and route-split chart-vendor, then tighten."
     },
     {
       "match": "^assets/index-.*\\.css$",

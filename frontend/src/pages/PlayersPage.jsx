@@ -1,11 +1,432 @@
-import React from 'react';
-import PagePlaceholder from '../components/chrome/PagePlaceholder.jsx';
+import React, { useMemo, useState } from 'react';
+import { Check, CheckCircle2, Clock, Trash2, User, UserPlus } from 'lucide-react';
+import Page from '../components/chrome/Page.jsx';
+import PageHeader from '../components/chrome/PageHeader.jsx';
+import DataGrid from '../components/grid/DataGrid.jsx';
+import Button from '../components/ui/Button.jsx';
+import Badge from '../components/ui/Badge.jsx';
+import { useToast } from '../components/ui/ToastHost.jsx';
+import { usePlayersData } from '../hooks/usePlayersData.js';
+import { useFeatures } from '../hooks/useFeatures.js';
+import { FEATURE_FLAGS } from '../constants/featureFlags.js';
+import { divisionDisplayName, divisionFilters } from '../utils/divisions.js';
+import LoadingScreen from '../components/LoadingScreen.jsx';
 
+const STATUS_OPTIONS = [
+  { value: 'active', label: 'Active' },
+  { value: 'pending', label: 'Pending' },
+  { value: 'inactive', label: 'Inactive' },
+];
+
+const BOOL_OPTIONS = [
+  { value: 'true', label: 'Yes' },
+  { value: 'false', label: 'No' },
+];
+
+const STATUS_TONE = {
+  active: 'success',
+  pending: 'neutral',
+  inactive: 'neutral',
+  waitlist: 'warning',
+};
+
+function boolCell(value) {
+  return value ? (
+    <Check size={15} aria-label="Yes" style={{ color: 'var(--success)' }} />
+  ) : (
+    <span className="muted">—</span>
+  );
+}
+
+/**
+ * Players roster — the Excel-grade flagship grid. Columns are feature-gated
+ * via the org feature config; all edits flow through the audited admin RPCs
+ * with optimistic UI.
+ */
 export default function PlayersPage() {
+  const {
+    players,
+    divisions,
+    loading,
+    error,
+    updatePlayer,
+    bulkUpdatePlayers,
+    createPlayer,
+    deletePlayers,
+  } = usePlayersData();
+  const { isEnabled, genderModel } = useFeatures();
+  const toast = useToast();
+
+  const [search, setSearch] = useState('');
+  const [selected, setSelected] = useState(() => new Set());
+  const [divisionFilter, setDivisionFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('all');
+
+  const waitlistOn = isEnabled(FEATURE_FLAGS.WAITLIST);
+
+  const statusOptions = useMemo(
+    () =>
+      waitlistOn ? [...STATUS_OPTIONS, { value: 'waitlist', label: 'Waitlist' }] : STATUS_OPTIONS,
+    [waitlistOn]
+  );
+
+  const divisionOptions = useMemo(
+    () => divisionFilters(divisions, genderModel),
+    [divisions, genderModel]
+  );
+
+  const divisionNameById = useMemo(() => {
+    const map = new Map();
+    divisions.forEach((division) => {
+      map.set(division.id, divisionDisplayName(division.name, genderModel));
+    });
+    return map;
+  }, [divisions, genderModel]);
+
+  const rows = useMemo(() => {
+    let list = players;
+    if (divisionFilter !== 'all') {
+      const option = divisionOptions.find((entry) => entry.key === divisionFilter);
+      const ids = new Set(option?.divisionIds || []);
+      list = list.filter((player) => ids.has(player.division_id));
+    }
+    if (statusFilter !== 'all') {
+      list = list.filter((player) => (player.status || 'active') === statusFilter);
+    }
+    // Search keys need flat values; precompute the display name.
+    return list.map((player) => ({
+      ...player,
+      _name: `${player.first_name || ''} ${player.last_name || ''}`.trim(),
+      _division: divisionNameById.get(player.division_id) || '',
+    }));
+  }, [players, divisionFilter, statusFilter, divisionOptions, divisionNameById]);
+
+  const report = (result, successMessage) => {
+    if (result.success) {
+      if (successMessage) toast(successMessage, 'success');
+    } else {
+      toast(result.error || 'Something went wrong', 'warning');
+    }
+  };
+
+  const handleCellChange = async (playerId, key, value) => {
+    /** @type {Record<string, any>} */
+    let patch;
+    switch (key) {
+      case '_name': {
+        const [first, ...rest] = String(value || '')
+          .trim()
+          .split(/\s+/);
+        if (!first) return;
+        patch = { first_name: first };
+        if (rest.length > 0) patch.last_name = rest.join(' ');
+        break;
+      }
+      case 'paid':
+      case 'waiver_received':
+      case 'medical_form_received':
+      case 'willing_to_coach':
+        patch = { [key]: value === 'true' || value === true };
+        break;
+      case 'division_id':
+        patch = { division_id: value || null };
+        break;
+      default:
+        patch = { [key]: value };
+    }
+    report(await updatePlayer(playerId, patch));
+  };
+
+  const columns = useMemo(() => {
+    const divisionSelectOptions = divisions.map((division) => ({
+      value: division.id,
+      label: divisionDisplayName(division.name, genderModel),
+    }));
+    /** @type {any[]} */
+    const cols = [
+      {
+        key: '_name',
+        label: 'Player',
+        width: 190,
+        sticky: true,
+        editable: true,
+        render: (row) => (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+            <span className="linklike" style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {row._name || <span className="muted">Unnamed</span>}
+            </span>
+          </span>
+        ),
+      },
+      {
+        key: 'gender',
+        label: 'Gender',
+        width: 80,
+        editable: true,
+        type: 'select',
+        options: [
+          { value: 'm', label: 'M' },
+          { value: 'f', label: 'F' },
+        ],
+        optionLabel: (value) => (value ? String(value).toUpperCase() : null),
+        center: true,
+      },
+      {
+        key: 'division_id',
+        label: 'Division',
+        width: 120,
+        editable: true,
+        type: 'select',
+        options: [{ value: '', label: '—' }, ...divisionSelectOptions],
+        optionLabel: (value) => divisionNameById.get(value) || null,
+        sortVal: (row) => row._division,
+      },
+      {
+        key: 'status',
+        label: 'Status',
+        width: 110,
+        editable: true,
+        type: 'select',
+        options: statusOptions,
+        render: (row) => (
+          <Badge tone={STATUS_TONE[row.status] || 'neutral'}>{row.status || 'active'}</Badge>
+        ),
+      },
+    ];
+    if (isEnabled(FEATURE_FLAGS.YEARS_PLAYED)) {
+      cols.push({
+        key: 'years_played',
+        label: 'Yrs',
+        width: 64,
+        editable: true,
+        type: 'number',
+        num: true,
+        min: 0,
+        max: 30,
+      });
+    }
+    if (isEnabled(FEATURE_FLAGS.PLAYER_RATING)) {
+      cols.push({
+        key: 'rating',
+        label: 'Rating',
+        width: 76,
+        editable: true,
+        type: 'number',
+        num: true,
+        min: 1,
+        max: 5,
+      });
+    }
+    cols.push({
+      key: 'jersey_number',
+      label: '#',
+      width: 56,
+      editable: true,
+      type: 'number',
+      num: true,
+      min: 0,
+      max: 999,
+    });
+    cols.push({
+      key: 'paid',
+      label: 'Paid',
+      width: 64,
+      editable: true,
+      type: 'select',
+      options: BOOL_OPTIONS,
+      center: true,
+      render: (row) => boolCell(row.paid),
+    });
+    cols.push({
+      key: 'waiver_received',
+      label: 'Waiver',
+      width: 72,
+      editable: true,
+      type: 'select',
+      options: BOOL_OPTIONS,
+      center: true,
+      render: (row) => boolCell(row.waiver_received),
+    });
+    if (isEnabled(FEATURE_FLAGS.MEDICAL_FORMS)) {
+      cols.push({
+        key: 'medical_form_received',
+        label: 'Medical',
+        width: 76,
+        editable: true,
+        type: 'select',
+        options: BOOL_OPTIONS,
+        center: true,
+        render: (row) => boolCell(row.medical_form_received),
+      });
+    }
+    if (isEnabled(FEATURE_FLAGS.BUDDY_REQUESTS)) {
+      cols.push({
+        key: 'buddy_request',
+        label: 'Buddy request',
+        width: 160,
+        editable: true,
+        placeholder: 'None',
+      });
+    }
+    if (isEnabled(FEATURE_FLAGS.COACHING_INTEREST)) {
+      cols.push({
+        key: 'willing_to_coach',
+        label: 'Coach?',
+        width: 76,
+        editable: true,
+        type: 'select',
+        options: BOOL_OPTIONS,
+        center: true,
+        render: (row) => boolCell(row.willing_to_coach),
+      });
+    }
+    return cols;
+  }, [divisions, genderModel, divisionNameById, statusOptions, isEnabled]);
+
+  if (loading) return <LoadingScreen />;
+
+  const selectedIds = [...selected];
+
+  const bulkPatch = async (patch, message) => {
+    report(await bulkUpdatePlayers(selectedIds, patch), message);
+    setSelected(new Set());
+  };
+
   return (
-    <PagePlaceholder
-      title="Players"
-      description="The Excel-grade player roster grid arrives with the data phase of the redesign."
-    />
+    <Page
+      flush
+      header={
+        <PageHeader
+          title="Players"
+          subtitle={`${players.length} registered · ${
+            players.filter((player) => player.status === 'waitlist').length
+          } waitlisted`}
+          icon={
+            <span className="page-obj-icon" style={{ background: 'var(--primary)' }}>
+              <User size={20} aria-hidden="true" />
+            </span>
+          }
+          actions={
+            <Button
+              variant="primary"
+              size="sm"
+              icon={UserPlus}
+              onClick={async () => {
+                const result = await createPlayer({ status: 'pending' });
+                report(result, result.success ? 'Player added — name them in the grid' : null);
+              }}
+            >
+              Add player
+            </Button>
+          }
+        />
+      }
+    >
+      {error && (
+        <div className="badge danger" role="alert" style={{ margin: 12 }}>
+          {error}
+        </div>
+      )}
+      <DataGrid
+        label="Players grid"
+        columns={columns}
+        rows={rows}
+        selected={selected}
+        setSelected={setSelected}
+        search={search}
+        setSearch={setSearch}
+        searchKeys={['_name', '_division', 'buddy_request', 'status']}
+        onCellChange={handleCellChange}
+        onAddRow={async () => {
+          const result = await createPlayer({ status: 'pending' });
+          report(result, result.success ? 'Player added — name them in the grid' : null);
+        }}
+        addLabel="Add player"
+        rowActions={[{ id: 'delete', label: 'Delete player', icon: Trash2, danger: true }]}
+        onRowAction={async (action, row) => {
+          if (action === 'delete') {
+            report(await deletePlayers([row.id]), 'Player deleted');
+          }
+        }}
+        toolbar={
+          <>
+            <select
+              className="select"
+              style={{ width: 150, height: 32 }}
+              aria-label="Filter by division"
+              value={divisionFilter}
+              onChange={(event) => setDivisionFilter(event.target.value)}
+            >
+              <option value="all">All divisions</option>
+              {divisionOptions.map((option) => (
+                <option key={option.key} value={option.key}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            <select
+              className="select"
+              style={{ width: 130, height: 32 }}
+              aria-label="Filter by status"
+              value={statusFilter}
+              onChange={(event) => setStatusFilter(event.target.value)}
+            >
+              <option value="all">All statuses</option>
+              {statusOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </>
+        }
+        bulkActions={
+          <>
+            <Button
+              variant="secondary"
+              size="sm"
+              icon={CheckCircle2}
+              onClick={() => bulkPatch({ paid: true }, 'Marked paid')}
+            >
+              Mark paid
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              icon={Check}
+              onClick={() => bulkPatch({ waiver_received: true }, 'Waivers recorded')}
+            >
+              Waiver received
+            </Button>
+            {waitlistOn && (
+              <Button
+                variant="secondary"
+                size="sm"
+                icon={Clock}
+                onClick={() => bulkPatch({ status: 'waitlist' }, 'Moved to waitlist')}
+              >
+                Waitlist
+              </Button>
+            )}
+            <Button
+              variant="ghost-danger"
+              size="sm"
+              icon={Trash2}
+              onClick={async () => {
+                if (
+                  window.confirm(`Delete ${selectedIds.length} players? This cannot be undone.`)
+                ) {
+                  report(await deletePlayers(selectedIds), 'Players deleted');
+                  setSelected(new Set());
+                }
+              }}
+            >
+              Delete
+            </Button>
+          </>
+        }
+        emptyText="No players yet — import registrations or add players manually"
+      />
+    </Page>
   );
 }

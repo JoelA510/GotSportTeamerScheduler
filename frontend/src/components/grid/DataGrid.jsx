@@ -1,0 +1,500 @@
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import PropTypes from 'prop-types';
+import { useVirtualizer } from '@tanstack/react-virtual';
+import { ArrowDown, ArrowUp, MoreHorizontal, Plus, Search, X } from 'lucide-react';
+import Dropdown from '../ui/Dropdown.jsx';
+import Button from '../ui/Button.jsx';
+import GridCell from './GridCell.jsx';
+import { useGridSelection } from './useGridSelection.js';
+import { useGridKeyboard } from './useGridKeyboard.js';
+
+const ROW_HEIGHT = 38;
+const DENSE_ROW_HEIGHT = 32;
+// Virtualization only kicks in past this row count; small tables render
+// plainly so unit tests and short lists keep natural semantics.
+const VIRTUALIZE_THRESHOLD = 60;
+
+function GridCheckbox({ checked, mixed = false, onChange, label }) {
+  return (
+    <button
+      type="button"
+      role="checkbox"
+      aria-checked={mixed ? 'mixed' : checked}
+      aria-label={label}
+      className={`cbx ${checked || mixed ? 'on' : ''}`.trim()}
+      onClick={(event) => {
+        event.stopPropagation();
+        onChange();
+      }}
+    >
+      {(checked || mixed) && (
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          {mixed && !checked ? (
+            <path d="M5 12h14" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" />
+          ) : (
+            <path
+              d="M20 6L9 17l-5-5"
+              stroke="currentColor"
+              strokeWidth="3.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          )}
+        </svg>
+      )}
+    </button>
+  );
+}
+
+GridCheckbox.propTypes = {
+  checked: PropTypes.bool.isRequired,
+  mixed: PropTypes.bool,
+  onChange: PropTypes.func.isRequired,
+  label: PropTypes.string,
+};
+
+/**
+ * Excel-grade editable data grid (Lightning-class).
+ *
+ * Column spec: { key, label, width?, editable?, type?: 'text'|'number'|'select',
+ * options?, optionLabel?, render?, sortVal?, num?, center?, sticky?,
+ * sortable?, placeholder?, onClickCell?, min?, max? }.
+ *
+ * Interaction: click cell → active; type/Enter/F2/dblclick → edit;
+ * Enter commits+down, Tab commits+right, Esc cancels; Space toggles row
+ * selection; header click sorts; instant search over `searchKeys`.
+ * Rows are virtualized via @tanstack/react-virtual beyond ~60 rows.
+ */
+export default function DataGrid({
+  columns,
+  rows,
+  getRowId = (row) => row.id,
+  onCellChange = undefined,
+  onAddRow = undefined,
+  onRowAction = undefined,
+  rowActions = [],
+  selectable = true,
+  selected = undefined,
+  setSelected = undefined,
+  search = '',
+  setSearch = undefined,
+  searchKeys = undefined,
+  toolbar = null,
+  toolbarRight = null,
+  bulkActions = null,
+  onRowClick = undefined,
+  emptyText = 'No records',
+  addLabel = 'Add row',
+  dense = false,
+  label = 'Data grid',
+}) {
+  const [sort, setSort] = useState({ key: null, dir: 1 });
+  const [active, setActive] = useState(null); // { r, c } into view/columns
+  const [editing, setEditing] = useState(null); // { r, c }
+  const [editVal, setEditVal] = useState('');
+  const [dirty, setDirty] = useState(() => new Set()); // "rowId:key"
+  const gridRef = useRef(null);
+  const inputRef = useRef(null);
+  const scrollRef = useRef(null);
+
+  // ---- derived rows: search + sort ----
+  const view = useMemo(() => {
+    let v = rows;
+    if (search && searchKeys) {
+      const q = search.toLowerCase();
+      v = v.filter((row) =>
+        searchKeys.some((key) =>
+          String(row[key] ?? '')
+            .toLowerCase()
+            .includes(q)
+        )
+      );
+    }
+    if (sort.key) {
+      const col = columns.find((c) => c.key === sort.key);
+      v = [...v].sort((a, b) => {
+        let av = col?.sortVal ? col.sortVal(a) : a[sort.key];
+        let bv = col?.sortVal ? col.sortVal(b) : b[sort.key];
+        if (av == null) av = '';
+        if (bv == null) bv = '';
+        if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * sort.dir;
+        return String(av).localeCompare(String(bv), undefined, { numeric: true }) * sort.dir;
+      });
+    }
+    return v;
+  }, [rows, search, searchKeys, sort, columns]);
+
+  const { localSel, allSel, someSel, toggleAll, toggleRow } = useGridSelection({
+    view,
+    getRowId,
+    selected,
+    setSelected,
+  });
+
+  const toggleSort = (key) => {
+    setSort((s) => (s.key === key ? { key, dir: -s.dir } : { key, dir: 1 }));
+  };
+
+  // ---- editing ----
+  const startEdit = (r, c, initial) => {
+    const col = columns[c];
+    if (!col?.editable) return;
+    const row = view[r];
+    setEditing({ r, c });
+    setActive({ r, c });
+    setEditVal(initial != null ? initial : String(row[col.key] ?? ''));
+  };
+
+  const commitEdit = (move) => {
+    setEditing((current) => {
+      if (!current) return null;
+      const col = columns[current.c];
+      const row = view[current.r];
+      /** @type {any} */
+      let value = editVal;
+      if (col.type === 'number') {
+        value = value === '' ? null : Number(value);
+        if (Number.isNaN(value)) value = row[col.key];
+        if (value != null && col.min != null) value = Math.max(col.min, Number(value));
+        if (value != null && col.max != null) value = Math.min(col.max, Number(value));
+      }
+      if (value !== row[col.key] && onCellChange) {
+        onCellChange(getRowId(row), col.key, value);
+        setDirty((d) => new Set(d).add(`${getRowId(row)}:${col.key}`));
+      }
+      return null;
+    });
+    if (move) keyboard.moveActive(move.dr, move.dc);
+    requestAnimationFrame(() => gridRef.current?.focus());
+  };
+
+  const cancelEdit = () => {
+    setEditing(null);
+    requestAnimationFrame(() => gridRef.current?.focus());
+  };
+
+  useEffect(() => {
+    if (editing && inputRef.current) {
+      inputRef.current.focus();
+      if (inputRef.current.select && columns[editing.c].type !== 'select') {
+        inputRef.current.select();
+      }
+    }
+  }, [editing, columns]);
+
+  // ---- virtualization ----
+  const rowHeight = dense ? DENSE_ROW_HEIGHT : ROW_HEIGHT;
+  const virtualize = view.length > VIRTUALIZE_THRESHOLD;
+  const rowVirtualizer = useVirtualizer({
+    count: view.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => rowHeight,
+    overscan: 12,
+    enabled: virtualize,
+  });
+
+  const keyboard = useGridKeyboard({
+    view,
+    columns,
+    active,
+    setActive,
+    editing,
+    startEdit,
+    selectable,
+    toggleRow,
+    getRowId,
+    onActiveMove: (next) => {
+      if (virtualize) rowVirtualizer.scrollToIndex(next.r);
+    },
+  });
+
+  const onEditKey = (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      commitEdit({ dr: 1, dc: 0 });
+    } else if (event.key === 'Tab') {
+      event.preventDefault();
+      commitEdit({ dr: 0, dc: event.shiftKey ? -1 : 1 });
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      cancelEdit();
+    }
+  };
+
+  const renderRow = (row, r) => {
+    const id = getRowId(row);
+    const isSel = localSel.has(id);
+    return (
+      <tr key={id} className={isSel ? 'sel' : ''} aria-selected={selectable ? isSel : undefined}>
+        {selectable && (
+          <td className="col-check">
+            <GridCheckbox checked={isSel} onChange={() => toggleRow(id)} label="Select row" />
+          </td>
+        )}
+        {columns.map((col, c) => (
+          <GridCell
+            key={col.key}
+            row={row}
+            col={col}
+            isActive={!!active && active.r === r && active.c === c}
+            isEditing={!!editing && editing.r === r && editing.c === c}
+            isDirty={dirty.has(`${id}:${col.key}`)}
+            editVal={editVal}
+            setEditVal={setEditVal}
+            inputRef={inputRef}
+            onEditKey={onEditKey}
+            onCommit={commitEdit}
+            stickyLeft={col.sticky ? (selectable ? 40 : 0) : undefined}
+            onMouseDown={() => {
+              if (!(editing && editing.r === r && editing.c === c)) {
+                setActive({ r, c });
+                requestAnimationFrame(() => gridRef.current?.focus());
+              }
+            }}
+            onClick={() => {
+              if (col.onClickCell) col.onClickCell(row);
+              else if (onRowClick && !col.editable) onRowClick(row);
+            }}
+            onDoubleClick={() => col.editable && startEdit(r, c)}
+          />
+        ))}
+        {rowActions.length > 0 && (
+          <td>
+            <div className="row-actions">
+              <Dropdown
+                items={rowActions.map((action) => ({
+                  id: action.id,
+                  label: action.label,
+                  icon: action.icon,
+                  danger: action.danger,
+                  onSelect: () => onRowAction?.(action.id, row),
+                }))}
+                renderTrigger={({ toggle, triggerProps }) => (
+                  <button
+                    type="button"
+                    className="row-act"
+                    title="Row actions"
+                    aria-label="Row actions"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      toggle();
+                    }}
+                    {...triggerProps}
+                  >
+                    <MoreHorizontal size={16} aria-hidden="true" />
+                  </button>
+                )}
+              />
+            </div>
+          </td>
+        )}
+      </tr>
+    );
+  };
+
+  const totalCols = columns.length + (selectable ? 1 : 0) + (rowActions.length ? 1 : 0);
+  const virtualItems = virtualize ? rowVirtualizer.getVirtualItems() : null;
+  const padTop = virtualItems?.length ? virtualItems[0].start : 0;
+  const padBottom = virtualItems?.length
+    ? rowVirtualizer.getTotalSize() - virtualItems[virtualItems.length - 1].end
+    : 0;
+
+  return (
+    <div className="grid-wrap">
+      <div className="grid-toolbar">
+        {setSearch && (
+          <div className="grid-search">
+            <Search size={15} className="muted" aria-hidden="true" />
+            <input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search…"
+              aria-label="Search table"
+            />
+            {search && (
+              <button
+                type="button"
+                className="row-act"
+                title="Clear search"
+                aria-label="Clear search"
+                onClick={() => setSearch('')}
+              >
+                <X size={14} aria-hidden="true" />
+              </button>
+            )}
+          </div>
+        )}
+        {toolbar}
+        <div className="gt-spacer" />
+        {toolbarRight}
+      </div>
+
+      {selectable && someSel && (
+        <div className="grid-selbar">
+          <GridCheckbox
+            checked={allSel}
+            mixed={!allSel && someSel}
+            onChange={toggleAll}
+            label="Select all rows"
+          />
+          <span>{localSel.size} selected</span>
+          <div style={{ flex: 1 }} />
+          {bulkActions}
+          <Button variant="ghost" size="sm" icon={X} onClick={() => setSelected(new Set())}>
+            Clear
+          </Button>
+        </div>
+      )}
+
+      <div className="grid-scroll" ref={scrollRef}>
+        <div
+          ref={gridRef}
+          tabIndex={0}
+          role="application"
+          aria-label={label}
+          onKeyDown={keyboard.onKeyDown}
+          style={{ outline: 'none' }}
+        >
+          <table
+            className="grid"
+            aria-rowcount={view.length}
+            style={dense ? /** @type {any} */ ({ '--row-h': `${DENSE_ROW_HEIGHT}px` }) : undefined}
+          >
+            <thead>
+              <tr>
+                {selectable && (
+                  <th className="col-check">
+                    <GridCheckbox
+                      checked={allSel}
+                      mixed={!allSel && someSel}
+                      onChange={toggleAll}
+                      label="Select all rows"
+                    />
+                  </th>
+                )}
+                {columns.map((col) => (
+                  <th
+                    key={col.key}
+                    className={`${col.num ? 'num' : ''} ${col.sticky ? 'sticky-col' : ''}`.trim()}
+                    style={{
+                      width: col.width,
+                      minWidth: col.width,
+                      left: col.sticky ? (selectable ? 40 : 0) : undefined,
+                    }}
+                    aria-sort={
+                      sort.key === col.key
+                        ? sort.dir === 1
+                          ? 'ascending'
+                          : 'descending'
+                        : undefined
+                    }
+                  >
+                    <div
+                      className="th-in"
+                      onClick={() => col.sortable !== false && toggleSort(col.key)}
+                    >
+                      {col.label}
+                      {sort.key === col.key && (
+                        <span className="sort-ind">
+                          {sort.dir === 1 ? (
+                            <ArrowUp size={13} aria-hidden="true" />
+                          ) : (
+                            <ArrowDown size={13} aria-hidden="true" />
+                          )}
+                        </span>
+                      )}
+                    </div>
+                  </th>
+                ))}
+                {rowActions.length > 0 && <th style={{ width: 56 }} />}
+              </tr>
+            </thead>
+            <tbody>
+              {virtualize ? (
+                <>
+                  {padTop > 0 && (
+                    <tr aria-hidden="true">
+                      <td colSpan={totalCols} style={{ height: padTop, padding: 0, border: 0 }} />
+                    </tr>
+                  )}
+                  {virtualItems.map((item) => renderRow(view[item.index], item.index))}
+                  {padBottom > 0 && (
+                    <tr aria-hidden="true">
+                      <td
+                        colSpan={totalCols}
+                        style={{ height: padBottom, padding: 0, border: 0 }}
+                      />
+                    </tr>
+                  )}
+                </>
+              ) : (
+                view.map((row, r) => renderRow(row, r))
+              )}
+              {onAddRow && (
+                <tr>
+                  <td colSpan={totalCols} style={{ padding: 0 }}>
+                    <button type="button" className="add-row-btn" onClick={onAddRow}>
+                      <Plus size={16} aria-hidden="true" /> {addLabel}
+                    </button>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+          {view.length === 0 && (
+            <div className="empty">
+              <div className="empty-ico">
+                <Search size={24} aria-hidden="true" />
+              </div>
+              <div style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>{emptyText}</div>
+              {search && setSearch && (
+                <Button variant="secondary" size="sm" onClick={() => setSearch('')}>
+                  Clear search
+                </Button>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="grid-foot">
+        <span className="tnum">
+          {view.length} {view.length === 1 ? 'record' : 'records'}
+        </span>
+        {dirty.size > 0 && (
+          <span className="badge warning" style={{ height: 18 }}>
+            <span className="bdot" /> {dirty.size} edited
+          </span>
+        )}
+        <div className="gf-spacer" />
+        <span className="muted" style={{ fontSize: 12 }}>
+          Click a cell, then type to edit · Enter / Tab to move · Esc to cancel
+        </span>
+      </div>
+    </div>
+  );
+}
+
+DataGrid.propTypes = {
+  columns: PropTypes.array.isRequired,
+  rows: PropTypes.array.isRequired,
+  getRowId: PropTypes.func,
+  onCellChange: PropTypes.func,
+  onAddRow: PropTypes.func,
+  onRowAction: PropTypes.func,
+  rowActions: PropTypes.array,
+  selectable: PropTypes.bool,
+  selected: PropTypes.instanceOf(Set),
+  setSelected: PropTypes.func,
+  search: PropTypes.string,
+  setSearch: PropTypes.func,
+  searchKeys: PropTypes.array,
+  toolbar: PropTypes.node,
+  toolbarRight: PropTypes.node,
+  bulkActions: PropTypes.node,
+  onRowClick: PropTypes.func,
+  emptyText: PropTypes.string,
+  addLabel: PropTypes.string,
+  dense: PropTypes.bool,
+  label: PropTypes.string,
+};
