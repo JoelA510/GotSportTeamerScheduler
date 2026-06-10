@@ -39,7 +39,12 @@ const AuditLogPage = lazy(() => import('./pages/AuditLogPage.jsx'));
 const AnalyticalDashboard = lazy(() => import('./pages/AnalyticalDashboard.jsx'));
 const OrganizationCreation = lazy(() => import('./pages/OrganizationCreation.jsx'));
 const InvitePage = lazy(() => import('./pages/InvitePage.jsx'));
-import ShadowBanner from './components/auth/ShadowBanner.jsx';
+const PlayersPage = lazy(() => import('./pages/PlayersPage.jsx'));
+const TeamBuilderPage = lazy(() => import('./pages/TeamBuilderPage.jsx'));
+const BlackoutsPage = lazy(() => import('./pages/BlackoutsPage.jsx'));
+const ScoresPage = lazy(() => import('./pages/ScoresPage.jsx'));
+const ExportsPage = lazy(() => import('./pages/ExportsPage.jsx'));
+const MembersPage = lazy(() => import('./pages/MembersPage.jsx'));
 import OfflineGuard from './components/OfflineGuard.jsx';
 import ToastHost from './components/ui/ToastHost.jsx';
 
@@ -99,7 +104,6 @@ function AppContent() {
 
   return (
     <Suspense fallback={<LoadingScreen />}>
-      <ShadowBanner />
       <Routes>
         <Route path="/auth/reset-password" element={<ResetPassword />} />
         <Route path="/organizations/new" element={<OrganizationCreation />} />
@@ -118,7 +122,7 @@ function AppContent() {
             ) : !isOnboarded && isTenantAdmin ? (
               <Navigate to="/setup" replace />
             ) : (
-              <DashboardLayout activeSection="dashboard" />
+              <DashboardLayout />
             )
           }
         >
@@ -137,6 +141,54 @@ function AppContent() {
             element={
               <ProtectedRoute requiredPermission={PERMISSIONS.VIEW_ALL_TEAMS}>
                 <TeamAnalysisPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/players"
+            element={
+              <ProtectedRoute requiredPermission={PERMISSIONS.MANAGE_ORGANIZATION}>
+                <PlayersPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/teams/builder"
+            element={
+              <ProtectedRoute requiredPermission={PERMISSIONS.MANAGE_ALL_TEAMS}>
+                <TeamBuilderPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/scheduling/blackouts"
+            element={
+              <ProtectedRoute requiredPermission={PERMISSIONS.MANAGE_ORGANIZATION}>
+                <BlackoutsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/scores"
+            element={
+              <ProtectedRoute requiredPermission={PERMISSIONS.MANAGE_SCHEDULE}>
+                <ScoresPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/exports"
+            element={
+              <ProtectedRoute requiredPermission={PERMISSIONS.MANAGE_ORGANIZATION}>
+                <ExportsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/members"
+            element={
+              <ProtectedRoute requiredPermission={PERMISSIONS.MANAGE_ORGANIZATION}>
+                <MembersPage />
               </ProtectedRoute>
             }
           />

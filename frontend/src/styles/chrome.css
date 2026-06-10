@@ -188,6 +188,15 @@
 .topbar-spacer {
   flex: 1;
 }
+/* Mobile-only nav toggle (unlayered CSS outranks Tailwind's `hidden`). */
+.nav-toggle {
+  display: none;
+}
+@media (max-width: 900px) {
+  .nav-toggle {
+    display: grid;
+  }
+}
 .icon-btn {
   width: 36px;
   height: 36px;
@@ -562,9 +571,17 @@
   }
   .nav {
     position: absolute;
-    height: 100%;
+    top: var(--topbar-h);
+    bottom: 0;
+    left: 0;
+    height: auto;
     z-index: 70;
     box-shadow: var(--shadow-lg);
     width: var(--nav-w);
+    transform: translateX(-110%);
+    transition: transform 0.2s ease;
+  }
+  .nav[data-mobile-open='true'] {
+    transform: none;
   }
 }

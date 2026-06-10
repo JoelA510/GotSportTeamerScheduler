@@ -45,11 +45,11 @@ export default function ToastHost({ children }) {
   return (
     <ToastContext.Provider value={value}>
       {children}
-      <div className="toast-wrap" role="status" aria-live="polite">
+      <div className="toast-wrap" aria-live="polite">
         {toasts.map(({ id, message, tone }) => {
           const Icon = ICONS[tone] || Info;
           return (
-            <div key={id} className={`toast ${tone}`}>
+            <div key={id} className={`toast ${tone}`} role="status">
               <span className="t-ico">
                 <Icon size={15} aria-hidden="true" />
               </span>

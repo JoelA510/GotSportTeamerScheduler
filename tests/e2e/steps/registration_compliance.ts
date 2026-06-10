@@ -91,8 +91,10 @@ When(
       .getByLabel(/Form Title|Title/i)
       .first()
       .fill(formTitle);
-    const seasonSelect = page.getByLabel(/Season/i).first();
-    if (await seasonSelect.isVisible()) {
+    // Use the combobox role so the top bar's "Active Season" switcher
+    // (a button) is never matched.
+    const seasonSelect = page.getByRole('combobox', { name: /Season/i }).first();
+    if (await seasonSelect.isVisible().catch(() => false)) {
       await seasonSelect.selectOption({ label: seasonName });
     }
     await page

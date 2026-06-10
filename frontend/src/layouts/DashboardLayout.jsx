@@ -1,44 +1,56 @@
+import { useEffect, useState } from 'react';
+import { Outlet, useLocation, matchPath } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext.jsx';
-import Sidebar from '../components/Sidebar.jsx';
-import { Menu, X } from 'lucide-react';
-import { useState } from 'react';
-import { Outlet } from 'react-router-dom';
+import TopBar from '../components/chrome/TopBar.jsx';
+import SideNav from '../components/chrome/SideNav.jsx';
+import ShadowBanner from '../components/auth/ShadowBanner.jsx';
+import { FULL_BLEED_ROUTES } from '../constants/navigation.js';
 
-export default function DashboardLayout({ activeSection: _activeSection }) {
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+const COLLAPSE_KEY = 'sl-nav-collapsed';
+
+/**
+ * Lightning-class app shell: role-preview banner row (when impersonating),
+ * top bar, collapsible side nav, and the routed page in the main area.
+ * Grid layout comes from `.app` in styles/chrome.css.
+ */
+export default function DashboardLayout() {
   const { isImpersonating } = useAuth();
+  const location = useLocation();
+  const [collapsed, setCollapsed] = useState(() => localStorage.getItem(COLLAPSE_KEY) === '1');
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+
+  useEffect(() => {
+    localStorage.setItem(COLLAPSE_KEY, collapsed ? '1' : '0');
+  }, [collapsed]);
+
+  const isFullBleed = [...FULL_BLEED_ROUTES].some((pattern) =>
+    matchPath(pattern, location.pathname)
+  );
 
   return (
-    <div className={`flex min-h-screen ${isImpersonating ? 'pt-[48px]' : ''}`}>
-      <Sidebar isOpen={isSidebarOpen} toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)} />
-
-      <div className="flex-1 flex flex-col min-w-0 relative">
-        {/* Mobile Header */}
-        <div
-          className={`md:hidden p-4 border-b border-border-subtle flex items-center justify-between bg-bg-app/95 sticky ${isImpersonating ? 'top-[48px]' : 'top-0'} z-30`}
-        >
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-600 to-brand-400 flex items-center justify-center shadow-lg">
-              <span className="text-white font-bold text-lg">S</span>
+    <div
+      className={`app ${collapsed ? 'nav-collapsed' : ''} ${isImpersonating ? 'has-banner' : ''}`}
+    >
+      {isImpersonating && <ShadowBanner />}
+      <TopBar onToggleNav={() => setMobileNavOpen((open) => !open)} />
+      <SideNav
+        collapsed={collapsed}
+        onToggleCollapsed={() => setCollapsed((value) => !value)}
+        mobileOpen={mobileNavOpen}
+        onMobileClose={() => setMobileNavOpen(false)}
+      />
+      <div className="main">
+        {isFullBleed ? (
+          <Outlet />
+        ) : (
+          // Legacy scroll wrapper: pre-redesign pages expect outer padding
+          // and a page-level scroll context.
+          <main className="flex-1 p-4 md:p-8 overflow-y-auto">
+            <div className="max-w-7xl mx-auto">
+              <Outlet />
             </div>
-            <span className="text-xl font-display font-bold text-text-primary tracking-tight">
-              SquadLogic
-            </span>
-          </div>
-          <button
-            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-            className="text-text-secondary hover:text-text-primary p-2"
-            aria-label="Hamburger Menu"
-          >
-            {isSidebarOpen ? <X size={24} /> : <Menu size={24} />}
-          </button>
-        </div>
-
-        <main className="flex-1 p-4 md:p-8 overflow-y-auto">
-          <div className="max-w-7xl mx-auto">
-            <Outlet />
-          </div>
-        </main>
+          </main>
+        )}
       </div>
     </div>
   );

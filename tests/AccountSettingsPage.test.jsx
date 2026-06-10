@@ -31,6 +31,7 @@ vi.mock('../frontend/src/contexts/ImportContext.jsx', () => ({
 
 vi.mock('../frontend/src/contexts/ThemeContext.jsx', () => ({
   ThemeProvider: ({ children }) => children,
+  useTheme: () => ({ themeMode: 'light', toggleThemeMode: vi.fn() }),
 }));
 
 vi.mock('../frontend/src/components/auth/ShadowBanner.jsx', () => ({
