@@ -267,6 +267,39 @@ feeds `unit.players` into the unchanged placement / scoring helpers.
 
 ---
 
+## 6c. Implemented in PR 04 — snapshot-aware incremental generation
+
+`generateTeams` now accepts three additive params (backward compatible — with no snapshot the
+fresh path runs unchanged and **no new output keys appear**):
+
+```js
+generateTeams({ ..., existingSnapshot = null, generationMode = 'draft', changePolicy = {} })
+```
+
+- `changePolicy.teamCountPolicy`: `'auto' | 'preserve-existing' | 'preserve-or-expand' |
+  'preserve-with-overflow'`. Defaults: no snapshot → `auto`; snapshot + review/published/locked →
+  `preserve-existing`; snapshot + draft → `preserve-or-expand`. An **explicit** `auto` with a
+  snapshot falls back to fresh generation (snapshot ignored).
+- `changePolicy.allowOverCapAssignments`: opt-in to place late players beyond `maxRosterSize`.
+
+Incremental behavior (per division): preserved shells keep their ids, names, coach/assistant
+metadata, and already-assigned players (rehydrated to full incoming player objects, carrying
+`assignment_source`/`locked`); dropped players leave rosters but shells survive (even empty);
+snapshot-only divisions remain in output (a missing division config yields a synthetic constraint
+plus a structural warning instead of a crash); ONLY late/unassigned players are routed through the
+PR-03 unit builder and placed by the unchanged scoring helpers; team creation is policy-gated
+(`preserve-or-expand` creates on demand, still respecting `maxTeams`); preserved over-cap teams are
+flagged (`capacityViolations`) and accept no additions by default; `minRosterSize` produces warnings
+(`minRosterWarnings` / `teamsBelowMinRoster`) — never collapses preserved teams.
+
+Incremental output adds `changeDiagnosticsByDivision` (subset of the §6 target — `mode`,
+`teamCountPolicy`, `existingTeamsPreserved`, `newTeamsCreated`, `latePlayersAssigned`,
+`latePlayersOverflowed`, `droppedPlayersRemoved`, `manualAssignmentsPreserved`,
+`capacityViolations`, `minRosterWarnings`, `structuralWarnings` — PR 07 finalizes the full shape)
+and a top-level `snapshotDiagnostics` array (the reconcile diagnostics).
+
+---
+
 ## 7. PR sequence
 
 | PR  | Title                                       | New modules (core)                        | Touches `generateTeams`? |
