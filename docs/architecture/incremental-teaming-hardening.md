@@ -300,6 +300,35 @@ and a top-level `snapshotDiagnostics` array (the reconcile diagnostics).
 
 ---
 
+## 6d. Implemented in PR 05 — buddy normalization & historical buddy routing
+
+**Canonical buddy field.** `packages/core/src/buddyLinking.js` canonicalizes every buddy variant
+into `buddyId` before generation:
+
+```js
+normalizeBuddyLinks(players) => { players, diagnostics }  // pure; inputs not mutated
+getCanonicalBuddyId(player)  => string | undefined        // buddyId ?? buddy_id (frontend-safe)
+```
+
+- An explicit `buddyId` / `buddy_id` wins over a code. A `mutual_buddy_code` / `mutualBuddyCode`
+  links players only when **exactly two** players share the code within one division (mirroring
+  the import materialization SQL).
+- Diagnostics: `missing-buddy-target`, `one-sided-buddy`, `duplicate-buddy-code` (>2 players),
+  `buddy-code-unmatched` (1 player), `self-buddy-reference`, `cross-division-buddy`.
+- `prepareTeamingInput` runs normalization first and returns `diagnostics.buddyLinking`; the
+  `useConflicts` hook reads buddies via `getCanonicalBuddyId`, so React never duplicates the
+  normalization rules.
+
+**Historical buddy routing** (incremental generation): a late solo player whose valid buddy is
+already preserved on a team becomes a `targeted-buddy` unit aimed at that team (coach anchoring
+takes precedence; two late players with a reciprocal request remain a `mutual-buddy` unit).
+Placement: onto the target team when capacity and policy allow (recorded in
+`changeDiagnosticsByDivision[division].buddyTargetAssignments`); otherwise overflow with
+`buddy-target-capacity` (full / over cap) or `buddy-target-locked` (team locked) — existing
+rosters are **never reshuffled** to make room. Fresh (no-snapshot) buddy behavior is unchanged.
+
+---
+
 ## 7. PR sequence
 
 | PR  | Title                                       | New modules (core)                        | Touches `generateTeams`? |

@@ -1,0 +1,175 @@
+/**
+ * Buddy-field normalization for team generation (project-hardening PR 05).
+ *
+ * Imported player data carries buddy intent in several shapes — a direct player reference
+ * (`buddyId` / `buddy_id`) or a shared code two players both enter (`mutualBuddyCode` /
+ * `mutual_buddy_code`). The generator and the conflict hook consume ONE canonical field:
+ * `buddyId`. `normalizeBuddyLinks` canonicalizes all variants and emits structured
+ * diagnostics for requests it cannot honor. Pure module — no React / Supabase imports.
+ *
+ * Resolution rules:
+ *   - An explicit `buddyId` / `buddy_id` wins over any code.
+ *   - A buddy code links players only when EXACTLY two players share the code within the
+ *     same division (mirroring the import materialization SQL); bigger groups, singletons,
+ *     and cross-division groups are diagnosed instead.
+ *   - Direct references are validated (self-reference, missing target, cross-division,
+ *     one-sided) — invalid ones are diagnosed here and preserved as-is, so the generator's
+ *     own buddy diagnostics still see them (a self-reference falls back to a code link
+ *     when one exists).
+ *
+ * @typedef {Object} BuddyLinkDiagnostic
+ * @property {string} code
+ * @property {'info' | 'warning'} severity
+ * @property {string} message
+ * @property {string[]} playerIds
+ */
+
+/** Coerce an id-like value to a trimmed non-empty string, or undefined. */
+function coerceId(value) {
+  if (value === undefined || value === null) return undefined;
+  const str = String(value).trim();
+  return str === '' ? undefined : str;
+}
+
+/**
+ * Read a player's canonical buddy reference (`buddyId`, falling back to `buddy_id`),
+ * without resolving codes (codes need group context). Safe for frontend reuse
+ * (e.g. the conflicts hook).
+ * @param {any} player
+ * @returns {string | undefined}
+ */
+export function getCanonicalBuddyId(player) {
+  if (!player) return undefined;
+  return coerceId(player.buddyId) ?? coerceId(player.buddy_id);
+}
+
+/** Read a player's buddy code across naming variants. */
+function getBuddyCode(player) {
+  if (!player) return undefined;
+  const raw = player.mutualBuddyCode ?? player.mutual_buddy_code;
+  if (raw === undefined || raw === null) return undefined;
+  const str = String(raw).trim();
+  return str === '' ? undefined : str;
+}
+
+/**
+ * Canonicalize buddy fields across a player list. Returns NEW player objects (inputs are
+ * not mutated) with canonical `buddyId` set where a valid link exists, plus diagnostics.
+ *
+ * @param {any[]} players
+ * @returns {{ players: any[], diagnostics: BuddyLinkDiagnostic[] }}
+ */
+export function normalizeBuddyLinks(players) {
+  const list = Array.isArray(players) ? players : [];
+  /** @type {BuddyLinkDiagnostic[]} */
+  const diagnostics = [];
+  const byId = new Map();
+  for (const player of list) {
+    const id = coerceId(player?.id);
+    if (id && !byId.has(id)) byId.set(id, player);
+  }
+
+  // Resolve shared buddy codes → reciprocal id links (exactly two players, same division).
+  /** @type {Map<string, any[]>} */
+  const codeGroups = new Map();
+  for (const player of list) {
+    const code = getBuddyCode(player);
+    if (!code) continue;
+    if (!codeGroups.has(code)) codeGroups.set(code, []);
+    codeGroups.get(code).push(player);
+  }
+
+  /** @type {Map<string, string>} codeBuddyByPlayerId */
+  const codeBuddyByPlayerId = new Map();
+  for (const [code, group] of codeGroups) {
+    const ids = group.map((player) => coerceId(player.id)).filter(Boolean);
+    if (group.length === 1) {
+      diagnostics.push({
+        code: 'buddy-code-unmatched',
+        severity: 'info',
+        message: `buddy code "${code}" was entered by only one player`,
+        playerIds: ids,
+      });
+      continue;
+    }
+    if (group.length > 2) {
+      diagnostics.push({
+        code: 'duplicate-buddy-code',
+        severity: 'warning',
+        message: `buddy code "${code}" is shared by ${group.length} players; codes must pair exactly two`,
+        playerIds: ids,
+      });
+      continue;
+    }
+    const [a, b] = group;
+    if (String(a.division) !== String(b.division)) {
+      diagnostics.push({
+        code: 'cross-division-buddy',
+        severity: 'warning',
+        message: `buddy code "${code}" pairs players in different divisions (${a.division} and ${b.division})`,
+        playerIds: ids,
+      });
+      continue;
+    }
+    const aId = coerceId(a.id);
+    const bId = coerceId(b.id);
+    if (aId && bId && aId !== bId) {
+      codeBuddyByPlayerId.set(aId, bId);
+      codeBuddyByPlayerId.set(bId, aId);
+    }
+  }
+
+  // Canonicalize per player: explicit reference first, then code resolution.
+  const normalized = list.map((player) => {
+    const id = coerceId(player?.id);
+    const direct = getCanonicalBuddyId(player);
+    let buddyId = direct ?? (id ? codeBuddyByPlayerId.get(id) : undefined);
+
+    if (direct && id) {
+      if (direct === id) {
+        diagnostics.push({
+          code: 'self-buddy-reference',
+          severity: 'warning',
+          message: `player ${id} requested themself as buddy`,
+          playerIds: [id],
+        });
+        // A self-reference can never link; fall back to a code link when one exists.
+        buddyId = codeBuddyByPlayerId.get(id);
+      } else {
+        const target = byId.get(direct);
+        if (!target) {
+          diagnostics.push({
+            code: 'missing-buddy-target',
+            severity: 'warning',
+            message: `player ${id} requested buddy ${direct} who is not in the player list`,
+            playerIds: [id],
+          });
+        } else if (String(target.division) !== String(player.division)) {
+          diagnostics.push({
+            code: 'cross-division-buddy',
+            severity: 'warning',
+            message: `player ${id} (${player.division}) requested buddy ${direct} in division ${target.division}`,
+            playerIds: [id, direct],
+          });
+        } else {
+          const reciprocal = getCanonicalBuddyId(target);
+          if (reciprocal !== id) {
+            diagnostics.push({
+              code: 'one-sided-buddy',
+              severity: 'info',
+              message: `player ${id} requested buddy ${direct} but the request is not reciprocated`,
+              playerIds: [id, direct],
+            });
+          }
+        }
+      }
+    }
+
+    if (buddyId !== undefined && buddyId !== coerceId(player.buddyId)) {
+      return { ...player, buddyId };
+    }
+    return player;
+  });
+
+  return { players: normalized, diagnostics };
+}

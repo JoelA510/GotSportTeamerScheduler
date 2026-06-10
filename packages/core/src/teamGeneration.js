@@ -485,6 +485,7 @@ export function generateTeams({
         newTeamsCreated: stats.newTeamsCreated,
         latePlayersAssigned: stats.latePlayersAssigned,
         latePlayersOverflowed: stats.latePlayersOverflowed,
+        buddyTargetAssignments: stats.buddyTargetAssignments ?? [],
         droppedPlayersRemoved: (reconciliation.droppedPlayersByDivision[division] ?? []).length,
         manualAssignmentsPreserved,
         capacityViolations,
@@ -548,6 +549,7 @@ function rehydratePreservedTeams(preservedTeams, playerCloneById) {
     name: team.name,
     division: team.division,
     coachId: team.coachId ?? null,
+    locked: Boolean(team.locked),
     assistantCoachIds: Array.isArray(team.assistantCoachIds) ? [...team.assistantCoachIds] : [],
     players: team.players
       .map((player) => {
@@ -827,10 +829,22 @@ function buildTeamsForDivisionIncremental({
     name: team.name ?? `${division} Team ${String(index + 1).padStart(2, '0')}`,
     division,
     coachId: team.coachId ?? null,
+    locked: Boolean(team.locked),
     assistantCoachIds: [...team.assistantCoachIds],
     players: [...team.players],
     skillTotal: calculateUnitSkill(team.players),
   }));
+
+  // Historical buddy lookup: preserved player id → preserved team id (this division only).
+  const preservedTeamIdByPlayerId = new Map();
+  for (const team of preservedTeams) {
+    for (const player of team.players) {
+      const id = String(player.id).trim();
+      if (!preservedTeamIdByPlayerId.has(id)) {
+        preservedTeamIdByPlayerId.set(id, team.id);
+      }
+    }
+  }
 
   const overflow = [];
   let teamIndex = teams.length;
@@ -856,13 +870,35 @@ function buildTeamsForDivisionIncremental({
 
   const { units, buddyDiagnostics } = buildAssignmentUnits(latePlayers);
   const coachUnits = [];
+  const targetedBuddyUnits = [];
   const generalUnits = [];
   for (const unit of units) {
     if (unit.type === 'coach' || unit.type === 'assistant') {
       coachUnits.push(unit);
-    } else {
-      generalUnits.push(unit);
+      continue;
     }
+    // Historical buddy routing: a late solo player whose valid buddy is already preserved on a
+    // team becomes a targeted-buddy unit aimed at that team. (Coach anchoring takes precedence;
+    // late mutual pairs stay mutual-buddy units.)
+    if (unit.type === 'general' && unit.players.length === 1) {
+      const rawBuddyId = unit.players[0].buddyId;
+      const buddyId = rawBuddyId == null ? undefined : String(rawBuddyId).trim();
+      const targetTeamId = buddyId ? preservedTeamIdByPlayerId.get(buddyId) : undefined;
+      if (targetTeamId) {
+        targetedBuddyUnits.push({ ...unit, type: 'targeted-buddy', targetTeamId });
+        continue;
+      }
+    }
+    generalUnits.push(unit);
+  }
+
+  // The unit builder diagnosed these buddies as 'missing-player' (they are not late players) —
+  // they are in fact preserved; the routing outcome is reported instead.
+  if (targetedBuddyUnits.length > 0) {
+    const targetedPlayerIds = new Set(targetedBuddyUnits.map((unit) => unit.players[0].id));
+    buddyDiagnostics.unmatchedRequests = buddyDiagnostics.unmatchedRequests.filter(
+      (entry) => !(entry.reason === 'missing-player' && targetedPlayerIds.has(entry.playerId))
+    );
   }
 
   // Late coach/assistant units first: join their preserved team when one exists; otherwise a new
@@ -922,6 +958,53 @@ function buildTeamsForDivisionIncremental({
     }
   }
 
+  // Targeted-buddy units: route the late player onto their buddy's preserved team when capacity
+  // and policy allow; otherwise overflow with a specific reason. Existing rosters are NEVER
+  // reshuffled to make room.
+  const buddyTargetAssignments = [];
+  for (const assignmentUnit of targetedBuddyUnits) {
+    const unit = assignmentUnit.players;
+    const targetTeam = teams.find((team) => team.id === assignmentUnit.targetTeamId);
+    if (!targetTeam || targetTeam.locked) {
+      overflow.push({
+        players: unit,
+        reason: TEAM_GENERATION.REASON_BuddyTargetLocked,
+        metadata: {
+          targetTeamId: assignmentUnit.targetTeamId,
+          buddyId: unit[0].buddyId,
+        },
+      });
+      continue;
+    }
+
+    const assigned = assignUnitToTeam({
+      unit,
+      unitSkillTotal: assignmentUnit.skillTotal,
+      team: targetTeam,
+      maxRosterSize: effectiveMaxRosterSize,
+      reason: TEAM_GENERATION.REASON_BuddyRequest,
+    });
+
+    if (assigned) {
+      buddyTargetAssignments.push({
+        playerId: unit[0].id,
+        buddyId: unit[0].buddyId,
+        teamId: targetTeam.id,
+      });
+    } else {
+      overflow.push({
+        players: unit,
+        reason: TEAM_GENERATION.REASON_BuddyTargetCapacity,
+        metadata: {
+          targetTeamId: targetTeam.id,
+          buddyId: unit[0].buddyId,
+          playerCount: targetTeam.players.length,
+          maxRosterSize,
+        },
+      });
+    }
+  }
+
   generalUnits.sort((a, b) => b.skillTotal - a.skillTotal);
 
   for (const assignmentUnit of generalUnits) {
@@ -965,6 +1048,7 @@ function buildTeamsForDivisionIncremental({
     newTeamsCreated: teams.length - preservedTeams.length,
     latePlayersAssigned: latePlayers.length - latePlayersOverflowed,
     latePlayersOverflowed,
+    buddyTargetAssignments,
   };
 
   return { teams, overflow, buddyDiagnostics, incrementalStats };

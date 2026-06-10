@@ -491,6 +491,112 @@ test('changePolicy.divisionKeyById maps relational division_id rows to generator
   assert.equal(result.changeDiagnosticsByDivision.U10.latePlayersAssigned, 1);
 });
 
+test("routes a late player onto their buddy's preserved team when capacity allows", () => {
+  const players = [
+    ...makePlayers(ALL_NINE),
+    { id: 'newbie', division: 'U10', buddyId: 'p4' }, // p4 is preserved on Sharks
+  ];
+  const result = generateTeams({
+    players,
+    divisionConfigs: { U10: U10_CONFIG },
+    random: createDeterministicRandom(),
+    existingSnapshot: threeTeamSnapshot(),
+    generationMode: 'published',
+  });
+
+  const sharks = result.teamsByDivision.U10.find((t) => t.id === 'uuid-team-2');
+  assert.ok(
+    sharks.players.some((p) => p.id === 'newbie'),
+    "late player lands on the buddy's team"
+  );
+  assert.deepEqual(result.overflowByDivision.U10, []);
+  assert.deepEqual(result.changeDiagnosticsByDivision.U10.buddyTargetAssignments, [
+    { playerId: 'newbie', buddyId: 'p4', teamId: 'uuid-team-2' },
+  ]);
+  // The buddy is preserved, not missing — no misleading missing-player diagnostic.
+  assert.ok(
+    !result.buddyDiagnosticsByDivision.U10.unmatchedRequests.some(
+      (e) => e.playerId === 'newbie' && e.reason === 'missing-player'
+    )
+  );
+});
+
+test('overflows a late buddy with buddy-target-capacity when the target team is full (no reshuffle)', () => {
+  const snapshot = threeTeamSnapshot();
+  snapshot.teamsByDivision.U10[1].players.push({ id: 'p10' }); // Sharks now 4/4
+  const players = [
+    ...makePlayers([...ALL_NINE, 'p10']),
+    { id: 'newbie', division: 'U10', buddyId: 'p4' },
+  ];
+  const result = generateTeams({
+    players,
+    divisionConfigs: { U10: U10_CONFIG },
+    random: createDeterministicRandom(),
+    existingSnapshot: snapshot,
+    generationMode: 'published',
+  });
+
+  const overflow = result.overflowByDivision.U10;
+  assert.equal(overflow.length, 1);
+  assert.equal(overflow[0].reason, 'buddy-target-capacity');
+  assert.deepEqual(
+    overflow[0].players.map((p) => p.id),
+    ['newbie']
+  );
+  assert.equal(overflow[0].metadata.targetTeamId, 'uuid-team-2');
+  // No reshuffle: every preserved roster is exactly as in the snapshot.
+  const rosters = Object.fromEntries(
+    result.teamsByDivision.U10.map((t) => [t.id, t.players.map((p) => p.id).sort()])
+  );
+  assert.deepEqual(rosters, {
+    'uuid-team-1': ['p1', 'p2', 'p3'],
+    'uuid-team-2': ['p10', 'p4', 'p5', 'p6'],
+    'uuid-team-3': ['p7', 'p8', 'p9'],
+  });
+});
+
+test('overflows a late buddy with buddy-target-locked when the target team is locked', () => {
+  const snapshot = threeTeamSnapshot();
+  snapshot.teamsByDivision.U10[1].locked = true; // Sharks locked against additions
+  const players = [...makePlayers(ALL_NINE), { id: 'newbie', division: 'U10', buddyId: 'p4' }];
+  const result = generateTeams({
+    players,
+    divisionConfigs: { U10: U10_CONFIG },
+    random: createDeterministicRandom(),
+    existingSnapshot: snapshot,
+    generationMode: 'published',
+  });
+
+  const overflow = result.overflowByDivision.U10;
+  assert.equal(overflow.length, 1);
+  assert.equal(overflow[0].reason, 'buddy-target-locked');
+  const sharks = result.teamsByDivision.U10.find((t) => t.id === 'uuid-team-2');
+  assert.ok(!sharks.players.some((p) => p.id === 'newbie'));
+});
+
+test('two late players with a reciprocal request stay a mutual-buddy unit (not targeted)', () => {
+  const players = [
+    ...makePlayers(['p1', 'p2', 'p3', 'p4', 'p5']),
+    { id: 'late-a', division: 'U10', buddyId: 'late-b' },
+    { id: 'late-b', division: 'U10', buddyId: 'late-a' },
+  ];
+  const result = generateTeams({
+    players,
+    divisionConfigs: { U10: U10_CONFIG },
+    random: createDeterministicRandom(),
+    existingSnapshot: threeTeamSnapshot(),
+    generationMode: 'published',
+  });
+
+  const teamOfA = result.teamsByDivision.U10.find((t) => t.players.some((p) => p.id === 'late-a'));
+  const teamOfB = result.teamsByDivision.U10.find((t) => t.players.some((p) => p.id === 'late-b'));
+  assert.ok(teamOfA && teamOfB, 'both late buddies placed');
+  assert.equal(teamOfA.id, teamOfB.id, 'late mutual pair placed together');
+  assert.deepEqual(result.buddyDiagnosticsByDivision.U10.mutualPairs, [
+    { playerIds: ['late-a', 'late-b'] },
+  ]);
+});
+
 test('an explicit auto policy with a snapshot falls back to fresh generation', () => {
   const players = makePlayers(['a', 'b', 'c', 'd']);
   const fresh = generateTeams({
