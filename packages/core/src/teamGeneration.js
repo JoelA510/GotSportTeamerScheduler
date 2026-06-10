@@ -885,8 +885,7 @@ function buildTeamsForDivisionIncremental({
     // matching fresh generation's mutual-only policy.)
     if (unit.type === 'general' && unit.players.length === 1) {
       const latePlayer = unit.players[0];
-      const rawBuddyId = latePlayer.buddyId;
-      const buddyId = rawBuddyId == null ? undefined : String(rawBuddyId).trim();
+      const buddyId = getCanonicalBuddyId(latePlayer);
       const target = buddyId ? preservedBuddyTargets.get(buddyId) : undefined;
       if (target && getCanonicalBuddyId(target.player) === String(latePlayer.id).trim()) {
         targetedBuddyUnits.push({ ...unit, type: 'targeted-buddy', targetTeamId: target.teamId });

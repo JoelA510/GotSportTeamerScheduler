@@ -126,11 +126,38 @@ export function normalizeBuddyLinks(players) {
     }
   }
 
-  // Canonicalize per player: explicit reference first, then code resolution.
+  // A player's usable direct reference (self-references can never link).
+  const resolvedDirect = (p) => {
+    const d = getCanonicalBuddyId(p);
+    return d !== undefined && d !== coerceId(p?.id) ? d : undefined;
+  };
+
+  // Canonicalize per player: explicit reference first, then code resolution. A code link is
+  // honored only when the partner's OWN resolution points back (an explicit override on the
+  // partner breaks the code pair for both sides, with a diagnostic).
   const normalized = list.map((player) => {
     const id = coerceId(player?.id);
     const direct = getCanonicalBuddyId(player);
-    let buddyId = direct ?? (id ? codeBuddyByPlayerId.get(id) : undefined);
+    let buddyId = resolvedDirect(player);
+    if (buddyId === undefined && id) {
+      const codeBuddy = codeBuddyByPlayerId.get(id);
+      if (codeBuddy) {
+        const partner = byId.get(codeBuddy);
+        const partnerResolved = partner
+          ? (resolvedDirect(partner) ?? codeBuddyByPlayerId.get(codeBuddy))
+          : undefined;
+        if (partnerResolved === id) {
+          buddyId = codeBuddy;
+        } else {
+          diagnostics.push({
+            code: 'buddy-code-unmatched',
+            severity: 'warning',
+            message: `buddy code "${getBuddyCode(player)}" could not be linked: partner ${codeBuddy} has a different explicit buddy request`,
+            playerIds: [id, codeBuddy],
+          });
+        }
+      }
+    }
 
     if (direct && id) {
       if (direct === id) {
@@ -140,8 +167,6 @@ export function normalizeBuddyLinks(players) {
           message: `player ${id} requested themself as buddy`,
           playerIds: [id],
         });
-        // A self-reference can never link; fall back to a code link when one exists.
-        buddyId = codeBuddyByPlayerId.get(id);
       } else {
         const target = byId.get(direct);
         if (!target) {

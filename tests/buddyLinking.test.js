@@ -118,13 +118,29 @@ test('normalizeBuddyLinks diagnoses a 2-player code group with an unusable id', 
   );
 });
 
-test('normalizeBuddyLinks lets an explicit buddyId win over a code', () => {
-  const { players: result } = normalizeBuddyLinks([
+test('normalizeBuddyLinks lets an explicit buddyId win over a code and breaks the code pair', () => {
+  const { players: result, diagnostics } = normalizeBuddyLinks([
     { id: 'a', division: 'U10', buddyId: 'c', mutual_buddy_code: 'PAIR' },
     { id: 'b', division: 'U10', mutual_buddy_code: 'PAIR' },
     { id: 'c', division: 'U10', buddyId: 'a' },
   ]);
   assert.equal(result[0].buddyId, 'c', 'explicit reference wins');
+  // b's code partner (a) explicitly chose someone else: no silent one-sided link.
+  assert.equal(result[1].buddyId, undefined, 'broken code pair links nobody');
+  assert.ok(
+    diagnostics.some((d) => d.code === 'buddy-code-unmatched' && d.playerIds.includes('b')),
+    'the broken code pair is diagnosed'
+  );
+});
+
+test('normalizeBuddyLinks still pairs via code when one partner self-references', () => {
+  const { players: result } = normalizeBuddyLinks([
+    { id: 'a', division: 'U10', buddyId: 'a', mutual_buddy_code: 'P' },
+    { id: 'b', division: 'U10', mutual_buddy_code: 'P' },
+  ]);
+  // The self-reference cannot link, so the code pair holds symmetrically.
+  assert.equal(result[0].buddyId, 'b');
+  assert.equal(result[1].buddyId, 'a');
 });
 
 test('normalizeBuddyLinks does not mutate its input', () => {

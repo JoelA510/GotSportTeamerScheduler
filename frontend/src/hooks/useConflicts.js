@@ -29,11 +29,13 @@ export function useConflicts(teams) {
       });
     });
 
+    const playersById = new Map(allPlayers.map((p) => [String(p.id), p]));
+
     allPlayers.forEach((p1) => {
       // --- Buddy Separation Check ---
       const p1BuddyId = getCanonicalBuddyId(p1);
       if (p1BuddyId && !checkedBuddies.has(p1.id)) {
-        const p2 = allPlayers.find((p) => String(p.id) === p1BuddyId);
+        const p2 = playersById.get(p1BuddyId);
         if (p2 && getCanonicalBuddyId(p2) === String(p1.id)) {
           checkedBuddies.add(p1.id);
           checkedBuddies.add(p2.id);
