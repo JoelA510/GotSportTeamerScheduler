@@ -406,6 +406,91 @@ test('a late coach-anchored player joins their preserved coach team', () => {
   );
 });
 
+test('an overflowed late coach unit does not mutate preserved assistant metadata', () => {
+  // Raptors are full (4/4): the late coach-1 child with an assistant tag overflows, and the
+  // preserved team's assistantCoachIds must remain untouched.
+  const snapshot = threeTeamSnapshot();
+  snapshot.teamsByDivision.U10[0].players.push({ id: 'p10' });
+  const players = [
+    ...makePlayers([...ALL_NINE, 'p10']),
+    { id: 'late-coach-kid', division: 'U10', coachId: 'coach-1', assistantCoachId: 'asst-9' },
+  ];
+
+  const result = generateTeams({
+    players,
+    divisionConfigs: { U10: U10_CONFIG },
+    random: createDeterministicRandom(),
+    existingSnapshot: snapshot,
+    generationMode: 'published',
+  });
+
+  const raptors = result.teamsByDivision.U10.find((t) => t.id === 'uuid-team-1');
+  assert.deepEqual(raptors.assistantCoachIds, ['asst-1'], 'asst-9 was not merged');
+  const overflow = result.overflowByDivision.U10;
+  assert.equal(overflow.length, 1);
+  assert.equal(overflow[0].reason, 'coach-capacity');
+});
+
+test('a snapshot-absent division honors minTeams under preserve-or-expand (fresh semantics)', () => {
+  const result = generateTeams({
+    players: makePlayers(['u12-a', 'u12-b', 'u12-c', 'u12-d'], 'U12'),
+    divisionConfigs: {
+      U10: U10_CONFIG,
+      U12: { id: 'U12', teamsCount: 1, slotsPerWeek: 1, maxRosterSize: 4, minTeams: 3 },
+    },
+    random: createDeterministicRandom(),
+    existingSnapshot: threeTeamSnapshot(), // snapshot has only U10
+    generationMode: 'draft',
+  });
+
+  assert.equal(result.teamsByDivision.U12.length, 3, 'minTeams honored for the new division');
+  const diag = result.changeDiagnosticsByDivision.U12;
+  assert.equal(diag.existingTeamsPreserved, 0);
+  assert.equal(diag.newTeamsCreated, 3);
+  assert.equal(diag.latePlayersAssigned, 4);
+});
+
+test('rejects ids that collide after normalization', () => {
+  assert.throws(
+    () =>
+      generateTeams({
+        players: [
+          { id: /** @type {any} */ (42), division: 'U10' },
+          { id: '42', division: 'U10' },
+        ],
+        divisionConfigs: { U10: U10_CONFIG },
+        random: createDeterministicRandom(),
+      }),
+    /duplicate player id detected/
+  );
+});
+
+test('changePolicy.divisionKeyById maps relational division_id rows to generator keys', () => {
+  const relationalSnapshot = {
+    runHistory: [{ status: 'published' }],
+    payload: {
+      teamRows: [{ id: 'uuid-t1', division_id: 'div-uuid-1', name: 'Raptors', coach_id: null }],
+      teamPlayerRows: [{ team_id: 'uuid-t1', player_id: 'p1', role: 'player', source: 'auto' }],
+    },
+  };
+  const result = generateTeams({
+    players: makePlayers(['p1', 'late-1']),
+    divisionConfigs: { U10: U10_CONFIG },
+    random: createDeterministicRandom(),
+    existingSnapshot: relationalSnapshot,
+    generationMode: 'published',
+    changePolicy: { divisionKeyById: { 'div-uuid-1': 'U10' } },
+  });
+
+  const team = result.teamsByDivision.U10.find((t) => t.id === 'uuid-t1');
+  assert.ok(team, 'relational team mapped to the generator division key');
+  assert.ok(
+    team.players.some((p) => p.id === 'p1'),
+    'preserved player stays on the mapped team'
+  );
+  assert.equal(result.changeDiagnosticsByDivision.U10.latePlayersAssigned, 1);
+});
+
 test('an explicit auto policy with a snapshot falls back to fresh generation', () => {
   const players = makePlayers(['a', 'b', 'c', 'd']);
   const fresh = generateTeams({

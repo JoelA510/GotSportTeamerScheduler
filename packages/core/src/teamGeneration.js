@@ -28,10 +28,12 @@ import { reconcileTeamDeltas } from './teamDelta.js';
  * @param {any} [params.existingSnapshot=null] - Existing roster snapshot to preserve (see teamSnapshot.js).
  *   When null, generation is fully fresh and output is identical to previous releases.
  * @param {string} [params.generationMode='draft'] - 'draft' | 'review' | 'published' | 'locked'.
- * @param {{ teamCountPolicy?: string, allowOverCapAssignments?: boolean, lockManualAssignments?: boolean }} [params.changePolicy={}]
+ * @param {{ teamCountPolicy?: string, allowOverCapAssignments?: boolean, lockManualAssignments?: boolean, divisionKeyById?: Record<string, string> }} [params.changePolicy={}]
  *   - `teamCountPolicy`: 'auto' | 'preserve-existing' | 'preserve-or-expand' | 'preserve-with-overflow'.
  *     Defaults: no snapshot → 'auto'; snapshot + review/published/locked → 'preserve-existing';
  *     snapshot + draft → 'preserve-or-expand'.
+ *   - `divisionKeyById`: maps persisted division_id (UUID) → generator division key, required when
+ *     a relational snapshot's team rows carry only `division_id`.
  * @returns {{
  *   teamsByDivision: Record<string, Array<Team>>,
  *   overflowByDivision: Record<string, Array<{ players: Array<Player>, reason: string, metadata?: Object }>>,
@@ -145,21 +147,24 @@ export function generateTeams({
   for (const player of players) {
     PlayerSchema.parse(player);
 
-    const previousDivision = playerDivisions.get(player.id);
+    // Duplicate detection keys by the same normalized id used downstream (snapshot
+    // reconciliation, persistence), so ids that collide after coercion (e.g. 42 vs '42')
+    // are rejected instead of silently overwriting each other.
+    const idKey = String(player.id).trim();
+    const previousDivision = playerDivisions.get(idKey);
     if (previousDivision) {
       throw new Error(
         `duplicate player id detected: ${player.id} (divisions ${previousDivision} and ${player.division})`
       );
     }
-    playerDivisions.set(player.id, player.division);
+    playerDivisions.set(idKey, player.division);
 
     const clone = structuredClone(player);
     const bucket = playersByDivision.get(player.division) ?? [];
     bucket.push(clone);
     playersByDivision.set(player.division, bucket);
     if (playerCloneById) {
-      // Keyed by String(id).trim() to match the id coercion used by reconcileTeamDeltas.
-      playerCloneById.set(String(player.id).trim(), clone);
+      playerCloneById.set(idKey, clone);
     }
   }
 
@@ -289,6 +294,15 @@ export function generateTeams({
       throw new Error(`maxRosterSize for division ${division} must be positive`);
     }
 
+    // A division absent from the snapshot has nothing to preserve. Under 'preserve-or-expand'
+    // it runs with full fresh semantics so structural config (minTeams, teamCountOverride,
+    // coach pre-creation) is honored exactly as in fresh generation.
+    const divisionUsesFreshPath =
+      divisionIncremental != null &&
+      divisionIncremental.preservedTeams.length === 0 &&
+      teamCountPolicy === 'preserve-or-expand' &&
+      divisionPlayers.length > 0;
+
     const { teams, overflow, buddyDiagnostics, incrementalStats } = buildTeamsForDivision({
       division,
       players: divisionPlayers,
@@ -299,7 +313,7 @@ export function generateTeams({
       featureFlags,
       customWeights,
       globalStats,
-      incremental: divisionIncremental,
+      incremental: divisionUsesFreshPath ? null : divisionIncremental,
     });
 
     results[division] = teams.map((team) => ({
@@ -454,13 +468,23 @@ export function generateTeams({
           maxRosterSize,
         }));
 
+      // When the division fell back to the fresh path (nothing to preserve), synthesize the
+      // stats from the fresh outputs.
+      const overflowedPlayerCount = overflow.reduce((sum, entry) => sum + entry.players.length, 0);
+      const stats = incrementalStats ?? {
+        existingTeamsPreserved: 0,
+        newTeamsCreated: teams.length,
+        latePlayersAssigned: divisionPlayers.length - overflowedPlayerCount,
+        latePlayersOverflowed: overflowedPlayerCount,
+      };
+
       changeDiagnosticsByDivision[division] = {
         mode: generationMode,
         teamCountPolicy,
-        existingTeamsPreserved: incrementalStats?.existingTeamsPreserved ?? 0,
-        newTeamsCreated: incrementalStats?.newTeamsCreated ?? 0,
-        latePlayersAssigned: incrementalStats?.latePlayersAssigned ?? 0,
-        latePlayersOverflowed: incrementalStats?.latePlayersOverflowed ?? 0,
+        existingTeamsPreserved: stats.existingTeamsPreserved,
+        newTeamsCreated: stats.newTeamsCreated,
+        latePlayersAssigned: stats.latePlayersAssigned,
+        latePlayersOverflowed: stats.latePlayersOverflowed,
         droppedPlayersRemoved: (reconciliation.droppedPlayersByDivision[division] ?? []).length,
         manualAssignmentsPreserved,
         capacityViolations,
@@ -872,12 +896,6 @@ function buildTeamsForDivisionIncremental({
       continue;
     }
 
-    for (const acid of assistantCoachIds) {
-      if (!targetTeam.assistantCoachIds.includes(acid)) {
-        targetTeam.assistantCoachIds.push(acid);
-      }
-    }
-
     const assigned = assignUnitToTeam({
       unit,
       unitSkillTotal: skillTotal,
@@ -892,6 +910,15 @@ function buildTeamsForDivisionIncremental({
         reason: TEAM_GENERATION.REASON_CoachCapacity,
         metadata: { coachId },
       });
+      continue;
+    }
+
+    // Merge assistant metadata only AFTER successful placement so an overflowed late unit cannot
+    // mutate a preserved team's assistantCoachIds.
+    for (const acid of assistantCoachIds) {
+      if (!targetTeam.assistantCoachIds.includes(acid)) {
+        targetTeam.assistantCoachIds.push(acid);
+      }
     }
   }
 

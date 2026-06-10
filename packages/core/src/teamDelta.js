@@ -28,7 +28,7 @@ function addToBucket(bucket, key, value) {
  *   players?: Array<{ id: string, division?: string, coachId?: string, coach_id?: string, assistantCoachId?: string, assistant_coach_id?: string }>,
  *   existingSnapshot?: any,
  *   generationMode?: string,
- *   changePolicy?: { lockManualAssignments?: boolean },
+ *   changePolicy?: { lockManualAssignments?: boolean, divisionKeyById?: Record<string, string> },
  *   divisionConfigs?: Record<string, any>,
  * }} [args]
  * @returns {{
@@ -51,7 +51,11 @@ export function reconcileTeamDeltas({
 } = {}) {
   const incoming = Array.isArray(players) ? players : [];
   const policy = changePolicy ?? {};
-  const normalized = normalizeExistingSnapshot(existingSnapshot, { status: generationMode });
+  const normalized = normalizeExistingSnapshot(existingSnapshot, {
+    status: generationMode,
+    // Maps persisted division_id (UUID) → generator division key for relational snapshots.
+    divisionKeyById: policy.divisionKeyById,
+  });
   const index = indexTeamSnapshot(normalized);
   const mode = SNAPSHOT_STATUSES.includes(String(generationMode))
     ? String(generationMode)
