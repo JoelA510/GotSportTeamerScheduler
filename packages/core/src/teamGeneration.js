@@ -940,7 +940,7 @@ function buildTeamsForDivisionIncremental({
       const coachKey = String(coachId).trim();
       targetTeam =
         teams.find((team) => team.coachId != null && String(team.coachId).trim() === coachKey) ??
-        createTeam(coachId);
+        createTeam(coachKey);
     } else if (assistantCoachIds.length > 0) {
       // Backfill an existing team needing assistant coverage; a new unmanaged shell is created
       // only when the policy explicitly allows it. With neither, the unit places like a general
@@ -1010,7 +1010,10 @@ function buildTeamsForDivisionIncremental({
       }
     }
     if (!coachId && assistantCoachIds.length > 0 && preservedTeamIdSet.has(targetTeam.id)) {
-      assistantBackfills.push({ teamId: targetTeam.id, assistantCoachIds: [...assistantCoachIds] });
+      assistantBackfills.push({
+        teamId: targetTeam.id,
+        assistantCoachIds: assistantCoachIds.map((id) => String(id).trim()),
+      });
     }
   }
 
@@ -1105,16 +1108,16 @@ function buildTeamsForDivisionIncremental({
       assignmentUnit.assistantCoachIds &&
       assignmentUnit.assistantCoachIds.length > 0
     ) {
-      for (const acid of assignmentUnit.assistantCoachIds) {
-        if (!team.assistantCoachIds.includes(acid)) {
+      const cleanAssistantIds = assignmentUnit.assistantCoachIds.map((id) => String(id).trim());
+      const existingAssistantIds = team.assistantCoachIds.map((id) => String(id).trim());
+      for (const acid of cleanAssistantIds) {
+        if (!existingAssistantIds.includes(acid)) {
           team.assistantCoachIds.push(acid);
+          existingAssistantIds.push(acid);
         }
       }
       if (preservedTeamIdSet.has(team.id)) {
-        assistantBackfills.push({
-          teamId: team.id,
-          assistantCoachIds: [...assignmentUnit.assistantCoachIds],
-        });
+        assistantBackfills.push({ teamId: team.id, assistantCoachIds: cleanAssistantIds });
       }
     }
   }
@@ -1240,11 +1243,13 @@ function findAssistantBackfillTeam({
   const eligible = teams.filter(
     (team) => !(excludeLocked && team.locked) && team.players.length + unitSize <= maxRosterSize
   );
+  // Canonical comparison so numeric / padded assistant ids still match.
+  const canonicalAssistantIds = assistantCoachIds.map((id) => String(id).trim());
   return (
     eligible.find(
       (team) =>
         team.assistantCoachIds &&
-        team.assistantCoachIds.some((id) => assistantCoachIds.includes(id))
+        team.assistantCoachIds.some((id) => canonicalAssistantIds.includes(String(id).trim()))
     ) ??
     eligible.find(
       (team) => team.coachId && (!team.assistantCoachIds || team.assistantCoachIds.length === 0)
