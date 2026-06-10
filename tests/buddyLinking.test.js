@@ -143,6 +143,37 @@ test('normalizeBuddyLinks still pairs via code when one partner self-references'
   assert.equal(result[1].buddyId, 'a');
 });
 
+test('normalizeBuddyLinks groups buddy codes case-insensitively', () => {
+  const { players: result } = normalizeBuddyLinks([
+    { id: 'a', division: 'U10', mutual_buddy_code: 'FamilyA' },
+    { id: 'b', division: 'U10', mutual_buddy_code: 'familya' },
+  ]);
+  assert.equal(result[0].buddyId, 'b');
+  assert.equal(result[1].buddyId, 'a');
+});
+
+test('normalizeBuddyLinks resolves buddy_request via external registration ids', () => {
+  const { players: result, diagnostics } = normalizeBuddyLinks([
+    { id: 'a', division: 'U10', external_registration_id: 'GS-A', buddy_request: 'GS-B' },
+    { id: 'b', division: 'U10', external_registration_id: 'GS-B', buddy_request: 'GS-A' },
+    { id: 'c', division: 'U10', buddy_request: 'GS-GHOST' },
+  ]);
+  assert.equal(result[0].buddyId, 'b');
+  assert.equal(result[1].buddyId, 'a');
+  assert.equal(result[2].buddyId, undefined);
+  assert.ok(
+    diagnostics.some((d) => d.code === 'missing-buddy-target' && d.message.includes('GS-GHOST'))
+  );
+});
+
+test('normalizeBuddyLinks stores the trimmed canonical value over a padded raw buddyId', () => {
+  const { players: result } = normalizeBuddyLinks([
+    { id: 'a', division: 'U10', buddyId: ' b ' },
+    { id: 'b', division: 'U10', buddyId: 'a' },
+  ]);
+  assert.equal(result[0].buddyId, 'b', 'padded reference is canonicalized for strict matching');
+});
+
 test('normalizeBuddyLinks does not mutate its input', () => {
   const players = [
     { id: 'a', division: 'U10', mutual_buddy_code: 'P' },

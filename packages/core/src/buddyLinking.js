@@ -43,10 +43,28 @@ export function getCanonicalBuddyId(player) {
   return coerceId(player.buddyId) ?? coerceId(player.buddy_id);
 }
 
-/** Read a player's buddy code across naming variants. */
+/** Read a player's buddy code across naming variants (display form, original case). */
 function getBuddyCode(player) {
   if (!player) return undefined;
   const raw = player.mutualBuddyCode ?? player.mutual_buddy_code;
+  if (raw === undefined || raw === null) return undefined;
+  const str = String(raw).trim();
+  return str === '' ? undefined : str;
+}
+
+/** Read a player's external buddy request (an EXTERNAL registration key, not a player id). */
+function getBuddyRequestKey(player) {
+  if (!player) return undefined;
+  const raw = player.buddy_request ?? player.buddyRequest;
+  if (raw === undefined || raw === null) return undefined;
+  const str = String(raw).trim();
+  return str === '' ? undefined : str;
+}
+
+/** Read a player's external registration key across naming variants. */
+function getExternalKey(player) {
+  if (!player) return undefined;
+  const raw = player.external_registration_id ?? player.externalRegistrationId;
   if (raw === undefined || raw === null) return undefined;
   const str = String(raw).trim();
   return str === '' ? undefined : str;
@@ -69,19 +87,32 @@ export function normalizeBuddyLinks(players) {
     if (id && !byId.has(id)) byId.set(id, player);
   }
 
+  // External-key lookup so a `buddy_request` (an external registration key) can resolve to a
+  // player id when the roster carries external_registration_id.
+  const playerIdByExternalKey = new Map();
+  for (const player of list) {
+    const key = getExternalKey(player);
+    const id = coerceId(player?.id);
+    if (key && id && !playerIdByExternalKey.has(key)) {
+      playerIdByExternalKey.set(key, id);
+    }
+  }
+
   // Resolve shared buddy codes → reciprocal id links (exactly two players, same division).
-  /** @type {Map<string, any[]>} */
+  // Codes group case-insensitively, mirroring the import materialization.
+  /** @type {Map<string, { code: string, members: any[] }>} */
   const codeGroups = new Map();
   for (const player of list) {
     const code = getBuddyCode(player);
     if (!code) continue;
-    if (!codeGroups.has(code)) codeGroups.set(code, []);
-    codeGroups.get(code).push(player);
+    const key = code.toLowerCase();
+    if (!codeGroups.has(key)) codeGroups.set(key, { code, members: [] });
+    codeGroups.get(key).members.push(player);
   }
 
   /** @type {Map<string, string>} codeBuddyByPlayerId */
   const codeBuddyByPlayerId = new Map();
-  for (const [code, group] of codeGroups) {
+  for (const { code, members: group } of codeGroups.values()) {
     const ids = group.map((player) => coerceId(player.id)).filter(Boolean);
     if (group.length === 1) {
       diagnostics.push({
@@ -126,10 +157,14 @@ export function normalizeBuddyLinks(players) {
     }
   }
 
-  // A player's usable direct reference (self-references can never link).
+  // A player's usable direct reference (self-references can never link). An external
+  // buddy_request key resolves through the roster's external registration ids.
   const resolvedDirect = (p) => {
     const d = getCanonicalBuddyId(p);
-    return d !== undefined && d !== coerceId(p?.id) ? d : undefined;
+    if (d !== undefined && d !== coerceId(p?.id)) return d;
+    const requestKey = getBuddyRequestKey(p);
+    const viaRequest = requestKey ? playerIdByExternalKey.get(requestKey) : undefined;
+    return viaRequest !== undefined && viaRequest !== coerceId(p?.id) ? viaRequest : undefined;
   };
 
   // Canonicalize per player: explicit reference first, then code resolution. A code link is
@@ -156,6 +191,20 @@ export function normalizeBuddyLinks(players) {
             playerIds: [id, codeBuddy],
           });
         }
+      }
+    }
+
+    // An external buddy_request that matches no roster player is a lost request — diagnose it
+    // (unless an explicit reference or code link already resolved the player).
+    if (buddyId === undefined && direct === undefined && id) {
+      const requestKey = getBuddyRequestKey(player);
+      if (requestKey && !playerIdByExternalKey.has(requestKey)) {
+        diagnostics.push({
+          code: 'missing-buddy-target',
+          severity: 'warning',
+          message: `player ${id} requested buddy by external key "${requestKey}" which matches no player`,
+          playerIds: [id],
+        });
       }
     }
 
@@ -198,7 +247,14 @@ export function normalizeBuddyLinks(players) {
       }
     }
 
-    if (buddyId !== undefined && buddyId !== coerceId(player.buddyId)) {
+    // Store the canonical value when it differs from the raw field, so downstream strict
+    // comparisons (unit building, conflict detection) see the trimmed/canonical id. Non-string
+    // raw values that already coerce to the canonical form are left as-is (numeric-id rosters
+    // match by raw value downstream).
+    const raw = player?.buddyId;
+    const rawMatchesCanonical =
+      typeof raw === 'string' ? raw === buddyId : coerceId(raw) === buddyId;
+    if (buddyId !== undefined && !rawMatchesCanonical) {
       return { ...player, buddyId };
     }
     return player;

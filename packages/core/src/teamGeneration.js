@@ -323,6 +323,9 @@ export function generateTeams({
       division: team.division,
       coachId: team.coachId,
       coachNeeded: !team.coachId,
+      // Round-trips the snapshot team lock so persistence does not silently drop it
+      // (always false in fresh generation).
+      locked: Boolean(team.locked),
       assistantCoachIds: team.assistantCoachIds ? [...team.assistantCoachIds] : [],
       skillTotal: team.skillTotal,
       players: team.players.map((player) => structuredClone(player)),
