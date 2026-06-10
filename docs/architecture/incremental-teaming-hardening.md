@@ -364,6 +364,52 @@ are also emitted per division.
 
 ---
 
+## 6f. Implemented in PR 07 — change diagnostics & summaries (final shape)
+
+`changeDiagnosticsByDivision[division]` is now the complete, **UI-stable** structure (no string
+parsing required; ids and counts only — no extra PII). Emitted only in incremental mode; fresh
+generation omits the key entirely.
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `mode` | string | `generationMode` of the run (`draft`/`review`/`published`/`locked`). |
+| `teamCountPolicy` | string | Effective policy after defaulting. |
+| `existingTeamsPreserved` | number | Snapshot shells carried into the output. |
+| `newTeamsCreated` | number | Teams created this run (expansion or fresh-fallback divisions). |
+| `teamCountChangeBlocked` | boolean | At least one roster-cap-fittable unit overflowed for capacity while team creation was unavailable (policy forbids it, or `maxTeams` reached). Units larger than `maxRosterSize` never count — no team could seat them. |
+| `lockedAssignmentsPreserved` | number | Preserved players whose assignment is locked (per-player lock, or manual in review/published/locked). |
+| `manualAssignmentsPreserved` | number | Preserved players with `assignment_source: 'manual'`. |
+| `latePlayersAssigned` / `latePlayersOverflowed` | number | Late registrations placed vs overflowed. |
+| `droppedPlayersRemoved` | number | Snapshot players no longer registered (removed from rosters; shells kept). |
+| `buddyTargetAssignments` | `[{playerId, buddyId, teamId}]` | Late players routed onto their buddy's preserved team. |
+| `assistantBackfills` | `[{teamId, assistantCoachIds}]` | Assistant-only units backfilled onto preserved teams. |
+| `coachDrops` | `[{teamId, coachId}]` | Head coaches no longer referenced by any incoming player. |
+| `coachReplacements` | `[{teamId, fromCoachId, toCoachId}]` | Applied replacements/attachments (`fromCoachId: null` = late-coach attach). |
+| `manualReview` | `[{code, teamId, message, candidateCoachIds?}]` | Ambiguities requiring an admin decision — distinguishable from hard errors. |
+| `capacityViolations` | `[{teamId, playerCount, maxRosterSize}]` | Final rosters above cap (pre-existing or `allowOverCapAssignments`). |
+| `minRosterWarnings` | `string[]` (team ids) | Teams below `minRosterSize` (warning — preserved teams are never collapsed). |
+| `structuralWarnings` | `string[]` | e.g. snapshot-only division with no division config. |
+
+**Overflow reason codes** (`overflowByDivision[].reason`, machine-readable kebab-case):
+`insufficient-capacity`, `coach-capacity`, `buddy-target-capacity`, `buddy-target-locked`.
+
+**Manual-review codes**: `ambiguous-coach-replacement`, `coach-replacement-candidate`,
+`coach-replacement-target-anchored`, `ambiguous-coach-attachment`,
+`coach-candidates-anchored-elsewhere`.
+
+**Summaries**: `summarizeTeamGeneration(result)` now attaches each division's change diagnostics
+as `divisions[i].changes` and adds incremental totals (`latePlayersAssigned`,
+`latePlayersOverflowed`, `droppedPlayersRemoved`, `manualReviewCount`) — both only when the
+result came from an incremental run; the fresh-generation summary shape is unchanged.
+
+**Admin interpretation example**: after a published-mode rerun, `existingTeamsPreserved: 3,
+newTeamsCreated: 0, latePlayersAssigned: 2, latePlayersOverflowed: 1, teamCountChangeBlocked: true`
+reads as "your three teams are intact, two late players were seated, one could not fit anywhere —
+either raise `maxRosterSize`, allow expansion (draft mode / `preserve-or-expand`), or place them
+manually"; anything in `manualReview` is a decision the engine deliberately refused to make.
+
+---
+
 ## 7. PR sequence
 
 | PR  | Title                                       | New modules (core)                        | Touches `generateTeams`? |

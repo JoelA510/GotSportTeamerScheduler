@@ -32,6 +32,8 @@ const EMPTY_ROSTER_BALANCE = {
  * @param {Record<string, Object>} result.coachCoverageByDivision
  * @param {Record<string, Object>} result.rosterBalanceByDivision
  * @param {Record<string, Object>} [result.overflowSummaryByDivision]
+ * @param {Record<string, Object> | null} [result.changeDiagnosticsByDivision] - Present only for
+ *   snapshot-aware (incremental) runs.
  * @returns {{
  *   divisions: Array<{
  *     divisionId: string,
@@ -50,6 +52,7 @@ const EMPTY_ROSTER_BALANCE = {
  *     overflowPlayers: number,
  *     overflowByReason: Record<string, number>,
  *     overflowPlayersByReason: Record<string, number>,
+ *     changes?: Record<string, any>,
  *   }>,
  *   totals: {
  *     divisions: number,
@@ -58,6 +61,10 @@ const EMPTY_ROSTER_BALANCE = {
  *     overflowPlayers: number,
  *     divisionsNeedingCoaches: number,
  *     divisionsWithOpenRosterSlots: number,
+ *     latePlayersAssigned?: number,
+ *     latePlayersOverflowed?: number,
+ *     droppedPlayersRemoved?: number,
+ *     manualReviewCount?: number,
  *   },
  * }}
  */
@@ -73,6 +80,7 @@ export function summarizeTeamGeneration(result) {
     coachCoverageByDivision,
     rosterBalanceByDivision,
     overflowSummaryByDivision = {},
+    changeDiagnosticsByDivision = null,
   } = result;
 
   validateRecord(teamsByDivision, 'teamsByDivision');
@@ -81,6 +89,9 @@ export function summarizeTeamGeneration(result) {
   validateRecord(coachCoverageByDivision, 'coachCoverageByDivision');
   validateRecord(rosterBalanceByDivision, 'rosterBalanceByDivision');
   validateRecord(overflowSummaryByDivision, 'overflowSummaryByDivision');
+  if (changeDiagnosticsByDivision != null) {
+    validateRecord(changeDiagnosticsByDivision, 'changeDiagnosticsByDivision');
+  }
 
   const divisionIds = collectDivisionIds({
     teamsByDivision,
@@ -98,6 +109,16 @@ export function summarizeTeamGeneration(result) {
     overflowPlayers: 0,
     divisionsNeedingCoaches: 0,
     divisionsWithOpenRosterSlots: 0,
+    // Incremental-only rollups: present only for snapshot-aware runs so the fresh-generation
+    // summary shape stays identical (and the object shape stays stable — no `delete`).
+    ...(changeDiagnosticsByDivision
+      ? {
+          latePlayersAssigned: 0,
+          latePlayersOverflowed: 0,
+          droppedPlayersRemoved: 0,
+          manualReviewCount: 0,
+        }
+      : {}),
   };
 
   for (const divisionId of divisionIds) {
@@ -145,6 +166,18 @@ export function summarizeTeamGeneration(result) {
       overflowByReason: overflowRollup.byReason,
       overflowPlayersByReason: overflowRollup.playersByReason,
     };
+
+    // Snapshot-aware runs (PR 04–07) attach per-division change diagnostics; surface them
+    // alongside the classic summary. Absent for fresh generation — key omitted entirely so
+    // existing consumers are unaffected.
+    const changeDiagnostics = changeDiagnosticsByDivision?.[divisionId];
+    if (changeDiagnostics) {
+      divisionSummary.changes = changeDiagnostics;
+      totals.latePlayersAssigned += changeDiagnostics.latePlayersAssigned ?? 0;
+      totals.latePlayersOverflowed += changeDiagnostics.latePlayersOverflowed ?? 0;
+      totals.droppedPlayersRemoved += changeDiagnostics.droppedPlayersRemoved ?? 0;
+      totals.manualReviewCount += changeDiagnostics.manualReview?.length ?? 0;
+    }
 
     divisions.push(divisionSummary);
 
