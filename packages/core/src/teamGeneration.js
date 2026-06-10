@@ -519,10 +519,14 @@ export function generateTeams({
         overflow.some((entry) => entry.reason === TEAM_GENERATION.REASON_InsufficientCapacity);
       // Preserved players whose assignment is locked (per-player lock, or manual assignments
       // in review/published/locked modes).
-      const lockedAssignmentsPreserved = preservedTeamsInput.reduce(
-        (sum, team) => sum + team.players.filter((player) => player.locked === true).length,
-        0
-      );
+      let lockedAssignmentsPreserved = 0;
+      for (const team of preservedTeamsInput) {
+        for (const player of team.players) {
+          if (player.locked === true) {
+            lockedAssignmentsPreserved += 1;
+          }
+        }
+      }
 
       changeDiagnosticsByDivision[division] = {
         mode: generationMode,

@@ -89,6 +89,9 @@ export function summarizeTeamGeneration(result) {
   validateRecord(coachCoverageByDivision, 'coachCoverageByDivision');
   validateRecord(rosterBalanceByDivision, 'rosterBalanceByDivision');
   validateRecord(overflowSummaryByDivision, 'overflowSummaryByDivision');
+  if (changeDiagnosticsByDivision != null) {
+    validateRecord(changeDiagnosticsByDivision, 'changeDiagnosticsByDivision');
+  }
 
   const divisionIds = collectDivisionIds({
     teamsByDivision,
@@ -106,11 +109,16 @@ export function summarizeTeamGeneration(result) {
     overflowPlayers: 0,
     divisionsNeedingCoaches: 0,
     divisionsWithOpenRosterSlots: 0,
-    // Incremental-only rollups (removed for fresh generation below).
-    latePlayersAssigned: 0,
-    latePlayersOverflowed: 0,
-    droppedPlayersRemoved: 0,
-    manualReviewCount: 0,
+    // Incremental-only rollups: present only for snapshot-aware runs so the fresh-generation
+    // summary shape stays identical (and the object shape stays stable — no `delete`).
+    ...(changeDiagnosticsByDivision
+      ? {
+          latePlayersAssigned: 0,
+          latePlayersOverflowed: 0,
+          droppedPlayersRemoved: 0,
+          manualReviewCount: 0,
+        }
+      : {}),
   };
 
   for (const divisionId of divisionIds) {
@@ -186,14 +194,6 @@ export function summarizeTeamGeneration(result) {
   }
 
   divisions.sort((a, b) => a.divisionId.localeCompare(b.divisionId));
-
-  if (!changeDiagnosticsByDivision) {
-    // Fresh generation: keep the historical totals shape exactly.
-    delete totals.latePlayersAssigned;
-    delete totals.latePlayersOverflowed;
-    delete totals.droppedPlayersRemoved;
-    delete totals.manualReviewCount;
-  }
 
   return { divisions, totals };
 }
