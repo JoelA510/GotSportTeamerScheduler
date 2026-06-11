@@ -647,7 +647,24 @@ const getDB = () => {
       db = mergeSource(db, window.__MOCK_DB__);
     }
   }
+  // mergeSource only adds/updates, so seed rows deleted by an RPC would
+  // resurrect on the next read. Tombstones recorded via markMockDeleted
+  // keep hard deletes durable across re-merges.
+  const tombstones = db.__deleted__ || {};
+  for (const [table, ids] of Object.entries(tombstones)) {
+    if (Array.isArray(db[table]) && Array.isArray(ids) && ids.length > 0) {
+      const removed = new Set(ids.map(String));
+      db[table] = db[table].filter((row) => !removed.has(String(row.id)));
+    }
+  }
   return db;
+};
+
+// Record hard deletes so getDB's seed re-merge cannot resurrect the rows.
+const markMockDeleted = (db, table, ids) => {
+  db.__deleted__ = db.__deleted__ || {};
+  const existing = db.__deleted__[table] || [];
+  db.__deleted__[table] = Array.from(new Set([...existing, ...ids.map(String)]));
 };
 
 const saveDB = (db) => {
@@ -2676,6 +2693,7 @@ export const mockSupabase = {
       db.team_players = (db.team_players || []).filter(
         (row) => !ids.includes(String(row.player_id))
       );
+      markMockDeleted(db, 'players', ids);
       const count = before - db.players.length;
       db.audit_log = db.audit_log || [];
       db.audit_log.push({
@@ -4115,6 +4133,84 @@ export const mockSupabase = {
         },
         error: null,
       };
+    }
+
+    if (name === 'admin_delete_coaches') {
+      const { p_coach_ids } = params || {};
+      const ids = (p_coach_ids || []).map(String);
+      if (ids.length === 0) {
+        return { data: null, error: { message: 'p_coach_ids must be a non-empty array' } };
+      }
+
+      const session =
+        typeof window !== 'undefined'
+          ? JSON.parse(sessionStorage.getItem('__MOCK_SESSION__') || 'null')
+          : null;
+      const targets = (db.coaches || []).filter((coach) => ids.includes(String(coach.id)));
+      const orgIds = new Set(targets.map((coach) => String(coach.organization_id)));
+      if (orgIds.size !== 1) {
+        return {
+          data: null,
+          error: { message: 'coaches must belong to exactly one organization' },
+        };
+      }
+      const orgId = [...orgIds][0];
+      const member = (db.organization_members || []).find(
+        (item) =>
+          String(item.organization_id) === orgId &&
+          String(item.profile_id) === String(session?.user?.id)
+      );
+      if (!['admin', 'tenant_admin'].includes(String(member?.role || ''))) {
+        return { data: null, error: { message: 'Access denied: admin role required' } };
+      }
+
+      for (const team of db.teams || []) {
+        if (ids.includes(String(team.coach_id))) team.coach_id = null;
+        if (Array.isArray(team.assistant_coach_ids)) {
+          team.assistant_coach_ids = team.assistant_coach_ids.filter(
+            (coachId) => !ids.includes(String(coachId))
+          );
+        }
+      }
+      const droppedInterests = (db.coach_interested_programs || []).filter((row) =>
+        ids.includes(String(row.coach_id))
+      );
+      db.coach_interested_programs = (db.coach_interested_programs || []).filter(
+        (row) => !ids.includes(String(row.coach_id))
+      );
+      const droppedRequests = (db.coach_team_requests || []).filter((row) =>
+        ids.includes(String(row.coach_id))
+      );
+      db.coach_team_requests = (db.coach_team_requests || []).filter(
+        (row) => !ids.includes(String(row.coach_id))
+      );
+      const before = (db.coaches || []).length;
+      db.coaches = (db.coaches || []).filter((coach) => !ids.includes(String(coach.id)));
+      const count = before - db.coaches.length;
+      markMockDeleted(db, 'coaches', ids);
+      markMockDeleted(
+        db,
+        'coach_interested_programs',
+        droppedInterests.map((row) => row.id).filter(Boolean)
+      );
+      markMockDeleted(
+        db,
+        'coach_team_requests',
+        droppedRequests.map((row) => row.id).filter(Boolean)
+      );
+
+      db.audit_log = db.audit_log || [];
+      db.audit_log.push({
+        id: mockId(),
+        organization_id: orgId,
+        user_id: session?.user?.id,
+        action: 'coach.deleted',
+        resource_type: 'coach',
+        metadata: { coach_count: count, coach_ids: ids },
+        created_at: new Date().toISOString(),
+      });
+      saveDB(db);
+      return { data: count, error: null };
     }
 
     if (name === 'admin_update_coach_status') {
