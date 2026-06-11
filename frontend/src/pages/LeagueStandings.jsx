@@ -57,8 +57,8 @@ export default function LeagueStandings() {
              start_time,
              score_home,
              score_away,
-             home_team:home_team_id (id, name, division),
-             away_team:away_team_id (id, name, division)
+             home_team:home_team_id (id, name, division:divisions (name)),
+             away_team:away_team_id (id, name, division:divisions (name))
           `
           )
           .eq('organization_id', currentOrganization.id)
@@ -246,7 +246,7 @@ export default function LeagueStandings() {
             >
               <div className="text-xs text-text-muted text-center border-b border-border-subtle pb-2 mb-2">
                 {new Date(game.start_time).toLocaleDateString()} •{' '}
-                {displayDivision(game.home_team?.division)}
+                {displayDivision(game.home_team?.division?.name || game.home_team?.division)}
               </div>
               <div className="flex justify-between items-center">
                 <span className="font-semibold text-text-primary truncate w-1/3 text-right">

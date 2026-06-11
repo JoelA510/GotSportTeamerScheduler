@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabaseClient.js';
 import { useOrganization } from '../contexts/OrganizationContext.jsx';
 import { logger } from '../lib/logger.js';
+import { REFRESH_TOPICS, emitRefresh } from '../lib/refreshBus.js';
 
 /**
  * Players-grid data layer: org-scoped players + divisions, with optimistic
@@ -84,6 +85,7 @@ export function usePlayersData() {
         });
         if (rpcError) throw rpcError;
         if (data) setPlayers((current) => [...current, data]);
+        emitRefresh(REFRESH_TOPICS.NAV_BADGES);
         return { success: true, player: data };
       } catch (err) {
         logger.error('[usePlayersData] create failed:', err);
@@ -104,6 +106,7 @@ export function usePlayersData() {
         p_player_ids: playerIds,
       });
       if (rpcError) throw rpcError;
+      emitRefresh(REFRESH_TOPICS.NAV_BADGES);
       return { success: true };
     } catch (err) {
       logger.error('[usePlayersData] delete failed:', err);

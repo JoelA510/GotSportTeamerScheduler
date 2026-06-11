@@ -5,6 +5,7 @@ import { ArrowDown, ArrowUp, MoreHorizontal, Plus, Search, X } from 'lucide-reac
 import Dropdown from '../ui/Dropdown.jsx';
 import Button from '../ui/Button.jsx';
 import GridCell from './GridCell.jsx';
+import GridCheckbox from './GridCheckbox.jsx';
 import { useGridSelection } from './useGridSelection.js';
 import { useGridKeyboard } from './useGridKeyboard.js';
 
@@ -13,45 +14,6 @@ const DENSE_ROW_HEIGHT = 32;
 // Virtualization only kicks in past this row count; small tables render
 // plainly so unit tests and short lists keep natural semantics.
 const VIRTUALIZE_THRESHOLD = 60;
-
-function GridCheckbox({ checked, mixed = false, onChange, label }) {
-  return (
-    <button
-      type="button"
-      role="checkbox"
-      aria-checked={mixed ? 'mixed' : checked}
-      aria-label={label}
-      className={`cbx ${checked || mixed ? 'on' : ''}`.trim()}
-      onClick={(event) => {
-        event.stopPropagation();
-        onChange();
-      }}
-    >
-      {(checked || mixed) && (
-        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-          {mixed && !checked ? (
-            <path d="M5 12h14" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" />
-          ) : (
-            <path
-              d="M20 6L9 17l-5-5"
-              stroke="currentColor"
-              strokeWidth="3.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          )}
-        </svg>
-      )}
-    </button>
-  );
-}
-
-GridCheckbox.propTypes = {
-  checked: PropTypes.bool.isRequired,
-  mixed: PropTypes.bool,
-  onChange: PropTypes.func.isRequired,
-  label: PropTypes.string,
-};
 
 /**
  * Excel-grade editable data grid (Lightning-class).

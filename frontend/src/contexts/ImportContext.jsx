@@ -10,6 +10,7 @@ import React, {
 import { supabase } from '../lib/supabaseClient.js';
 import { z } from 'zod';
 import { logger } from '../lib/logger.js';
+import { REFRESH_TOPICS, emitRefresh } from '../lib/refreshBus.js';
 import { withTimeout } from '../lib/withTimeout.js';
 import { useOrganization } from './OrganizationContext.jsx';
 import { matchHeaders, SYSTEM_COLUMNS } from '../utils/telemetryUtils.js';
@@ -849,6 +850,8 @@ export function ImportProvider({ children }) {
                 addLog(
                   `Roster database updated: ${finalizeResult?.inserted_players ?? 0} inserted, ${finalizeResult?.updated_players ?? 0} updated.`
                 );
+                // Imports change the roster size; nudge the nav count badges.
+                emitRefresh(REFRESH_TOPICS.NAV_BADGES);
 
                 const buddyPairSummary = await materializeBuddyPairsForImport({
                   importJobId: job.id,

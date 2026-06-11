@@ -1,22 +1,22 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  CheckCircle2,
-  Mail,
-  Phone,
-  RefreshCw,
-  Search,
-  ShieldCheck,
-  UserMinus,
-  UserRoundCheck,
-  Users,
-} from 'lucide-react';
+import { CheckCircle2, Clock, ShieldCheck, UserMinus, UserRoundCheck, Users } from 'lucide-react';
+import Page from '../components/chrome/Page.jsx';
+import PageHeader from '../components/chrome/PageHeader.jsx';
+import DataGrid from '../components/grid/DataGrid.jsx';
+import Button from '../components/ui/Button.jsx';
+import Badge from '../components/ui/Badge.jsx';
+import Modal from '../components/ui/Modal.jsx';
+import { useToast } from '../components/ui/ToastHost.jsx';
+import LoadingScreen from '../components/LoadingScreen.jsx';
 import { supabase } from '../lib/supabaseClient.js';
 import { useOrganization } from '../contexts/OrganizationContext.jsx';
 import { usePermission } from '../hooks/usePermission.js';
+import { useFeatures } from '../hooks/useFeatures.js';
+import { divisionDisplayName } from '../utils/divisions.js';
 import { logger } from '../lib/logger.js';
 
 const STATUS_FILTERS = [
-  { id: 'all', label: 'All' },
+  { id: 'all', label: 'All statuses' },
   { id: 'registered', label: 'Registered' },
   { id: 'interested', label: 'Interested' },
   { id: 'inactive', label: 'Inactive' },
@@ -30,17 +30,17 @@ const STATUS_LABELS = {
 };
 
 const STATUS_OPTIONS = [
-  { id: 'active', label: 'Registered' },
-  { id: 'pending-confirmation', label: 'Pending' },
-  { id: 'interested', label: 'Interested' },
-  { id: 'inactive', label: 'Inactive' },
+  { value: 'active', label: 'Registered' },
+  { value: 'pending-confirmation', label: 'Pending' },
+  { value: 'interested', label: 'Interested' },
+  { value: 'inactive', label: 'Inactive' },
 ];
 
-const STATUS_STYLES = {
-  active: 'border-status-success/30 bg-status-success-bg text-status-success',
-  'pending-confirmation': 'border-status-warning/30 bg-status-warning-bg text-status-warning',
-  interested: 'border-brand-400/30 bg-brand-glow text-brand-400',
-  inactive: 'border-border-highlight bg-bg-surface text-text-muted',
+const STATUS_TONE = {
+  active: 'success',
+  'pending-confirmation': 'warning',
+  interested: 'info',
+  inactive: 'neutral',
 };
 
 function normalizeSearch(value) {
@@ -209,38 +209,34 @@ export function canSetCoachStatus(coach, status) {
   return !(['inactive', 'interested'].includes(status) && (coach?.teams || []).length > 0);
 }
 
-function CoachStat({ icon: Icon, label, value }) {
-  return (
-    <div className="bg-bg-surface border border-border-highlight rounded-lg p-4">
-      <div className="flex items-center gap-2 text-xs font-semibold uppercase text-text-muted">
-        <Icon size={15} />
-        {label}
-      </div>
-      <div className="mt-2 text-3xl font-bold text-text-primary">{value}</div>
-    </div>
+/**
+ * Plans a bulk status change over the selected coach rows: rows already in
+ * the target status are no-ops, and rows the status rules forbid (e.g.
+ * benching a coach who still has teams) are skipped rather than failed.
+ */
+export function planBulkCoachStatus(rows = [], selectedIds = new Set(), nextStatus) {
+  const selected = rows.filter((row) => selectedIds.has(row.id));
+  const eligible = selected.filter(
+    (row) => row.status !== nextStatus && canSetCoachStatus(row, nextStatus)
   );
+  return { eligible, skipped: selected.length - eligible.length };
 }
 
-function StatusBadge({ status, label }) {
-  const className = STATUS_STYLES[status] || STATUS_STYLES.inactive;
-  return (
-    <span
-      className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold ${className}`}
-    >
-      {label}
-    </span>
-  );
-}
-
+/**
+ * Coaches roster — same Lightning-class grid UI as the Players view, with
+ * coach-specific metrics in the header (registered / interested /
+ * unassigned). Status edits and team assignments flow through the audited
+ * admin RPCs; selection enables bulk status changes.
+ */
 export default function CoachesPage() {
   const { currentOrganization } = useOrganization();
   const { can, PERMISSIONS } = usePermission();
+  const { genderModel } = useFeatures();
+  const toast = useToast();
   const latestRequestRef = useRef(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [mutationMessage, setMutationMessage] = useState(null);
-  const [pendingAction, setPendingAction] = useState(null);
-  const [selectedTeamByCoach, setSelectedTeamByCoach] = useState({});
+  const [busy, setBusy] = useState(false);
   const [coaches, setCoaches] = useState([]);
   const [interestedPrograms, setInterestedPrograms] = useState([]);
   const [divisions, setDivisions] = useState([]);
@@ -249,7 +245,9 @@ export default function CoachesPage() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [divisionFilter, setDivisionFilter] = useState('all');
   const [search, setSearch] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [selected, setSelected] = useState(() => new Set());
+  const [manageCoachId, setManageCoachId] = useState(null);
+  const [assignTeamId, setAssignTeamId] = useState('');
   const canManageCoaches = can(PERMISSIONS.MANAGE_ORGANIZATION);
 
   const loadCoaches = useCallback(async () => {
@@ -266,7 +264,6 @@ export default function CoachesPage() {
       return;
     }
 
-    setLoading(true);
     setError(null);
 
     try {
@@ -322,11 +319,9 @@ export default function CoachesPage() {
       setDivisions(divisionResult.data || []);
       setPlayers(playerResult.data || []);
       setTeams(teamResult.data || []);
-      setSelectedTeamByCoach((previous) => {
-        const validTeamIds = new Set((teamResult.data || []).map((team) => String(team.id)));
-        return Object.fromEntries(
-          Object.entries(previous).filter(([, teamId]) => validTeamIds.has(String(teamId)))
-        );
+      setSelected((previous) => {
+        const validIds = new Set((coachResult.data || []).map((coach) => String(coach.id)));
+        return new Set([...previous].filter((id) => validIds.has(String(id))));
       });
     } catch (err) {
       if (latestRequestRef.current !== requestId) return;
@@ -340,427 +335,438 @@ export default function CoachesPage() {
   }, [currentOrganization?.id]);
 
   useEffect(() => {
+    setLoading(true);
     loadCoaches();
   }, [loadCoaches]);
 
   useEffect(() => {
-    const timeoutId = setTimeout(() => setDebouncedSearch(search), 200);
-    return () => clearTimeout(timeoutId);
-  }, [search]);
-
-  useEffect(() => {
-    setMutationMessage(null);
-    setSelectedTeamByCoach({});
+    setSelected(new Set());
+    setManageCoachId(null);
   }, [currentOrganization?.id]);
 
-  const rows = useMemo(
+  const allRows = useMemo(
     () => buildCoachReviewRows({ coaches, interestedPrograms, divisions, players, teams }),
     [coaches, interestedPrograms, divisions, players, teams]
   );
-  const summary = useMemo(() => summarizeCoachRows(rows), [rows]);
+  const summary = useMemo(() => summarizeCoachRows(allRows), [allRows]);
   const teamAssignmentOptions = useMemo(
     () => buildTeamAssignmentOptions({ teams, divisions }),
     [teams, divisions]
   );
-  const filteredRows = useMemo(
+
+  // Toolbar filters narrow the grid rows; text search is the grid's own.
+  const rows = useMemo(
     () =>
-      filterCoachReviewRows(rows, {
-        status: statusFilter,
-        divisionId: divisionFilter,
-        search: debouncedSearch,
-      }),
-    [rows, statusFilter, divisionFilter, debouncedSearch]
+      filterCoachReviewRows(allRows, { status: statusFilter, divisionId: divisionFilter }).map(
+        (row) => ({
+          ...row,
+          _programs: row.programNames
+            .map((name) => divisionDisplayName(name, genderModel))
+            .join(', '),
+          _teams: row.teams.map((team) => team.name).join(', '),
+          _players: row.playerNames.join(', '),
+        })
+      ),
+    [allRows, statusFilter, divisionFilter, genderModel]
   );
 
-  const runCoachMutation = useCallback(
-    async ({ actionKey, successMessage, mutation }) => {
-      if (!currentOrganization?.id || !canManageCoaches) return;
+  const manageCoach = useMemo(
+    () => allRows.find((row) => row.id === manageCoachId) || null,
+    [allRows, manageCoachId]
+  );
 
-      setPendingAction(actionKey);
-      setMutationMessage(null);
-      setError(null);
-
+  const runMutation = useCallback(
+    async (mutation, successMessage) => {
+      if (!currentOrganization?.id || !canManageCoaches) return false;
+      setBusy(true);
       try {
         const { error: mutationError } = await mutation();
         if (mutationError) throw mutationError;
-        setMutationMessage({ type: 'success', text: successMessage });
+        if (successMessage) toast(successMessage, 'success');
         await loadCoaches();
+        return true;
       } catch (err) {
         logger.error('Coach admin mutation failed:', err);
-        setMutationMessage({
-          type: 'error',
-          text: err?.message || 'Coach action failed. Please try again.',
-        });
+        toast(err?.message || 'Coach action failed. Please try again.', 'warning');
+        return false;
       } finally {
-        setPendingAction(null);
+        setBusy(false);
       }
     },
-    [canManageCoaches, currentOrganization?.id, loadCoaches]
+    [canManageCoaches, currentOrganization?.id, loadCoaches, toast]
   );
 
-  const handleStatusChange = useCallback(
-    (coach, nextStatus) => {
-      if (!nextStatus || nextStatus === coach.status) return;
-
-      runCoachMutation({
-        actionKey: `status:${coach.id}`,
-        successMessage: `${coach.fullName} status updated to ${STATUS_LABELS[nextStatus] || nextStatus}.`,
-        mutation: () =>
+  const handleCellChange = useCallback(
+    (coachId, key, value) => {
+      if (key !== 'status') return;
+      const coach = allRows.find((row) => row.id === coachId);
+      if (!coach || !value || value === coach.status) return;
+      if (!canSetCoachStatus(coach, value)) {
+        toast('Unassign this coach from their teams before benching them', 'warning');
+        return;
+      }
+      runMutation(
+        () =>
           supabase.rpc('admin_update_coach_status', {
             p_organization_id: currentOrganization.id,
-            p_coach_id: coach.id,
-            p_status: nextStatus,
+            p_coach_id: coachId,
+            p_status: value,
           }),
-      });
+        `${coach.fullName} set to ${STATUS_LABELS[value] || value}`
+      );
     },
-    [currentOrganization?.id, runCoachMutation]
+    [allRows, currentOrganization?.id, runMutation, toast]
   );
 
-  const handleAssignTeam = useCallback(
-    (coach) => {
-      const teamId = selectedTeamByCoach[coach.id];
-      if (!teamId) return;
+  const handleBulkStatusChange = useCallback(
+    async (nextStatus) => {
+      if (!currentOrganization?.id || !canManageCoaches) return;
+      // Plan over ALL rows: the selection bar counts every selected coach,
+      // including ones a toolbar filter currently hides (Players-grid
+      // semantics), so the bulk action must cover them too.
+      const { eligible, skipped } = planBulkCoachStatus(allRows, selected, nextStatus);
+      const statusLabel = STATUS_LABELS[nextStatus] || nextStatus;
+      if (eligible.length === 0) {
+        toast(
+          `None of the selected coaches can be set to ${statusLabel} (coaches with assigned teams must be unassigned first)`,
+          'warning'
+        );
+        return;
+      }
 
-      runCoachMutation({
-        actionKey: `assign:${coach.id}`,
-        successMessage: `${coach.fullName} assigned to the selected team.`,
-        mutation: async () => {
-          const result = await supabase.rpc('admin_assign_team_coach', {
-            p_organization_id: currentOrganization.id,
-            p_team_id: teamId,
-            p_coach_id: coach.id,
-          });
-          if (!result.error) {
-            setSelectedTeamByCoach((previous) => {
-              const next = { ...previous };
-              delete next[coach.id];
-              return next;
+      setBusy(true);
+      const results = await Promise.all(
+        eligible.map(async (coach) => {
+          try {
+            const { error: mutationError } = await supabase.rpc('admin_update_coach_status', {
+              p_organization_id: currentOrganization.id,
+              p_coach_id: coach.id,
+              p_status: nextStatus,
             });
+            if (mutationError) throw mutationError;
+            return true;
+          } catch (err) {
+            logger.error('Bulk coach status update failed:', err);
+            return false;
           }
-          return result;
-        },
-      });
+        })
+      );
+
+      const failures = results.filter((ok) => !ok).length;
+      const updated = eligible.length - failures;
+      const notes = [];
+      if (skipped > 0) notes.push(`${skipped} skipped`);
+      if (failures > 0) notes.push(`${failures} failed`);
+      toast(
+        `${updated} coach${updated === 1 ? '' : 'es'} set to ${statusLabel}${
+          notes.length > 0 ? ` (${notes.join(', ')})` : ''
+        }`,
+        failures > 0 ? 'warning' : 'success'
+      );
+      setSelected(new Set());
+      setBusy(false);
+      await loadCoaches();
     },
-    [currentOrganization?.id, runCoachMutation, selectedTeamByCoach]
+    [allRows, canManageCoaches, currentOrganization?.id, loadCoaches, selected, toast]
   );
+
+  const handleAssignTeam = useCallback(async () => {
+    if (!manageCoach || !assignTeamId) return;
+    const ok = await runMutation(
+      () =>
+        supabase.rpc('admin_assign_team_coach', {
+          p_organization_id: currentOrganization.id,
+          p_team_id: assignTeamId,
+          p_coach_id: manageCoach.id,
+        }),
+      `${manageCoach.fullName} assigned to the selected team`
+    );
+    if (ok) setAssignTeamId('');
+  }, [assignTeamId, currentOrganization?.id, manageCoach, runMutation]);
 
   const handleUnassignTeam = useCallback(
     (team) => {
-      runCoachMutation({
-        actionKey: `unassign:${team.id}`,
-        successMessage: `${team.name} no longer has an assigned coach.`,
-        mutation: () =>
+      runMutation(
+        () =>
           supabase.rpc('admin_assign_team_coach', {
             p_organization_id: currentOrganization.id,
             p_team_id: team.id,
             p_coach_id: null,
           }),
-      });
+        `${team.name} no longer has an assigned coach`
+      );
     },
-    [currentOrganization?.id, runCoachMutation]
+    [currentOrganization?.id, runMutation]
   );
 
-  return (
-    <div className="max-w-7xl mx-auto space-y-6 animate-fadeIn">
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h1 className="text-3xl font-display font-bold text-text-primary">Coaches</h1>
-          <p className="text-text-secondary">
-            Registered coaches and player-import volunteer leads.
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={loadCoaches}
-          disabled={loading}
-          className="glass-button inline-flex items-center gap-2 px-4 py-2.5 disabled:opacity-50"
-        >
-          <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
-          Refresh
-        </button>
-      </div>
+  const columns = useMemo(() => {
+    /** @type {any[]} */
+    const cols = [
+      {
+        key: 'fullName',
+        label: 'Coach',
+        width: 190,
+        sticky: true,
+        render: (row) => (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+            <span style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {row.fullName}
+            </span>
+            {row.canCoachMultipleTeams && (
+              <Badge tone="info" square>
+                multi
+              </Badge>
+            )}
+          </span>
+        ),
+      },
+      {
+        key: 'email',
+        label: 'Email',
+        width: 210,
+        render: (row) =>
+          row.email ? (
+            <a className="linklike" href={`mailto:${row.email}`}>
+              {row.email}
+            </a>
+          ) : (
+            <span className="muted">—</span>
+          ),
+      },
+      { key: 'phone', label: 'Phone', width: 120 },
+      {
+        key: 'status',
+        label: 'Status',
+        width: 120,
+        editable: canManageCoaches,
+        type: 'select',
+        options: STATUS_OPTIONS,
+        render: (row) => (
+          <Badge tone={STATUS_TONE[row.status] || 'neutral'}>{row.statusLabel}</Badge>
+        ),
+        sortVal: (row) => row.statusLabel,
+      },
+      {
+        key: '_programs',
+        label: 'Programs',
+        width: 200,
+        render: (row) =>
+          row._programs ? (
+            <span title={row._players ? `From ${row._players}` : undefined}>
+              {row._programs}
+              {row._players && <span className="muted"> · from {row._players}</span>}
+            </span>
+          ) : (
+            <span className="muted">No lead programs</span>
+          ),
+      },
+      {
+        key: '_teams',
+        label: 'Teams',
+        width: 170,
+        render: (row) => row._teams || <span className="muted">Unassigned</span>,
+      },
+      {
+        key: 'lastImportedLabel',
+        label: 'Last import',
+        width: 130,
+        sortVal: (row) => row.lastImportedAt || '',
+      },
+    ];
+    return cols;
+  }, [canManageCoaches]);
 
+  if (loading) return <LoadingScreen />;
+
+  return (
+    <Page
+      flush
+      header={
+        <PageHeader
+          title="Coaches"
+          subtitle={`${summary.total} coaches · ${summary.registered} registered · ${summary.interested} interested · ${summary.unassigned} unassigned`}
+          icon={
+            <span className="page-obj-icon" style={{ background: 'var(--accent-teal)' }}>
+              <Users size={20} aria-hidden="true" />
+            </span>
+          }
+        />
+      }
+    >
       {error && (
-        <div
-          className="rounded-lg border border-status-error/30 bg-status-error-bg px-4 py-3 text-sm font-medium text-status-error"
-          role="alert"
-        >
+        <div className="badge danger" role="alert" style={{ margin: 12 }}>
           {error}
         </div>
       )}
-
-      {mutationMessage && (
-        <div
-          className={`rounded-lg border px-4 py-3 text-sm font-medium ${
-            mutationMessage.type === 'error'
-              ? 'border-status-error/30 bg-status-error-bg text-status-error'
-              : 'border-status-success/30 bg-status-success-bg text-status-success'
-          }`}
-          role={mutationMessage.type === 'error' ? 'alert' : 'status'}
-          aria-live="polite"
-        >
-          {mutationMessage.text}
-        </div>
-      )}
-
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <CoachStat icon={Users} label="Total" value={summary.total} />
-        <CoachStat icon={ShieldCheck} label="Registered" value={summary.registered} />
-        <CoachStat icon={UserRoundCheck} label="Interested" value={summary.interested} />
-        <CoachStat icon={Users} label="Unassigned" value={summary.unassigned} />
-      </div>
-
-      <div className="space-y-4 border-y border-border-subtle py-4">
-        <div className="flex flex-wrap gap-2" aria-label="Coach status filter">
-          {STATUS_FILTERS.map((filter) => {
-            const active = statusFilter === filter.id;
-            return (
-              <button
-                key={filter.id}
-                type="button"
-                onClick={() => setStatusFilter(filter.id)}
-                className={`rounded-lg border px-3 py-2 text-sm font-semibold transition-colors ${
-                  active
-                    ? 'border-brand-400/50 bg-brand-glow text-brand-400'
-                    : 'border-border-subtle bg-bg-surface text-text-secondary hover:bg-bg-surface-hover hover:text-text-primary'
-                }`}
-              >
-                {filter.label}
-              </button>
-            );
-          })}
-        </div>
-
-        <div className="grid gap-3 md:grid-cols-[minmax(220px,1fr)_220px]">
-          <label className="relative block">
-            <span className="sr-only">Search coaches</span>
-            <Search
-              size={18}
-              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-muted"
-            />
-            <input
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search coaches, programs, teams"
-              className="w-full rounded-lg border border-border-subtle bg-bg-surface py-2.5 pl-10 pr-3 text-sm text-text-primary outline-none transition-colors placeholder:text-text-muted focus:border-brand-400/60"
-            />
-          </label>
-
-          <label>
-            <span className="sr-only">Filter by program</span>
+      <DataGrid
+        label="Coaches grid"
+        columns={columns}
+        rows={rows}
+        selectable={canManageCoaches}
+        selected={selected}
+        setSelected={setSelected}
+        search={search}
+        setSearch={setSearch}
+        searchKeys={[
+          'fullName',
+          'email',
+          'phone',
+          'statusLabel',
+          '_programs',
+          '_teams',
+          '_players',
+        ]}
+        onCellChange={canManageCoaches ? handleCellChange : undefined}
+        rowActions={canManageCoaches ? [{ id: 'teams', label: 'Manage teams', icon: Users }] : []}
+        onRowAction={(action, row) => {
+          if (action === 'teams') {
+            setAssignTeamId('');
+            setManageCoachId(row.id);
+          }
+        }}
+        toolbar={
+          <>
             <select
+              className="select"
+              style={{ width: 150, height: 32 }}
+              aria-label="Filter by status"
+              value={statusFilter}
+              onChange={(event) => setStatusFilter(event.target.value)}
+            >
+              {STATUS_FILTERS.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            <select
+              className="select"
+              style={{ width: 160, height: 32 }}
+              aria-label="Filter by program"
               value={divisionFilter}
               onChange={(event) => setDivisionFilter(event.target.value)}
-              className="w-full rounded-lg border border-border-subtle bg-bg-surface px-3 py-2.5 text-sm text-text-primary outline-none transition-colors focus:border-brand-400/60"
             >
               <option value="all">All programs</option>
               {divisions.map((division) => (
                 <option key={division.id} value={division.id}>
-                  {division.name}
+                  {divisionDisplayName(division.name, genderModel)}
                 </option>
               ))}
             </select>
-          </label>
-        </div>
-      </div>
+          </>
+        }
+        bulkActions={
+          <>
+            <Button
+              variant="secondary"
+              size="sm"
+              icon={ShieldCheck}
+              disabled={busy}
+              onClick={() => handleBulkStatusChange('active')}
+            >
+              Set Registered
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              icon={UserRoundCheck}
+              disabled={busy}
+              onClick={() => handleBulkStatusChange('interested')}
+            >
+              Set Interested
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              icon={Clock}
+              disabled={busy}
+              onClick={() => handleBulkStatusChange('inactive')}
+            >
+              Set Inactive
+            </Button>
+          </>
+        }
+        emptyText="No coaches match the current filters"
+      />
 
-      <div className="overflow-x-auto rounded-lg border border-border-highlight bg-bg-surface">
-        <table className="min-w-full divide-y divide-border-subtle">
-          <thead className="bg-bg-surface">
-            <tr>
-              <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-text-muted">
-                Coach
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-text-muted">
-                Status
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-text-muted">
-                Programs
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-text-muted">
-                Teams
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-text-muted">
-                Last Import
-              </th>
-              {canManageCoaches && (
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-text-muted">
-                  Actions
-                </th>
-              )}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border-subtle">
-            {loading ? (
-              <tr>
-                <td
-                  colSpan={canManageCoaches ? 6 : 5}
-                  className="px-4 py-10 text-center text-sm text-text-secondary"
-                >
-                  Loading coaches...
-                </td>
-              </tr>
-            ) : filteredRows.length === 0 ? (
-              <tr>
-                <td
-                  colSpan={canManageCoaches ? 6 : 5}
-                  className="px-4 py-10 text-center text-sm text-text-secondary"
-                >
-                  No coaches match the current filters.
-                </td>
-              </tr>
-            ) : (
-              filteredRows.map((coach) => (
-                <tr key={coach.id} className="hover:bg-bg-surface-hover/60">
-                  <td className="px-4 py-4 align-top">
-                    <div className="font-semibold text-text-primary">{coach.fullName}</div>
-                    <div className="mt-1 flex flex-col gap-1 text-sm text-text-secondary">
-                      {coach.email && (
-                        <a
-                          href={`mailto:${coach.email}`}
-                          className="inline-flex items-center gap-1.5 hover:text-brand-400"
-                        >
-                          <Mail size={14} />
-                          {coach.email}
-                        </a>
-                      )}
-                      {coach.phone && (
-                        <span className="inline-flex items-center gap-1.5">
-                          <Phone size={14} />
-                          {coach.phone}
-                        </span>
-                      )}
+      <Modal
+        open={Boolean(manageCoach)}
+        onClose={() => setManageCoachId(null)}
+        title={manageCoach ? `Teams — ${manageCoach.fullName}` : 'Teams'}
+        footer={
+          <Button variant="secondary" size="sm" onClick={() => setManageCoachId(null)}>
+            Done
+          </Button>
+        }
+      >
+        {manageCoach && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div>
+              <div className="muted" style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>
+                Assigned teams
+              </div>
+              {manageCoach.teams.length > 0 ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {manageCoach.teams.map((team) => (
+                    <div key={team.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ flex: 1 }}>{team.name}</span>
+                      <Button
+                        variant="ghost-danger"
+                        size="sm"
+                        icon={UserMinus}
+                        disabled={busy}
+                        onClick={() => handleUnassignTeam(team)}
+                        aria-label={`Unassign ${manageCoach.fullName} from ${team.name}`}
+                      >
+                        Unassign
+                      </Button>
                     </div>
-                  </td>
-                  <td className="px-4 py-4 align-top">
-                    <StatusBadge status={coach.status} label={coach.statusLabel} />
-                    {coach.canCoachMultipleTeams && (
-                      <div className="mt-2 text-xs text-text-muted">Multiple teams allowed</div>
-                    )}
-                  </td>
-                  <td className="px-4 py-4 align-top text-sm text-text-secondary">
-                    {coach.programNames.length > 0 ? (
-                      <div className="flex flex-wrap gap-1.5">
-                        {coach.programNames.map((program) => (
-                          <span
-                            key={program}
-                            className="rounded-full border border-border-subtle bg-bg-surface px-2 py-1 text-xs text-text-secondary"
-                          >
-                            {program}
-                          </span>
-                        ))}
-                      </div>
-                    ) : (
-                      <span className="text-text-muted">No lead programs</span>
-                    )}
-                    {coach.playerNames.length > 0 && (
-                      <div className="mt-2 text-xs text-text-muted">
-                        From {coach.playerNames.join(', ')}
-                      </div>
-                    )}
-                  </td>
-                  <td className="px-4 py-4 align-top text-sm text-text-secondary">
-                    {coach.teams.length > 0 ? (
-                      <div className="space-y-1">
-                        {coach.teams.map((team) => (
-                          <div key={team.id} className="flex items-center gap-2">
-                            <span>{team.name}</span>
-                            {canManageCoaches && (
-                              <button
-                                type="button"
-                                onClick={() => handleUnassignTeam(team)}
-                                disabled={pendingAction === `unassign:${team.id}`}
-                                className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border-subtle text-text-muted transition-colors hover:border-status-error/50 hover:text-status-error disabled:cursor-not-allowed disabled:opacity-50"
-                                aria-label={`Unassign ${coach.fullName} from ${team.name}`}
-                                title="Unassign coach"
-                              >
-                                <UserMinus size={14} />
-                              </button>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <span className="text-text-muted">Unassigned</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-4 align-top text-sm text-text-secondary">
-                    <div>{coach.lastImportedLabel}</div>
-                    {coach.importSource && (
-                      <div className="mt-1 text-xs text-text-muted">{coach.importSource}</div>
-                    )}
-                  </td>
-                  {canManageCoaches && (
-                    <td className="min-w-[260px] px-4 py-4 align-top">
-                      <div className="space-y-3">
-                        <label className="block">
-                          <span className="sr-only">Status for {coach.fullName}</span>
-                          <select
-                            value={coach.status}
-                            onChange={(event) => handleStatusChange(coach, event.target.value)}
-                            disabled={pendingAction === `status:${coach.id}`}
-                            className="w-full rounded-lg border border-border-subtle bg-bg-surface px-3 py-2 text-sm text-text-primary outline-none transition-colors focus:border-brand-400/60 disabled:cursor-not-allowed disabled:opacity-60"
-                            aria-label={`Status for ${coach.fullName}`}
-                          >
-                            {STATUS_OPTIONS.map((status) => (
-                              <option
-                                key={status.id}
-                                value={status.id}
-                                disabled={!canSetCoachStatus(coach, status.id)}
-                              >
-                                {status.label}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
+                  ))}
+                </div>
+              ) : (
+                <span className="muted">Unassigned</span>
+              )}
+            </div>
 
-                        <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
-                          <label className="block">
-                            <span className="sr-only">Assign team to {coach.fullName}</span>
-                            <select
-                              value={selectedTeamByCoach[coach.id] || ''}
-                              onChange={(event) =>
-                                setSelectedTeamByCoach((previous) => ({
-                                  ...previous,
-                                  [coach.id]: event.target.value,
-                                }))
-                              }
-                              disabled={!canAssignCoachToTeam(coach)}
-                              className="w-full rounded-lg border border-border-subtle bg-bg-surface px-3 py-2 text-sm text-text-primary outline-none transition-colors focus:border-brand-400/60 disabled:cursor-not-allowed disabled:opacity-60"
-                              aria-label={`Assign team to ${coach.fullName}`}
-                            >
-                              <option value="">Select team</option>
-                              {teamAssignmentOptions.map((team) => (
-                                <option key={team.value} value={team.value}>
-                                  {team.label}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-                          <button
-                            type="button"
-                            onClick={() => handleAssignTeam(coach)}
-                            disabled={
-                              !canAssignCoachToTeam(coach) ||
-                              !selectedTeamByCoach[coach.id] ||
-                              pendingAction === `assign:${coach.id}`
-                            }
-                            className="inline-flex h-10 items-center gap-2 rounded-lg border border-brand-400/40 bg-brand-glow px-3 text-sm font-semibold text-brand-400 transition-colors hover:bg-brand-400/10 disabled:cursor-not-allowed disabled:opacity-50"
-                            aria-label={`Assign selected team to ${coach.fullName}`}
-                          >
-                            <CheckCircle2 size={16} />
-                            Assign
-                          </button>
-                        </div>
-                      </div>
-                    </td>
-                  )}
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-    </div>
+            <div>
+              <div className="muted" style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>
+                Assign to team
+              </div>
+              {canAssignCoachToTeam(manageCoach) ? (
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <select
+                    className="select"
+                    style={{ flex: 1 }}
+                    aria-label={`Assign team to ${manageCoach.fullName}`}
+                    value={assignTeamId}
+                    onChange={(event) => setAssignTeamId(event.target.value)}
+                  >
+                    <option value="">Select team</option>
+                    {teamAssignmentOptions.map((team) => (
+                      <option key={team.value} value={team.value}>
+                        {team.label}
+                      </option>
+                    ))}
+                  </select>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    icon={CheckCircle2}
+                    disabled={!assignTeamId || busy}
+                    onClick={handleAssignTeam}
+                  >
+                    Assign
+                  </Button>
+                </div>
+              ) : (
+                <span className="muted">
+                  Only Registered or Pending coaches can be assigned to a team.
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+      </Modal>
+    </Page>
   );
 }
