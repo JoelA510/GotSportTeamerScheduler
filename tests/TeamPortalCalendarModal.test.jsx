@@ -1,7 +1,7 @@
 import React from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { CalendarModal } from '../frontend/src/pages/TeamPortalPage.jsx';
+import { CalendarModal } from '../frontend/src/pages/TeamRecordPage.jsx';
 
 const mocks = vi.hoisted(() => ({
   rpc: vi.fn(),

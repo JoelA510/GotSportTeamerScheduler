@@ -1,7 +1,7 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import TeamPortalPage from '../frontend/src/pages/TeamPortalPage.jsx';
+import TeamRecordPage from '../frontend/src/pages/TeamRecordPage.jsx';
 
 const mocks = vi.hoisted(() => ({
   portalState: null,
@@ -9,13 +9,31 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('react-router-dom', () => ({
   useParams: () => ({ teamId: 'team-1' }),
+  Link: ({ children, ...props }) => <a {...props}>{children}</a>,
 }));
 
 vi.mock('../frontend/src/hooks/useTeamPortal.js', () => ({
   useTeamPortal: () => mocks.portalState,
 }));
 
-describe('TeamPortalPage medical clearance', () => {
+vi.mock('../frontend/src/hooks/usePermission.js', () => ({
+  usePermission: () => ({
+    can: () => false,
+    role: 'coach',
+    PERMISSIONS: { MANAGE_ALL_TEAMS: 'manage_all_teams' },
+  }),
+}));
+
+vi.mock('../frontend/src/lib/supabaseClient.js', () => ({
+  supabase: {
+    from: () => ({
+      select: () => ({ eq: () => Promise.resolve({ data: [], error: null }) }),
+    }),
+    rpc: vi.fn().mockResolvedValue({ data: null, error: null }),
+  },
+}));
+
+describe('TeamRecordPage medical clearance', () => {
   beforeEach(() => {
     mocks.portalState = {
       loading: false,
@@ -60,7 +78,10 @@ describe('TeamPortalPage medical clearance', () => {
   });
 
   it('renders medical clearance from registration state instead of hardcoded player ids', () => {
-    render(<TeamPortalPage />);
+    render(<TeamRecordPage />);
+
+    // Roster (with medical status) lives in the Roster tab.
+    fireEvent.click(screen.getByRole('tab', { name: /Roster/ }));
 
     expect(screen.getByText('Avery Adams')).toBeInTheDocument();
     expect(screen.getByText('Blair Bennett')).toBeInTheDocument();

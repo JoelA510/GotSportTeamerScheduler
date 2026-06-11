@@ -79,6 +79,27 @@ BEGIN
             WHEN 'date_of_birth' THEN
                 v_text := NULLIF(trim(v_val #>> '{}'), '');
                 v_out := v_out || jsonb_build_object('date_of_birth', to_jsonb(v_text));
+            WHEN 'guardian_contacts' THEN
+                -- Array of {name?, email?, phone?, alternate_email?} objects
+                -- (the Player record guardians editor).
+                IF jsonb_typeof(v_val) <> 'array' THEN
+                    RAISE EXCEPTION 'guardian_contacts must be an array' USING ERRCODE = '22023';
+                END IF;
+                IF EXISTS (
+                    SELECT 1 FROM jsonb_array_elements(v_val) g
+                    WHERE jsonb_typeof(g.value) <> 'object'
+                       OR EXISTS (
+                           SELECT 1 FROM jsonb_object_keys(g.value) k
+                           WHERE k NOT IN ('name', 'email', 'phone', 'alternate_email')
+                       )
+                ) THEN
+                    RAISE EXCEPTION 'guardian_contacts entries allow only name/email/phone/alternate_email'
+                        USING ERRCODE = '22023';
+                END IF;
+                IF jsonb_array_length(v_val) > 6 THEN
+                    RAISE EXCEPTION 'guardian_contacts limited to 6 entries' USING ERRCODE = '22023';
+                END IF;
+                v_out := v_out || jsonb_build_object('guardian_contacts', v_val);
             ELSE
                 RAISE EXCEPTION 'field % is not editable', v_key USING ERRCODE = '22023';
         END CASE;
@@ -121,6 +142,7 @@ BEGIN
         division_id     = CASE WHEN p_sanitized ? 'division_id' THEN (p_sanitized->>'division_id')::uuid ELSE p.division_id END,
         team_id         = CASE WHEN p_sanitized ? 'team_id' THEN (p_sanitized->>'team_id')::uuid ELSE p.team_id END,
         date_of_birth   = CASE WHEN p_sanitized ? 'date_of_birth' THEN (p_sanitized->>'date_of_birth')::date ELSE p.date_of_birth END,
+        guardian_contacts = CASE WHEN p_sanitized ? 'guardian_contacts' THEN p_sanitized->'guardian_contacts' ELSE p.guardian_contacts END,
         updated_at      = timezone('utc', now())
     WHERE p.id = p_player_id;
 END;
@@ -225,7 +247,8 @@ BEGIN
 
     v_sanitized := public.sanitize_player_patch(p_patch);
     IF v_sanitized ? 'division_id' OR v_sanitized ? 'team_id' OR v_sanitized ? 'first_name'
-        OR v_sanitized ? 'last_name' OR v_sanitized ? 'date_of_birth' THEN
+        OR v_sanitized ? 'last_name' OR v_sanitized ? 'date_of_birth'
+        OR v_sanitized ? 'guardian_contacts' THEN
         RAISE EXCEPTION 'field not allowed in bulk updates' USING ERRCODE = '22023';
     END IF;
 

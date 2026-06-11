@@ -2531,6 +2531,7 @@ export const mockSupabase = {
               'division_id',
               'team_id',
               'date_of_birth',
+              'guardian_contacts',
             ];
       const rejected = Object.keys(p_patch || {}).find((key) => !allowed.includes(key));
       if (rejected) {

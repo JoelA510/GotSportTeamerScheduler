@@ -57,7 +57,13 @@ export function useTeamPortal(teamId) {
           player:players (
             id,
             first_name,
-            last_name
+            last_name,
+            gender,
+            jersey_number,
+            years_played,
+            rating,
+            guardian_contacts,
+            willing_to_coach
           )
         `
         )

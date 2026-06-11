@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
-import { Check, CheckCircle2, Clock, Trash2, User, UserPlus } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Check, CheckCircle2, Clock, ExternalLink, Trash2, User, UserPlus } from 'lucide-react';
 import Page from '../components/chrome/Page.jsx';
 import PageHeader from '../components/chrome/PageHeader.jsx';
 import DataGrid from '../components/grid/DataGrid.jsx';
@@ -56,6 +57,7 @@ export default function PlayersPage() {
   } = usePlayersData();
   const { isEnabled, genderModel } = useFeatures();
   const toast = useToast();
+  const navigate = useNavigate();
 
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState(() => new Set());
@@ -342,9 +344,14 @@ export default function PlayersPage() {
           report(result, result.success ? 'Player added — name them in the grid' : null);
         }}
         addLabel="Add player"
-        rowActions={[{ id: 'delete', label: 'Delete player', icon: Trash2, danger: true }]}
+        rowActions={[
+          { id: 'open', label: 'Open record', icon: ExternalLink },
+          { id: 'delete', label: 'Delete player', icon: Trash2, danger: true },
+        ]}
         onRowAction={async (action, row) => {
-          if (action === 'delete') {
+          if (action === 'open') {
+            navigate(`/players/${row.id}`);
+          } else if (action === 'delete') {
             report(await deletePlayers([row.id]), 'Player deleted');
           }
         }}

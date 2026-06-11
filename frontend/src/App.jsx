@@ -27,7 +27,7 @@ const PracticeSchedulingPage = lazy(() => import('./pages/PracticeSchedulingPage
 const GameSchedulingPage = lazy(() => import('./pages/GameSchedulingPage.jsx'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage.jsx'));
 const AccountSettingsPage = lazy(() => import('./pages/AccountSettingsPage.jsx'));
-const TeamPortalPage = lazy(() => import('./pages/TeamPortalPage.jsx'));
+const TeamRecordPage = lazy(() => import('./pages/TeamRecordPage.jsx'));
 const RegistrationFlow = lazy(() => import('./pages/RegistrationFlow.jsx'));
 const AdminComplianceDashboard = lazy(() => import('./pages/AdminComplianceDashboard.jsx'));
 const RegistrationForms = lazy(() => import('./pages/RegistrationForms.jsx'));
@@ -46,6 +46,7 @@ const ScoresPage = lazy(() => import('./pages/ScoresPage.jsx'));
 const ExportsPage = lazy(() => import('./pages/ExportsPage.jsx'));
 const MembersPage = lazy(() => import('./pages/MembersPage.jsx'));
 const FeaturesSetupPage = lazy(() => import('./pages/FeaturesSetupPage.jsx'));
+const PlayerRecordPage = lazy(() => import('./pages/PlayerRecordPage.jsx'));
 import OfflineGuard from './components/OfflineGuard.jsx';
 import ToastHost from './components/ui/ToastHost.jsx';
 
@@ -158,6 +159,14 @@ function AppContent() {
             element={
               <ProtectedRoute requiredPermission={PERMISSIONS.MANAGE_ORGANIZATION}>
                 <PlayersPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/players/:playerId"
+            element={
+              <ProtectedRoute requiredPermission={PERMISSIONS.MANAGE_ORGANIZATION}>
+                <PlayerRecordPage />
               </ProtectedRoute>
             }
           />
@@ -282,7 +291,7 @@ function AppContent() {
             }
           />
           <Route path="/account" element={<AccountSettingsPage />} />
-          <Route path="/team/:teamId" element={<TeamPortalPage />} />
+          <Route path="/team/:teamId" element={<TeamRecordPage />} />
           <Route path="/standings" element={<LeagueStandings />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>

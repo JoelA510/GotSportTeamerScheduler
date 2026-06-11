@@ -255,6 +255,7 @@ ROUTE_META['/setup/features'] = { label: 'Choose your tools', groupLabel: 'Seaso
  */
 export const FULL_BLEED_ROUTES = new Set([
   '/players',
+  '/players/:playerId',
   '/teams/builder',
   '/scheduling/blackouts',
   '/scores',
