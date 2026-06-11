@@ -270,7 +270,7 @@ Then('the imported field slot should be removed from the facilities database', a
 });
 
 When('I click to export the team rosters or schedules', async ({ page }) => {
-  await page.goto('/?step=6');
+  await page.goto('/workflow?step=6');
 
   // CRITICAL FIX: Use a more robust locator that matches the actual rendered text
   const step6 = page
@@ -349,7 +349,7 @@ Given('the team rosters have been generated and finalized', async ({ page }) => 
 });
 
 When('I access the communication tools', async ({ page }) => {
-  await page.goto('/?step=6');
+  await page.goto('/workflow?step=6');
 
   // CRITICAL FIX: Use a more robust locator that matches the actual rendered text
   const step6 = page

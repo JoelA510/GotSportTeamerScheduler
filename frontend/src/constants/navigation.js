@@ -247,6 +247,7 @@ NAV.forEach((node) => {
 ROUTE_META['/account'] = { label: 'Account', groupLabel: null };
 ROUTE_META['/setup'] = { label: 'Season Setup', groupLabel: null };
 ROUTE_META['/setup/features'] = { label: 'Choose your tools', groupLabel: 'Season Setup' };
+ROUTE_META['/workflow'] = { label: 'Pipeline', groupLabel: 'Data' };
 
 /**
  * Routes whose pages use the full-bleed <Page> scaffold (pinned header +
@@ -254,6 +255,7 @@ ROUTE_META['/setup/features'] = { label: 'Choose your tools', groupLabel: 'Seaso
  * legacy padded scroll wrapper until they are restyled.
  */
 export const FULL_BLEED_ROUTES = new Set([
+  '/',
   '/players',
   '/players/:playerId',
   '/teams/builder',

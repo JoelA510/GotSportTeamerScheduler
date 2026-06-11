@@ -33,7 +33,8 @@ const AdminComplianceDashboard = lazy(() => import('./pages/AdminComplianceDashb
 const RegistrationForms = lazy(() => import('./pages/RegistrationForms.jsx'));
 const EnterpriseDashboard = lazy(() => import('./pages/EnterpriseDashboard.jsx'));
 const LeagueStandings = lazy(() => import('./pages/LeagueStandings.jsx'));
-const SetupWizard = lazy(() => import('./pages/SetupWizard.jsx'));
+const SeasonSetupPage = lazy(() => import('./pages/SeasonSetupPage.jsx'));
+const WorkflowPage = lazy(() => import('./pages/WorkflowPage.jsx'));
 const ResetPassword = lazy(() => import('./pages/ResetPassword.jsx'));
 const AuditLogPage = lazy(() => import('./pages/AuditLogPage.jsx'));
 const AnalyticalDashboard = lazy(() => import('./pages/AnalyticalDashboard.jsx'));
@@ -113,7 +114,7 @@ function AppContent() {
           path="/setup"
           element={
             <ProtectedRoute requiredPermission={PERMISSIONS.MANAGE_GLOBAL_SETTINGS}>
-              <SetupWizard />
+              <SeasonSetupPage />
             </ProtectedRoute>
           }
         />
@@ -137,6 +138,14 @@ function AppContent() {
           }
         >
           <Route path="/" element={<DashboardPage />} />
+          <Route
+            path="/workflow"
+            element={
+              <ProtectedRoute requiredPermission={PERMISSIONS.MANAGE_ORGANIZATION}>
+                <WorkflowPage />
+              </ProtectedRoute>
+            }
+          />
           <Route path="/register/:formId" element={<RegistrationFlow />} />
           <Route
             path="/import"

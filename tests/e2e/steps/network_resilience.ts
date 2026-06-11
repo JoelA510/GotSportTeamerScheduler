@@ -9,7 +9,9 @@ Given('the user has modified the {string} roster', async ({ page }, teamName: st
 
   // Wait for the app to initialize and set the active org in localStorage
   await expect(
-    page.getByRole('heading', { name: /League Management|Dashboard/i }).first()
+    page
+      .getByRole('heading', { name: /Welcome back|My Dashboard|League Management|Dashboard/i })
+      .first()
   ).toBeVisible({ timeout: 15000 });
 
   await page.evaluate(() => localStorage.setItem('dashboardActiveStep', '2'));

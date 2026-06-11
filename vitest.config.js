@@ -1,8 +1,21 @@
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 
+const __dirname = fileURLToPath(new URL('.', import.meta.url));
+
 export default defineConfig({
   plugins: [react()],
+  resolve: {
+    // Mirror vite.config.js so '@squadlogic/core/<file>' imports resolve
+    // in unit tests exactly as they do in the app build.
+    alias: {
+      '@': path.resolve(__dirname, './packages/core/src'),
+      src: path.resolve(__dirname, './packages/core/src'),
+      '@squadlogic/core': path.resolve(__dirname, './packages/core/src'),
+    },
+  },
   test: {
     environment: 'jsdom',
     globals: true,

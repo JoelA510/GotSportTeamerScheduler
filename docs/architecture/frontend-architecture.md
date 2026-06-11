@@ -8,7 +8,7 @@ This document describes the implemented frontend architecture for SquadLogic. Th
 ## Routing & Navigation
 
 - **Router**: `react-router-dom` v7 with `<BrowserRouter>`.
-- **Layout**: `DashboardLayout` provides a persistent sidebar (`Sidebar.jsx`) on desktop and a collapsible hamburger drawer on mobile.
+- **Layout**: `DashboardLayout` renders the Lightning-class shell — `chrome/TopBar.jsx` (org/season switchers, search, theme toggle, role preview) and the nested collapsible `chrome/SideNav.jsx` (mobile off-canvas drawer) driven by `constants/navigation.js`.
 - **Page Loading**: All page components are lazy-loaded via `React.lazy()` in `App.jsx` for optimal bundle splitting.
 - **Route Protection**: `<ProtectedRoute requiredPermission={PERMISSIONS.*}>` gates admin-only pages with immediate redirect for unauthorized users.
 - **Provider Hierarchy**: `BrowserRouter > AuthProvider > OrganizationProvider > ImportProvider > ThemeProvider > ErrorBoundary`.
@@ -17,7 +17,7 @@ This document describes the implemented frontend architecture for SquadLogic. Th
 
 | Route                   | Page Component             | Description                                                     |
 | ----------------------- | -------------------------- | --------------------------------------------------------------- |
-| `/`                     | `DashboardPage`            | Dashboard with metrics, workflow progression, and league status |
+| `/`                     | `DashboardPage`            | Role-scoped Home (admin KPIs/setup card; coach & parent views)  |
 | `/import`               | `ImportPage`               | GotSport CSV data ingestion with validation                     |
 | `/teams`                | `TeamAnalysisPage`         | Roster generation, analysis, drag-and-drop overrides            |
 | `/fields`               | `FieldManagementPage`      | Venue/field/blackout date CRUD with weekly grid                 |
@@ -28,7 +28,16 @@ This document describes the implemented frontend architecture for SquadLogic. Th
 | `/reporting`            | `AdminReportingDashboard`  | Game metrics, standings, charts                                 |
 | `/standings`            | `LeagueStandings`          | Score entry, standings tables, tie-breaker logic                |
 | `/registration/:formId` | `RegistrationFlow`         | Public registration form flow                                   |
-| `/team/:teamId`         | `TeamPortalPage`           | Coach/parent portal — roster, schedule, RSVP, chat              |
+| `/team/:teamId`         | `TeamRecordPage`           | Team record (tabs: schedule+RSVP+chat, roster, staff, balance)  |
+| `/players`              | `PlayersPage`              | Virtualized editable players grid (audited RPC mutations)       |
+| `/players/:playerId`    | `PlayerRecordPage`         | Player record with inline editing                               |
+| `/teams/builder`        | `TeamBuilderPage`          | Drag-and-drop balance board (`balanceSignals`)                  |
+| `/workflow`             | `WorkflowPage`             | 6-step pipeline workflow (formerly the dashboard)               |
+| `/setup`                | `SeasonSetupPage`          | Resumable setup checklist (`useSetupProgress`)                  |
+| `/scores`               | `ScoresPage`               | Grid score entry via `update_game_score`                        |
+| `/scheduling/blackouts` | `BlackoutsPage`            | Field blackout windows review grid                              |
+| `/exports`              | `ExportsPage`              | Output generation (CSVs, emails)                                |
+| `/admin/members`        | `MembersPage`              | Invites & membership                                            |
 
 ## State Management
 
@@ -73,11 +82,13 @@ frontend/src/components/
 ├── teaming/             # Roster management components
 │   └── RosterManager.jsx       # Drag-and-drop roster with @dnd-kit
 ├── ui/                  # Shared UI components
-├── DashboardWorkflow.jsx       # 6-step workflow orchestration
+├── chrome/              # TopBar, SideNav, PageHeader, Page scaffolding
+├── grid/                # DataGrid (virtualized, editable) + cell/keyboard/selection
+├── setup/               # SetupChecklist (resumable season setup)
+├── DashboardWorkflow.jsx       # 6-step workflow orchestration (WorkflowPage)
 ├── ImportPanel.jsx             # CSV import with validation
 ├── TeamPersistencePanel.jsx    # Team save with optimistic UI
 ├── OutputGenerationPanel.jsx   # CSV/email export generation
-├── Sidebar.jsx                 # Navigation with org/season switcher
 ├── ProtectedRoute.jsx          # RBAC route guard
 ├── ErrorBoundary.jsx           # Global error boundary
 └── ...                         # Other panels and shared components

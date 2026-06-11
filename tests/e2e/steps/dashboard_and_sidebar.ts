@@ -69,7 +69,7 @@ Given('I have imported player data', async ({ page }) => {
     sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
     localStorage.setItem('dashboardActiveStep', '2'); // Preserve across reloads
   });
-  await page.goto('/?step=6');
+  await page.goto('/workflow?step=6');
 
   // Force Playwright to visually locate and click the specific stepper buttons
   const step2 = page
@@ -178,7 +178,7 @@ Given('all setup steps are complete', async ({ page }) => {
     ];
     sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
   });
-  await page.reload();
+  await page.goto('/workflow');
 
   // Force Playwright to visually locate and click the specific stepper buttons
   const step6 = page
@@ -217,7 +217,7 @@ Given('I have generated teams', async ({ page }) => {
     }
     sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
   });
-  await page.reload();
+  await page.goto('/workflow');
 
   // Force Playwright to visually locate and click the specific stepper buttons
   const step2 = page
@@ -287,7 +287,8 @@ Given('I have generated a game schedule', async ({ page }) => {
 });
 
 When('I view the Dashboard page', async ({ page }) => {
-  await page.goto('/');
+  // The pipeline workflow now lives on its own page; Home is the new '/'.
+  await page.goto('/workflow');
 });
 
 Then('the Readiness Score should display {string}', async ({ page }, score: string) => {

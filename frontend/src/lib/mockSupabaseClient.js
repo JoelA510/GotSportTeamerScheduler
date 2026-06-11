@@ -156,7 +156,7 @@ const initialMockData = {
       last_name: 'Smith',
       organization_id: 'org-1',
       team_id: '00000000-0000-0000-0000-000000000001',
-      division_id: 'U8 Boys',
+      division_id: 'u8-div-id',
       gender: 'm',
       status: 'active',
       years_played: 2,
@@ -175,7 +175,7 @@ const initialMockData = {
       last_name: 'Jones',
       organization_id: 'org-1',
       team_id: '00000000-0000-0000-0000-000000000001',
-      division_id: 'U8 Boys',
+      division_id: 'u8-div-id',
       gender: 'f',
       status: 'waitlist',
       years_played: 0,
@@ -2501,6 +2501,31 @@ export const mockSupabase = {
       });
       saveDB(db);
       return { data: result, error: null };
+    }
+
+    if (name === 'upsert_division_for_import') {
+      const { p_organization_id, p_season_settings_id, p_name, p_gender } = params || {};
+      db.divisions = db.divisions || [];
+      let division = db.divisions.find(
+        (item) =>
+          String(item.organization_id) === String(p_organization_id) &&
+          String(item.name).toLowerCase() === String(p_name).toLowerCase()
+      );
+      if (division) {
+        if (p_gender) division.gender_policy = p_gender;
+      } else {
+        division = {
+          id: mockId(),
+          organization_id: p_organization_id,
+          season_settings_id: p_season_settings_id,
+          name: p_name,
+          gender_policy: p_gender || 'coed',
+          created_at: new Date().toISOString(),
+        };
+        db.divisions.push(division);
+      }
+      saveDB(db);
+      return { data: { ...division }, error: null };
     }
 
     if (name === 'admin_update_player' || name === 'coach_update_player_compliance') {

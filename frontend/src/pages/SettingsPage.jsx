@@ -9,6 +9,7 @@ import PageHeader from '../components/chrome/PageHeader.jsx';
 import Tabs from '../components/ui/Tabs.jsx';
 import { useOrganization } from '../contexts/OrganizationContext.jsx';
 import { PERMISSIONS } from '../constants/permissions.js';
+import { useCoedTransition } from '../hooks/useCoedTransition.js';
 
 /**
  * SettingsPage — organization control center (general, invites, features,
@@ -17,6 +18,7 @@ import { PERMISSIONS } from '../constants/permissions.js';
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState('general');
   const { permissions, currentOrganization, currentSeasonSetting } = useOrganization();
+  const { applyCoedMerge, applyGenderSplit } = useCoedTransition();
 
   // RBAC check for architectural toggles
   const canManageFlags = permissions.includes(PERMISSIONS.MANAGE_GLOBAL_SETTINGS);
@@ -36,7 +38,12 @@ export default function SettingsPage() {
       case 'invites':
         return <InvitesSettings />;
       case 'features':
-        return <FeatureFlagSettings />;
+        return (
+          <FeatureFlagSettings
+            onMergeRegenerate={applyCoedMerge}
+            onSplitRegenerate={applyGenderSplit}
+          />
+        );
       case 'audit':
         return <AuditLogSettings />;
       default:

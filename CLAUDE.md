@@ -92,7 +92,7 @@ When running under a wave (see §0), follow that wave's plan and `.claude/wave-e
 SquadLogic/
 ├── frontend/           # Vite + React 19 SPA
 │   └── src/
-│       ├── components/ # UI components (flat + subdirs: scheduling/, teaming/, ui/)
+│       ├── components/ # UI components (flat + subdirs: chrome/, grid/, scheduling/, setup/, teaming/, ui/)
 │       ├── contexts/   # React Contexts (Auth, Import, Organization, Theme)
 │       ├── hooks/      # Custom hooks (useConflicts, useDashboardData, etc.)
 │       ├── layouts/    # Layout wrappers (DashboardLayout)
@@ -157,7 +157,7 @@ SquadLogic/
 - Use **functional components** with hooks exclusively.
 - Pages are lazy-loaded via `React.lazy()` in `App.jsx`.
 - Protected routes use `<ProtectedRoute requiredPermission={PERMISSIONS.MANAGE_ORGANIZATION}>`.
-- Provider wrapping order (canonical — see `App.jsx`): `BrowserRouter > AuthProvider > OrganizationProvider > ImportProvider > ThemeProvider > ErrorBoundary > OfflineGuard`.
+- Provider wrapping order (canonical — see `App.jsx`): `BrowserRouter > AuthProvider > OrganizationProvider > ImportProvider > ThemeProvider > ToastHost > ErrorBoundary > OfflineGuard`.
 
 ### File Organization Rules
 
