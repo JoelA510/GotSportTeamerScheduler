@@ -20,3 +20,7 @@ ALTER TABLE public.players
     DROP COLUMN IF EXISTS paid,
     DROP COLUMN IF EXISTS waiver_received,
     DROP COLUMN IF EXISTS medical_form_received;
+
+-- Note: the DROP NOT NULL on division_id / external_registration_id is not
+-- reverted — re-adding NOT NULL would fail once manual players exist, and
+-- nullable matches the definitive-schema shape.

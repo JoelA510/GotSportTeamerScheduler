@@ -2565,16 +2565,38 @@ export const mockSupabase = {
       if (rejected) {
         return { data: null, error: { message: `field ${rejected} is not editable` } };
       }
-      Object.assign(player, p_patch, { updated_at: new Date().toISOString() });
+      const patch = { ...(p_patch || {}) };
+      const has = (key) => Object.prototype.hasOwnProperty.call(patch, key);
+      // Mirror admin_update_player: changing division invalidates the team
+      // unless the patch names a replacement, and a team must belong to the
+      // player's effective division.
+      if (
+        has('division_id') &&
+        !has('team_id') &&
+        String(patch.division_id ?? '') !== String(player.division_id ?? '')
+      ) {
+        patch.team_id = null;
+      }
+      if (patch.team_id) {
+        const effectiveDivision = has('division_id') ? patch.division_id : player.division_id;
+        const team = (db.teams || []).find((t) => String(t.id) === String(patch.team_id));
+        if (!team || String(team.division_id ?? '') !== String(effectiveDivision ?? '')) {
+          return {
+            data: null,
+            error: { message: "team does not belong to the player's division" },
+          };
+        }
+      }
+      Object.assign(player, patch, { updated_at: new Date().toISOString() });
       // Mirror apply_player_patch: team_players is the relational roster
       // source of truth, kept in sync with the denormalized team_id.
-      if (Object.prototype.hasOwnProperty.call(p_patch || {}, 'team_id')) {
+      if (has('team_id')) {
         db.team_players = (db.team_players || []).filter(
           (row) => String(row.player_id) !== String(p_player_id)
         );
-        if (p_patch.team_id) {
+        if (patch.team_id) {
           db.team_players.push({
-            team_id: p_patch.team_id,
+            team_id: patch.team_id,
             player_id: player.id,
             organization_id: player.organization_id,
             role: 'player',

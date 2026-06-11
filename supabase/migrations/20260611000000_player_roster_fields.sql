@@ -62,3 +62,10 @@ ALTER TABLE public.players
 -- Grid filters are (org, status) scoped.
 CREATE INDEX IF NOT EXISTS idx_players_org_status
     ON public.players (organization_id, status);
+
+-- Environments built from the 20251208 baseline created division_id and
+-- external_registration_id NOT NULL; the definitive schema (20260331) shape
+-- is nullable, and admin_create_player inserts manual players without
+-- either. Relax the legacy constraints (no-op where already nullable).
+ALTER TABLE public.players ALTER COLUMN division_id DROP NOT NULL;
+ALTER TABLE public.players ALTER COLUMN external_registration_id DROP NOT NULL;

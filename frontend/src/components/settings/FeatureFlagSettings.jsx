@@ -147,12 +147,20 @@ export default function FeatureFlagSettings({
     persist({ [GENDER_MODEL_KEY]: value }, 'settings.gender_model_updated');
   };
 
-  const applyFormat = async (value, regenerate) => {
+  const applyFormat = async (value, moveNow) => {
     setFormatPrompt(null);
     const saved = await persist({ [GENDER_MODEL_KEY]: value }, 'settings.gender_model_updated');
-    if (!saved || !regenerate) return;
-    if (value === 'coed') await onMergeRegenerate?.();
-    else await onSplitRegenerate?.();
+    if (!saved || !moveNow) return;
+    const result = value === 'coed' ? await onMergeRegenerate?.() : await onSplitRegenerate?.();
+    if (!result) return;
+    setMessage(
+      result.success
+        ? {
+            type: 'success',
+            text: `Moved ${result.moved} players into their new divisions. Rosters were cleared — rebuild teams in the Team Builder.`,
+          }
+        : { type: 'error', text: result.error || 'Division move failed.' }
+    );
   };
 
   if (loading) return <LoadingScreen />;
@@ -328,11 +336,11 @@ export default function FeatureFlagSettings({
                 title={
                   regenerateAvailable
                     ? undefined
-                    : 'Regeneration runs from the Team Builder once it is wired up.'
+                    : 'Player moves run through the co-ed transition hook once it is wired up.'
                 }
                 onClick={() => applyFormat(formatPrompt, true)}
               >
-                {formatPrompt === 'coed' ? 'Merge & regenerate now' : 'Regenerate by gender now'}
+                {formatPrompt === 'coed' ? 'Merge & move players now' : 'Split players now'}
               </Button>
             </>
           }
@@ -355,12 +363,12 @@ export default function FeatureFlagSettings({
               </div>
               <div>
                 <div style={{ fontWeight: 700 }}>
-                  {formatPrompt === 'coed' ? 'Merge & regenerate now' : 'Regenerate by gender now'}
+                  {formatPrompt === 'coed' ? 'Merge & move players now' : 'Split players now'}
                 </div>
                 <div className="muted" style={{ fontSize: 12.5 }}>
                   {formatPrompt === 'coed'
-                    ? "Combine each age group's Boys and Girls teams into mixed co-ed rosters and rebalance immediately. Existing schedules are kept."
-                    : "Each age group's teams are reallocated proportionally to its boy/girl headcount (e.g. U8 → U8B + U8G) and rosters rebuilt by gender. Existing schedules are kept."}
+                    ? "Move each age group's players into one co-ed division (U8, U10…). Current rosters are cleared — rebuild teams in the Team Builder or with a teaming re-run. Existing schedules are kept."
+                    : "Move each co-ed division's players into gendered divisions (e.g. U8 → U8B + U8G). Current rosters are cleared — rebuild teams in the Team Builder or with a teaming re-run. Existing schedules are kept."}
                 </div>
               </div>
             </div>

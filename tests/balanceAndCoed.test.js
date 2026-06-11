@@ -6,7 +6,11 @@ import {
   buddyStats,
   serpentineAssign,
 } from '../packages/core/src/balanceSignals.js';
-import { planCoedMerge, planGenderSplit } from '../packages/core/src/coedTransition.js';
+import {
+  normalizeGender,
+  planCoedMerge,
+  planGenderSplit,
+} from '../packages/core/src/coedTransition.js';
 
 /** @returns {any} */
 const player = (id, overrides = {}) => ({
@@ -193,5 +197,33 @@ describe('coedTransition', () => {
       teams: [],
     });
     expect(merges).toEqual([]);
+  });
+
+  it('normalizes raw imported gender text', () => {
+    expect(normalizeGender('Male')).toBe('m');
+    expect(normalizeGender('M')).toBe('m');
+    expect(normalizeGender('boy')).toBe('m');
+    expect(normalizeGender('Female')).toBe('f');
+    expect(normalizeGender('F')).toBe('f');
+    expect(normalizeGender('Girl')).toBe('f');
+    expect(normalizeGender('')).toBe(null);
+    expect(normalizeGender(null)).toBe(null);
+    expect(normalizeGender('x')).toBe(null);
+  });
+
+  it('splits divisions whose players carry raw imported gender values', () => {
+    const divisions = [{ id: 'd-u10', name: 'U10', gender_policy: 'coed' }];
+    const players = [
+      player('b1', { division_id: 'd-u10', gender: 'Male' }),
+      player('b2', { division_id: 'd-u10', gender: 'Boy' }),
+      player('g1', { division_id: 'd-u10', gender: 'Female' }),
+      player('g2', { division_id: 'd-u10', gender: 'GIRL' }),
+    ];
+    const { splits } = planGenderSplit({ divisions, players, teams: [] });
+    expect(splits).toHaveLength(1);
+    const boys = splits[0].targets.find((t) => t.divisionUpsert.gender_policy === 'boys');
+    const girls = splits[0].targets.find((t) => t.divisionUpsert.gender_policy === 'girls');
+    expect(boys.playerIds.sort()).toEqual(['b1', 'b2']);
+    expect(girls.playerIds.sort()).toEqual(['g1', 'g2']);
   });
 });

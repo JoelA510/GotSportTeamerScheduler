@@ -67,7 +67,13 @@ export default function PlayerRecordPage() {
         setTeams(teamsRes.data || []);
         if (found?.team_id) {
           const [practicesRes, gamesRes] = await Promise.all([
-            supabase.from('practice_slots').select('*').eq('team_id', found.team_id).limit(10),
+            // Team ownership of practices lives on practice_assignments
+            // (practice_slots has no team_id column).
+            supabase
+              .from('practice_assignments')
+              .select('id, slot:practice_slots (day_of_week, start_time, end_time)')
+              .eq('team_id', found.team_id)
+              .limit(10),
             supabase
               .from('games')
               .select(
@@ -142,9 +148,13 @@ export default function PlayerRecordPage() {
   const divisionLabel = division ? divisionDisplayName(division.name, genderModel) : null;
   const status = player.status || 'active';
 
+  // Rosters are per-division: only offer teams from the player's division
+  // (the admin RPC rejects cross-division assignments).
   const teamOptions = [
     { value: '', label: 'Unassigned' },
-    ...teams.map((entry) => ({ value: entry.id, label: entry.name })),
+    ...teams
+      .filter((entry) => entry.division_id === player.division_id)
+      .map((entry) => ({ value: entry.id, label: entry.name })),
   ];
   const statusOptions = ['active', 'pending', 'inactive']
     .concat(isEnabled(FEATURE_FLAGS.WAITLIST) ? ['waitlist'] : [])
@@ -409,9 +419,9 @@ export default function PlayerRecordPage() {
               </div>
               <div className="card-body flush">
                 {practices.length ? (
-                  practices.map((slot, index) => (
+                  practices.map((assignment, index) => (
                     <div
-                      key={slot.id}
+                      key={assignment.id}
                       style={{
                         display: 'flex',
                         alignItems: 'center',
@@ -422,9 +432,9 @@ export default function PlayerRecordPage() {
                       }}
                     >
                       <Clock size={15} className="muted" aria-hidden="true" />
-                      <span style={{ fontWeight: 600 }}>{slot.day_of_week}</span>
+                      <span style={{ fontWeight: 600 }}>{assignment.slot?.day_of_week}</span>
                       <span>
-                        {slot.start_time} – {slot.end_time}
+                        {assignment.slot?.start_time} – {assignment.slot?.end_time}
                       </span>
                     </div>
                   ))

@@ -169,11 +169,16 @@ export default function TeamBuilderPage() {
       const assigned = divisionPlayers.filter((player) => player.team_id);
       const CHUNK = 8;
       for (let i = 0; i < assigned.length; i += CHUNK) {
-        await Promise.all(
+        const results = await Promise.all(
           assigned.slice(i, i + CHUNK).map((player) => updatePlayer(player.id, { team_id: null }))
         );
+        const failed = results.find((result) => !result.success);
+        if (failed) throw new Error(failed.error || 'clear failed');
       }
       toast('Cleared division — all players returned to pool', 'success');
+    } catch (err) {
+      logger.error('[TeamBuilder] clear division failed:', err);
+      toast(err.message || 'Clear division failed — some players may still be assigned', 'warning');
     } finally {
       setWorking(false);
     }

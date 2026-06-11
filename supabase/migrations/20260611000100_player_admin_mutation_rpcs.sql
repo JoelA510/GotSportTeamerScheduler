@@ -201,12 +201,27 @@ BEGIN
     ) THEN
         RAISE EXCEPTION 'division does not belong to organization' USING ERRCODE = '22023';
     END IF;
+    -- Changing division invalidates the current team assignment unless the
+    -- patch names a replacement team (rosters are per-division).
+    IF v_sanitized ? 'division_id'
+       AND NOT v_sanitized ? 'team_id'
+       AND (v_sanitized->>'division_id')::uuid IS DISTINCT FROM v_player.division_id THEN
+        v_sanitized := v_sanitized || jsonb_build_object('team_id', NULL);
+    END IF;
+    -- A team must belong to the same organization AND to the player's
+    -- effective (possibly just-patched) division, or rosters/portals/the
+    -- scheduler would disagree about who plays where.
     IF v_sanitized ? 'team_id' AND v_sanitized->>'team_id' IS NOT NULL AND NOT EXISTS (
         SELECT 1 FROM public.teams t
         WHERE t.id = (v_sanitized->>'team_id')::uuid
           AND t.organization_id = v_player.organization_id
+          AND t.division_id IS NOT DISTINCT FROM (
+              CASE WHEN v_sanitized ? 'division_id'
+                   THEN (v_sanitized->>'division_id')::uuid
+                   ELSE v_player.division_id END)
     ) THEN
-        RAISE EXCEPTION 'team does not belong to organization' USING ERRCODE = '22023';
+        RAISE EXCEPTION 'team does not belong to the player''s division'
+            USING ERRCODE = '22023';
     END IF;
 
     PERFORM public.apply_player_patch(p_player_id, v_sanitized);

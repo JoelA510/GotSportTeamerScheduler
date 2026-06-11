@@ -28,6 +28,24 @@ function genderOf(name) {
   return 'coed';
 }
 
+/**
+ * Normalize a stored player gender to 'm' | 'f' | null. Imports persist the
+ * raw GotSport text ("Male", "F", "Boy", …), so comparisons must go through
+ * this (mirrors the finalize RPC's lower(left(gender, 1)) IN (...) logic).
+ *
+ * @param {string | null | undefined} value
+ * @returns {'m' | 'f' | null}
+ */
+export function normalizeGender(value) {
+  const first = String(value || '')
+    .trim()
+    .charAt(0)
+    .toLowerCase();
+  if (first === 'm' || first === 'b') return 'm';
+  if (first === 'f' || first === 'g') return 'f';
+  return null;
+}
+
 function baseName(name) {
   const trimmed = String(name || '').trim();
   const compact = COMPACT_RE.exec(trimmed);
@@ -114,8 +132,8 @@ export function planGenderSplit({ divisions = [], players = [], teams = [] }) {
     if (age == null) return;
 
     const divisionPlayers = players.filter((player) => player.division_id === division.id);
-    const boys = divisionPlayers.filter((player) => player.gender === 'm');
-    const girls = divisionPlayers.filter((player) => player.gender === 'f');
+    const boys = divisionPlayers.filter((player) => normalizeGender(player.gender) === 'm');
+    const girls = divisionPlayers.filter((player) => normalizeGender(player.gender) === 'f');
     if (boys.length === 0 && girls.length === 0) return;
 
     const sourceTeamCount = teams.filter((team) => team.division_id === division.id).length;
