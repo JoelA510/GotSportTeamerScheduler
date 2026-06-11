@@ -73,7 +73,7 @@ function AppContent() {
   // /invite/:code is reachable regardless of session or org state. The page
   // itself handles each auth/org combination (unauthenticated → inline Login;
   // authenticated → redeem immediately).
-  const isInvitePath = location.pathname.startsWith('/invite/');
+  const isInvitePath = /^\/invite\/[^/]+\/?$/.test(location.pathname);
   if (isInvitePath) {
     return (
       <Suspense fallback={<LoadingScreen message="Validating invite..." />}>

@@ -88,23 +88,7 @@ export default function InvitePage() {
       <>
         <div
           role="status"
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            zIndex: 50,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 8,
-            padding: '10px 16px',
-            background: 'var(--primary-weak)',
-            color: 'var(--text-primary)',
-            borderBottom: '1px solid var(--border)',
-            fontSize: 14,
-            fontWeight: 600,
-          }}
+          className="fixed top-0 left-0 right-0 z-50 flex items-center justify-center gap-2 py-2.5 px-4 bg-[var(--primary-weak)] text-[var(--text-primary)] border-b border-[var(--border)] text-sm font-semibold"
         >
           <Ticket size={16} aria-hidden="true" />
           You&apos;ve been invited to join an organization — sign in or create an account to accept.
