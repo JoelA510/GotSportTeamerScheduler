@@ -62,7 +62,6 @@ export function useTeamPortal(teamId) {
             jersey_number,
             years_played,
             rating,
-            guardian_contacts,
             willing_to_coach
           )
         `

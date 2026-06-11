@@ -1,0 +1,6 @@
+-- Revert for 20260611000300_redesign_audit_actions.sql
+--
+-- Restore the previous whitelist by re-applying the constraint block from
+-- 20260504070000_team_portal_communication_rpcs.sql (lines defining
+-- audit_log_action_check). Audit rows already written with the new actions
+-- must be deleted first or the narrower CHECK cannot be re-added.

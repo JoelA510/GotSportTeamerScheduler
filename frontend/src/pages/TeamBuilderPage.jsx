@@ -125,21 +125,21 @@ export default function TeamBuilderPage() {
         respectBuddies: respectBuddies && isEnabled(FEATURE_FLAGS.BUDDY_REQUESTS),
         respectCoach: respectCoach && isEnabled(FEATURE_FLAGS.COACHING_INTEREST),
       });
-      // Apply per team so each bulk call carries one homogeneous patch.
-      const byTeam = new Map();
-      assignments.forEach(({ playerId, teamId }) => {
-        if (!byTeam.has(teamId)) byTeam.set(teamId, []);
-        byTeam.get(teamId).push(playerId);
+      // The bulk RPC disallows team_id, so each placement is a per-player
+      // audited update; run them in bounded-concurrency chunks.
+      const moves = assignments.filter(({ playerId, teamId }) => {
+        const current = divisionPlayers.find((player) => player.id === playerId);
+        return current?.team_id !== teamId;
       });
-      for (const [teamId, ids] of byTeam.entries()) {
-        // bulk RPC disallows team_id; per-player audited updates instead.
-        for (const playerId of ids) {
-          const current = divisionPlayers.find((player) => player.id === playerId);
-          if (current?.team_id !== teamId) {
-            const result = await updatePlayer(playerId, { team_id: teamId });
-            if (!result.success) throw new Error(result.error || 'assignment failed');
-          }
-        }
+      const CHUNK = 8;
+      for (let i = 0; i < moves.length; i += CHUNK) {
+        const results = await Promise.all(
+          moves
+            .slice(i, i + CHUNK)
+            .map(({ playerId, teamId }) => updatePlayer(playerId, { team_id: teamId }))
+        );
+        const failed = results.find((result) => !result.success);
+        if (failed) throw new Error(failed.error || 'assignment failed');
       }
       await supabase.rpc('record_audit_event', {
         p_organization_id: orgId,
@@ -167,8 +167,11 @@ export default function TeamBuilderPage() {
     setWorking(true);
     try {
       const assigned = divisionPlayers.filter((player) => player.team_id);
-      for (const player of assigned) {
-        await updatePlayer(player.id, { team_id: null });
+      const CHUNK = 8;
+      for (let i = 0; i < assigned.length; i += CHUNK) {
+        await Promise.all(
+          assigned.slice(i, i + CHUNK).map((player) => updatePlayer(player.id, { team_id: null }))
+        );
       }
       toast('Cleared division — all players returned to pool', 'success');
     } finally {

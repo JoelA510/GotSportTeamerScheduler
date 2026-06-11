@@ -18,23 +18,37 @@ export function useCoedTransition() {
   const seasonId = currentSeasonSetting?.id;
 
   const fetchInputs = useCallback(async () => {
-    const [divisionsRes, playersRes, teamsRes] = await Promise.all([
-      supabase.from('divisions').select('*').eq('organization_id', orgId),
+    // Divisions are unique per season; scope everything to the active one so
+    // a merge/split never touches another season's divisions or rosters.
+    const divisionsRes = await supabase
+      .from('divisions')
+      .select('*')
+      .eq('organization_id', orgId)
+      .eq('season_settings_id', seasonId);
+    if (divisionsRes.error) throw divisionsRes.error;
+    const divisions = divisionsRes.data || [];
+    const divisionIds = divisions.map((division) => division.id);
+    if (divisionIds.length === 0) return { divisions, players: [], teams: [] };
+    const [playersRes, teamsRes] = await Promise.all([
       supabase
         .from('players')
         .select('id, division_id, team_id, gender')
-        .eq('organization_id', orgId),
-      supabase.from('teams').select('id, division_id').eq('organization_id', orgId),
+        .eq('organization_id', orgId)
+        .in('division_id', divisionIds),
+      supabase
+        .from('teams')
+        .select('id, division_id')
+        .eq('organization_id', orgId)
+        .in('division_id', divisionIds),
     ]);
-    if (divisionsRes.error) throw divisionsRes.error;
     if (playersRes.error) throw playersRes.error;
     if (teamsRes.error) throw teamsRes.error;
     return {
-      divisions: divisionsRes.data || [],
+      divisions,
       players: playersRes.data || [],
       teams: teamsRes.data || [],
     };
-  }, [orgId]);
+  }, [orgId, seasonId]);
 
   const upsertDivision = useCallback(
     async ({ name, gender_policy: genderPolicy }) => {
@@ -50,16 +64,21 @@ export function useCoedTransition() {
     [orgId, seasonId]
   );
 
+  // Per-player audited updates (the bulk RPC intentionally excludes
+  // division/team reassignment), run in bounded-concurrency chunks.
   const movePlayers = useCallback(async (playerIds, divisionId) => {
-    for (const playerId of playerIds) {
-      // Sequential audited updates; bulk RPC intentionally excludes
-      // division/team reassignment.
-
-      const { error } = await supabase.rpc('admin_update_player', {
-        p_player_id: playerId,
-        p_patch: { division_id: divisionId, team_id: null },
-      });
-      if (error) throw error;
+    const CHUNK = 8;
+    for (let i = 0; i < playerIds.length; i += CHUNK) {
+      const results = await Promise.all(
+        playerIds.slice(i, i + CHUNK).map((playerId) =>
+          supabase.rpc('admin_update_player', {
+            p_player_id: playerId,
+            p_patch: { division_id: divisionId, team_id: null },
+          })
+        )
+      );
+      const failed = results.find((result) => result.error);
+      if (failed) throw failed.error;
     }
   }, []);
 
@@ -96,8 +115,6 @@ export function useCoedTransition() {
       for (const split of splits) {
         for (const target of split.targets) {
           const division = await upsertDivision(target.divisionUpsert);
-          // eslint-disable-next-loop no-await-in-loop
-
           await movePlayers(target.playerIds, division.id);
           moved += target.playerIds.length;
         }

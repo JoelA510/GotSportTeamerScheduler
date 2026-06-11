@@ -39,8 +39,8 @@ export default function ScoresPage() {
           .from('games')
           .select(
             `id, start_time, score_home, score_away,
-             home_team:home_team_id (id, name, division),
-             away_team:away_team_id (id, name, division)`
+             home_team:home_team_id (id, name, division:divisions (name)),
+             away_team:away_team_id (id, name)`
           )
           .eq('organization_id', orgId)
           .lte('start_time', new Date().toISOString())
@@ -97,7 +97,10 @@ export default function ScoresPage() {
       games.map((game) => ({
         ...game,
         _date: game.start_time ? new Date(game.start_time).toLocaleDateString() : '—',
-        _division: divisionDisplayName(game.home_team?.division || '', genderModel),
+        _division: divisionDisplayName(
+          game.home_team?.division?.name || game.home_team?.division || '',
+          genderModel
+        ),
         _home: game.home_team?.name || '—',
         _away: game.away_team?.name || '—',
         _final: game.score_home != null && game.score_away != null,

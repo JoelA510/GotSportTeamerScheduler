@@ -64,7 +64,7 @@ export default function FeatureFlagSettings({
   onMergeRegenerate = null,
   onSplitRegenerate = null,
 }) {
-  const { updateFeatureFlags, loading, currentOrganization } = useOrganization();
+  const { updateFeatureFlags, loading, currentOrganization, featureFlags = {} } = useOrganization();
   const { features, genderModel } = useFeatures();
   const { user, isImpersonating } = useAuth();
   const [saving, setSaving] = useState(false);
@@ -114,8 +114,10 @@ export default function FeatureFlagSettings({
     setSaving(true);
     setMessage(null);
     try {
-      const next = { ...features, ...changes };
-      // FEATURE_DEFAULTS are display defaults; only store explicit values.
+      // FEATURE_DEFAULTS are display-time defaults; persist only the org's
+      // explicitly stored flags plus this change, so future default changes
+      // still reach orgs that never touched a given toggle.
+      const next = { ...featureFlags, ...changes };
       const result = await updateFeatureFlags(next);
       if (result.success) {
         await audit(auditAction, { flags: changes });

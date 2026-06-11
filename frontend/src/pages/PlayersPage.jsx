@@ -11,6 +11,7 @@ import { usePlayersData } from '../hooks/usePlayersData.js';
 import { useFeatures } from '../hooks/useFeatures.js';
 import { FEATURE_FLAGS } from '../constants/featureFlags.js';
 import { divisionDisplayName, divisionFilters } from '../utils/divisions.js';
+import { STATUS_TONE } from '../constants/playerStatus.js';
 import LoadingScreen from '../components/LoadingScreen.jsx';
 
 const STATUS_OPTIONS = [
@@ -23,13 +24,6 @@ const BOOL_OPTIONS = [
   { value: 'true', label: 'Yes' },
   { value: 'false', label: 'No' },
 ];
-
-const STATUS_TONE = {
-  active: 'success',
-  pending: 'neutral',
-  inactive: 'neutral',
-  waitlist: 'warning',
-};
 
 function boolCell(value) {
   return value ? (

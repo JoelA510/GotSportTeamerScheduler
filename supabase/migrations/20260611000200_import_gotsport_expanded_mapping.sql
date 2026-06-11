@@ -43,6 +43,7 @@ DECLARE
     v_result jsonb;
     v_gender_model text;
     v_season_settings_id uuid;
+    v_waitlist_enabled boolean := true;
     v_created_divisions integer := 0;
 BEGIN
     IF p_import_job_id IS NULL THEN
@@ -82,8 +83,9 @@ BEGIN
     v_status := CASE WHEN v_error_count > 0 THEN 'completed_with_warnings' ELSE 'completed' END;
 
     -- Org division format: 'split' (default) -> gendered U8B/U8G; 'coed' -> U8.
-    SELECT COALESCE(o.feature_flags->>'gender_model', 'split')
-    INTO v_gender_model
+    SELECT COALESCE(o.feature_flags->>'gender_model', 'split'),
+           COALESCE((o.feature_flags->>'waitlist')::boolean, true)
+    INTO v_gender_model, v_waitlist_enabled
     FROM public.organizations o
     WHERE o.id = v_job.organization_id;
     IF v_gender_model NOT IN ('split', 'coed') THEN
@@ -140,6 +142,7 @@ BEGIN
             WHERE NOT EXISTS (
                 SELECT 1 FROM public.divisions x
                 WHERE x.organization_id = v_job.organization_id
+                  AND x.season_settings_id = v_season_settings_id
                   AND lower(x.name) = lower(d.name)
             )
             ON CONFLICT (season_settings_id, name) DO NOTHING
@@ -289,9 +292,15 @@ BEGIN
                      AND p.years_played_text::int BETWEEN 0 AND 30
                 THEN p.years_played_text::smallint
             END AS years_played,
-            p.payment_status_text IN ('paid', 'yes', 'true', 't', '1', 'y') AS paid,
+            -- NULL when the export carried no Payment Status column, so
+            -- re-imports never wipe manually recorded payments.
             CASE
-                WHEN p.waitlist_text IN ('true', 't', 'yes', 'y', '1') THEN 'waitlist'
+                WHEN p.payment_status_text = '' THEN NULL
+                ELSE p.payment_status_text IN ('paid', 'yes', 'true', 't', '1', 'y')
+            END AS paid,
+            CASE
+                WHEN v_waitlist_enabled
+                     AND p.waitlist_text IN ('true', 't', 'yes', 'y', '1') THEN 'waitlist'
                 ELSE 'active'
             END AS import_status,
             p.coaching_answer IN ('true', 't', 'yes', 'y', '1', 'maybe', 'coach',
@@ -356,8 +365,17 @@ BEGIN
                           THEN p.division_id_text::uuid
                       ELSE NULL
                   END
-                  OR lower(divisions.name) = lower(COALESCE(p.explicit_division_name, ''))
-                  OR lower(divisions.name) = lower(COALESCE(p.derived_division_name, ''))
+                  -- Name matches are season-scoped (divisions are unique per
+                  -- season); without this, a new season's import attaches
+                  -- players to a prior season's same-named division.
+                  OR (
+                      (v_season_settings_id IS NULL
+                       OR divisions.season_settings_id = v_season_settings_id)
+                      AND (
+                          lower(divisions.name) = lower(COALESCE(p.explicit_division_name, ''))
+                          OR lower(divisions.name) = lower(COALESCE(p.derived_division_name, ''))
+                      )
+                  )
               )
             ORDER BY
                 -- Prefer explicit id, then explicit name, then derived name.
@@ -401,7 +419,7 @@ BEGIN
             birth_year = de.birth_year,
             skill_tier = de.skill_tier,
             years_played = COALESCE(de.years_played, p.years_played),
-            paid = de.paid,
+            paid = COALESCE(de.paid, p.paid),
             status = CASE
                 WHEN de.import_status = 'waitlist' THEN 'waitlist'
                 WHEN p.status = 'waitlist' AND de.import_status = 'active' THEN 'active'
@@ -480,7 +498,7 @@ BEGIN
             birth_year,
             skill_tier,
             years_played,
-            paid,
+            COALESCE(paid, false),
             import_status,
             willing_to_coach,
             willing_to_coach,

@@ -14,15 +14,9 @@ import { useOrganization } from '../contexts/OrganizationContext.jsx';
 import { useFeatures } from '../hooks/useFeatures.js';
 import { FEATURE_FLAGS } from '../constants/featureFlags.js';
 import { divisionDisplayName } from '../utils/divisions.js';
+import { STATUS_TONE } from '../constants/playerStatus.js';
 import { logger } from '../lib/logger.js';
 import LoadingScreen from '../components/LoadingScreen.jsx';
-
-const STATUS_TONE = {
-  active: 'success',
-  pending: 'neutral',
-  inactive: 'neutral',
-  waitlist: 'warning',
-};
 
 function Stars({ n = 0 }) {
   if (!n) return <span className="muted">Unrated</span>;

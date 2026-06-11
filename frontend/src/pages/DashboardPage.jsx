@@ -670,10 +670,11 @@ function ParentDashboard() {
           .eq('profile_id', user?.profile?.id || user?.id);
         const ids = (links || []).map((link) => link.player_id);
         if (ids.length > 0) {
-          const { data } = await supabase.from('players').select('*');
-          if (!cancelled) {
-            setPlayers((data || []).filter((player) => ids.includes(player.id)));
-          }
+          const { data } = await supabase
+            .from('players')
+            .select('id, first_name, last_name, status, team_id')
+            .in('id', ids);
+          if (!cancelled) setPlayers(data || []);
         }
       } catch (err) {
         logger.error('[ParentDashboard] load failed:', err);
@@ -784,24 +785,16 @@ export default function DashboardPage() {
     </div>
   ) : null;
 
-  if (effectiveRole === 'coach' || effectiveRole === 'staff')
-    return (
-      <>
-        {banner}
-        <CoachDashboard />
-      </>
-    );
-  if (effectiveRole === 'parent' || effectiveRole === 'player')
-    return (
-      <>
-        {banner}
-        <ParentDashboard />
-      </>
-    );
+  const Home =
+    effectiveRole === 'coach' || effectiveRole === 'staff'
+      ? CoachDashboard
+      : effectiveRole === 'parent' || effectiveRole === 'player'
+        ? ParentDashboard
+        : AdminHome;
   return (
     <>
       {banner}
-      <AdminHome />
+      <Home />
     </>
   );
 }

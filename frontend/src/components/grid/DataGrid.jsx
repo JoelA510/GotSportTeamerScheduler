@@ -146,10 +146,12 @@ export default function DataGrid({
   };
 
   const commitEdit = (move) => {
-    setEditing((current) => {
-      if (!current) return null;
-      const col = columns[current.c];
-      const row = view[current.r];
+    // Side effects stay OUTSIDE state updaters: updaters must be pure
+    // (StrictMode double-invokes them, which would fire onCellChange — and
+    // its audited RPC — twice per commit).
+    if (editing) {
+      const col = columns[editing.c];
+      const row = view[editing.r];
       /** @type {any} */
       let value = editVal;
       if (col.type === 'number') {
@@ -162,8 +164,8 @@ export default function DataGrid({
         onCellChange(getRowId(row), col.key, value);
         setDirty((d) => new Set(d).add(`${getRowId(row)}:${col.key}`));
       }
-      return null;
-    });
+      setEditing(null);
+    }
     if (move) keyboard.moveActive(move.dr, move.dc);
     requestAnimationFrame(() => gridRef.current?.focus());
   };

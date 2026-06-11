@@ -89,9 +89,14 @@ export function serpentineAssign({
   if (teams.length === 0) return [];
 
   // ---- build units (buddy pairs stay together) ----
+  // Index the same aliases buddyStats uses, so a request written against a
+  // preferred name still forms a unit.
   const byName = new Map();
   players.forEach((player) => {
     byName.set(nameKey(`${player.first_name} ${player.last_name}`), player);
+    if (player.preferred_name) {
+      byName.set(nameKey(`${player.preferred_name} ${player.last_name}`), player);
+    }
   });
   const unitOf = new Map();
   const units = [];

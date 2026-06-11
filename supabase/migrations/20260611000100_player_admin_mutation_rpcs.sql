@@ -90,10 +90,13 @@ BEGIN
                     WHERE jsonb_typeof(g.value) <> 'object'
                        OR EXISTS (
                            SELECT 1 FROM jsonb_object_keys(g.value) k
-                           WHERE k NOT IN ('name', 'email', 'phone', 'alternate_email')
+                           -- 'primary'/'relationship' appear in legacy seed/import
+                           -- data and must round-trip through record-page edits.
+                           WHERE k NOT IN ('name', 'email', 'phone', 'alternate_email',
+                                           'primary', 'relationship')
                        )
                 ) THEN
-                    RAISE EXCEPTION 'guardian_contacts entries allow only name/email/phone/alternate_email'
+                    RAISE EXCEPTION 'guardian_contacts entries allow only name/email/phone/alternate_email/primary/relationship'
                         USING ERRCODE = '22023';
                 END IF;
                 IF jsonb_array_length(v_val) > 6 THEN
@@ -145,6 +148,21 @@ BEGIN
         guardian_contacts = CASE WHEN p_sanitized ? 'guardian_contacts' THEN p_sanitized->'guardian_contacts' ELSE p.guardian_contacts END,
         updated_at      = timezone('utc', now())
     WHERE p.id = p_player_id;
+
+    -- team_players is the relational source of truth for rosters (portals,
+    -- summaries, scheduler filters read it). Keep it in sync whenever the
+    -- denormalized players.team_id is patched, so Team Builder moves are
+    -- visible everywhere.
+    IF p_sanitized ? 'team_id' THEN
+        DELETE FROM public.team_players tp WHERE tp.player_id = p_player_id;
+        IF p_sanitized->>'team_id' IS NOT NULL THEN
+            INSERT INTO public.team_players (team_id, player_id, organization_id, role, source)
+            SELECT (p_sanitized->>'team_id')::uuid, p.id, p.organization_id, 'player', 'manual'
+            FROM public.players p
+            WHERE p.id = p_player_id
+            ON CONFLICT (team_id, player_id) DO NOTHING;
+        END IF;
+    END IF;
 END;
 $$;
 

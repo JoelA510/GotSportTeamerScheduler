@@ -126,9 +126,13 @@ export function planGenderSplit({ divisions = [], players = [], teams = [] }) {
     let girlsTeams = 0;
     if (sourceTeamCount > 0) {
       if (boys.length > 0 && girls.length > 0) {
-        boysTeams = Math.max(1, Math.round((sourceTeamCount * boys.length) / total));
-        boysTeams = Math.min(boysTeams, sourceTeamCount - 1);
-        girlsTeams = sourceTeamCount - boysTeams;
+        // Proportional, with each present gender getting >= 1 team. The
+        // total is preserved except when the source had a single team, in
+        // which case the plan necessarily expands to 1+1 rather than
+        // allocating zero teams to either gender.
+        const proportional = Math.round((sourceTeamCount * boys.length) / total);
+        boysTeams = Math.min(Math.max(proportional, 1), Math.max(sourceTeamCount - 1, 1));
+        girlsTeams = Math.max(1, sourceTeamCount - boysTeams);
       } else if (boys.length > 0) {
         boysTeams = sourceTeamCount;
       } else {

@@ -174,13 +174,14 @@ export default function SideNav({
               );
             })
           )}
-          {IS_MOCK_MODE && !collapsed && (
+          {IS_MOCK_MODE && (
             <a
               href="https://github.com/JoelA510/SquadLogic/blob/main/docs/operations/ENVIRONMENT.md"
               target="_blank"
               rel="noopener noreferrer"
               className="nav-item"
               style={{ marginTop: 12, color: 'var(--warning-text)' }}
+              title="Mock Mode Active"
             >
               <FlaskConical size={16} className="ni-icon" aria-hidden="true" />
               <span className="ni-label">Mock Mode Active</span>

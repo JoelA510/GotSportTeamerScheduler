@@ -26,19 +26,35 @@ export default function Dropdown({
 
   useEffect(() => {
     if (!open) return undefined;
+    const trigger = document.activeElement;
     const handlePointer = (event) => {
       if (rootRef.current && !rootRef.current.contains(event.target)) setOpen(false);
     };
     const handleKey = (event) => {
-      if (event.key === 'Escape') setOpen(false);
+      const menuItems = Array.from(rootRef.current?.querySelectorAll('[role="menuitem"]') || []);
+      if (event.key === 'Escape') {
+        setOpen(false);
+        // Return focus to the trigger so keyboard users keep their place.
+        if (trigger instanceof HTMLElement) trigger.focus();
+        return;
+      }
+      if (menuItems.length === 0) return;
+      const index = menuItems.indexOf(document.activeElement);
       if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-        const menuItems = Array.from(rootRef.current?.querySelectorAll('[role="menuitem"]') || []);
-        if (menuItems.length === 0) return;
         event.preventDefault();
-        const index = menuItems.indexOf(document.activeElement);
-        const delta = event.key === 'ArrowDown' ? 1 : -1;
-        const next = menuItems[(index + delta + menuItems.length) % menuItems.length];
+        const next =
+          index === -1
+            ? menuItems[event.key === 'ArrowDown' ? 0 : menuItems.length - 1]
+            : menuItems[
+                (index + (event.key === 'ArrowDown' ? 1 : -1) + menuItems.length) % menuItems.length
+              ];
         next.focus();
+      } else if (event.key === 'Home') {
+        event.preventDefault();
+        menuItems[0].focus();
+      } else if (event.key === 'End') {
+        event.preventDefault();
+        menuItems[menuItems.length - 1].focus();
       }
     };
     document.addEventListener('mousedown', handlePointer);

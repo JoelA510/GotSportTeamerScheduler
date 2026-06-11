@@ -148,6 +148,44 @@ describe('coedTransition', () => {
     expect(boys.teamCount + girls.teamCount).toBe(3);
   });
 
+  it('gives each gender at least one team even when the source had a single team', () => {
+    const players = [
+      ...Array.from({ length: 12 }, (_, i) => player(`b${i}`, { division_id: 'd-u10' })),
+      ...Array.from({ length: 2 }, (_, i) =>
+        player(`g${i}`, { division_id: 'd-u10', gender: 'f' })
+      ),
+    ];
+    const teams = [{ id: 't1', division_id: 'd-u10' }];
+    const { splits } = planGenderSplit({ divisions, players, teams });
+    const boys = splits[0].targets.find((t) => t.divisionUpsert.gender_policy === 'boys');
+    const girls = splits[0].targets.find((t) => t.divisionUpsert.gender_policy === 'girls');
+    expect(boys.teamCount).toBeGreaterThanOrEqual(1);
+    expect(girls.teamCount).toBeGreaterThanOrEqual(1);
+  });
+
+  it('keeps preferred-name buddy requests together in serpentineAssign', () => {
+    const players = [
+      player('a', {
+        first_name: 'Samantha',
+        last_name: 'Brown',
+        preferred_name: 'Sam',
+        rating: 3,
+      }),
+      player('b', { first_name: 'Kim', last_name: 'Cho', buddy_request: 'Sam Brown', rating: 3 }),
+      player('c', { rating: 5 }),
+      player('d', { rating: 1 }),
+    ];
+    const assignments = serpentineAssign({
+      players,
+      teams: [{ id: 't1' }, { id: 't2' }],
+      signalKind: 'rating',
+      respectBuddies: true,
+      respectCoach: false,
+    });
+    const teamOf = Object.fromEntries(assignments.map((x) => [x.playerId, x.teamId]));
+    expect(teamOf.a).toBe(teamOf.b);
+  });
+
   it('skips age groups that are already co-ed only', () => {
     const { merges } = planCoedMerge({
       divisions: [{ id: 'd-u10', name: 'U10 Coed' }],

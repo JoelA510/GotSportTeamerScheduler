@@ -62,6 +62,7 @@ const initialMockData = {
       full_name: 'Mock Admin',
       email: import.meta.env.VITE_TEST_ADMIN_EMAIL || 'admin@example.com',
       role: 'admin',
+      organization_id: 'org-1',
     },
     {
       id: 'mock-coach-id',
@@ -70,6 +71,7 @@ const initialMockData = {
       full_name: 'Mock Coach',
       email: import.meta.env.VITE_TEST_COACH_EMAIL || 'coach@example.com',
       role: 'coach',
+      organization_id: 'org-1',
     },
     {
       id: 'mock-parent-id',
@@ -78,6 +80,7 @@ const initialMockData = {
       full_name: 'Mock Parent',
       email: 'parent@example.com',
       role: 'parent',
+      organization_id: 'org-1',
     },
   ],
   organization_members: [
@@ -2563,6 +2566,22 @@ export const mockSupabase = {
         return { data: null, error: { message: `field ${rejected} is not editable` } };
       }
       Object.assign(player, p_patch, { updated_at: new Date().toISOString() });
+      // Mirror apply_player_patch: team_players is the relational roster
+      // source of truth, kept in sync with the denormalized team_id.
+      if (Object.prototype.hasOwnProperty.call(p_patch || {}, 'team_id')) {
+        db.team_players = (db.team_players || []).filter(
+          (row) => String(row.player_id) !== String(p_player_id)
+        );
+        if (p_patch.team_id) {
+          db.team_players.push({
+            team_id: p_patch.team_id,
+            player_id: player.id,
+            organization_id: player.organization_id,
+            role: 'player',
+            source: 'manual',
+          });
+        }
+      }
       db.audit_log = db.audit_log || [];
       db.audit_log.push({
         id: mockId(),
@@ -2673,6 +2692,7 @@ export const mockSupabase = {
         (item) => String(item.id) === String(job.organization_id)
       );
       const genderModel = orgRow?.feature_flags?.gender_model === 'coed' ? 'coed' : 'split';
+      const waitlistEnabled = orgRow?.feature_flags?.waitlist !== false;
       const seasonRow = (db.season_settings || []).find(
         (item) =>
           String(item.organization_id) === String(job.organization_id) && item.status === 'active'
@@ -2789,10 +2809,17 @@ export const mockSupabase = {
             ? String(payload.skill_tier).toLowerCase()
             : null,
           years_played: /^[0-9]{1,2}$/.test(yearsText) ? Number(yearsText) : null,
-          paid:
-            truthy(payload.payment_status) ||
-            String(payload.payment_status || '').toLowerCase() === 'paid',
-          status: truthy(payload.waitlist) ? 'waitlist' : 'active',
+          // No Payment Status column -> keep the existing paid flag
+          ...(payload.payment_status != null && String(payload.payment_status) !== ''
+            ? {
+                paid:
+                  truthy(payload.payment_status) ||
+                  String(payload.payment_status).toLowerCase() === 'paid',
+              }
+            : existing
+              ? {}
+              : { paid: false }),
+          status: waitlistEnabled && truthy(payload.waitlist) ? 'waitlist' : 'active',
           coach_volunteer: willingToCoach,
           willing_to_coach: willingToCoach,
           buddy_request: payload.buddy_request || null,

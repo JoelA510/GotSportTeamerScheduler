@@ -10,7 +10,7 @@ const PALETTE = [
   'var(--accent-green)',
 ];
 
-function initialsOf(name) {
+export function initialsOf(name) {
   return name
     .split(/\s+/)
     .filter(Boolean)

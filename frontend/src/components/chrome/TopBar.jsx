@@ -24,6 +24,7 @@ import { usePermission } from '../../hooks/usePermission.js';
 import { supabase } from '../../lib/supabaseClient.js';
 import Dropdown from '../ui/Dropdown.jsx';
 import Badge from '../ui/Badge.jsx';
+import { initialsOf } from '../ui/Avatar.jsx';
 import logo from '../../assets/SL-Logo.png';
 
 function CtxSwitcher({ label, icon: Icon, value, items }) {
@@ -109,14 +110,16 @@ export default function TopBar({ onToggleNav = undefined }) {
   }, []);
 
   // Role-preview targets (one coach + one parent profile), fetched for admins.
+  const orgId = currentOrganization?.id;
   useEffect(() => {
-    if (!isAdmin) return undefined;
+    if (!isAdmin || !orgId) return undefined;
     let cancelled = false;
     (async () => {
       try {
         const { data, error } = await supabase
           .from('profiles')
-          .select('*')
+          .select('id, email, first_name, last_name, full_name, role, organization_id')
+          .eq('organization_id', orgId)
           .in('role', ['coach', 'parent']);
         if (error || cancelled) return;
         const targets = [];
@@ -132,7 +135,7 @@ export default function TopBar({ onToggleNav = undefined }) {
     return () => {
       cancelled = true;
     };
-  }, [isAdmin]);
+  }, [isAdmin, orgId]);
 
   const displayName =
     user?.profile?.full_name ||
@@ -140,13 +143,7 @@ export default function TopBar({ onToggleNav = undefined }) {
     user?.email ||
     'Account';
   const displayEmail = user?.email || user?.profile?.email || '';
-  const initials =
-    displayName
-      .split(/\s+/)
-      .filter(Boolean)
-      .slice(0, 2)
-      .map((part) => part[0]?.toUpperCase())
-      .join('') || '?';
+  const initials = initialsOf(displayName) || '?';
 
   const orgItems = [
     ...organizations.map((member) => ({
