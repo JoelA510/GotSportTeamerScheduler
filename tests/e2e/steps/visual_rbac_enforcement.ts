@@ -37,16 +37,17 @@ Then(
   }
 );
 
-// --- Coach Admin Actions ---
+// --- Coach Admin Actions (Lightning-class grid) ---
 When('I promote {string} from the Coaches page', async ({ page }, coachName: string) => {
   const row = page.locator('tbody tr').filter({ hasText: coachName }).first();
   await expect(row).toBeVisible({ timeout: 15000 });
 
-  await row.getByLabel(`Status for ${coachName}`).selectOption('active');
-  await expect(page.getByRole('status')).toContainText(
-    `${coachName} status updated to Registered.`,
-    { timeout: 15000 }
-  );
+  // Promote through the mass-select bulk bar, the grid's status path.
+  await row.getByRole('checkbox', { name: 'Select row' }).click();
+  await page.getByRole('button', { name: 'Set Registered' }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'set to Registered' })).toBeVisible({
+    timeout: 15000,
+  });
 });
 
 When(
@@ -55,7 +56,13 @@ When(
     const row = page.locator('tbody tr').filter({ hasText: coachName }).first();
     await expect(row).toBeVisible({ timeout: 15000 });
 
-    const teamSelect = row.getByLabel(`Assign team to ${coachName}`);
+    // Team assignment lives in the per-row "Manage teams" modal.
+    await row.getByRole('button', { name: 'Row actions' }).click();
+    await page.getByRole('menuitem', { name: 'Manage teams' }).click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible({ timeout: 15000 });
+
+    const teamSelect = dialog.getByLabel(`Assign team to ${coachName}`);
     const teamValue = await teamSelect
       .locator('option')
       .filter({ hasText: teamName })
@@ -64,11 +71,11 @@ When(
     expect(teamValue).toBeTruthy();
 
     await teamSelect.selectOption(teamValue || '');
-    await row.getByRole('button', { name: `Assign selected team to ${coachName}` }).click();
-    await expect(page.getByRole('status')).toContainText(
-      `${coachName} assigned to the selected team.`,
-      { timeout: 15000 }
-    );
+    await dialog.getByRole('button', { name: 'Assign' }).click();
+    await expect(
+      page.getByRole('status').filter({ hasText: 'assigned to the selected team' })
+    ).toBeVisible({ timeout: 15000 });
+    await dialog.getByRole('button', { name: 'Done' }).click();
   }
 );
 

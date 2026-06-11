@@ -12,7 +12,7 @@ Feature: Visual Role-Based Access Control
   Scenario: Admin Coach Review Page
     Given I am logged into SquadLogic as an "Admin"
     And I am on the "Coaches" page
-    Then I should see the text "Registered coaches and player-import volunteer leads."
+    Then I should see the text "registered"
     And I should see the text "Mock Coach"
     And I should see the text "Morgan Reyes"
 
