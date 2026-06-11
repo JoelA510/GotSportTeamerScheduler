@@ -4,12 +4,12 @@ Live-Postgres tests that exercise RLS invariants, trigger behavior, and
 other DB-state properties Vitest can't see. Runs inside the database via
 the `extensions.pgtap` extension.
 
-## Why (vs Wave 6a's advisor-lint)
+## Why (vs the static advisor-lint)
 
 | Layer                                        | Catches                                                                                       |
 | -------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| **Static** (Wave 6a `scripts/advisor-lint.js`) | Structural anti-patterns: missing `search_path`, tables without `ENABLE ROW LEVEL SECURITY`, `USING (true)` catch-all policies. Greps migration files. |
-| **Dynamic** (Wave 7a pgTAP)                  | Behavioral violations: a policy that exists but still allows cross-org reads; a definer function that leaks rows; a view whose `security_invoker` doesn't enforce what we expect. Runs real queries under real roles. |
+| **Static** (`scripts/advisor-lint.js`) | Structural anti-patterns: missing `search_path`, tables without `ENABLE ROW LEVEL SECURITY`, `USING (true)` catch-all policies. Greps migration files. |
+| **Dynamic** (pgTAP)                  | Behavioral violations: a policy that exists but still allows cross-org reads; a definer function that leaks rows; a view whose `security_invoker` doesn't enforce what we expect. Runs real queries under real roles. |
 
 Together they cover structural + behavioral regressions.
 
@@ -115,7 +115,7 @@ a new test that needs known identities.
 | A-Team (Org A)            | `aaaaaaaa-0000-0000-0000-000000000001` |
 | B-Team (Org B)            | `bbbbbbbb-0000-0000-0000-000000000002` |
 
-## Wave 7a canonical suite
+## Canonical suite
 
 | Test                                               | Invariant                                                                 |
 | -------------------------------------------------- | ------------------------------------------------------------------------- |
@@ -140,7 +140,7 @@ There are no known/expected structural failures for
 `import_efficiency_metrics`; any structural or behavioral failure on that
 path should be treated as a regression and fixed.
 
-Fix-in-follow-up discipline: Wave 7a ships the tests and the CI harness;
+Fix-in-follow-up discipline: the suite ships tests and the CI harness;
 policy fixes land in their own PRs so the failing-test signal stays
 visible in git history.
 
@@ -160,5 +160,5 @@ visible in git history.
 
 - `docs/security/rls-policies.md` — the invariants this suite enforces.
 - `supabase/tests/README.md` — in-directory quick reference.
-- Wave 6a's `scripts/advisor-lint.js` — the static half of this belt-and-
+- `scripts/advisor-lint.js` — the static half of this belt-and-
   braces arrangement.

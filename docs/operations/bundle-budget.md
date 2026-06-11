@@ -3,7 +3,7 @@
 
 # Bundle Budget — How To
 
-> Wave 6a Task 1 (Audit F-4-07): CI gate that prevents accidental bundle bloat.
+> CI gate that prevents accidental bundle bloat.
 > Source of truth: [`config/bundle-budget.json`](../../config/bundle-budget.json).
 > Enforcer: [`scripts/check-bundle-size.js`](../../scripts/check-bundle-size.js).
 

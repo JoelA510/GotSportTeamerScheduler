@@ -3,10 +3,10 @@
 
 # Advisor Lint — Static Migration Security Gate
 
-> Wave 6a Task 2 (Audit F-2-01..F-2-03 regression-prevention): static SQL grep
-> over `supabase/migrations/**.sql` + `.env.*.example` files. Catches the
-> Wave 2 fix patterns that Supabase's live `get_advisors` MCP only sees
-> post-deploy. Source: [`scripts/advisor-lint.js`](../../scripts/advisor-lint.js).
+> Static SQL grep over `supabase/migrations/**.sql` + `.env.*.example` files.
+> Catches at commit time the security anti-patterns that Supabase's live
+> `get_advisors` only sees post-deploy.
+> Source: [`scripts/advisor-lint.js`](../../scripts/advisor-lint.js).
 
 ## What it catches
 
@@ -23,7 +23,7 @@
 Rules 1, 2, and 3 are CROSS-MIGRATION aware. A `CREATE FUNCTION ... SECURITY
 DEFINER` in migration A is NOT flagged if migration B contains
 `ALTER FUNCTION ... SET search_path` for the same function name. Same applies
-to views and tables. This means corrective migrations (like Wave 2 Task 3's
+to views and tables. This means corrective migrations (like
 `20260421001209_lock_search_path_on_definer_functions.sql`) close the
 historical violations automatically.
 
@@ -74,6 +74,6 @@ npm run check:advisors
 
 ## Limitations
 
-- **Static only** — does NOT replace Supabase's live `get_advisors` MCP. Run the live advisor on the deployed DB after every wave that ships a migration.
+- **Static only** — does NOT replace Supabase's live `get_advisors`. Run the live advisor on the deployed DB after every release that ships a migration.
 - **Regex-based** — corner cases (e.g., functions defined inside `DO $$ ... $$ blocks`) may slip through. The live advisor catches those.
 - **Not a substitute for review** — code review is still required; the lint just guarantees a baseline floor.

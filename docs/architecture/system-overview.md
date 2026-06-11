@@ -7,7 +7,7 @@
 
 SquadLogic is a **monorepo SPA** (Single-Page Application) that converts raw GotSport registration data into teaming and scheduling frameworks for youth sports organizations. The system is structured into three layers:
 
-1. **Frontend (React 19 + Vite 6)**: A Vite-built React SPA deployed as a static bundle on Vercel. Uses `VITE_*`-scoped environment variables. The frontend contains all UI components, routing, and state management via React Context providers.
+1. **Frontend (React 19 + Vite 7)**: A Vite-built React SPA deployed as a static bundle on Vercel. Uses `VITE_*`-scoped environment variables. The frontend contains all UI components, routing, and state management via React Context providers.
 
 2. **Core Domain Logic (`@squadlogic/core`)**: A pure JavaScript package within the monorepo (`packages/core/src/`) containing all scheduling algorithms, team generation, metrics evaluation, and data validation. Framework-agnostic — no React imports allowed.
 
@@ -17,7 +17,7 @@ SquadLogic is a **monorepo SPA** (Single-Page Application) that converts raw Got
 ┌─────────────────────────────────────────────────────────┐
 │  Vercel (Static SPA Hosting)                            │
 │  ┌───────────────────────────────────────────────────┐  │
-│  │  React 19 + Vite 6 Frontend                       │  │
+│  │  React 19 + Vite 7 Frontend                       │  │
 │  │  • React Router v7 (lazy-loaded pages)            │  │
 │  │  • Lightning-class Design System (CSS + TW4)     │  │
 │  │  • React Context (Auth, Org, Import, Theme)       │  │
@@ -45,7 +45,7 @@ SquadLogic is a **monorepo SPA** (Single-Page Application) that converts raw Got
 
 | Layer            | Technology                                                                            |
 | ---------------- | ------------------------------------------------------------------------------------- |
-| Frontend         | React 19, Vite 6, react-router-dom v7                                                 |
+| Frontend         | React 19, Vite 7, react-router-dom v7                                                 |
 | Styling          | Tailwind CSS 4 (`@tailwindcss/vite`) + Vanilla CSS ("Lightning-class" design system, light + dark) |
 | State Management | React Context (Auth, Import, Organization, Theme)                                     |
 | Backend          | Supabase (PostgreSQL, Edge Functions, Auth, Storage)                                  |

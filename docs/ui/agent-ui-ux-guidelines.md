@@ -17,7 +17,7 @@ SquadLogic is a React Web application built with:
 When the user asks you to perform any "UI/UX pass", mentions "UI/UX checklist", or requests "visual polish"/"beautification", you must follow:
 
 - `docs/ui/ui-ux-pass.md` as the canonical P0/P1 UI/UX checklist.
-- `docs/ui/ui-ux-pass-summary.md` as the quick reference for P0/P1.
+- `docs/ui/ui-ux-pass.md` as the quick reference for P0/P1.
 - `docs/ui/ui-ux-polish.md` as the P2 visual polish guide.
 - `docs/ui/ui-ux-rules.json` (if present) as the rule ID reference.
 
@@ -37,7 +37,6 @@ Your primary focus is:
 
 - Before making UI changes, open:
   - `docs/ui/ui-ux-pass.md`
-  - `docs/ui/ui-ux-pass-summary.md`
 - When working on beautification, also open:
   - `docs/ui/ui-ux-polish.md`
 - Treat these as the source of truth for:

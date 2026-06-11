@@ -3,7 +3,7 @@
 
 # Storage Retention — `raw-imports` bucket
 
-> Wave 6b Task 3. Free-tier Supabase Storage cap is 1 GB. The `raw-imports`
+> Free-tier Supabase Storage cap is 1 GB. The `raw-imports`
 > bucket holds transient GotSport CSV uploads that feed the ingestion
 > pipeline; once the import has been validated and tracked, the raw file
 > is operational history rather than live data. Durable promotion into
@@ -13,7 +13,7 @@
 
 ## Retention window
 
-- **30 days.** Matches the Wave 6b plan (`.claude/wave-6b-prompt.md` § Task 3).
+- **30 days.** Raw upload copies only exist for re-validation/debugging of recent imports; staged data is durable in Postgres.
 - Imports older than 30 days are operational history; if a user needs the
   original CSV they re-upload it.
 

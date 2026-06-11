@@ -3,7 +3,7 @@
 
 # Front-End Architecture
 
-This document describes the implemented frontend architecture for SquadLogic. The frontend is a React 19 Single-Page Application built with Vite 6, deployed as a static bundle on Vercel.
+This document describes the implemented frontend architecture for SquadLogic. The frontend is a React 19 Single-Page Application built with Vite 7, deployed as a static bundle on Vercel.
 
 ## Routing & Navigation
 
@@ -143,7 +143,7 @@ Both follow the same pattern: `DndContext` with `closestCorners` collision detec
 - Sufficient color contrast across all themes
 
 
-## Wave 4 Onboarding Route Flow
+## Onboarding Route Flow
 
 - Route added: `/organizations/new` (renders `frontend/src/pages/OrganizationCreation.jsx`).
 - Hook added: `frontend/src/hooks/useOrganizationCreation.js` handles schema validation + `initialize_new_tenant` RPC.

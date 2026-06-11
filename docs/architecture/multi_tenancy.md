@@ -38,7 +38,7 @@ CREATE TABLE organizations (
 
 ## Context Switching
 
-Users who belong to multiple organizations can switch between them via the sidebar org/season selector. On context switch:
+Users who belong to multiple organizations can switch between them via the TopBar org/season switchers. On context switch:
 
 1. `OrganizationContext` updates the active org in state and `localStorage`
 2. All data hooks re-fetch with the new `organization_id` filter
@@ -51,7 +51,7 @@ Users who belong to multiple organizations can switch between them via the sideb
 - **Defense in Depth**: Organization ID is validated at three layers — RLS policies (database), Edge Function handlers (server), and React context guards (client)
 - **Audit Logging**: All admin actions are recorded in the `audit_log` table with `organization_id` for traceability
 
-See `docs/security/rls-policies.md` for the complete RLS policy reference and `docs/security/audit_and_remediation_plan.md` for the security audit that hardened this system.
+See `docs/security/rls-policies.md` for the complete RLS policy reference.
 
 ## Zero-to-One Onboarding Flow
 

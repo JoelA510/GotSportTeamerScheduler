@@ -1,66 +1,79 @@
-[← Back to Documentation Index](docs/README.md)
+[← Back to Documentation Index](../README.md)
 ---
 
-# Phase 2 Governance Framework: Smart Ingestion & Modularity
+# Governance Framework
 
-**Role**: Lead Enterprise Architect & Governance Supervisor  
-**Status**: ACTIVE  
-**Scope**: Phase 2 (Smart Ingestion Onboarding)
+The non-negotiable engineering mandates for SquadLogic. Every PR is evaluated
+against these; CI enforces several of them mechanically. Phase-specific
+governance specs from the build-out have been retired — what follows is the
+durable framework they converged on.
 
----
+## 1. Persistence & security guardrails
 
-## 1. Decomposition: SettingsPage & SetupWizard
+1. **RPC Enforcement** — all domain state changes go through dedicated
+   `SECURITY DEFINER` RPCs. Direct `supabase.from(...).update()/insert()/delete()`
+   of sensitive domain tables from the client is a critical failure.
+2. **Definer hygiene** — every definer function sets `SET search_path = public`
+   and revokes anon `EXECUTE`. Reporting views use `security_invoker = on`.
+   Enforced by `npm run check:advisors`.
+3. **Schema Rigidity** — client-side updates are validated against Zod schemas
+   before transmission; the database re-validates via constraints/triggers.
+   CHECK constraints (statuses, audit actions) are extended in the same PR
+   that introduces new values.
+4. **Audit Immutability** — every administrative or state-altering action is
+   recorded in `audit_log` with full metadata (actor, target, patch/previous
+   state). Impersonated actions record both identities. The log is
+   append-only.
+5. **RLS everywhere** — all tables carry row-level security keyed on
+   organization membership. No `USING (true)` policies.
+6. **Session integrity** — privileged UI verifies the user's role through
+   `usePermission`/`OrganizationContext` before mounting; the RPC re-verifies
+   server-side (`is_org_admin` / `is_org_member`). UI gating is never the only
+   gate.
 
-_Ensuring the transition from monolithic UI to a modular, scalable architecture._
+## 2. Privacy & scope
 
-### Pass/Fail Criteria
+7. **Data minimization** — store only the PII needed for scheduling and
+   communication. No document uploads (waivers/IDs are boolean toggles), no
+   payment collection, no PII in the repository (including test fixtures).
+8. **Secret discipline** — the service-role key never appears in `VITE_`-prefixed
+   variables; env files are gitignored with `.example` templates. Enforced by
+   `check:advisors` secret-shape scanning.
 
-| Metric                   | Requirement                | Pass Condition                                                                                                                             |
-| :----------------------- | :------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------- |
-| **Separated Complexity** | Tab-level isolation        | `SettingsPage.jsx` must not exceed 100 lines. Logic for "General", "FeatureFlags", and "AuditLog" must reside in dedicated sub-components. |
-| **Interface Purity**     | Prop Interface             | Components must receive only the slice of state they require. No passing the entire `org` object if only `feature_flags` are needed.       |
-| **Render Optimization**  | Memoization & Lazy Loading | Heavy logic (e.g., `AuditLogTable`) must be lazy-loaded using `React.lazy` and wrapped in `ErrorBoundary`.                                 |
-| **State Locality**       | Wizard State Management    | `SetupWizard` must maintain local draft state until the final "Commit" to minimize redundant RPC calls.                                    |
+## 3. Quality gates (Definition of Done)
 
----
+Every PR must pass, in CI and locally:
 
-## 2. Security: Persistence & Guardrails
+| Gate | Command |
+| --- | --- |
+| Types | `npm run typecheck` |
+| Lint | `npm run lint` (0 errors) |
+| Unit/integration | `npm run test` |
+| Build | `npm run frontend:build` |
+| Bundle budget | `npm run check:bundle` (budgets in `config/bundle-budget.json`; raises need documented rationale) |
+| Migration advisors | `npm run check:advisors` |
+| E2E | `npx bddgen && npm run test:e2e -- --workers=1` |
 
-_Hard-enforcing the 'Constitutional' security standards established in Phase 1._
+Plus: new exports registered in their package index; migrations shipped with
+revert + smoke scripts under `docs/sql/`; tests replaced for every deleted
+tested component (coverage thresholds: 60/50/55/60).
 
-### Non-Negotiable Guardrails
+## 4. Accessibility
 
-1. **RPC Enforcement**: All feature flag updates originating from the `SetupWizard` or `SettingsPage` **MUST** go through the `update_org_feature_flags` RPC. Direct `supabase.from('organizations').update()` is a critical failure.
-2. **Schema Rigidity**: Every update must be validated against the `FeatureFlagSchema` (Zod) on the client **before** transmission. The RPC must ideally re-validate (check Supabase constraint/trigger status).
-3. **Session Integrity**: The `SetupWizard` must verify the user's `role === 'tenant_admin'` via the `OrganizationContext` before mounting.
-4. **Audit Immutability**: Ensure every Wizard 'Step' completion that modifies state is captured in the `audit_log` with `previous_state` and `new_state` JSON blobs.
+WCAG 2.2 AA is a core requirement: keyboard access and visible focus for all
+interactive elements, semantic landmarks, sufficient contrast in both themes,
+and non-drag alternatives for every drag-and-drop interaction. See
+[`docs/ui/agent-ui-ux-guidelines.md`](../ui/agent-ui-ux-guidelines.md).
 
----
+## 5. Telemetry standards
 
-## 3. Telemetry: Fuzzy Match Accuracy
+Import sessions emit telemetry (matching confidence, user-correction rate,
+latency, ambiguity flags) so ingestion intelligence is measurable. Telemetry
+event names are stable interfaces — preserve them across refactors.
 
-_Quantifying the 'Intelligence' of the Smart Ingestion engine._
+## 6. Review protocol
 
-### Accuracy Tracking Requirements
-
-- The `importWorker.js` must emit a `telemetry_payload` for every import session containing:
-  - **Matching Confidence**: Average Levenshtein score across all auto-mapped headers.
-  - **User Correction Rate**: Ratio of `Auto-Mapped-Headers` vs `User-Corrected-Headers`. (Target: < 15% correction rate).
-  - **Performance Latency**: Total time spent in the Fuzzy Matching loop (Target: < 200ms for 50 columns).
-  - **Ambiguity Flagging**: If a header matches two fields with equal scores, it must be flagged as `HIGH_AMBIGUITY` in telemetry.
-
----
-
-## 4. Operational 'Go/No-Go' Protocol
-
-As the Governance Supervisor, I will evaluate all Coding Agent output against these checkpoints:
-
-- [ ] **Audit Breach?** (Any bypass of the RPC?)
-- [ ] **Fragility Check?** (Does the change increase `SettingsPage` complexity?)
-- [ ] **Accessibility Drift?** (Does the Wizard support keyboard navigation and screen readers?)
-- [ ] **Type Leakage?** (Are we using `any` in the import worker?)
-
----
-
-> [!IMPORTANT]
-> Any implementation that violates the **RPC-only persistence** rule will receive an immediate **NO-GO** recommendation.
+Reviewers (human or agent) evaluate each change for: RPC bypasses, RLS/advisor
+regressions, audit-log gaps, schema-validation gaps, accessibility drift, and
+unverified claims in generated output (see
+[`docs/LESSONS_LEARNED.md`](../LESSONS_LEARNED.md) §24).

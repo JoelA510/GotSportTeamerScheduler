@@ -2,7 +2,7 @@
 
 ## Overview
 
-Wave 3 introduced shared test infrastructure to reduce per-test boilerplate and keep test data/mocks deterministic. The goal is leverage, not coverage: tests should stay behavior-equivalent while replacing repeated inline setup with stable helper/factory patterns.
+Shared test infrastructure exists to reduce per-test boilerplate and keep test data/mocks deterministic. The goal is leverage, not coverage: tests should stay behavior-equivalent while replacing repeated inline setup with stable helper/factory patterns.
 
 ## `tests/factories/`
 
@@ -133,7 +133,7 @@ Add new polyfills only when both are true:
 
 ## Migration patterns
 
-Canonical Wave 3b representative migrations:
+Canonical representative migrations:
 
 - `tests/useDashboardData.test.js`
 - `tests/authIntegration.test.jsx`

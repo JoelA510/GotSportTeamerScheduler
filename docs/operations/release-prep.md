@@ -2,8 +2,16 @@
 
 # Release Prep Closure
 
-**Last refreshed:** 2026-05-04
-**Status:** Code-completable release-prep hardening is current through PR #268; not a final release sign-off.
+**Last refreshed:** 2026-06-11
+**Status:** Code-completable release-prep hardening is current through the Lightning-class redesign merge (PR #322); not a final release sign-off.
+
+> **2026-06-11 update:** the Lightning-class redesign merged with five new
+> migrations (`20260611000000`–`20260611000400`: player roster fields, audited
+> admin mutation RPCs, expanded GotSport mapping, audit-action whitelist,
+> `team_players` sync trigger). Before final sign-off, apply the batch to
+> production and re-run the Supabase advisors; the open operator items
+> (Sentry DSN, leaked-password protection, branch protection) are tracked in
+> [`docs/expansion/03_ROADMAP.md`](../expansion/03_ROADMAP.md) §Open Items.
 
 This page closes the current release-prep documentation drift. It does not
 replace the final review-pass sign-off, and it does not claim production
