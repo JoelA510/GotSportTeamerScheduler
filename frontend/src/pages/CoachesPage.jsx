@@ -14,6 +14,7 @@ import { supabase } from '../lib/supabaseClient.js';
 import { useOrganization } from '../contexts/OrganizationContext.jsx';
 import { usePermission } from '../hooks/usePermission.js';
 import { logger } from '../lib/logger.js';
+import GridCheckbox from '../components/grid/GridCheckbox.jsx';
 
 const STATUS_FILTERS = [
   { id: 'all', label: 'All' },
@@ -209,6 +210,19 @@ export function canSetCoachStatus(coach, status) {
   return !(['inactive', 'interested'].includes(status) && (coach?.teams || []).length > 0);
 }
 
+/**
+ * Plans a bulk status change over the selected coach rows: rows already in
+ * the target status are no-ops, and rows the status rules forbid (e.g.
+ * benching a coach who still has teams) are skipped rather than failed.
+ */
+export function planBulkCoachStatus(rows = [], selectedIds = new Set(), nextStatus) {
+  const selected = rows.filter((row) => selectedIds.has(row.id));
+  const eligible = selected.filter(
+    (row) => row.status !== nextStatus && canSetCoachStatus(row, nextStatus)
+  );
+  return { eligible, skipped: selected.length - eligible.length };
+}
+
 function CoachStat({ icon: Icon, label, value }) {
   return (
     <div className="bg-bg-surface border border-border-highlight rounded-lg p-4">
@@ -241,6 +255,7 @@ export default function CoachesPage() {
   const [mutationMessage, setMutationMessage] = useState(null);
   const [pendingAction, setPendingAction] = useState(null);
   const [selectedTeamByCoach, setSelectedTeamByCoach] = useState({});
+  const [selectedCoachIds, setSelectedCoachIds] = useState(() => new Set());
   const [coaches, setCoaches] = useState([]);
   const [interestedPrograms, setInterestedPrograms] = useState([]);
   const [divisions, setDivisions] = useState([]);
@@ -328,6 +343,10 @@ export default function CoachesPage() {
           Object.entries(previous).filter(([, teamId]) => validTeamIds.has(String(teamId)))
         );
       });
+      setSelectedCoachIds((previous) => {
+        const validCoachIds = new Set((coachResult.data || []).map((coach) => String(coach.id)));
+        return new Set([...previous].filter((id) => validCoachIds.has(String(id))));
+      });
     } catch (err) {
       if (latestRequestRef.current !== requestId) return;
       logger.error('Failed to load coaches:', err);
@@ -351,6 +370,7 @@ export default function CoachesPage() {
   useEffect(() => {
     setMutationMessage(null);
     setSelectedTeamByCoach({});
+    setSelectedCoachIds(new Set());
   }, [currentOrganization?.id]);
 
   const rows = useMemo(
@@ -370,6 +390,79 @@ export default function CoachesPage() {
         search: debouncedSearch,
       }),
     [rows, statusFilter, divisionFilter, debouncedSearch]
+  );
+
+  const allVisibleSelected =
+    filteredRows.length > 0 && filteredRows.every((row) => selectedCoachIds.has(row.id));
+  const someSelected = selectedCoachIds.size > 0;
+
+  const toggleCoachSelected = useCallback((coachId) => {
+    setSelectedCoachIds((previous) => {
+      const next = new Set(previous);
+      if (next.has(coachId)) next.delete(coachId);
+      else next.add(coachId);
+      return next;
+    });
+  }, []);
+
+  const toggleAllVisible = useCallback(() => {
+    setSelectedCoachIds((previous) => {
+      const next = new Set(previous);
+      if (filteredRows.every((row) => next.has(row.id))) {
+        filteredRows.forEach((row) => next.delete(row.id));
+      } else {
+        filteredRows.forEach((row) => next.add(row.id));
+      }
+      return next;
+    });
+  }, [filteredRows]);
+
+  const handleBulkStatusChange = useCallback(
+    async (nextStatus) => {
+      if (!currentOrganization?.id || !canManageCoaches) return;
+
+      const { eligible, skipped } = planBulkCoachStatus(rows, selectedCoachIds, nextStatus);
+      const statusLabel = STATUS_LABELS[nextStatus] || nextStatus;
+      if (eligible.length === 0) {
+        setMutationMessage({
+          type: 'error',
+          text: `None of the selected coaches can be set to ${statusLabel} (coaches with assigned teams must be unassigned first).`,
+        });
+        return;
+      }
+
+      setPendingAction('bulk:status');
+      setMutationMessage(null);
+      setError(null);
+
+      let failures = 0;
+      for (const coach of eligible) {
+        const { error: mutationError } = await supabase.rpc('admin_update_coach_status', {
+          p_organization_id: currentOrganization.id,
+          p_coach_id: coach.id,
+          p_status: nextStatus,
+        });
+        if (mutationError) {
+          failures += 1;
+          logger.error('Bulk coach status update failed:', mutationError);
+        }
+      }
+
+      const updated = eligible.length - failures;
+      const notes = [];
+      if (skipped > 0) notes.push(`${skipped} skipped`);
+      if (failures > 0) notes.push(`${failures} failed`);
+      setMutationMessage({
+        type: failures > 0 ? 'error' : 'success',
+        text: `${updated} coach${updated === 1 ? '' : 'es'} set to ${statusLabel}${
+          notes.length > 0 ? ` (${notes.join(', ')})` : ''
+        }.`,
+      });
+      setSelectedCoachIds(new Set());
+      setPendingAction(null);
+      await loadCoaches();
+    },
+    [canManageCoaches, currentOrganization?.id, loadCoaches, rows, selectedCoachIds]
   );
 
   const runCoachMutation = useCallback(
@@ -564,10 +657,57 @@ export default function CoachesPage() {
         </div>
       </div>
 
+      {canManageCoaches && someSelected && (
+        <div
+          className="flex flex-wrap items-center gap-3 rounded-lg border border-brand-400/40 bg-brand-glow px-4 py-3"
+          role="toolbar"
+          aria-label="Bulk coach actions"
+        >
+          <GridCheckbox
+            checked={allVisibleSelected}
+            mixed={!allVisibleSelected && someSelected}
+            onChange={toggleAllVisible}
+            label="Select all visible coaches"
+          />
+          <span className="text-sm font-semibold text-text-primary">
+            {selectedCoachIds.size} selected
+          </span>
+          <div className="flex-1" />
+          {STATUS_OPTIONS.map((status) => (
+            <button
+              key={status.id}
+              type="button"
+              onClick={() => handleBulkStatusChange(status.id)}
+              disabled={pendingAction === 'bulk:status'}
+              className="rounded-lg border border-border-subtle bg-bg-surface px-3 py-2 text-sm font-semibold text-text-secondary transition-colors hover:bg-bg-surface-hover hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Set {status.label}
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={() => setSelectedCoachIds(new Set())}
+            className="rounded-lg border border-border-subtle bg-bg-surface px-3 py-2 text-sm font-semibold text-text-muted transition-colors hover:text-text-primary"
+          >
+            Clear
+          </button>
+        </div>
+      )}
+
       <div className="overflow-x-auto rounded-lg border border-border-highlight bg-bg-surface">
         <table className="min-w-full divide-y divide-border-subtle">
           <thead className="bg-bg-surface">
             <tr>
+              {canManageCoaches && (
+                <th className="w-10 px-4 py-3">
+                  <GridCheckbox
+                    checked={allVisibleSelected}
+                    mixed={!allVisibleSelected && someSelected}
+                    onChange={toggleAllVisible}
+                    label="Select all visible coaches"
+                  />
+                </th>
+              )}
               <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-text-muted">
                 Coach
               </th>
@@ -594,7 +734,7 @@ export default function CoachesPage() {
             {loading ? (
               <tr>
                 <td
-                  colSpan={canManageCoaches ? 6 : 5}
+                  colSpan={canManageCoaches ? 7 : 5}
                   className="px-4 py-10 text-center text-sm text-text-secondary"
                 >
                   Loading coaches...
@@ -603,7 +743,7 @@ export default function CoachesPage() {
             ) : filteredRows.length === 0 ? (
               <tr>
                 <td
-                  colSpan={canManageCoaches ? 6 : 5}
+                  colSpan={canManageCoaches ? 7 : 5}
                   className="px-4 py-10 text-center text-sm text-text-secondary"
                 >
                   No coaches match the current filters.
@@ -611,7 +751,22 @@ export default function CoachesPage() {
               </tr>
             ) : (
               filteredRows.map((coach) => (
-                <tr key={coach.id} className="hover:bg-bg-surface-hover/60">
+                <tr
+                  key={coach.id}
+                  className={`hover:bg-bg-surface-hover/60 ${
+                    selectedCoachIds.has(coach.id) ? 'bg-brand-glow/40' : ''
+                  }`.trim()}
+                  aria-selected={canManageCoaches ? selectedCoachIds.has(coach.id) : undefined}
+                >
+                  {canManageCoaches && (
+                    <td className="w-10 px-4 py-4 align-top">
+                      <GridCheckbox
+                        checked={selectedCoachIds.has(coach.id)}
+                        onChange={() => toggleCoachSelected(coach.id)}
+                        label={`Select ${coach.fullName}`}
+                      />
+                    </td>
+                  )}
                   <td className="px-4 py-4 align-top">
                     <div className="font-semibold text-text-primary">{coach.fullName}</div>
                     <div className="mt-1 flex flex-col gap-1 text-sm text-text-secondary">

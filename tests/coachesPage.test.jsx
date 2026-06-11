@@ -5,6 +5,7 @@ import {
   canAssignCoachToTeam,
   canSetCoachStatus,
   filterCoachReviewRows,
+  planBulkCoachStatus,
   summarizeCoachRows,
 } from '../frontend/src/pages/CoachesPage.jsx';
 
@@ -146,5 +147,44 @@ describe('coach review page helpers', () => {
     expect(canSetCoachStatus(assignedCoach, 'active')).toBe(true);
     expect(canSetCoachStatus(unassignedCoach, 'inactive')).toBe(true);
     expect(canSetCoachStatus(unassignedCoach, 'interested')).toBe(true);
+  });
+
+  describe('planBulkCoachStatus', () => {
+    const rows = buildCoachReviewRows({ coaches, interestedPrograms, divisions, players, teams });
+
+    it('targets only the selected coaches that are not already in the status', () => {
+      const { eligible, skipped } = planBulkCoachStatus(
+        rows,
+        new Set(['coach-lead', 'coach-unassigned', 'coach-inactive']),
+        'inactive'
+      );
+
+      // coach-inactive is already inactive → no-op skip.
+      expect(eligible.map((row) => row.id)).toEqual(['coach-lead', 'coach-unassigned']);
+      expect(skipped).toBe(1);
+    });
+
+    it('skips coaches whose status rules forbid the transition', () => {
+      // coach-active has an assigned team and cannot be benched.
+      const { eligible, skipped } = planBulkCoachStatus(
+        rows,
+        new Set(['coach-active', 'coach-unassigned']),
+        'inactive'
+      );
+
+      expect(eligible.map((row) => row.id)).toEqual(['coach-unassigned']);
+      expect(skipped).toBe(1);
+    });
+
+    it('ignores ids that are not in the roster and handles empty selections', () => {
+      expect(planBulkCoachStatus(rows, new Set(['ghost']), 'active')).toEqual({
+        eligible: [],
+        skipped: 0,
+      });
+      expect(planBulkCoachStatus(rows, new Set(), 'active')).toEqual({
+        eligible: [],
+        skipped: 0,
+      });
+    });
   });
 });
