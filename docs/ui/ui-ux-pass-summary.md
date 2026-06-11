@@ -3,6 +3,12 @@
 
 # UI/UX Pass Summary
 
+> **Superseded (June 2026):** this document records the original "Deep Space Glass"
+> UI/UX pass. The app has since moved to the cobalt **"Lightning-class" design
+> system** (light + dark themes only; the Party theme was retired). For current
+> design standards see [`agent-ui-ux-guidelines.md`](agent-ui-ux-guidelines.md)
+> and CLAUDE.md §6. Kept for audit traceability of the P0/P1 fixes listed below.
+
 ## Overview
 
 This pass focused on a complete visual overhaul of the SquadLogic application, moving from a "functional but basic" UI to a premium, multi-theme design system.

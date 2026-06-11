@@ -157,7 +157,7 @@ Supabase Auth can reject passwords that appear in HaveIBeenPwned. This remains a
 **Verification.**
 1. After redeploy, `curl https://squadlogic.vercel.app/assets/index-*.js | grep ingest.sentry.io` returns the DSN host.
 2. In DevTools Console, type `throw new Error('synthetic sentry ping')` on any page and confirm the event lands in Sentry's Issues list within ~60s.
-3. Confirm the [`@sentry/react`](https://www.npmjs.com/package/@sentry/react) `ErrorBoundary` catch-all still renders the Deep Space Glass fallback — Sentry init should not swap the boundary's UI.
+3. Confirm the [`@sentry/react`](https://www.npmjs.com/package/@sentry/react) `ErrorBoundary` catch-all still renders the themed error fallback — Sentry init should not swap the boundary's UI.
 
 ### 3.2 Onboarding test coverage
 
@@ -184,7 +184,7 @@ Historical state: the §1 repair moved the suite from 0/63 (build broken) to 40/
 
 ### 4.1 Nonce-based `style-src` tightening
 
-The production CSP serves `style-src 'self' 'unsafe-inline'`. `'unsafe-inline'` was retained for Tailwind 4's inline `<style>` blocks, but long-term the tighter posture is a nonce. When the inline-style surface is smaller (e.g. after finishing the Deep Space Glass class migration), revisit this and flip to `style-src 'self' 'nonce-<nonce>'` with a per-response nonce injected by a Vercel edge function.
+The production CSP serves `style-src 'self' 'unsafe-inline'`. `'unsafe-inline'` was retained for Tailwind 4's inline `<style>` blocks, but long-term the tighter posture is a nonce. When the inline-style surface is smaller (e.g. after finishing the Lightning-class token migration), revisit this and flip to `style-src 'self' 'nonce-<nonce>'` with a per-response nonce injected by a Vercel edge function.
 
 ### 4.2 pgTAP / `supabase test db` in CI
 
@@ -206,4 +206,4 @@ The production CSP serves `style-src 'self' 'unsafe-inline'`. `'unsafe-inline'` 
 - [x] pgTAP runner wired into CI for DB-affecting PRs; `npm run test:db` runs in the pgTAP workflow.
 - [x] `OrganizationCreation` moved under a `/organizations/new` route; mock client handles `initialize_new_tenant`; at least one E2E scenario covers the cold-start.
 - [x] Hosted full E2E path restored in CI after PR #209.
-- [ ] CSP `style-src` hardened with a nonce; Deep Space Glass renders identically.
+- [ ] CSP `style-src` hardened with a nonce; the UI renders identically.

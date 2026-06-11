@@ -18,7 +18,7 @@ _Note on Epics: Epics 10 through 17 established the v1.0 baseline. Current docum
 - **Scheduling Engine**: Round-robin generation, conflict-aware slot allocation, daylight savings expansion.
 - **Team Formation**: Auto-drafting honoring mutual buddy requests, coach assignments, and roster caps.
 - **Evaluation Pipeline**: Automated readiness scoring, fairness metrics, and conflict detection.
-- **Frontend Shell**: React Router, Deep Space Glass UI, Theme Context, Dashboard Aggregation Hooks.
+- **Frontend Shell**: React Router, the "Lightning-class" design system (cobalt light/dark themes), Theme Context, Dashboard Aggregation Hooks.
 - **Facility Management**: Full CRUD UI for Venues, Fields, and Blackout Dates.
 - **Communication (M3.2)**: RSVP tracking, trigger-based notifications (Rainouts, Schedule Changes), and Team Chat.
 - **Calendar Sync (M3.3)**: Public ICS feeds for parents and coaches.
@@ -30,7 +30,7 @@ _Note on Epics: Epics 10 through 17 established the v1.0 baseline. Current docum
 **Goal**: Polish the admin experience, enforce security, and ensure type safety.
 
 - **Milestone 2.1: RBAC & Multi-Tenancy**: Broadened `usePermission` enforcement across all routes. Tightened RLS to strictly require `organization_id` checks.
-- **Milestone 2.2: Ingestion Hardening**: Shipped CSV validation, import-job tracking, and error recovery. Durable promotion into `players`, `coaches`, `teams`, or staging tables remains a v1.1 release-readiness item.
+- **Milestone 2.2: Ingestion Hardening**: Shipped CSV validation, import-job tracking, and error recovery. Durable staged promotion into `players`, `coaches`, and field-slot records (with apply/rollback) has since shipped.
 - **Milestone 2.3: Admin Overrides**: Completed UI for drag-and-drop roster adjustments and manual practice slot overrides.
 - **Milestone 2.4: Output Operationalization**: Connected CSV formatters to Supabase Storage and finalized coach email generation.
 - **Milestone 2.5: Type Safety & UX Polish**: Resolved >80 TypeScript errors and standardized the "Deep Space Glass" design system across all components.
