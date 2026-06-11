@@ -11,6 +11,8 @@ import LoadingScreen from '../components/LoadingScreen.jsx';
 import { supabase } from '../lib/supabaseClient.js';
 import { useOrganization } from '../contexts/OrganizationContext.jsx';
 import { usePermission } from '../hooks/usePermission.js';
+import { useFeatures } from '../hooks/useFeatures.js';
+import { divisionDisplayName } from '../utils/divisions.js';
 import { logger } from '../lib/logger.js';
 
 const STATUS_FILTERS = [
@@ -229,6 +231,7 @@ export function planBulkCoachStatus(rows = [], selectedIds = new Set(), nextStat
 export default function CoachesPage() {
   const { currentOrganization } = useOrganization();
   const { can, PERMISSIONS } = usePermission();
+  const { genderModel } = useFeatures();
   const toast = useToast();
   const latestRequestRef = useRef(0);
   const [loading, setLoading] = useState(true);
@@ -357,12 +360,14 @@ export default function CoachesPage() {
       filterCoachReviewRows(allRows, { status: statusFilter, divisionId: divisionFilter }).map(
         (row) => ({
           ...row,
-          _programs: row.programNames.join(', '),
+          _programs: row.programNames
+            .map((name) => divisionDisplayName(name, genderModel))
+            .join(', '),
           _teams: row.teams.map((team) => team.name).join(', '),
           _players: row.playerNames.join(', '),
         })
       ),
-    [allRows, statusFilter, divisionFilter]
+    [allRows, statusFilter, divisionFilter, genderModel]
   );
 
   const manageCoach = useMemo(
@@ -416,7 +421,10 @@ export default function CoachesPage() {
   const handleBulkStatusChange = useCallback(
     async (nextStatus) => {
       if (!currentOrganization?.id || !canManageCoaches) return;
-      const { eligible, skipped } = planBulkCoachStatus(rows, selected, nextStatus);
+      // Plan over ALL rows: the selection bar counts every selected coach,
+      // including ones a toolbar filter currently hides (Players-grid
+      // semantics), so the bulk action must cover them too.
+      const { eligible, skipped } = planBulkCoachStatus(allRows, selected, nextStatus);
       const statusLabel = STATUS_LABELS[nextStatus] || nextStatus;
       if (eligible.length === 0) {
         toast(
@@ -459,7 +467,7 @@ export default function CoachesPage() {
       setBusy(false);
       await loadCoaches();
     },
-    [canManageCoaches, currentOrganization?.id, loadCoaches, rows, selected, toast]
+    [allRows, canManageCoaches, currentOrganization?.id, loadCoaches, selected, toast]
   );
 
   const handleAssignTeam = useCallback(async () => {
@@ -541,8 +549,16 @@ export default function CoachesPage() {
       {
         key: '_programs',
         label: 'Programs',
-        width: 170,
-        render: (row) => row._programs || <span className="muted">No lead programs</span>,
+        width: 200,
+        render: (row) =>
+          row._programs ? (
+            <span title={row._players ? `From ${row._players}` : undefined}>
+              {row._programs}
+              {row._players && <span className="muted"> · from {row._players}</span>}
+            </span>
+          ) : (
+            <span className="muted">No lead programs</span>
+          ),
       },
       {
         key: '_teams',
@@ -633,7 +649,7 @@ export default function CoachesPage() {
               <option value="all">All programs</option>
               {divisions.map((division) => (
                 <option key={division.id} value={division.id}>
-                  {division.name}
+                  {divisionDisplayName(division.name, genderModel)}
                 </option>
               ))}
             </select>

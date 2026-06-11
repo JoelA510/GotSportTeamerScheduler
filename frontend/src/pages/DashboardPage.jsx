@@ -396,9 +396,13 @@ function AdminHome() {
                         {date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
                       </div>
                     </div>
-                    {game.home_team?.division?.name && (
+                    {/* Real client embeds division as { name }; the mock returns a string. */}
+                    {(game.home_team?.division?.name || game.home_team?.division) && (
                       <Badge tone="info">
-                        {divisionDisplayName(game.home_team.division.name, genderModel)}
+                        {divisionDisplayName(
+                          game.home_team.division.name || game.home_team.division,
+                          genderModel
+                        )}
                       </Badge>
                     )}
                   </div>

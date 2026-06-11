@@ -246,7 +246,7 @@ export default function LeagueStandings() {
             >
               <div className="text-xs text-text-muted text-center border-b border-border-subtle pb-2 mb-2">
                 {new Date(game.start_time).toLocaleDateString()} •{' '}
-                {displayDivision(game.home_team?.division?.name)}
+                {displayDivision(game.home_team?.division?.name || game.home_team?.division)}
               </div>
               <div className="flex justify-between items-center">
                 <span className="font-semibold text-text-primary truncate w-1/3 text-right">
