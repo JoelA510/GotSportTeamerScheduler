@@ -415,6 +415,7 @@ export default function CoachesPage() {
 
   const handleBulkStatusChange = useCallback(
     async (nextStatus) => {
+      if (!currentOrganization?.id || !canManageCoaches) return;
       const { eligible, skipped } = planBulkCoachStatus(rows, selected, nextStatus);
       const statusLabel = STATUS_LABELS[nextStatus] || nextStatus;
       if (eligible.length === 0) {
@@ -426,19 +427,24 @@ export default function CoachesPage() {
       }
 
       setBusy(true);
-      let failures = 0;
-      for (const coach of eligible) {
-        const { error: mutationError } = await supabase.rpc('admin_update_coach_status', {
-          p_organization_id: currentOrganization.id,
-          p_coach_id: coach.id,
-          p_status: nextStatus,
-        });
-        if (mutationError) {
-          failures += 1;
-          logger.error('Bulk coach status update failed:', mutationError);
-        }
-      }
+      const results = await Promise.all(
+        eligible.map(async (coach) => {
+          try {
+            const { error: mutationError } = await supabase.rpc('admin_update_coach_status', {
+              p_organization_id: currentOrganization.id,
+              p_coach_id: coach.id,
+              p_status: nextStatus,
+            });
+            if (mutationError) throw mutationError;
+            return true;
+          } catch (err) {
+            logger.error('Bulk coach status update failed:', err);
+            return false;
+          }
+        })
+      );
 
+      const failures = results.filter((ok) => !ok).length;
       const updated = eligible.length - failures;
       const notes = [];
       if (skipped > 0) notes.push(`${skipped} skipped`);
@@ -453,7 +459,7 @@ export default function CoachesPage() {
       setBusy(false);
       await loadCoaches();
     },
-    [currentOrganization?.id, loadCoaches, rows, selected, toast]
+    [canManageCoaches, currentOrganization?.id, loadCoaches, rows, selected, toast]
   );
 
   const handleAssignTeam = useCallback(async () => {
