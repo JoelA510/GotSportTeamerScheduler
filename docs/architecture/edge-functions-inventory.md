@@ -2,7 +2,7 @@
 
 # Edge Functions Inventory
 
-> **Status**: Reference for the Supabase Edge Functions layer as deployed to production. Seven functions are live (per `docs/expansion/98_PROGRESS_LOG.md` row `2026-04-17 PROD-RECONCILE`). Inventory grounded in `supabase/functions/` source.
+> **Status**: Reference for the Supabase Edge Functions layer as deployed to production. Inventory grounded in `supabase/functions/` source — that directory is the source of truth for what exists.
 
 ## 1. Purpose
 

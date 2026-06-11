@@ -162,6 +162,24 @@ These are trigger functions rather than caller-invokable RPCs, but they run insi
 | `public.check_password_length_on_auth_users()`                                       | `20240405180000_password_hardening.sql`                                                                                       | BEFORE INSERT/UPDATE trigger on `auth.users` enforcing minimum password length.                                                                                  |
 | `public.set_updated_at()`, `trigger_set_timestamp()`, `set_created_by_to_auth_uid()` | `20251217000000_communication_schema.sql`, `20251208000000_consolidated_schema.sql`, `20251208000000_consolidated_schema.sql` | Generic row-stamping triggers reused across tables.                                                                                                              |
 
+### 2.18 Player Admin Mutations
+
+Audited mutation RPCs behind the editable Players grid and record pages
+(migration `20260611000100`):
+
+| RPC | Purpose |
+| --- | --- |
+| `admin_update_player(p_player_id, p_patch)` | Single-player patch through a sanitizing whitelist; validates division/team consistency (a team must belong to the player's effective division; changing division clears a stale team) and syncs `team_players` |
+| `admin_bulk_update_players(p_player_ids, p_patch)` | Homogeneous bulk patch (intentionally excludes division/team reassignment) |
+| `admin_create_player(p_organization_id, p_fields)` | Manual player creation |
+| `admin_delete_players(p_player_ids)` | Bulk delete with roster cleanup |
+| `coach_update_player_compliance(p_player_id, p_patch)` | Coach-scoped compliance toggles only (`paid`, `waiver_received`, `medical_form_received`) |
+
+All are `SECURITY DEFINER` with `SET search_path = public`, anon `EXECUTE`
+revoked, org-admin (or coach) checks inside, and `record_audit_event` calls —
+the audit `action` values are whitelisted in `audit_log_action_check`
+(migration `20260611000300`).
+
 ## 3. Contract Pattern
 
 Every RPC in the inventory above follows the same template. When adding a new RPC, replicate this structure exactly:
@@ -235,7 +253,7 @@ When you need to add a new state-altering RPC, every item below must be satisfie
 6. **`GRANT EXECUTE ... TO authenticated`.** Supabase's PostgREST layer will refuse to expose the function otherwise.
 7. **pgTAP test.** Add a test file under `supabase/tests/rls_<feature>.sql` that asserts (a) cross-org callers are rejected, (b) unauthenticated callers are rejected, (c) the happy path writes the expected rows, (d) the audit row is present. Run via `npm run test:db` locally.
 8. **Advisor-lint pass.** `npm run check:advisors` must pass; the lint script checks for `SECURITY DEFINER` without pinned `search_path` and flags RPCs missing `is_org_member` gates.
-9. **Revert + smoke SQL.** Drop a revert script under `docs/sql/reverts/<timestamp>_revert.sql` and a smoke script under `docs/sql/tests/<timestamp>_smoke.sql`. See the Wave 6a migrations for examples.
+9. **Revert + smoke SQL.** Drop a revert script under `docs/sql/reverts/<timestamp>_revert.sql` and a smoke script under `docs/sql/tests/<timestamp>_smoke.sql`. See `docs/sql/` for examples.
 10. **Document it here.** Append a row to the relevant §2 subsection above. Cross-link from [`edge-functions-inventory.md`](./edge-functions-inventory.md) if an Edge Function calls the new RPC.
 
 ## 5. Known Gaps

@@ -104,7 +104,7 @@ The RLS system evolved through multiple migrations, consolidated during a 4-phas
 | Registration Fix | `20260310000003` | Fixed policies referencing non-existent `organization_roles` table |
 | Audit Logging    | `20260324000004` | Append-only `audit_log` table with admin-read-only RLS             |
 
-See `docs/security/audit_and_remediation_plan.md` for the full audit report and finding details.
+The pre-production security audit that produced these policies is closed; its remediations are reflected in the migration history (`20260602010000_consolidated_rls_security_hardening.sql` and earlier).
 
 ## Testing
 

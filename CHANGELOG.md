@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Lightning-class enterprise redesign** (PR #322): cobalt light + dark design system driven by CSS tokens (`data-theme`, persisted preference) with self-hosted Public Sans; new app chrome (TopBar with org/season switchers, global search, role preview; nested collapsible SideNav with role-scoped views); Excel-grade virtualized editable DataGrid powering the new `/players` workspace; tabbed player (`/players/:id`) and team (`/team/:id`) record pages absorbing the team portal; drag-and-drop Team Builder (`/teams/builder`) with serpentine signal balancing, buddy links, and coach-parent spreading; org feature configuration (player rating, years played, buddy requests, coaching interest, medical forms, waitlist) plus a division `gender_model` (gendered U8B/U8G vs co-ed) with merge/split transitions; resumable Season Setup checklist replacing the progress-wiping wizard; role-scoped Home dashboards (admin/coach/parent); new Scores, Blackouts, Members, and Exports pages.
+- Added player roster schema fields (`rating` 1–5 with `skill_tier` backfill, `years_played`, `jersey_number`, `paid`, `waiver_received`, `medical_form_received`, `waitlist` status) with audited admin mutation RPCs (`admin_update_player`, bulk/create/delete, `coach_update_player_compliance`) and expanded GotSport import mapping (years played, payment status, waitlist, guardian contacts, gendered division derivation honoring `gender_model`). Migrations `20260611000000`–`20260611000400`, including a `team_players` → `players.team_id` sync trigger and an extended `audit_log` action whitelist.
 - Added an admin-only `/coaches` review page with registered/interested status filters, program filtering, search, team assignment visibility, and source-player context for player-import coach leads.
 - Added admin-only coach status/promotion and team coach assignment RPCs plus `/coaches` mutation controls for operationalizing volunteer leads.
 - Added durable coach CSV import staging, admin-only coach apply/rollback RPCs, and `/import` rollback controls for coach imports.
@@ -123,4 +125,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Sentry error monitoring + BetterStack/Logtail Edge Function logging.
 - Maintenance-mode overlay + OfflineGuard.
 
-See [`docs/expansion/98_PROGRESS_LOG.md`](docs/expansion/98_PROGRESS_LOG.md) for the full chronology.
+The full build-out chronology is preserved in git history; durable lessons live in [`docs/LESSONS_LEARNED.md`](docs/LESSONS_LEARNED.md).

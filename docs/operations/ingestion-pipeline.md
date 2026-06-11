@@ -3,7 +3,12 @@
 ---
 
 > [!NOTE]
-> **Implementation Status: PARTIAL**
+> **Implementation Status: PARTIAL** — team import promotion remains v1.1 scope.
+> The June 2026 redesign expanded the player finalize mapping (migration
+> `20260611000200`): years played, tri-state payment status, waitlist (gated by
+> the org's `waitlist` feature flag), Guardian 1/2 → `guardian_contacts`, and
+> gendered `U{n}B`/`U{n}G` division derivation honoring the org `gender_model`,
+> with season-scoped division auto-creation.
 >
 > The validation and player-promotion slice of the ingestion pipeline has been
 > implemented. Key implementation differences from the original design:

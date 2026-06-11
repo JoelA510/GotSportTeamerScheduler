@@ -4,12 +4,12 @@
 # SquadLogic v1.0 — Production Cutover Runbook
 
 **Date written:** 2026-04-01
-**Last refreshed:** 2026-05-02
+**Last refreshed:** 2026-06-11 (Lightning-class redesign migrations `20260611000000`–`20260611000400` added to the apply list; open operator items tracked in [`03_ROADMAP.md`](../expansion/03_ROADMAP.md) §Open Items)
 **Status:** Historical cutover runbook with current release-prep notes; not a final release sign-off
 **Supabase project:** `mmwupqsjkikqzvmdvuzm` (us-west-2)
 **Production URL:** https://squadlogic.vercel.app
 
-> **2026-04-17 reconciliation note:** Smoke checks on 2026-04-17 surfaced that prod was ~10 days behind disk — the three 2026-04-16 migrations (`security_hardening`, `initialize_new_tenant`, `data_retention_cron`) were pending, `rotate_calendar_token(uuid)` was missing (prod had a stale `refresh_calendar_token` body against a non-existent `integrations` table), and the `auto-scheduler` + `fairness-scoring` Edge Functions were undeployed. All five gaps were closed during that session via MCP (see [`98_PROGRESS_LOG.md`](../expansion/98_PROGRESS_LOG.md) row `PROD-RECONCILE`). Open advisor items at that time: 1 ERROR (`public.import_efficiency_metrics` as `SECURITY DEFINER` view) + 4 WARN categories; see [`NEXT_SESSION_PLAN.md`](../expansion/NEXT_SESSION_PLAN.md) for the cleanup plan. `VITE_SENTRY_DSN` is still not set in Vercel prod — production errors are not flowing to Sentry until that's wired and a redeploy is triggered.
+> **2026-04-17 reconciliation note:** Smoke checks on 2026-04-17 surfaced that prod was ~10 days behind disk — the three 2026-04-16 migrations (`security_hardening`, `initialize_new_tenant`, `data_retention_cron`) were pending, `rotate_calendar_token(uuid)` was missing (prod had a stale `refresh_calendar_token` body against a non-existent `integrations` table), and the `auto-scheduler` + `fairness-scoring` Edge Functions were undeployed. All five gaps were closed during that session via MCP Open advisor items at that time (1 ERROR: `public.import_efficiency_metrics` as `SECURITY DEFINER` view; 4 WARN categories) were subsequently closed by the 2026-04-21 hardening migrations (`security_invoker` on the view, private `raw-imports` bucket, `search_path` locks on definer functions). `VITE_SENTRY_DSN` is still not set in Vercel prod — production errors are not flowing to Sentry until that's wired and a redeploy is triggered.
 >
 > **2026-05-02 release-prep note:** Vercel reports the `squadlogic` project as framework `vite`, Node `24.x`, and latest production deployment `READY` for `main` commit `30f9aa7e9728008b7038228d9b74b46cc7c2141a` (PR #212). CI currently verifies on Node 20. Keep that runtime split documented until a separate parity PR changes either side with full verification. The repo now contains 49 migration files; production migration/advisor state still needs operator verification before final release sign-off.
 

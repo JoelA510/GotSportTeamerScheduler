@@ -131,9 +131,9 @@ The SquadLogic knowledge base is organized into a categorized hierarchy for high
 - [**Scheduling Algorithms**](docs/architecture/game-scheduling.md): Team generation and field allocation logic.
 
 ### 🛡️ Security & Governance
-- [**Security Audit Plan**](docs/security/audit_and_remediation_plan.md): Hardening steps and remediation status.
+- [**CSP Policy**](docs/security/csp.md): Enforced Content-Security-Policy and waiver rationale.
 - [**RLS Policies**](docs/security/rls-policies.md): Strict multi-tenant data access rules.
-- [**Master Audit Certification**](docs/governance/master-audit-certification.md): Enterprise-ready production readiness report.
+- [**Lessons Learned**](docs/LESSONS_LEARNED.md): Durable engineering knowledge from the build-out.
 - [**Governance Framework**](docs/governance/governance-framework.md): RPC enforcement and Zod validation mandates.
 
 ### 🚀 Roadmap & Operations

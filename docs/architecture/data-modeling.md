@@ -17,9 +17,12 @@
   - `mutual_buddy_code` (text) – only honored when a matching code exists
   - `skill_tier` (enum: `novice`, `developing`, `advanced`) – optional balancing input
   - `coach_volunteer` (legacy registration volunteer flag), `willing_to_coach` (canonical import-normalized flag), and `notes`
+  - Roster/compliance fields (migration `20260611000000`): `rating` (smallint 1–5, backfilled from `skill_tier`), `years_played`, `jersey_number`, `paid`, `waiver_received`, `medical_form_received` (booleans — no documents stored), and `status` extended with `'waitlist'`
+  - `team_id` (UUID, denormalized roster pointer — see Team Players below)
 - **Indexes & constraints**:
-  - Unique constraint on (`division_id`, `external_registration_id`).
+  - Unique constraint on (`division_id`, `external_registration_id`); both columns are nullable so manually created players (audited admin RPCs) don't require an import identity.
   - Partial index on `mutual_buddy_code` where not null for faster lookup.
+  - (`organization_id`, `status`) index for grid filters.
 
 ### Coaches
 
@@ -76,6 +79,7 @@
 - **Indexes & constraints**:
   - Foreign keys cascade deletes with the parent team or player.
   - `source` limited to expected values via the shared enum for analytics consistency.
+- **Synchronization**: `team_players` is the relational source of truth for rosters. The denormalized `players.team_id` pointer is kept in sync by the `team_players_sync_player_team_id` trigger (migration `20260611000400`) on every INSERT/UPDATE/DELETE, so all writers (teaming persistence RPCs, imports, audited admin updates) stay consistent without per-writer discipline.
 
 ### Fields & Locations
 
@@ -157,7 +161,7 @@ Detailed ingestion workflows live in `docs/operations/ingestion-pipeline.md`. Hi
 
 ## Initial Schema Draft
 
-- The first-pass DDL for these entities lives in `docs/archive/sql/initial_schema.sql` (archived; superseded by the definitive migration). It can be copied into a Supabase migration
+- The first-pass DDL has been superseded by the definitive migration (`supabase/migrations/20260331000000_definitive_schema.sql`); later migrations refine it. The migration history can be copied into a Supabase migration
   once validated locally. The script establishes core tables, lookup constraints, helper staging tables, scheduler run histories,
   evaluation artifacts, export trackers, and supporting indexes required for ingestion, team assignments, scheduling, and
   downstream reporting. Shared timestamp triggers keep `updated_at` fresh across mutable tables.

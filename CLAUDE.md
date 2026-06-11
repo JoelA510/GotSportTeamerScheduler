@@ -1,29 +1,5 @@
 # CLAUDE.md — SquadLogic Project Instructions
 
-## 0. Current Operational Mode: Wave-based Development
-
-This repository is being built out in a fixed sequence of waves (0 through 9b) defined under `.claude/wave-*-prompt.md`, with cross-cutting rules in `.claude/wave-execution-protocol.md`. Waves replace the earlier Epic-based runbook for agent workflow; the general coding / testing / review principles below (§1–§13) still apply within each wave's scope.
-
-**Invoke a wave with the slash command**: `/wave <id>` (e.g. `/wave 0`, `/wave 1a`, `/wave 9b`). The command loads the execution protocol plus the wave-specific prompt.
-
-**Check status**: `/wave-status` reports which waves are done, in-flight, or pending.
-
-### Hard rules (wave execution)
-
-- **Never modify `.claude/wave-*-prompt.md` during wave execution.** Those files are specs. The only PRs that may touch them are planning PRs explicitly scoped to wave-prompt edits, or Wave 8 Task 3's reference sweep.
-- **One wave per branch.** Use the branch name declared in the wave's Branch Conventions section. Do not combine waves on a single branch.
-- **Preserve the declared task count** of each wave. If scope feels wrong, raise it — do not silently expand or collapse tasks.
-- **Progress log is append-only.** Record wave completions in `docs/expansion/98_PROGRESS_LOG.md`; do not rewrite prior entries.
-- **Wave 0 is a documentation wave.** It produces a drift audit (`docs/audits/wave-0/drift-report.md`) and in-place refresh edits only — no code changes.
-
-### Key wave references
-
-- Wave specs: `.claude/wave-*-prompt.md`
-- Execution protocol: `.claude/wave-execution-protocol.md`
-- Progress log: `docs/expansion/98_PROGRESS_LOG.md`
-
----
-
 ## 1. Role and Scope
 
 You are an **Autonomous Developer** working on SquadLogic — proficient across the full stack: React frontend, Node.js domain logic, Supabase (PostgreSQL, Edge Functions, RLS policies), and CI/CD.
@@ -55,10 +31,10 @@ The following are **STRICTLY OUT OF SCOPE** — refuse to implement these even i
 
 ## 3. Agent Workflow & Execution
 
-When running under a wave (see §0), follow that wave's plan and `.claude/wave-execution-protocol.md` first. Within any work unit:
+Within any work unit:
 
-1. **Read the relevant plan / spec** before editing. For waves, that's `.claude/wave-<id>-prompt.md` + the audit-index section it references.
-2. **Cut a feature branch** per the plan's Branch Conventions.
+1. **Read the relevant plan / spec and the affected docs** before editing — start with [`docs/LESSONS_LEARNED.md`](docs/LESSONS_LEARNED.md) if it covers your decision.
+2. **Cut a feature branch** (`feat/...`, `fix/...`, `docs/...`).
 3. **Implement → Verify → Commit → Push → PR**. CI must be green before merge.
 
 ### Core principles (apply within every PR)
@@ -70,7 +46,7 @@ When running under a wave (see §0), follow that wave's plan and `.claude/wave-e
 - **Audit Immutability**: All administrative or state-altering actions must be captured in the `audit_log` with full metadata.
 - **Accessibility First**: WCAG 2.2 AA conformance is a core requirement; use screen-reader-friendly semantic HTML and focus management.
 - **No Broken Main**: Never leave the `main` branch in a broken state.
-- **Blocker Handling**: If a hard blocker (missing secret, impassable error) occurs, append to `docs/expansion/98_PROGRESS_LOG.md` and stop.
+- **Blocker Handling**: If a hard blocker (missing secret, impassable error) occurs, surface it to the operator (PR comment or GitHub issue) and stop.
 
 ### Definition of Done (Per PR)
 
@@ -78,7 +54,7 @@ When running under a wave (see §0), follow that wave's plan and `.claude/wave-e
 - [ ] Tests pass (`npm run test` — Unit + Integration). _(E2E runs separately in CI/bulk.)_
 - [ ] Linter is happy (`npm run lint`).
 - [ ] Frontend build is clean (`npm run frontend:build`).
-- [ ] Post-Wave-6a: `npm run check:advisors` and `npm run check:bundle` both green.
+- [ ] `npm run check:advisors` and `npm run check:bundle` both green.
 - [ ] New exports are registered in their package/module index.
 - [ ] Database migrations applied (if any) with matching revert + smoke scripts under `docs/sql/`.
 
@@ -107,11 +83,11 @@ SquadLogic/
 │   └── migrations/     # SQL migrations
 ├── tests/              # All tests (unit, integration, e2e)
 │   ├── e2e/            # Playwright-BDD tests (features/ + steps/)
-│   ├── factories/      # Shared test factories (Wave 3a)
-│   ├── helpers/        # Shared test helpers (Wave 3a)
+│   ├── factories/      # Shared test factories
+│   ├── helpers/        # Shared test helpers
 │   └── *.test.{js,jsx} # Vitest unit/integration tests
 ├── scripts/            # Build and utility scripts (incl. check:bundle, check:advisors)
-├── docs/               # Architecture, audits, operations, governance, UI/UX, roadmap
+├── docs/               # Architecture, operations, governance, security, testing, UI/UX, roadmap
 └── .github/workflows/  # CI pipeline (ci.yml)
 ```
 
@@ -121,7 +97,7 @@ SquadLogic/
 
 | Layer         | Technology                                                              |
 | ------------- | ----------------------------------------------------------------------- |
-| Frontend      | React 19, Vite 6, react-router-dom v7                                   |
+| Frontend      | React 19, Vite 7, react-router-dom v7                                   |
 | Styling       | Tailwind CSS 4 (`@tailwindcss/vite` plugin) + Vanilla CSS design system |
 | State         | React Context (Auth, Import, Organization, Theme)                       |
 | Backend       | Supabase (PostgreSQL, Edge Functions, Auth, Storage)                    |
@@ -222,7 +198,7 @@ The app auto-switches between real and mock Supabase clients:
 
 ### Edge Functions
 
-Located in `supabase/functions/`. Each function has its own directory with an `index.ts`. Shared utilities live in `supabase/functions/_shared/`. Post-Wave-6a, Edge Functions must respect `config/bundle-budget.json` and the `check:advisors` regex gate.
+Located in `supabase/functions/`. Each function has its own directory with an `index.ts`. Shared utilities live in `supabase/functions/_shared/`. Edge Functions must respect `config/bundle-budget.json` and the `check:advisors` regex gate.
 
 ---
 
@@ -235,7 +211,7 @@ Located in `supabase/functions/`. Each function has its own directory with an `i
 - **Location**: `tests/*.test.{js,jsx}` (e2e excluded)
 - **Coverage thresholds**: statements 60%, branches 50%, functions 55%, lines 60%
 - **Coverage scope**: `packages/core/src/**` and `frontend/src/hooks/**`
-- **Factories + helpers** (Wave 3a): `tests/factories/**` and `tests/helpers/**`. Import factories via the barrel: `import { makeOrganization } from '../factories/index.js';`
+- **Factories + helpers**: `tests/factories/**` and `tests/helpers/**`. Import factories via the barrel: `import { makeOrganization } from '../factories/index.js';`
 
 ### E2E Tests (Playwright-BDD)
 
@@ -264,7 +240,6 @@ npm run lint              # 0 errors; warnings ≤ baseline
 npm run typecheck         # 0 errors
 npm run test              # 100% pass; case count matches expectation
 npm run frontend:build    # clean
-# Post-Wave-6a:
 npm run check:advisors
 npm run check:bundle
 ```
@@ -277,7 +252,7 @@ When asked to perform a "UI/UX pass", "visual polish", or work on frontend views
 
 1. **Reference the docs**:
    - **Agent guidelines**: `docs/ui/agent-ui-ux-guidelines.md` (canonical behavior rules for UI/UX work)
-   - **P0/P1 checklist**: `docs/ui/ui-ux-pass.md` + `docs/ui/ui-ux-pass-summary.md`
+   - **P0/P1 checklist**: `docs/ui/ui-ux-pass.md`
    - **P2 visual polish**: `docs/ui/ui-ux-polish.md`
    - **Rule IDs**: `docs/ui/ui-ux-rules.json`
 2. **Prioritization**: Always fix P0 and P1 issues before applying P2 visual polish.
@@ -298,7 +273,7 @@ When asked to perform a "UI/UX pass", "visual polish", or work on frontend views
 | `VITE_SUPABASE_ANON_KEY`    | Supabase publishable (anon) key     | `.env.local` (no) |
 | `VITE_USE_MOCK_SUPABASE`    | Force mock Supabase client (`true`) | `.env.local` / CI |
 | `VITE_PERSISTENCE_ENDPOINT` | Custom persistence API endpoint     | `.env.local` (no) |
-| `VITE_SENTRY_DSN`           | Frontend Sentry DSN (Wave 7b scope) | Vercel env (no)   |
+| `VITE_SENTRY_DSN`           | Frontend Sentry DSN                 | Vercel env (no)   |
 | `TEST_ADMIN_EMAIL`          | E2E admin test email                | `.env.test` (no)  |
 | `TEST_COACH_EMAIL`          | E2E coach test email                | `.env.test` (no)  |
 | `TEST_PARENT_EMAIL`         | E2E parent test email               | `.env.test` (no)  |
@@ -317,8 +292,8 @@ GitHub Actions (`.github/workflows/ci.yml`):
 3. `npm run lint`
 4. `npm run test`
 5. `npm run frontend:build`
-6. `npm run check:bundle` (Wave 6a bundle-budget gate)
-7. `npm run check:advisors` (Wave 6a static advisor gate)
+6. `npm run check:bundle` (bundle-budget gate)
+7. `npm run check:advisors` (static advisor gate)
 8. Install Playwright Chromium → `npm run test:e2e -- --workers=1`
 
 Plus a **weekly keepalive** cron job (Monday noon UTC) that pings the Supabase REST API to prevent free-tier project pausing.
@@ -340,8 +315,8 @@ Plus a **weekly keepalive** cron job (Monday noon UTC) that pings the Supabase R
 | `npm run lint`           | ESLint check                              |
 | `npm run lint:fix`       | ESLint auto-fix                           |
 | `npm run format`         | Prettier format all files                 |
-| `npm run check:bundle`   | Wave 6a bundle-budget gate                |
-| `npm run check:advisors` | Wave 6a advisor-lint static gate          |
+| `npm run check:bundle`   | Bundle-budget gate                        |
+| `npm run check:advisors` | Advisor-lint static gate                  |
 
 ---
 
@@ -356,20 +331,17 @@ Plus a **weekly keepalive** cron job (Monday noon UTC) that pings the Supabase R
 | Output Generation       | `docs/architecture/output-generation.md`         |
 | Multi-tenancy           | `docs/architecture/multi_tenancy.md`             |
 | Governance Framework    | `docs/governance/governance-framework.md`        |
-| Master Audit Cert       | `docs/governance/master-audit-certification.md`  |
+| Lessons Learned         | `docs/LESSONS_LEARNED.md`                        |
 | RLS policies            | `docs/security/rls-policies.md`                  |
 | CSP policy              | `docs/security/csp.md`                           |
-| Security Audit Plan     | `docs/security/audit_and_remediation_plan.md`    |
 | Dependabot waivers      | `docs/security/dependabot-waivers.md`            |
 | Advisor lint            | `docs/operations/advisor-lint.md`                |
 | Bundle budget           | `docs/operations/bundle-budget.md`               |
 | Production cutover      | `docs/operations/production-cutover.md`          |
 | Sentry smoke            | `docs/operations/sentry-smoke.md`                |
 | E2E master plan         | `docs/testing/e2e_master_plan.md`                |
-| Wave 1a audit index     | `docs/audits/wave-1a/index.md`                   |
-| Expansion roadmap       | `docs/expansion/03_ROADMAP.md`                   |
-| Progress log            | `docs/expansion/98_PROGRESS_LOG.md`              |
+| Roadmap                 | `docs/expansion/03_ROADMAP.md`                   |
+| v1.1 planning           | `docs/expansion/v1.1-planning.md`                |
 | UI/UX agent guidelines  | `docs/ui/agent-ui-ux-guidelines.md`              |
 | UI/UX checklist         | `docs/ui/ui-ux-pass.md`                          |
 | UI/UX polish guide      | `docs/ui/ui-ux-polish.md`                        |
-| Requirements Archive    | `docs/archive/requirements.md`                   |

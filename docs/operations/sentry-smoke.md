@@ -47,9 +47,9 @@
    - Release tag should match the current `package.json:version`.
 3. **Check the network tab** of the incognito window:
    - Expected: a successful `POST https://<sub>.ingest.sentry.io/api/<id>/envelope/` returning 200/202.
-   - **If blocked by CSP**: F-2-06 (Wave 7b). The CSP `connect-src` needs to
-     include `https://*.ingest.sentry.io`. Temporary workaround: add to
-     `connect-src` in `vercel.json`; permanent fix lands in Wave 7b.
+   - **If blocked by CSP**: the CSP `connect-src` needs to include
+     `https://*.ingest.sentry.io` (see [`docs/security/csp.md`](../security/csp.md));
+     add it in `vercel.json`.
 
 ## Failure modes
 
@@ -58,7 +58,7 @@
 | No event appears in Sentry within 5 minutes | DSN typo or bundle cache | Re-run `curl | grep ingest.sentry.io` check; re-deploy without cache. |
 | Event appears but no React component stack | `Sentry.init({ integrations: [reactRouterV7BrowserTracingIntegration()] })` missing a component | Check `frontend/src/main.jsx` — the `Sentry.init` call must have the React integration. |
 | Event appears with wrong release tag | `Sentry.init` missing `release` or env-var not injected at build time | Add `release: import.meta.env.VITE_APP_VERSION` in `Sentry.init`; ensure Vercel sets `VITE_APP_VERSION` from `package.json:version`. |
-| CSP console errors (`Refused to connect to ...`) | F-2-06 (CSP `connect-src` missing Sentry host) | Wave 7b fix. Interim: temporary add to `vercel.json`. |
+| CSP console errors (`Refused to connect to ...`) | CSP `connect-src` missing the Sentry ingest host | Add it to `connect-src` in `vercel.json` (see `docs/security/csp.md`). |
 
 ## De-commissioning
 

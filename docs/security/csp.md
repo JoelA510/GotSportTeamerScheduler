@@ -3,7 +3,7 @@
 
 # Content-Security-Policy — SquadLogic
 
-> Wave 7b Task 1 (Audit F-2-06): canonical reference for the production CSP
+> Canonical reference for the production CSP
 > header set in [`vercel.json`](../../vercel.json). Lists every directive,
 > rationale, and the concrete follow-ups for the two remaining loose
 > directives (`style-src 'unsafe-inline'` and `connect-src` wildcard scoping).
@@ -28,8 +28,8 @@ form-action 'self';
 upgrade-insecure-requests;
 ```
 
-Served as `Content-Security-Policy: …` (enforcing). Wave 2 flipped it from
-Report-Only. Wave 7b added Sentry ingest to `connect-src` (Wave 2 gap — DSN
+Served as `Content-Security-Policy: …` (enforcing, flipped from Report-Only
+during hardening). Sentry ingest was later added to `connect-src` (DSN
 was set but captures were CSP-blocked). The `vercel.live` / `assets.vercel.com`
 / Pusher entries were added to unblock Vercel's preview-only comments &
 feedback widget; they are inert on production deploys.
@@ -64,7 +64,7 @@ feedback widget; they are inert on production deploys.
 
 - **Why**: Tailwind 4's runtime + React's `style={{...}}` prop emit inline styles throughout the SPA. A strict `style-src 'self'` policy would break rendering within seconds of load.
 - **Follow-up**: v1.1+. Blocked on (a) a stable Tailwind 4 nonce-propagation API and (b) an audit of every `style={...}` site in `frontend/src/**`.
-- **Interim discipline**: don't ADD new inline `<style>` tags; use Tailwind utility classes or CSS-var design tokens (`src/index.css`). Audit `CQ-13` / `CQ-14` (Wave 1a code-quality findings — hardcoded hex colors) land before the nonce migration.
+- **Interim discipline**: don't ADD new inline `<style>` tags; use Tailwind utility classes or CSS-var design tokens (`src/index.css`). Remaining hardcoded hex colors should be migrated to tokens before the nonce migration.
 
 ### Waiver 2 — `script-src 'self'` without `'strict-dynamic'` / nonce
 
@@ -74,7 +74,7 @@ feedback widget; they are inert on production deploys.
 
 ### Missing — `report-uri` / `Content-Security-Policy-Report-Only`
 
-- **Why**: free-tier Supabase doesn't include a CSP-report collector, and sending reports to a third-party (report-uri.com) introduces a new outbound dependency + bandwidth line item. Violations are caught by the Wave 5 E2E `console-errors` scenario + manual smoke per the production-cutover runbook.
+- **Why**: free-tier Supabase doesn't include a CSP-report collector, and sending reports to a third-party (report-uri.com) introduces a new outbound dependency + bandwidth line item. Violations are caught by the E2E `console-errors` scenario + manual smoke per the production-cutover runbook.
 - **Follow-up**: v1.1+ when observability budget allows a Sentry CSP-violation pipeline.
 
 ### Missing — Subresource Integrity (SRI)
@@ -99,7 +99,7 @@ curl -sI https://squadlogic.vercel.app/ | awk '/^content-security-policy/i' | tr
 
 # 2. Expect: each directive on its own line, values as shown above.
 
-# 3. Sentry ingest smoke (Wave 2 runbook):
+# 3. Sentry ingest smoke (see docs/operations/sentry-smoke.md):
 #    Open DevTools, run window.__FORCE_ERROR__(), confirm POST to
 #    *.ingest.sentry.io returns 200/202 with NO CSP console warning.
 ```
@@ -113,5 +113,4 @@ vercel.json`).
 ## Related docs
 
 - [`docs/operations/sentry-smoke.md`](../operations/sentry-smoke.md) — step-by-step DSN setup + CSP verification.
-- [`docs/audits/wave-1a/security.md`](../audits/wave-1a/security.md) — source of F-2-06 (CSP ingest gap) + F-2-07 (style-src unsafe-inline waiver).
-- [`docs/audits/wave-1a/index.md`](../audits/wave-1a/index.md) — distribution table; CSP findings closed here.
+- The originating security-audit findings (CSP ingest gap; `style-src 'unsafe-inline'` waiver) are closed; the waiver rationale lives in §Waivers above.
