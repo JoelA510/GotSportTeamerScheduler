@@ -6,8 +6,8 @@ Feature: Visual Role-Based Access Control
   Scenario: Coach Visual UI Restrictions in Sidebar
     Given I am logged into SquadLogic as a "Coach"
     When I view the main navigation Sidebar
-    Then I should see links for "Dashboard", "Team Management", and "Practice Schedule"
-    But I should NOT see links for "Data Import", "Settings", or "Compliance"
+    Then I should see links for "My Dashboard", "My Team", and "Practices"
+    But I should NOT see links for "Import", "Settings", or "Compliance"
 
   Scenario: Admin Coach Review Page
     Given I am logged into SquadLogic as an "Admin"

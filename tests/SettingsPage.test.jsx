@@ -1,4 +1,5 @@
 import React from 'react';
+import { MemoryRouter } from 'react-router-dom';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import SettingsPage from '../frontend/src/pages/SettingsPage.jsx';
@@ -6,6 +7,8 @@ import SettingsPage from '../frontend/src/pages/SettingsPage.jsx';
 vi.mock('../frontend/src/contexts/OrganizationContext.jsx', () => ({
   useOrganization: () => ({
     permissions: ['manage_global_settings', 'manage_organization'],
+    currentOrganization: { id: 'org-1', name: 'North League' },
+    currentSeasonSetting: { id: 'season-1', name: 'Spring 2026' },
   }),
 }));
 
@@ -18,21 +21,29 @@ vi.mock('../frontend/src/components/settings/InvitesSettings.jsx', () => ({
 }));
 
 vi.mock('../frontend/src/components/settings/FeatureFlagSettings.jsx', () => ({
-  default: () => <div>Feature Flags Settings Panel</div>,
+  default: () => <div>Feature Configuration Panel</div>,
 }));
 
 vi.mock('../frontend/src/components/settings/AuditLogSettings.jsx', () => ({
   default: () => <div>Audit Log Settings Panel</div>,
 }));
 
+function renderPage() {
+  return render(
+    <MemoryRouter initialEntries={['/settings']}>
+      <SettingsPage />
+    </MemoryRouter>
+  );
+}
+
 describe('SettingsPage', () => {
   it('exposes organization settings sections as keyboard-navigable tabs', () => {
-    render(<SettingsPage />);
+    renderPage();
 
     const tablist = screen.getByRole('tablist', { name: 'Organization settings tabs' });
     const generalTab = screen.getByRole('tab', { name: 'General' });
     const invitesTab = screen.getByRole('tab', { name: 'Invites' });
-    const featureFlagsTab = screen.getByRole('tab', { name: 'Feature Flags' });
+    const featuresTab = screen.getByRole('tab', { name: 'Features' });
     const auditLogTab = screen.getByRole('tab', { name: 'Audit Log' });
 
     expect(tablist).toContainElement(generalTab);
@@ -40,12 +51,12 @@ describe('SettingsPage', () => {
     expect(generalTab).toHaveAttribute('aria-selected', 'true');
     expect(invitesTab).toHaveAttribute('aria-selected', 'false');
 
-    fireEvent.keyDown(generalTab, { key: 'ArrowRight' });
+    fireEvent.keyDown(tablist, { key: 'ArrowRight' });
 
     expect(invitesTab).toHaveAttribute('aria-selected', 'true');
     expect(invitesTab).toHaveFocus();
 
-    fireEvent.keyDown(invitesTab, { key: 'End' });
+    fireEvent.keyDown(tablist, { key: 'End' });
 
     expect(auditLogTab).toHaveAttribute('aria-selected', 'true');
     expect(auditLogTab).toHaveFocus();
@@ -53,26 +64,26 @@ describe('SettingsPage', () => {
       'Audit Log Settings Panel'
     );
 
-    fireEvent.keyDown(auditLogTab, { key: 'Home' });
+    fireEvent.keyDown(tablist, { key: 'Home' });
 
     expect(generalTab).toHaveAttribute('aria-selected', 'true');
     expect(generalTab).toHaveFocus();
 
-    fireEvent.keyDown(generalTab, { key: 'ArrowLeft' });
+    fireEvent.keyDown(tablist, { key: 'ArrowLeft' });
 
     expect(auditLogTab).toHaveAttribute('aria-selected', 'true');
     expect(auditLogTab).toHaveFocus();
 
-    fireEvent.keyDown(auditLogTab, { key: 'ArrowRight' });
+    fireEvent.keyDown(tablist, { key: 'ArrowRight' });
 
     expect(generalTab).toHaveAttribute('aria-selected', 'true');
     expect(generalTab).toHaveFocus();
 
-    fireEvent.click(featureFlagsTab);
+    fireEvent.click(featuresTab);
 
-    expect(featureFlagsTab).toHaveAttribute('aria-selected', 'true');
-    expect(screen.getByRole('tabpanel', { name: 'Feature Flags' })).toHaveTextContent(
-      'Feature Flags Settings Panel'
+    expect(featuresTab).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tabpanel', { name: 'Features' })).toHaveTextContent(
+      'Feature Configuration Panel'
     );
   });
 });

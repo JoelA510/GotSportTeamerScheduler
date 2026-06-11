@@ -177,7 +177,9 @@ When('I attempt to navigate to the {string} page', async ({ page }, pageName: st
 Then('I should be redirected to the Dashboard', async ({ page }) => {
   await page.waitForURL((url) => url.pathname === '/', { timeout: 15000 });
   await expect(
-    page.getByRole('heading', { name: /League Management|Dashboard/i }).first()
+    page
+      .getByRole('heading', { name: /Welcome back|My Dashboard|League Management|Dashboard/i })
+      .first()
   ).toBeVisible();
 });
 
@@ -196,6 +198,8 @@ Then('I should see the message {string}', async ({ page }, text: string) => {
 
 Then(/the dashboard data should refresh to show (.*) data/, async ({ page }, _orgName: string) => {
   await expect(
-    page.getByRole('heading', { name: /League Management|Dashboard/i }).first()
+    page
+      .getByRole('heading', { name: /Welcome back|My Dashboard|League Management|Dashboard/i })
+      .first()
   ).toBeVisible();
 });

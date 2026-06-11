@@ -158,3 +158,38 @@ Known follow-ups:
   `division_name` + `age_group_label` + `gender`).
 - `npm run lint` / `npm run typecheck` show pre-existing repo-wide noise in a
   fresh environment; every file changed here is prettier/eslint clean.
+
+## 2026-06-11 — Enterprise UI redesign ("Lightning-class"), branch `redesign`
+
+Implemented the Claude Design prototype across the app in phased commits
+(brand/fonts → design system → chrome → feature config → Players grid +
+schema → grid rollout → record pages → Team Builder + co-ed transitions →
+Home/Season Setup):
+
+- New design system in `frontend/src/index.css` + `frontend/src/styles/*`
+  (light + dark via `data-theme`, prototype tokens with legacy aliases),
+  self-hosted Public Sans, new SL logo set, UI primitives in
+  `components/ui/` (Button restyle, Badge, Modal, Dropdown, Toggle, Tabs,
+  Avatar, ToastHost).
+- App shell: TopBar (org/season switchers, global search `/`, theme
+  toggle, role preview) + nested collapsible SideNav driven by
+  `constants/navigation.js`; violet preview banner.
+- Org feature config: catalog keys + `gender_model` in
+  `organizations.feature_flags`, FeatureControls panel with co-ed
+  merge / gender-split confirm flows (`useCoedTransition` applying
+  `planCoedMerge`/`planGenderSplit` from `@squadlogic/core/coedTransition`).
+- Players: virtualized editable DataGrid (`components/grid/`), audited
+  mutation RPCs (migrations `20260611000000/0100/0200` + docs/sql
+  revert/smoke), expanded GotSport mapping (years played, paid, waitlist,
+  guardians 1/2, play-up, gendered division derivation honoring
+  `gender_model` with auto-created divisions).
+- Records: `/players/:playerId` (InlineField editing) and the Team Portal
+  absorbed into a tabbed Team record at `/team/:teamId`.
+- Team Builder at `/teams/builder` (`balanceSignals` serpentine balance,
+  buddy/coach-parent aware) with drag + menu fallback.
+- Home rewritten to the prototype dashboard with role-scoped coach/parent
+  variants; pipeline workflow moved intact to `/workflow`; `/setup` is now
+  the resumable SetupChecklist (`useSetupProgress`), replacing the
+  destructive SetupWizard (`finalize_onboarding` + telemetry preserved).
+- E2E: all 76 scenarios kept green per phase (step locators updated where
+  the chrome moved); unit suite grew to 800+ tests.

@@ -1,4 +1,24 @@
 @import 'tailwindcss';
+@import './styles/chrome.css';
+@import './styles/grid.css';
+@import './styles/page.css';
+
+/* Self-hosted Public Sans (variable weight 100–900, latin subset).
+   CSP is font-src 'self', so fonts must ship with the bundle. */
+@font-face {
+  font-family: 'Public Sans';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('./assets/fonts/PublicSans-latin.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Public Sans';
+  font-style: italic;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('./assets/fonts/PublicSans-Italic-latin.woff2') format('woff2');
+}
 
 @theme {
   /* Colors — mapped to CSS variables defined in :root below */
@@ -31,7 +51,7 @@
   --color-status-pending-bg: var(--color-status-pending-bg);
 
   /* Font Family */
-  --font-display: 'Outfit', sans-serif;
+  --font-display: var(--font-family-base);
 
   /* Animations */
   --animate-fadeIn: fadeIn 0.4s ease-out forwards;
@@ -61,36 +81,42 @@
 
 @keyframes pulseGlow {
   0% {
-    box-shadow: 0 0 0 0 rgba(2, 132, 199, 0.3);
+    box-shadow: 0 0 0 0 rgba(42, 111, 219, 0.3);
   }
   70% {
-    box-shadow: 0 0 0 10px rgba(2, 132, 199, 0);
+    box-shadow: 0 0 0 10px rgba(42, 111, 219, 0);
   }
   100% {
-    box-shadow: 0 0 0 0 rgba(2, 132, 199, 0);
+    box-shadow: 0 0 0 0 rgba(42, 111, 219, 0);
   }
 }
 
 @keyframes squadlogic-pulse {
   0% {
-    box-shadow: 0 0 0 0 rgba(2, 132, 199, 0.25);
-    border-color: rgba(2, 132, 199, 0.2);
+    box-shadow: 0 0 0 0 rgba(42, 111, 219, 0.25);
+    border-color: rgba(42, 111, 219, 0.2);
   }
   50% {
-    box-shadow: 0 0 18px 1px rgba(2, 132, 199, 0.18);
-    border-color: rgba(2, 132, 199, 0.4);
+    box-shadow: 0 0 18px 1px rgba(42, 111, 219, 0.18);
+    border-color: rgba(42, 111, 219, 0.4);
   }
   100% {
-    box-shadow: 0 0 0 0 rgba(2, 132, 199, 0.25);
-    border-color: rgba(2, 132, 199, 0.2);
+    box-shadow: 0 0 0 0 rgba(42, 111, 219, 0.25);
+    border-color: rgba(42, 111, 219, 0.2);
   }
 }
 
 /*
- * Single light theme. The app previously shipped a multi-theme "Deep Space
- * Glass" system (dark / light / party / club) toggled via a `data-theme`
- * attribute; it is now a single, flat light theme. All design tokens live on
- * `:root` so no theme attribute is required.
+ * "Lightning-class" design system — light (default) + dark via
+ * `[data-theme='dark']` on <html> (set by ThemeContext, persisted as
+ * `sl-theme` in localStorage).
+ *
+ * Two token namespaces coexist on :root:
+ *  - Prototype names (--bg-app, --border, --primary, …) are the source of
+ *    truth; the dark block overrides only these.
+ *  - Legacy semantic names (--color-bg-app, --color-text-primary, …) alias
+ *    the prototype names so all pre-redesign components and Tailwind
+ *    utilities re-theme automatically.
  */
 :root {
   /* Shared Spacing (4px grid) */
@@ -112,60 +138,191 @@
   --radius-xl: 1rem;
   --radius-2xl: 1.5rem;
   --radius-full: 9999px;
+  --r-xs: 4px;
+  --r-sm: 6px;
+  --r-md: 8px;
+  --r-lg: 12px;
+  --r-xl: 16px;
+  --r-full: 999px;
+
+  /* Layout metrics */
+  --row-h: 38px;
+  --topbar-h: 56px;
+  --subbar-h: 48px;
+  --nav-w: 256px;
+  --nav-w-collapsed: 60px;
 
   /* Shared Typography */
-  --font-family-base: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --font-family-display: 'Outfit', var(--font-family-base);
+  --font-family-base:
+    'Public Sans', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI',
+    sans-serif;
+  --font-family-display: var(--font-family-base);
+  --font-ui: var(--font-family-base);
 
-  /* Backgrounds */
-  --color-bg-app: #f1f5f9;
-  --bg-app-gradient: #f1f5f9;
-  --color-bg-surface: #ffffff;
-  --color-bg-surface-hover: #f8fafc;
-  --color-bg-glass: #f8fafc;
+  /* ---------- Prototype tokens: Light (default) ---------- */
+  --bg-app: #eef1f6;
+  --bg-shell: #ffffff;
+  --bg-surface: #ffffff;
+  --bg-raised: #ffffff;
+  --bg-sunken: #f5f7fb;
+  --bg-hover: #eff3f9;
+  --bg-active: #e6edf8;
+  --bg-selected: #e7f0fd;
+  --bg-nav: #ffffff;
+  --bg-nav-group: #f7f9fc;
 
-  /* Borders & Effects (flat) */
-  --color-border-subtle: #e2e8f0;
-  --color-border-highlight: #cbd5e1;
-  --shadow-soft:
-    0 1px 2px rgba(15, 23, 42, 0.04),
-    0 1px 3px rgba(15, 23, 42, 0.06);
-  --shadow-md:
-    0 2px 6px rgba(15, 23, 42, 0.06),
-    0 4px 12px rgba(15, 23, 42, 0.08);
+  --border: #dde2ea;
+  --border-soft: #e7ebf1;
+  --border-strong: #c6cdd9;
+  --border-field: #c0c8d4;
+
+  --text-primary: #15191f;
+  --text-secondary: #56606e;
+  --text-muted: #8a93a2;
+  --text-inverse: #ffffff;
+
+  --primary: #2a6fdb;
+  --primary-hover: #205dc1;
+  --primary-press: #1a4fa6;
+  --primary-weak: #e7f0fd;
+  --primary-weak-hover: #d8e6fb;
+  --primary-text: #1d5bc0;
+  --primary-light: #4f8ef7;
+
+  --success: #1f8a4c;
+  --success-weak: #e3f5ea;
+  --success-text: #166b3a;
+  --warning: #b5740b;
+  --warning-weak: #fbeed3;
+  --warning-text: #8a5908;
+  --danger: #c23030;
+  --danger-weak: #fbe6e6;
+  --danger-text: #a02020;
+  --neutral-weak: #eef1f6;
+  --info: #2a6fdb;
+
+  --accent-teal: #0d8a8a;
+  --accent-violet: #6c54d6;
+  --accent-amber: #c9881a;
+  --accent-rose: #c2487a;
+  --accent-green: #1f8a4c;
+
+  --ring: rgba(42, 111, 219, 0.4);
+  --shadow-xs: 0 1px 1px rgba(16, 24, 40, 0.04);
+  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 3px rgba(16, 24, 40, 0.05);
+  --shadow-md: 0 2px 4px rgba(16, 24, 40, 0.06), 0 4px 12px rgba(16, 24, 40, 0.08);
+  --shadow-lg: 0 8px 24px rgba(16, 24, 40, 0.12), 0 2px 6px rgba(16, 24, 40, 0.08);
+  --shadow-pop: 0 12px 32px rgba(16, 24, 40, 0.18);
+
+  /* ---------- Legacy semantic aliases ---------- */
+  --color-bg-app: var(--bg-app);
+  --bg-app-gradient: var(--bg-app);
+  --color-bg-surface: var(--bg-surface);
+  --color-bg-surface-hover: var(--bg-hover);
+  --color-bg-glass: var(--bg-sunken);
+
+  --color-border-subtle: var(--border);
+  --color-border-highlight: var(--border-strong);
+  --shadow-soft: var(--shadow-sm);
   --shadow-glow: none;
   --backdrop-blur: none;
 
-  /* Text */
-  --color-text-primary: #0f172a;
-  --color-text-secondary: #475569;
-  --color-text-muted: #64748b;
-  --color-text-accent: #0284c7;
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-muted: var(--text-muted);
+  --color-text-accent: var(--primary-text);
 
-  /* Brand */
-  --color-primary: #0284c7;
-  --color-primary-400: #0ea5e9;
-  --color-primary-600: #0369a1;
-  --color-primary-glow: rgba(2, 132, 199, 0.15);
+  --color-primary: var(--primary);
+  --color-primary-400: var(--primary-light);
+  --color-primary-600: var(--primary-hover);
+  --color-primary-glow: var(--ring);
 
-  /* Status */
-  --color-status-success: #059669;
-  --color-status-success-bg: rgba(5, 150, 105, 0.1);
-  --color-status-warning: #d97706;
-  --color-status-warning-bg: rgba(217, 119, 6, 0.1);
-  --color-status-error: #dc2626;
-  --color-status-error-bg: rgba(220, 38, 38, 0.1);
-  --color-status-pending: #64748b;
-  --color-status-pending-bg: rgba(100, 116, 139, 0.1);
-  --color-status-success-glow: rgba(5, 150, 105, 0.2);
-  --color-status-warning-glow: rgba(217, 119, 6, 0.2);
-  --color-status-pending-glow: rgba(100, 116, 139, 0.15);
+  --color-status-success: var(--success);
+  --color-status-success-bg: var(--success-weak);
+  --color-status-warning: var(--warning);
+  --color-status-warning-bg: var(--warning-weak);
+  --color-status-error: var(--danger);
+  --color-status-error-bg: var(--danger-weak);
+  --color-status-pending: var(--text-secondary);
+  --color-status-pending-bg: var(--neutral-weak);
+  --color-status-success-glow: var(--success-weak);
+  --color-status-warning-glow: var(--warning-weak);
+  --color-status-pending-glow: var(--neutral-weak);
 
-  --color-focus-ring: #0284c7;
+  --color-focus-ring: var(--primary);
+
+  /* Pre-redesign inline styles reference these (previously undefined) */
+  --glass-bg: var(--bg-sunken);
+  --glass-border: var(--border);
+  --accent-color: var(--primary-text);
+}
+
+[data-theme='dark'] {
+  --bg-app: #0e1116;
+  --bg-shell: #161b22;
+  --bg-surface: #1a2029;
+  --bg-raised: #1f2630;
+  --bg-sunken: #12161c;
+  --bg-hover: #232b36;
+  --bg-active: #29333f;
+  --bg-selected: #1a2b45;
+  --bg-nav: #141920;
+  --bg-nav-group: #11161d;
+
+  --border: #2a313c;
+  --border-soft: #232a34;
+  --border-strong: #3a4452;
+  --border-field: #3a4452;
+
+  --text-primary: #eef1f6;
+  --text-secondary: #abb4c2;
+  --text-muted: #727d8c;
+  --text-inverse: #0e1116;
+
+  --primary: #4f8ef7;
+  --primary-hover: #6aa0f8;
+  --primary-press: #3d7fef;
+  --primary-weak: #18253b;
+  --primary-weak-hover: #1f3048;
+  --primary-text: #7fb0fb;
+  --primary-light: #7fb0fb;
+
+  --success: #3bbf72;
+  --success-weak: #14271c;
+  --success-text: #5fcf8c;
+  --warning: #e0a13c;
+  --warning-weak: #2a2113;
+  --warning-text: #e9b461;
+  --danger: #ef6b6b;
+  --danger-weak: #2c1818;
+  --danger-text: #f08a8a;
+  --neutral-weak: #232a34;
+  --info: #4f8ef7;
+
+  --accent-teal: #2dbcbc;
+  --accent-violet: #9a86ee;
+  --accent-amber: #e0a93c;
+  --accent-rose: #e07aa6;
+  --accent-green: #3bbf72;
+
+  --ring: rgba(79, 142, 247, 0.45);
+  --shadow-xs: 0 1px 1px rgba(0, 0, 0, 0.3);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35), 0 1px 3px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 2px 6px rgba(0, 0, 0, 0.4), 0 6px 16px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 10px 28px rgba(0, 0, 0, 0.55);
+  --shadow-pop: 0 14px 36px rgba(0, 0, 0, 0.6);
+
+  color-scheme: dark;
 }
 
 * {
   box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
 }
 
 body {
@@ -174,6 +331,14 @@ body {
   font-family: var(--font-family-base);
   background: var(--color-bg-app);
   color: var(--color-text-primary);
+  font-size: 14px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+.tnum {
+  font-variant-numeric: tabular-nums;
 }
 
 /* Global Focus */
@@ -189,8 +354,7 @@ a {
 
 /* Global Selection */
 ::selection {
-  background-color: var(--color-primary);
-  color: #ffffff;
+  background-color: var(--primary-weak-hover);
 }
 
 /* --- UTILITIES --- */
@@ -350,20 +514,28 @@ a {
 }
 
 /* --- CUSTOM SCROLLBAR --- */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #f1f5f9;
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 4px;
+  background: var(--border-strong);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  background: var(--text-muted);
+  background-clip: content-box;
 }

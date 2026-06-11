@@ -8,7 +8,7 @@ Feature: Dashboard Workflow and Readiness Score
     And an organization and season are active
 
   Scenario: Viewing the workflow dashboard layout
-    When I navigate to the Dashboard page
+    When I view the Dashboard page
     Then I should see a 6-step workflow on the left side
     And I should see a "League Status" panel on the right side
     And the League Status panel should show the active organization name
@@ -31,7 +31,7 @@ Feature: Dashboard Workflow and Readiness Score
     Then the Readiness Score should display "100%"
 
   Scenario: Clicking a workflow step expands its content
-    When I navigate to the Dashboard page
+    When I view the Dashboard page
     And I click on the "2. Teaming & Analysis" workflow step
     Then the "2. Teaming & Analysis" step should expand to show its content
     And the previously active step should collapse

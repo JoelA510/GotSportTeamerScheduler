@@ -10,7 +10,7 @@ Feature: App Shell Visuals and Responsiveness
     Then the sidebar should be hidden by default
     When I click the "Hamburger Menu" icon
     Then the sidebar overlay should slide into view
-    When I click a navigation link like "Team Management"
+    When I click a navigation link like "Teams & Rosters"
     Then the sidebar overlay should automatically close
 
   Scenario: Global Error Boundary Fallback

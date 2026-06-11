@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext.jsx';
-import logo from '../assets/logo_draft_modern.png';
+import logo from '../assets/SL-Logo.png';
 
 export default function ResetPassword() {
   const [password, setPassword] = useState('');
@@ -76,7 +76,6 @@ export default function ResetPassword() {
             style={{
               width: '100px',
               height: 'auto',
-              filter: 'drop-shadow(0 0 15px rgba(56, 189, 248, 0.4))',
             }}
           />
           <h2
@@ -185,14 +184,10 @@ export default function ResetPassword() {
           <button
             type="submit"
             disabled={loading}
-            className="action-button primary-button"
+            className="btn btn-primary lg"
             style={{
               marginTop: '1rem',
               width: '100%',
-              justifyContent: 'center',
-              padding: '1rem',
-              fontSize: '1rem',
-              fontWeight: '600',
             }}
           >
             {loading ? 'Updating...' : 'Update Password'}

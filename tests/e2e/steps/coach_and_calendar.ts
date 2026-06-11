@@ -153,6 +153,10 @@ When('I view my Team Portal', async ({ page }) => {
 });
 
 Then('I should see a list of all players and their contact information', async ({ page }) => {
+  // The roster lives in the Roster tab of the team record page.
+  const rosterTab = page.getByRole('tab', { name: /Roster/i }).first();
+  await expect(rosterTab).toBeVisible({ timeout: 15000 });
+  await rosterTab.click();
   await expect(page.locator('.bg-bg-surface').first()).toBeVisible();
   await expect(page.getByText(/Player 0/i).first()).toBeVisible();
 });

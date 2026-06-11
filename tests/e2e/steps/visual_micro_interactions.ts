@@ -67,5 +67,7 @@ Then('I should see the {string} glassmorphism error panel', async ({ page }, tex
 });
 
 Then('I should be safely redirected to the Dashboard', async ({ page }) => {
-  await expect(page.getByRole('heading', { name: 'Season Setup Workflow' }).first()).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: /Welcome back|My Dashboard/ }).first()
+  ).toBeVisible();
 });

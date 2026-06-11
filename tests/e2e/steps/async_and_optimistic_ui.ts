@@ -251,8 +251,8 @@ Then(
 
 // --- Output Pipeline ---
 Given('I am on the {string} workflow step on Dashboard', async ({ page }, step: string) => {
-  // Go to root first to establish origin, seed storage, then use the dashboard
-  // query param consumed by DashboardPage's controlled workflow state.
+  // Establish origin first, seed storage, then use the workflow page's
+  // query param consumed by WorkflowPage's controlled workflow state.
   await page.goto('/');
   await page.evaluate(() => {
     // Seed data so the Output Generation panel has something to export
@@ -302,7 +302,7 @@ Given('I am on the {string} workflow step on Dashboard', async ({ page }, step: 
     sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
   });
   const stepNumber = step.includes('Outcome') ? '6' : '2';
-  await page.goto(`/?step=${stepNumber}`);
+  await page.goto(`/workflow?step=${stepNumber}`);
   const workflowStepName = step.includes('Outcome')
     ? '6. Output & Communication'
     : '2. Teaming & Analysis';

@@ -27,20 +27,29 @@ const PracticeSchedulingPage = lazy(() => import('./pages/PracticeSchedulingPage
 const GameSchedulingPage = lazy(() => import('./pages/GameSchedulingPage.jsx'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage.jsx'));
 const AccountSettingsPage = lazy(() => import('./pages/AccountSettingsPage.jsx'));
-const TeamPortalPage = lazy(() => import('./pages/TeamPortalPage.jsx'));
+const TeamRecordPage = lazy(() => import('./pages/TeamRecordPage.jsx'));
 const RegistrationFlow = lazy(() => import('./pages/RegistrationFlow.jsx'));
 const AdminComplianceDashboard = lazy(() => import('./pages/AdminComplianceDashboard.jsx'));
 const RegistrationForms = lazy(() => import('./pages/RegistrationForms.jsx'));
 const EnterpriseDashboard = lazy(() => import('./pages/EnterpriseDashboard.jsx'));
 const LeagueStandings = lazy(() => import('./pages/LeagueStandings.jsx'));
-const SetupWizard = lazy(() => import('./pages/SetupWizard.jsx'));
+const SeasonSetupPage = lazy(() => import('./pages/SeasonSetupPage.jsx'));
+const WorkflowPage = lazy(() => import('./pages/WorkflowPage.jsx'));
 const ResetPassword = lazy(() => import('./pages/ResetPassword.jsx'));
 const AuditLogPage = lazy(() => import('./pages/AuditLogPage.jsx'));
 const AnalyticalDashboard = lazy(() => import('./pages/AnalyticalDashboard.jsx'));
 const OrganizationCreation = lazy(() => import('./pages/OrganizationCreation.jsx'));
 const InvitePage = lazy(() => import('./pages/InvitePage.jsx'));
-import ShadowBanner from './components/auth/ShadowBanner.jsx';
+const PlayersPage = lazy(() => import('./pages/PlayersPage.jsx'));
+const TeamBuilderPage = lazy(() => import('./pages/TeamBuilderPage.jsx'));
+const BlackoutsPage = lazy(() => import('./pages/BlackoutsPage.jsx'));
+const ScoresPage = lazy(() => import('./pages/ScoresPage.jsx'));
+const ExportsPage = lazy(() => import('./pages/ExportsPage.jsx'));
+const MembersPage = lazy(() => import('./pages/MembersPage.jsx'));
+const FeaturesSetupPage = lazy(() => import('./pages/FeaturesSetupPage.jsx'));
+const PlayerRecordPage = lazy(() => import('./pages/PlayerRecordPage.jsx'));
 import OfflineGuard from './components/OfflineGuard.jsx';
+import ToastHost from './components/ui/ToastHost.jsx';
 
 function AppContent() {
   const { session, loading } = useAuth();
@@ -98,7 +107,6 @@ function AppContent() {
 
   return (
     <Suspense fallback={<LoadingScreen />}>
-      <ShadowBanner />
       <Routes>
         <Route path="/auth/reset-password" element={<ResetPassword />} />
         <Route path="/organizations/new" element={<OrganizationCreation />} />
@@ -106,7 +114,15 @@ function AppContent() {
           path="/setup"
           element={
             <ProtectedRoute requiredPermission={PERMISSIONS.MANAGE_GLOBAL_SETTINGS}>
-              <SetupWizard />
+              <SeasonSetupPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/setup/features"
+          element={
+            <ProtectedRoute requiredPermission={PERMISSIONS.MANAGE_GLOBAL_SETTINGS}>
+              <FeaturesSetupPage />
             </ProtectedRoute>
           }
         />
@@ -117,11 +133,19 @@ function AppContent() {
             ) : !isOnboarded && isTenantAdmin ? (
               <Navigate to="/setup" replace />
             ) : (
-              <DashboardLayout activeSection="dashboard" />
+              <DashboardLayout />
             )
           }
         >
           <Route path="/" element={<DashboardPage />} />
+          <Route
+            path="/workflow"
+            element={
+              <ProtectedRoute requiredPermission={PERMISSIONS.MANAGE_ORGANIZATION}>
+                <WorkflowPage />
+              </ProtectedRoute>
+            }
+          />
           <Route path="/register/:formId" element={<RegistrationFlow />} />
           <Route
             path="/import"
@@ -136,6 +160,62 @@ function AppContent() {
             element={
               <ProtectedRoute requiredPermission={PERMISSIONS.VIEW_ALL_TEAMS}>
                 <TeamAnalysisPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/players"
+            element={
+              <ProtectedRoute requiredPermission={PERMISSIONS.MANAGE_ORGANIZATION}>
+                <PlayersPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/players/:playerId"
+            element={
+              <ProtectedRoute requiredPermission={PERMISSIONS.MANAGE_ORGANIZATION}>
+                <PlayerRecordPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/teams/builder"
+            element={
+              <ProtectedRoute requiredPermission={PERMISSIONS.MANAGE_ALL_TEAMS}>
+                <TeamBuilderPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/scheduling/blackouts"
+            element={
+              <ProtectedRoute requiredPermission={PERMISSIONS.MANAGE_ORGANIZATION}>
+                <BlackoutsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/scores"
+            element={
+              <ProtectedRoute requiredPermission={PERMISSIONS.MANAGE_SCHEDULE}>
+                <ScoresPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/exports"
+            element={
+              <ProtectedRoute requiredPermission={PERMISSIONS.MANAGE_ORGANIZATION}>
+                <ExportsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/members"
+            element={
+              <ProtectedRoute requiredPermission={PERMISSIONS.MANAGE_ORGANIZATION}>
+                <MembersPage />
               </ProtectedRoute>
             }
           />
@@ -220,7 +300,7 @@ function AppContent() {
             }
           />
           <Route path="/account" element={<AccountSettingsPage />} />
-          <Route path="/team/:teamId" element={<TeamPortalPage />} />
+          <Route path="/team/:teamId" element={<TeamRecordPage />} />
           <Route path="/standings" element={<LeagueStandings />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
@@ -236,11 +316,13 @@ function App() {
         <OrganizationProvider>
           <ImportProvider>
             <ThemeProvider>
-              <ErrorBoundary>
-                <OfflineGuard>
-                  <AppContent />
-                </OfflineGuard>
-              </ErrorBoundary>
+              <ToastHost>
+                <ErrorBoundary>
+                  <OfflineGuard>
+                    <AppContent />
+                  </OfflineGuard>
+                </ErrorBoundary>
+              </ToastHost>
             </ThemeProvider>
           </ImportProvider>
         </OrganizationProvider>

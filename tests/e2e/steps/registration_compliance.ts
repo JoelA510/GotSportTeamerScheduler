@@ -91,8 +91,10 @@ When(
       .getByLabel(/Form Title|Title/i)
       .first()
       .fill(formTitle);
-    const seasonSelect = page.getByLabel(/Season/i).first();
-    if (await seasonSelect.isVisible()) {
+    // Use the combobox role so the top bar's "Active Season" switcher
+    // (a button) is never matched.
+    const seasonSelect = page.getByRole('combobox', { name: /Season/i }).first();
+    if (await seasonSelect.isVisible().catch(() => false)) {
       await seasonSelect.selectOption({ label: seasonName });
     }
     await page
@@ -203,10 +205,9 @@ When('I filter for {string}', async ({ page }, formTitle: string) => {
   await expect(
     page.locator('select#form-filter option', { hasText: formTitle }).first()
   ).toBeAttached({ timeout: 10000 });
-  await page
-    .getByLabel(/Filter by Form|Form/i)
-    .first()
-    .selectOption({ label: formTitle });
+  // Target the select directly — loose label regexes can collide with the
+  // roster-compliance toggle aria-labels ("medical form received for ...").
+  await page.locator('select#form-filter').selectOption({ label: formTitle });
 });
 
 Then('I should see a registration for {string}', async ({ page }, childName: string) => {
@@ -214,7 +215,13 @@ Then('I should see a registration for {string}', async ({ page }, childName: str
 });
 
 Then('the waiver status should be {string}', async ({ page }, status: string) => {
-  const row = page.getByRole('row').filter({ hasText: 'Alex' }).first();
+  // Scope to the registrations table (the roster-compliance grid above also
+  // has rows containing "Alex").
+  const regTable = page
+    .getByRole('table')
+    .filter({ has: page.getByText('Waiver Signed') })
+    .first();
+  const row = regTable.getByRole('row').filter({ hasText: 'Alex' }).first();
   const expectedText = status.toLowerCase() === 'signed' ? 'Confirmed' : 'Pending';
 
   // CRITICAL FIX: Target the specific UI badge and verify its semantic color class
@@ -233,7 +240,11 @@ Then('the waiver status should be {string}', async ({ page }, status: string) =>
 
 Then('the medical status should be {string}', async ({ page }, status: string) => {
   const uiStatus = status === 'Pending' ? 'Reviewing' : status;
-  const row = page.getByRole('row').filter({ hasText: 'Alex' }).first();
+  const regTable = page
+    .getByRole('table')
+    .filter({ has: page.getByText('Waiver Signed') })
+    .first();
+  const row = regTable.getByRole('row').filter({ hasText: 'Alex' }).first();
 
   // CRITICAL FIX: Target the specific interactive button and verify its state
   const button = row.getByRole('button', { name: new RegExp(uiStatus, 'i') }).first();

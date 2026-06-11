@@ -4,14 +4,14 @@
     {
       "match": "^assets/index-.*\\.js$",
       "label": "main entry",
-      "maxGzipBytes": 131000,
-      "rationale": "Current 127.20 KB after deferred import lifecycle state; cap leaves <1 KB headroom after lazy-loading deferred RPC helpers. Tighten in v1.1 once chart-vendor route-splits."
+      "maxGzipBytes": 140000,
+      "rationale": "Redesign: 131.1 KB after the Lightning-class chrome (TopBar/SideNav/navigation) plus expanded mock-client seeds & RPC handlers, which ship in main because supabaseClient imports the mock statically. 140 KB cap leaves ~9 KB for remaining phases; follow-ups: dynamic-import the mock client and route-split chart-vendor, then tighten."
     },
     {
       "match": "^assets/index-.*\\.css$",
       "label": "main css",
-      "maxGzipBytes": 22000,
-      "rationale": "Current 17.82 KB; 22 KB cap leaves 4 KB for new components."
+      "maxGzipBytes": 30000,
+      "rationale": "Redesign ships the Lightning-class design system (light+dark tokens + chrome/grid/page component CSS) in the main stylesheet: 21.7 KB after Phase 1. 30 KB cap leaves ~8 KB for the remaining redesign phases; revisit after Phase 9."
     },
     {
       "match": "^assets/chart-vendor-.*\\.js$",
@@ -40,8 +40,14 @@
     {
       "match": "^assets/.*\\.png$",
       "label": "images (any png)",
-      "maxRawBytes": 500000,
-      "rationale": "Logo PNG currently 452 KB unoptimized (F-4-03). Until WebP conversion, allow up to 500 KB; tighten to 100 KB after F-4-03 lands."
+      "maxRawBytes": 100000,
+      "rationale": "F-4-03 resolved by the redesign rebrand: SL-Logo assets are quantized PNGs ≤ 15 KB. 100 KB cap guards against future unoptimized image additions."
+    },
+    {
+      "match": "^assets/.*\\.woff2$",
+      "label": "fonts (woff2)",
+      "maxRawBytes": 35000,
+      "rationale": "Self-hosted Public Sans variable fonts (CSP font-src 'self'): upright 27 KB + italic 28 KB, latin subset. Cap 35 KB per file; woff2 is already compressed so raw bytes are gated."
     }
   ],
   "totalFirstPaintGzipBytes": 250000,

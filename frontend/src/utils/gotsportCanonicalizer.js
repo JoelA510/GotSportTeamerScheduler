@@ -131,6 +131,15 @@ const SENSITIVE_PATTERNS = [
 ];
 
 /**
+ * Headers that would match a SENSITIVE_PATTERN but are explicitly kept.
+ * "Payment Status" is a PAID/UNPAID boolean compliance signal (no amounts,
+ * plans, or instruments) consumed by the `paid` roster flag; everything else
+ * financial — Payment Plan, amounts, balances, card data — stays stripped.
+ * @type {RegExp[]}
+ */
+const ALLOWED_HEADERS = [/^payment\s*status$/];
+
+/**
  * True when a CSV header names a sensitive / out-of-scope column that must be
  * dropped before upload.
  * @param {string} header
@@ -141,6 +150,7 @@ export function isSensitiveHeader(header) {
     .toLowerCase()
     .replace(/__\d+$/, '');
   if (!h) return false;
+  if (ALLOWED_HEADERS.some((re) => re.test(h))) return false;
   return SENSITIVE_PATTERNS.some((re) => re.test(h));
 }
 

@@ -5,6 +5,8 @@ import { useOrganization } from '../contexts/OrganizationContext.jsx';
 import { PERMISSIONS, hasPermission } from '../constants/permissions.js';
 import { Trophy, CheckCircle2 } from 'lucide-react';
 import { logger } from '../lib/logger.js';
+import { useFeatures } from '../hooks/useFeatures.js';
+import { divisionDisplayName } from '../utils/divisions.js';
 
 const parseScoreInput = (score) => {
   if (score === '' || score === null || score === undefined) return null;
@@ -26,6 +28,7 @@ export default function LeagueStandings() {
   const [updatingGameId, setUpdatingGameId] = useState(null);
 
   const canEditScores = hasPermission(orgMember?.role, PERMISSIONS.MANAGE_SCHEDULE);
+  const { genderModel } = useFeatures();
 
   useEffect(() => {
     async function loadData() {
@@ -128,8 +131,10 @@ export default function LeagueStandings() {
     }
   };
 
-  // Group standings by division
-  const divisions = [...new Set(standings.map((s) => s.division || 'Uncategorized'))];
+  // Group standings by division (co-ed display model folds U10B/U10G → U10)
+  const displayDivision = (name) =>
+    divisionDisplayName(name || 'Uncategorized', genderModel) || 'Uncategorized';
+  const divisions = [...new Set(standings.map((s) => displayDivision(s.division)))];
 
   if (loading)
     return (
@@ -186,7 +191,7 @@ export default function LeagueStandings() {
                 </thead>
                 <tbody className="divide-y divide-border-subtle">
                   {standings
-                    .filter((s) => (s.division || 'Uncategorized') === division)
+                    .filter((s) => displayDivision(s.division) === division)
                     .map((team, idx) => (
                       <tr
                         key={team.team_id}
@@ -240,7 +245,8 @@ export default function LeagueStandings() {
               data-testid="game-score-card"
             >
               <div className="text-xs text-text-muted text-center border-b border-border-subtle pb-2 mb-2">
-                {new Date(game.start_time).toLocaleDateString()} • {game.home_team?.division}
+                {new Date(game.start_time).toLocaleDateString()} •{' '}
+                {displayDivision(game.home_team?.division)}
               </div>
               <div className="flex justify-between items-center">
                 <span className="font-semibold text-text-primary truncate w-1/3 text-right">

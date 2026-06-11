@@ -8,7 +8,7 @@ This document describes the implemented frontend architecture for SquadLogic. Th
 ## Routing & Navigation
 
 - **Router**: `react-router-dom` v7 with `<BrowserRouter>`.
-- **Layout**: `DashboardLayout` provides a persistent sidebar (`Sidebar.jsx`) on desktop and a collapsible hamburger drawer on mobile.
+- **Layout**: `DashboardLayout` renders the Lightning-class shell — `chrome/TopBar.jsx` (org/season switchers, search, theme toggle, role preview) and the nested collapsible `chrome/SideNav.jsx` (mobile off-canvas drawer) driven by `constants/navigation.js`.
 - **Page Loading**: All page components are lazy-loaded via `React.lazy()` in `App.jsx` for optimal bundle splitting.
 - **Route Protection**: `<ProtectedRoute requiredPermission={PERMISSIONS.*}>` gates admin-only pages with immediate redirect for unauthorized users.
 - **Provider Hierarchy**: `BrowserRouter > AuthProvider > OrganizationProvider > ImportProvider > ThemeProvider > ErrorBoundary`.
@@ -17,7 +17,7 @@ This document describes the implemented frontend architecture for SquadLogic. Th
 
 | Route                   | Page Component             | Description                                                     |
 | ----------------------- | -------------------------- | --------------------------------------------------------------- |
-| `/`                     | `DashboardPage`            | Dashboard with metrics, workflow progression, and league status |
+| `/`                     | `DashboardPage`            | Role-scoped Home (admin KPIs/setup card; coach & parent views)  |
 | `/import`               | `ImportPage`               | GotSport CSV data ingestion with validation                     |
 | `/teams`                | `TeamAnalysisPage`         | Roster generation, analysis, drag-and-drop overrides            |
 | `/fields`               | `FieldManagementPage`      | Venue/field/blackout date CRUD with weekly grid                 |
@@ -28,7 +28,16 @@ This document describes the implemented frontend architecture for SquadLogic. Th
 | `/reporting`            | `AdminReportingDashboard`  | Game metrics, standings, charts                                 |
 | `/standings`            | `LeagueStandings`          | Score entry, standings tables, tie-breaker logic                |
 | `/registration/:formId` | `RegistrationFlow`         | Public registration form flow                                   |
-| `/team/:teamId`         | `TeamPortalPage`           | Coach/parent portal — roster, schedule, RSVP, chat              |
+| `/team/:teamId`         | `TeamRecordPage`           | Team record (tabs: schedule+RSVP+chat, roster, staff, balance)  |
+| `/players`              | `PlayersPage`              | Virtualized editable players grid (audited RPC mutations)       |
+| `/players/:playerId`    | `PlayerRecordPage`         | Player record with inline editing                               |
+| `/teams/builder`        | `TeamBuilderPage`          | Drag-and-drop balance board (`balanceSignals`)                  |
+| `/workflow`             | `WorkflowPage`             | 6-step pipeline workflow (formerly the dashboard)               |
+| `/setup`                | `SeasonSetupPage`          | Resumable setup checklist (`useSetupProgress`)                  |
+| `/scores`               | `ScoresPage`               | Grid score entry via `update_game_score`                        |
+| `/scheduling/blackouts` | `BlackoutsPage`            | Field blackout windows review grid                              |
+| `/exports`              | `ExportsPage`              | Output generation (CSVs, emails)                                |
+| `/admin/members`        | `MembersPage`              | Invites & membership                                            |
 
 ## State Management
 
@@ -39,7 +48,7 @@ State is managed entirely through **React Context** — no external state librar
 | `AuthContext`         | `contexts/AuthContext.jsx`         | Supabase auth session, user profile, login/logout   |
 | `OrganizationContext` | `contexts/OrganizationContext.jsx` | Active org selection, org membership, org switching |
 | `ImportContext`       | `contexts/ImportContext.jsx`       | CSV import state, parsed data, validation results   |
-| `ThemeContext`        | `contexts/ThemeContext.jsx`        | Theme selection (dark/light/party/club), timezone   |
+| `ThemeContext`        | `contexts/ThemeContext.jsx`        | Light/dark theme mode + legacy league/season state  |
 
 ## Custom Hooks (`frontend/src/hooks/`)
 
@@ -73,28 +82,37 @@ frontend/src/components/
 ├── teaming/             # Roster management components
 │   └── RosterManager.jsx       # Drag-and-drop roster with @dnd-kit
 ├── ui/                  # Shared UI components
-├── DashboardWorkflow.jsx       # 6-step workflow orchestration
+├── chrome/              # TopBar, SideNav, PageHeader, Page scaffolding
+├── grid/                # DataGrid (virtualized, editable) + cell/keyboard/selection
+├── setup/               # SetupChecklist (resumable season setup)
+├── DashboardWorkflow.jsx       # 6-step workflow orchestration (WorkflowPage)
 ├── ImportPanel.jsx             # CSV import with validation
 ├── TeamPersistencePanel.jsx    # Team save with optimistic UI
 ├── OutputGenerationPanel.jsx   # CSV/email export generation
-├── Sidebar.jsx                 # Navigation with org/season switcher
 ├── ProtectedRoute.jsx          # RBAC route guard
-├── ErrorBoundary.jsx           # Global error boundary (Deep Space Glass)
+├── ErrorBoundary.jsx           # Global error boundary
 └── ...                         # Other panels and shared components
 ```
 
-## Design System — "Deep Space Glass"
+## Design System — "Lightning-class"
 
-Defined in `frontend/src/index.css` with four themes controlled via `data-theme` attribute:
+Defined in `frontend/src/index.css` (tokens) and `frontend/src/styles/{chrome,grid,page}.css`
+(component classes). Two themes controlled via the `data-theme` attribute on `<html>`:
 
-- **`dark`** (default) — Deep navy backgrounds, sky-blue accents
-- **`light`** — Slate/white backgrounds, ocean-blue accents
-- **`party`** — Purple/fuchsia backgrounds, pink accents
-- **`club`** — Dynamic club branding (with `data-club-mode` light/dark sub-modes)
+- **light** (default, no attribute) — Cool gray-blue backgrounds, cobalt `#2a6fdb` primary
+- **`dark`** — Graphite backgrounds, lifted cobalt `#4f8ef7` primary
 
-Key CSS utilities: `.glass-panel`, `.glass-button`, `.glass-input`, `.card-glass`, `.animate-fadeIn`, `.animate-slideUp`.
+`ThemeContext.themeMode` drives the attribute and persists the choice to localStorage
+(`sl-theme`). The typeface is self-hosted Public Sans (variable woff2; CSP forbids
+remote fonts).
 
-All colors use CSS custom properties (e.g., `var(--color-bg-app)`, `var(--color-primary)`, `var(--color-text-accent)`) that auto-switch with theme.
+Key component classes: `.btn*`, `.badge`, `.card`, `.kpi`, `table.grid`, `.page-head`/`.page-tabs`,
+`.modal`/`.overlay`, `.menu`, `.toast`, plus legacy `.glass-panel`/`.glass-button`/`.glass-input`
+utilities retained for compatibility. Shared React primitives live in `frontend/src/components/ui/`
+(`Button`, `Badge`, `Modal`, `Dropdown`, `Toggle`, `Tabs`, `Avatar`, `ToastHost`).
+
+All colors use CSS custom properties — prototype tokens (`var(--bg-surface)`, `var(--primary)`)
+with legacy aliases (`var(--color-bg-app)`, `var(--color-primary)`) — that auto-switch with theme.
 
 ## Drag-and-Drop
 

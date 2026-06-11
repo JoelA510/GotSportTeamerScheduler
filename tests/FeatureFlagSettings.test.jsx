@@ -1,19 +1,18 @@
 import React from 'react';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import FeatureFlagSettings from '../frontend/src/components/settings/FeatureFlagSettings.jsx';
 
 const mocks = vi.hoisted(() => ({
   updateFeatureFlags: vi.fn(),
   rpc: vi.fn(),
+  teamsRows: [],
+  featureFlags: {},
 }));
 
 vi.mock('../frontend/src/contexts/OrganizationContext.jsx', () => ({
   useOrganization: () => ({
-    featureFlags: {
-      advanced_fairness: true,
-      coach_overlap_strict: false,
-    },
+    featureFlags: mocks.featureFlags,
     updateFeatureFlags: mocks.updateFeatureFlags,
     loading: false,
     currentOrganization: { id: 'org-1' },
@@ -30,35 +29,80 @@ vi.mock('../frontend/src/contexts/AuthContext.jsx', () => ({
 vi.mock('../frontend/src/lib/supabaseClient.js', () => ({
   supabase: {
     rpc: mocks.rpc,
+    from: () => ({
+      select: () => ({
+        eq: () => Promise.resolve({ data: mocks.teamsRows, error: null }),
+      }),
+    }),
   },
 }));
 
-describe('FeatureFlagSettings', () => {
+describe('FeatureFlagSettings (FeatureControls)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.featureFlags = {};
+    mocks.teamsRows = [];
     mocks.updateFeatureFlags.mockResolvedValue({ success: true });
     mocks.rpc.mockResolvedValue({ error: null });
   });
 
-  it('exposes feature toggles as named switches with checked state', () => {
+  it('renders the feature catalog with defaults (Years Played on, Rating off)', () => {
     render(<FeatureFlagSettings />);
-
-    const fairnessSwitch = screen.getByRole('switch', {
-      name: 'Advanced Fairness Evaluation Enterprise',
-    });
-    const coachConflictSwitch = screen.getByRole('switch', {
-      name: 'Strict Coach Conflict Enforcement',
-    });
-
-    expect(fairnessSwitch).toHaveAttribute('type', 'button');
-    expect(fairnessSwitch).toHaveAttribute('aria-checked', 'true');
-    expect(fairnessSwitch).toHaveAccessibleDescription(
-      'Enables multi-weighted metrics for team balancing including commute time and coach experience.'
+    expect(screen.getByRole('switch', { name: 'Years Played' })).toHaveAttribute(
+      'aria-checked',
+      'true'
     );
-    expect(coachConflictSwitch).toHaveAttribute('aria-checked', 'false');
+    expect(screen.getByRole('switch', { name: 'Player Rating' })).toHaveAttribute(
+      'aria-checked',
+      'false'
+    );
+    expect(screen.getByRole('switch', { name: 'Waitlist' })).toHaveAttribute(
+      'aria-checked',
+      'true'
+    );
+  });
 
-    fireEvent.click(coachConflictSwitch);
+  it('persists a toggle change through updateFeatureFlags and audits it', async () => {
+    render(<FeatureFlagSettings />);
+    fireEvent.click(screen.getByRole('switch', { name: 'Player Rating' }));
+    await waitFor(() => expect(mocks.updateFeatureFlags).toHaveBeenCalled());
+    expect(mocks.updateFeatureFlags.mock.calls[0][0]).toMatchObject({ player_rating: true });
+    await waitFor(() =>
+      expect(mocks.rpc).toHaveBeenCalledWith(
+        'record_audit_event',
+        expect.objectContaining({ p_action: 'settings.flags_updated' })
+      )
+    );
+  });
 
-    expect(coachConflictSwitch).toHaveAttribute('aria-checked', 'true');
+  it('switches the division format directly when no teams exist', async () => {
+    render(<FeatureFlagSettings />);
+    fireEvent.click(screen.getByRole('button', { name: /Co-ed \(combined\)/ }));
+    await waitFor(() => expect(mocks.updateFeatureFlags).toHaveBeenCalled());
+    expect(mocks.updateFeatureFlags.mock.calls[0][0]).toMatchObject({ gender_model: 'coed' });
+  });
+
+  it('prompts before switching format when teams already exist', async () => {
+    mocks.teamsRows = [{ id: 'team-1' }];
+    render(<FeatureFlagSettings />);
+    // let the teamsExist effect resolve before interacting
+    await act(async () => {});
+    fireEvent.click(screen.getByRole('button', { name: /Co-ed \(combined\)/ }));
+    expect(screen.getByRole('dialog', { name: 'Switch to co-ed divisions' })).toBeInTheDocument();
+    expect(mocks.updateFeatureFlags).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Future placements only' }));
+    await waitFor(() => expect(mocks.updateFeatureFlags).toHaveBeenCalled());
+    expect(mocks.updateFeatureFlags.mock.calls[0][0]).toMatchObject({ gender_model: 'coed' });
+  });
+
+  it('keeps legacy advanced flags togglable', async () => {
+    mocks.featureFlags = { advanced_fairness: true };
+    render(<FeatureFlagSettings />);
+    const fairness = screen.getByRole('switch', { name: 'Advanced Fairness Evaluation' });
+    expect(fairness).toHaveAttribute('aria-checked', 'true');
+    fireEvent.click(fairness);
+    await waitFor(() => expect(mocks.updateFeatureFlags).toHaveBeenCalled());
+    expect(mocks.updateFeatureFlags.mock.calls[0][0]).toMatchObject({ advanced_fairness: false });
   });
 });

@@ -1,0 +1,13 @@
+-- Revert for 20260611000200_import_gotsport_expanded_mapping.sql
+--
+-- Restore the prior finalize_import_job body by re-applying the previous
+-- migration in full (kept verbatim in the repo; do NOT hand-edit):
+--
+--   supabase/migrations/20260603190000_import_division_from_age_group.sql
+--
+-- (psql: \i supabase/migrations/20260603190000_import_division_from_age_group.sql)
+--
+-- Players already imported with the expanded mapping keep their
+-- years_played/paid/status/guardian data (column data is governed by the
+-- 20260611000000 revert); divisions auto-created by this revision are plain
+-- divisions rows and may be deleted manually if unwanted.

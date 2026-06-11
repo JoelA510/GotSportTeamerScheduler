@@ -69,7 +69,7 @@ Given('I have imported player data', async ({ page }) => {
     sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
     localStorage.setItem('dashboardActiveStep', '2'); // Preserve across reloads
   });
-  await page.goto('/?step=6');
+  await page.goto('/workflow?step=6');
 
   // Force Playwright to visually locate and click the specific stepper buttons
   const step2 = page
@@ -178,7 +178,7 @@ Given('all setup steps are complete', async ({ page }) => {
     ];
     sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
   });
-  await page.reload();
+  await page.goto('/workflow');
 
   // Force Playwright to visually locate and click the specific stepper buttons
   const step6 = page
@@ -217,7 +217,7 @@ Given('I have generated teams', async ({ page }) => {
     }
     sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
   });
-  await page.reload();
+  await page.goto('/workflow');
 
   // Force Playwright to visually locate and click the specific stepper buttons
   const step2 = page
@@ -287,7 +287,8 @@ Given('I have generated a game schedule', async ({ page }) => {
 });
 
 When('I view the Dashboard page', async ({ page }) => {
-  await page.goto('/');
+  // The pipeline workflow now lives on its own page; Home is the new '/'.
+  await page.goto('/workflow');
 });
 
 Then('the Readiness Score should display {string}', async ({ page }, score: string) => {
@@ -387,31 +388,30 @@ Given(
 Then(
   'I should see a dropdown with {string} and {string}',
   async ({ page }, org1: string, org2: string) => {
-    const menu = page.locator('.absolute.top-full').first();
-    await expect(menu.getByRole('button', { name: org1 }).first()).toBeVisible();
-    await expect(menu.getByRole('button', { name: org2 }).first()).toBeVisible();
+    const menu = page.getByRole('menu').first();
+    await expect(menu.getByRole('menuitem', { name: org1 }).first()).toBeVisible();
+    await expect(menu.getByRole('menuitem', { name: org2 }).first()).toBeVisible();
   }
 );
 
+// Org/season context switchers live in the top bar; their accessible name is
+// "Active Organization: <name>" / "Active Season: <name>".
 When('I click the {string} selector in the sidebar', async ({ page }, selectorName: string) => {
-  const label = page.locator('aside').getByText(selectorName, { exact: false }).first();
-  await label.locator('..').getByRole('button').first().click({ force: true });
+  await page.getByRole('button', { name: selectorName }).first().click({ force: true });
 });
 
 When('I select {string}', async ({ page }, option: string) => {
-  await page.getByRole('button', { name: option, exact: true }).first().click({ force: true });
+  await page.getByRole('menuitem', { name: option }).first().click({ force: true });
 });
 
 Then('the sidebar header should display {string}', async ({ page }, orgName: string) => {
-  await expect(page.getByText('Active Organization').locator('..').locator('button')).toContainText(
-    orgName
-  );
+  await expect(page.getByRole('button', { name: 'Active Organization' })).toContainText(orgName);
 });
 
 Then(
   'the {string} dropdown should update to show seasons for {string}',
   async ({ page }, _dropdown: string, _orgName: string) => {
-    const seasonButton = page.getByText('Active Season').locator('..').getByRole('button');
+    const seasonButton = page.getByRole('button', { name: 'Active Season' });
     await expect(seasonButton).toBeVisible();
     await expect(seasonButton).not.toContainText('No seasons');
   }
@@ -429,27 +429,23 @@ Then(
 Then(
   'I should see a dropdown with valid seasons for the current organization',
   async ({ page }) => {
-    await expect(page.locator('.absolute.top-full button')).not.toHaveCount(0);
+    await expect(page.getByRole('menu').first().getByRole('menuitem')).not.toHaveCount(0);
   }
 );
 
 When('I select a different season', async ({ page }) => {
-  await page.locator('.absolute.top-full button').last().click({ force: true });
+  await page.getByRole('menu').first().getByRole('menuitem').last().click({ force: true });
 });
 
 Then('the season selector should display the selected season', async ({ page }) => {
-  const seasonButton = page.getByText('Active Season').locator('..').getByRole('button');
+  const seasonButton = page.getByRole('button', { name: 'Active Season' });
   await expect(seasonButton).toBeVisible();
 });
 
 Then('the dashboard data should refresh to show data for the selected season', async ({ page }) => {
-  const seasonValue = page
-    .getByText('Active Season', { exact: true })
-    .locator('..')
-    .locator('span')
-    .last();
-  await expect(seasonValue).toBeVisible();
-  await expect(seasonValue).not.toContainText('—', { timeout: 15000 });
+  const seasonButton = page.getByRole('button', { name: 'Active Season' });
+  await expect(seasonButton).toBeVisible();
+  await expect(seasonButton).not.toContainText('—', { timeout: 15000 });
 });
 
 Given(
@@ -460,21 +456,16 @@ Given(
 );
 
 When('I switch the active organization to {string}', async ({ page }, orgName: string) => {
-  await page
-    .getByText('Active Organization')
-    .locator('..')
-    .getByRole('button')
-    .first()
-    .click({ force: true });
-  const menu = page.locator('.absolute.top-full').first();
+  await page.getByRole('button', { name: 'Active Organization' }).first().click({ force: true });
+  const menu = page.getByRole('menu').first();
   await expect(menu).toBeVisible();
-  await menu.getByRole('button', { name: orgName }).first().click({ force: true });
+  await menu.getByRole('menuitem', { name: orgName }).first().click({ force: true });
 });
 
 Then(
   'the active season should automatically select the most recent season for {string}',
   async ({ page }, orgName: string) => {
-    const seasonButton = page.getByText('Active Season').locator('..').getByRole('button');
+    const seasonButton = page.getByRole('button', { name: 'Active Season' });
     await expect(seasonButton).not.toContainText('No seasons');
 
     await expect(page.getByRole('button', { name: orgName }).first()).toBeVisible({
@@ -485,7 +476,7 @@ Then(
 
 Then('localStorage should be updated with the valid season', async ({ page }) => {
   // Verify the UI reflects the valid season instead of just checking localStorage
-  const seasonButton = page.getByText('Active Season').locator('..').getByRole('button');
+  const seasonButton = page.getByRole('button', { name: 'Active Season' });
   await expect(seasonButton).not.toContainText('invalid-id');
   await expect(seasonButton).not.toContainText('No seasons');
 
@@ -518,12 +509,10 @@ Given('a valid season is selected', async ({ page }) => {
 Then(
   'the sidebar should still show {string} as the active organization',
   async ({ page }, orgName: string) => {
-    await expect(
-      page.locator('aside').getByRole('button').filter({ hasText: orgName }).first()
-    ).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Active Organization' })).toContainText(orgName);
   }
 );
 
 Then('the sidebar should still show the selected season', async ({ page }) => {
-  await expect(page.getByText('Active Season').locator('..').locator('button')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Active Season' })).toBeVisible();
 });
