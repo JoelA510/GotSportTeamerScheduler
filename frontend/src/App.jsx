@@ -1,6 +1,6 @@
 import { Suspense, lazy } from 'react';
 import './App.css';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 
 // Auth
 import { AuthProvider, useAuth } from './contexts/AuthContext.jsx';
@@ -53,6 +53,10 @@ import ToastHost from './components/ui/ToastHost.jsx';
 
 function AppContent() {
   const { session, loading } = useAuth();
+  // Router location, NOT window.location: AppContent must re-render when an
+  // in-app <Navigate> fires (e.g. leaving /invite/:code), or these branches
+  // keep rendering route sets that no longer match anything (blank screen).
+  const location = useLocation();
   const {
     currentOrganization,
     permissions,
@@ -67,9 +71,9 @@ function AppContent() {
   }
 
   // /invite/:code is reachable regardless of session or org state. The page
-  // itself handles each auth/org combination (unauthenticated → stash + bounce
-  // to Login; authenticated → redeem immediately).
-  const isInvitePath = window.location.pathname.startsWith('/invite/');
+  // itself handles each auth/org combination (unauthenticated → inline Login;
+  // authenticated → redeem immediately).
+  const isInvitePath = /^\/invite\/[^/]+\/?$/.test(location.pathname);
   if (isInvitePath) {
     return (
       <Suspense fallback={<LoadingScreen message="Validating invite..." />}>
@@ -80,7 +84,7 @@ function AppContent() {
     );
   }
 
-  if (!session && window.location.pathname !== '/auth/reset-password') {
+  if (!session && location.pathname !== '/auth/reset-password') {
     return (
       <Suspense fallback={<LoadingScreen />}>
         <Login />
@@ -98,9 +102,7 @@ function AppContent() {
 
   const hasNoOrgs = !orgLoading && organizations.length === 0;
   const shouldRedirectToOrgCreation =
-    hasNoOrgs &&
-    !window.location.pathname.startsWith('/organizations/new') &&
-    window.location.pathname === '/';
+    hasNoOrgs && !location.pathname.startsWith('/organizations/new') && location.pathname === '/';
 
   const isOnboarded = currentOrganization?.is_onboarded;
   const isTenantAdmin = permissions.includes(PERMISSIONS.MANAGE_GLOBAL_SETTINGS);

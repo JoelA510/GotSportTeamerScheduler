@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, Navigate, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { Ticket, AlertCircle, CheckCircle } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext.jsx';
 import { useOrganization } from '../contexts/OrganizationContext.jsx';
 import { supabase } from '../lib/supabaseClient.js';
 import { logger } from '../lib/logger.js';
 import LoadingScreen from '../components/LoadingScreen.jsx';
+import Login from '../components/Login.jsx';
 import Button from '../components/ui/Button.jsx';
 import { writePendingInvite, clearPendingInvite } from '../lib/inviteStorage.js';
 
@@ -14,11 +15,14 @@ import { writePendingInvite, clearPendingInvite } from '../lib/inviteStorage.js'
  *
  * States:
  *   - Auth context still loading → LoadingScreen
- *   - Unauthenticated → stash the code in sessionStorage + redirect to /
- *     where the Login screen renders. Login picks up the stash after signup.
- *   - Authenticated, no orgs yet → auto-call redeem RPC.
- *   - Authenticated + already in this org → show "already a member" card.
- *   - Error from redeem → show error card with a Retry button.
+ *   - Unauthenticated → stash the code and render the Login screen INLINE
+ *     (sign-in or sign-up) under an invite banner. The URL stays on
+ *     /invite/:code, so the moment a session appears — password sign-in,
+ *     auto-confirmed sign-up, or an email confirmation completed in another
+ *     tab (Supabase syncs sessions across tabs) — the redeem effect below
+ *     fires without any further navigation.
+ *   - Authenticated → auto-call redeem RPC.
+ *   - Error from redeem → show error card.
  */
 export default function InvitePage() {
   const { code } = useParams();
@@ -32,7 +36,8 @@ export default function InvitePage() {
     if (authLoading) return;
 
     if (!session) {
-      // Unauthenticated — stash the code and bounce to the login landing.
+      // Unauthenticated — stash the code (OrganizationCreation pre-fills it
+      // for brand-new users who end up there) and render Login below.
       if (code) writePendingInvite(code);
       return;
     }
@@ -76,8 +81,22 @@ export default function InvitePage() {
 
   if (authLoading) return <LoadingScreen message="Validating invite..." />;
 
-  // Unauthenticated — let AppContent's Login branch handle it.
-  if (!session) return <Navigate to="/" replace />;
+  // Unauthenticated — keep the user on this URL and let them sign in or
+  // create an account right here; the redeem effect runs once they do.
+  if (!session) {
+    return (
+      <>
+        <div
+          role="status"
+          className="fixed top-0 left-0 right-0 z-50 flex items-center justify-center gap-2 py-2.5 px-4 bg-[var(--primary-weak)] text-[var(--text-primary)] border-b border-[var(--border)] text-sm font-semibold"
+        >
+          <Ticket size={16} aria-hidden="true" />
+          You&apos;ve been invited to join an organization — sign in or create an account to accept.
+        </div>
+        <Login />
+      </>
+    );
+  }
 
   if (state.status === 'redeeming' || state.status === 'idle') {
     return <LoadingScreen message="Joining organization..." />;
