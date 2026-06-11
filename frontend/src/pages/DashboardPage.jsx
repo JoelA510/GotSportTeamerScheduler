@@ -72,7 +72,7 @@ function useHomeData() {
             supabase
               .from('games')
               .select(
-                `id, start_time, home_team:home_team_id (id, name, division), away_team:away_team_id (id, name)`
+                `id, start_time, home_team:home_team_id (id, name, division:divisions (name)), away_team:away_team_id (id, name)`
               )
               .eq('organization_id', orgId),
             supabase.from('practice_slots').select('id').eq('organization_id', orgId),
@@ -396,9 +396,9 @@ function AdminHome() {
                         {date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
                       </div>
                     </div>
-                    {game.home_team?.division && (
+                    {game.home_team?.division?.name && (
                       <Badge tone="info">
-                        {divisionDisplayName(game.home_team.division, genderModel)}
+                        {divisionDisplayName(game.home_team.division.name, genderModel)}
                       </Badge>
                     )}
                   </div>
