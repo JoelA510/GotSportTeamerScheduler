@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Normalized the remaining deep-relative `../../../packages/core/src/...` frontend imports to the canonical `@squadlogic/core/...` alias.
 - Release hygiene: CI now uses `npm ci`, explicit docs-only diff checks, concurrency, full E2E artifacts, and a hosted full E2E path restored in PR #209.
 - Release hygiene: local and CI pgTAP now use a pinned Supabase CLI, committed `supabase/config.toml`, repaired fresh migration replay, and reproducible full/single-file DB test commands from PR #211.
 - Team review now stages generated teams and manual roster edits for explicit Supabase persistence instead of writing scheduler/player tables directly from routed UI controls.
@@ -32,6 +33,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Bulk coach status changes now run in bounded chunks of 8 RPCs (shared `mapInChunks` helper, also adopted by the team-builder and co-ed transition fan-outs) instead of an unbounded `Promise.all`.
+- The admin reporting roster export pages through teams/players with the shared `fetchAllPages` helper so large orgs are neither silently truncated at PostgREST's row cap nor fetched in one oversized request, and builds its CSV with core's `formatCsv` instead of a hand-rolled escaper.
+- The storage retention workflow now also expires the `exports` bucket (timestamped schedule CSVs previously accumulated without bound) and recurses into bucket folders it previously skipped.
 - Replaced the team-portal hardcoded medical-clearance display with a season-scoped, role-gated roster status RPC.
 - Replaced Setup Wizard telemetry session `Math.random()` IDs with Web Crypto generation.
 - Replaced mock Supabase `Math.random()` IDs and tokens with a Web Crypto helper to avoid insecure-randomness scan paths.
@@ -53,6 +57,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- Removed dead client-side persistence modules from `@squadlogic/core` (`evaluationPersistence`, the team/game/practice `*PersistenceEdgeHandler` factories, and `teamPersistenceEdgeConfig`) — evaluation persistence goes through the `persist_evaluation_run` RPC and the deployed Deno Edge Functions carry their own self-contained handlers; dropped their orphaned tests and the unused `getSignedUrl`, `DEFAULT_AGE_CUTOFF_MODE`, and `SCHEDULING` exports.
+- Removed unreferenced development scripts (`benchmark_phase_5/6`, `benchmark_teaming_weighted`, `clear-remote-storage`, `lint-node-check`, `verify_security_e2e`) — none were wired into `package.json`, CI, or docs.
 - Removed tracked Supabase CLI temp metadata from `supabase/.temp/`; the directory was already ignored and should remain local-only.
 - Removed the legacy `current_user_role()` helper after confirming current RLS/RPC code uses org-scoped auth helpers.
 - Removed the legacy four-argument `persist_evaluation_run` RPC overload, leaving the JSONB evaluation persistence contract used by Edge Functions.
@@ -69,6 +75,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- Cleared the npm audit / Dependabot findings (react-router 7 turbo-stream RCE + open-redirect/DoS advisories, brace-expansion DoS) via in-range dependency bumps.
+- Migration `20260614000000`: pinned `search_path = public` on the 16 advisor-flagged functions that can carry it, re-ran the property-based anon/PUBLIC EXECUTE revoke for SECURITY DEFINER functions created since `20260603120000`, and changed default privileges so new functions in `public` no longer inherit PUBLIC/anon EXECUTE (authenticated + service_role retained). Remaining advisor warnings are documented exceptions: `submit_registration` (public registration links), the `min(uuid)` aggregate (cannot carry a SET clause; its SFUNC is pinned), and leaked-password protection (Pro-plan-only — see `docs/operations/leaked-password-protection.md`).
 - Added shared per-user rate limiting to the `fairness-scoring` Edge Function.
 - Routed organization invite revocation through an org-admin `revoke_org_invite` RPC with audit logging and removed the direct invite DELETE policy.
 - Routed settings schema-builder saves through an org-admin `admin_upsert_organization_schema` RPC with validation and audit logging, leaving `organization_schemas` read-only for org members.

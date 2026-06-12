@@ -1,5 +1,5 @@
 import { useSchedulerRun } from './useSchedulerRun.js';
-import { mapSchedulerRunToGameSummary } from '../../../packages/core/src/utils/gameSummaryMapper.js';
+import { mapSchedulerRunToGameSummary } from '@squadlogic/core/utils/gameSummaryMapper.js';
 
 // Fallback empty state to prevent null access errors
 const EMPTY_SUMMARY = {

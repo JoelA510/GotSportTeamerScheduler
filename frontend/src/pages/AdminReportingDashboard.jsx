@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient.js';
+import { fetchAllPages } from '../lib/pagedFetch.js';
+import { formatCsv } from '@squadlogic/core/outputGeneration.js';
 import { useOrganization } from '../contexts/OrganizationContext.jsx';
 import {
   BarChart,
@@ -101,30 +103,26 @@ export default function AdminReportingDashboard() {
     if (!currentOrganization?.id) return;
     setExporting(true);
     try {
-      // Fetch Raw Data for export using existing client logic
-      const { data: teamsData, error: tErr } = await supabase
-        .from('teams')
-        .select(
+      const teamsData = await fetchAllPages(() =>
+        supabase
+          .from('teams')
+          .select(
+            `
+            id, name, division, coach_id,
+            coach:profiles!coach_id (first_name, last_name, email)
           `
-          id, name, division, coach_id,
-          coach:profiles!coach_id (first_name, last_name, email)
-        `
-        )
-        .eq('organization_id', currentOrganization.id);
-      if (tErr) throw tErr;
+          )
+          .eq('organization_id', currentOrganization.id)
+      );
+      const playersData = await fetchAllPages(() =>
+        supabase
+          .from('players')
+          .select('id, first_name, last_name, date_of_birth, team_id')
+          .eq('organization_id', currentOrganization.id)
+      );
 
-      const { data: playersData, error: pErr } = await supabase
-        .from('players')
-        .select('id, first_name, last_name, date_of_birth, team_id')
-        .eq('organization_id', currentOrganization.id);
-      if (pErr) throw pErr;
-
-      // Construct a simple roster CSV (custom for this view, avoiding the complex schedule export if possible,
-      // but the guardrails specifically requested using `@squadlogic/core/src/outputGeneration.js` which is schedule specific...
-      // WAIT, the core outputGeneration.js actually handles schedule formatting (Practice/Game).
-      // It does NOT have a roster export. But the user asked to use the existing logic to "construct and download the CSV entirely client-side".
-      // I will implement a client-side CSV builder.
-
+      // Roster CSV is built client-side; @squadlogic/core outputGeneration
+      // only covers practice/game schedule exports.
       const headers = [
         'Team ID',
         'Team Name',
@@ -163,11 +161,7 @@ export default function AdminReportingDashboard() {
         }
       });
 
-      const headerLine = headers.join(',');
-      const dataLines = rows.map((row) =>
-        headers.map((h) => `"${(row[h] || '').toString().replace(/"/g, '""')}"`).join(',')
-      );
-      const csv = [headerLine, ...dataLines].join('\n');
+      const csv = formatCsv(headers, rows);
 
       const blob = new Blob([csv], { type: 'text/csv' });
       const url = URL.createObjectURL(blob);

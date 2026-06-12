@@ -9,25 +9,10 @@
 
 ## Active waivers
 
-### vitest's nested vite — path traversal + fs.deny bypass + WS file read (1 high)
-
-- **Advisories**: `GHSA-4w7w-66w2-5vf9`, `GHSA-v2wj-q39q-566r`, `GHSA-p9ff-h696-f583`
-- **Severity (Dependabot)**: 1 high (combined)
-- **Scope**: dev-only — `node_modules/vitest/node_modules/vite`. NOT in the
-  production bundle (Vercel build uses the top-level `vite@6.4.x`, not the
-  nested vitest copy).
-- **Production exposure**: zero. The Vite dev server is never started in CI
-  except by vitest's own internal harness, and it binds to `127.0.0.1` with
-  no externally-reachable port.
-- **Why waive**: `npm audit fix` cannot resolve without `--force`, which would
-  attempt a vitest major-version bump. Vitest 2.x → 3.x is a noted breaking
-  change (config schema rename, deprecated APIs); the upgrade is tracked as
-  a Wave 9 (release-readiness) follow-up where we can run the full E2E suite
-  to validate. Forcing the bump in Wave 2 would risk the wave's "no test
-  changes" rule.
-- **Expiry trigger**: when Wave 9 lands the vitest 3.x upgrade, OR when an
-  advisory raises the severity to `critical`.
-- **Re-check command**: `npm audit | grep -A1 vitest`.
+_None. The vitest-nested-vite waiver (`GHSA-4w7w-66w2-5vf9`,
+`GHSA-v2wj-q39q-566r`, `GHSA-p9ff-h696-f583`) closed 2026-06-12: its expiry
+trigger fired when the vitest major upgrade landed (now 4.x, no nested vite
+copy) and `npm audit` reports 0 vulnerabilities._
 
 ## Waiver template
 

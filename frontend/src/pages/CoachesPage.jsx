@@ -17,6 +17,7 @@ import Modal from '../components/ui/Modal.jsx';
 import { useToast } from '../components/ui/ToastHost.jsx';
 import LoadingScreen from '../components/LoadingScreen.jsx';
 import { supabase } from '../lib/supabaseClient.js';
+import { mapInChunks } from '../utils/asyncChunks.js';
 import { useOrganization } from '../contexts/OrganizationContext.jsx';
 import { usePermission } from '../hooks/usePermission.js';
 import { useFeatures } from '../hooks/useFeatures.js';
@@ -443,22 +444,21 @@ export default function CoachesPage() {
       }
 
       setBusy(true);
-      const results = await Promise.all(
-        eligible.map(async (coach) => {
-          try {
-            const { error: mutationError } = await supabase.rpc('admin_update_coach_status', {
-              p_organization_id: currentOrganization.id,
-              p_coach_id: coach.id,
-              p_status: nextStatus,
-            });
-            if (mutationError) throw mutationError;
-            return true;
-          } catch (err) {
-            logger.error('Bulk coach status update failed:', err);
-            return false;
-          }
-        })
-      );
+      // Bound RPC concurrency (free-tier pooled connections are scarce).
+      const results = await mapInChunks(eligible, async (coach) => {
+        try {
+          const { error: mutationError } = await supabase.rpc('admin_update_coach_status', {
+            p_organization_id: currentOrganization.id,
+            p_coach_id: coach.id,
+            p_status: nextStatus,
+          });
+          if (mutationError) throw mutationError;
+          return true;
+        } catch (err) {
+          logger.error('Bulk coach status update failed:', err);
+          return false;
+        }
+      });
 
       const failures = results.filter((ok) => !ok).length;
       const updated = eligible.length - failures;

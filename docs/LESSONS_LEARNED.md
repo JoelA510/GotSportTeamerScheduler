@@ -28,7 +28,11 @@ evolves. If you are about to make a decision one of these covers, read it first.
    `INSERT INTO public.audit_actions (action) VALUES ('x.y') ON CONFLICT (action) DO NOTHING;`
    instead of re-stating a 60-entry constraint.
 5. **Revoke anon EXECUTE on definer functions.** Anonymous users can otherwise
-   call privileged RPCs directly, regardless of UI gating.
+   call privileged RPCs directly, regardless of UI gating. Since migration
+   `20260614000000`, default privileges in `public` no longer grant EXECUTE to
+   `PUBLIC`/`anon` on new functions (authenticated + service_role keep it), so
+   an intentionally public function (e.g. `submit_registration`) needs an
+   explicit `GRANT EXECUTE ... TO anon`.
 6. **Free-tier Supabase pauses after ~7 days of inactivity** and caps pooled
    connections (~60). The weekly keepalive cron in CI is load-bearing — do not
    remove it. Long-running Edge Functions must not hold connections.

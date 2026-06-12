@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabaseClient.js';
 import { logger } from '../lib/logger.js';
 // Use absolute import via configured alias
-import { mapSchedulerRunToSummary } from '../../../packages/core/src/utils/teamSummaryMapper.js';
+import { mapSchedulerRunToSummary } from '@squadlogic/core/utils/teamSummaryMapper.js';
 import { useOrganization } from '../contexts/OrganizationContext.jsx';
 import { scopeSchedulerRunsToActiveSeason } from '../utils/schedulerRunFilters.js';
 

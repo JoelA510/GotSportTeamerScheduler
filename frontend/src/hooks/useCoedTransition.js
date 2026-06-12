@@ -2,6 +2,7 @@ import { useCallback } from 'react';
 import { supabase } from '../lib/supabaseClient.js';
 import { useOrganization } from '../contexts/OrganizationContext.jsx';
 import { planCoedMerge, planGenderSplit } from '@squadlogic/core/coedTransition.js';
+import { mapInChunks } from '../utils/asyncChunks.js';
 import { logger } from '../lib/logger.js';
 
 /**
@@ -67,19 +68,13 @@ export function useCoedTransition() {
   // Per-player audited updates (the bulk RPC intentionally excludes
   // division/team reassignment), run in bounded-concurrency chunks.
   const movePlayers = useCallback(async (playerIds, divisionId) => {
-    const CHUNK = 8;
-    for (let i = 0; i < playerIds.length; i += CHUNK) {
-      const results = await Promise.all(
-        playerIds.slice(i, i + CHUNK).map((playerId) =>
-          supabase.rpc('admin_update_player', {
-            p_player_id: playerId,
-            p_patch: { division_id: divisionId, team_id: null },
-          })
-        )
-      );
-      const failed = results.find((result) => result.error);
-      if (failed) throw failed.error;
-    }
+    await mapInChunks(playerIds, async (playerId) => {
+      const { error } = await supabase.rpc('admin_update_player', {
+        p_player_id: playerId,
+        p_patch: { division_id: divisionId, team_id: null },
+      });
+      if (error) throw error;
+    });
   }, []);
 
   const applyCoedMerge = useCallback(async () => {

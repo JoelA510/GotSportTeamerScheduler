@@ -6,6 +6,7 @@ import BalanceBoard from '../components/teaming/BalanceBoard.jsx';
 import Button from '../components/ui/Button.jsx';
 import Toggle from '../components/ui/Toggle.jsx';
 import { useToast } from '../components/ui/ToastHost.jsx';
+import { mapInChunks } from '../utils/asyncChunks.js';
 import { supabase } from '../lib/supabaseClient.js';
 import { useOrganization } from '../contexts/OrganizationContext.jsx';
 import { usePlayersData } from '../hooks/usePlayersData.js';
@@ -131,16 +132,10 @@ export default function TeamBuilderPage() {
         const current = divisionPlayers.find((player) => player.id === playerId);
         return current?.team_id !== teamId;
       });
-      const CHUNK = 8;
-      for (let i = 0; i < moves.length; i += CHUNK) {
-        const results = await Promise.all(
-          moves
-            .slice(i, i + CHUNK)
-            .map(({ playerId, teamId }) => updatePlayer(playerId, { team_id: teamId }))
-        );
-        const failed = results.find((result) => !result.success);
-        if (failed) throw new Error(failed.error || 'assignment failed');
-      }
+      await mapInChunks(moves, async ({ playerId, teamId }) => {
+        const result = await updatePlayer(playerId, { team_id: teamId });
+        if (!result.success) throw new Error(result.error || 'assignment failed');
+      });
       await supabase.rpc('record_audit_event', {
         p_organization_id: orgId,
         p_action: 'teams.auto_balanced',
@@ -167,14 +162,10 @@ export default function TeamBuilderPage() {
     setWorking(true);
     try {
       const assigned = divisionPlayers.filter((player) => player.team_id);
-      const CHUNK = 8;
-      for (let i = 0; i < assigned.length; i += CHUNK) {
-        const results = await Promise.all(
-          assigned.slice(i, i + CHUNK).map((player) => updatePlayer(player.id, { team_id: null }))
-        );
-        const failed = results.find((result) => !result.success);
-        if (failed) throw new Error(failed.error || 'clear failed');
-      }
+      await mapInChunks(assigned, async (player) => {
+        const result = await updatePlayer(player.id, { team_id: null });
+        if (!result.success) throw new Error(result.error || 'clear failed');
+      });
       toast('Cleared division — all players returned to pool', 'success');
     } catch (err) {
       logger.error('[TeamBuilder] clear division failed:', err);
