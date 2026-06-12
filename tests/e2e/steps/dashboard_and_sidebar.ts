@@ -8,13 +8,13 @@ Given('an organization and season are active', async ({ page }) => {
   await page.evaluate(() => {
     const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
     const orgId = 'org-1';
-    db.organizations = [{ id: orgId, name: 'SquadLogic FC', status: 'active' }];
+    db.organizations = [{ id: orgId, name: 'SquadLogic FC', status: 'active', is_onboarded: true }];
     db.organization_members = [
       {
         organization_id: orgId,
         profile_id: 'mock-admin-id',
         role: 'admin',
-        organizations: { id: orgId, name: 'SquadLogic FC' },
+        organizations: { id: orgId, name: 'SquadLogic FC', is_onboarded: true },
       },
     ];
     db.season_settings = [{ id: 's1', name: 'Fall 2024', organization_id: orgId }];
@@ -335,8 +335,8 @@ Given(
         const org1Id = 'org-1';
         const org2Id = 'org-2';
         db.organizations = [
-          { id: org1Id, name: o1, status: 'active' },
-          { id: org2Id, name: o2, status: 'active' },
+          { id: org1Id, name: o1, status: 'active', is_onboarded: true },
+          { id: org2Id, name: o2, status: 'active', is_onboarded: true },
         ];
         db.season_settings = [
           { id: 's1', name: 'Fall 2024', organization_id: org1Id },
@@ -348,13 +348,13 @@ Given(
             organization_id: org1Id,
             profile_id: 'mock-admin-id',
             role: 'admin',
-            organizations: { id: org1Id, name: o1 },
+            organizations: { id: org1Id, name: o1, is_onboarded: true },
           },
           {
             organization_id: org2Id,
             profile_id: 'mock-admin-id',
             role: 'admin',
-            organizations: { id: org2Id, name: o2 },
+            organizations: { id: org2Id, name: o2, is_onboarded: true },
           },
         ];
         sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));

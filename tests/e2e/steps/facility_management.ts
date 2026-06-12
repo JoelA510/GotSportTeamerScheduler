@@ -12,7 +12,7 @@ Given('I have an organization labeled {string}', async ({ page }, orgName: strin
     const uniqueOrgId = localStorage.getItem('squadlogic_active_org') || 'org-1';
 
     db.organizations = (db.organizations || []).filter((o) => o.id !== uniqueOrgId);
-    db.organizations.push({ id: uniqueOrgId, name: name, status: 'active' });
+    db.organizations.push({ id: uniqueOrgId, name: name, status: 'active', is_onboarded: true });
 
     db.organization_members = (db.organization_members || []).filter(
       (m) => m.organization_id !== uniqueOrgId
@@ -379,7 +379,7 @@ Given('another organization {string} exists', async ({ page }, orgName: string) 
       sessionStorage.getItem('__MOCK_DB__') || JSON.stringify(window.__MOCK_DB__ || {})
     );
     db.organizations = db.organizations || [];
-    db.organizations.push({ id: 'org-rival', name: name, status: 'active' });
+    db.organizations.push({ id: 'org-rival', name: name, status: 'active', is_onboarded: true });
     window.__MOCK_DB__ = db;
     sessionStorage.setItem('__MOCK_DB__', JSON.stringify(db));
   }, orgName);

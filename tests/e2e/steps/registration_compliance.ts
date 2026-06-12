@@ -11,7 +11,7 @@ const seedDatabase = async (page: { addInitScript: (fn: () => void) => Promise<v
     const orgId = localStorage.getItem('squadlogic_active_org') || 'org-1';
     db.organizations = db.organizations || [];
     if (!db.organizations.find((o: Record<string, unknown>) => o.id === orgId)) {
-      db.organizations.push({ id: orgId, name: 'Test Org' });
+      db.organizations.push({ id: orgId, name: 'Test Org', is_onboarded: true });
     }
 
     db.season_settings = db.season_settings || [];

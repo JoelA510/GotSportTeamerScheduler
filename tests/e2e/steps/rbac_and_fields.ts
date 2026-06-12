@@ -30,8 +30,8 @@ Given(
         const db = JSON.parse(sessionStorage.getItem('__MOCK_DB__') || '{}');
 
         db.organizations = db.organizations || [];
-        db.organizations.push({ id: id1, name: o1, status: 'active' });
-        db.organizations.push({ id: id2, name: o2, status: 'active' });
+        db.organizations.push({ id: id1, name: o1, status: 'active', is_onboarded: true });
+        db.organizations.push({ id: id2, name: o2, status: 'active', is_onboarded: true });
 
         // Seed teams scoped to each org so the Teams page has data to filter
         db.teams = db.teams || [];
@@ -180,7 +180,7 @@ Given(
           organization_id: oId,
           profile_id: uId,
           role: roleName,
-          organizations: { id: oId, name: orgName },
+          organizations: { id: oId, name: orgName, is_onboarded: true },
         });
 
         db.profiles = db.profiles || [];

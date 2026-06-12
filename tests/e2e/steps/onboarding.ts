@@ -65,8 +65,11 @@ Then('I should be on the onboarding organization creation route', async ({ page 
 Then('I should remain on the onboarding organization creation route', async ({ page }) => {
   await expect(page).toHaveURL(/\/organizations\/new/);
 });
-Then('I should land on the dashboard', async ({ page }) => {
-  await expect(page).toHaveURL(/\/(\?.*)?$/);
+// A first org is not yet onboarded, so its admin creator is taken straight
+// to Season Setup (the resumable checklist) instead of an empty dashboard.
+Then('I should land on Season Setup', async ({ page }) => {
+  await expect(page).toHaveURL(/\/setup(\?.*)?$/);
+  await expect(page.getByRole('heading', { name: /Season Setup/i }).first()).toBeVisible();
 });
 Then('I should see an inline slug error on onboarding', async ({ page }) => {
   await expect(

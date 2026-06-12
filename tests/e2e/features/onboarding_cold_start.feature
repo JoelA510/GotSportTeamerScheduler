@@ -8,7 +8,7 @@ Feature: Cold-start organization creation
   Scenario: Authenticated brand-new user can create their first organization
     Given I am authenticated with zero organizations
     When I complete and submit the onboarding organization form
-    Then I should land on the dashboard
+    Then I should land on Season Setup
 
   Scenario: Duplicate slug is shown inline and user remains on onboarding form
     Given I am authenticated with zero organizations

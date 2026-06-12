@@ -40,7 +40,12 @@ async function setupIsolatedTenant(page: Page, role: string = 'admin') {
         if (
           !db.organizations.find((o: Record<string, unknown>) => (o as { id: string }).id === orgId)
         ) {
-          db.organizations.push({ id: orgId, name: `E2E-Isolation-${orgId}`, status: 'active' });
+          db.organizations.push({
+            id: orgId,
+            name: `E2E-Isolation-${orgId}`,
+            status: 'active',
+            is_onboarded: true,
+          });
         }
 
         db.organization_members = db.organization_members || [];
@@ -53,7 +58,7 @@ async function setupIsolatedTenant(page: Page, role: string = 'admin') {
             organization_id: orgId,
             profile_id: uId,
             role: roleName,
-            organizations: { id: orgId, name: `E2E-Isolation-${orgId}` },
+            organizations: { id: orgId, name: `E2E-Isolation-${orgId}`, is_onboarded: true },
           });
         }
 
