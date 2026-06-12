@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { generateScheduleExports } from '../../../packages/core/src/outputGeneration.js';
-import { uploadScheduleExport } from '../../../packages/core/src/storageSupabase.js';
+import { generateScheduleExports } from '@squadlogic/core/outputGeneration.js';
+import { uploadScheduleExport } from '@squadlogic/core/storageSupabase.js';
 import { IS_MOCK_MODE } from '../config.js';
 import { logger } from '../lib/logger.js';
 

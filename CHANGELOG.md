@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Normalized the remaining deep-relative `../../../packages/core/src/...` frontend imports to the canonical `@squadlogic/core/...` alias.
 - Release hygiene: CI now uses `npm ci`, explicit docs-only diff checks, concurrency, full E2E artifacts, and a hosted full E2E path restored in PR #209.
 - Release hygiene: local and CI pgTAP now use a pinned Supabase CLI, committed `supabase/config.toml`, repaired fresh migration replay, and reproducible full/single-file DB test commands from PR #211.
 - Team review now stages generated teams and manual roster edits for explicit Supabase persistence instead of writing scheduler/player tables directly from routed UI controls.
@@ -53,6 +54,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- Removed dead client-side persistence modules from `@squadlogic/core` (`evaluationPersistence`, the team/game/practice `*PersistenceEdgeHandler` factories, and `teamPersistenceEdgeConfig`) — evaluation persistence goes through the `persist_evaluation_run` RPC and the deployed Deno Edge Functions carry their own self-contained handlers; dropped their orphaned tests and the unused `getSignedUrl`, `DEFAULT_AGE_CUTOFF_MODE`, and `SCHEDULING` exports.
+- Removed unreferenced development scripts (`benchmark_phase_5/6`, `benchmark_teaming_weighted`, `clear-remote-storage`, `lint-node-check`, `verify_security_e2e`) — none were wired into `package.json`, CI, or docs.
 - Removed tracked Supabase CLI temp metadata from `supabase/.temp/`; the directory was already ignored and should remain local-only.
 - Removed the legacy `current_user_role()` helper after confirming current RLS/RPC code uses org-scoped auth helpers.
 - Removed the legacy four-argument `persist_evaluation_run` RPC overload, leaving the JSONB evaluation persistence contract used by Edge Functions.

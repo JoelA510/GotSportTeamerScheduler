@@ -1,4 +1,4 @@
-import { prepareGamePersistenceSnapshot } from '../../../packages/core/src/gamePersistenceSnapshot.js';
+import { prepareGamePersistenceSnapshot } from '@squadlogic/core/gamePersistenceSnapshot.js';
 import { GAME_PERSISTENCE_URL } from '../config.js';
 import { supabase } from '../lib/supabaseClient.js';
 

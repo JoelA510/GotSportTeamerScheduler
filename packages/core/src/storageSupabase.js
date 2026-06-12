@@ -38,26 +38,3 @@ export async function uploadScheduleExport({
 
   return { data, error: null };
 }
-
-/**
- * Generate a signed URL for a file in Supabase Storage.
- *
- * @param {Object} params
- * @param {Object} params.supabaseClient
- * @param {string} params.bucket
- * @param {string} params.path
- * @param {number} [params.expiresIn=3600] - Expiration in seconds.
- * @returns {Promise<string|null>} Signed URL or null on error.
- */
-export async function getSignedUrl({ supabaseClient, bucket = 'exports', path, expiresIn = 3600 }) {
-  const { data, error } = await supabaseClient.storage
-    .from(bucket)
-    .createSignedUrl(path, expiresIn);
-
-  if (error) {
-    console.error('Failed to create signed URL:', error);
-    return null;
-  }
-
-  return data.signedUrl;
-}

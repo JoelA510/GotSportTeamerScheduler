@@ -27,9 +27,6 @@ export const AGE_CUTOFF_MODES = Object.freeze({
   SCHOOL_YEAR_AUG_JUL: 'school_year_aug_jul',
 });
 
-/** Default cutoff for the CVSC pilot — configurable per season. */
-export const DEFAULT_AGE_CUTOFF_MODE = AGE_CUTOFF_MODES.SCHOOL_YEAR_AUG_JUL;
-
 /** First month (1-indexed) of the school-year seasonal window. */
 const SCHOOL_YEAR_START_MONTH = 8; // August
 

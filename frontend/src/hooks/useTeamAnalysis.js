@@ -2,7 +2,7 @@ import { useState, useMemo, useCallback } from 'react';
 import { useImport } from '../contexts/ImportContext.jsx';
 import { useOrganization } from '../contexts/OrganizationContext.jsx';
 import { logger } from '../lib/logger.js';
-import { computeAgeGroup } from '../../../packages/core/src/ageGroups.js';
+import { computeAgeGroup } from '@squadlogic/core/ageGroups.js';
 
 export function useTeamAnalysis() {
   const { importedPlayers } = useImport();

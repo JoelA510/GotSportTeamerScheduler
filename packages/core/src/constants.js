@@ -35,7 +35,3 @@ export const TEAM_GENERATION = {
   WEIGHT_BuddySatisfaction: 0.2, // Lower weight as it's a constraint, not a goal
   WEIGHT_CoachSatisfaction: 0.2,
 };
-
-export const SCHEDULING = {
-  BYE_TEAM: '__BYE__',
-};

@@ -17,10 +17,10 @@ import ProgressBar from '../components/ui/ProgressBar.jsx';
 import { Edit2, Save, ArrowRight, Trash2, X } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient.js';
 import { IS_MOCK_MODE } from '../config.js';
-import { generateTeams } from '../../../packages/core/src/teamGeneration.js';
-import { prepareTeamingInput } from '../../../packages/core/src/teamingPipeline.js';
-import { mapSchedulerRunToSummary } from '../../../packages/core/src/utils/teamSummaryMapper.js';
-import { formatChangeNote } from '../../../packages/core/src/teamDiagnostics.js';
+import { generateTeams } from '@squadlogic/core/teamGeneration.js';
+import { prepareTeamingInput } from '@squadlogic/core/teamingPipeline.js';
+import { mapSchedulerRunToSummary } from '@squadlogic/core/utils/teamSummaryMapper.js';
+import { formatChangeNote } from '@squadlogic/core/teamDiagnostics.js';
 import { PERMISSIONS } from '../constants/permissions.js';
 import { getPersistenceEndpoint, triggerTeamPersistence } from '../utils/teamPersistenceClient.js';
 import {

@@ -1,5 +1,5 @@
 import { useSchedulerRun } from './useSchedulerRun.js';
-import { mapSchedulerRunToPracticeSummary } from '../../../packages/core/src/utils/practiceSummaryMapper.js';
+import { mapSchedulerRunToPracticeSummary } from '@squadlogic/core/utils/practiceSummaryMapper.js';
 
 // Fallback empty state to prevent null access errors
 const EMPTY_SUMMARY = {
