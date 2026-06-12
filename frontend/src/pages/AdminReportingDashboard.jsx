@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient.js';
+import { fetchAllPages } from '../lib/pagedFetch.js';
+import { formatCsv } from '@squadlogic/core/outputGeneration.js';
 import { useOrganization } from '../contexts/OrganizationContext.jsx';
 import {
   BarChart,
@@ -97,27 +99,11 @@ export default function AdminReportingDashboard() {
     loadReports();
   }, [currentOrganization?.id]);
 
-  // Fetch every row in pages so large orgs neither blow past PostgREST's
-  // server-side row cap (which would silently truncate the export) nor pull
-  // the whole table in one oversized request.
-  const fetchAllRows = async (buildQuery) => {
-    const PAGE = 1000;
-    const rows = [];
-    for (let from = 0; ; from += PAGE) {
-      const { data, error: pageError } = await buildQuery()
-        .order('id')
-        .range(from, from + PAGE - 1);
-      if (pageError) throw pageError;
-      rows.push(...(data || []));
-      if (!data || data.length < PAGE) return rows;
-    }
-  };
-
   const handleExportRosters = async () => {
     if (!currentOrganization?.id) return;
     setExporting(true);
     try {
-      const teamsData = await fetchAllRows(() =>
+      const teamsData = await fetchAllPages(() =>
         supabase
           .from('teams')
           .select(
@@ -128,7 +114,7 @@ export default function AdminReportingDashboard() {
           )
           .eq('organization_id', currentOrganization.id)
       );
-      const playersData = await fetchAllRows(() =>
+      const playersData = await fetchAllPages(() =>
         supabase
           .from('players')
           .select('id, first_name, last_name, date_of_birth, team_id')
@@ -175,11 +161,7 @@ export default function AdminReportingDashboard() {
         }
       });
 
-      const headerLine = headers.join(',');
-      const dataLines = rows.map((row) =>
-        headers.map((h) => `"${(row[h] || '').toString().replace(/"/g, '""')}"`).join(',')
-      );
-      const csv = [headerLine, ...dataLines].join('\n');
+      const csv = formatCsv(headers, rows);
 
       const blob = new Blob([csv], { type: 'text/csv' });
       const url = URL.createObjectURL(blob);

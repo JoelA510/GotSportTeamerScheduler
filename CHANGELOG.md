@@ -33,7 +33,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Free-tier follow-ups: bulk coach status changes now run in bounded chunks of 8 RPCs instead of an unbounded `Promise.all` fan-out; the admin reporting roster export pages through teams/players with `.range()` so large orgs are neither silently truncated at PostgREST's row cap nor fetched in one oversized request; the storage retention workflow now also expires the `exports` bucket (timestamped schedule CSVs previously accumulated without bound) and recurses into bucket folders it previously skipped.
+- Bulk coach status changes now run in bounded chunks of 8 RPCs (shared `mapInChunks` helper, also adopted by the team-builder and co-ed transition fan-outs) instead of an unbounded `Promise.all`.
+- The admin reporting roster export pages through teams/players with the shared `fetchAllPages` helper so large orgs are neither silently truncated at PostgREST's row cap nor fetched in one oversized request, and builds its CSV with core's `formatCsv` instead of a hand-rolled escaper.
+- The storage retention workflow now also expires the `exports` bucket (timestamped schedule CSVs previously accumulated without bound) and recurses into bucket folders it previously skipped.
 - Replaced the team-portal hardcoded medical-clearance display with a season-scoped, role-gated roster status RPC.
 - Replaced Setup Wizard telemetry session `Math.random()` IDs with Web Crypto generation.
 - Replaced mock Supabase `Math.random()` IDs and tokens with a Web Crypto helper to avoid insecure-randomness scan paths.
