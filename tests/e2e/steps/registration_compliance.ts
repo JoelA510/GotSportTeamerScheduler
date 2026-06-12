@@ -3,7 +3,7 @@ import { expect } from '@playwright/test';
 
 const { Given, When, Then } = createBdd();
 
-const seedDatabase = async (page: { addInitScript: (fn: () => void) => Promise<void> }) => {
+const seedDatabase = async (page: { addInitScript: (fn: () => void) => Promise<unknown> }) => {
   await page.addInitScript(() => {
     type MockTable = Array<Record<string, unknown>>;
     type MockDb = Record<string, MockTable>;
