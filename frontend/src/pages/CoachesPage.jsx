@@ -443,22 +443,28 @@ export default function CoachesPage() {
       }
 
       setBusy(true);
-      const results = await Promise.all(
-        eligible.map(async (coach) => {
-          try {
-            const { error: mutationError } = await supabase.rpc('admin_update_coach_status', {
-              p_organization_id: currentOrganization.id,
-              p_coach_id: coach.id,
-              p_status: nextStatus,
-            });
-            if (mutationError) throw mutationError;
-            return true;
-          } catch (err) {
-            logger.error('Bulk coach status update failed:', err);
-            return false;
-          }
-        })
-      );
+      // Bound RPC concurrency (free-tier pooled connections are scarce).
+      const CHUNK = 8;
+      const results = [];
+      for (let i = 0; i < eligible.length; i += CHUNK) {
+        const chunkResults = await Promise.all(
+          eligible.slice(i, i + CHUNK).map(async (coach) => {
+            try {
+              const { error: mutationError } = await supabase.rpc('admin_update_coach_status', {
+                p_organization_id: currentOrganization.id,
+                p_coach_id: coach.id,
+                p_status: nextStatus,
+              });
+              if (mutationError) throw mutationError;
+              return true;
+            } catch (err) {
+              logger.error('Bulk coach status update failed:', err);
+              return false;
+            }
+          })
+        );
+        results.push(...chunkResults);
+      }
 
       const failures = results.filter((ok) => !ok).length;
       const updated = eligible.length - failures;

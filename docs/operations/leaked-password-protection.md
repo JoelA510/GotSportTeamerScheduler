@@ -3,16 +3,22 @@
 
 # Supabase Auth — Leaked-Password Protection
 
-> **Audit F-2-04**: Supabase Auth has a built-in toggle to reject passwords
-> that appear in the HaveIBeenPwned (HIBP) breach corpus. SquadLogic prod has
-> this OFF as of 2026-04-20. This is a one-click operator action; no code
+> **Audit F-2-04 / advisor `auth_leaked_password_protection`**: Supabase Auth
+> has a built-in toggle to reject passwords that appear in the HaveIBeenPwned
+> (HIBP) breach corpus. **As of mid-2026 this feature requires the Pro plan or
+> above** ([Supabase docs](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection));
+> SquadLogic prod runs on the free tier, so the toggle cannot be enabled and
+> the security advisor warning is **accepted** until/unless the project moves
+> to Pro. Compensating controls in place on free tier: 12-character minimum
+> password length (auth config + `check_password_length_on_auth_users`
+> trigger) and `secure_password_change`. If the project upgrades to Pro,
+> follow the procedure below — it is a one-click operator action; no code
 > change is required.
 
-## Why enable
+## Why enable (on Pro)
 
 - Defense-in-depth against credential stuffing on the login flow.
 - Many password-reuse attacks use leaked-credential corpuses (e.g., the 2024 RockYou variants); the HIBP integration blocks those at signup / password change.
-- No additional infrastructure cost on free Supabase.
 
 ## Procedure
 

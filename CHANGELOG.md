@@ -33,6 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Free-tier follow-ups: bulk coach status changes now run in bounded chunks of 8 RPCs instead of an unbounded `Promise.all` fan-out; the admin reporting roster export pages through teams/players with `.range()` so large orgs are neither silently truncated at PostgREST's row cap nor fetched in one oversized request; the storage retention workflow now also expires the `exports` bucket (timestamped schedule CSVs previously accumulated without bound) and recurses into bucket folders it previously skipped.
 - Replaced the team-portal hardcoded medical-clearance display with a season-scoped, role-gated roster status RPC.
 - Replaced Setup Wizard telemetry session `Math.random()` IDs with Web Crypto generation.
 - Replaced mock Supabase `Math.random()` IDs and tokens with a Web Crypto helper to avoid insecure-randomness scan paths.
@@ -72,6 +73,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- Cleared the npm audit / Dependabot findings (react-router 7 turbo-stream RCE + open-redirect/DoS advisories, brace-expansion DoS) via in-range dependency bumps.
+- Migration `20260614000000`: pinned `search_path = public` on the 16 advisor-flagged functions that can carry it, re-ran the property-based anon/PUBLIC EXECUTE revoke for SECURITY DEFINER functions created since `20260603120000`, and changed default privileges so new functions in `public` no longer inherit PUBLIC/anon EXECUTE (authenticated + service_role retained). Remaining advisor warnings are documented exceptions: `submit_registration` (public registration links), the `min(uuid)` aggregate (cannot carry a SET clause; its SFUNC is pinned), and leaked-password protection (Pro-plan-only — see `docs/operations/leaked-password-protection.md`).
 - Added shared per-user rate limiting to the `fairness-scoring` Edge Function.
 - Routed organization invite revocation through an org-admin `revoke_org_invite` RPC with audit logging and removed the direct invite DELETE policy.
 - Routed settings schema-builder saves through an org-admin `admin_upsert_organization_schema` RPC with validation and audit logging, leaving `organization_schemas` read-only for org members.

@@ -1,11 +1,13 @@
-name: Cleanup raw-imports bucket (30-day retention)
+name: Cleanup storage buckets (retention)
 permissions: {}
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
 
-# Wave 6b Task 3 — Storage retention for the raw-imports bucket.
+# Wave 6b Task 3 — Storage retention, originally for the raw-imports bucket;
+# extended to the exports bucket (timestamped schedule CSVs accumulate without
+# bound otherwise, eating the 1 GB free-tier storage quota).
 #
 # Why GitHub Actions, not pg_cron:
 #   A plain `DELETE FROM storage.objects` in pg_cron only removes the metadata
@@ -33,12 +35,20 @@ on:
 
 jobs:
   cleanup:
-    name: Expire raw-imports older than retention window
+    name: Expire ${{ matrix.bucket }} objects older than retention window
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - bucket: raw-imports
+            retention_days: '30'
+          - bucket: exports
+            retention_days: '30'
     env:
-      BUCKET: raw-imports
-      RETENTION_DAYS: '30'
+      BUCKET: ${{ matrix.bucket }}
+      RETENTION_DAYS: ${{ matrix.retention_days }}
       DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
@@ -74,7 +84,6 @@ jobs:
           deleted=0
           skipped=0
           scanned=0
-          offset=0
           page_size=100
           # Safety cap: if we would delete more than this in a single run,
           # fail loudly rather than silently wiping a bucket whose state is
@@ -85,8 +94,17 @@ jobs:
           auth_header="Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}"
           apikey_header="apikey: ${SUPABASE_SERVICE_ROLE_KEY}"
 
+          # The list API returns one level per prefix; entries without
+          # created_at are pseudo-folders. Walk them breadth-first so foldered
+          # objects (e.g. exports' teams/) are scanned too.
+          declare -a prefix_queue=("")
+          while [ ${#prefix_queue[@]} -gt 0 ]; do
+          prefix="${prefix_queue[0]}"
+          prefix_queue=("${prefix_queue[@]:1}")
+          offset=0
           while : ; do
-            payload=$(printf '{"prefix":"","limit":%d,"offset":%d,"sortBy":{"column":"created_at","order":"asc"}}' "${page_size}" "${offset}")
+            payload=$(jq -cn --arg prefix "${prefix}" --argjson limit "${page_size}" --argjson offset "${offset}" \
+              '{prefix: $prefix, limit: $limit, offset: $offset, sortBy: {column: "created_at", order: "asc"}}')
             response=$(mktemp)
             status=$(curl --silent --show-error --output "${response}" --write-out '%{http_code}' \
               -X POST "${list_api}" \
@@ -122,10 +140,11 @@ jobs:
             # We iterate object-by-object so a per-path failure is attributable.
             while IFS=$'\t' read -r name created_at; do
               scanned=$((scanned + 1))
-              # Some bucket entries are pseudo-folders (name with no metadata
-              # and no created_at). Skip those — they have no bytes attached.
+              full_name="${prefix}${name}"
+              # Bucket entries with no created_at are pseudo-folders — no bytes
+              # attached, but their contents need a scan of their own.
               if [ -z "${created_at}" ] || [ "${created_at}" = "null" ]; then
-                skipped=$((skipped + 1))
+                prefix_queue+=("${full_name}/")
                 continue
               fi
               created_epoch=$(date -u -d "${created_at}" +%s 2>/dev/null || echo "")
@@ -145,37 +164,29 @@ jobs:
               fi
 
               if [ "${DRY_RUN}" = "true" ]; then
-                echo "[dry-run] would delete ${name} (created ${created_at})"
+                echo "[dry-run] would delete ${full_name} (created ${created_at})"
                 deleted=$((deleted + 1))
                 continue
               fi
 
               # URL-encode the object path so slashes inside foldered keys
               # are preserved as path segments (Storage REST accepts that).
-              encoded_name=$(jq -rn --arg v "${name}" '$v | @uri' | sed 's|%2F|/|g')
+              encoded_name=$(jq -rn --arg v "${full_name}" '$v | @uri' | sed 's|%2F|/|g')
               delete_url="${BASE_URL}/object/${BUCKET}/${encoded_name}"
               del_body=$(mktemp)
               del_status=$(curl --silent --show-error --output "${del_body}" --write-out '%{http_code}' \
                 -X DELETE "${delete_url}" \
                 -H "${auth_header}" \
                 -H "${apikey_header}")
-              if [ "${del_status}" -ge 500 ]; then
-                echo "::error::Delete API returned HTTP ${del_status} on ${name}. Aborting."
-                if [ -s "${del_body}" ]; then
-                  cat "${del_body}" >&2
-                fi
-                rm -f "${del_body}" "${response}"
-                exit 1
-              fi
               if [ "${del_status}" -ge 400 ]; then
-                echo "::error::Delete API returned HTTP ${del_status} on ${name}. Aborting."
+                echo "::error::Delete API returned HTTP ${del_status} on ${full_name}. Aborting."
                 if [ -s "${del_body}" ]; then
                   cat "${del_body}" >&2
                 fi
                 rm -f "${del_body}" "${response}"
                 exit 1
               fi
-              echo "Deleted ${name} (created ${created_at})"
+              echo "Deleted ${full_name} (created ${created_at})"
               deleted=$((deleted + 1))
               rm -f "${del_body}"
             done < <(jq -r '.[] | [.name, (.created_at // "")] | @tsv' "${response}")
@@ -187,6 +198,7 @@ jobs:
               break
             fi
             offset=$((offset + page_size))
+          done
           done
 
           if [ "${DRY_RUN}" = "true" ]; then
