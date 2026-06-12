@@ -23,7 +23,7 @@ const stableSchemaKey = (schema) =>
 
 // ── Mock Data Seed ──────────────────────────────────────────────────────────
 const initialMockData = {
-  organizations: [{ id: 'org-1', name: 'SquadLogic FC' }],
+  organizations: [{ id: 'org-1', name: 'SquadLogic FC', is_onboarded: true }],
   audit_log: [
     {
       id: 'audit-1',
