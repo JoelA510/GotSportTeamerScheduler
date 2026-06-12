@@ -14,7 +14,7 @@ import TeamPersistencePanel from '../components/TeamPersistencePanel.jsx';
 import DataValidationPanel from '../components/teaming/DataValidationPanel.jsx';
 import Button from '../components/ui/Button.jsx';
 import ProgressBar from '../components/ui/ProgressBar.jsx';
-import { Edit2, Save, ArrowRight } from 'lucide-react';
+import { Edit2, Save, ArrowRight, Trash2, X } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient.js';
 import { IS_MOCK_MODE } from '../config.js';
 import { generateTeams } from '../../../packages/core/src/teamGeneration.js';
@@ -329,6 +329,10 @@ export default function TeamAnalysisPage() {
   const [divisionSettingsError, setDivisionSettingsError] = useState(null);
   const [savingConfigId, setSavingConfigId] = useState(null);
   const [configSaveMessage, setConfigSaveMessage] = useState('');
+  const [deletedTeamIds, setDeletedTeamIds] = useState(new Set());
+  const [renamingTeamId, setRenamingTeamId] = useState(null);
+  const [renameValue, setRenameValue] = useState('');
+  const [renamedTeams, setRenamedTeams] = useState({});
   const loadedReviewKeyRef = useRef(null);
   const navigate = useNavigate();
   const canManageTeams =
@@ -1128,6 +1132,54 @@ export default function TeamAnalysisPage() {
     setIsEditMode(true);
   }, [activeTeams, handleSaveRosterChanges, isEditMode]);
 
+  const visibleTeams = useMemo(
+    () => activeTeams.filter((t) => !deletedTeamIds.has(t.id)),
+    [activeTeams, deletedTeamIds]
+  );
+
+  const handleDeleteTeam = useCallback(async (team) => {
+    if (
+      !window.confirm(
+        `Delete team "${team.name}"? This will remove all associated schedules and player assignments.`
+      )
+    )
+      return;
+    try {
+      const { error } = await supabase.rpc('admin_delete_team', { p_team_id: team.id });
+      if (error) throw error;
+      setDeletedTeamIds((prev) => new Set([...prev, team.id]));
+    } catch (err) {
+      window.alert(`Failed to delete team: ${err?.message || 'Unknown error'}`);
+    }
+  }, []);
+
+  const startRenameTeam = useCallback((team, currentName) => {
+    setRenamingTeamId(team.id);
+    setRenameValue(currentName);
+  }, []);
+
+  const handleRenameTeam = useCallback(
+    async (team) => {
+      const nextName = renameValue.trim();
+      if (!nextName || nextName === team.name) {
+        setRenamingTeamId(null);
+        return;
+      }
+      try {
+        const { error } = await supabase.rpc('admin_update_team', {
+          p_team_id: team.id,
+          p_patch: { name: nextName },
+        });
+        if (error) throw error;
+        setRenamedTeams((prev) => ({ ...prev, [team.id]: nextName }));
+        setRenamingTeamId(null);
+      } catch (err) {
+        window.alert(`Failed to rename team: ${err?.message || 'Unknown error'}`);
+      }
+    },
+    [renameValue]
+  );
+
   return (
     <div className="animate-fadeIn space-y-8 max-w-[65ch] mx-auto w-full">
       <div className="flex justify-between items-start mb-8">
@@ -1286,27 +1338,94 @@ export default function TeamAnalysisPage() {
             teamPersistenceSnapshot={displayPersistenceSnapshot}
             onPersistSuccess={stagedReview ? handlePersistSuccess : undefined}
           />
-          {activeTeams.length > 0 && (
+          {visibleTeams.length > 0 && (
             <section
               className="bg-bg-surface border border-border-subtle rounded-xl p-6"
               aria-label="Generated Teams"
             >
               <h3 className="text-xl font-bold text-text-primary mb-4">Generated Teams</h3>
               <div className="grid gap-3 sm:grid-cols-2">
-                {activeTeams.map((generatedTeam) => (
-                  <div
-                    key={generatedTeam.id}
-                    className="rounded-lg border border-border-subtle bg-bg-surface px-4 py-3"
-                  >
-                    <div className="font-semibold text-text-primary">{generatedTeam.name}</div>
-                    <div className="text-sm text-text-secondary">
-                      {generatedTeam.divisionName ||
-                        generatedTeam.division ||
-                        generatedTeam.division_id ||
-                        'Unassigned'}
+                {visibleTeams.map((generatedTeam) => {
+                  const displayName = renamedTeams[generatedTeam.id] || generatedTeam.name;
+                  const isPersisted = generatedTeam.id && isUuid(generatedTeam.id);
+                  const isRenaming = renamingTeamId === generatedTeam.id;
+                  return (
+                    <div
+                      key={generatedTeam.id}
+                      className="rounded-lg border border-border-subtle bg-bg-surface px-4 py-3 flex items-center justify-between gap-2"
+                    >
+                      <div className="min-w-0 flex-1">
+                        {isRenaming ? (
+                          <input
+                            type="text"
+                            className="w-full bg-bg-app border border-border-highlight rounded-lg px-2 py-1 text-sm font-semibold text-text-primary outline-none"
+                            value={renameValue}
+                            autoFocus
+                            aria-label={`New name for team ${displayName}`}
+                            onChange={(e) => setRenameValue(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') handleRenameTeam(generatedTeam);
+                              if (e.key === 'Escape') setRenamingTeamId(null);
+                            }}
+                          />
+                        ) : (
+                          <div className="font-semibold text-text-primary truncate">
+                            {displayName}
+                          </div>
+                        )}
+                        <div className="text-sm text-text-secondary truncate">
+                          {generatedTeam.divisionName ||
+                            generatedTeam.division ||
+                            generatedTeam.division_id ||
+                            'Unassigned'}
+                        </div>
+                      </div>
+                      {canManageTeams && isPersisted && (
+                        <div className="flex items-center gap-1.5 flex-shrink-0">
+                          {isRenaming ? (
+                            <>
+                              <button
+                                type="button"
+                                className="p-1.5 rounded-lg border border-border-subtle bg-bg-app text-text-muted hover:text-brand-400 hover:border-brand-400/50 transition-all"
+                                aria-label={`Save name for team ${displayName}`}
+                                onClick={() => handleRenameTeam(generatedTeam)}
+                              >
+                                <Save size={14} aria-hidden="true" />
+                              </button>
+                              <button
+                                type="button"
+                                className="p-1.5 rounded-lg border border-border-subtle bg-bg-app text-text-muted hover:text-text-primary transition-all"
+                                aria-label={`Cancel renaming team ${displayName}`}
+                                onClick={() => setRenamingTeamId(null)}
+                              >
+                                <X size={14} aria-hidden="true" />
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button
+                                type="button"
+                                className="p-1.5 rounded-lg border border-border-subtle bg-bg-app text-text-muted hover:text-brand-400 hover:border-brand-400/50 transition-all"
+                                aria-label={`Rename team ${displayName}`}
+                                onClick={() => startRenameTeam(generatedTeam, displayName)}
+                              >
+                                <Edit2 size={14} aria-hidden="true" />
+                              </button>
+                              <button
+                                type="button"
+                                className="p-1.5 rounded-lg border border-border-subtle bg-bg-app text-text-muted hover:text-red-400 hover:border-red-400/50 hover:bg-red-500/10 transition-all"
+                                aria-label={`Delete team ${displayName}`}
+                                onClick={() => handleDeleteTeam(generatedTeam)}
+                              >
+                                <Trash2 size={14} aria-hidden="true" />
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      )}
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </section>
           )}

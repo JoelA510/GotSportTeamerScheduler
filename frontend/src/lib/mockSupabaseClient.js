@@ -258,6 +258,7 @@ const initialMockData = {
   practice_assignments: [
     {
       id: 'pa-1',
+      organization_id: 'org-1',
       team_id: '00000000-0000-0000-0000-000000000001',
       slot_id: 'ps-1',
       practice_slot_id: 'ps-1',
@@ -647,7 +648,33 @@ const getDB = () => {
       db = mergeSource(db, window.__MOCK_DB__);
     }
   }
+  // mergeSource only adds/updates, so seed rows deleted by an RPC would
+  // resurrect on the next read. Tombstones recorded via markMockDeleted
+  // keep hard deletes durable across re-merges.
+  const tombstones = db.__deleted__ || {};
+  for (const [table, keys] of Object.entries(tombstones)) {
+    if (Array.isArray(db[table]) && Array.isArray(keys) && keys.length > 0) {
+      const removed = new Set(keys.map(String));
+      db[table] = db[table].filter((row) => !removed.has(tombstoneKey(table, row)));
+    }
+  }
   return db;
+};
+
+// Tables without a single `id` column get a composite tombstone key here;
+// everything else keys on String(row.id).
+const TOMBSTONE_KEY_FNS = {
+  organization_members: (row) => `${row.organization_id}:${row.profile_id}`,
+};
+const tombstoneKey = (table, row) =>
+  TOMBSTONE_KEY_FNS[table] ? TOMBSTONE_KEY_FNS[table](row) : String(row.id);
+
+// Record hard deletes so getDB's seed re-merge cannot resurrect the rows.
+// `keys` are tombstone keys: row ids, or composite keys per TOMBSTONE_KEY_FNS.
+const markMockDeleted = (db, table, keys) => {
+  db.__deleted__ = db.__deleted__ || {};
+  const existing = db.__deleted__[table] || [];
+  db.__deleted__[table] = Array.from(new Set([...existing, ...keys.map(String)]));
 };
 
 const saveDB = (db) => {
@@ -1526,14 +1553,52 @@ export const mockSupabase = {
     }
 
     if (name === 'admin_create_registration_form') {
-      db.registration_forms.unshift({
+      const created = {
         id: mockId(),
         organization_id: params.p_organization_id,
         title: params.p_title,
-      });
+        description: params.p_description ?? null,
+        season_id: params.p_season_id ?? null,
+        fields: params.p_fields ?? [],
+        status: params.p_status || 'open',
+        waiver_text: params.p_waiver_text ?? null,
+        created_at: new Date().toISOString(),
+      };
+      db.registration_forms.unshift(created);
       saveDB(db);
 
-      return { data: null, error: null };
+      return { data: created, error: null };
+    }
+
+    if (name === 'get_organization_members') {
+      const { p_organization_id } = params || {};
+      const session =
+        typeof window !== 'undefined'
+          ? JSON.parse(sessionStorage.getItem('__MOCK_SESSION__') || 'null')
+          : null;
+      const caller = (db.organization_members || []).find(
+        (item) =>
+          String(item.organization_id) === String(p_organization_id) &&
+          String(item.profile_id) === String(session?.user?.id)
+      );
+      if (!caller) {
+        return { data: null, error: { message: 'Access denied: membership required' } };
+      }
+      const rows = (db.organization_members || [])
+        .filter((item) => String(item.organization_id) === String(p_organization_id))
+        .map((item) => {
+          const profile = (db.profiles || []).find((p) => String(p.id) === String(item.profile_id));
+          return {
+            profile_id: item.profile_id,
+            role: item.role,
+            created_at: item.created_at || new Date().toISOString(),
+            email: profile?.email ?? null,
+            full_name: profile?.full_name ?? null,
+            first_name: profile?.first_name ?? null,
+            last_name: profile?.last_name ?? null,
+          };
+        });
+      return { data: rows, error: null };
     }
 
     if (name === 'revoke_org_invite') {
@@ -2676,6 +2741,7 @@ export const mockSupabase = {
       db.team_players = (db.team_players || []).filter(
         (row) => !ids.includes(String(row.player_id))
       );
+      markMockDeleted(db, 'players', ids);
       const count = before - db.players.length;
       db.audit_log = db.audit_log || [];
       db.audit_log.push({
@@ -4117,6 +4183,85 @@ export const mockSupabase = {
       };
     }
 
+    if (name === 'admin_delete_coaches') {
+      const { p_coach_ids } = params || {};
+      const ids = (p_coach_ids || []).map(String);
+      if (ids.length === 0) {
+        return { data: null, error: { message: 'p_coach_ids must be a non-empty array' } };
+      }
+
+      const session =
+        typeof window !== 'undefined'
+          ? JSON.parse(sessionStorage.getItem('__MOCK_SESSION__') || 'null')
+          : null;
+      const idSet = new Set(ids);
+      const targets = (db.coaches || []).filter((coach) => idSet.has(String(coach.id)));
+      const orgIds = new Set(targets.map((coach) => String(coach.organization_id)));
+      if (orgIds.size !== 1) {
+        return {
+          data: null,
+          error: { message: 'coaches must belong to exactly one organization' },
+        };
+      }
+      const orgId = [...orgIds][0];
+      const member = (db.organization_members || []).find(
+        (item) =>
+          String(item.organization_id) === orgId &&
+          String(item.profile_id) === String(session?.user?.id)
+      );
+      if (!['admin', 'tenant_admin'].includes(String(member?.role || ''))) {
+        return { data: null, error: { message: 'Access denied: admin role required' } };
+      }
+
+      for (const team of db.teams || []) {
+        if (idSet.has(String(team.coach_id))) team.coach_id = null;
+        if (Array.isArray(team.assistant_coach_ids)) {
+          team.assistant_coach_ids = team.assistant_coach_ids.filter(
+            (coachId) => !idSet.has(String(coachId))
+          );
+        }
+      }
+      const droppedInterests = (db.coach_interested_programs || []).filter((row) =>
+        idSet.has(String(row.coach_id))
+      );
+      db.coach_interested_programs = (db.coach_interested_programs || []).filter(
+        (row) => !idSet.has(String(row.coach_id))
+      );
+      const droppedRequests = (db.coach_team_requests || []).filter((row) =>
+        idSet.has(String(row.coach_id))
+      );
+      db.coach_team_requests = (db.coach_team_requests || []).filter(
+        (row) => !idSet.has(String(row.coach_id))
+      );
+      const before = (db.coaches || []).length;
+      db.coaches = (db.coaches || []).filter((coach) => !idSet.has(String(coach.id)));
+      const count = before - db.coaches.length;
+      markMockDeleted(db, 'coaches', ids);
+      markMockDeleted(
+        db,
+        'coach_interested_programs',
+        droppedInterests.map((row) => row.id).filter(Boolean)
+      );
+      markMockDeleted(
+        db,
+        'coach_team_requests',
+        droppedRequests.map((row) => row.id).filter(Boolean)
+      );
+
+      db.audit_log = db.audit_log || [];
+      db.audit_log.push({
+        id: mockId(),
+        organization_id: orgId,
+        user_id: session?.user?.id,
+        action: 'coach.deleted',
+        resource_type: 'coach',
+        metadata: { coach_count: count, coach_ids: ids },
+        created_at: new Date().toISOString(),
+      });
+      saveDB(db);
+      return { data: count, error: null };
+    }
+
     if (name === 'admin_update_coach_status') {
       const { p_organization_id, p_coach_id, p_status } = params || {};
       const validStatuses = new Set(['active', 'pending-confirmation', 'inactive', 'interested']);
@@ -4313,6 +4458,381 @@ export const mockSupabase = {
             String(run.season_id) === String(seasonId))
       );
       return { data: selectLatestTeamRunsPerDivision(runs), error: null };
+    }
+
+    if (name === 'admin_update_registration_form') {
+      const { p_form_id, p_patch } = params || {};
+      const session =
+        typeof window !== 'undefined'
+          ? JSON.parse(sessionStorage.getItem('__MOCK_SESSION__') || 'null')
+          : null;
+      const form = (db.registration_forms || []).find((f) => String(f.id) === String(p_form_id));
+      if (!form) return { data: null, error: { message: 'Form not found' } };
+      const member = (db.organization_members || []).find(
+        (item) =>
+          String(item.organization_id) === String(form.organization_id) &&
+          String(item.profile_id) === String(session?.user?.id)
+      );
+      if (!['admin', 'tenant_admin'].includes(String(member?.role || ''))) {
+        return { data: null, error: { message: 'Access denied: admin role required' } };
+      }
+      const allowed = ['title', 'description', 'status', 'waiver_text', 'fields', 'season_id'];
+      for (const key of Object.keys(p_patch || {})) {
+        if (!allowed.includes(key)) {
+          return { data: null, error: { message: `Disallowed patch key: ${key}` } };
+        }
+      }
+      // Match the real RPC's status whitelist so invalid values fail in mock
+      // mode too instead of only in production.
+      if ('status' in (p_patch || {}) && !['draft', 'open', 'closed'].includes(p_patch.status)) {
+        return { data: null, error: { message: `invalid status: ${p_patch.status}` } };
+      }
+      Object.assign(form, p_patch, { updated_at: new Date().toISOString() });
+      db.audit_log = db.audit_log || [];
+      db.audit_log.push({
+        id: mockId(),
+        organization_id: form.organization_id,
+        user_id: session?.user?.id,
+        action: 'registration.form_updated',
+        resource_type: 'registration_form',
+        resource_id: p_form_id,
+        metadata: { patch: p_patch },
+        created_at: new Date().toISOString(),
+      });
+      saveDB(db);
+      return { data: { id: form.id }, error: null };
+    }
+
+    if (name === 'admin_delete_registration_form') {
+      const { p_form_id } = params || {};
+      const session =
+        typeof window !== 'undefined'
+          ? JSON.parse(sessionStorage.getItem('__MOCK_SESSION__') || 'null')
+          : null;
+      const form = (db.registration_forms || []).find((f) => String(f.id) === String(p_form_id));
+      if (!form) return { data: null, error: { message: 'Form not found' } };
+      const member = (db.organization_members || []).find(
+        (item) =>
+          String(item.organization_id) === String(form.organization_id) &&
+          String(item.profile_id) === String(session?.user?.id)
+      );
+      if (!['admin', 'tenant_admin'].includes(String(member?.role || ''))) {
+        return { data: null, error: { message: 'Access denied: admin role required' } };
+      }
+      const subCount = (db.registrations || []).filter(
+        (r) => String(r.form_id) === String(p_form_id)
+      ).length;
+      db.registrations = (db.registrations || []).filter(
+        (r) => String(r.form_id) !== String(p_form_id)
+      );
+      db.registration_forms = (db.registration_forms || []).filter(
+        (f) => String(f.id) !== String(p_form_id)
+      );
+      markMockDeleted(db, 'registration_forms', [p_form_id]);
+      db.audit_log = db.audit_log || [];
+      db.audit_log.push({
+        id: mockId(),
+        organization_id: form.organization_id,
+        user_id: session?.user?.id,
+        action: 'registration.form_deleted',
+        resource_type: 'registration_form',
+        resource_id: p_form_id,
+        metadata: { submission_count: subCount },
+        created_at: new Date().toISOString(),
+      });
+      saveDB(db);
+      return { data: { deleted_submissions: subCount }, error: null };
+    }
+
+    if (name === 'admin_remove_member') {
+      const { p_organization_id, p_profile_id } = params || {};
+      const session =
+        typeof window !== 'undefined'
+          ? JSON.parse(sessionStorage.getItem('__MOCK_SESSION__') || 'null')
+          : null;
+      if (String(session?.user?.id) === String(p_profile_id)) {
+        return { data: null, error: { message: 'Cannot remove yourself' } };
+      }
+      const member = (db.organization_members || []).find(
+        (item) =>
+          String(item.organization_id) === String(p_organization_id) &&
+          String(item.profile_id) === String(session?.user?.id)
+      );
+      if (!['admin', 'tenant_admin'].includes(String(member?.role || ''))) {
+        return { data: null, error: { message: 'Access denied: admin role required' } };
+      }
+      const target = (db.organization_members || []).find(
+        (item) =>
+          String(item.organization_id) === String(p_organization_id) &&
+          String(item.profile_id) === String(p_profile_id)
+      );
+      if (!target) return { data: null, error: { message: 'Member not found' } };
+      if (['admin', 'tenant_admin'].includes(target.role)) {
+        const adminCount = (db.organization_members || []).filter(
+          (item) =>
+            String(item.organization_id) === String(p_organization_id) &&
+            ['admin', 'tenant_admin'].includes(item.role)
+        ).length;
+        if (adminCount <= 1) {
+          return { data: null, error: { message: 'Cannot remove the last admin' } };
+        }
+      }
+      db.organization_members = (db.organization_members || []).filter(
+        (item) =>
+          !(
+            String(item.organization_id) === String(p_organization_id) &&
+            String(item.profile_id) === String(p_profile_id)
+          )
+      );
+      markMockDeleted(db, 'organization_members', [`${p_organization_id}:${p_profile_id}`]);
+      db.audit_log = db.audit_log || [];
+      db.audit_log.push({
+        id: mockId(),
+        organization_id: p_organization_id,
+        user_id: session?.user?.id,
+        action: 'member.removed',
+        resource_type: 'organization_member',
+        resource_id: p_profile_id,
+        metadata: { removed_role: target.role },
+        created_at: new Date().toISOString(),
+      });
+      saveDB(db);
+      return { data: null, error: null };
+    }
+
+    if (name === 'admin_change_member_role') {
+      const { p_organization_id, p_profile_id, p_role } = params || {};
+      const session =
+        typeof window !== 'undefined'
+          ? JSON.parse(sessionStorage.getItem('__MOCK_SESSION__') || 'null')
+          : null;
+      const member = (db.organization_members || []).find(
+        (item) =>
+          String(item.organization_id) === String(p_organization_id) &&
+          String(item.profile_id) === String(session?.user?.id)
+      );
+      if (!['admin', 'tenant_admin'].includes(String(member?.role || ''))) {
+        return { data: null, error: { message: 'Access denied: admin role required' } };
+      }
+      const target = (db.organization_members || []).find(
+        (item) =>
+          String(item.organization_id) === String(p_organization_id) &&
+          String(item.profile_id) === String(p_profile_id)
+      );
+      if (!target) return { data: null, error: { message: 'Member not found' } };
+      if (
+        ['admin', 'tenant_admin'].includes(target.role) &&
+        !['admin', 'tenant_admin'].includes(p_role)
+      ) {
+        const adminCount = (db.organization_members || []).filter(
+          (item) =>
+            String(item.organization_id) === String(p_organization_id) &&
+            ['admin', 'tenant_admin'].includes(item.role)
+        ).length;
+        if (adminCount <= 1) {
+          return { data: null, error: { message: 'Cannot demote the last admin' } };
+        }
+      }
+      const previousRole = target.role;
+      target.role = p_role;
+      db.audit_log = db.audit_log || [];
+      db.audit_log.push({
+        id: mockId(),
+        organization_id: p_organization_id,
+        user_id: session?.user?.id,
+        action: 'member.role_changed',
+        resource_type: 'organization_member',
+        resource_id: p_profile_id,
+        metadata: { previous_role: previousRole, new_role: p_role },
+        created_at: new Date().toISOString(),
+      });
+      saveDB(db);
+      return { data: null, error: null };
+    }
+
+    if (name === 'admin_cancel_game_assignment') {
+      const { p_assignment_id } = params || {};
+      const session =
+        typeof window !== 'undefined'
+          ? JSON.parse(sessionStorage.getItem('__MOCK_SESSION__') || 'null')
+          : null;
+      const assignment = (db.game_assignments || []).find(
+        (a) => String(a.id) === String(p_assignment_id)
+      );
+      if (!assignment) return { data: null, error: { message: 'Game assignment not found' } };
+      const member = (db.organization_members || []).find(
+        (item) =>
+          String(item.organization_id) === String(assignment.organization_id) &&
+          String(item.profile_id) === String(session?.user?.id)
+      );
+      if (!['admin', 'tenant_admin'].includes(String(member?.role || ''))) {
+        return { data: null, error: { message: 'Access denied' } };
+      }
+      db.game_assignments = (db.game_assignments || []).filter(
+        (a) => String(a.id) !== String(p_assignment_id)
+      );
+      markMockDeleted(db, 'game_assignments', [p_assignment_id]);
+      db.audit_log = db.audit_log || [];
+      db.audit_log.push({
+        id: mockId(),
+        organization_id: assignment.organization_id,
+        user_id: session?.user?.id,
+        action: 'game.cancelled',
+        resource_type: 'game_assignment',
+        resource_id: p_assignment_id,
+        metadata: {},
+        created_at: new Date().toISOString(),
+      });
+      saveDB(db);
+      return { data: null, error: null };
+    }
+
+    if (name === 'admin_cancel_practice_assignment') {
+      const { p_assignment_id } = params || {};
+      const session =
+        typeof window !== 'undefined'
+          ? JSON.parse(sessionStorage.getItem('__MOCK_SESSION__') || 'null')
+          : null;
+      const assignment = (db.practice_assignments || []).find(
+        (a) => String(a.id) === String(p_assignment_id)
+      );
+      if (!assignment) return { data: null, error: { message: 'Practice assignment not found' } };
+      const member = (db.organization_members || []).find(
+        (item) =>
+          String(item.organization_id) === String(assignment.organization_id) &&
+          String(item.profile_id) === String(session?.user?.id)
+      );
+      if (!['admin', 'tenant_admin'].includes(String(member?.role || ''))) {
+        return { data: null, error: { message: 'Access denied' } };
+      }
+      db.practice_assignments = (db.practice_assignments || []).filter(
+        (a) => String(a.id) !== String(p_assignment_id)
+      );
+      markMockDeleted(db, 'practice_assignments', [p_assignment_id]);
+      db.audit_log = db.audit_log || [];
+      db.audit_log.push({
+        id: mockId(),
+        organization_id: assignment.organization_id,
+        user_id: session?.user?.id,
+        action: 'practice.cancelled',
+        resource_type: 'practice_assignment',
+        resource_id: p_assignment_id,
+        metadata: {},
+        created_at: new Date().toISOString(),
+      });
+      saveDB(db);
+      return { data: null, error: null };
+    }
+
+    if (name === 'admin_update_team') {
+      const { p_team_id, p_patch } = params || {};
+      const session =
+        typeof window !== 'undefined'
+          ? JSON.parse(sessionStorage.getItem('__MOCK_SESSION__') || 'null')
+          : null;
+      const team = (db.teams || []).find((t) => String(t.id) === String(p_team_id));
+      if (!team) return { data: null, error: { message: 'Team not found' } };
+      const member = (db.organization_members || []).find(
+        (item) =>
+          String(item.organization_id) === String(team.organization_id) &&
+          String(item.profile_id) === String(session?.user?.id)
+      );
+      if (!['admin', 'tenant_admin'].includes(String(member?.role || ''))) {
+        return { data: null, error: { message: 'Access denied: admin role required' } };
+      }
+      const patch = p_patch || {};
+      const allowed = ['name', 'notes'];
+      for (const key of Object.keys(patch)) {
+        if (!allowed.includes(key)) {
+          return { data: null, error: { message: `Disallowed patch key: ${key}` } };
+        }
+      }
+      if (Object.keys(patch).length === 0) {
+        return { data: null, error: { message: 'p_patch must contain at least one field' } };
+      }
+      if ('name' in patch) {
+        const nextName = String(patch.name || '').trim();
+        if (!nextName) {
+          return { data: null, error: { message: 'team name must not be empty' } };
+        }
+        const duplicate = (db.teams || []).some(
+          (t) =>
+            String(t.division_id) === String(team.division_id) &&
+            String(t.id) !== String(p_team_id) &&
+            String(t.name) === nextName
+        );
+        if (duplicate) {
+          return {
+            data: null,
+            error: { message: `a team named "${nextName}" already exists in this division` },
+          };
+        }
+        team.name = nextName;
+      }
+      if ('notes' in patch) team.notes = patch.notes;
+      team.updated_at = new Date().toISOString();
+      db.audit_log = db.audit_log || [];
+      db.audit_log.push({
+        id: mockId(),
+        organization_id: team.organization_id,
+        user_id: session?.user?.id,
+        action: 'team.updated',
+        resource_type: 'teams',
+        resource_id: p_team_id,
+        metadata: { patch },
+        created_at: new Date().toISOString(),
+      });
+      saveDB(db);
+      return { data: { id: p_team_id }, error: null };
+    }
+
+    if (name === 'admin_delete_team') {
+      const { p_team_id } = params || {};
+      const session =
+        typeof window !== 'undefined'
+          ? JSON.parse(sessionStorage.getItem('__MOCK_SESSION__') || 'null')
+          : null;
+      const team = (db.teams || []).find((t) => String(t.id) === String(p_team_id));
+      if (!team) return { data: null, error: { message: 'Team not found' } };
+      const member = (db.organization_members || []).find(
+        (item) =>
+          String(item.organization_id) === String(team.organization_id) &&
+          String(item.profile_id) === String(session?.user?.id)
+      );
+      if (!['admin', 'tenant_admin'].includes(String(member?.role || ''))) {
+        return { data: null, error: { message: 'Access denied: admin role required' } };
+      }
+      // Cascade: unset team_id on players
+      for (const player of db.players || []) {
+        if (String(player.team_id) === String(p_team_id)) player.team_id = null;
+      }
+      // Cascade: remove team_players, game_assignments, practice_assignments
+      db.team_players = (db.team_players || []).filter(
+        (tp) => String(tp.team_id) !== String(p_team_id)
+      );
+      db.game_assignments = (db.game_assignments || []).filter(
+        (a) =>
+          String(a.home_team_id) !== String(p_team_id) &&
+          String(a.away_team_id) !== String(p_team_id)
+      );
+      db.practice_assignments = (db.practice_assignments || []).filter(
+        (a) => String(a.team_id) !== String(p_team_id)
+      );
+      db.teams = (db.teams || []).filter((t) => String(t.id) !== String(p_team_id));
+      markMockDeleted(db, 'teams', [p_team_id]);
+      db.audit_log = db.audit_log || [];
+      db.audit_log.push({
+        id: mockId(),
+        organization_id: team.organization_id,
+        user_id: session?.user?.id,
+        action: 'team.deleted',
+        resource_type: 'team',
+        resource_id: p_team_id,
+        metadata: { team_name: team.name },
+        created_at: new Date().toISOString(),
+      });
+      saveDB(db);
+      return { data: null, error: null };
     }
 
     return { data: null, error: null };

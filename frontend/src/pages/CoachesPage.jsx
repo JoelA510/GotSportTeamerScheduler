@@ -1,5 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { CheckCircle2, Clock, ShieldCheck, UserMinus, UserRoundCheck, Users } from 'lucide-react';
+import {
+  CheckCircle2,
+  Clock,
+  ShieldCheck,
+  Trash2,
+  UserMinus,
+  UserRoundCheck,
+  Users,
+} from 'lucide-react';
 import Page from '../components/chrome/Page.jsx';
 import PageHeader from '../components/chrome/PageHeader.jsx';
 import DataGrid from '../components/grid/DataGrid.jsx';
@@ -470,6 +478,24 @@ export default function CoachesPage() {
     [allRows, canManageCoaches, currentOrganization?.id, loadCoaches, selected, toast]
   );
 
+  const handleDeleteCoaches = useCallback(
+    async (coachIds) => {
+      if (coachIds.length === 0) return;
+      const ok = await runMutation(
+        () => supabase.rpc('admin_delete_coaches', { p_coach_ids: coachIds }),
+        `${coachIds.length} coach${coachIds.length === 1 ? '' : 'es'} deleted`
+      );
+      if (ok) {
+        setSelected((previous) => {
+          const next = new Set(previous);
+          for (const id of coachIds) next.delete(id);
+          return next;
+        });
+      }
+    },
+    [runMutation]
+  );
+
   const handleAssignTeam = useCallback(async () => {
     if (!manageCoach || !assignTeamId) return;
     const ok = await runMutation(
@@ -617,11 +643,26 @@ export default function CoachesPage() {
           '_players',
         ]}
         onCellChange={canManageCoaches ? handleCellChange : undefined}
-        rowActions={canManageCoaches ? [{ id: 'teams', label: 'Manage teams', icon: Users }] : []}
+        rowActions={
+          canManageCoaches
+            ? [
+                { id: 'teams', label: 'Manage teams', icon: Users },
+                { id: 'delete', label: 'Delete coach', icon: Trash2, danger: true },
+              ]
+            : []
+        }
         onRowAction={(action, row) => {
           if (action === 'teams') {
             setAssignTeamId('');
             setManageCoachId(row.id);
+          } else if (action === 'delete') {
+            if (
+              window.confirm(
+                `Delete ${row.fullName}? Their teams will be left without a coach. This cannot be undone.`
+              )
+            ) {
+              handleDeleteCoaches([row.id]);
+            }
           }
         }}
         toolbar={
@@ -683,6 +724,23 @@ export default function CoachesPage() {
               onClick={() => handleBulkStatusChange('inactive')}
             >
               Set Inactive
+            </Button>
+            <Button
+              variant="ghost-danger"
+              size="sm"
+              icon={Trash2}
+              disabled={busy}
+              onClick={() => {
+                if (
+                  window.confirm(
+                    `Delete ${selected.size} coach${selected.size === 1 ? '' : 'es'}? Their teams will be left without a coach. This cannot be undone.`
+                  )
+                ) {
+                  handleDeleteCoaches([...selected]);
+                }
+              }}
+            >
+              Delete
             </Button>
           </>
         }

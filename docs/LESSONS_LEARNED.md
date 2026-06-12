@@ -19,10 +19,14 @@ evolves. If you are about to make a decision one of these covers, read it first.
    policy. A `USING (true)` policy is a cross-tenant leak waiting to happen.
 4. **CHECK constraints only exist in the real database.** The mock Supabase
    client enforces no constraints, so an RPC that inserts a value outside a
-   CHECK whitelist (e.g., an unlisted `audit_log.action`) passes every test and
-   then aborts its whole transaction in production. When adding enum-like
-   values or audit actions, update the constraint in the same PR and verify
-   with a SQL smoke script.
+   CHECK whitelist passes every test and then aborts its whole transaction in
+   production. When adding enum-like values, update the constraint in the same
+   PR and verify with a SQL smoke script. Audit actions specifically are no
+   longer a CHECK whitelist: `audit_log.action` is a foreign key to the
+   `audit_actions` lookup table (migration `20260613000006`), so a new action
+   is registered with a one-line
+   `INSERT INTO public.audit_actions (action) VALUES ('x.y') ON CONFLICT (action) DO NOTHING;`
+   instead of re-stating a 60-entry constraint.
 5. **Revoke anon EXECUTE on definer functions.** Anonymous users can otherwise
    call privileged RPCs directly, regardless of UI gating.
 6. **Free-tier Supabase pauses after ~7 days of inactivity** and caps pooled
