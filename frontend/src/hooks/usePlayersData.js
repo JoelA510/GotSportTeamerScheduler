@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabaseClient.js';
+import { fetchAllPages } from '../lib/pagedFetch.js';
 import { useOrganization } from '../contexts/OrganizationContext.jsx';
 import { logger } from '../lib/logger.js';
 import { REFRESH_TOPICS, emitRefresh } from '../lib/refreshBus.js';
@@ -22,14 +23,12 @@ export function usePlayersData() {
     setLoading(true);
     setError(null);
     try {
-      const [playersRes, divisionsRes] = await Promise.all([
-        supabase.from('players').select('*').eq('organization_id', orgId),
-        supabase.from('divisions').select('*').eq('organization_id', orgId),
+      const [playersData, divisionsData] = await Promise.all([
+        fetchAllPages(() => supabase.from('players').select('*').eq('organization_id', orgId)),
+        fetchAllPages(() => supabase.from('divisions').select('*').eq('organization_id', orgId)),
       ]);
-      if (playersRes.error) throw playersRes.error;
-      if (divisionsRes.error) throw divisionsRes.error;
-      setPlayers(playersRes.data || []);
-      setDivisions(divisionsRes.data || []);
+      setPlayers(playersData);
+      setDivisions(divisionsData);
     } catch (err) {
       logger.error('[usePlayersData] fetch failed:', err);
       setError(err.message || 'Failed to load players');

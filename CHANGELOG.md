@@ -33,6 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Adopted `fetchAllPages` at the remaining unbounded org-wide reads (players-grid data layer, co-ed transition inputs, admin Home dashboard) so they are no longer silently truncated at PostgREST's server-side row cap on large orgs.
 - Bulk coach status changes now run in bounded chunks of 8 RPCs (shared `mapInChunks` helper, also adopted by the team-builder and co-ed transition fan-outs) instead of an unbounded `Promise.all`.
 - The admin reporting roster export pages through teams/players with the shared `fetchAllPages` helper so large orgs are neither silently truncated at PostgREST's row cap nor fetched in one oversized request, and builds its CSV with core's `formatCsv` instead of a hand-rolled escaper.
 - The storage retention workflow now also expires the `exports` bucket (timestamped schedule CSVs previously accumulated without bound) and recurses into bucket folders it previously skipped.

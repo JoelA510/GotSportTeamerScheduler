@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabaseClient.js';
 import { useOrganization } from '../contexts/OrganizationContext.jsx';
 import { planCoedMerge, planGenderSplit } from '@squadlogic/core/coedTransition.js';
 import { mapInChunks } from '../utils/asyncChunks.js';
+import { fetchAllPages } from '../lib/pagedFetch.js';
 import { logger } from '../lib/logger.js';
 
 /**
@@ -21,34 +22,32 @@ export function useCoedTransition() {
   const fetchInputs = useCallback(async () => {
     // Divisions are unique per season; scope everything to the active one so
     // a merge/split never touches another season's divisions or rosters.
-    const divisionsRes = await supabase
-      .from('divisions')
-      .select('*')
-      .eq('organization_id', orgId)
-      .eq('season_settings_id', seasonId);
-    if (divisionsRes.error) throw divisionsRes.error;
-    const divisions = divisionsRes.data || [];
+    const divisions = await fetchAllPages(() =>
+      supabase
+        .from('divisions')
+        .select('*')
+        .eq('organization_id', orgId)
+        .eq('season_settings_id', seasonId)
+    );
     const divisionIds = divisions.map((division) => division.id);
     if (divisionIds.length === 0) return { divisions, players: [], teams: [] };
-    const [playersRes, teamsRes] = await Promise.all([
-      supabase
-        .from('players')
-        .select('id, division_id, team_id, gender')
-        .eq('organization_id', orgId)
-        .in('division_id', divisionIds),
-      supabase
-        .from('teams')
-        .select('id, division_id')
-        .eq('organization_id', orgId)
-        .in('division_id', divisionIds),
+    const [players, teams] = await Promise.all([
+      fetchAllPages(() =>
+        supabase
+          .from('players')
+          .select('id, division_id, team_id, gender')
+          .eq('organization_id', orgId)
+          .in('division_id', divisionIds)
+      ),
+      fetchAllPages(() =>
+        supabase
+          .from('teams')
+          .select('id, division_id')
+          .eq('organization_id', orgId)
+          .in('division_id', divisionIds)
+      ),
     ]);
-    if (playersRes.error) throw playersRes.error;
-    if (teamsRes.error) throw teamsRes.error;
-    return {
-      divisions,
-      players: playersRes.data || [],
-      teams: teamsRes.data || [],
-    };
+    return { divisions, players, teams };
   }, [orgId, seasonId]);
 
   const upsertDivision = useCallback(
