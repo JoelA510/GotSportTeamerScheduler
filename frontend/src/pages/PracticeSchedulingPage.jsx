@@ -758,6 +758,27 @@ export default function PracticeSchedulingPage() {
             <PracticeAssignmentList
               assignments={localAssignments}
               onToggleLock={canEditSchedule ? handleToggleLock : undefined}
+              onCancelAssignment={
+                canEditSchedule
+                  ? async (assignment) => {
+                      const teamName = assignment.teams?.name ?? 'this team';
+                      if (
+                        !window.confirm(
+                          `Cancel the practice assignment for ${teamName}? This cannot be undone.`
+                        )
+                      )
+                        return;
+                      const { error } = await supabase.rpc('admin_cancel_practice_assignment', {
+                        p_assignment_id: assignment.id,
+                      });
+                      if (error) {
+                        window.alert(error.message || 'Cancel failed');
+                      } else {
+                        setAssignments((prev) => prev.filter((a) => a.id !== assignment.id));
+                      }
+                    }
+                  : undefined
+              }
               loading={dashboardLoading?.practice}
             />
           </div>

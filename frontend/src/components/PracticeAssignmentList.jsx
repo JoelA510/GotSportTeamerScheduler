@@ -1,9 +1,10 @@
 import React from 'react';
-import { Lock, Unlock } from 'lucide-react';
+import { Lock, Trash2, Unlock } from 'lucide-react';
 
 export default function PracticeAssignmentList({
   assignments = [],
   onToggleLock = undefined,
+  onCancelAssignment = undefined,
   loading = false,
 }) {
   if (loading) {
@@ -38,7 +39,7 @@ export default function PracticeAssignmentList({
                 Range
               </th>
               <th className="p-4 text-xs font-semibold text-text-muted uppercase tracking-wider text-right">
-                Lock Status
+                {onCancelAssignment ? 'Actions' : 'Lock Status'}
               </th>
             </tr>
           </thead>
@@ -80,25 +81,37 @@ export default function PracticeAssignmentList({
                     {assignment.effectiveDateRange || 'Full Season'}
                   </td>
                   <td className="p-4 text-right">
-                    <button
-                      type="button"
-                      onClick={() => onToggleLock?.(assignment.id, isLocked ? 'auto' : 'manual')}
-                      disabled={!onToggleLock}
-                      aria-label={lockActionLabel}
-                      aria-pressed={isLocked}
-                      className={`p-2 rounded-lg transition-all inline-flex border ${
-                        isLocked
-                          ? 'bg-amber-500/10 text-amber-500 border-amber-500/30 hover:bg-amber-500/20 shadow-[0_0_10px_rgba(245,158,11,0.1)]'
-                          : 'bg-bg-app text-text-muted border-border-subtle hover:text-brand-400 hover:border-brand-400/50'
-                      } ${!onToggleLock ? 'cursor-not-allowed opacity-60' : ''}`}
-                      title={lockTitle}
-                    >
-                      {isLocked ? (
-                        <Lock size={16} aria-hidden="true" />
-                      ) : (
-                        <Unlock size={16} aria-hidden="true" />
+                    <div className="inline-flex items-center gap-2 justify-end">
+                      <button
+                        type="button"
+                        onClick={() => onToggleLock?.(assignment.id, isLocked ? 'auto' : 'manual')}
+                        disabled={!onToggleLock}
+                        aria-label={lockActionLabel}
+                        aria-pressed={isLocked}
+                        className={`p-2 rounded-lg transition-all inline-flex border ${
+                          isLocked
+                            ? 'bg-amber-500/10 text-amber-500 border-amber-500/30 hover:bg-amber-500/20 shadow-[0_0_10px_rgba(245,158,11,0.1)]'
+                            : 'bg-bg-app text-text-muted border-border-subtle hover:text-brand-400 hover:border-brand-400/50'
+                        } ${!onToggleLock ? 'cursor-not-allowed opacity-60' : ''}`}
+                        title={lockTitle}
+                      >
+                        {isLocked ? (
+                          <Lock size={16} aria-hidden="true" />
+                        ) : (
+                          <Unlock size={16} aria-hidden="true" />
+                        )}
+                      </button>
+                      {onCancelAssignment && assignment.id && (
+                        <button
+                          type="button"
+                          className="p-2 rounded-lg border border-border-subtle bg-bg-app text-text-muted hover:text-red-400 hover:border-red-400/50 hover:bg-red-500/10 transition-all"
+                          aria-label={`Cancel practice for ${teamName}`}
+                          onClick={() => onCancelAssignment(assignment)}
+                        >
+                          <Trash2 size={16} aria-hidden="true" />
+                        </button>
                       )}
-                    </button>
+                    </div>
                   </td>
                 </tr>
               );

@@ -258,6 +258,7 @@ const initialMockData = {
   practice_assignments: [
     {
       id: 'pa-1',
+      organization_id: 'org-1',
       team_id: '00000000-0000-0000-0000-000000000001',
       slot_id: 'ps-1',
       practice_slot_id: 'ps-1',
@@ -656,6 +657,14 @@ const getDB = () => {
       const removed = new Set(ids.map(String));
       db[table] = db[table].filter((row) => !removed.has(String(row.id)));
     }
+  }
+  // Composite-key tombstones for tables without a single `id` column.
+  const compositeTombstones = db.__deleted_composite__ || {};
+  if (Array.isArray(compositeTombstones.organization_members)) {
+    const removedKeys = new Set(compositeTombstones.organization_members);
+    db.organization_members = (db.organization_members || []).filter(
+      (row) => !removedKeys.has(`${row.organization_id}:${row.profile_id}`)
+    );
   }
   return db;
 };
@@ -4409,6 +4418,316 @@ export const mockSupabase = {
             String(run.season_id) === String(seasonId))
       );
       return { data: selectLatestTeamRunsPerDivision(runs), error: null };
+    }
+
+    if (name === 'admin_update_registration_form') {
+      const { p_form_id, p_patch } = params || {};
+      const session =
+        typeof window !== 'undefined'
+          ? JSON.parse(sessionStorage.getItem('__MOCK_SESSION__') || 'null')
+          : null;
+      const form = (db.registration_forms || []).find((f) => String(f.id) === String(p_form_id));
+      if (!form) return { data: null, error: { message: 'Form not found' } };
+      const member = (db.organization_members || []).find(
+        (item) =>
+          String(item.organization_id) === String(form.organization_id) &&
+          String(item.profile_id) === String(session?.user?.id)
+      );
+      if (!['admin', 'tenant_admin'].includes(String(member?.role || ''))) {
+        return { data: null, error: { message: 'Access denied: admin role required' } };
+      }
+      const allowed = ['title', 'description', 'status', 'waiver_text', 'fields', 'season_id'];
+      for (const key of Object.keys(p_patch || {})) {
+        if (!allowed.includes(key)) {
+          return { data: null, error: { message: `Disallowed patch key: ${key}` } };
+        }
+      }
+      Object.assign(form, p_patch, { updated_at: new Date().toISOString() });
+      db.audit_log = db.audit_log || [];
+      db.audit_log.push({
+        id: mockId(),
+        organization_id: form.organization_id,
+        user_id: session?.user?.id,
+        action: 'registration.form_updated',
+        resource_type: 'registration_form',
+        resource_id: p_form_id,
+        metadata: { patch: p_patch },
+        created_at: new Date().toISOString(),
+      });
+      saveDB(db);
+      return { data: { id: form.id }, error: null };
+    }
+
+    if (name === 'admin_delete_registration_form') {
+      const { p_form_id } = params || {};
+      const session =
+        typeof window !== 'undefined'
+          ? JSON.parse(sessionStorage.getItem('__MOCK_SESSION__') || 'null')
+          : null;
+      const form = (db.registration_forms || []).find((f) => String(f.id) === String(p_form_id));
+      if (!form) return { data: null, error: { message: 'Form not found' } };
+      const member = (db.organization_members || []).find(
+        (item) =>
+          String(item.organization_id) === String(form.organization_id) &&
+          String(item.profile_id) === String(session?.user?.id)
+      );
+      if (!['admin', 'tenant_admin'].includes(String(member?.role || ''))) {
+        return { data: null, error: { message: 'Access denied: admin role required' } };
+      }
+      const subCount = (db.registrations || []).filter(
+        (r) => String(r.form_id) === String(p_form_id)
+      ).length;
+      db.registrations = (db.registrations || []).filter(
+        (r) => String(r.form_id) !== String(p_form_id)
+      );
+      db.registration_forms = (db.registration_forms || []).filter(
+        (f) => String(f.id) !== String(p_form_id)
+      );
+      markMockDeleted(db, 'registration_forms', [p_form_id]);
+      db.audit_log = db.audit_log || [];
+      db.audit_log.push({
+        id: mockId(),
+        organization_id: form.organization_id,
+        user_id: session?.user?.id,
+        action: 'registration.form_deleted',
+        resource_type: 'registration_form',
+        resource_id: p_form_id,
+        metadata: { submission_count: subCount },
+        created_at: new Date().toISOString(),
+      });
+      saveDB(db);
+      return { data: { deleted_submissions: subCount }, error: null };
+    }
+
+    if (name === 'admin_remove_member') {
+      const { p_organization_id, p_profile_id } = params || {};
+      const session =
+        typeof window !== 'undefined'
+          ? JSON.parse(sessionStorage.getItem('__MOCK_SESSION__') || 'null')
+          : null;
+      if (String(session?.user?.id) === String(p_profile_id)) {
+        return { data: null, error: { message: 'Cannot remove yourself' } };
+      }
+      const member = (db.organization_members || []).find(
+        (item) =>
+          String(item.organization_id) === String(p_organization_id) &&
+          String(item.profile_id) === String(session?.user?.id)
+      );
+      if (!['admin', 'tenant_admin'].includes(String(member?.role || ''))) {
+        return { data: null, error: { message: 'Access denied: admin role required' } };
+      }
+      const target = (db.organization_members || []).find(
+        (item) =>
+          String(item.organization_id) === String(p_organization_id) &&
+          String(item.profile_id) === String(p_profile_id)
+      );
+      if (!target) return { data: null, error: { message: 'Member not found' } };
+      if (target.role === 'admin') {
+        const adminCount = (db.organization_members || []).filter(
+          (item) =>
+            String(item.organization_id) === String(p_organization_id) && item.role === 'admin'
+        ).length;
+        if (adminCount <= 1) {
+          return { data: null, error: { message: 'Cannot remove the last admin' } };
+        }
+      }
+      db.organization_members = (db.organization_members || []).filter(
+        (item) =>
+          !(
+            String(item.organization_id) === String(p_organization_id) &&
+            String(item.profile_id) === String(p_profile_id)
+          )
+      );
+      // Composite-key tombstone so the seed row doesn't resurrect on re-read.
+      db.__deleted_composite__ = db.__deleted_composite__ || {};
+      db.__deleted_composite__.organization_members = Array.from(
+        new Set([
+          ...(db.__deleted_composite__.organization_members || []),
+          `${p_organization_id}:${p_profile_id}`,
+        ])
+      );
+      db.audit_log = db.audit_log || [];
+      db.audit_log.push({
+        id: mockId(),
+        organization_id: p_organization_id,
+        user_id: session?.user?.id,
+        action: 'member.removed',
+        resource_type: 'organization_member',
+        resource_id: p_profile_id,
+        metadata: { removed_role: target.role },
+        created_at: new Date().toISOString(),
+      });
+      saveDB(db);
+      return { data: null, error: null };
+    }
+
+    if (name === 'admin_change_member_role') {
+      const { p_organization_id, p_profile_id, p_role } = params || {};
+      const session =
+        typeof window !== 'undefined'
+          ? JSON.parse(sessionStorage.getItem('__MOCK_SESSION__') || 'null')
+          : null;
+      const member = (db.organization_members || []).find(
+        (item) =>
+          String(item.organization_id) === String(p_organization_id) &&
+          String(item.profile_id) === String(session?.user?.id)
+      );
+      if (!['admin', 'tenant_admin'].includes(String(member?.role || ''))) {
+        return { data: null, error: { message: 'Access denied: admin role required' } };
+      }
+      const target = (db.organization_members || []).find(
+        (item) =>
+          String(item.organization_id) === String(p_organization_id) &&
+          String(item.profile_id) === String(p_profile_id)
+      );
+      if (!target) return { data: null, error: { message: 'Member not found' } };
+      if (target.role === 'admin' && p_role !== 'admin') {
+        const adminCount = (db.organization_members || []).filter(
+          (item) =>
+            String(item.organization_id) === String(p_organization_id) && item.role === 'admin'
+        ).length;
+        if (adminCount <= 1) {
+          return { data: null, error: { message: 'Cannot demote the last admin' } };
+        }
+      }
+      const previousRole = target.role;
+      target.role = p_role;
+      db.audit_log = db.audit_log || [];
+      db.audit_log.push({
+        id: mockId(),
+        organization_id: p_organization_id,
+        user_id: session?.user?.id,
+        action: 'member.role_changed',
+        resource_type: 'organization_member',
+        resource_id: p_profile_id,
+        metadata: { previous_role: previousRole, new_role: p_role },
+        created_at: new Date().toISOString(),
+      });
+      saveDB(db);
+      return { data: null, error: null };
+    }
+
+    if (name === 'admin_cancel_game_assignment') {
+      const { p_assignment_id } = params || {};
+      const session =
+        typeof window !== 'undefined'
+          ? JSON.parse(sessionStorage.getItem('__MOCK_SESSION__') || 'null')
+          : null;
+      const assignment = (db.game_assignments || []).find(
+        (a) => String(a.id) === String(p_assignment_id)
+      );
+      if (!assignment) return { data: null, error: { message: 'Game assignment not found' } };
+      const member = (db.organization_members || []).find(
+        (item) =>
+          String(item.organization_id) === String(assignment.organization_id) &&
+          String(item.profile_id) === String(session?.user?.id)
+      );
+      if (!['admin', 'coach', 'tenant_admin'].includes(String(member?.role || ''))) {
+        return { data: null, error: { message: 'Access denied' } };
+      }
+      db.game_assignments = (db.game_assignments || []).filter(
+        (a) => String(a.id) !== String(p_assignment_id)
+      );
+      markMockDeleted(db, 'game_assignments', [p_assignment_id]);
+      db.audit_log = db.audit_log || [];
+      db.audit_log.push({
+        id: mockId(),
+        organization_id: assignment.organization_id,
+        user_id: session?.user?.id,
+        action: 'game.cancelled',
+        resource_type: 'game_assignment',
+        resource_id: p_assignment_id,
+        metadata: {},
+        created_at: new Date().toISOString(),
+      });
+      saveDB(db);
+      return { data: null, error: null };
+    }
+
+    if (name === 'admin_cancel_practice_assignment') {
+      const { p_assignment_id } = params || {};
+      const session =
+        typeof window !== 'undefined'
+          ? JSON.parse(sessionStorage.getItem('__MOCK_SESSION__') || 'null')
+          : null;
+      const assignment = (db.practice_assignments || []).find(
+        (a) => String(a.id) === String(p_assignment_id)
+      );
+      if (!assignment) return { data: null, error: { message: 'Practice assignment not found' } };
+      const member = (db.organization_members || []).find(
+        (item) =>
+          String(item.organization_id) === String(assignment.organization_id) &&
+          String(item.profile_id) === String(session?.user?.id)
+      );
+      if (!['admin', 'coach', 'tenant_admin'].includes(String(member?.role || ''))) {
+        return { data: null, error: { message: 'Access denied' } };
+      }
+      db.practice_assignments = (db.practice_assignments || []).filter(
+        (a) => String(a.id) !== String(p_assignment_id)
+      );
+      markMockDeleted(db, 'practice_assignments', [p_assignment_id]);
+      db.audit_log = db.audit_log || [];
+      db.audit_log.push({
+        id: mockId(),
+        organization_id: assignment.organization_id,
+        user_id: session?.user?.id,
+        action: 'practice.cancelled',
+        resource_type: 'practice_assignment',
+        resource_id: p_assignment_id,
+        metadata: {},
+        created_at: new Date().toISOString(),
+      });
+      saveDB(db);
+      return { data: null, error: null };
+    }
+
+    if (name === 'admin_delete_team') {
+      const { p_team_id } = params || {};
+      const session =
+        typeof window !== 'undefined'
+          ? JSON.parse(sessionStorage.getItem('__MOCK_SESSION__') || 'null')
+          : null;
+      const team = (db.teams || []).find((t) => String(t.id) === String(p_team_id));
+      if (!team) return { data: null, error: { message: 'Team not found' } };
+      const member = (db.organization_members || []).find(
+        (item) =>
+          String(item.organization_id) === String(team.organization_id) &&
+          String(item.profile_id) === String(session?.user?.id)
+      );
+      if (!['admin', 'tenant_admin'].includes(String(member?.role || ''))) {
+        return { data: null, error: { message: 'Access denied: admin role required' } };
+      }
+      // Cascade: unset team_id on players
+      for (const player of db.players || []) {
+        if (String(player.team_id) === String(p_team_id)) player.team_id = null;
+      }
+      // Cascade: remove team_players, game_assignments, practice_assignments
+      db.team_players = (db.team_players || []).filter(
+        (tp) => String(tp.team_id) !== String(p_team_id)
+      );
+      db.game_assignments = (db.game_assignments || []).filter(
+        (a) =>
+          String(a.home_team_id) !== String(p_team_id) &&
+          String(a.away_team_id) !== String(p_team_id)
+      );
+      db.practice_assignments = (db.practice_assignments || []).filter(
+        (a) => String(a.team_id) !== String(p_team_id)
+      );
+      db.teams = (db.teams || []).filter((t) => String(t.id) !== String(p_team_id));
+      markMockDeleted(db, 'teams', [p_team_id]);
+      db.audit_log = db.audit_log || [];
+      db.audit_log.push({
+        id: mockId(),
+        organization_id: team.organization_id,
+        user_id: session?.user?.id,
+        action: 'team.deleted',
+        resource_type: 'team',
+        resource_id: p_team_id,
+        metadata: { team_name: team.name },
+        created_at: new Date().toISOString(),
+      });
+      saveDB(db);
+      return { data: null, error: null };
     }
 
     return { data: null, error: null };

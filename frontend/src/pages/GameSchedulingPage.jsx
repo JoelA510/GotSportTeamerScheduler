@@ -10,7 +10,16 @@ import GameScheduleGrid from '../components/scheduling/GameScheduleGrid.jsx';
 import { GameCardPreview } from '../components/scheduling/GameCard.jsx';
 import Button from '../components/ui/Button.jsx';
 import ProgressBar from '../components/ui/ProgressBar.jsx';
-import { Edit2, Save, Trophy, Sparkles, CheckCircle, RotateCcw, XCircle } from 'lucide-react';
+import {
+  Edit2,
+  Save,
+  Trophy,
+  Sparkles,
+  CheckCircle,
+  RotateCcw,
+  XCircle,
+  Trash2,
+} from 'lucide-react';
 import GameReadinessPanel from '../components/GameReadinessPanel.jsx';
 import GameConflictBanner from '../components/scheduling/GameConflictBanner.jsx';
 import { formatDateTime } from '../utils/formatters.js';
@@ -812,6 +821,28 @@ export default function GameSchedulingPage() {
                   assignments={displayedAssignments}
                   timezone={timezone}
                   onEditSchedule={canManageSchedule ? handleAutoGenerate : undefined}
+                  onCancelAssignment={
+                    canEditSchedule
+                      ? async (assignment) => {
+                          if (
+                            !window.confirm(
+                              `Cancel the game between ${assignment.homeTeamName ?? 'Home'} and ${assignment.awayTeamName ?? 'Away'}? This cannot be undone.`
+                            )
+                          )
+                            return;
+                          const { error } = await supabase.rpc('admin_cancel_game_assignment', {
+                            p_assignment_id: assignment.id,
+                          });
+                          if (error) {
+                            window.alert(error.message || 'Cancel failed');
+                          } else {
+                            setLocalAssignments((prev) =>
+                              prev.filter((a) => a.id !== assignment.id)
+                            );
+                          }
+                        }
+                      : undefined
+                  }
                 />
               ) : (
                 <TeamScheduleSelector
@@ -855,7 +886,7 @@ export default function GameSchedulingPage() {
   );
 }
 
-function GameScheduleList({ assignments, timezone, onEditSchedule }) {
+function GameScheduleList({ assignments, timezone, onEditSchedule, onCancelAssignment }) {
   if (!assignments || assignments.length === 0) {
     return (
       <div className="glass-panel p-12 text-center animate-fadeIn border-brand-400/20 relative overflow-hidden">
@@ -901,6 +932,11 @@ function GameScheduleList({ assignments, timezone, onEditSchedule }) {
             <th className="p-4 text-xs font-semibold text-text-muted uppercase tracking-wider">
               Kickoff
             </th>
+            {onCancelAssignment && (
+              <th className="p-4 text-xs font-semibold text-text-muted uppercase tracking-wider text-right">
+                Actions
+              </th>
+            )}
           </tr>
         </thead>
         <tbody className="divide-y divide-border-subtle/30">
@@ -917,6 +953,20 @@ function GameScheduleList({ assignments, timezone, onEditSchedule }) {
               <td className="p-4 text-text-secondary">
                 {a.kickoff ? formatDateTime(a.kickoff, timezone) : '-'}
               </td>
+              {onCancelAssignment && (
+                <td className="p-4 text-right">
+                  {a.id && (
+                    <button
+                      type="button"
+                      className="p-1.5 rounded text-text-muted hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                      aria-label={`Cancel game ${a.homeTeamName ?? ''} vs ${a.awayTeamName ?? ''}`}
+                      onClick={() => onCancelAssignment(a)}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  )}
+                </td>
+              )}
             </tr>
           ))}
         </tbody>

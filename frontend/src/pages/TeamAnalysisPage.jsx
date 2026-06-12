@@ -14,7 +14,7 @@ import TeamPersistencePanel from '../components/TeamPersistencePanel.jsx';
 import DataValidationPanel from '../components/teaming/DataValidationPanel.jsx';
 import Button from '../components/ui/Button.jsx';
 import ProgressBar from '../components/ui/ProgressBar.jsx';
-import { Edit2, Save, ArrowRight } from 'lucide-react';
+import { Edit2, Save, ArrowRight, Trash2 } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient.js';
 import { IS_MOCK_MODE } from '../config.js';
 import { generateTeams } from '../../../packages/core/src/teamGeneration.js';
@@ -329,6 +329,7 @@ export default function TeamAnalysisPage() {
   const [divisionSettingsError, setDivisionSettingsError] = useState(null);
   const [savingConfigId, setSavingConfigId] = useState(null);
   const [configSaveMessage, setConfigSaveMessage] = useState('');
+  const [deletedTeamIds, setDeletedTeamIds] = useState(new Set());
   const loadedReviewKeyRef = useRef(null);
   const navigate = useNavigate();
   const canManageTeams =
@@ -1128,6 +1129,22 @@ export default function TeamAnalysisPage() {
     setIsEditMode(true);
   }, [activeTeams, handleSaveRosterChanges, isEditMode]);
 
+  const handleDeleteTeam = useCallback(async (team) => {
+    if (
+      !window.confirm(
+        `Delete team "${team.name}"? This will remove all associated schedules and player assignments.`
+      )
+    )
+      return;
+    try {
+      const { error } = await supabase.rpc('admin_delete_team', { p_team_id: team.id });
+      if (error) throw error;
+      setDeletedTeamIds((prev) => new Set([...prev, team.id]));
+    } catch (err) {
+      window.alert(`Failed to delete team: ${err?.message || 'Unknown error'}`);
+    }
+  }, []);
+
   return (
     <div className="animate-fadeIn space-y-8 max-w-[65ch] mx-auto w-full">
       <div className="flex justify-between items-start mb-8">
@@ -1286,27 +1303,41 @@ export default function TeamAnalysisPage() {
             teamPersistenceSnapshot={displayPersistenceSnapshot}
             onPersistSuccess={stagedReview ? handlePersistSuccess : undefined}
           />
-          {activeTeams.length > 0 && (
+          {activeTeams.filter((t) => !deletedTeamIds.has(t.id)).length > 0 && (
             <section
               className="bg-bg-surface border border-border-subtle rounded-xl p-6"
               aria-label="Generated Teams"
             >
               <h3 className="text-xl font-bold text-text-primary mb-4">Generated Teams</h3>
               <div className="grid gap-3 sm:grid-cols-2">
-                {activeTeams.map((generatedTeam) => (
-                  <div
-                    key={generatedTeam.id}
-                    className="rounded-lg border border-border-subtle bg-bg-surface px-4 py-3"
-                  >
-                    <div className="font-semibold text-text-primary">{generatedTeam.name}</div>
-                    <div className="text-sm text-text-secondary">
-                      {generatedTeam.divisionName ||
-                        generatedTeam.division ||
-                        generatedTeam.division_id ||
-                        'Unassigned'}
+                {activeTeams
+                  .filter((t) => !deletedTeamIds.has(t.id))
+                  .map((generatedTeam) => (
+                    <div
+                      key={generatedTeam.id}
+                      className="rounded-lg border border-border-subtle bg-bg-surface px-4 py-3 flex items-center justify-between gap-2"
+                    >
+                      <div>
+                        <div className="font-semibold text-text-primary">{generatedTeam.name}</div>
+                        <div className="text-sm text-text-secondary">
+                          {generatedTeam.divisionName ||
+                            generatedTeam.division ||
+                            generatedTeam.division_id ||
+                            'Unassigned'}
+                        </div>
+                      </div>
+                      {canManageTeams && generatedTeam.id && isUuid(generatedTeam.id) && (
+                        <button
+                          type="button"
+                          className="p-1.5 rounded-lg border border-border-subtle bg-bg-app text-text-muted hover:text-red-400 hover:border-red-400/50 hover:bg-red-500/10 transition-all flex-shrink-0"
+                          aria-label={`Delete team ${generatedTeam.name}`}
+                          onClick={() => handleDeleteTeam(generatedTeam)}
+                        >
+                          <Trash2 size={14} aria-hidden="true" />
+                        </button>
+                      )}
                     </div>
-                  </div>
-                ))}
+                  ))}
               </div>
             </section>
           )}
