@@ -166,10 +166,14 @@ describe('useTeamSummary', () => {
     const { result, unmount } = renderHook(() => useTeamSummary());
 
     try {
-      await waitFor(() => expect(result.current.status).toBe('idle'));
+      // 'idle' is also the hook's INITIAL status, so waiting on it is vacuous
+      // (it can pass before the fetch settles). loading flips false only once
+      // the zero-rows branch has run, so that's the deterministic signal.
+      await waitFor(() => expect(result.current.loading).toBe(false));
 
-      expect(result.current.loading).toBe(false);
+      expect(result.current.status).toBe('idle');
       expect(result.current.error).toBe(null);
+      expect(result.current.progress).toBe(0);
       expect(result.current.summary.totals.teams).toBe(0);
       expect(result.current.summary.divisions).toEqual([]);
     } finally {

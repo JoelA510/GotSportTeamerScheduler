@@ -71,6 +71,7 @@ export function useTeamSummary() {
           setStatus('idle');
           lastKnownStatusRef.current = 'idle';
           _setError(null);
+          setProgress(0);
           return 'idle';
         }
 
