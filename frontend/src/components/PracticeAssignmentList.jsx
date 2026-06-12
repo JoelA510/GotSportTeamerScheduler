@@ -101,7 +101,7 @@ export default function PracticeAssignmentList({
                           <Unlock size={16} aria-hidden="true" />
                         )}
                       </button>
-                      {onCancelAssignment && assignment.id && (
+                      {onCancelAssignment && assignment.persisted && (
                         <button
                           type="button"
                           className="p-2 rounded-lg border border-border-subtle bg-bg-app text-text-muted hover:text-red-400 hover:border-red-400/50 hover:bg-red-500/10 transition-all"

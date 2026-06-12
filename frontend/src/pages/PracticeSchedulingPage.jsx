@@ -166,6 +166,9 @@ function buildDisplayAssignment({ assignment, index, runId, teamById, slotById }
   return {
     ...assignment,
     id: assignment.id ?? `${runId ?? 'review'}-${teamId}-${slotId}-${index}`,
+    // Synthetic ids (built above) don't exist in the DB, so row-level
+    // mutations like cancel must be hidden for them.
+    persisted: Boolean(assignment.id),
     runId: runId ?? assignment.runId ?? assignment.run_id ?? null,
     teamId,
     slotId,
@@ -573,6 +576,20 @@ export default function PracticeSchedulingPage() {
     [canManageSchedule, localAssignments]
   );
 
+  const handleCancelPracticeAssignment = useCallback(async (assignment) => {
+    const teamName = assignment.teams?.name ?? 'this team';
+    if (!window.confirm(`Cancel the practice assignment for ${teamName}? This cannot be undone.`))
+      return;
+    const { error } = await supabase.rpc('admin_cancel_practice_assignment', {
+      p_assignment_id: assignment.id,
+    });
+    if (error) {
+      window.alert(error.message || 'Cancel failed');
+    } else {
+      setAssignments((prev) => prev.filter((a) => a.id !== assignment.id));
+    }
+  }, []);
+
   const handleStageManualAssignment = useCallback(
     (teamId, slotId) => {
       if (!canManageSchedule) return;
@@ -761,27 +778,7 @@ export default function PracticeSchedulingPage() {
             <PracticeAssignmentList
               assignments={localAssignments}
               onToggleLock={canEditSchedule ? handleToggleLock : undefined}
-              onCancelAssignment={
-                canCancelAssignments
-                  ? async (assignment) => {
-                      const teamName = assignment.teams?.name ?? 'this team';
-                      if (
-                        !window.confirm(
-                          `Cancel the practice assignment for ${teamName}? This cannot be undone.`
-                        )
-                      )
-                        return;
-                      const { error } = await supabase.rpc('admin_cancel_practice_assignment', {
-                        p_assignment_id: assignment.id,
-                      });
-                      if (error) {
-                        window.alert(error.message || 'Cancel failed');
-                      } else {
-                        setAssignments((prev) => prev.filter((a) => a.id !== assignment.id));
-                      }
-                    }
-                  : undefined
-              }
+              onCancelAssignment={canCancelAssignments ? handleCancelPracticeAssignment : undefined}
               loading={dashboardLoading?.practice}
             />
           </div>

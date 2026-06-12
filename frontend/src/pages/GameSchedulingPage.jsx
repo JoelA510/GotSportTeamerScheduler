@@ -159,6 +159,9 @@ function buildDisplayAssignment({ assignment, index, runId, teamById, slotById, 
     id:
       assignment.id ??
       `${runId ?? 'review'}-${homeTeamId ?? 'home'}-${awayTeamId ?? 'away'}-${slotId ?? 'slot'}-${weekIndex}-${index}`,
+    // Synthetic ids (built above) don't exist in the DB, so row-level
+    // mutations like cancel must be hidden for them.
+    persisted: Boolean(assignment.id),
     runId: runId ?? assignment.runId ?? assignment.run_id ?? null,
     division: assignment.division ?? homeTeam?.division ?? slot?.division ?? 'Unassigned',
     weekIndex,
@@ -677,6 +680,23 @@ export default function GameSchedulingPage() {
     [canEditSchedule, gameSlots]
   );
 
+  const handleCancelGameAssignment = useCallback(async (assignment) => {
+    if (
+      !window.confirm(
+        `Cancel the game between ${assignment.homeTeamName ?? 'Home'} and ${assignment.awayTeamName ?? 'Away'}? This cannot be undone.`
+      )
+    )
+      return;
+    const { error } = await supabase.rpc('admin_cancel_game_assignment', {
+      p_assignment_id: assignment.id,
+    });
+    if (error) {
+      window.alert(error.message || 'Cancel failed');
+    } else {
+      setLocalAssignments((prev) => prev.filter((a) => a.id !== assignment.id));
+    }
+  }, []);
+
   if (loading.game && !game) {
     return (
       <div className="p-12 text-center animate-fadeIn">
@@ -824,28 +844,7 @@ export default function GameSchedulingPage() {
                   assignments={displayedAssignments}
                   timezone={timezone}
                   onEditSchedule={canManageSchedule ? handleAutoGenerate : undefined}
-                  onCancelAssignment={
-                    canCancelAssignments
-                      ? async (assignment) => {
-                          if (
-                            !window.confirm(
-                              `Cancel the game between ${assignment.homeTeamName ?? 'Home'} and ${assignment.awayTeamName ?? 'Away'}? This cannot be undone.`
-                            )
-                          )
-                            return;
-                          const { error } = await supabase.rpc('admin_cancel_game_assignment', {
-                            p_assignment_id: assignment.id,
-                          });
-                          if (error) {
-                            window.alert(error.message || 'Cancel failed');
-                          } else {
-                            setLocalAssignments((prev) =>
-                              prev.filter((a) => a.id !== assignment.id)
-                            );
-                          }
-                        }
-                      : undefined
-                  }
+                  onCancelAssignment={canCancelAssignments ? handleCancelGameAssignment : undefined}
                 />
               ) : (
                 <TeamScheduleSelector
@@ -958,7 +957,7 @@ function GameScheduleList({ assignments, timezone, onEditSchedule, onCancelAssig
               </td>
               {onCancelAssignment && (
                 <td className="p-4 text-right">
-                  {a.id && (
+                  {a.persisted && (
                     <button
                       type="button"
                       className="p-1.5 rounded text-text-muted hover:text-red-400 hover:bg-red-500/10 transition-colors"

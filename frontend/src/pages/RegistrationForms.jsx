@@ -8,7 +8,11 @@ import { Plus, Save, Trash2, ClipboardList, AlertCircle, CheckCircle2, Pencil } 
 import { logger } from '../lib/logger.js';
 
 const STATUS_OPTIONS = ['draft', 'open', 'closed'];
-const STATUS_TONE = { open: 'success', draft: 'warning', closed: 'neutral' };
+const STATUS_TONE = { open: 'success', active: 'success', draft: 'warning', closed: 'neutral' };
+
+// Forms created before status validation may carry the legacy 'active' value,
+// which the update RPC rejects; the RPCs treat it as 'open'.
+const normalizeStatus = (status) => (status === 'active' ? 'open' : status || 'open');
 
 // Editor-only stable keys for the custom-field list; stripped before save so
 // they never persist into the form definition.
@@ -79,7 +83,7 @@ export default function RegistrationForms() {
       title: form.title || '',
       description: form.description || '',
       season_id: form.season_id || '',
-      status: form.status || 'open',
+      status: normalizeStatus(form.status),
       waiver_text: form.waiver_text || '',
       fields: Array.isArray(form.fields) ? form.fields.map(withFieldUid) : [],
     });

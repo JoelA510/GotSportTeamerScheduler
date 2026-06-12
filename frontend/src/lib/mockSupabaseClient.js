@@ -652,28 +652,29 @@ const getDB = () => {
   // resurrect on the next read. Tombstones recorded via markMockDeleted
   // keep hard deletes durable across re-merges.
   const tombstones = db.__deleted__ || {};
-  for (const [table, ids] of Object.entries(tombstones)) {
-    if (Array.isArray(db[table]) && Array.isArray(ids) && ids.length > 0) {
-      const removed = new Set(ids.map(String));
-      db[table] = db[table].filter((row) => !removed.has(String(row.id)));
+  for (const [table, keys] of Object.entries(tombstones)) {
+    if (Array.isArray(db[table]) && Array.isArray(keys) && keys.length > 0) {
+      const removed = new Set(keys.map(String));
+      db[table] = db[table].filter((row) => !removed.has(tombstoneKey(table, row)));
     }
-  }
-  // Composite-key tombstones for tables without a single `id` column.
-  const compositeTombstones = db.__deleted_composite__ || {};
-  if (Array.isArray(compositeTombstones.organization_members)) {
-    const removedKeys = new Set(compositeTombstones.organization_members);
-    db.organization_members = (db.organization_members || []).filter(
-      (row) => !removedKeys.has(`${row.organization_id}:${row.profile_id}`)
-    );
   }
   return db;
 };
 
+// Tables without a single `id` column get a composite tombstone key here;
+// everything else keys on String(row.id).
+const TOMBSTONE_KEY_FNS = {
+  organization_members: (row) => `${row.organization_id}:${row.profile_id}`,
+};
+const tombstoneKey = (table, row) =>
+  TOMBSTONE_KEY_FNS[table] ? TOMBSTONE_KEY_FNS[table](row) : String(row.id);
+
 // Record hard deletes so getDB's seed re-merge cannot resurrect the rows.
-const markMockDeleted = (db, table, ids) => {
+// `keys` are tombstone keys: row ids, or composite keys per TOMBSTONE_KEY_FNS.
+const markMockDeleted = (db, table, keys) => {
   db.__deleted__ = db.__deleted__ || {};
   const existing = db.__deleted__[table] || [];
-  db.__deleted__[table] = Array.from(new Set([...existing, ...ids.map(String)]));
+  db.__deleted__[table] = Array.from(new Set([...existing, ...keys.map(String)]));
 };
 
 const saveDB = (db) => {
@@ -4193,7 +4194,8 @@ export const mockSupabase = {
         typeof window !== 'undefined'
           ? JSON.parse(sessionStorage.getItem('__MOCK_SESSION__') || 'null')
           : null;
-      const targets = (db.coaches || []).filter((coach) => ids.includes(String(coach.id)));
+      const idSet = new Set(ids);
+      const targets = (db.coaches || []).filter((coach) => idSet.has(String(coach.id)));
       const orgIds = new Set(targets.map((coach) => String(coach.organization_id)));
       if (orgIds.size !== 1) {
         return {
@@ -4212,27 +4214,27 @@ export const mockSupabase = {
       }
 
       for (const team of db.teams || []) {
-        if (ids.includes(String(team.coach_id))) team.coach_id = null;
+        if (idSet.has(String(team.coach_id))) team.coach_id = null;
         if (Array.isArray(team.assistant_coach_ids)) {
           team.assistant_coach_ids = team.assistant_coach_ids.filter(
-            (coachId) => !ids.includes(String(coachId))
+            (coachId) => !idSet.has(String(coachId))
           );
         }
       }
       const droppedInterests = (db.coach_interested_programs || []).filter((row) =>
-        ids.includes(String(row.coach_id))
+        idSet.has(String(row.coach_id))
       );
       db.coach_interested_programs = (db.coach_interested_programs || []).filter(
-        (row) => !ids.includes(String(row.coach_id))
+        (row) => !idSet.has(String(row.coach_id))
       );
       const droppedRequests = (db.coach_team_requests || []).filter((row) =>
-        ids.includes(String(row.coach_id))
+        idSet.has(String(row.coach_id))
       );
       db.coach_team_requests = (db.coach_team_requests || []).filter(
-        (row) => !ids.includes(String(row.coach_id))
+        (row) => !idSet.has(String(row.coach_id))
       );
       const before = (db.coaches || []).length;
-      db.coaches = (db.coaches || []).filter((coach) => !ids.includes(String(coach.id)));
+      db.coaches = (db.coaches || []).filter((coach) => !idSet.has(String(coach.id)));
       const count = before - db.coaches.length;
       markMockDeleted(db, 'coaches', ids);
       markMockDeleted(
@@ -4480,6 +4482,11 @@ export const mockSupabase = {
           return { data: null, error: { message: `Disallowed patch key: ${key}` } };
         }
       }
+      // Match the real RPC's status whitelist so invalid values fail in mock
+      // mode too instead of only in production.
+      if ('status' in (p_patch || {}) && !['draft', 'open', 'closed'].includes(p_patch.status)) {
+        return { data: null, error: { message: `invalid status: ${p_patch.status}` } };
+      }
       Object.assign(form, p_patch, { updated_at: new Date().toISOString() });
       db.audit_log = db.audit_log || [];
       db.audit_log.push({
@@ -4577,14 +4584,7 @@ export const mockSupabase = {
             String(item.profile_id) === String(p_profile_id)
           )
       );
-      // Composite-key tombstone so the seed row doesn't resurrect on re-read.
-      db.__deleted_composite__ = db.__deleted_composite__ || {};
-      db.__deleted_composite__.organization_members = Array.from(
-        new Set([
-          ...(db.__deleted_composite__.organization_members || []),
-          `${p_organization_id}:${p_profile_id}`,
-        ])
-      );
+      markMockDeleted(db, 'organization_members', [`${p_organization_id}:${p_profile_id}`]);
       db.audit_log = db.audit_log || [];
       db.audit_log.push({
         id: mockId(),
