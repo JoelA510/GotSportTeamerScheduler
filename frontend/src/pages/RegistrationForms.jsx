@@ -10,6 +10,12 @@ import { logger } from '../lib/logger.js';
 const STATUS_OPTIONS = ['draft', 'open', 'closed'];
 const STATUS_TONE = { open: 'success', draft: 'warning', closed: 'neutral' };
 
+// Editor-only stable keys for the custom-field list; stripped before save so
+// they never persist into the form definition.
+let fieldUidCounter = 0;
+const withFieldUid = (field) => ({ _uid: `field-${++fieldUidCounter}`, ...field });
+const stripFieldUid = ({ _uid, ...field }) => field;
+
 export default function RegistrationForms() {
   const { currentOrganization, currentSeasonSetting } = useOrganization();
   const { user, isImpersonating } = useAuth();
@@ -75,7 +81,7 @@ export default function RegistrationForms() {
       season_id: form.season_id || '',
       status: form.status || 'open',
       waiver_text: form.waiver_text || '',
-      fields: Array.isArray(form.fields) ? form.fields : [],
+      fields: Array.isArray(form.fields) ? form.fields.map(withFieldUid) : [],
     });
     setMessage(null);
     setShowEditor(true);
@@ -84,7 +90,7 @@ export default function RegistrationForms() {
   const addField = () => {
     setEditingForm((prev) => ({
       ...prev,
-      fields: [...prev.fields, { label: '', type: 'text', required: false }],
+      fields: [...prev.fields, withFieldUid({ label: '', type: 'text', required: false })],
     }));
   };
 
@@ -128,7 +134,7 @@ export default function RegistrationForms() {
             season_id: editingForm.season_id || null,
             status: editingForm.status,
             waiver_text: editingForm.waiver_text || null,
-            fields: editingForm.fields,
+            fields: editingForm.fields.map(stripFieldUid),
           },
         });
         if (error) throw error;
@@ -139,14 +145,15 @@ export default function RegistrationForms() {
           p_title: editingForm.title,
           p_description: editingForm.description || null,
           p_season_id: editingForm.season_id || null,
-          p_fields: editingForm.fields,
+          p_fields: editingForm.fields.map(stripFieldUid),
           p_status: editingForm.status,
+          p_waiver_text: editingForm.waiver_text || null,
           p_metadata: auditMetadata,
         });
         if (error) throw error;
       }
 
-      setMessage({ type: 'success', text: 'Form saved!' });
+      setMessage({ type: 'success', text: 'Form saved successfully!' });
       setTimeout(() => {
         setShowEditor(false);
         loadForms();
@@ -160,11 +167,11 @@ export default function RegistrationForms() {
   };
 
   const handleDelete = async (form) => {
-    const submissionWarning =
-      form._registration_count > 0
-        ? ` This will also permanently delete ${form._registration_count} registration submission${form._registration_count === 1 ? '' : 's'}.`
-        : '';
-    if (!window.confirm(`Delete "${form.title}"?${submissionWarning} This cannot be undone.`))
+    if (
+      !window.confirm(
+        `Delete "${form.title}"? This will also permanently delete all registration submissions made through this form. This cannot be undone.`
+      )
+    )
       return;
 
     setDeleting(form.id);
@@ -279,8 +286,8 @@ export default function RegistrationForms() {
 
             {editingForm.fields.map((field, idx) => (
               <div
-                key={idx}
-                className="bg-bg-app/50 border border-border-subtle rounded-xl p-4 flex flex-col md:flex-row gap-4 items-end"
+                key={field._uid || idx}
+                className="form-field-editor bg-bg-app/50 border border-border-subtle rounded-xl p-4 flex flex-col md:flex-row gap-4 items-end"
               >
                 <div className="flex-1 w-full text-left">
                   <label

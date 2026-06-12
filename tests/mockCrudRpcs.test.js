@@ -224,6 +224,77 @@ describe('mock admin_cancel_practice_assignment rpc', () => {
 });
 
 // ---------------------------------------------------------------------------
+// admin_update_team
+// ---------------------------------------------------------------------------
+describe('mock admin_update_team rpc', () => {
+  it('renames a team and creates audit entry', async () => {
+    const team = getMockData('teams')[0];
+    expect(team).toBeTruthy();
+
+    const { data, error } = await supabase.rpc('admin_update_team', {
+      p_team_id: team.id,
+      p_patch: { name: 'Renamed Rockets' },
+    });
+    expect(error).toBeNull();
+    expect(data?.id).toBe(team.id);
+
+    const updated = getMockData('teams').find((t) => t.id === team.id);
+    expect(updated.name).toBe('Renamed Rockets');
+
+    const audit = getMockData('audit_log').find((row) => row.action === 'team.updated');
+    expect(audit).toBeTruthy();
+  });
+
+  it('rejects an empty name', async () => {
+    const team = getMockData('teams')[0];
+    const { data, error } = await supabase.rpc('admin_update_team', {
+      p_team_id: team.id,
+      p_patch: { name: '   ' },
+    });
+    expect(data).toBeNull();
+    expect(error?.message).toMatch(/empty/i);
+  });
+
+  it('rejects a duplicate name within the division', async () => {
+    const teams = getMockData('teams');
+    const [first, second] = teams.filter(
+      (t, _, all) => all.filter((o) => o.division_id === t.division_id).length > 1
+    );
+    if (!first || !second) return; // seed has no division with 2+ teams
+
+    const { data, error } = await supabase.rpc('admin_update_team', {
+      p_team_id: first.id,
+      p_patch: { name: second.name },
+    });
+    expect(data).toBeNull();
+    expect(error?.message).toMatch(/already exists/i);
+  });
+
+  it('rejects disallowed patch keys', async () => {
+    const team = getMockData('teams')[0];
+    const { data, error } = await supabase.rpc('admin_update_team', {
+      p_team_id: team.id,
+      p_patch: { organization_id: 'evil' },
+    });
+    expect(data).toBeNull();
+    expect(error?.message).toMatch(/disallowed/i);
+  });
+
+  it('denies non-admin callers', async () => {
+    setSession('mock-coach-id');
+    const team = getMockData('teams')[0];
+    const originalName = team.name;
+    const { data, error } = await supabase.rpc('admin_update_team', {
+      p_team_id: team.id,
+      p_patch: { name: 'Hacked' },
+    });
+    expect(data).toBeNull();
+    expect(error?.message).toMatch(/access denied/i);
+    expect(getMockData('teams').find((t) => t.id === team.id)?.name).toBe(originalName);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // admin_delete_team
 // ---------------------------------------------------------------------------
 describe('mock admin_delete_team rpc', () => {

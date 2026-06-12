@@ -219,6 +219,9 @@ export default function GameSchedulingPage() {
     permissions.includes(PERMISSIONS.MANAGE_SCHEDULE) ||
     permissions.includes(PERMISSIONS.MANAGE_ORGANIZATION);
   const canEditSchedule = canManageSchedule && isEditMode;
+  // Cancelling is destructive and the RPC requires org admin, so the button
+  // is gated tighter than general schedule editing.
+  const canCancelAssignments = permissions.includes(PERMISSIONS.MANAGE_ORGANIZATION) && isEditMode;
 
   useEffect(() => {
     setLastRollbackAssignments(null);
@@ -822,7 +825,7 @@ export default function GameSchedulingPage() {
                   timezone={timezone}
                   onEditSchedule={canManageSchedule ? handleAutoGenerate : undefined}
                   onCancelAssignment={
-                    canEditSchedule
+                    canCancelAssignments
                       ? async (assignment) => {
                           if (
                             !window.confirm(

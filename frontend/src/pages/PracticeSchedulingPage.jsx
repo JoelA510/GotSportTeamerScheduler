@@ -223,6 +223,9 @@ export default function PracticeSchedulingPage() {
     permissions.includes(PERMISSIONS.MANAGE_SCHEDULE) ||
     permissions.includes(PERMISSIONS.MANAGE_ORGANIZATION);
   const canEditSchedule = canManageSchedule && isEditMode;
+  // Cancelling is destructive and the RPC requires org admin, so the button
+  // is gated tighter than general schedule editing.
+  const canCancelAssignments = permissions.includes(PERMISSIONS.MANAGE_ORGANIZATION) && isEditMode;
 
   const autoScheduler = useAutoScheduler({ organizationId: currentOrganization?.id });
 
@@ -759,7 +762,7 @@ export default function PracticeSchedulingPage() {
               assignments={localAssignments}
               onToggleLock={canEditSchedule ? handleToggleLock : undefined}
               onCancelAssignment={
-                canEditSchedule
+                canCancelAssignments
                   ? async (assignment) => {
                       const teamName = assignment.teams?.name ?? 'this team';
                       if (

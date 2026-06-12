@@ -37,30 +37,24 @@ export default function MembersPage() {
     if (!orgId) return;
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from('organization_members')
-        .select(
-          'profile_id, role, created_at, profiles(id, email, full_name, first_name, last_name)'
-        )
-        .eq('organization_id', orgId)
-        .order('created_at', { ascending: true });
+      // Profiles RLS only allows reading your own row, so member display data
+      // comes from a SECURITY DEFINER RPC gated on org membership.
+      const { data, error } = await supabase.rpc('get_organization_members', {
+        p_organization_id: orgId,
+      });
       if (error) throw error;
       setMembers(
-        (data || []).map((row) => {
-          /** @type {{id:string,email:string,full_name:string,first_name:string,last_name:string}|null} */
-          const profile = Array.isArray(row.profiles) ? row.profiles[0] : row.profiles;
-          return {
-            profileId: row.profile_id,
-            role: row.role,
-            joinedAt: row.created_at,
-            email: profile?.email || '',
-            name:
-              profile?.full_name ||
-              [profile?.first_name, profile?.last_name].filter(Boolean).join(' ') ||
-              profile?.email ||
-              'Unknown',
-          };
-        })
+        (data || []).map((row) => ({
+          profileId: row.profile_id,
+          role: row.role,
+          joinedAt: row.created_at,
+          email: row.email || '',
+          name:
+            row.full_name ||
+            [row.first_name, row.last_name].filter(Boolean).join(' ') ||
+            row.email ||
+            'Unknown',
+        }))
       );
     } catch (err) {
       logger.error('Failed to load members', err);
