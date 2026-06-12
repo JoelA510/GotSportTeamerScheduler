@@ -88,6 +88,10 @@ function useHomeData() {
             .limit(5),
         ]);
         if (cancelled) return;
+        // The audit feed is a minor widget: log a failure but still render
+        // the dashboard, unlike the primary reads where partial data would
+        // corrupt the KPIs.
+        if (auditRes.error) logger.error('[Home] audit feed load failed:', auditRes.error);
         setData({
           players,
           teams,
