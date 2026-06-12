@@ -23,6 +23,7 @@ import Button from '../components/ui/Button.jsx';
 import Avatar from '../components/ui/Avatar.jsx';
 import LoadingScreen from '../components/LoadingScreen.jsx';
 import { supabase } from '../lib/supabaseClient.js';
+import { fetchAllPages } from '../lib/pagedFetch.js';
 import { useAuth } from '../contexts/AuthContext.jsx';
 import { useOrganization } from '../contexts/OrganizationContext.jsx';
 import { usePermission } from '../hooks/usePermission.js';
@@ -64,32 +65,39 @@ function useHomeData() {
     (async () => {
       if (!orgId) return;
       try {
-        const [playersRes, teamsRes, divisionsRes, gamesRes, practicesRes, auditRes] =
-          await Promise.all([
-            supabase.from('players').select('*').eq('organization_id', orgId),
-            supabase.from('teams').select('*').eq('organization_id', orgId),
-            supabase.from('divisions').select('*').eq('organization_id', orgId),
+        const [players, teams, divisions, games, practices, auditRes] = await Promise.all([
+          fetchAllPages(() => supabase.from('players').select('*').eq('organization_id', orgId)),
+          fetchAllPages(() => supabase.from('teams').select('*').eq('organization_id', orgId)),
+          fetchAllPages(() => supabase.from('divisions').select('*').eq('organization_id', orgId)),
+          fetchAllPages(() =>
             supabase
               .from('games')
               .select(
                 `id, start_time, home_team:home_team_id (id, name, division:divisions (name)), away_team:away_team_id (id, name)`
               )
-              .eq('organization_id', orgId),
-            supabase.from('practice_slots').select('id').eq('organization_id', orgId),
-            supabase
-              .from('audit_log')
-              .select('*')
               .eq('organization_id', orgId)
-              .order('created_at', { ascending: false })
-              .limit(5),
-          ]);
+          ),
+          fetchAllPages(() =>
+            supabase.from('practice_slots').select('id').eq('organization_id', orgId)
+          ),
+          supabase
+            .from('audit_log')
+            .select('*')
+            .eq('organization_id', orgId)
+            .order('created_at', { ascending: false })
+            .limit(5),
+        ]);
         if (cancelled) return;
+        // The audit feed is a minor widget: log a failure but still render
+        // the dashboard, unlike the primary reads where partial data would
+        // corrupt the KPIs.
+        if (auditRes.error) logger.error('[Home] audit feed load failed:', auditRes.error);
         setData({
-          players: playersRes.data || [],
-          teams: teamsRes.data || [],
-          divisions: divisionsRes.data || [],
-          games: gamesRes.data || [],
-          practices: practicesRes.data || [],
+          players,
+          teams,
+          divisions,
+          games,
+          practices,
           audit: auditRes.data || [],
           loaded: true,
         });
