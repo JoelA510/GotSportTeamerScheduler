@@ -45,6 +45,20 @@ where n.nspname = 'public'
     where cfg like 'search_path=%'
   );
 
+-- 2b. Exhaustive variant of check 3: NO non-trigger SECURITY DEFINER function
+--     lost authenticated EXECUTE (authenticated holds its own ACL entry from
+--     Supabase's default privileges, independent of the revoked PUBLIC grant).
+--     Expect zero rows.
+select 'non-trigger definers not executable by authenticated (expect zero rows)' as check,
+       p.proname,
+       pg_get_function_identity_arguments(p.oid) as args
+from pg_proc p
+join pg_namespace n on n.oid = p.pronamespace
+where n.nspname = 'public'
+  and p.prosecdef
+  and p.prorettype not in ('pg_catalog.trigger'::regtype, 'pg_catalog.event_trigger'::regtype)
+  and not has_function_privilege('authenticated', p.oid, 'EXECUTE');
+
 -- 3. Authenticated RPC surface is intact (samples from the recent CRUD wave).
 --    Expect all columns true.
 select 'authenticated retains RPC surface' as check,
