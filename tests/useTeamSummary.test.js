@@ -26,7 +26,7 @@ function createQueryBuilder(resolvedValue) {
     order: vi.fn(() => builder),
     or: vi.fn(() => builder),
     limit: vi.fn(() => builder),
-    single: vi.fn(() => Promise.resolve(resolvedValue)),
+    maybeSingle: vi.fn(() => Promise.resolve(resolvedValue)),
   };
   return builder;
 }
@@ -116,7 +116,7 @@ describe('useTeamSummary', () => {
       const firstPollId = timeoutSpy.mock.results[firstPollIndex].value;
       clearTimeout(firstPollId);
 
-      runBuilder.single.mockRejectedValueOnce(transientError);
+      runBuilder.maybeSingle.mockRejectedValueOnce(transientError);
 
       await act(async () => {
         await firstPoll();
@@ -136,7 +136,7 @@ describe('useTeamSummary', () => {
     const timeoutSpy = vi.spyOn(globalThis, 'setTimeout');
     const fetchError = new Error('database unavailable');
     const runBuilder = createQueryBuilder({ data: null, error: null });
-    runBuilder.single.mockRejectedValue(fetchError);
+    runBuilder.maybeSingle.mockRejectedValue(fetchError);
 
     // @ts-expect-error [MOCK] - query builder only implements methods exercised by this hook.
     vi.mocked(supabase.from).mockReturnValue(runBuilder);
@@ -152,6 +152,28 @@ describe('useTeamSummary', () => {
     } finally {
       unmount();
       timeoutSpy.mockRestore();
+    }
+  });
+
+  it('treats zero scheduler runs (new org/season) as the idle empty state, not an error', async () => {
+    // maybeSingle resolves { data: null } when no run exists — a brand-new
+    // org must see the empty summary instead of a 406-driven error state.
+    const runBuilder = createQueryBuilder({ data: null, error: null });
+
+    // @ts-expect-error [MOCK] - query builder only implements methods exercised by this hook.
+    vi.mocked(supabase.from).mockReturnValue(runBuilder);
+
+    const { result, unmount } = renderHook(() => useTeamSummary());
+
+    try {
+      await waitFor(() => expect(result.current.status).toBe('idle'));
+
+      expect(result.current.loading).toBe(false);
+      expect(result.current.error).toBe(null);
+      expect(result.current.summary.totals.teams).toBe(0);
+      expect(result.current.summary.divisions).toEqual([]);
+    } finally {
+      unmount();
     }
   });
 });

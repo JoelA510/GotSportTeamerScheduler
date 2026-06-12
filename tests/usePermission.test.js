@@ -25,6 +25,18 @@ describe('usePermission', () => {
     expect(result.current.can(PERMISSIONS.MANAGE_ORGANIZATION)).toBe(true);
   });
 
+  it('should allow Admin to manage global settings (Season Setup) like the backend does', () => {
+    // initialize_new_tenant assigns new-org creators role 'admin', and
+    // is_org_admin() treats admin/tenant_admin as equivalent — the Season
+    // Setup routes gated by MANAGE_GLOBAL_SETTINGS must agree or self-serve
+    // onboarding dead-ends with "Unauthorized access".
+    /** @type {any} */ (OrgContext.useOrganization).mockReturnValue({
+      orgMember: makeOrganizationMember({ role: ROLES.ADMIN }),
+    });
+    const { result } = renderHook(() => usePermission());
+    expect(result.current.can(PERMISSIONS.MANAGE_GLOBAL_SETTINGS)).toBe(true);
+  });
+
   it('should deny Player from managing organization', () => {
     /** @type {any} */ (OrgContext.useOrganization).mockReturnValue({
       orgMember: makeOrganizationMember({ role: ROLES.PLAYER }),

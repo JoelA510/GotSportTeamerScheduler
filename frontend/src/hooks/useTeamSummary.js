@@ -58,19 +58,20 @@ export function useTeamSummary() {
 
         runQuery = scopeSchedulerRunsToActiveSeason(runQuery, currentSeasonSetting.id);
 
-        const { data, error: queryError } = await runQuery.limit(1).single();
+        // maybeSingle: a new org/season has no runs yet — that's the idle
+        // empty state, not an error (single() would 406 on zero rows).
+        const { data, error: queryError } = await runQuery.limit(1).maybeSingle();
         if (cancelled) return 'cancelled';
 
-        if (queryError) {
-          if (queryError.code === 'PGRST116') {
-            setSummary(EMPTY_SUMMARY);
-            setLoading(false);
-            setStatus('idle');
-            lastKnownStatusRef.current = 'idle';
-            _setError(null);
-            return 'idle';
-          }
-          throw queryError;
+        if (queryError) throw queryError;
+
+        if (!data) {
+          setSummary(EMPTY_SUMMARY);
+          setLoading(false);
+          setStatus('idle');
+          lastKnownStatusRef.current = 'idle';
+          _setError(null);
+          return 'idle';
         }
 
         // Update status and progress

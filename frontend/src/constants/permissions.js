@@ -39,6 +39,11 @@ export const ROLE_PERMISSIONS = {
   [ROLES.ADMIN]: [
     PERMISSIONS.MANAGE_ORGANIZATION,
     PERMISSIONS.VIEW_ORGANIZATION,
+    // Backend parity: is_org_admin() treats 'admin' and 'tenant_admin' as
+    // equivalent, and initialize_new_tenant assigns new-org creators 'admin' —
+    // without this grant a self-serve org creator is locked out of Season
+    // Setup by the frontend while the database would allow every mutation.
+    PERMISSIONS.MANAGE_GLOBAL_SETTINGS,
     PERMISSIONS.MANAGE_ALL_TEAMS,
     PERMISSIONS.VIEW_ALL_TEAMS,
     PERMISSIONS.MANAGE_SCHEDULE,
