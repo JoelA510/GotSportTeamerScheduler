@@ -177,8 +177,8 @@ Audited mutation RPCs behind the editable Players grid and record pages
 
 All are `SECURITY DEFINER` with `SET search_path = public`, anon `EXECUTE`
 revoked, org-admin (or coach) checks inside, and `record_audit_event` calls —
-the audit `action` values are whitelisted in `audit_log_action_check`
-(migration `20260611000300`).
+the audit `action` values are registered in the `audit_actions` lookup table
+(migration `20260613000006`; previously a CHECK constraint).
 
 ## 3. Contract Pattern
 
@@ -238,7 +238,7 @@ Notes on the pattern:
 - **Derive authority from the server, not the client.** `submit_registration` is the canonical example: the caller passes `p_organization_id`, but the RPC reads the real org off the `registration_forms` row and aborts on mismatch. Apply the same posture to any RPC where the client references a resource that pins it to an org.
 - **One RPC per logical action.** Prefer narrow, purpose-built RPCs over wide "swiss army" ones — narrow RPCs are cheaper to pgTAP-cover and easier to reason about.
 - **Return JSONB when the caller needs structured feedback** (e.g., `{leads_created, programs_linked, skipped_existing}`); return the `uuid` of the primary row for simple create operations.
-- **Audit actions must match the `audit_log_action_check` constraint.** If a new action name is needed, the migration that introduces the RPC must also drop-and-recreate the constraint to include it (see `20260407000000` and `20260403000000` for examples).
+- **Audit actions must be registered in `public.audit_actions`.** If a new action name is needed, the migration that introduces the RPC must also `INSERT INTO public.audit_actions (action) VALUES ('x.y') ON CONFLICT (action) DO NOTHING;` (the old drop-and-recreate `audit_log_action_check` pattern was retired in `20260613000006`).
 - **Never `RAISE` inside an `EXCEPTION WHEN` block unless you intend to preserve the transaction rollback** — wrapping a user-facing error with `RAISE EXCEPTION` inside an exception handler is the supported pattern (see `submit_registration`'s `unique_violation` handler).
 
 ## 4. Adding a New RPC — Checklist

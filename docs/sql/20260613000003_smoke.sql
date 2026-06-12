@@ -20,8 +20,8 @@ WHERE pg_namespace.nspname = 'public'
   );
 -- Expected: all prosecdef = true
 
--- Verify audit actions
-SELECT pg_get_constraintdef(oid) AS constraint_def
-FROM pg_constraint
-WHERE conname = 'audit_log_action_check';
--- Expected: definition contains 'game.cancelled', 'practice.cancelled'
+-- Verify audit actions are registered (audit_actions lookup table replaced
+-- the CHECK constraint in 20260613000006_audit_actions_lookup.sql)
+SELECT action FROM public.audit_actions
+WHERE action IN ('game.cancelled', 'practice.cancelled');
+-- Expected: 2 rows

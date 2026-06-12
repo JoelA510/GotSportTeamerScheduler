@@ -12,10 +12,12 @@ join pg_namespace n on n.oid = p.pronamespace
 where n.nspname = 'public'
   and p.proname = 'admin_delete_coaches';
 
--- 2. 'coach.deleted' is whitelisted in audit_log_action_check.
-select pg_get_constraintdef(oid) ilike '%coach.deleted%' as coach_deleted_whitelisted
-from pg_constraint
-where conname = 'audit_log_action_check';
+-- 2. 'coach.deleted' is a registered audit action.
+--    (The CHECK constraint was replaced by the audit_actions lookup table
+--    in 20260613000006_audit_actions_lookup.sql.)
+select exists (
+  select 1 from public.audit_actions where action = 'coach.deleted'
+) as coach_deleted_registered;
 
 -- 3. Empty input rejected (expect ERROR 22023).
 -- select public.admin_delete_coaches('{}'::uuid[]);

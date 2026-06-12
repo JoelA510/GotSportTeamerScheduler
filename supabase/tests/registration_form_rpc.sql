@@ -146,13 +146,10 @@ SELECT throws_ok(
 );
 
 SELECT ok(
-    (
-        SELECT pg_get_constraintdef(oid)
-          FROM pg_constraint
-         WHERE conrelid = 'public.audit_log'::regclass
-           AND conname = 'audit_log_action_check'
-    ) LIKE '%registration.form_created%',
-    'audit constraint allows registration.form_created'
+    EXISTS (
+        SELECT 1 FROM public.audit_actions WHERE action = 'registration.form_created'
+    ),
+    'audit action registry allows registration.form_created'
 );
 
 SELECT * FROM finish();

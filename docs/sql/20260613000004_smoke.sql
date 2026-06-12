@@ -12,8 +12,7 @@ WHERE pg_namespace.nspname = 'public'
   AND proname = 'admin_update_team';
 -- Expected: prosecdef = true
 
--- Verify audit action present in the constraint
-SELECT pg_get_constraintdef(oid) AS constraint_def
-FROM pg_constraint
-WHERE conname = 'audit_log_action_check';
--- Expected: definition contains 'team.updated'
+-- Verify audit action is registered (audit_actions lookup table replaced
+-- the CHECK constraint in 20260613000006_audit_actions_lookup.sql)
+SELECT action FROM public.audit_actions WHERE action = 'team.updated';
+-- Expected: 1 row
