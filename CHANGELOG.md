@@ -33,7 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Fixed self-serve onboarding dead-end: new-org creators (role `admin` via `initialize_new_tenant`) were locked out of Season Setup with "Unauthorized access" because `MANAGE_GLOBAL_SETTINGS` was granted only to `tenant_admin` in the frontend, while the backend (`is_org_admin`) treats both roles as equivalent. `admin` now carries the permission.
+- Fixed self-serve onboarding dead-end: new-org creators (role `admin` via `initialize_new_tenant`) were locked out of Season Setup with "Unauthorized access" because `MANAGE_GLOBAL_SETTINGS` was granted only to `tenant_admin` in the frontend, while the backend (`is_org_admin`) treats both roles as equivalent. `admin` now carries the permission — which also means an admin of a not-yet-onboarded org is taken straight to Season Setup on login (previously tenant_admin-only behavior).
 - `useTeamSummary` uses `maybeSingle()` so an org/season with no scheduler runs renders the idle empty summary without the spurious 406 the previous `single()` call logged to the console.
 - Adopted `fetchAllPages` at the remaining unbounded org-wide reads (players-grid data layer, co-ed transition inputs, admin Home dashboard) so they are no longer silently truncated at PostgREST's server-side row cap on large orgs.
 - Bulk coach status changes now run in bounded chunks of 8 RPCs (shared `mapInChunks` helper, also adopted by the team-builder and co-ed transition fan-outs) instead of an unbounded `Promise.all`.
