@@ -3,10 +3,15 @@
 -- Charlie is a coach (non-admin) member of Org A. Before this migration, the
 -- stale "Unified org access on teams/coaches/locations" policy let any org
 -- member -- Charlie included -- write to these tables directly. After the
--- migration, only the narrow SELECT policies remain for `authenticated`, so
--- a direct write should silently affect zero rows (RLS filters the target
--- row out of the UPDATE's visibility; the base GRANT still permits the
--- UPDATE statement itself, but no row matches).
+-- migration, only the narrow SELECT policies remain for `authenticated`.
+--
+-- Note the two different RLS failure modes:
+--   * UPDATE/DELETE affect zero rows silently -- the surviving SELECT
+--     policy's USING clause filters the target row out of the statement's
+--     visibility, so there is simply nothing to modify.
+--   * INSERT RAISES 42501 -- there is no existing row to filter, so the
+--     absent INSERT policy fails the WITH CHECK outright. This matches the
+--     established expectation in supabase/tests/facility_admin_rpcs.sql:204.
 
 BEGIN;
 
@@ -40,12 +45,15 @@ SELECT is(
   'coach cannot delete a team via direct DELETE'
 );
 
--- 3. Charlie cannot insert a new coach row directly.
-INSERT INTO public.coaches (organization_id, full_name, email)
-VALUES ('a1111111-1111-1111-1111-111111111111', 'Fabricated Coach', 'fabricated@test.local');
-SELECT is(
-  (SELECT count(*)::int FROM public.coaches WHERE email = 'fabricated@test.local'),
-  0,
+-- 3. Charlie cannot insert a new coach row directly. INSERT raises rather
+--    than no-opping (see the failure-mode note in the header).
+SELECT throws_ok(
+  $$
+    INSERT INTO public.coaches (organization_id, full_name, email)
+    VALUES ('a1111111-1111-1111-1111-111111111111', 'Fabricated Coach', 'fabricated@test.local')
+  $$,
+  '42501',
+  NULL,
   'coach cannot insert a new coach row via direct INSERT'
 );
 
