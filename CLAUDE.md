@@ -37,6 +37,25 @@ Within any work unit:
 2. **Cut a feature branch** (`feat/...`, `fix/...`, `docs/...`).
 3. **Implement → Verify → Commit → Push → PR**. CI must be green before merge.
 
+### Working conventions (scheduling engine work)
+
+- Minimal diffs. Match existing stack and conventions; flag any refactor beyond
+  the request before doing it. Never reformat code you aren't changing.
+- Plan before implementing on any task that touches the solver, the domain
+  model, or persistence. Show the plan and wait for approval.
+- Distinguish "statically reviewed", "executed", and "test-verified" in every
+  report. Never claim tests passed without running them.
+- Run the full fixture suite (`fixtures/season-2026/`) after any change to domain
+  types, constraints, or solver stages. A change that breaks the season fixture
+  is presumed wrong until shown otherwise.
+- Validators must prove they exercised data (meta-assertions). A check that
+  matches zero records is a loud failure, never a silent pass.
+- Solver changes default to maximum freeze / minimal diff against the current
+  schedule. Global re-optimisation only when explicitly requested by name.
+- Never silently drop an unplaceable fixture; surface it as TIME TBD with a
+  reason.
+- Incident background for all of the above: [`fixtures/season-2026/README.md`](fixtures/season-2026/README.md).
+
 ### Core principles (apply within every PR)
 
 - **Refactor First**: If a PR requires modifying existing messy code, refactor it into a clean utility/hook _before_ adding new logic.

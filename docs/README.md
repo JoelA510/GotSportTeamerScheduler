@@ -20,6 +20,7 @@
 
 ## Architecture
 
+- [Current Architecture Map](ARCHITECTURE.md) — Reconnaissance map of the system as built: domain model, solver and validation paths, persistence and I/O, measured test coverage, and the "Known gaps" list that drives the scheduling-engine build plan.
 - [System Overview](architecture/system-overview.md) — Top-level architecture, technology stack, request flow, deployment topology.
 - [Frontend Architecture](architecture/frontend-architecture.md) — Routing, lazy loading, React Context providers, hooks, design-system usage.
 - [Data Modeling](architecture/data-modeling.md) — PostgreSQL schema: tables, columns, indexes, foreign keys, JSONB shapes.
@@ -80,6 +81,8 @@
 ## Fixtures
 
 - [Fall 2026 Field Availability](fixtures/fall-2026-field-availability.md) — Canonical field-availability fixture used by lifecycle tests.
+- [Season 2026 Regression Corpus](../fixtures/season-2026/README.md) — A full anonymized season: known-good invariants and the numbered incident log the build plan references. Loaded read-only by `packages/core/src/fixtures/`.
+- [Model Gaps](MODEL_GAPS.md) — What the season-2026 corpus contains that the current domain types cannot represent, with source field, example, current behaviour, and the phase that needs each one.
 
 ## SQL
 

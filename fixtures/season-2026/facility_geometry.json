@@ -1,0 +1,282 @@
+{
+ "venues": {
+  "Alder Park": {
+   "lit": false,
+   "fields": {
+    "Pitch 1": {
+     "sizes": [
+      "9v9"
+     ],
+     "lined": [
+      "9v9"
+     ],
+     "children": [
+      "Pitch 1A",
+      "Pitch 1B"
+     ]
+    },
+    "Pitch 1A": {
+     "sizes": [
+      "9v9"
+     ],
+     "lined": [
+      "9v9"
+     ],
+     "parent": "Pitch 1"
+    },
+    "Pitch 1B": {
+     "sizes": [
+      "9v9"
+     ],
+     "lined": [
+      "9v9"
+     ],
+     "parent": "Pitch 1"
+    },
+    "Pitch 2": {
+     "sizes": [
+      "11v11"
+     ],
+     "lined": [
+      "11v11"
+     ]
+    },
+    "Pitch 3": {
+     "sizes": [
+      "11v11"
+     ],
+     "lined": [
+      "11v11"
+     ]
+    },
+    "Pitch 4": {
+     "sizes": [
+      "9v9"
+     ],
+     "lined": [
+      "9v9"
+     ],
+     "children": [
+      "Pitch 4A",
+      "Pitch 4B"
+     ]
+    },
+    "Pitch 4A": {
+     "sizes": [
+      "9v9"
+     ],
+     "lined": [
+      "9v9"
+     ],
+     "parent": "Pitch 4"
+    },
+    "Pitch 4B": {
+     "sizes": [
+      "9v9"
+     ],
+     "lined": [
+      "9v9"
+     ],
+     "parent": "Pitch 4"
+    }
+   },
+   "overlap_pairs": [
+    [
+     "Pitch 1",
+     "Pitch 2"
+    ],
+    [
+     "Pitch 3",
+     "Pitch 4"
+    ]
+   ],
+   "overlap_note": "Overlap applies to a parent's halves too: a game on 1A conflicts with a concurrent game on 2; 4A/4B with 3. Allowed concurrent: 1&3, 2&4, 2&3, 1&4."
+  },
+  "Summit HS": {
+   "lit": true,
+   "fields": {
+    "Stadium": {
+     "sizes": [
+      "11v11"
+     ],
+     "lined": [
+      "11v11"
+     ]
+    }
+   }
+  },
+  "Brookside Park": {
+   "lit": false,
+   "fields": {
+    "Upper 1": {
+     "sizes": [
+      "7v7",
+      "9v9"
+     ],
+     "lined": [
+      "7v7"
+     ],
+     "note": "dedicated 7v7 this season"
+    },
+    "Upper 2": {
+     "sizes": [
+      "7v7",
+      "9v9"
+     ],
+     "lined": [
+      "7v7"
+     ]
+    }
+   }
+  },
+  "Maplewood Back": {
+   "lit": false,
+   "fields": {
+    "Field 1": {
+     "sizes": [
+      "5v5"
+     ],
+     "lined": [
+      "5v5"
+     ]
+    },
+    "Field 2": {
+     "sizes": [
+      "5v5"
+     ],
+     "lined": [
+      "5v5"
+     ]
+    },
+    "Field 3": {
+     "sizes": [
+      "5v5"
+     ],
+     "lined": [
+      "5v5"
+     ]
+    },
+    "Field 4": {
+     "sizes": [
+      "5v5"
+     ],
+     "lined": [
+      "5v5"
+     ]
+    },
+    "Field 5": {
+     "sizes": [
+      "5v5"
+     ],
+     "lined": [
+      "5v5"
+     ]
+    },
+    "Field 6": {
+     "sizes": [
+      "5v5"
+     ],
+     "lined": [
+      "5v5"
+     ]
+    },
+    "Field 7": {
+     "sizes": [
+      "5v5"
+     ],
+     "lined": [
+      "5v5"
+     ]
+    }
+   }
+  },
+  "Maplewood Front": {
+   "lit": false,
+   "fields": {
+    "Field 1": {
+     "sizes": [
+      "7v7"
+     ],
+     "lined": [
+      "7v7"
+     ]
+    }
+   }
+  },
+  "Orchard Park": {
+   "lit": false,
+   "fields": {
+    "Field 1": {
+     "sizes": [
+      "4v4"
+     ],
+     "lined": [
+      "4v4"
+     ]
+    },
+    "Field 2": {
+     "sizes": [
+      "4v4"
+     ],
+     "lined": [
+      "4v4"
+     ]
+    },
+    "Field 3": {
+     "sizes": [
+      "4v4"
+     ],
+     "lined": [
+      "4v4"
+     ]
+    },
+    "Field 4": {
+     "sizes": [
+      "4v4"
+     ],
+     "lined": [
+      "4v4"
+     ]
+    },
+    "Field 5": {
+     "sizes": [
+      "4v4"
+     ],
+     "lined": [
+      "4v4"
+     ]
+    },
+    "Field 6": {
+     "sizes": [
+      "4v4"
+     ],
+     "lined": [
+      "4v4"
+     ]
+    }
+   },
+   "notes": "traffic-constrained site: 20-min turnover is HARD here; Field 6 hosts the Minis sessions"
+  },
+  "Riverbend": {
+   "lit": false,
+   "fields": {
+    "Turf": {
+     "sizes": [
+      "11v11"
+     ],
+     "lined": [
+      "11v11"
+     ]
+    }
+   }
+  }
+ },
+ "equipment_exceptions": [
+  {
+   "venue": "Alder Park",
+   "date": "2026-08-22",
+   "equipment": "9v9 goals",
+   "status": "was in doubt; confirmed available. Kept as a fixture for the date-scoped-equipment test."
+  }
+ ]
+}
