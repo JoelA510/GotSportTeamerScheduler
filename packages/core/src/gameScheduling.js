@@ -85,6 +85,12 @@ export function generateRoundRobinWeeks({ teamIds }) {
 /**
  * Allocate round-robin matchups into concrete game slots while respecting capacity and coach conflicts.
  *
+ * `fieldId` on each returned assignment is an opaque string; the physical model
+ * behind it (containment, spatial overlap, size vs lining, date-scoped
+ * equipment) lives in `facility/` and is deliberately not consulted here - this
+ * engine is week-indexed, the facility graph is date-indexed.
+ * @see {@link import('./facility/types.js').FacilitySurface}
+ *
  * @param {Object} params
  * @param {Team[]} params.teams - Teams participating in scheduling.
  * @param {GameSlot[]} params.slots

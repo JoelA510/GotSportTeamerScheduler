@@ -72,6 +72,10 @@
  * @property {string} end
  * @property {number} capacity
  * @property {string} [fieldId]
+ *   - Opaque field identifier. The physical model behind it (venue, parent/child
+ *     pitch configurations, spatial overlap, size vs lining, date-scoped
+ *     equipment) lives in `facility/`.
+ *     @see {@link import('./facility/types.js').FacilitySurface}
  * @property {number} [priority]
  */
 
