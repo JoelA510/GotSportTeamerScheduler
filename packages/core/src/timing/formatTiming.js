@@ -259,23 +259,31 @@ function resolveFormat(row, warmupMinutes) {
     );
   }
 
-  // Does the declared block leave any room beyond the turnover? In this corpus
-  // it never does, which is the whole reason a warm-up could collide with a
-  // live game while every published block looked legal.
+  // Does the declared block leave room beyond the turnover for **the warm-up
+  // actually asked for**? In this corpus it never does, which is the whole
+  // reason a warm-up could collide with a live game while every published block
+  // looked legal. Comparing the slack with the turnover alone cannot establish
+  // that a block holds a warm-up, because it never looks at how long the
+  // warm-up is; an unstated warm-up length cannot establish it either, so both
+  // report rather than pass.
+  const warmupRoomMinutes =
+    row.turnoverPreferredMinutes === null ? null : blockSlackMinutes - row.turnoverPreferredMinutes;
   let warmupInsideBlock = false;
-  if (row.turnoverPreferredMinutes !== null) {
-    warmupInsideBlock = blockSlackMinutes > row.turnoverPreferredMinutes;
+  if (warmupRoomMinutes !== null) {
+    warmupInsideBlock = warmupMinutes !== null && warmupRoomMinutes >= warmupMinutes;
     if (!warmupInsideBlock) {
       findings.push(
         makeTimingFinding(
           TIMING_REASON.BLOCK_EXCLUDES_WARMUP,
-          `${row.format}: the ${row.blockMinutes}-minute block covers occupancy (${row.occupancyMinutes.scheduled}) and turnover (${row.turnoverPreferredMinutes}) with nothing left for warm-up`,
+          `${row.format}: the ${row.blockMinutes}-minute block covers occupancy (${row.occupancyMinutes.scheduled}) and turnover (${row.turnoverPreferredMinutes}), leaving ${warmupRoomMinutes} min for a warm-up of ${warmupMinutes === null ? 'unstated length' : `${warmupMinutes} min`}`,
           {
             format: row.format,
             blockMinutes: row.blockMinutes,
             occupancyScheduledMinutes: row.occupancyMinutes.scheduled,
             turnoverPreferredMinutes: row.turnoverPreferredMinutes,
             blockSlackMinutes,
+            warmupRoomMinutes,
+            warmupMinutes,
           }
         )
       );

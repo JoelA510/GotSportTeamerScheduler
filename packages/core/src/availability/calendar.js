@@ -142,6 +142,21 @@ function restrictiveness(window) {
 }
 
 /**
+ * How restrictive a lighting record is, on the same contract as
+ * {@link restrictiveness}: unlit ground is maximally restrictive, and between
+ * two lit records the one whose lights go off earlier wins. A lit record with no
+ * stated lights-off bounds nothing, so it is the loosest of all.
+ *
+ * @param {import('./types.js').SurfaceLighting} record
+ * @returns {number}
+ */
+function lightingRestrictiveness(record) {
+  if (!record.lit) return Number.POSITIVE_INFINITY;
+  if (record.lightsOffMinutes === null) return Number.NEGATIVE_INFINITY;
+  return -record.lightsOffMinutes;
+}
+
+/**
  * Build an immutable availability calendar from plain data.
  *
  * Takes what the season-2026 parsers already produce (via
@@ -195,9 +210,32 @@ export function buildAvailabilityCalendar(input) {
   const lightingBySurface = {};
   for (const record of parsed.lighting) {
     meta.lightingRecordsConsulted += 1;
-    lightingBySurface[record.surfaceId] = /** @type {import('./types.js').SurfaceLighting} */ (
-      record
-    );
+    const existing = lightingBySurface[record.surfaceId];
+    const incoming = /** @type {import('./types.js').SurfaceLighting} */ (record);
+    const applied =
+      !existing || lightingRestrictiveness(incoming) > lightingRestrictiveness(existing)
+        ? incoming
+        : existing;
+    if (
+      existing &&
+      (existing.lit !== incoming.lit || existing.lightsOffMinutes !== incoming.lightsOffMinutes)
+    ) {
+      const other = applied === incoming ? existing : incoming;
+      findings.push(
+        makeAvailabilityFinding(
+          AVAILABILITY_REASON.LIGHTING_PRECEDENCE_AMBIGUOUS,
+          `two lighting records claim surface ${record.surfaceId}; the more restrictive one is applied`,
+          {
+            surfaceId: record.surfaceId,
+            lit: applied.lit,
+            lightsOffMinutes: applied.lightsOffMinutes,
+            otherLit: other.lit,
+            otherLightsOffMinutes: other.lightsOffMinutes,
+          }
+        )
+      );
+    }
+    lightingBySurface[record.surfaceId] = applied;
   }
 
   const permitWindows = /** @type {import('./types.js').PermitWindow[]} */ (parsed.permitWindows);
@@ -267,7 +305,12 @@ export function resolvePermitWindow(calendar, { venueId, date }) {
   // swap places between runs.
   const ordered = [...candidates].sort((a, b) => {
     const delta = restrictiveness(b) - restrictiveness(a);
-    if (delta !== 0) return delta > 0 ? 1 : -1;
+    // Two blackouts are both `Infinity`, and `Infinity - Infinity` is `NaN`.
+    // Without this guard the comparator would answer for a difference it never
+    // measured and the id tie-break below would never run, so which of two
+    // equal records won would depend on the order they were loaded in. Same
+    // guard as `orderByTightness()` in `kickoff.js`.
+    if (delta !== 0 && !Number.isNaN(delta)) return delta > 0 ? 1 : -1;
     return a.id.localeCompare(b.id);
   });
   consulted = Math.max(consulted, ordered.length);

@@ -141,6 +141,13 @@ export const AVAILABILITY_REASON = Object.freeze({
   LIGHTING_FROM_VENUE: 'LIGHTING_FROM_VENUE',
   /** A permit row's `Lit` column contradicts the resolved lighting. */
   LIGHTING_SOURCE_DISAGREES: 'LIGHTING_SOURCE_DISAGREES',
+  /**
+   * Two lighting records claim the same surface and disagree. The more
+   * restrictive one is applied *and* this is emitted — the same contract the
+   * permit and sunset paths keep, so lighting is not the one place a duplicate
+   * wins silently by arriving last.
+   */
+  LIGHTING_PRECEDENCE_AMBIGUOUS: 'LIGHTING_PRECEDENCE_AMBIGUOUS',
   /** The ground is lit but nobody has stated when the lights go off. */
   LIGHTS_OFF_UNDECLARED: 'LIGHTS_OFF_UNDECLARED',
   /** Worst-case occupancy runs past the stated lights-off time. */
@@ -196,6 +203,7 @@ export const AVAILABILITY_REASON_SEVERITY = Object.freeze({
   [AVAILABILITY_REASON.LIGHTING_FROM_ANCESTOR]: AVAILABILITY_SEVERITY.INFO,
   [AVAILABILITY_REASON.LIGHTING_FROM_VENUE]: AVAILABILITY_SEVERITY.INFO,
   [AVAILABILITY_REASON.LIGHTING_SOURCE_DISAGREES]: AVAILABILITY_SEVERITY.INFO,
+  [AVAILABILITY_REASON.LIGHTING_PRECEDENCE_AMBIGUOUS]: AVAILABILITY_SEVERITY.INFO,
   [AVAILABILITY_REASON.LIGHTS_OFF_UNDECLARED]: AVAILABILITY_SEVERITY.INFO,
   [AVAILABILITY_REASON.LIGHTS_OFF_EXCEEDED]: AVAILABILITY_SEVERITY.BLOCKING,
 

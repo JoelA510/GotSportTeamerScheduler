@@ -459,6 +459,42 @@ describe('game time model :: acceptance 2a - the on-pitch warm-up window is 25 m
     expect(codesOf(result)).toContain(TIMING_REASON.WARMUP_DURATION_UNSPECIFIED);
     expect(codesOf(result)).not.toContain(TIMING_REASON.WARMUP_WINDOW_SHORT);
   });
+
+  it('never counts warm-up minutes from before the day starts', () => {
+    // The 9v9 clears at 9:35 but the site does not open until five minutes
+    // after it: the window is what the *later* of the two allows. Counting from
+    // the booking alone reports minutes nobody may stand on the pitch for, and
+    // a window reported too long is a WARMUP_WINDOW_SHORT that never fires.
+    const dayStartMinutes = morningNine.endMinutes + 5;
+    const requestedMinutes = morningEleven.kickoffMinutes - morningNine.endMinutes;
+    const result = warmupWindowAvailability(
+      graph,
+      table,
+      {
+        surfaceId: sid(ALDER, 'Pitch 2'),
+        date: BUSY_DATE,
+        kickoffMinutes: morningEleven.kickoffMinutes,
+        format: '11v11',
+        warmupMinutes: requestedMinutes,
+        dayStartMinutes,
+        ignoreBookingIds: [morningEleven.id],
+      },
+      { existingBookings: busyDayBookings }
+    );
+
+    expect(result.availableFromMinutes).toBe(dayStartMinutes);
+    expect(result.availableMinutes).toBe(morningEleven.kickoffMinutes - dayStartMinutes);
+    expect(result.availableMinutes).toBeLessThan(requestedMinutes);
+    expect(codesOf(result)).toContain(TIMING_REASON.WARMUP_WINDOW_SHORT);
+    expect(result.status).toBe(TIMING_STATUS.COMPROMISED);
+
+    // Meta-assertions: a booking really did bound this window, so the clamp is
+    // being tested on the bounded branch rather than on an empty day.
+    expect(result.bounded).toBe(true);
+    expect(result.boundByBookingIds.length).toBeGreaterThan(0);
+    expect(result.boundBy.endMinutes).toBeLessThan(dayStartMinutes);
+    expect(result.meta.bookingPairsCompared).toBeGreaterThan(0);
+  });
 });
 
 /* -------------------------------------------------------------------------- */
@@ -591,6 +627,48 @@ describe('game time model :: acceptance 2b - what kickoff yields a full 30-minut
     expect(result.kickoffMinutes).toBeNull();
     expect(result.status).toBe(TIMING_STATUS.REJECTED);
     expect(codesOf(result)).toContain(TIMING_REASON.KICKOFF_SEARCH_EXHAUSTED);
+  });
+
+  it('ignores the booking it was told to ignore, in the probes as well as the candidates', () => {
+    // "Move this game, ignoring where it currently sits" is the re-solve query
+    // Phase 4 is built on. Ignoring a booking must give the same answer as
+    // never having had it - otherwise a fixture blocks its own relocation.
+    const query = {
+      surfaceId: sid(ALDER, 'Pitch 2'),
+      date: BUSY_DATE,
+      format: '11v11',
+      warmupMinutes: WARMUP,
+      // From the moment the morning 9v9s clear, so the ground the ignored
+      // fixture is standing on is exactly the ground under test.
+      notBeforeMinutes: morningNine.endMinutes,
+      notAfterMinutes: afternoonNine.kickoffMinutes,
+    };
+    const ignoring = earliestKickoffWithWarmup(
+      graph,
+      table,
+      { ...query, ignoreBookingIds: [morningEleven.id] },
+      { existingBookings: busyDayBookings }
+    );
+    const without = earliestKickoffWithWarmup(graph, table, query, {
+      existingBookings: busyDayBookings.filter((booking) => booking.id !== morningEleven.id),
+    });
+
+    expect(ignoring.kickoffMinutes).toBe(without.kickoffMinutes);
+    expect(ignoring.kickoffMinutes).toBe(morningNine.endMinutes + WARMUP);
+    expect(ignoring.warmupStartMinutes).toBe(morningNine.endMinutes);
+    expect(codesOf(ignoring)).not.toContain(TIMING_REASON.KICKOFF_SEARCH_EXHAUSTED);
+    expect(blockingOf(ignoring)).toEqual([]);
+
+    // Meta-assertion: the ignored booking really was in the way. Without the
+    // ignore list the same question has no answer at all inside this horizon,
+    // so the test cannot be passing because the fixture was harmless.
+    const control = earliestKickoffWithWarmup(graph, table, query, {
+      existingBookings: busyDayBookings,
+    });
+    expect(control.kickoffMinutes).toBeNull();
+    expect(codesOf(control)).toContain(TIMING_REASON.KICKOFF_SEARCH_EXHAUSTED);
+    expect(ignoring.meta.candidateKickoffsTested).toBeGreaterThan(0);
+    expect(ignoring.meta.overlapPairsConsulted).toBeGreaterThan(0);
   });
 });
 
@@ -829,6 +907,42 @@ describe('game time model :: block and turnover, and what the block leaves out (
     expect(windows.schedulable.endMinutes).toBe(k + 90 + 30);
     expect(windows.schedulable.minutes).toBe(WARMUP + 90 + 30);
     expect(windows.schedulable.minutes).toBeGreaterThan(windows.block.minutes);
+  });
+
+  it('measures the block against the warm-up it was given, not against turnover alone', () => {
+    // A block with room to spare beyond its turnover still excludes a warm-up
+    // longer than what is left over. Comparing the slack with the turnover
+    // alone cannot establish that the block holds a warm-up, because it never
+    // looks at how long the warm-up is.
+    const leftoverMinutes = WARMUP - 10;
+    const mutated = toFormatTimingInput(rawFormats, { warmupPolicy: { '9v9': WARMUP } });
+    const nine = mutated.formats.find((entry) => entry.format === '9v9');
+    nine.blockMinutes =
+      nine.occupancyMinutes.scheduled + nine.turnoverPreferredMinutes + leftoverMinutes;
+    const timing = requireFormatTiming(buildFormatTimingTable(mutated), '9v9');
+
+    // The slack really does clear the turnover - the condition that used to be
+    // the whole test - and still leaves too little for the warm-up.
+    expect(timing.blockSlackMinutes).toBeGreaterThan(timing.turnoverPreferredMinutes);
+    expect(timing.warmupMinutes).toBe(WARMUP);
+    expect(timing.blockSlackMinutes - timing.turnoverPreferredMinutes).toBe(leftoverMinutes);
+    expect(leftoverMinutes).toBeLessThan(WARMUP);
+    expect(timing.warmupInsideBlock).toBe(false);
+    expect(timing.findings.map((finding) => finding.code)).toContain(
+      TIMING_REASON.BLOCK_EXCLUDES_WARMUP
+    );
+
+    // And a block genuinely wide enough to hold the warm-up says so, so the
+    // check is not simply always false.
+    const roomy = toFormatTimingInput(rawFormats, { warmupPolicy: { '9v9': WARMUP } });
+    const roomyNine = roomy.formats.find((entry) => entry.format === '9v9');
+    roomyNine.blockMinutes =
+      roomyNine.occupancyMinutes.scheduled + roomyNine.turnoverPreferredMinutes + WARMUP;
+    const held = requireFormatTiming(buildFormatTimingTable(roomy), '9v9');
+    expect(held.warmupInsideBlock).toBe(true);
+    expect(held.findings.map((finding) => finding.code)).not.toContain(
+      TIMING_REASON.BLOCK_EXCLUDES_WARMUP
+    );
   });
 
   it('flags a block that could not hold its own occupancy', () => {

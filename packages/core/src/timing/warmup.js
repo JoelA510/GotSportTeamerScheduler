@@ -463,9 +463,14 @@ export function warmupWindowAvailability(graph, table, rawQuery, options = {}) {
   }
 
   const bounded = boundEnd !== null;
+  // The day start bounds both branches. A booking that clears before the site
+  // opens does not open it, and counting from that booking would report warm-up
+  // minutes nobody may stand on the pitch for - which is a `WARMUP_WINDOW_SHORT`
+  // that never fires.
+  const dayStartMinutes = Math.min(query.dayStartMinutes, query.kickoffMinutes);
   const availableFromMinutes = bounded
-    ? /** @type {number} */ (boundEnd)
-    : Math.min(query.dayStartMinutes, query.kickoffMinutes);
+    ? Math.max(/** @type {number} */ (boundEnd), dayStartMinutes)
+    : dayStartMinutes;
   const availableMinutes = query.kickoffMinutes - availableFromMinutes;
 
   binding.sort((a, b) => a.id.localeCompare(b.id));
@@ -547,7 +552,15 @@ export function warmupWindowAvailability(graph, table, rawQuery, options = {}) {
  */
 export function earliestKickoffWithWarmup(graph, table, rawQuery, options = {}) {
   const query = EarliestKickoffQuerySchema.parse(rawQuery);
-  const existingBookings = options.existingBookings ?? [];
+  // Ignored bookings are dropped once, here, so the `checkBooking()` probes
+  // below see the same world the candidate generation does - the contract
+  // `availability/kickoff.js` keeps. A probe that still sees the booking the
+  // caller asked to ignore makes "move this game, ignoring where it currently
+  // sits" unanswerable: the fixture blocks its own relocation.
+  const ignored = new Set(query.ignoreBookingIds);
+  const existingBookings = (options.existingBookings ?? []).filter(
+    (booking) => !ignored.has(booking.id)
+  );
   const meta = createTimingMeta();
   /** @type {import('./types.js').TimingFinding[]} */
   const findings = [];
