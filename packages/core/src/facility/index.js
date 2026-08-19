@@ -64,6 +64,7 @@ export {
   checkFieldEligibility,
   checkLining,
   checkSizeEligibility,
+  isoDayNumber,
 } from './eligibility.js';
 
 export {
