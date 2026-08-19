@@ -1,0 +1,956 @@
+/**
+ * "How late can this game kick off here?" — and which of the four constraints
+ * says so.
+ *
+ * Four things can stop a kickoff running later than it does:
+ *
+ * ```text
+ * occupancy   something is already standing on conflicting ground
+ * lighting    the floodlights go off (or there are none)
+ * sunset      sunset less the club's safety margin, on unlit ground
+ * permit      the venue's permit closes
+ * ```
+ *
+ * Every one of them is evaluated, every one reports its own `limitMinutes` and
+ * its own slack, and the list comes back **ordered by tightness**. The winner is
+ * `binding`, but the ordering is the deliverable: Prompt 4.3's explain-why work
+ * needs "sunset by 6 minutes, then the permit by 66" — not just "sunset".
+ *
+ * What this file does **not** contain: an overlap test, a duration constant, or
+ * a permit parser. Concurrency is decided by `facility/occupancy.js`, occupancy
+ * length comes from the Phase 1.2 format table (`11v11` is 90 minutes because
+ * `game_formats.csv` says `85-90 (schedule as 90)`, not because a 90 is typed
+ * in here), and the permit records come from the calendar. A second copy of any
+ * of the three would be free to disagree with the first.
+ *
+ * @module availability/kickoff
+ */
+
+import { checkBooking } from '../facility/eligibility.js';
+import { getSurface } from '../facility/facilityGraph.js';
+import { surfacesConflict } from '../facility/occupancy.js';
+import { FACILITY_REASON, makeFinding } from '../facility/reasonCodes.js';
+import { formatTimingOrUnknown } from '../timing/formatTiming.js';
+import {
+  absorbFacilityMetaInto,
+  createAvailabilityMeta,
+  daylightLimitMinutes,
+  mergeAvailabilityMeta,
+  resolveLighting,
+  resolvePermitWindow,
+  sunsetOn,
+} from './calendar.js';
+import {
+  AVAILABILITY_CONSTRAINT,
+  AVAILABILITY_CONSTRAINT_ORDER,
+  AVAILABILITY_REASON,
+  AVAILABILITY_SEVERITY,
+  deriveAvailabilityStatus,
+  makeAvailabilityFinding,
+} from './reasonCodes.js';
+import { KickoffAvailabilityQuerySchema, LatestKickoffQuerySchema } from './schemas.js';
+
+/** Booking id used for the candidate this module invents while asking a question. */
+const PROBE_BOOKING_ID = '__availability_probe__';
+
+/**
+ * Build one constraint record.
+ *
+ * `slackMinutes` is `limitMinutes - endMinutes`: how much room the kickoff being
+ * judged has left against this bound. Negative means the bound is broken, which
+ * a separate blocking finding will already have said.
+ *
+ * @param {string} kind
+ * @param {{ applicable: boolean, limitMinutes?: number|null, occupancyMinutes?: number|null, endMinutes?: number|null, source?: string|null, detail?: Record<string, unknown> }} spec
+ * @returns {import('./types.js').AvailabilityConstraint}
+ */
+function makeConstraint(kind, spec) {
+  const limitMinutes = spec.limitMinutes ?? null;
+  const occupancyMinutes = spec.occupancyMinutes ?? null;
+  const endMinutes = spec.endMinutes ?? null;
+  return {
+    kind,
+    applicable: spec.applicable,
+    limitMinutes,
+    latestKickoffMinutes:
+      limitMinutes === null || occupancyMinutes === null ? null : limitMinutes - occupancyMinutes,
+    slackMinutes: limitMinutes === null || endMinutes === null ? null : limitMinutes - endMinutes,
+    binding: false,
+    source: spec.source ?? null,
+    detail: spec.detail ?? {},
+  };
+}
+
+/**
+ * Sort key for tightness. Smaller binds harder.
+ *
+ * A stated blackout is `-Infinity` (nothing is legal, so nothing binds harder);
+ * an inapplicable constraint is `+Infinity` (it never bounds anything).
+ *
+ * @param {import('./types.js').AvailabilityConstraint} constraint
+ * @returns {number}
+ */
+function tightnessKey(constraint) {
+  if (!constraint.applicable) return Number.POSITIVE_INFINITY;
+  if (constraint.limitMinutes === null) return Number.NEGATIVE_INFINITY;
+  return /** @type {number} */ (constraint.latestKickoffMinutes ?? constraint.limitMinutes);
+}
+
+/**
+ * Order the four constraints tightest-first and mark the binding one(s).
+ *
+ * Ties are broken by {@link AVAILABILITY_CONSTRAINT_ORDER} so two runs over the
+ * same data produce the same ordering — and, because ties are real (a permit
+ * that closes exactly at the daylight limit binds both), *every* constraint at
+ * the tightest position is marked, not just the first.
+ *
+ * @param {import('./types.js').AvailabilityConstraint[]} constraints
+ * @returns {{ constraints: import('./types.js').AvailabilityConstraint[], binding: import('./types.js').AvailabilityConstraint|null, bindingKinds: string[] }}
+ */
+function orderByTightness(constraints) {
+  const ordered = [...constraints].sort((a, b) => {
+    const delta = tightnessKey(a) - tightnessKey(b);
+    if (delta !== 0 && !Number.isNaN(delta)) return delta < 0 ? -1 : 1;
+    return (
+      AVAILABILITY_CONSTRAINT_ORDER.indexOf(a.kind) - AVAILABILITY_CONSTRAINT_ORDER.indexOf(b.kind)
+    );
+  });
+
+  const applicable = ordered.filter((constraint) => constraint.applicable);
+  if (applicable.length === 0) return { constraints: ordered, binding: null, bindingKinds: [] };
+
+  const tightest = tightnessKey(applicable[0]);
+  const bindingKinds = [];
+  for (const constraint of applicable) {
+    if (tightnessKey(constraint) !== tightest) continue;
+    constraint.binding = true;
+    bindingKinds.push(constraint.kind);
+  }
+  return { constraints: ordered, binding: applicable[0], bindingKinds };
+}
+
+/**
+ * Bookings standing on ground that conflicts with a surface, on a date.
+ *
+ * The conflict decision itself is entirely `facility/occupancy.js`'s
+ * `surfacesConflict()` — containment, spatial overlap and venue scoping all come
+ * from the Phase 1.1 graph. This wrapper only filters by date, drops the
+ * caller's own bookings and counts what it looked at.
+ *
+ * @param {import('../facility/types.js').FacilityGraph} graph
+ * @param {string} surfaceId
+ * @param {string} date
+ * @param {ReadonlyArray<import('../facility/types.js').FacilityBooking>} existingBookings
+ * @param {ReadonlyArray<string>} ignoreBookingIds
+ * @param {import('./types.js').AvailabilityMeta} meta
+ * @returns {import('../facility/types.js').FacilityBooking[]}
+ */
+function conflictingBookingsOn(graph, surfaceId, date, existingBookings, ignoreBookingIds, meta) {
+  const ignored = new Set(ignoreBookingIds);
+  const surfacesSeen = new Set([surfaceId]);
+  /** @type {import('../facility/types.js').FacilityBooking[]} */
+  const out = [];
+  for (const booking of existingBookings) {
+    if (ignored.has(booking.id)) continue;
+    if (booking.date !== date) continue;
+    if (!getSurface(graph, booking.surfaceId)) continue;
+    meta.bookingPairsCompared += 1;
+    surfacesSeen.add(booking.surfaceId);
+    const verdict = surfacesConflict(graph, surfaceId, booking.surfaceId);
+    meta.cellPairsCompared += verdict.meta.cellPairsCompared;
+    meta.overlapPairsConsulted += verdict.meta.overlapPairsConsulted;
+    if (verdict.conflict) out.push(booking);
+  }
+  meta.surfacesConsidered += surfacesSeen.size;
+  return out;
+}
+
+/**
+ * The permit constraint, plus every finding the permit position implies.
+ *
+ * @param {import('./types.js').AvailabilityCalendar} calendar
+ * @param {import('./types.js').ResolvedPermit} resolved
+ * @param {{ kickoffMinutes: number|null, endMinutes: number|null, occupancyMinutes: number|null, venueId: string|null, date: string }} ctx
+ * @param {import('./types.js').AvailabilityFinding[]} findings
+ * @returns {import('./types.js').AvailabilityConstraint}
+ */
+function permitConstraint(calendar, resolved, ctx, findings) {
+  const base = { venueId: ctx.venueId, date: ctx.date };
+
+  if (resolved.window === null) {
+    findings.push(
+      makeAvailabilityFinding(
+        AVAILABILITY_REASON.PERMIT_UNDECLARED,
+        `no permit record covers ${ctx.venueId ?? 'this venue'} on ${ctx.date}, so its opening hours are unknown`,
+        base
+      )
+    );
+    return makeConstraint(AVAILABILITY_CONSTRAINT.PERMIT, {
+      applicable: false,
+      detail: { ...base, reason: 'no permit record' },
+    });
+  }
+
+  const window = resolved.window;
+  findings.push(
+    makeAvailabilityFinding(
+      resolved.scopeKind === 'date-exception'
+        ? AVAILABILITY_REASON.PERMIT_DATE_EXCEPTION
+        : AVAILABILITY_REASON.PERMIT_WEEKDAY_DEFAULT,
+      resolved.scopeKind === 'date-exception'
+        ? `${ctx.date} is governed by a date-scoped permit exception, not by the weekday default`
+        : `${ctx.date} is governed by the venue's ${window.weekday} default permit`,
+      { ...base, permitId: window.id, scopeKind: window.scopeKind, note: window.note }
+    )
+  );
+
+  if (resolved.ambiguous) {
+    findings.push(
+      makeAvailabilityFinding(
+        AVAILABILITY_REASON.PERMIT_PRECEDENCE_AMBIGUOUS,
+        `${resolved.candidates.length} permit records apply equally to ${ctx.date}; the most restrictive one (${window.id}) is applied`,
+        { ...base, appliedPermitId: window.id, permitIds: resolved.candidates.map((c) => c.id) }
+      )
+    );
+  }
+
+  if (!window.hasPermit) {
+    findings.push(
+      makeAvailabilityFinding(
+        AVAILABILITY_REASON.PERMIT_BLACKOUT,
+        `no permit for ${ctx.venueId ?? 'this venue'} on ${ctx.date}: the site is not available at all${
+          window.note ? ` (${window.note})` : ''
+        }`,
+        { ...base, permitId: window.id, note: window.note }
+      )
+    );
+    return makeConstraint(AVAILABILITY_CONSTRAINT.PERMIT, {
+      applicable: true,
+      limitMinutes: null,
+      source: window.id,
+      detail: { ...base, permitId: window.id, blackout: true },
+    });
+  }
+
+  const openMinutes = /** @type {number} */ (window.openMinutes);
+  const closeMinutes = /** @type {number} */ (window.closeMinutes);
+
+  if (ctx.kickoffMinutes !== null && ctx.kickoffMinutes < openMinutes) {
+    findings.push(
+      makeAvailabilityFinding(
+        AVAILABILITY_REASON.PERMIT_OPEN_PRECEDED,
+        `a kickoff at minute ${ctx.kickoffMinutes} precedes the permit open at minute ${openMinutes}`,
+        { ...base, permitId: window.id, kickoffMinutes: ctx.kickoffMinutes, openMinutes }
+      )
+    );
+  }
+
+  if (ctx.endMinutes !== null) {
+    const slack = closeMinutes - ctx.endMinutes;
+    if (slack < 0) {
+      findings.push(
+        makeAvailabilityFinding(
+          AVAILABILITY_REASON.PERMIT_CLOSE_EXCEEDED,
+          `worst-case occupancy ends at minute ${ctx.endMinutes}, ${-slack} min past the permit close at minute ${closeMinutes}`,
+          {
+            ...base,
+            permitId: window.id,
+            endMinutes: ctx.endMinutes,
+            closeMinutes,
+            overrunMinutes: -slack,
+          }
+        )
+      );
+    } else if (slack < calendar.permitMarginMinutes) {
+      findings.push(
+        makeAvailabilityFinding(
+          AVAILABILITY_REASON.PERMIT_MARGIN_TIGHT,
+          `worst-case occupancy ends at minute ${ctx.endMinutes}, leaving ${slack} min against the permit close at minute ${closeMinutes} — under the ${calendar.permitMarginMinutes} min margin`,
+          {
+            ...base,
+            permitId: window.id,
+            endMinutes: ctx.endMinutes,
+            closeMinutes,
+            marginMinutes: slack,
+            requiredMarginMinutes: calendar.permitMarginMinutes,
+          }
+        )
+      );
+    }
+  }
+
+  return makeConstraint(AVAILABILITY_CONSTRAINT.PERMIT, {
+    applicable: true,
+    limitMinutes: closeMinutes,
+    occupancyMinutes: ctx.occupancyMinutes,
+    endMinutes: ctx.endMinutes,
+    source: window.id,
+    detail: {
+      ...base,
+      permitId: window.id,
+      scopeKind: window.scopeKind,
+      openMinutes,
+      closeMinutes,
+      note: window.note,
+    },
+  });
+}
+
+/**
+ * The lighting constraint, plus the provenance of the lighting answer itself.
+ *
+ * @param {import('./types.js').ResolvedLighting} lighting
+ * @param {import('./types.js').PermitWindow|null} permit
+ * @param {{ surfaceId: string, endMinutes: number|null, occupancyMinutes: number|null, date: string }} ctx
+ * @param {import('./types.js').AvailabilityFinding[]} findings
+ * @returns {import('./types.js').AvailabilityConstraint}
+ */
+function lightingConstraint(lighting, permit, ctx, findings) {
+  const base = { surfaceId: ctx.surfaceId, date: ctx.date, lit: lighting.lit };
+
+  const provenance = {
+    surface: AVAILABILITY_REASON.LIGHTING_FROM_SURFACE,
+    'ancestor-surface': AVAILABILITY_REASON.LIGHTING_FROM_ANCESTOR,
+    venue: AVAILABILITY_REASON.LIGHTING_FROM_VENUE,
+  }[lighting.source];
+  findings.push(
+    makeAvailabilityFinding(
+      provenance,
+      lighting.source === 'venue'
+        ? `lighting for this field is taken from its venue's flag (${lighting.lit ? 'lit' : 'unlit'}); the corpus records no per-field lighting`
+        : `lighting for this field is taken from a record on ${lighting.recordId} (${lighting.lit ? 'lit' : 'unlit'})`,
+      { ...base, source: lighting.source, recordId: lighting.recordId }
+    )
+  );
+
+  if (permit && permit.lit !== null && permit.lit !== lighting.lit) {
+    findings.push(
+      makeAvailabilityFinding(
+        AVAILABILITY_REASON.LIGHTING_SOURCE_DISAGREES,
+        `the permit record says the venue is ${permit.lit ? 'lit' : 'unlit'} while the facility graph says the field is ${lighting.lit ? 'lit' : 'unlit'}; the field record is applied`,
+        { ...base, permitId: permit.id, permitLit: permit.lit }
+      )
+    );
+  }
+
+  if (!lighting.lit) {
+    return makeConstraint(AVAILABILITY_CONSTRAINT.LIGHTING, {
+      applicable: false,
+      detail: {
+        ...base,
+        reason: 'unlit ground has no lights-off time; the sunset rule carries it',
+      },
+    });
+  }
+
+  if (lighting.lightsOffMinutes === null) {
+    findings.push(
+      makeAvailabilityFinding(
+        AVAILABILITY_REASON.LIGHTS_OFF_UNDECLARED,
+        'this field is lit but no lights-off time is recorded, so lighting imposes no bound of its own',
+        { ...base, recordId: lighting.recordId }
+      )
+    );
+    return makeConstraint(AVAILABILITY_CONSTRAINT.LIGHTING, {
+      applicable: false,
+      detail: { ...base, reason: 'no lights-off time recorded' },
+    });
+  }
+
+  const lightsOff = lighting.lightsOffMinutes;
+  if (ctx.endMinutes !== null && ctx.endMinutes > lightsOff) {
+    findings.push(
+      makeAvailabilityFinding(
+        AVAILABILITY_REASON.LIGHTS_OFF_EXCEEDED,
+        `worst-case occupancy ends at minute ${ctx.endMinutes}, past the lights-off time at minute ${lightsOff}`,
+        { ...base, endMinutes: ctx.endMinutes, lightsOffMinutes: lightsOff }
+      )
+    );
+  }
+
+  return makeConstraint(AVAILABILITY_CONSTRAINT.LIGHTING, {
+    applicable: true,
+    limitMinutes: lightsOff,
+    occupancyMinutes: ctx.occupancyMinutes,
+    endMinutes: ctx.endMinutes,
+    source: lighting.recordId,
+    detail: { ...base, lightsOffMinutes: lightsOff },
+  });
+}
+
+/**
+ * The sunset constraint: daylight less the club's safety margin, on unlit ground.
+ *
+ * @param {import('./types.js').AvailabilityCalendar} calendar
+ * @param {import('./types.js').ResolvedLighting} lighting
+ * @param {{ surfaceId: string, date: string, endMinutes: number|null, occupancyMinutes: number|null }} ctx
+ * @param {import('./types.js').AvailabilityFinding[]} findings
+ * @returns {import('./types.js').AvailabilityConstraint}
+ */
+function sunsetConstraint(calendar, lighting, ctx, findings) {
+  const base = { surfaceId: ctx.surfaceId, date: ctx.date };
+  const record = sunsetOn(calendar, ctx.date);
+
+  if (lighting.lit) {
+    findings.push(
+      makeAvailabilityFinding(
+        AVAILABILITY_REASON.SUNSET_NOT_BINDING_WHEN_LIT,
+        `this field is lit, so sunset${record ? ` (minute ${record.sunsetMinutes})` : ''} does not bound it`,
+        { ...base, sunsetMinutes: record?.sunsetMinutes ?? null }
+      )
+    );
+    return makeConstraint(AVAILABILITY_CONSTRAINT.SUNSET, {
+      applicable: false,
+      detail: { ...base, reason: 'the field is lit', sunsetMinutes: record?.sunsetMinutes ?? null },
+    });
+  }
+
+  if (record === null) {
+    findings.push(
+      makeAvailabilityFinding(
+        AVAILABILITY_REASON.SUNSET_UNKNOWN,
+        `no sunset is recorded for ${ctx.date}, so the daylight rule cannot be applied to unlit ground`,
+        base
+      )
+    );
+    return makeConstraint(AVAILABILITY_CONSTRAINT.SUNSET, {
+      applicable: false,
+      detail: { ...base, reason: 'no sunset record' },
+    });
+  }
+
+  const limit = /** @type {number} */ (daylightLimitMinutes(calendar, ctx.date));
+  if (ctx.endMinutes !== null && ctx.endMinutes > limit) {
+    findings.push(
+      makeAvailabilityFinding(
+        AVAILABILITY_REASON.SUNSET_MARGIN_VIOLATED,
+        `worst-case occupancy ends at minute ${ctx.endMinutes}, past the daylight limit of minute ${limit} (sunset ${record.sunsetMinutes} less a ${calendar.sunsetMarginMinutes} min margin) on unlit ground`,
+        {
+          ...base,
+          endMinutes: ctx.endMinutes,
+          limitMinutes: limit,
+          sunsetMinutes: record.sunsetMinutes,
+          sunsetMarginMinutes: calendar.sunsetMarginMinutes,
+        }
+      )
+    );
+  }
+
+  return makeConstraint(AVAILABILITY_CONSTRAINT.SUNSET, {
+    applicable: true,
+    limitMinutes: limit,
+    occupancyMinutes: ctx.occupancyMinutes,
+    endMinutes: ctx.endMinutes,
+    source: ctx.date,
+    detail: {
+      ...base,
+      sunsetMinutes: record.sunsetMinutes,
+      sunsetMarginMinutes: calendar.sunsetMarginMinutes,
+      limitMinutes: limit,
+    },
+  });
+}
+
+/**
+ * The occupancy constraint: the next thing already standing on conflicting
+ * ground.
+ *
+ * Only bookings that start at or after the kickoff bound the *end* of this game.
+ * One that starts earlier and runs into it is a collision, which
+ * `facility/occupancy.js` reports in its own words rather than as a bound.
+ *
+ * @param {import('../facility/types.js').FacilityGraph} graph
+ * @param {ReadonlyArray<import('../facility/types.js').FacilityBooking>} conflicting
+ * @param {{ surfaceId: string, date: string, kickoffMinutes: number, endMinutes: number|null, occupancyMinutes: number|null }} ctx
+ * @param {import('./types.js').AvailabilityFinding[]} findings
+ * @returns {import('./types.js').AvailabilityConstraint}
+ */
+function occupancyConstraint(graph, conflicting, ctx, findings) {
+  const base = { surfaceId: ctx.surfaceId, date: ctx.date };
+  const after = conflicting.filter((booking) => booking.startMinutes >= ctx.kickoffMinutes);
+
+  if (after.length === 0) {
+    findings.push(
+      makeAvailabilityFinding(
+        AVAILABILITY_REASON.OCCUPANCY_UNBOUNDED,
+        `nothing already booked on conflicting ground starts after minute ${ctx.kickoffMinutes}`,
+        { ...base, kickoffMinutes: ctx.kickoffMinutes }
+      )
+    );
+    return makeConstraint(AVAILABILITY_CONSTRAINT.OCCUPANCY, {
+      applicable: false,
+      detail: { ...base, reason: 'nothing is booked after this kickoff' },
+    });
+  }
+
+  const limit = Math.min(...after.map((booking) => booking.startMinutes));
+  const binding = after
+    .filter((booking) => booking.startMinutes === limit)
+    .sort((a, b) => a.id.localeCompare(b.id));
+  const first = binding[0];
+
+  findings.push(
+    makeAvailabilityFinding(
+      AVAILABILITY_REASON.OCCUPANCY_BOUND_BY_BOOKING,
+      `the next booking on conflicting ground (${binding
+        .map((booking) => booking.label ?? booking.id)
+        .join(', ')}) starts at minute ${limit}`,
+      {
+        ...base,
+        limitMinutes: limit,
+        boundByBookingIds: binding.map((booking) => booking.id),
+        boundBySurfaceIds: [...new Set(binding.map((booking) => booking.surfaceId))].sort(),
+        boundBySameSurface: binding.every((booking) => booking.surfaceId === ctx.surfaceId),
+      }
+    )
+  );
+
+  return makeConstraint(AVAILABILITY_CONSTRAINT.OCCUPANCY, {
+    applicable: true,
+    limitMinutes: limit,
+    occupancyMinutes: ctx.occupancyMinutes,
+    endMinutes: ctx.endMinutes,
+    source: first.id,
+    detail: {
+      ...base,
+      limitMinutes: limit,
+      boundByBookingIds: binding.map((booking) => booking.id),
+      boundBySurfaceIds: [...new Set(binding.map((booking) => booking.surfaceId))].sort(),
+      boundBySurfaceNames: [
+        ...new Set(binding.map((booking) => getSurface(graph, booking.surfaceId)?.name ?? null)),
+      ],
+    },
+  });
+}
+
+/**
+ * Is this kickoff legal on this ground on this date — and how close to each of
+ * the four edges is it?
+ *
+ * Returns **all** findings, never the first hit: a booking can be permit-tight
+ * *and* lining-compromised at once, and an operator who sees only the first
+ * fixes the wrong thing.
+ *
+ * @param {import('../facility/types.js').FacilityGraph} graph
+ * @param {import('../timing/types.js').FormatTimingTable} table
+ * @param {import('./types.js').AvailabilityCalendar} calendar
+ * @param {Object} rawQuery - see `KickoffAvailabilityQuerySchema`
+ * @param {{ existingBookings?: ReadonlyArray<import('../facility/types.js').FacilityBooking>, sizePolicy?: string, sizeRank?: Record<string, number> }} [options]
+ * @returns {import('./types.js').KickoffAvailabilityResult}
+ */
+export function checkKickoffAvailability(graph, table, calendar, rawQuery, options = {}) {
+  const query = KickoffAvailabilityQuerySchema.parse(rawQuery);
+  const meta = createAvailabilityMeta();
+  /** @type {import('./types.js').AvailabilityFinding[]} */
+  const findings = [];
+  const ignored = new Set(query.ignoreBookingIds);
+  const existingBookings = (options.existingBookings ?? []).filter(
+    (booking) => !ignored.has(booking.id)
+  );
+
+  /** @type {import('./types.js').KickoffAvailabilityResult} */
+  const answer = {
+    status: '',
+    findings,
+    meta,
+    surfaceId: query.surfaceId,
+    venueId: null,
+    date: query.date,
+    format: query.format,
+    kickoffMinutes: query.kickoffMinutes,
+    occupancyMinutes: null,
+    endMinutes: null,
+    lit: false,
+    lighting: null,
+    permit: null,
+    sunsetMinutes: null,
+    sunsetMarginMinutes: calendar.sunsetMarginMinutes,
+    permitMarginMinutes: calendar.permitMarginMinutes,
+    constraints: [],
+    binding: null,
+    bindingKinds: [],
+  };
+
+  const surface = getSurface(graph, query.surfaceId);
+  if (!surface) {
+    findings.push(
+      /** @type {import('./types.js').AvailabilityFinding} */ (
+        makeFinding(
+          FACILITY_REASON.SURFACE_UNKNOWN,
+          `availability was asked about surface "${query.surfaceId}", which is not in the graph`,
+          { surfaceId: query.surfaceId, date: query.date }
+        )
+      )
+    );
+    return { ...answer, status: deriveAvailabilityStatus(findings) };
+  }
+  answer.venueId = surface.venueId;
+  meta.surfacesConsidered += 1;
+
+  // GAP-14: the corpus's `Scrimmage` rows have no timing row, so their end
+  // minute is genuinely unknown and every check that needs one is skipped. The
+  // checks that do *not* need one still run: a permit blackout closes a site
+  // whatever is being played on it, and answering "we could not tell" for an
+  // untimed booking on a blacked-out date would be a false all-clear.
+  const timing = formatTimingOrUnknown(table, query.format);
+  if (timing.occupancyMinutes === null) {
+    const timingFindings = /** @type {import('./types.js').AvailabilityFinding[]} */ (
+      timing.findings
+    );
+    findings.push(...timingFindings);
+  }
+  const occupancyMinutes = timing.occupancyMinutes?.scheduled ?? null;
+  const endMinutes = occupancyMinutes === null ? null : query.kickoffMinutes + occupancyMinutes;
+  answer.occupancyMinutes = occupancyMinutes;
+  answer.endMinutes = endMinutes;
+
+  // Phase 1.1 answers "may this booking stand here at all?" - surface, size,
+  // lining, equipment and concurrency. None of it is re-implemented here.
+  const facilityResult = checkBooking(
+    graph,
+    {
+      id: PROBE_BOOKING_ID,
+      surfaceId: query.surfaceId,
+      date: query.date,
+      startMinutes: query.kickoffMinutes,
+      endMinutes,
+      format: query.format,
+      label: null,
+    },
+    { existingBookings, sizePolicy: options.sizePolicy, sizeRank: options.sizeRank }
+  );
+  findings.push(
+    .../** @type {import('./types.js').AvailabilityFinding[]} */ (facilityResult.findings)
+  );
+  absorbFacilityMetaInto(meta, facilityResult.meta);
+
+  const resolvedPermit = resolvePermitWindow(calendar, {
+    venueId: surface.venueId,
+    date: query.date,
+  });
+  meta.permitWindowsConsulted += resolvedPermit.consulted;
+  answer.permit = {
+    window: resolvedPermit.window,
+    scopeKind: resolvedPermit.scopeKind,
+    ambiguous: resolvedPermit.ambiguous,
+    candidates: resolvedPermit.candidates,
+  };
+
+  const lighting = resolveLighting(graph, calendar, query.surfaceId);
+  meta.lightingRecordsConsulted += lighting.consulted;
+  answer.lit = lighting.lit;
+  answer.lighting = {
+    lit: lighting.lit,
+    lightsOffMinutes: lighting.lightsOffMinutes,
+    source: lighting.source,
+    recordId: lighting.recordId,
+  };
+
+  const sunsetRecord = sunsetOn(calendar, query.date);
+  if (sunsetRecord) meta.sunsetRecordsConsulted += 1;
+  answer.sunsetMinutes = sunsetRecord?.sunsetMinutes ?? null;
+
+  const conflicting = conflictingBookingsOn(
+    graph,
+    query.surfaceId,
+    query.date,
+    existingBookings,
+    query.ignoreBookingIds,
+    meta
+  );
+
+  const ctx = {
+    surfaceId: query.surfaceId,
+    venueId: surface.venueId,
+    date: query.date,
+    kickoffMinutes: query.kickoffMinutes,
+    endMinutes,
+    occupancyMinutes,
+  };
+
+  const constraints = [
+    occupancyConstraint(graph, conflicting, ctx, findings),
+    lightingConstraint(lighting, resolvedPermit.window, ctx, findings),
+    sunsetConstraint(calendar, lighting, ctx, findings),
+    permitConstraint(calendar, resolvedPermit, ctx, findings),
+  ];
+  meta.constraintsEvaluated += constraints.length;
+
+  const ordered = orderByTightness(constraints);
+  answer.constraints = ordered.constraints;
+  answer.binding = ordered.binding;
+  answer.bindingKinds = ordered.bindingKinds;
+
+  return { ...answer, status: deriveAvailabilityStatus(findings) };
+}
+
+/**
+ * The derived question: **how late can this format kick off here on this date?**
+ *
+ * The answer accounts for all four constraints and says which of them is
+ * binding. The search is exact rather than a scan: the only kickoffs worth
+ * testing are the hard ceiling (permit close, lights-off or the daylight limit,
+ * whichever is tightest, less the format's occupancy) and, for each booking
+ * already standing on conflicting ground, the kickoff that would finish exactly
+ * as that booking starts. Every other minute is either dominated by one of those
+ * or illegal for the same reason.
+ *
+ * `kickoffMinutes` is `null` when nothing is legal — never a fabricated answer.
+ * The search runs from the permit open (or the caller's `notBeforeMinutes`) to
+ * the end of the day (or `notAfterMinutes`). When *no* constraint applies — an
+ * unrecorded permit on lit ground with nothing booked — the answer is the top of
+ * that searched range and `bindingKinds` is empty, which is the honest reading
+ * of "nothing we hold bounds this"; the accompanying `PERMIT_UNDECLARED` finding
+ * is what tells the caller not to trust it.
+ *
+ * @param {import('../facility/types.js').FacilityGraph} graph
+ * @param {import('../timing/types.js').FormatTimingTable} table
+ * @param {import('./types.js').AvailabilityCalendar} calendar
+ * @param {Object} rawQuery - see `LatestKickoffQuerySchema`
+ * @param {{ existingBookings?: ReadonlyArray<import('../facility/types.js').FacilityBooking>, sizePolicy?: string, sizeRank?: Record<string, number> }} [options]
+ * @returns {import('./types.js').LatestKickoffResult}
+ */
+export function latestLegalKickoff(graph, table, calendar, rawQuery, options = {}) {
+  const query = LatestKickoffQuerySchema.parse(rawQuery);
+  const meta = createAvailabilityMeta();
+  /** @type {import('./types.js').AvailabilityFinding[]} */
+  const findings = [];
+  const ignored = new Set(query.ignoreBookingIds);
+  const existingBookings = (options.existingBookings ?? []).filter(
+    (booking) => !ignored.has(booking.id)
+  );
+
+  /** @type {import('./types.js').LatestKickoffResult} */
+  const noAnswer = {
+    status: '',
+    findings,
+    meta,
+    surfaceId: query.surfaceId,
+    venueId: null,
+    date: query.date,
+    format: query.format,
+    kickoffMinutes: null,
+    occupancyMinutes: null,
+    endMinutes: null,
+    lit: false,
+    lighting: null,
+    permit: null,
+    sunsetMinutes: null,
+    sunsetMarginMinutes: calendar.sunsetMarginMinutes,
+    permitMarginMinutes: calendar.permitMarginMinutes,
+    constraints: [],
+    binding: null,
+    bindingKinds: [],
+    searchedFromMinutes: 0,
+    searchedToMinutes: query.notAfterMinutes,
+    candidatesTested: 0,
+  };
+
+  const surface = getSurface(graph, query.surfaceId);
+  if (!surface) {
+    findings.push(
+      /** @type {import('./types.js').AvailabilityFinding} */ (
+        makeFinding(
+          FACILITY_REASON.SURFACE_UNKNOWN,
+          `availability was asked about surface "${query.surfaceId}", which is not in the graph`,
+          { surfaceId: query.surfaceId, date: query.date }
+        )
+      )
+    );
+    return { ...noAnswer, status: deriveAvailabilityStatus(findings) };
+  }
+  noAnswer.venueId = surface.venueId;
+  meta.surfacesConsidered += 1;
+
+  const timing = formatTimingOrUnknown(table, query.format);
+  if (timing.occupancyMinutes === null) {
+    const timingFindings = /** @type {import('./types.js').AvailabilityFinding[]} */ (
+      timing.findings
+    );
+    findings.push(...timingFindings);
+    return { ...noAnswer, status: deriveAvailabilityStatus(findings) };
+  }
+  const occupancyMinutes = timing.occupancyMinutes.scheduled;
+  noAnswer.occupancyMinutes = occupancyMinutes;
+
+  const resolvedPermit = resolvePermitWindow(calendar, {
+    venueId: surface.venueId,
+    date: query.date,
+  });
+  meta.permitWindowsConsulted += resolvedPermit.consulted;
+  const lighting = resolveLighting(graph, calendar, query.surfaceId);
+  meta.lightingRecordsConsulted += lighting.consulted;
+
+  // A stated blackout short-circuits: there is no window to search inside, and
+  // reporting "no legal kickoff" without naming the permit would lose the only
+  // fact an operator can act on.
+  if (resolvedPermit.window && !resolvedPermit.window.hasPermit) {
+    const constraint = permitConstraint(
+      calendar,
+      resolvedPermit,
+      {
+        kickoffMinutes: null,
+        endMinutes: null,
+        occupancyMinutes,
+        venueId: surface.venueId,
+        date: query.date,
+      },
+      findings
+    );
+    const ordered = orderByTightness([constraint]);
+    meta.constraintsEvaluated += 1;
+    return {
+      ...noAnswer,
+      status: deriveAvailabilityStatus(findings),
+      lit: lighting.lit,
+      lighting: {
+        lit: lighting.lit,
+        lightsOffMinutes: lighting.lightsOffMinutes,
+        source: lighting.source,
+        recordId: lighting.recordId,
+      },
+      permit: {
+        window: resolvedPermit.window,
+        scopeKind: resolvedPermit.scopeKind,
+        ambiguous: resolvedPermit.ambiguous,
+        candidates: resolvedPermit.candidates,
+      },
+      sunsetMinutes: sunsetOn(calendar, query.date)?.sunsetMinutes ?? null,
+      constraints: ordered.constraints,
+      binding: ordered.binding,
+      bindingKinds: ordered.bindingKinds,
+    };
+  }
+
+  /** @type {number[]} */
+  const hardLimits = [];
+  if (resolvedPermit.window !== null && resolvedPermit.window.closeMinutes !== null) {
+    hardLimits.push(resolvedPermit.window.closeMinutes);
+  }
+  if (lighting.lit && lighting.lightsOffMinutes !== null) {
+    hardLimits.push(lighting.lightsOffMinutes);
+  }
+  if (!lighting.lit) {
+    const daylight = daylightLimitMinutes(calendar, query.date);
+    if (daylight !== null) hardLimits.push(daylight);
+  }
+
+  const floorMinutes = query.notBeforeMinutes ?? resolvedPermit.window?.openMinutes ?? 0;
+  const ceilingFromLimits =
+    hardLimits.length === 0
+      ? query.notAfterMinutes
+      : Math.min(...hardLimits.map((limit) => limit - occupancyMinutes));
+  const ceilingMinutes = Math.min(ceilingFromLimits, query.notAfterMinutes);
+  noAnswer.searchedFromMinutes = floorMinutes;
+  noAnswer.searchedToMinutes = ceilingMinutes;
+
+  const conflicting = conflictingBookingsOn(
+    graph,
+    query.surfaceId,
+    query.date,
+    existingBookings,
+    query.ignoreBookingIds,
+    meta
+  );
+
+  const candidates = [
+    ceilingMinutes,
+    ...conflicting.map((booking) => booking.startMinutes - occupancyMinutes),
+  ]
+    .filter((minute) => minute >= floorMinutes && minute <= ceilingMinutes)
+    .sort((a, b) => b - a);
+
+  const seen = new Set();
+  for (const kickoffMinutes of candidates) {
+    if (seen.has(kickoffMinutes)) continue;
+    seen.add(kickoffMinutes);
+    meta.candidateKickoffsTested += 1;
+
+    const attempt = checkKickoffAvailability(
+      graph,
+      table,
+      calendar,
+      {
+        surfaceId: query.surfaceId,
+        date: query.date,
+        kickoffMinutes,
+        format: query.format,
+        ignoreBookingIds: query.ignoreBookingIds,
+      },
+      options
+    );
+    const blocked = attempt.findings.some(
+      (finding) => finding.severity === AVAILABILITY_SEVERITY.BLOCKING
+    );
+    if (blocked) continue;
+
+    findings.push(...attempt.findings);
+    // `checkKickoffAvailability()` never tests a candidate of its own, so this
+    // cannot double-count the counter the loop above maintains.
+    mergeAvailabilityMeta(meta, attempt.meta);
+
+    findings.push(
+      makeAvailabilityFinding(
+        AVAILABILITY_REASON.LATEST_KICKOFF_BOUND,
+        `the latest legal kickoff is minute ${kickoffMinutes} (ending ${attempt.endMinutes}), bound by ${
+          attempt.bindingKinds.join(' and ') || 'nothing'
+        }`,
+        {
+          surfaceId: query.surfaceId,
+          date: query.date,
+          format: query.format,
+          kickoffMinutes,
+          endMinutes: attempt.endMinutes,
+          bindingKinds: attempt.bindingKinds,
+          constraintOrder: attempt.constraints.map((constraint) => constraint.kind),
+        }
+      )
+    );
+
+    return {
+      ...attempt,
+      status: deriveAvailabilityStatus(findings),
+      findings,
+      meta,
+      searchedFromMinutes: floorMinutes,
+      searchedToMinutes: ceilingMinutes,
+      candidatesTested: meta.candidateKickoffsTested,
+    };
+  }
+
+  findings.push(
+    makeAvailabilityFinding(
+      AVAILABILITY_REASON.NO_LEGAL_KICKOFF,
+      `no legal kickoff for ${query.format ?? '(no format)'} exists on ${query.date} between minutes ${floorMinutes} and ${ceilingMinutes}`,
+      {
+        surfaceId: query.surfaceId,
+        date: query.date,
+        format: query.format,
+        occupancyMinutes,
+        searchedFromMinutes: floorMinutes,
+        searchedToMinutes: ceilingMinutes,
+        candidatesTested: meta.candidateKickoffsTested,
+      }
+    )
+  );
+
+  return {
+    ...noAnswer,
+    status: deriveAvailabilityStatus(findings),
+    lit: lighting.lit,
+    lighting: {
+      lit: lighting.lit,
+      lightsOffMinutes: lighting.lightsOffMinutes,
+      source: lighting.source,
+      recordId: lighting.recordId,
+    },
+    permit: {
+      window: resolvedPermit.window,
+      scopeKind: resolvedPermit.scopeKind,
+      ambiguous: resolvedPermit.ambiguous,
+      candidates: resolvedPermit.candidates,
+    },
+    sunsetMinutes: sunsetOn(calendar, query.date)?.sunsetMinutes ?? null,
+    candidatesTested: meta.candidateKickoffsTested,
+  };
+}

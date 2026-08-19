@@ -1,0 +1,155 @@
+/**
+ * Zod schemas for availability input.
+ *
+ * `.strict()` throughout, matching `facility/schemas.js` and `timing/schemas.js`
+ * and deliberately unlike `packages/core/src/schemas/index.js`, whose blanket
+ * `.passthrough()` is what let four copies of the slot model drift apart without
+ * anything failing (`docs/ARCHITECTURE.md` §1.1).
+ *
+ * @module availability/schemas
+ */
+
+import { z } from 'zod';
+
+/** Inclusive ISO calendar date, `YYYY-MM-DD`. No `Date` construction anywhere. */
+const IsoDateSchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, { message: 'expected an ISO YYYY-MM-DD date' });
+
+/** A non-empty opaque identifier. */
+const IdSchema = z.string().min(1, { message: 'ids must be non-empty strings' });
+
+/** Minutes past local midnight. Not capped at 1440: a permit may close after midnight. */
+const MinutesSchema = z.number().int().min(0);
+
+/** Three-letter weekday code, as `weekdayCodeOf()` produces. */
+const WeekdaySchema = z.enum(['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT']);
+
+/**
+ * @see {@link import('./types.js').PermitWindow}
+ *
+ * The refinements encode GAP-08's third state. `hasPermit: false` is a stated
+ * blackout and must carry no times; `hasPermit: true` must carry both, because
+ * a half-stated window is a producer bug that would otherwise become a silently
+ * unbounded one.
+ */
+export const PermitWindowSchema = z
+  .object({
+    id: IdSchema,
+    venueId: IdSchema,
+    scopeKind: z.enum(['weekday-default', 'date-exception']),
+    weekday: WeekdaySchema.nullable().default(null),
+    date: IsoDateSchema.nullable().default(null),
+    hasPermit: z.boolean().default(true),
+    openMinutes: MinutesSchema.nullable().default(null),
+    closeMinutes: MinutesSchema.nullable().default(null),
+    /** What the permit paperwork itself claims about lighting, for cross-check. */
+    lit: z.boolean().nullable().default(null),
+    lightsOffMinutes: MinutesSchema.nullable().default(null),
+    note: z.string().nullable().default(null),
+    source: z.string().nullable().default(null),
+  })
+  .strict()
+  .refine((window) => window.scopeKind !== 'date-exception' || window.date !== null, {
+    message: 'a date-scoped permit window must carry the date it applies to',
+    path: ['date'],
+  })
+  .refine((window) => window.scopeKind !== 'weekday-default' || window.weekday !== null, {
+    message: 'a weekday-default permit window must carry the weekday it applies to',
+    path: ['weekday'],
+  })
+  .refine(
+    (window) => !window.hasPermit || (window.openMinutes !== null && window.closeMinutes !== null),
+    {
+      message: 'a permit window with a permit must state both an open and a close time',
+      path: ['closeMinutes'],
+    }
+  )
+  .refine(
+    (window) => window.hasPermit || (window.openMinutes === null && window.closeMinutes === null),
+    {
+      message: 'a blackout states no times; hasPermit: false with times is a contradiction',
+      path: ['hasPermit'],
+    }
+  )
+  .refine(
+    (window) =>
+      window.openMinutes === null ||
+      window.closeMinutes === null ||
+      window.openMinutes <= window.closeMinutes,
+    { message: 'a permit window must not close before it opens', path: ['closeMinutes'] }
+  );
+
+/** @see {@link import('./types.js').SunsetRecord} */
+export const SunsetRecordSchema = z
+  .object({
+    date: IsoDateSchema,
+    sunsetMinutes: MinutesSchema,
+    note: z.string().nullable().default(null),
+    source: z.string().nullable().default(null),
+  })
+  .strict();
+
+/** @see {@link import('./types.js').SurfaceLighting} */
+export const SurfaceLightingSchema = z
+  .object({
+    surfaceId: IdSchema,
+    lit: z.boolean(),
+    lightsOffMinutes: MinutesSchema.nullable().default(null),
+    note: z.string().nullable().default(null),
+    source: z.string().nullable().default(null),
+  })
+  .strict();
+
+/**
+ * Input for `buildAvailabilityCalendar()`.
+ *
+ * The **margins are configurable and defaulted here, once**. 15 minutes is the
+ * club's stated pre-sunset safety margin (GAP-06) and the threshold the
+ * acceptance criteria flag a tight permit against; hard-coding either at a call
+ * site is how a policy becomes a magic number nobody can find.
+ */
+export const AvailabilityCalendarInputSchema = z
+  .object({
+    permitWindows: z.array(PermitWindowSchema).default([]),
+    sunsets: z.array(SunsetRecordSchema).default([]),
+    /** Per-field overrides. Empty for the corpus, which is venue-level only (GAP-05). */
+    lighting: z.array(SurfaceLightingSchema).default([]),
+    /** How long before sunset an unlit game must be finished. */
+    sunsetMarginMinutes: z.number().int().min(0).default(15),
+    /** How little room against the permit close counts as "tight". */
+    permitMarginMinutes: z.number().int().min(0).default(15),
+    source: z.string().nullable().default(null),
+  })
+  .strict();
+
+/** Query accepted by `checkKickoffAvailability()`. */
+export const KickoffAvailabilityQuerySchema = z
+  .object({
+    surfaceId: IdSchema,
+    date: IsoDateSchema,
+    kickoffMinutes: MinutesSchema,
+    /** Null when the row's format is unknown to the timing table (GAP-14). */
+    format: z.string().min(1).nullable(),
+    /** Bookings belonging to the fixture being asked about, so it is not compared with itself. */
+    ignoreBookingIds: z.array(IdSchema).default([]),
+  })
+  .strict();
+
+/** Query accepted by `latestLegalKickoff()`. */
+export const LatestKickoffQuerySchema = z
+  .object({
+    surfaceId: IdSchema,
+    date: IsoDateSchema,
+    format: z.string().min(1).nullable(),
+    /**
+     * Earliest kickoff to consider. `null` means "the permit open", which is
+     * the honest default — not `0`, which would silently search hours the venue
+     * is shut.
+     */
+    notBeforeMinutes: MinutesSchema.nullable().default(null),
+    /** Latest kickoff to consider. Defaults to the end of the day. */
+    notAfterMinutes: MinutesSchema.default(24 * 60),
+    ignoreBookingIds: z.array(IdSchema).default([]),
+  })
+  .strict();

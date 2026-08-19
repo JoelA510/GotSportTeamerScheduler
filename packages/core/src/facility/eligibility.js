@@ -64,10 +64,14 @@ const EQUIPMENT_STATUS_REASON = Object.freeze({
  * this package must stay free of timezone-sensitive construction, and the only
  * thing the caller needs is the *width* of a date range.
  *
+ * Exported because the availability model (Phase 1.3) needs the same
+ * timezone-free civil-date arithmetic to work out a weekday, and a second copy
+ * of it would be a second thing to get wrong.
+ *
  * @param {string} iso
  * @returns {number}
  */
-function isoDayNumber(iso) {
+export function isoDayNumber(iso) {
   const year = Number(iso.slice(0, 4));
   const month = Number(iso.slice(5, 7));
   const day = Number(iso.slice(8, 10));
