@@ -78,11 +78,14 @@
  * guarantee lives here: nothing in this package can offer a game a date, a
  * surface or a kickoff that is not in this object.
  *
+ * Frozen all the way down, and typed that way: the immutability is the
+ * guarantee, not an implementation detail of how it happens to be built.
+ *
  * @typedef {Object} SlotInventory
- * @property {string[]} dates
- * @property {Record<string, string>} venueBySurfaceId
- * @property {Record<string, number[]>} kickoffsByDateVenue - key `date|venueId`
- * @property {Record<string, string[]>} surfacesByDateVenueFormat - key `date|venueId|format`
+ * @property {ReadonlyArray<string>} dates
+ * @property {Readonly<Record<string, string>>} venueBySurfaceId
+ * @property {Readonly<Record<string, ReadonlyArray<number>>>} kickoffsByDateVenue - key `date|venueId`
+ * @property {Readonly<Record<string, ReadonlyArray<string>>>} surfacesByDateVenueFormat - key `date|venueId|format`
  * @property {number} slotCount
  */
 
@@ -95,6 +98,7 @@
  * @property {Record<string, PlacedGame>} baseline
  * @property {Record<string, string>} dispositions - gameId -> freeze disposition
  * @property {Record<string, string[]>} admittedSlotsByGameId - slots a change request brought
+ * @property {Record<string, string>} pinnedAt - gameId -> the slot key it was frozen at mid-run by `pinGames()`; the position `freeze-audit` holds it to, in place of the baseline
  * @property {string[]} pending - dislodged, awaiting placement
  * @property {Array<{ gameId: string, reason: string }>} unplaced - TIME TBD
  * @property {SlotInventory} inventory

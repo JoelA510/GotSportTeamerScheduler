@@ -19,10 +19,17 @@
  * ranks `CONSTRAINT_SCOPE_SPECIFICITY` sets, so a comparison across the three
  * models means something.
  *
+ * The one thing this model adds on top is a **second, freeze-local** ordering
+ * level, {@link freezeTieBreak} — not a change to the shared integers, which
+ * three phases read, but a tie-break applied *within* one of their ranks. It
+ * exists because `thaw` exists: a model with exceptions has to be able to say
+ * that "except this one game" is narrower than "this whole pitch", and the
+ * shared scale puts both at 3.
+ *
  * @module freeze/scope
  */
 
-import { FREEZE_SCOPE_DIMENSION, freezeSpecificityOf } from './reasonCodes.js';
+import { FREEZE_SCOPE_DIMENSION, freezeSpecificityOf, freezeTieBreakOf } from './reasonCodes.js';
 
 /**
  * Normalise a context so the plural forms always exist.
@@ -101,6 +108,40 @@ export function freezeSpecificity(match) {
   let best = 0;
   for (const dimension of freezeDimensions(match)) {
     const rank = freezeSpecificityOf(dimension);
+    if (rank > best) best = rank;
+  }
+  return best;
+}
+
+/**
+ * The **second** half of the ordering: how narrow this match is among the
+ * matches that tie with it on {@link freezeSpecificity}.
+ *
+ * Narrowness is ordered on two levels, and only the first is shared with the
+ * constraint and waiver models:
+ *
+ * 1. `freezeSpecificity()` — the rank of the narrowest dimension named, on the
+ *    integers `CONSTRAINT_SCOPE_SPECIFICITY` sets. Unchanged, and shared on
+ *    purpose so "this thaw is broader than the freeze it carves out of" keeps
+ *    meaning something across the three models.
+ * 2. This function — within one primary rank, how many things the dimension can
+ *    name: `gameId` > `teamId` > `surfaceId`. Freeze-local, because the other
+ *    two models have no `thaw` and therefore no exception to order.
+ *
+ * Read from the dimensions that actually *achieved* the primary rank, for the
+ * same reason the primary is read from the narrowest term: a conjunction is at
+ * least as narrow as its narrowest dimension, so `{ surfaceId, gameId }` is a
+ * statement about one game.
+ *
+ * @param {import('./types.js').FreezeMatch} match
+ * @returns {number}
+ */
+export function freezeTieBreak(match) {
+  const primary = freezeSpecificity(match);
+  let best = 0;
+  for (const dimension of freezeDimensions(match)) {
+    if (freezeSpecificityOf(dimension) !== primary) continue;
+    const rank = freezeTieBreakOf(dimension);
     if (rank > best) best = rank;
   }
   return best;

@@ -74,6 +74,7 @@ import {
   freezeAllExcept,
   freezeForChanges,
   freezeSpecificity,
+  freezeTieBreak,
   judgeFreeze,
   judgeFreezeAll,
   scopesTouchedBy,
@@ -92,8 +93,11 @@ import {
   buildResolvePipeline,
   buildSlotInventory,
   candidateSlotsFor,
+  checkPlacement,
   createResolveLedger,
   createResolveState,
+  frozenGameUnsatisfiable,
+  isSlotAdmissible,
   probeEveryStage,
   probeStage,
   reoptimiseWholeSeason,
@@ -441,16 +445,80 @@ describe('the freeze scope model', () => {
     );
   });
 
-  it('says at build time when a thaw and a freeze will tie', () => {
-    // The shared specificity scale flattens `surface`, `team` and `game` onto
-    // one rank, so "freeze Pitch 1 except this one game" is a tie rather than a
-    // narrowing and every game both rules reach is held and reported ambiguous.
-    // That is a real limitation of sharing the integers, and it is stated once,
-    // where an operator can act on it, rather than per game later.
+  it('reads "freeze Pitch 1 except this one game" as a narrowing, not a contradiction', () => {
+    // The two-level ordering, and the half an operator meets every day. The
+    // shared specificity scale puts `surface`, `team` and `game` all at rank 3,
+    // because three phases read those integers and they are not this module's
+    // to re-cut. Within one rank the freeze model orders by how many things the
+    // dimension can name — a gameId names exactly one — so the exception wins
+    // and its neighbours on the same pitch stay held.
+    const parentId = season2026SurfaceId('Alder Park', 'Pitch 1');
+    const onThatPitch = schedule.games.filter((game) =>
+      graph.surfaces[game.surfaceId].lineage.includes(parentId)
+    );
+    // Meta-assertion: the carve-out has to have neighbours, or "its neighbours
+    // stay frozen" is a statement about the empty set.
+    expect(onThatPitch.length).toBeGreaterThan(1);
+    const carvedOut = /** @type {Object} */ (onThatPitch[0]);
+    const neighbours = onThatPitch.slice(1);
+
+    // The primary ranks are genuinely equal — this test is only interesting
+    // because the shared scale cannot separate these two rules.
+    expect(freezeSpecificity(FreezeMatchSchema.parse({ surfaceId: parentId }))).toBe(
+      freezeSpecificity(FreezeMatchSchema.parse({ gameId: carvedOut.id }))
+    );
+
+    const plan = buildFreezePlan({
+      rules: [
+        { kind: FREEZE_RULE_KIND.FREEZE, match: { surfaceId: parentId } },
+        { kind: FREEZE_RULE_KIND.THAW, match: { gameId: carvedOut.id } },
+      ],
+    });
+    // Nothing is reported at build time: the two rules are ordered.
+    expect(
+      plan.findings.some((candidate) => candidate.code === FREEZE_REASON.FREEZE_THAW_TIES_FREEZE)
+    ).toBe(false);
+
+    const judgement = judgeFreeze(plan, contextOf(carvedOut));
+    expect(judgement.frozen).toBe(false);
+    expect(judgement.findings.map((entry) => entry.code)).not.toContain(
+      FREEZE_REASON.FREEZE_AMBIGUOUS_DISPOSITION
+    );
+    expect(judgement.findings.map((entry) => entry.code)).toContain(
+      FREEZE_REASON.FREEZE_NARROWER_APPLIED
+    );
+    // …and the pitch it was carved out of is still held, game by game.
+    for (const neighbour of neighbours) {
+      expect(judgeFreeze(plan, contextOf(neighbour)).frozen, neighbour.id).toBe(true);
+    }
+
+    // The second ordering level, stated directly: it is freeze-local, and it
+    // orders the three dimensions the shared scale flattens onto rank 3.
+    expect(freezeTieBreak(FreezeMatchSchema.parse({ gameId: carvedOut.id }))).toBeGreaterThan(
+      freezeTieBreak(FreezeMatchSchema.parse({ teamId: 'any-team' }))
+    );
+    expect(freezeTieBreak(FreezeMatchSchema.parse({ teamId: 'any-team' }))).toBeGreaterThan(
+      freezeTieBreak(FreezeMatchSchema.parse({ surfaceId: parentId }))
+    );
+    // …and it changes none of the integers the constraint and waiver models read.
+    expect(FREEZE_SCOPE_SPECIFICITY[FREEZE_SCOPE_DIMENSION.SURFACE]).toBe(
+      CONSTRAINT_SCOPE_SPECIFICITY.surface
+    );
+    expect(FREEZE_SCOPE_SPECIFICITY[FREEZE_SCOPE_DIMENSION.GAME]).toBe(
+      WAIVER_SCOPE_SPECIFICITY.game
+    );
+  });
+
+  it('still reports a genuine same-dimension contradiction, and still holds the game', () => {
+    // The other half, and the reason the tie-break is a second level rather
+    // than a re-cut of the shared scale: two rules naming the *same* dimension
+    // are the same width by construction, nothing orders them, and the plan is
+    // genuinely contradictory. The residual case keeps both its build-time
+    // warning and its per-game blocking verdict.
     const plan = buildFreezePlan({
       rules: [
         { kind: FREEZE_RULE_KIND.FREEZE, match: { surfaceId: sampleGame.surfaceId } },
-        { kind: FREEZE_RULE_KIND.THAW, match: { gameId: sampleGame.id } },
+        { kind: FREEZE_RULE_KIND.THAW, match: { surfaceId: sampleGame.surfaceId } },
       ],
     });
     const finding = plan.findings.find(
@@ -458,15 +526,20 @@ describe('the freeze scope model', () => {
     );
     expect(finding?.severity).toBe('compromise');
     expect(finding?.details.specificity).toBe(
-      FREEZE_SCOPE_SPECIFICITY[FREEZE_SCOPE_DIMENSION.GAME]
+      FREEZE_SCOPE_SPECIFICITY[FREEZE_SCOPE_DIMENSION.SURFACE]
     );
-    // …and the per-game verdict it predicts.
+
     const judgement = judgeFreeze(plan, contextOf(sampleGame));
+    // Frozen wins the residual tie: a contradictory plan is an operator error,
+    // and the recoverable half of the error is "it did not move".
     expect(judgement.frozen).toBe(true);
-    expect(judgement.findings.map((entry) => entry.code)).toContain(
-      FREEZE_REASON.FREEZE_AMBIGUOUS_DISPOSITION
+    const ambiguity = judgement.findings.find(
+      (entry) => entry.code === FREEZE_REASON.FREEZE_AMBIGUOUS_DISPOSITION
     );
-    // Silent when the ranks genuinely differ.
+    expect(ambiguity?.severity).toBe('blocking');
+    expect(judgement.meta.ambiguitiesReported).toBe(1);
+
+    // Silent when the primary ranks genuinely differ, as before.
     const ordered = buildFreezePlan({
       rules: [
         { kind: FREEZE_RULE_KIND.FREEZE, match: { date: sampleGame.date } },
@@ -476,6 +549,69 @@ describe('the freeze scope model', () => {
     expect(
       ordered.findings.some((candidate) => candidate.code === FREEZE_REASON.FREEZE_THAW_TIES_FREEZE)
     ).toBe(false);
+  });
+
+  it('leaves two rank-2 dimensions unordered, because nothing honestly orders them', () => {
+    // The tie-break table is deliberately partial. `date`, `division`, `venue`
+    // and `format` share rank 2 precisely because a date does not name more or
+    // fewer things than a venue does; inventing an order there would be a
+    // ruling nobody made. A pair that ties in that group is still a genuine
+    // contradiction and still says so.
+    const plan = buildFreezePlan({
+      rules: [
+        { kind: FREEZE_RULE_KIND.FREEZE, match: { venueId: sampleGame.venueId } },
+        { kind: FREEZE_RULE_KIND.THAW, match: { date: sampleGame.date } },
+      ],
+    });
+    expect(
+      plan.findings.some((candidate) => candidate.code === FREEZE_REASON.FREEZE_THAW_TIES_FREEZE)
+    ).toBe(true);
+    expect(judgeFreeze(plan, contextOf(sampleGame)).frozen).toBe(true);
+  });
+
+  it('names every contradictory pair, not just the first one it met', () => {
+    // The set-level aggregation keys on the code plus the rules the finding
+    // names. `FREEZE_AMBIGUOUS_DISPOSITION` names `ruleIds` — plural, because
+    // an ambiguity is about a pair — so keying on the singular `ruleId`
+    // collapsed two independent contradictions into one finding that named the
+    // first and counted both. An operator would fix one and believe they were
+    // done.
+    const first = /** @type {Object} */ (schedule.games.find((game) => game.homeTeamId));
+    const second = /** @type {Object} */ (
+      schedule.games.find(
+        (game) =>
+          game.surfaceId !== first.surfaceId &&
+          game.homeTeamId &&
+          game.homeTeamId !== first.homeTeamId &&
+          game.awayTeamId !== first.homeTeamId
+      )
+    );
+    // Meta-assertion: two genuinely independent pairs, or the test is really
+    // one contradiction wearing two names.
+    expect(second).toBeTruthy();
+    expect(second.surfaceId).not.toBe(first.surfaceId);
+
+    const plan = buildFreezePlan({
+      rules: [
+        { kind: FREEZE_RULE_KIND.FREEZE, match: { surfaceId: first.surfaceId } },
+        { kind: FREEZE_RULE_KIND.THAW, match: { surfaceId: first.surfaceId } },
+        { kind: FREEZE_RULE_KIND.FREEZE, match: { teamId: second.homeTeamId } },
+        { kind: FREEZE_RULE_KIND.THAW, match: { teamId: second.homeTeamId } },
+      ],
+    });
+    const judgements = judgeFreezeAll(plan, [contextOf(first), contextOf(second)]);
+    const ambiguities = judgements.findings.filter(
+      (finding) => finding.code === FREEZE_REASON.FREEZE_AMBIGUOUS_DISPOSITION
+    );
+    expect(ambiguities).toHaveLength(2);
+    // Two findings, one per pair, each speaking for the one game it is about —
+    // and between them they name all four rules.
+    expect(ambiguities.map((finding) => finding.details.gameCount)).toEqual([1, 1]);
+    const named = new Set(
+      ambiguities.flatMap((finding) => /** @type {string[]} */ (finding.details.ruleIds))
+    );
+    expect(named.size).toBe(4);
+    expect(judgements.frozenGameIds).toEqual([first.id, second.id].sort());
   });
 
   it('reports a thaw broader than the freeze it carves out of', () => {
@@ -1193,6 +1329,253 @@ describe('a frozen game that cannot be satisfied', () => {
   });
 });
 
+describe('the unsatisfiable error names violations by identity, never by substring', () => {
+  /** The whole season as a state, so `checkPlacement` has real neighbours. */
+  const state = createResolveState({
+    games: schedule.games.map((game) => ({ ...game })),
+    dispositions: Object.fromEntries(
+      schedule.games.map((game) => [game.id, FREEZE_DISPOSITION.FROZEN])
+    ),
+    inventory: buildSlotInventory(schedule.games),
+    ledger: createResolveLedger(),
+  });
+
+  /** Which games a violation actually names, by identity. */
+  const namesGame = (violation, gameId) =>
+    (violation.entities ?? []).some((entity) => entity.kind === 'game' && entity.id === gameId) ||
+    violation.details?.gameId === gameId ||
+    String(violation.subjectId ?? '')
+      .split(/::|->|\|/)
+      .includes(gameId);
+
+  /**
+   * A game whose id is a **strict prefix** of another game's id that the rule
+   * engine reports on. Found in the corpus, not typed in: game ids are
+   * `combined_schedule.csv#<n>`, so `#1` is a prefix of `#10`, `#108`, `#180`
+   * and a dozen more.
+   */
+  const withViolations = new Set(
+    baselineVerification.violations.flatMap((violation) =>
+      (violation.entities ?? [])
+        .filter((entity) => entity.kind === 'game')
+        .map((entity) => entity.id)
+    )
+  );
+  const trapped = /** @type {string} */ (
+    schedule.games
+      .map((game) => game.id)
+      .sort()
+      .find((id) => [...withViolations].some((other) => other !== id && other.startsWith(id)))
+  );
+
+  it('is asked about a game whose id is a prefix of other games that do have violations', () => {
+    // The meta-assertion. Without a prefix collision in the corpus the test
+    // below would pass against the broken code, which is the only failure mode
+    // that matters here.
+    expect(trapped).toBeTruthy();
+    const substringMatched = baselineVerification.violations.filter(
+      (violation) =>
+        typeof violation.subjectId === 'string' && violation.subjectId.includes(trapped)
+    );
+    const identityMatched = baselineVerification.violations.filter((violation) =>
+      namesGame(violation, trapped)
+    );
+    expect(identityMatched.length).toBeGreaterThan(0);
+    expect(substringMatched.length).toBeGreaterThan(identityMatched.length);
+  });
+
+  it('carries only the violations that are about the game it names', () => {
+    const game = /** @type {Object} */ (baselineById.get(trapped));
+    const slot = { date: game.date, surfaceId: game.surfaceId, startMinutes: game.startMinutes };
+    const error = frozenGameUnsatisfiable({
+      state,
+      gameId: trapped,
+      slot,
+      placement: checkPlacement(engines, state, trapped, slot),
+      registry,
+      verification: baselineVerification,
+      ruleId: null,
+      stageId: 'a-test',
+    });
+
+    // By game, never by count: name the strays rather than asserting a total.
+    const strays = error.violations
+      .filter((violation) => !namesGame(violation, trapped))
+      .map((violation) => violation.subjectId);
+    expect(strays).toEqual([]);
+    // …and the counter an operator reads agrees with the list it came from.
+    expect(error.meta.violationsReported).toBe(error.violations.length);
+    expect(
+      error.violations.length,
+      'the error must not be as long as the substring filter made it'
+    ).toBeLessThan(
+      baselineVerification.violations.filter(
+        (violation) =>
+          typeof violation.subjectId === 'string' && violation.subjectId.includes(trapped)
+      ).length
+    );
+    // The identity match is not merely narrower — it is complete.
+    expect(error.violations.length).toBe(
+      baselineVerification.violations.filter((violation) => namesGame(violation, trapped)).length
+    );
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* The slot inventory                                                          */
+/* -------------------------------------------------------------------------- */
+
+describe('the slot inventory cannot be extended by the code that reads it', () => {
+  const run = applyChangeRequest({ schedule, changes, engines, verify: false });
+  const thawedId = run.judgements.thawedGameIds[0];
+  const game = /** @type {Object} */ (baselineById.get(thawedId));
+  const venueId = run.state.inventory.venueBySurfaceId[game.surfaceId];
+  const venueKey = `${game.date}|${venueId}`;
+  /** A kickoff minute nothing in the corpus ever played at. */
+  const invented = 3;
+
+  it('is frozen all the way down, not only at the top', () => {
+    // A shallow freeze here is invisible: `createResolveState()`'s deep freeze
+    // stops at anything already frozen, so a shallow-frozen inventory is
+    // skipped whole and its arrays stay writable.
+    expect(Object.isFrozen(run.state.inventory)).toBe(true);
+    expect(Object.isFrozen(run.state.inventory.kickoffsByDateVenue)).toBe(true);
+    expect(Object.isFrozen(run.state.inventory.kickoffsByDateVenue[venueKey])).toBe(true);
+    expect(Object.isFrozen(run.state.inventory.surfacesByDateVenueFormat)).toBe(true);
+    expect(Object.isFrozen(run.state.inventory.dates)).toBe(true);
+    expect(Object.isFrozen(run.state.inventory.venueBySurfaceId)).toBe(true);
+  });
+
+  it('refuses a pushed-in kickoff, and keeps refusing the slot it would have admitted', () => {
+    // The anti-slot-inventor guarantee is one of the three things that stop
+    // this package becoming a third scheduler. One `push()` used to revoke it:
+    // the slot became admissible, `applyMove` accepted it, and because the
+    // write went *through* the writer the move was ledgered and `freeze-audit`
+    // saw nothing wrong with it.
+    expect(run.state.inventory.kickoffsByDateVenue[venueKey]).not.toContain(invented);
+    // The cast is the point: this is code that believes it may write, which is
+    // what the type now says it may not and what the freeze now stops.
+    const kickoffs = /** @type {number[]} */ (
+      /** @type {unknown} */ (run.state.inventory.kickoffsByDateVenue[venueKey])
+    );
+    expect(() => kickoffs.push(invented)).toThrow(TypeError);
+
+    const slot = { date: game.date, surfaceId: game.surfaceId, startMinutes: invented };
+    expect(isSlotAdmissible(run.state, thawedId, slot)).toBe(false);
+    expect(() =>
+      applyMove(
+        run.state,
+        { gameId: thawedId, kind: MOVE_KIND.RELOCATE, to: slot, reason: 'an invented kickoff' },
+        'a-stage-inventing-a-slot'
+      )
+    ).toThrow(/not in the baseline inventory/);
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* "Does it break something new" is not the same question as "does it break    */
+/* the same thing twice"                                                       */
+/* -------------------------------------------------------------------------- */
+
+describe('a candidate slot is judged on how often it breaks a rule, not whether', () => {
+  /**
+   * The corpus cannot produce this on its own — its only baseline blocking code
+   * is `SIZE_UNKNOWN_FORMAT` on the four `Scrimmage` rows, one apiece — so the
+   * case is **constructed** from real corpus rows and real corpus geometry.
+   *
+   * `Alder Park Pitch 1` is the parent of `Pitch 1A` and `Pitch 1B`. A game
+   * standing on the parent conflicts with every child game standing under it at
+   * the same time. Put one child game at the early kickoff and two at the late
+   * one, and the parent game breaks `OCCUPIED_PARENT_CHILD` **once** where it
+   * starts and **twice** where the change request wants to send it — with the
+   * de-duplicated code set identical in both places, which is exactly why
+   * comparing presence reads the move as harmless.
+   */
+  const P1 = season2026SurfaceId('Alder Park', 'Pitch 1');
+  const date = AFFECTED_DATES[0];
+  const onPitch1 = schedule.games
+    .filter((row) => graph.surfaces[row.surfaceId].lineage.includes(P1) && row.date === date)
+    .sort((a, b) => a.startMinutes - b.startMinutes || a.surfaceId.localeCompare(b.surfaceId));
+  const kickoffs = [...new Set(onPitch1.map((row) => row.startMinutes))].sort((a, b) => a - b);
+  const early = kickoffs[0];
+  const late = kickoffs[kickoffs.length - 1];
+  /** One child game at the early kickoff; both children at the late one. */
+  const oneEarly = /** @type {Object} */ (
+    onPitch1.find((row) => row.startMinutes === early && row.surfaceId.endsWith('1a'))
+  );
+  const bothLate = onPitch1.filter((row) => row.startMinutes === late);
+  /** The game under test, lifted onto the parent surface at the early kickoff. */
+  const source = /** @type {Object} */ (
+    onPitch1.find((row) => row.startMinutes === early && row.surfaceId.endsWith('1b'))
+  );
+  const subject = {
+    ...source,
+    surfaceId: P1,
+    startMinutes: early,
+    endMinutes: early + (source.endMinutes - source.startMinutes),
+  };
+  const games = [subject, { ...oneEarly }, ...bothLate.map((row) => ({ ...row }))];
+
+  const state = createResolveState({
+    games,
+    dispositions: Object.fromEntries(games.map((row) => [row.id, FREEZE_DISPOSITION.THAWED])),
+    inventory: buildSlotInventory(games),
+    ledger: createResolveLedger(),
+  });
+  const countsAt = (slot) => {
+    const placement = checkPlacement(engines, state, subject.id, slot);
+    /** @type {Record<string, number>} */
+    const counts = {};
+    for (const finding of placement.findings.filter((entry) => entry.severity === 'blocking')) {
+      counts[finding.code] = (counts[finding.code] ?? 0) + 1;
+    }
+    return { codes: placement.blockingCodes, counts };
+  };
+  const here = countsAt({ date, surfaceId: P1, startMinutes: early });
+  const there = countsAt({ date, surfaceId: P1, startMinutes: late });
+
+  it('is built on a slot that breaks the same rule twice as often, and says so in the same words', () => {
+    // The meta-assertion, and the reason this fixture is worth its length: the
+    // two slots are *indistinguishable* by blocking-code set and differ by a
+    // factor of two by count. A test whose two slots differed in their code
+    // sets would be testing nothing.
+    expect(bothLate).toHaveLength(2);
+    expect(new Set(bothLate.map((row) => row.surfaceId)).size).toBe(2);
+    expect(here.codes).toEqual(there.codes);
+    expect(here.codes).toHaveLength(1);
+    expect(Object.values(here.counts)).toEqual([1]);
+    expect(Object.values(there.counts)).toEqual([2]);
+  });
+
+  it('refuses to place a game on it, rather than reading the identical code set as no change', () => {
+    const target = `${date}|${P1}|${late}`;
+    const run = applyChangeRequest({
+      schedule: { ...schedule, games },
+      changes: [{ gameId: subject.id, date, surfaceId: P1, startMinutes: late }],
+      engines,
+      verify: false,
+      onUnsatisfiable: 'report',
+    });
+
+    // `initial-assignment` is offered the requested slot first — it is the
+    // anchor — and must reject it and fall back rather than accepting a slot
+    // that breaks the same rule twice as often as the one it came from.
+    const replaced = /** @type {Object} */ (
+      run.findings.find((finding) => finding.code === RESOLVE_REASON.RESOLVE_GAME_REPLACED)
+    );
+    expect(replaced).toBeTruthy();
+    expect(replaced.details.slot).not.toBe(target);
+    expect(run.meta.candidatesRejected).toBeGreaterThan(0);
+    // …and no stage put it there at any point in the run, by move, not by
+    // final position.
+    expect(
+      run.moves
+        .filter((move) => move.gameId === subject.id && move.stageId !== 'change-request-apply')
+        .map((move) => (move.to === null ? '(unplaced)' : slotOf(move.to)))
+    ).not.toContain(target);
+  });
+});
+
 /* -------------------------------------------------------------------------- */
 /* One test per stage                                                          */
 /* -------------------------------------------------------------------------- */
@@ -1581,6 +1964,120 @@ describe('freeze-audit runs in the pipeline, not in a test', () => {
     const run = applyChangeRequest({ schedule, changes, engines, verify: false });
     expect(run.findings.filter((finding) => finding.code.startsWith('RESOLVE_AUDIT'))).toEqual([]);
     expect(run.meta.gamesAudited).toBe(679);
+  });
+
+  it('holds a pinned game to where it was pinned, not to where the run began', () => {
+    // `holdChanges` freezes the change-request games **mid-run, after they have
+    // already moved** — that is the whole point of it. Measuring those games
+    // against the baseline reports every one of them as a frozen game that
+    // moved, at blocking, on the ordinary path. A backstop that cries wolf on
+    // its own happy path teaches the next reader to ignore it, and this is the
+    // one check in the package that must never be ignored.
+    const run = applyChangeRequest({
+      schedule,
+      changes,
+      engines,
+      holdChanges: true,
+      onUnsatisfiable: 'report',
+      verify: false,
+    });
+
+    // Meta-assertions first: a run that pinned nothing, or that pinned games
+    // which had not moved, would pass the assertion below for the worst
+    // possible reason.
+    const pinned = /** @type {Object} */ (
+      run.findings.find((finding) => finding.code === RESOLVE_REASON.RESOLVE_CHANGE_PINNED)
+    );
+    expect(pinned).toBeTruthy();
+    expect(pinned.details.gameCount).toBeGreaterThan(0);
+    const relocated = run.moves
+      .filter((move) => move.stageId === 'change-request-apply')
+      .map((move) => move.gameId);
+    expect(relocated).toHaveLength(/** @type {number} */ (pinned.details.gameCount));
+    for (const gameId of relocated) {
+      expect(slotOf(run.state.games[gameId]), gameId).not.toBe(slotOf(baselineById.get(gameId)));
+    }
+
+    // The defect: every one of those games was reported as a frozen game that
+    // moved, at blocking, making every `holdChanges` run unconditionally
+    // rejected for doing exactly what it was asked to do.
+    expect(
+      run.findings
+        .filter((finding) => finding.code === RESOLVE_REASON.RESOLVE_AUDIT_FROZEN_GAME_MOVED)
+        .map((finding) => finding.details.gameId)
+    ).toEqual([]);
+
+    // …and the reference the audit now holds them to is recorded on the state,
+    // game by game, rather than inferred.
+    expect(Object.keys(run.state.pinnedAt).sort()).toEqual([...relocated].sort());
+    for (const [gameId, slot] of Object.entries(run.state.pinnedAt)) {
+      expect(slot, gameId).toBe(slotOf(run.state.games[gameId]));
+    }
+  });
+
+  it('still catches a game moved after it was pinned', () => {
+    // The other direction, and the one that would make the fix above a trade of
+    // a false positive for a false negative. A pinned game is frozen, so the
+    // writer refuses it; the only way to move one is to reach around the gate,
+    // which is exactly the case the audit exists for.
+    const pinnedIds = changes.map((change) => change.gameId);
+    const rogue = {
+      id: 'rogue-unpin',
+      title: 'A stage that moves a game that was pinned before it ran',
+      freezeContract: {
+        mutationKinds: [MOVE_KIND.RELOCATE],
+        probe: STAGE_PROBE.OFFERS_FROZEN_MOVE,
+        claim: 'claims to honour the pin and reaches around the writer instead',
+      },
+      run(state) {
+        // A game the change request relocated and `holdChanges` then pinned.
+        // Named from the request rather than from the state, so this stage is
+        // the same stage with or without the fix under test.
+        const target = /** @type {string} */ (
+          pinnedIds.find(
+            (id) => state.games[id] && state.dispositions[id] === FREEZE_DISPOSITION.FROZEN
+          )
+        );
+        const game = state.games[target];
+        return {
+          ...state,
+          games: { ...state.games, [target]: { ...game, startMinutes: game.startMinutes + 5 } },
+        };
+      },
+    };
+    const run = applyChangeRequest({
+      schedule,
+      changes,
+      engines,
+      holdChanges: true,
+      onUnsatisfiable: 'report',
+      extraStages: [rogue],
+      verify: false,
+    });
+
+    const moved = run.findings.filter(
+      (finding) => finding.code === RESOLVE_REASON.RESOLVE_AUDIT_FROZEN_GAME_MOVED
+    );
+    // Exactly one: the rogue stage's victim, and nothing else the change
+    // request legitimately relocated.
+    expect(moved.map((finding) => finding.details.gameId)).toHaveLength(1);
+    expect(moved[0].severity).toBe('blocking');
+    expect(pinnedIds).toContain(moved[0].details.gameId);
+    // …and it is held to the pin, not to the baseline, in the finding itself.
+    expect(moved[0].details.heldFrom).toBe('pinned');
+    expect(moved[0].details.beforeSlot).toBe(
+      run.state.pinnedAt[/** @type {string} */ (moved[0].details.gameId)]
+    );
+    expect(moved[0].details.afterSlot).not.toBe(moved[0].details.beforeSlot);
+    // The stage that did it is named too — the audit's other half.
+    expect(
+      run.findings.some(
+        (finding) =>
+          finding.code === RESOLVE_REASON.RESOLVE_AUDIT_STAGE_BYPASSED_GATE &&
+          finding.details.stageId === 'rogue-unpin'
+      )
+    ).toBe(true);
+    expect(run.status).toBe('rejected');
   });
 });
 

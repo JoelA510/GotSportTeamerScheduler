@@ -148,13 +148,21 @@ export const RESOLVE_REASON = Object.freeze({
 
   /* -- the audit ------------------------------------------------------------- */
   /**
-   * A frozen game's placement differs from the baseline's.
+   * A frozen game's placement differs from the one it was **held at**.
    *
    * `blocking`, and this is the code the whole prompt exists to make
    * unreachable. It is derived by comparing the **final schedule against the
-   * baseline**, game by game, and never from the move ledger — a stage that
-   * wrote around the gate would not be in the ledger, which is precisely the
-   * case this must catch.
+   * position the game was held from**, game by game, and never from the move
+   * ledger — a stage that wrote around the gate would not be in the ledger,
+   * which is precisely the case this must catch.
+   *
+   * "Held from" is the **baseline** for a game the plan froze, and the slot it
+   * was **pinned at** for a game `holdChanges` froze part-way through the run
+   * (`state.pinnedAt`, `details.heldFrom`). Those games have already moved by
+   * the time they are pinned — that is what the change request asked for — so
+   * measuring them against the baseline reports a blocking failure per game on
+   * the ordinary path. A backstop that cries wolf on its own happy path is
+   * worse than none, because the next reader learns to ignore it.
    */
   RESOLVE_AUDIT_FROZEN_GAME_MOVED: 'RESOLVE_AUDIT_FROZEN_GAME_MOVED',
   /**

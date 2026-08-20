@@ -14,12 +14,14 @@
  *    deliberately not frozen — counters and the move log have to accumulate
  *    somewhere, and keeping them outside the placement data is what lets the
  *    placement data be immutable at all.
- * 3. **The audit compares the result against the baseline.** Freezing an object
- *    stops a stage mutating it; it does not stop a stage *returning a state it
- *    built itself*. `stages.js`'s `freeze-audit` is the check that catches that,
- *    and it derives its verdict from the schedule rather than from the ledger —
- *    a stage that wrote around the gate would not be in the ledger, which is
- *    exactly the case it exists for.
+ * 3. **The audit compares the result against the position each game was held
+ *    at.** Freezing an object stops a stage mutating it; it does not stop a
+ *    stage *returning a state it built itself*. `stages.js`'s `freeze-audit` is
+ *    the check that catches that, and it derives its verdict from the schedule
+ *    rather than from the ledger — a stage that wrote around the gate would not
+ *    be in the ledger, which is exactly the case it exists for. The reference
+ *    is the baseline for a game the plan froze and {@link pinGames}'s
+ *    `pinnedAt` for a game frozen part-way through the run.
  *
  * Incident 2 is why all three are here: after freeze support was added to the
  * source project, *"the initial assignment honored it but the local-search and
@@ -175,6 +177,9 @@ export function createResolveState(input) {
         baseline,
         dispositions: { ...input.dispositions },
         admittedSlotsByGameId: { ...(input.admittedSlotsByGameId ?? {}) },
+        // Empty until `pinGames()` runs: nothing has been frozen mid-run yet,
+        // so every frozen game's reference position is still the baseline's.
+        pinnedAt: {},
         pending: [],
         unplaced: [],
         inventory: input.inventory,
@@ -390,6 +395,19 @@ export function applyMove(state, move, stageId) {
  * It is called by the driver, never by a stage. A stage that could re-judge the
  * freeze mid-pipeline would be a stage that could argue with it.
  *
+ * ## Where a pinned game is held *from*
+ *
+ * A game pinned here has, by definition, already moved: `holdChanges` pins the
+ * games the change request just relocated. The position it is held at is
+ * therefore the one it is standing on **now**, not the one it started the run
+ * on, and `pinnedAt` records it so `freeze-audit` can say "this game did not
+ * move after it was pinned" instead of "this game is not where the baseline put
+ * it" — which is true of every pinned game, on every ordinary `holdChanges`
+ * run, and is not a failure.
+ *
+ * The first pin wins: a game pinned twice cannot have moved in between, because
+ * it was frozen for the whole interval.
+ *
  * @param {import('./types.js').ResolveState} state
  * @param {ReadonlyArray<string>} gameIds
  * @param {string} reason
@@ -398,11 +416,14 @@ export function applyMove(state, move, stageId) {
 export function pinGames(state, gameIds, reason) {
   if (gameIds.length === 0) return state;
   const dispositions = { ...state.dispositions };
+  /** @type {Record<string, string>} */
+  const pinnedAt = { ...(state.pinnedAt ?? {}) };
   for (const gameId of gameIds) {
     if (dispositions[gameId] === undefined) {
       throw new Error(`resolve: cannot pin game "${gameId}", which this run does not hold`);
     }
     dispositions[gameId] = FREEZE_DISPOSITION.FROZEN;
+    if (pinnedAt[gameId] === undefined) pinnedAt[gameId] = slotKey(slotOf(state, gameId));
   }
   state.ledger.findings.push(
     makeResolveFinding(
@@ -412,7 +433,7 @@ export function pinGames(state, gameIds, reason) {
     )
   );
   return /** @type {import('./types.js').ResolveState} */ (
-    deepFreeze({ ...state, dispositions }, true)
+    deepFreeze({ ...state, dispositions, pinnedAt }, true)
   );
 }
 

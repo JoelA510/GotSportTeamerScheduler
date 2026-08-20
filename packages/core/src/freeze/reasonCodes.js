@@ -141,6 +141,38 @@ export const FREEZE_SCOPE_SPECIFICITY = Object.freeze({
 });
 
 /**
+ * The **freeze-local secondary tie-break**, applied only within one primary
+ * specificity rank. Higher is narrower.
+ *
+ * The shared scale above is deliberately shared and does not change: three
+ * phases rank narrowness on those integers, and the cross-model comparison
+ * *"this exception is broader than the freeze it carves out of"* is only
+ * meaningful because they do. What it cannot express is that `surface`, `team`
+ * and `game` all sit at 3 while naming wildly different numbers of things — so
+ * *"freeze Pitch 1 except this one game"*, an entirely ordinary operator
+ * request, resolved as a contradiction: held, and reported ambiguous at
+ * blocking.
+ *
+ * This table breaks that tie **inside the freeze model only**, by how many
+ * things the dimension can name: a `gameId` names exactly one game, a `teamId`
+ * names one team's fixtures, a `surfaceId` names everything that ever stands on
+ * one piece of ground. The narrower dimension wins.
+ *
+ * Everything else is `0`, which is a statement rather than an omission: `date`,
+ * `division`, `venue` and `format` share rank 2 precisely because there is no
+ * honest ordering between them — a date does not name more or fewer things than
+ * a venue does — so a `freeze`/`thaw` pair that ties there is still a genuine
+ * contradiction and still reports {@link FREEZE_REASON.FREEZE_AMBIGUOUS_DISPOSITION}.
+ *
+ * @type {Readonly<Record<string, number>>}
+ */
+export const FREEZE_SCOPE_TIE_BREAK = Object.freeze({
+  [FREEZE_SCOPE_DIMENSION.SURFACE]: 1,
+  [FREEZE_SCOPE_DIMENSION.TEAM]: 2,
+  [FREEZE_SCOPE_DIMENSION.GAME]: 3,
+});
+
+/**
  * Every reason a freeze check can give.
  *
  * @readonly
@@ -170,17 +202,21 @@ export const FREEZE_REASON = Object.freeze({
    */
   FREEZE_THAW_BROADER_THAN_FREEZE: 'FREEZE_THAW_BROADER_THAN_FREEZE',
   /**
-   * A `freeze` and a `thaw` in the same plan narrow to the **same** rank, so
-   * any game both reach will be held and reported ambiguous.
+   * A `freeze` and a `thaw` in the same plan are the **same width** — equal on
+   * the shared specificity scale *and* equal on
+   * {@link FREEZE_SCOPE_TIE_BREAK} — so any game both reach will be held and
+   * reported ambiguous.
    *
    * `compromise`, and it is emitted at **build time** rather than once per
-   * affected game. The specificity ranks are deliberately shared with the
-   * constraint and waiver models, and that sharing flattens genuinely different
-   * kinds of narrowness onto one integer — `surface`, `team` and `game` all sit
-   * at 3, so "freeze Pitch 1 except this one game" is a tie rather than a
-   * narrowing. That is a real limitation of the shared scale and it is stated
-   * here, once, where an operator can act on it, instead of surfacing as a
-   * blocking surprise on every game later.
+   * affected game, so an operator can act on it before a run rather than
+   * meeting it as a blocking surprise on every game later.
+   *
+   * This is the **residual** case only. "Freeze Pitch 1 except this one game"
+   * used to land here, because the shared scale puts `surface`, `team` and
+   * `game` all at rank 3; the freeze-local tie-break now orders those three and
+   * that request is an ordinary narrowing. What is left is a genuine
+   * contradiction: two rules naming the same dimension, or two rank-2
+   * dimensions with no honest ordering between them.
    */
   FREEZE_THAW_TIES_FREEZE: 'FREEZE_THAW_TIES_FREEZE',
   /**
@@ -204,7 +240,9 @@ export const FREEZE_REASON = Object.freeze({
    */
   FREEZE_SCOPE_UNJUDGED: 'FREEZE_SCOPE_UNJUDGED',
   /**
-   * A `freeze` and a `thaw` match the same game at the same specificity.
+   * A `freeze` and a `thaw` match the same game at the same specificity **and**
+   * at the same freeze-local tie-break rank — neither names a narrower
+   * dimension than the other.
    *
    * `blocking`. The plan is genuinely contradictory and no reading of it is
    * more correct than the other; the game resolves **frozen** and the run can
@@ -295,6 +333,22 @@ export function freezeSpecificityOf(dimension) {
     throw new Error(`freeze: scope dimension "${dimension}" has no registered specificity`);
   }
   return rank;
+}
+
+/**
+ * The freeze-local secondary rank of a scope dimension, used only to order two
+ * matches that already tie on {@link freezeSpecificityOf}. Higher is narrower;
+ * `0` means "no honest ordering against its rank-mates".
+ *
+ * Unlike its primary sibling this one does **not** throw on an unregistered
+ * dimension: an unranked dimension is the normal case, not a registration
+ * someone forgot.
+ *
+ * @param {string} dimension - a {@link FREEZE_SCOPE_DIMENSION} value
+ * @returns {number}
+ */
+export function freezeTieBreakOf(dimension) {
+  return FREEZE_SCOPE_TIE_BREAK[dimension] ?? 0;
 }
 
 /**

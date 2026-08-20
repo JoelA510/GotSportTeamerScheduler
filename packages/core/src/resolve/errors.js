@@ -97,7 +97,39 @@ function constraintIdsFor(registry, codes) {
 }
 
 /**
+ * The delimiters the standing rules use to build a composite subject id:
+ * `<ruleId>::<gameId>`, `<ruleId>::<earlier>-><later>`, and the `|`-joined
+ * coach-travel form. Splitting on them turns a subject id back into the
+ * identifiers it was assembled from.
+ */
+const SUBJECT_ID_DELIMITER = /::|->|\|/;
+
+/**
+ * Does this subject id **name** this game, as opposed to merely containing its
+ * id as a substring?
+ *
+ * Game ids in this corpus are `combined_schedule.csv#<n>`, so `#1` is a prefix
+ * of `#10`, `#108`, `#180` and eleven others. A substring test therefore hands
+ * back fourteen violations for game `#1`, nine of them about entirely different
+ * rows — on the one error whose whole purpose is to name the binding constraint
+ * precisely, and whose `meta.violationsReported` counter an operator reads to
+ * decide how bad the contradiction is.
+ *
+ * @param {unknown} subjectId
+ * @param {string} gameId
+ * @returns {boolean}
+ */
+function subjectNamesGame(subjectId, gameId) {
+  if (typeof subjectId !== 'string') return false;
+  return subjectId.split(SUBJECT_ID_DELIMITER).includes(gameId);
+}
+
+/**
  * The violations a rule-engine run reports about one game.
+ *
+ * Matched on **identity** in all three places it looks: the declared `entities`
+ * of the violation, the `gameId` detail, and the identifiers the subject id was
+ * assembled from.
  *
  * @param {Object|null} verification - a `runRuleEngine()` result
  * @param {string} gameId
@@ -106,9 +138,7 @@ function constraintIdsFor(registry, codes) {
 function violationsAbout(verification, gameId) {
   if (!verification) return [];
   return verification.violations.filter((violation) => {
-    if (typeof violation.subjectId === 'string' && violation.subjectId.includes(gameId)) {
-      return true;
-    }
+    if (subjectNamesGame(violation.subjectId, gameId)) return true;
     if (violation.details && violation.details.gameId === gameId) return true;
     return (violation.entities ?? []).some(
       (entity) => entity.kind === 'game' && entity.id === gameId

@@ -19,9 +19,9 @@
  *    freeze itself. A stage that forgets to ask gets a thrown
  *    `FrozenGameMoveAttempt` naming it.
  * 3. `freeze-audit` runs **as a stage of the pipeline, not as a test**, and
- *    compares the final schedule against the baseline rather than against the
- *    move ledger — because a stage that wrote around the gate is exactly the
- *    stage that is not in the ledger.
+ *    compares the final schedule against the position each frozen game was
+ *    **held at** rather than against the move ledger — because a stage that
+ *    wrote around the gate is exactly the stage that is not in the ledger.
  *
  * ## What the pipeline is, and what it is not
  *
@@ -47,8 +47,8 @@ import { ResolveStageSchema, STAGE_PROBE } from './schemas.js';
 import { MOVE_KIND, applyMove, isFrozen, mayMove, slotKey, slotOf } from './state.js';
 
 /**
- * Grew, in the sense that matters: this game carries a blocking code the
- * baseline did not.
+ * Grew, in the sense that matters: this game breaks a blocking code **more
+ * often** than the baseline did.
  *
  * A change request is not asked to repair the schedule it was handed. The
  * corpus's four `Scrimmage` rows are blocking-illegal in the published season
@@ -56,13 +56,25 @@ import { MOVE_KIND, applyMove, isFrozen, mayMove, slotKey, slotOf } from './stat
  * and a resolver that treated them as its problem would dislodge four games
  * nobody asked about on every single run.
  *
- * @param {ReadonlyArray<string>} now
- * @param {ReadonlyArray<string>} baseline
+ * **Counts, not presence.** Comparing the two de-duplicated code *sets* answers
+ * "does it break something new" and misses "does it break the same thing
+ * twice": a game already overlapping one neighbour can be relocated into a slot
+ * where it overlaps two, and the set is identical in both places. `verify`
+ * already compares the rule engine's violations per code by count, and this is
+ * that contract, adopted rather than reinvented — the shape `CLAUDE.md` §3 asks
+ * for when a sibling already handles the case.
+ *
+ * @param {Readonly<Record<string, number>>} now - `checkPlacement().blockingCodeCounts`
+ * @param {Readonly<Record<string, number>>} baseline - the same, for the baseline slot
  * @returns {string[]}
  */
 function newBlockingCodes(now, baseline) {
-  const known = new Set(baseline);
-  return now.filter((code) => !known.has(code));
+  /** @type {string[]} */
+  const grown = [];
+  for (const [code, count] of Object.entries(now)) {
+    if (count > (baseline[code] ?? 0)) grown.push(code);
+  }
+  return grown.sort();
 }
 
 /**
@@ -190,8 +202,8 @@ function placePending(state, context, gameId, stageId) {
     state.ledger.meta.candidatesEvaluated += 1;
     const placement = checkPlacement(context.engines, state, gameId, candidate);
     const grown = newBlockingCodes(
-      placement.blockingCodes,
-      context.baselineBlockingCodes[gameId] ?? []
+      placement.blockingCodeCounts,
+      context.baselineBlockingCodes[gameId] ?? {}
     );
     if (grown.length > 0) {
       state.ledger.meta.candidatesRejected += 1;
@@ -279,7 +291,7 @@ const baselineIngest = {
       const game = state.baseline[gameId];
       const slot = { date: game.date, surfaceId: game.surfaceId, startMinutes: game.startMinutes };
       const placement = checkPlacement(context.engines, state, gameId, slot);
-      context.baselineBlockingCodes[gameId] = placement.blockingCodes;
+      context.baselineBlockingCodes[gameId] = placement.blockingCodeCounts;
       ledger.meta.constraintsConsulted += /** @type {Array<Object>} */ (
         placement.availability.constraints
       ).length;
@@ -427,8 +439,8 @@ const dislodge = {
       const slot = /** @type {import('./types.js').Slot} */ (slotOf(current, gameId));
       const placement = checkPlacement(context.engines, current, gameId, slot);
       const grown = newBlockingCodes(
-        placement.blockingCodes,
-        context.baselineBlockingCodes[gameId] ?? []
+        placement.blockingCodeCounts,
+        context.baselineBlockingCodes[gameId] ?? {}
       );
       if (grown.length === 0) continue;
 
@@ -498,7 +510,7 @@ const dislodge = {
           /** @type {import('./types.js').Slot} */ (slotOf(current, gameId))
         );
         if (
-          newBlockingCodes(after.blockingCodes, context.baselineBlockingCodes[gameId] ?? [])
+          newBlockingCodes(after.blockingCodeCounts, context.baselineBlockingCodes[gameId] ?? {})
             .length === 0
         ) {
           break;
@@ -608,7 +620,7 @@ const localSearch = {
       const slot = /** @type {import('./types.js').Slot} */ (slotOf(current, gameId));
       const placement = checkPlacement(context.engines, current, gameId, slot);
       if (
-        newBlockingCodes(placement.blockingCodes, context.baselineBlockingCodes[gameId] ?? [])
+        newBlockingCodes(placement.blockingCodeCounts, context.baselineBlockingCodes[gameId] ?? {})
           .length === 0
       ) {
         // The hold rule, in one branch: a legal game is never moved. There is
@@ -625,7 +637,7 @@ const localSearch = {
         current.ledger.meta.candidatesEvaluated += 1;
         const trial = checkPlacement(context.engines, current, gameId, candidate);
         if (
-          newBlockingCodes(trial.blockingCodes, context.baselineBlockingCodes[gameId] ?? [])
+          newBlockingCodes(trial.blockingCodeCounts, context.baselineBlockingCodes[gameId] ?? {})
             .length > 0
         ) {
           current.ledger.meta.candidatesRejected += 1;
@@ -669,8 +681,8 @@ const pairRepair = {
       const slot = /** @type {import('./types.js').Slot} */ (slotOf(current, gameId));
       const placement = checkPlacement(context.engines, current, gameId, slot);
       const grown = newBlockingCodes(
-        placement.blockingCodes,
-        context.baselineBlockingCodes[gameId] ?? []
+        placement.blockingCodeCounts,
+        context.baselineBlockingCodes[gameId] ?? {}
       );
       if (grown.length === 0) continue;
 
@@ -687,8 +699,10 @@ const pairRepair = {
           current.ledger.meta.candidatesEvaluated += 1;
           const trial = checkPlacement(context.engines, current, counterpart, candidate);
           if (
-            newBlockingCodes(trial.blockingCodes, context.baselineBlockingCodes[counterpart] ?? [])
-              .length > 0
+            newBlockingCodes(
+              trial.blockingCodeCounts,
+              context.baselineBlockingCodes[counterpart] ?? {}
+            ).length > 0
           ) {
             current.ledger.meta.candidatesRejected += 1;
             continue;
@@ -775,7 +789,7 @@ const freezeAudit = {
     mutationKinds: [],
     probe: STAGE_PROBE.WRITES_NOTHING,
     claim:
-      'compares the final schedule against the baseline game by game and the per-stage placement deltas against the move ledger; a stage that returned a state it built itself is caught here, because it is exactly the stage that is not in the ledger',
+      'compares the final schedule against the position each frozen game was held at — the baseline, or the slot it was pinned at mid-run — game by game, and the per-stage placement deltas against the move ledger; a stage that returned a state it built itself is caught here, because it is exactly the stage that is not in the ledger',
   },
   /**
    * @param {import('./types.js').ResolveState} state
@@ -798,22 +812,34 @@ const freezeAudit = {
 
     // (1) The verdict that matters, enumerated from the **baseline** — the one
     // thing a stage writing around the gate cannot have corrupted.
+    //
+    // "Where it was held from" is the baseline for every game the plan froze,
+    // and the slot it was pinned at for a game `holdChanges` froze part-way
+    // through the run. Those games have already moved by the time they are
+    // pinned — that is what the change request asked for — so measuring them
+    // against the baseline reports four blocking failures on the ordinary path
+    // and teaches the next reader to ignore the one check that must never be
+    // ignored. The guarantee is unchanged in substance: **nothing moves after
+    // it is held**, measured from the moment it was held.
     for (const gameId of state.gameIds) {
       if (state.dispositions[gameId] !== FREEZE_DISPOSITION.FROZEN) continue;
       const baseline = state.baseline[gameId];
       const now = state.games[gameId] ?? null;
-      const before = `${baseline.date}|${baseline.surfaceId}|${baseline.startMinutes}`;
+      const pinned = state.pinnedAt?.[gameId];
+      const before = pinned ?? `${baseline.date}|${baseline.surfaceId}|${baseline.startMinutes}`;
       const after = now === null ? '' : `${now.date}|${now.surfaceId}|${now.startMinutes}`;
       if (before === after) continue;
+      const heldFrom = pinned === undefined ? 'the baseline' : 'the slot it was pinned at mid-run';
       ledger.findings.push(
         makeResolveFinding(
           RESOLVE_REASON.RESOLVE_AUDIT_FROZEN_GAME_MOVED,
-          `frozen game "${gameId}" started at ${before} and ended at ${after || '(unplaced)'}; this is the failure the whole freeze exists to prevent (incident 1)`,
+          `frozen game "${gameId}" was held at ${before} (${heldFrom}) and ended at ${after || '(unplaced)'}; this is the failure the whole freeze exists to prevent (incident 1)`,
           {
             gameId,
             stageId: this.id,
             beforeSlot: before,
             afterSlot: after,
+            heldFrom: pinned === undefined ? 'baseline' : 'pinned',
             ruleId: context.judgements.byGameId[gameId]?.decidedByRuleId ?? null,
           }
         )

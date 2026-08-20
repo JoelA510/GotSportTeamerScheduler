@@ -43,12 +43,36 @@ import { FreezePlanInputSchema } from './schemas.js';
 import {
   freezeDimensions,
   freezeSpecificity,
+  freezeTieBreak,
   judgeFreezeMatch,
   normaliseFreezeContext,
 } from './scope.js';
 
 /** How many game ids an aggregated finding names before it says "example". */
 const EXAMPLE_LIMIT = 5;
+
+/**
+ * The key {@link judgeFreezeAll} aggregates a per-game finding under: its code,
+ * plus **whichever rules it names**.
+ *
+ * `ruleId` alone is not enough. `FREEZE_AMBIGUOUS_DISPOSITION` names `ruleIds`
+ * (plural, because an ambiguity is by definition about a pair), so keying on
+ * the singular collapses two independently contradictory rule pairs into one
+ * finding that names only the first and counts both. An operator reading that
+ * would narrow one pair, re-run, and be told about the other for the first
+ * time — the fix that looked complete and was not.
+ *
+ * @param {import('./types.js').FreezeFinding} finding
+ * @returns {string}
+ */
+function aggregationKey(finding) {
+  const details = finding.details;
+  const ruleId = typeof details.ruleId === 'string' ? details.ruleId : '';
+  const ruleIds = Array.isArray(details.ruleIds) ? [...details.ruleIds].sort().join(',') : '';
+  // The separator is written as the `\u0000` escape rather than a raw byte,
+  // for the reason `tests/sourceHygiene.test.js` stands guard over.
+  return `${finding.code}\u0000${ruleId}\u0000${ruleIds}`;
+}
 
 /**
  * A stable, human-legible id for a rule that did not supply one.
@@ -119,25 +143,32 @@ export function buildFreezePlan(input = {}) {
   const freezeRules = rules.filter((rule) => rule.kind === FREEZE_RULE_KIND.FREEZE);
   for (const thaw of rules.filter((rule) => rule.kind === FREEZE_RULE_KIND.THAW)) {
     const thawRank = freezeSpecificity(thaw.match);
+    const thawTieBreak = freezeTieBreak(thaw.match);
     for (const frozen of freezeRules) {
       const freezeRank = freezeSpecificity(frozen.match);
-      if (thawRank === freezeRank) {
-        // Said once, here, rather than as a blocking surprise on every game
-        // the two both reach. See `FREEZE_THAW_TIES_FREEZE`.
+      const freezeTieBreakRank = freezeTieBreak(frozen.match);
+      if (thawRank === freezeRank && thawTieBreak === freezeTieBreakRank) {
+        // The **residual** tie: equal on the shared scale and equal on the
+        // freeze-local one too, so the two rules are genuinely the same width
+        // and neither reading of the plan is more correct. Said once, here,
+        // rather than as a blocking surprise on every game the two both reach.
+        // See `FREEZE_THAW_TIES_FREEZE`.
         findings.push(
           makeFreezeFinding(
             FREEZE_REASON.FREEZE_THAW_TIES_FREEZE,
-            `thaw "${thaw.id}" and freeze "${frozen.id}" both narrow to specificity ${thawRank} (${freezeDimensions(thaw.match).join(', ')} against ${freezeDimensions(frozen.match).join(', ')}); any game both reach is held and reported ambiguous, because the shared specificity scale has no ordering between them`,
+            `thaw "${thaw.id}" and freeze "${frozen.id}" both narrow to specificity ${thawRank} (${freezeDimensions(thaw.match).join(', ')} against ${freezeDimensions(frozen.match).join(', ')}) and neither names a narrower dimension than the other; any game both reach is held and reported ambiguous, because nothing orders them`,
             {
               thawRuleId: thaw.id,
               freezeRuleId: frozen.id,
               specificity: thawRank,
+              tieBreak: thawTieBreak,
             }
           )
         );
         continue;
       }
       if (thawRank > freezeRank) continue;
+      if (thawRank === freezeRank && thawTieBreak > freezeTieBreakRank) continue;
       findings.push(
         makeFreezeFinding(
           FREEZE_REASON.FREEZE_THAW_BROADER_THAN_FREEZE,
@@ -237,10 +268,16 @@ export function freezeForChanges(changes) {
  *    carry is **unjudged**: a `freeze` in that state still holds the game, a
  *    `thaw` in that state does not free it, and either way
  *    `FREEZE_SCOPE_UNJUDGED` is reported.
- * 2. Of the rules that matched, the **narrowest** wins.
- * 3. A `freeze` and a `thaw` that tie at the narrowest rank resolve **frozen**
- *    and emit `FREEZE_AMBIGUOUS_DISPOSITION` at `blocking`. The plan is
- *    contradictory; the run says so and holds the game.
+ * 2. Of the rules that matched, the **narrowest** wins — narrowness read on two
+ *    levels, in order: the shared specificity rank
+ *    ({@link import('./scope.js').freezeSpecificity}), then the freeze-local
+ *    dimension ordering inside that rank
+ *    ({@link import('./scope.js').freezeTieBreak}), which is what lets "freeze
+ *    Pitch 1 except this one game" mean what it says.
+ * 3. A `freeze` and a `thaw` that tie on **both** levels resolve **frozen** and
+ *    emit `FREEZE_AMBIGUOUS_DISPOSITION` at `blocking`. The plan is genuinely
+ *    contradictory — the two rules are the same width and name the same kind of
+ *    thing; the run says so and holds the game.
  * 4. If nothing matched, the plan's default decides.
  *
  * @param {import('./types.js').FreezePlan} plan
@@ -261,7 +298,7 @@ export function judgeFreeze(plan, rawContext) {
   const matchedRuleIds = [];
 
   let judged = true;
-  /** @type {{ ruleId: string, kind: string, reason: string|null, specificity: number, labelMatched: boolean }|null} */
+  /** @type {{ ruleId: string, kind: string, reason: string|null, specificity: number, tieBreak: number, labelMatched: boolean }|null} */
   let winner = null;
   /** @type {string[]} */
   const tiedOpposites = [];
@@ -295,18 +332,33 @@ export function judgeFreeze(plan, rawContext) {
 
     matchedRuleIds.push(rule.id);
     const specificity = freezeSpecificity(rule.match);
-    if (winner === null || specificity > winner.specificity) {
+    const tieBreak = freezeTieBreak(rule.match);
+    // Narrowness on two levels, in order: the shared specificity scale first,
+    // then the freeze-local dimension ordering inside one rank. The second is
+    // what makes "freeze Pitch 1 except this one game" a narrowing rather than
+    // a contradiction — `surface`, `team` and `game` all sit at rank 3 on the
+    // shared scale, and that scale is not this module's to change.
+    if (
+      winner === null ||
+      specificity > winner.specificity ||
+      (specificity === winner.specificity && tieBreak > winner.tieBreak)
+    ) {
       winner = {
         ruleId: rule.id,
         kind: rule.kind,
         reason: rule.reason,
         specificity,
+        tieBreak,
         labelMatched: verdict.labelMatched,
       };
       tiedOpposites.length = 0;
       continue;
     }
-    if (specificity === winner.specificity && rule.kind !== winner.kind) {
+    if (
+      specificity === winner.specificity &&
+      tieBreak === winner.tieBreak &&
+      rule.kind !== winner.kind
+    ) {
       tiedOpposites.push(rule.id);
     }
   }
@@ -347,10 +399,11 @@ export function judgeFreeze(plan, rawContext) {
       findings.push(
         makeFreezeFinding(
           FREEZE_REASON.FREEZE_AMBIGUOUS_DISPOSITION,
-          `game "${rawContext.gameId}" is matched by both a freeze and a thaw at specificity ${winner.specificity} (${[winner.ruleId, ...tiedOpposites].join(', ')}); it is held, and the plan needs narrowing before this run can come back clean`,
+          `game "${rawContext.gameId}" is matched by both a freeze and a thaw at specificity ${winner.specificity}, neither naming a narrower dimension than the other (${[winner.ruleId, ...tiedOpposites].join(', ')}); it is held, and the plan needs narrowing before this run can come back clean`,
           {
             gameId: rawContext.gameId,
             specificity: winner.specificity,
+            tieBreak: winner.tieBreak,
             ruleIds: [winner.ruleId, ...tiedOpposites].sort(),
           }
         )
@@ -446,8 +499,7 @@ export function judgeFreezeAll(plan, contexts) {
     }
 
     for (const finding of judgement.findings) {
-      const ruleId = /** @type {string} */ (finding.details.ruleId ?? '');
-      const key = `${finding.code}\u0000${ruleId}`;
+      const key = aggregationKey(finding);
       const entry = aggregated.get(key);
       if (entry) {
         entry.gameIds.push(judgement.gameId);

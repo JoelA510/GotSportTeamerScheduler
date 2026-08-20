@@ -25,12 +25,14 @@ export {
   FREEZE_RULE_KIND,
   FREEZE_SCOPE_DIMENSION,
   FREEZE_SCOPE_SPECIFICITY,
+  FREEZE_SCOPE_TIE_BREAK,
   FREEZE_SEVERITY,
   FREEZE_STATUS,
   createFreezeMeta,
   deriveFreezeStatus,
   freezeSeverityOf,
   freezeSpecificityOf,
+  freezeTieBreakOf,
   makeFreezeFinding,
   mergeFreezeMeta,
 } from './reasonCodes.js';
@@ -46,6 +48,7 @@ export {
 export {
   freezeDimensions,
   freezeSpecificity,
+  freezeTieBreak,
   judgeFreezeMatch,
   normaliseFreezeContext,
 } from './scope.js';

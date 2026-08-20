@@ -61,7 +61,7 @@ export function bookingsOn(state, date, exceptGameId) {
  * @param {import('./types.js').ResolveState} state
  * @param {string} gameId
  * @param {import('./types.js').Slot} slot
- * @returns {{ legal: boolean, status: string, findings: Array<Object>, blockingCodes: string[], counterpartGameIds: string[], availability: Object }}
+ * @returns {{ legal: boolean, status: string, findings: Array<Object>, blockingCodes: string[], blockingCodeCounts: Record<string, number>, counterpartGameIds: string[], availability: Object }}
  */
 export function checkPlacement(engines, state, gameId, slot) {
   const game = state.baseline[gameId];
@@ -106,11 +106,26 @@ export function checkPlacement(engines, state, gameId, slot) {
     }
   }
 
+  // **How many, not just whether.** `blockingCodes` is the de-duplicated set and
+  // is what the error message and the registry lookup want; it is not enough to
+  // decide whether a candidate slot is worse than the one the schedule arrived
+  // with. A game already overlapping one neighbour and offered a slot where it
+  // would overlap two carries the same *set* in both places, and a comparison
+  // on presence alone reads that as no change. `verify` already compares the
+  // rule engine's violations per code by count, and this is the same contract
+  // one layer down.
+  /** @type {Record<string, number>} */
+  const blockingCodeCounts = {};
+  for (const finding of blocking) {
+    blockingCodeCounts[finding.code] = (blockingCodeCounts[finding.code] ?? 0) + 1;
+  }
+
   return {
     legal: applied.status !== CONSTRAINT_STATUS.REJECTED,
     status: applied.status,
     findings: applied.findings,
     blockingCodes: [...new Set(blocking.map((finding) => finding.code))].sort(),
+    blockingCodeCounts,
     counterpartGameIds: [...counterparts].sort(),
     availability,
   };

@@ -80,11 +80,25 @@ export function buildSlotInventory(games, options = {}) {
     if (venueBySurfaceId[surfaceId] === undefined) venueBySurfaceId[surfaceId] = venueId;
   }
 
+  // **Frozen all the way down, not just at the top.** A shallow
+  // `Object.freeze()` here leaves `kickoffsByDateVenue['<date>|<venue>']` a
+  // mutable array, and `createResolveState()`'s deep freeze cannot repair that:
+  // it stops at any object that is already frozen, so a shallow-frozen
+  // inventory is skipped whole. One `push()` of a kickoff nobody ever played
+  // would then flip `isSlotAdmissible()` from false to true and let `applyMove`
+  // place a game on an invented slot — through the writer, so the move is
+  // ledgered and `freeze-audit` sees nothing wrong with it. The anti-slot-
+  // inventor guarantee is one of the three things that stop this package
+  // becoming a third scheduler, and a guarantee that a single `push` can revoke
+  // is not one.
+  for (const values of Object.values(kickoffsByDateVenue)) Object.freeze(values);
+  for (const values of Object.values(surfacesByDateVenueFormat)) Object.freeze(values);
+
   return Object.freeze({
-    dates: [...dates].sort(),
-    venueBySurfaceId,
-    kickoffsByDateVenue,
-    surfacesByDateVenueFormat,
+    dates: Object.freeze([...dates].sort()),
+    venueBySurfaceId: Object.freeze(venueBySurfaceId),
+    kickoffsByDateVenue: Object.freeze(kickoffsByDateVenue),
+    surfacesByDateVenueFormat: Object.freeze(surfacesByDateVenueFormat),
     slotCount: slots.size,
   });
 }
