@@ -21,11 +21,22 @@
  * is legal under both hardnesses, so "keep everything where it is" would report
  * no difference and demonstrate nothing.
  *
- * **The real solver integration is Phase 4.** `gameScheduling.js` is
- * week-indexed while every Phase 1 module and this one are date-indexed, and
- * bridging that is a piece of work with its own prompt. Nothing here is imported
- * by `gameScheduling.js`, `autoScheduler.js` or `gameMetrics.js`, and nothing
- * here should grow until it is tempting to.
+ * **The real path is `packages/core/src/resolve/` (Phase 4.1).** That package
+ * re-places existing games against a freeze plan, holds everything a change
+ * request did not name, and refuses to invent a slot; it is what a production
+ * change request goes through. It does **not** supersede this module and does
+ * not import it. The two answer different questions, and this one's question
+ * still has no other home: *does flipping a constraint's hardness change where
+ * games go?* cannot be asked of a minimal-diff re-solver, because a minimal-diff
+ * re-solver leaves a legal schedule exactly where it is under either hardness
+ * and reports no difference at all.
+ *
+ * `gameScheduling.js` is still week-indexed while every Phase 1 module, this one
+ * and `resolve/` are date-indexed, and bridging that (GAP-32) remains its own
+ * piece of work; `scheduleGames()` now refuses a `freeze` argument outright
+ * rather than accepting one it could not honour. Nothing here is imported by
+ * `gameScheduling.js`, `autoScheduler.js`, `gameMetrics.js` or `resolve/`, and
+ * nothing here should grow until it is tempting to.
  *
  * What it *does* legitimately show: the constraint registry is the only thing
  * that differs between two runs, the placement rules themselves are entirely

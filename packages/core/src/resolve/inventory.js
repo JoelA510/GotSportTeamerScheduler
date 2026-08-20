@@ -1,0 +1,179 @@
+/**
+ * The slot inventory: every date, surface and kickoff the baseline schedule
+ * actually used, and nothing else.
+ *
+ * This file is the **anti-third-solver guarantee** in data form. `resolve/` has
+ * no round-robin generator and no slot generator; the only places it can offer
+ * a game are places the schedule in front of it already used. A run over the
+ * season-2026 corpus can put a 9v9 game on Pitch 4B at 13:50 because the corpus
+ * did; it cannot put one there at 13:55, because nothing ever kicked off at
+ * 13:55 anywhere at that venue that day.
+ *
+ * The one admitted exception is a change request, which brings its own slot —
+ * an externally-published fixture arrives at the time the other league
+ * published, and the club does not get to invent one for it. That exception is
+ * per game, recorded on the state as `admittedSlotsByGameId`, and stamped
+ * `RESOLVE_CHANGE_SLOT_OUTSIDE_INVENTORY` so it is visible.
+ *
+ * @module resolve/inventory
+ */
+
+/**
+ * Build the inventory from the baseline games.
+ *
+ * `surfaceVenues` adds surfaces the baseline never used to the *venue lookup*
+ * only — never to `surfacesByDateVenueFormat`, which is what the placer offers.
+ * "Which venue does Pitch 2 belong to" is a fact about the facility graph and
+ * not about how the schedule happened to use it, and a change request that
+ * names a surface no baseline row stood on would otherwise leave the game
+ * wearing its old venue id while standing on another venue's ground.
+ *
+ * @param {ReadonlyArray<import('./types.js').PlacedGame>} games
+ * @param {{ surfaceVenues?: Record<string, string> }} [options]
+ * @returns {import('./types.js').SlotInventory}
+ */
+export function buildSlotInventory(games, options = {}) {
+  if (!Array.isArray(games) || games.length === 0) {
+    throw new Error(
+      'resolve: a slot inventory built from zero games would offer nothing to anybody, and every placement in the run would be refused for a reason that has nothing to do with the schedule (incident 4)'
+    );
+  }
+
+  /** @type {Set<string>} */
+  const dates = new Set();
+  /** @type {Record<string, string>} */
+  const venueBySurfaceId = {};
+  /** @type {Record<string, Set<number>>} */
+  const kickoffs = {};
+  /** @type {Record<string, Set<string>>} */
+  const surfaces = {};
+  /** @type {Set<string>} */
+  const slots = new Set();
+
+  for (const game of games) {
+    dates.add(game.date);
+    venueBySurfaceId[game.surfaceId] = game.venueId;
+
+    const venueKey = `${game.date}|${game.venueId}`;
+    if (!kickoffs[venueKey]) kickoffs[venueKey] = new Set();
+    kickoffs[venueKey].add(game.startMinutes);
+
+    const formatKey = `${game.date}|${game.venueId}|${game.format ?? ''}`;
+    if (!surfaces[formatKey]) surfaces[formatKey] = new Set();
+    surfaces[formatKey].add(game.surfaceId);
+
+    slots.add(`${game.date}|${game.surfaceId}|${game.startMinutes}`);
+  }
+
+  /** @type {Record<string, number[]>} */
+  const kickoffsByDateVenue = {};
+  for (const [key, values] of Object.entries(kickoffs)) {
+    kickoffsByDateVenue[key] = [...values].sort((a, b) => a - b);
+  }
+  /** @type {Record<string, string[]>} */
+  const surfacesByDateVenueFormat = {};
+  for (const [key, values] of Object.entries(surfaces)) {
+    surfacesByDateVenueFormat[key] = [...values].sort();
+  }
+
+  for (const [surfaceId, venueId] of Object.entries(options.surfaceVenues ?? {})) {
+    if (venueBySurfaceId[surfaceId] === undefined) venueBySurfaceId[surfaceId] = venueId;
+  }
+
+  return Object.freeze({
+    dates: [...dates].sort(),
+    venueBySurfaceId,
+    kickoffsByDateVenue,
+    surfacesByDateVenueFormat,
+    slotCount: slots.size,
+  });
+}
+
+/**
+ * The slots this game could be offered, ordered by the run's hold rule.
+ *
+ * `'baseline-first'` orders by distance from the game's anchor — its requested
+ * slot if a change request named one, otherwise where it started. That is the
+ * hold rule expressed as an ordering: the closest thing to not moving comes
+ * first, and it is what put incident 3's displaced 12:30 fixture at 12:00
+ * rather than somewhere merely legal.
+ *
+ * `'earliest-first'` is the opposite, and is reachable only through
+ * `reoptimiseWholeSeason()`. It is the ordering `placement/replaceGames.js`
+ * uses and the ordering the source project's global re-solve used; it exists
+ * here so that "what freeze prevented" can be measured rather than asserted.
+ *
+ * @param {import('./types.js').ResolveState} state
+ * @param {string} gameId
+ * @param {import('./types.js').Slot} anchor
+ * @param {'baseline-first'|'earliest-first'} order
+ * @returns {import('./types.js').Slot[]}
+ */
+export function candidateSlotsFor(state, gameId, anchor, order) {
+  const game = state.baseline[gameId];
+  if (!game) throw new Error(`resolve: no baseline game "${gameId}"`);
+  const inventory = state.inventory;
+  const venueId = inventory.venueBySurfaceId[anchor.surfaceId] ?? game.venueId;
+
+  const formatKey = `${anchor.date}|${venueId}|${game.format ?? ''}`;
+  let surfaceIds = inventory.surfacesByDateVenueFormat[formatKey] ?? [];
+  if (surfaceIds.length === 0) {
+    // No row of this format stood at this venue on this date. Fall back to the
+    // surfaces the venue used that day at all — still the baseline's own
+    // ground, never a surface invented for the occasion.
+    surfaceIds = [
+      ...new Set(
+        Object.entries(inventory.surfacesByDateVenueFormat)
+          .filter(([key]) => key.startsWith(`${anchor.date}|${venueId}|`))
+          .flatMap(([, ids]) => ids)
+      ),
+    ].sort();
+  }
+  const kickoffMinutes = inventory.kickoffsByDateVenue[`${anchor.date}|${venueId}`] ?? [];
+
+  /** @type {import('./types.js').Slot[]} */
+  const candidates = [];
+  /** @type {Set<string>} */
+  const seen = new Set();
+  // The slots a change request brought with it are candidates for the game it
+  // named, and for no other. `isSlotAdmissible()` already admits them at the
+  // writer; a placer that could not offer them would be able to accept a slot
+  // it could never propose, and a game lifted back out of its requested slot
+  // could never be returned to it.
+  for (const key of state.admittedSlotsByGameId[gameId] ?? []) {
+    const [date, surfaceId, startMinutes] = key.split('|');
+    if (date !== anchor.date) continue;
+    seen.add(key);
+    candidates.push({ date, surfaceId, startMinutes: Number(startMinutes) });
+  }
+  for (const startMinutes of kickoffMinutes) {
+    for (const surfaceId of surfaceIds) {
+      const key = `${anchor.date}|${surfaceId}|${startMinutes}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      candidates.push({ date: anchor.date, surfaceId, startMinutes });
+    }
+  }
+
+  if (order === 'earliest-first') {
+    candidates.sort(
+      (a, b) => a.startMinutes - b.startMinutes || a.surfaceId.localeCompare(b.surfaceId)
+    );
+    return candidates;
+  }
+
+  candidates.sort((a, b) => {
+    const byTime =
+      Math.abs(a.startMinutes - anchor.startMinutes) -
+      Math.abs(b.startMinutes - anchor.startMinutes);
+    if (byTime !== 0) return byTime;
+    const aHome = a.surfaceId === anchor.surfaceId ? 0 : 1;
+    const bHome = b.surfaceId === anchor.surfaceId ? 0 : 1;
+    if (aHome !== bHome) return aHome - bHome;
+    // Ties broken toward the earlier slot, then by id, so two runs over the
+    // same data produce the same answer.
+    if (a.startMinutes !== b.startMinutes) return a.startMinutes - b.startMinutes;
+    return a.surfaceId.localeCompare(b.surfaceId);
+  });
+  return candidates;
+}
