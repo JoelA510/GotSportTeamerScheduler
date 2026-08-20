@@ -84,6 +84,7 @@ import {
   FrozenGameMoveAttempt,
   FrozenGameUnsatisfiable,
   MOVE_KIND,
+  RESOLVE_OBJECTIVE_WEIGHTS,
   RESOLVE_REASON,
   RESOLVE_STAGES,
   ResolveStageSchema,
@@ -1066,6 +1067,24 @@ describe('the acceptance test :: the change request, with everything else frozen
 /* -------------------------------------------------------------------------- */
 
 describe('the positive control :: the same scenario, globally re-optimised', () => {
+  /**
+   * **The global re-solve with change minimisation switched off.**
+   *
+   * Prompt 4.1 got this by handing the placer an `earliest-legal-first`
+   * ordering, because under the hold rule a legal game was never moved and a
+   * global re-solve that kept the hold rule would have moved nothing and proved
+   * nothing. Prompt 4.2 replaced both hand-written orderings with the objective,
+   * so the same behaviour is now asked for by **naming the weights**: with
+   * every change term at zero the objective ranks legal slots equally and the
+   * tie-break — earliest kickoff, then surface id — decides, which is precisely
+   * what `earliest-legal-first` was.
+   *
+   * The numbers are unchanged by that substitution: **311 games moved, 275 of
+   * them outside the two affected dates**, exactly as 4.1 recorded. Being able
+   * to reproduce the incident-1 solver by setting three weights to zero, and
+   * getting the same season back, is the strongest evidence available that the
+   * objective replaced the ordering rather than merely joining it.
+   */
   const run = reoptimiseWholeSeason({
     schedule,
     changes,
@@ -1073,6 +1092,7 @@ describe('the positive control :: the same scenario, globally re-optimised', () 
     reason: 'the positive control for the acceptance test above',
     acknowledged: true,
     verify: false,
+    objectiveWeights: { changedGame: 0, driftMinute: 0, changedSurface: 0 },
   });
   const moved = diffFromBaseline(run.schedule);
   const movedOutside = moved.filter(
@@ -1086,8 +1106,9 @@ describe('the positive control :: the same scenario, globally re-optimised', () 
     // the alternative moves most of a season. The threshold is deliberately
     // loose: the source project's number was 366 of 679, on a different
     // algorithm on a different day, and asserting it here would be fake
-    // precision. What was observed when this test was written: 311 games moved
-    // in total and 275 of them fall outside the two dates the change touched.
+    // precision. What was observed when this test was written, and again after
+    // Prompt 4.2 replaced the ordering with the objective: 311 games moved in
+    // total and 275 of them fall outside the two dates the change touched.
     expect(movedOutside.length).toBeGreaterThan(50);
     expect(moved.length).toBeGreaterThan(movedOutside.length);
     // Every one of them is named, because a count is what incident 1 had.
@@ -1095,6 +1116,67 @@ describe('the positive control :: the same scenario, globally re-optimised', () 
       expect(baselineById.has(change.gameId)).toBe(true);
       expect(change.before).not.toBe(change.after);
     }
+  });
+
+  it('says out loud that it was scored with change minimisation switched off', () => {
+    // The weights that make this run the incident-1 solver are not a detail of
+    // how it was called; they are the whole of what it is. A run scored this way
+    // must never be mistaken for an ordinary one.
+    const finding = run.findings.find(
+      (candidate) => candidate.code === RESOLVE_REASON.RESOLVE_OBJECTIVE_CHANGE_TERM_DISABLED
+    );
+    expect(finding?.severity).toBe('compromise');
+    expect(run.objective.changeTermsDisabled).toBe(true);
+    expect(run.report.objective.weights.changedGame).toBe(0);
+    // …and separately that the weights were the caller's at all, because two
+    // runs of one change request under different objectives are not comparable
+    // and a report that did not say so would invite the comparison.
+    const overridden = run.findings.find(
+      (candidate) => candidate.code === RESOLVE_REASON.RESOLVE_OBJECTIVE_WEIGHTS_OVERRIDDEN
+    );
+    expect(overridden?.severity).toBe('info');
+    expect(overridden?.details.driftMinute).toBe(0);
+  });
+
+  it('moves far fewer games when the objective is left alone — Prompt 4.2’s own result', () => {
+    // The same operation, the same freeze plan, the same 679 rows, and the only
+    // difference is that the objective is the one the module ships with. Under
+    // 4.1 a "global re-optimisation" was a synonym for a reshuffle because
+    // nothing rewarded leaving a game alone; under 4.2 the change terms are what
+    // the placer optimises, so a global re-solve of a schedule that is already
+    // good mostly reproduces it.
+    const nearest = reoptimiseWholeSeason({
+      schedule,
+      changes,
+      engines,
+      reason: 'the same global re-optimisation, under the objective the module ships with',
+      acknowledged: true,
+      verify: false,
+    });
+    const nearestMoved = diffFromBaseline(nearest.schedule);
+    // 8 against 311, on identical inputs. Both numbers are observed rather than
+    // chosen, and the assertion is the ratio rather than either figure.
+    expect(nearestMoved.length).toBeLessThan(moved.length / 10);
+    expect(nearest.findings.map((finding) => finding.code)).not.toContain(
+      RESOLVE_REASON.RESOLVE_OBJECTIVE_CHANGE_TERM_DISABLED
+    );
+    // Every game it does move is on one of the two dates the change touched.
+    for (const change of nearestMoved) {
+      expect(affected.has(change.before.split('|')[0]), change.gameId).toBe(true);
+    }
+    // And it is **not** free: placing in one pass with no backtracking, the
+    // four 9v9 games the held 12:30 fixture overlaps find no slot left on the
+    // date and are carried as TIME TBD rather than dropped (incident 10). The
+    // objective scores that honestly — an unplaced game is the most expensive
+    // thing it knows — so this run reports a *worse* total than the scoped
+    // change request above, which is the correct verdict on it.
+    expect(nearest.unplaced.length).toBeGreaterThan(0);
+    for (const entry of nearest.unplaced) {
+      expect(baselineById.has(entry.gameId), entry.gameId).toBe(true);
+    }
+    expect(nearest.report.objective.resolvedSchedule.total).toBeGreaterThan(
+      nearest.report.objective.baseline.total
+    );
   });
 
   it('cannot come back clean, however valid the schedule it produces is', () => {
@@ -1240,10 +1322,40 @@ describe('a frozen game that cannot be satisfied', () => {
     expect(raised.message).toContain(
       `${raised.meta.rulesExercised} of ${raised.meta.rulesRun} standing rules`
     );
-    // The rule engine's own violations about this game come from `runRuleEngine`
-    // rather than being re-derived here.
-    expect(raised.violations.length).toBeGreaterThan(0);
     expect(raised.constraints).toHaveLength(4);
+
+    // The rule engine's own violations about this game come from
+    // `runRuleEngine()` over **the state as it stands mid-run**, rather than
+    // being re-derived here — and after Prompt 4.2 that is a materially
+    // different list from the baseline's, for a reason worth stating.
+    //
+    // The published season carries exactly one violation about this game: one
+    // coach is 30 minutes short of the between-venues travel floor getting to
+    // it. The change request moves the fixture 30 minutes later, and a
+    // commitment now **follows its game** through `resolvedScheduleOf()`, so his
+    // gap grows by exactly the shift and the shortfall is gone. Until 4.2 the
+    // resolved schedule kept the baseline's commitment times, so the rule engine
+    // judged every re-solve on where the coaches used to be: this violation
+    // survived a move that had repaired it, and — far worse in the other
+    // direction — a knock-on that stranded a coach would have been invisible.
+    // Category (b) of the dry-run report is unreadable without that fix.
+    // Matched by identity in all three places, exactly as `errors.js` does: a
+    // coach-travel violation names its games inside the composite subject id
+    // rather than in `entities`, and a substring test over those ids is the
+    // defect the last describe block in this file exists for.
+    const aboutIt = baselineVerification.violations.filter(
+      (violation) =>
+        (violation.entities ?? []).some(
+          (entity) => entity.kind === 'game' && entity.id === raised.gameId
+        ) ||
+        violation.details?.gameId === raised.gameId ||
+        String(violation.subjectId ?? '')
+          .split(/::|->|\|/)
+          .includes(raised.gameId)
+    );
+    expect(aboutIt.map((violation) => violation.code)).toEqual(['TRAVEL_BETWEEN_VENUES_TOO_SHORT']);
+    expect(raised.violations).toEqual([]);
+    expect(raised.meta.violationsReported).toBe(0);
   });
 
   it('can report instead of throwing, and still moves nothing', () => {
@@ -1791,16 +1903,21 @@ describe('the one writer', () => {
       surfaceId: requested.surfaceId,
       startMinutes: requested.startMinutes,
     };
-    const candidates = candidateSlotsFor(run.state, requested.gameId, anchor, 'baseline-first');
+    const candidates = candidateSlotsFor(
+      run.state,
+      requested.gameId,
+      anchor,
+      RESOLVE_OBJECTIVE_WEIGHTS
+    );
     expect(candidates.length).toBeGreaterThan(1);
     expect(candidates.map(slotOf)).toContain(slotOf(anchor));
     // …and only for the game it was named for.
     const other = /** @type {string} */ (
       run.judgements.frozenGameIds.find((id) => baselineById.get(id)?.date === requested.date)
     );
-    expect(candidateSlotsFor(run.state, other, anchor, 'baseline-first').map(slotOf)).not.toContain(
-      slotOf(anchor)
-    );
+    expect(
+      candidateSlotsFor(run.state, other, anchor, RESOLVE_OBJECTIVE_WEIGHTS).map(slotOf)
+    ).not.toContain(slotOf(anchor));
   });
 
   it('gives a relocated game the venue it is actually standing at', () => {

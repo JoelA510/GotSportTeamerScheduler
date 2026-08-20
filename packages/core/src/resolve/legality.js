@@ -10,10 +10,11 @@
  * **The bound of this module's remit, stated plainly.** Legality here means
  * *facility legality*. Turnover floors, round-robin completeness, home/away
  * balance and coach travel are the standing rule engine's, and `resolve/`
- * reports them through its `verify` stage rather than repairing them: repairing
- * a soft constraint means trading it against others, which needs the weighted
- * objective Prompt 4.2 owns. A change that leaves a schedule facility-legal and
- * turnover-short is reported as exactly that.
+ * reports them through its `verify` stage rather than repairing them. Prompt
+ * 4.2's objective weighs them — a candidate slot carrying a compromise costs
+ * more than a clean one — but **this** function is still the only thing that
+ * decides what is *legal*, and a change that leaves a schedule facility-legal
+ * and turnover-short is reported as exactly that.
  *
  * @module resolve/legality
  */

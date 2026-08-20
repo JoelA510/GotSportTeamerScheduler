@@ -42,6 +42,7 @@ import { freezeAllExcept, judgeFreezeAll } from '../freeze/plan.js';
 import { getSurface } from '../facility/facilityGraph.js';
 
 import { buildSlotInventory } from './inventory.js';
+import { RESOLVE_OBJECTIVE_WEIGHTS } from './objective.js';
 import { STAGE_PROBE } from './schemas.js';
 import {
   MOVE_KIND,
@@ -171,7 +172,7 @@ export function buildAdversarialState(input) {
       : [],
     plan,
     judgements,
-    order: 'baseline-first',
+    weights: RESOLVE_OBJECTIVE_WEIGHTS,
     dislodgeAll: false,
     // The probe is testing the freeze, not the error path: a clash in which
     // nothing may move is the *expected* outcome here, so it is reported rather
@@ -179,6 +180,7 @@ export function buildAdversarialState(input) {
     onUnsatisfiable: 'report',
     touchedDates: [...new Set(games.map((game) => game.date))].sort(),
     baselineBlockingCodes: {},
+    baselineFindingCounts: {},
     anchors: {},
     requestedSlots: {},
     unsatisfiableErrors: [],

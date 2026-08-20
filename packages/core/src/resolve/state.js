@@ -373,6 +373,14 @@ export function applyMove(state, move, stageId) {
     from,
     to: move.to,
     reason: move.reason,
+    // **Why**, in machine-readable form, from the stage that decided it.
+    // `reason` is a sentence for a human and is never parsed; `cause` is what
+    // `report.js` reads to say which constraint instance forced a game nobody
+    // asked about to move. A move with no cause is not an error here — a
+    // re-placement inherits the cause of the move that lifted it out — but a
+    // *moved game* with no cause anywhere in its slice of the ledger is, and
+    // the report says so at blocking.
+    cause: move.cause ?? null,
   });
 
   pending.sort();

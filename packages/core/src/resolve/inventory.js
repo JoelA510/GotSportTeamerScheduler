@@ -18,6 +18,25 @@
  * @module resolve/inventory
  */
 
+import { changeCountsFor, scoreObjective } from './objective.js';
+
+/**
+ * What the objective says one candidate's distance from the anchor costs.
+ *
+ * Delegates to {@link scoreObjective} rather than adding a comparator of its
+ * own: the ordering a game is offered its slots in **is** the objective, and a
+ * second opinion here would be the fourth fitness function the whole of
+ * `objective.js` exists to prevent.
+ *
+ * @param {import('./types.js').Slot} anchor
+ * @param {import('./types.js').Slot} candidate
+ * @param {Readonly<Record<string, number>>} weights
+ * @returns {number}
+ */
+function changeCostOf(anchor, candidate, weights) {
+  return scoreObjective(changeCountsFor(anchor, candidate), weights).changeCost;
+}
+
 /**
  * Build the inventory from the baseline games.
  *
@@ -104,26 +123,42 @@ export function buildSlotInventory(games, options = {}) {
 }
 
 /**
- * The slots this game could be offered, ordered by the run's hold rule.
+ * The slots this game could be offered, **ordered by the objective's change
+ * terms**, cheapest first.
  *
- * `'baseline-first'` orders by distance from the game's anchor — its requested
- * slot if a change request named one, otherwise where it started. That is the
- * hold rule expressed as an ordering: the closest thing to not moving comes
- * first, and it is what put incident 3's displaced 12:30 fixture at 12:00
- * rather than somewhere merely legal.
+ * Until Prompt 4.2 this function carried two hand-written orderings:
+ * `'baseline-first'` (nearest to the anchor) for a change request, and
+ * `'earliest-first'` for a global re-solve. They were the minimal-diff policy
+ * and its absence, expressed as two sort comparators. Both are now the same
+ * comparator reading the same weight table: `changeCostOf()` below asks
+ * `resolve/objective.js` what a candidate's distance from the anchor costs, and
+ * a run that wants the old earliest-first behaviour gets it by setting the three
+ * change weights to zero — which is what `reoptimiseWholeSeason()` offers by
+ * name, and what stamps `RESOLVE_OBJECTIVE_CHANGE_TERM_DISABLED` on the run.
  *
- * `'earliest-first'` is the opposite, and is reachable only through
- * `reoptimiseWholeSeason()`. It is the ordering `placement/replaceGames.js`
- * uses and the ordering the source project's global re-solve used; it exists
- * here so that "what freeze prevented" can be measured rather than asserted.
+ * Under the default weights the anchor slot itself always sorts first, which is
+ * the hold rule expressed as an ordering, and the next-nearest kickoff follows —
+ * what put incident 3's displaced 12:30 fixture at 12:00 rather than somewhere
+ * merely legal.
+ *
+ * **Ties are broken by earliest kickoff, then surface id, and by nothing else.**
+ * Not by proximity: proximity is a weighted term, and a tie-break that quietly
+ * reinstated it would make the zero-weight run impossible to express — every
+ * game would stay where it was however the objective was configured, and the
+ * positive control that measures what freeze prevents would measure nothing.
+ *
+ * The quality half of the objective is not consulted here. It needs
+ * `checkPlacement()` — engines this module does not hold — so it is applied by
+ * `chooseSlot()` in `stages.js`, which walks this ordering and scores each
+ * candidate through the same one function.
  *
  * @param {import('./types.js').ResolveState} state
  * @param {string} gameId
  * @param {import('./types.js').Slot} anchor
- * @param {'baseline-first'|'earliest-first'} order
+ * @param {Readonly<Record<string, number>>} weights - see `resolve/objective.js`
  * @returns {import('./types.js').Slot[]}
  */
-export function candidateSlotsFor(state, gameId, anchor, order) {
+export function candidateSlotsFor(state, gameId, anchor, weights) {
   const game = state.baseline[gameId];
   if (!game) throw new Error(`resolve: no baseline game "${gameId}"`);
   const inventory = state.inventory;
@@ -169,25 +204,23 @@ export function candidateSlotsFor(state, gameId, anchor, order) {
     }
   }
 
-  if (order === 'earliest-first') {
-    candidates.sort(
-      (a, b) => a.startMinutes - b.startMinutes || a.surfaceId.localeCompare(b.surfaceId)
-    );
-    return candidates;
-  }
-
-  candidates.sort((a, b) => {
-    const byTime =
-      Math.abs(a.startMinutes - anchor.startMinutes) -
-      Math.abs(b.startMinutes - anchor.startMinutes);
-    if (byTime !== 0) return byTime;
-    const aHome = a.surfaceId === anchor.surfaceId ? 0 : 1;
-    const bHome = b.surfaceId === anchor.surfaceId ? 0 : 1;
-    if (aHome !== bHome) return aHome - bHome;
-    // Ties broken toward the earlier slot, then by id, so two runs over the
-    // same data produce the same answer.
-    if (a.startMinutes !== b.startMinutes) return a.startMinutes - b.startMinutes;
-    return a.surfaceId.localeCompare(b.surfaceId);
+  // **Decorate, sort, undecorate.** Scoring inside the comparator asked the
+  // objective twice per comparison and allocated a fresh six-term breakdown for
+  // each call: for the ~400 candidates a busy date offers, roughly 6,800 calls
+  // and 48,000 objects thrown away per placement. The cost of a candidate does
+  // not depend on what it is being compared against, so it is computed once per
+  // candidate. `tests/minimalDiff.test.js` asserts the ordering is byte-for-byte
+  // the one the comparator produced rather than assuming it.
+  const scored = candidates.map((slot) => ({ slot, cost: changeCostOf(anchor, slot, weights) }));
+  scored.sort((a, b) => {
+    if (a.cost !== b.cost) return a.cost - b.cost;
+    // Deterministic and reference-blind, so two runs over the same data produce
+    // the same answer and a run with the change terms switched off is genuinely
+    // free to move things.
+    if (a.slot.startMinutes !== b.slot.startMinutes) {
+      return a.slot.startMinutes - b.slot.startMinutes;
+    }
+    return a.slot.surfaceId.localeCompare(b.slot.surfaceId);
   });
-  return candidates;
+  return scored.map((entry) => entry.slot);
 }

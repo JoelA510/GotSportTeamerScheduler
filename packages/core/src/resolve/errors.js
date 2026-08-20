@@ -83,11 +83,15 @@ export class FrozenGameUnsatisfiable extends Error {
 /**
  * Which registry constraints govern these reason codes.
  *
+ * Exported because `stages.js` needs exactly this answer when it records why a
+ * game had to move, and a second lookup written there would be free to disagree
+ * with the one in the error an operator reads. One question, one answer.
+ *
  * @param {import('../constraints/types.js').ConstraintRegistry} registry
  * @param {ReadonlyArray<string>} codes
  * @returns {string[]}
  */
-function constraintIdsFor(registry, codes) {
+export function registryConstraintIdsFor(registry, codes) {
   /** @type {Set<string>} */
   const ids = new Set();
   for (const code of codes) {
@@ -170,7 +174,7 @@ export function frozenGameUnsatisfiable(input) {
   const applicable = constraints.filter((constraint) => constraint.applicable);
   const binding = availability.binding ?? null;
   const bindingKinds = availability.bindingKinds ?? [];
-  const constraintIds = constraintIdsFor(registry, placement.blockingCodes);
+  const constraintIds = registryConstraintIdsFor(registry, placement.blockingCodes);
   const violations = violationsAbout(verification, gameId);
 
   const rulesRun = verification?.meta?.rulesRun ?? 0;

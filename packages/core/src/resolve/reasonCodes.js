@@ -141,10 +141,92 @@ export const RESOLVE_REASON = Object.freeze({
    * `compromise`. The resolver repairs *facility legality* — occupancy,
    * permits, lighting, daylight, size, lining. Turnover floors, round-robin
    * completeness and coach travel are the rule engine's, and a change that
-   * breaks one of them is reported here rather than quietly repaired: repairing
-   * a soft constraint needs the weighted objective Prompt 4.2 owns.
+   * breaks one of them is reported here rather than quietly repaired. Prompt
+   * 4.2's objective weighs them, so a placer choosing between two legal slots
+   * prefers the one that breaks fewer; nothing re-solves a season to improve
+   * one, and this code is how the difference stays visible.
    */
   RESOLVE_VERIFY_NEW_VIOLATION: 'RESOLVE_VERIFY_NEW_VIOLATION',
+
+  /* -- the objective, the budget and the dry run (Prompt 4.2) ---------------- */
+  /**
+   * This run is a **proposal**. Nothing has been committed.
+   *
+   * Provenance, and on every single run: a re-solve is a dry run by
+   * construction, and `commitResolve()` is the separate, named step that turns
+   * one into a schedule. The code exists so that "was this committed?" is
+   * answerable from the findings an operator is already reading rather than
+   * from a field they have to know to look for.
+   */
+  RESOLVE_DRY_RUN: 'RESOLVE_DRY_RUN',
+  /**
+   * The run was scored under weights the caller supplied. Provenance.
+   *
+   * A report whose numbers came from a non-default objective must say so, or
+   * two runs of the same change request are silently incomparable.
+   */
+  RESOLVE_OBJECTIVE_WEIGHTS_OVERRIDDEN: 'RESOLVE_OBJECTIVE_WEIGHTS_OVERRIDDEN',
+  /**
+   * Every change term is weighted zero: this run was scored with **change
+   * minimisation switched off**.
+   *
+   * `compromise`. It is a legitimate thing to ask for — it is the objective
+   * incident 1's solver had, and the positive control that measures what freeze
+   * prevents needs it — and it must never be mistaken for an ordinary run. A
+   * schedule produced this way is the *best* one the placer could find rather
+   * than the *nearest* one, which is the whole distinction Prompt 4.2 exists to
+   * make.
+   */
+  RESOLVE_OBJECTIVE_CHANGE_TERM_DISABLED: 'RESOLVE_OBJECTIVE_CHANGE_TERM_DISABLED',
+  /**
+   * More games moved than the change budget allows.
+   *
+   * `blocking`, and the finding carries the constraint ids that forced the
+   * consequential moves. *"Exceeding it is a failure with an explanation, not a
+   * silent large diff."* `commitResolve()` refuses such a run outright and does
+   * not offer an override: a caller who is willing to move more games says so
+   * by naming a bigger number, which leaves a record of what they agreed to.
+   */
+  RESOLVE_CHANGE_BUDGET_EXCEEDED: 'RESOLVE_CHANGE_BUDGET_EXCEEDED',
+  /**
+   * A change budget was set and the run came in under it. Provenance.
+   *
+   * Emitted because a budget nothing reports on is a budget nobody can tell was
+   * checked — declared is not enforced, and the two look identical from the
+   * outside until the day it matters.
+   */
+  RESOLVE_CHANGE_BUDGET_MET: 'RESOLVE_CHANGE_BUDGET_MET',
+  /**
+   * A game moved and **nothing in the run can say what forced it**.
+   *
+   * `blocking`. This is the category-(b) failure stated as a code: a
+   * consequential move whose cause the pipeline never recorded is a game that
+   * left the schedule families have for a reason nobody can name, which is
+   * incident 1 in miniature. It is a bug in this package rather than a property
+   * of the schedule, and it is reported at blocking so that it cannot be
+   * committed.
+   */
+  RESOLVE_CONSEQUENTIAL_MOVE_UNEXPLAINED: 'RESOLVE_CONSEQUENTIAL_MOVE_UNEXPLAINED',
+  /**
+   * A moved game does not appear **exactly once** across the report's two
+   * categories.
+   *
+   * `blocking`. The report's own meta-assertion, and one that can genuinely
+   * fail rather than one restating how the lists were built: a `moved` list
+   * naming a game twice double-counts it in category (b) *and* against the
+   * change budget, producing a diff larger than the season contains and a cap
+   * spent on nothing. The appearances are counted, not assumed.
+   */
+  RESOLVE_REPORT_PARTITION_INCOMPLETE: 'RESOLVE_REPORT_PARTITION_INCOMPLETE',
+  /**
+   * The run produced no quality deltas because the rule engine did not run.
+   *
+   * Provenance here, teeth at `commitResolve()`, which refuses such a run
+   * unless the caller names the acceptance. "No quality delta" and "no quality
+   * delta measured" are the same sentence to a tired operator, and only one of
+   * them is good news.
+   */
+  RESOLVE_REPORT_QUALITY_UNMEASURED: 'RESOLVE_REPORT_QUALITY_UNMEASURED',
 
   /* -- the audit ------------------------------------------------------------- */
   /**
@@ -211,6 +293,15 @@ export const RESOLVE_REASON_SEVERITY = Object.freeze({
 
   [RESOLVE_REASON.RESOLVE_VERIFY_NEW_VIOLATION]: RESOLVE_SEVERITY.COMPROMISE,
 
+  [RESOLVE_REASON.RESOLVE_DRY_RUN]: RESOLVE_SEVERITY.INFO,
+  [RESOLVE_REASON.RESOLVE_OBJECTIVE_WEIGHTS_OVERRIDDEN]: RESOLVE_SEVERITY.INFO,
+  [RESOLVE_REASON.RESOLVE_OBJECTIVE_CHANGE_TERM_DISABLED]: RESOLVE_SEVERITY.COMPROMISE,
+  [RESOLVE_REASON.RESOLVE_CHANGE_BUDGET_EXCEEDED]: RESOLVE_SEVERITY.BLOCKING,
+  [RESOLVE_REASON.RESOLVE_CHANGE_BUDGET_MET]: RESOLVE_SEVERITY.INFO,
+  [RESOLVE_REASON.RESOLVE_CONSEQUENTIAL_MOVE_UNEXPLAINED]: RESOLVE_SEVERITY.BLOCKING,
+  [RESOLVE_REASON.RESOLVE_REPORT_PARTITION_INCOMPLETE]: RESOLVE_SEVERITY.BLOCKING,
+  [RESOLVE_REASON.RESOLVE_REPORT_QUALITY_UNMEASURED]: RESOLVE_SEVERITY.INFO,
+
   [RESOLVE_REASON.RESOLVE_AUDIT_FROZEN_GAME_MOVED]: RESOLVE_SEVERITY.BLOCKING,
   [RESOLVE_REASON.RESOLVE_AUDIT_STAGE_BYPASSED_GATE]: RESOLVE_SEVERITY.BLOCKING,
   [RESOLVE_REASON.RESOLVE_AUDIT_STAGE_WROTE_WITHOUT_DECLARING]: RESOLVE_SEVERITY.BLOCKING,
@@ -275,6 +366,7 @@ export function createResolveMeta() {
     movesApplied: 0,
     candidatesEvaluated: 0,
     candidatesRejected: 0,
+    candidatesScored: 0,
     conflictsExamined: 0,
     gamesDislodged: 0,
     gamesReplaced: 0,
@@ -284,6 +376,13 @@ export function createResolveMeta() {
     rulesExercised: 0,
     constraintsConsulted: 0,
     slotsAvailable: 0,
+    // Prompt 4.2's counters. Assigned after the pipeline, from the report,
+    // exactly as `slotsAvailable` is — they are properties of the whole run
+    // rather than sums of per-stage work.
+    movedGames: 0,
+    movedRequested: 0,
+    movedConsequential: 0,
+    movedConsequentialExplained: 0,
   };
 }
 

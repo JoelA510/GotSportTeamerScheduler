@@ -29,22 +29,74 @@
  * has no round-robin generator and no slot generator; see `index.js` for the
  * full statement. `local-search` and `pair-repair` are real passes with real
  * neighbourhoods — a stage that did nothing would sail through its own probe —
- * but they are governed by the hold rule alone: **a legal game is never moved.**
- * There is no scoring vector and no third fitness function here. The weighted
- * "minimise games whose slot differs from a reference schedule" objective is
- * Prompt 4.2's, by name.
+ * and the hold rule still decides **whether** a game is touched at all: a legal
+ * game is never moved.
+ *
+ * ## Where the objective enters (Prompt 4.2)
+ *
+ * The hold rule decides whether; the objective decides **where**. Every stage
+ * that places a game goes through {@link chooseSlot}, which walks the ordering
+ * `candidateSlotsFor()` derives from the objective's change terms and scores each
+ * legal candidate through `resolve/objective.js`. There is still no second
+ * scoring function here: this file counts nothing and weighs nothing, it asks.
  *
  * @module resolve/stages
  */
 
 import { FREEZE_DISPOSITION } from '../freeze/reasonCodes.js';
 
-import { frozenGameUnsatisfiable } from './errors.js';
+import { frozenGameUnsatisfiable, registryConstraintIdsFor } from './errors.js';
 import { candidateSlotsFor } from './inventory.js';
 import { checkPlacement } from './legality.js';
+import {
+  candidateObjectiveCounts,
+  changeCountsFor,
+  placementFindingCounts,
+  placementFindingTotal,
+  scoreObjective,
+} from './objective.js';
 import { RESOLVE_REASON, makeResolveFinding } from './reasonCodes.js';
 import { ResolveStageSchema, STAGE_PROBE } from './schemas.js';
 import { MOVE_KIND, applyMove, isFrozen, mayMove, slotKey, slotOf } from './state.js';
+
+/**
+ * Why a game had to move, in the words of the machinery that decided it.
+ *
+ * > *"Each consequential move must name the specific constraint instance that
+ * > forced it."*
+ *
+ * Every field here is **consumed**: the reason codes and the counterpart games
+ * come from `checkPlacement()`, which is Phase 1.3's `checkKickoffAvailability()`
+ * re-severitied by the Phase 2.1 registry; the binding kind and its slack in
+ * minutes come from Phase 1.3's own tightness ordering; and the constraint ids
+ * come from the registry's `idsByReasonCode` through the same lookup
+ * `errors.js` uses for `FrozenGameUnsatisfiable`. Nothing in this function
+ * decides anything, which is what stops the report drifting away from the
+ * pipeline that produced it.
+ *
+ * A cause is a **flat record of primitives and ids**, like every `details` bag
+ * in the six modules before it.
+ *
+ * @param {Object} context
+ * @param {ReturnType<typeof checkPlacement>} placement
+ * @param {ReadonlyArray<string>} codes - the codes that grew against the baseline
+ * @param {ReadonlyArray<string>} counterpartGameIds
+ * @returns {Record<string, unknown>}
+ */
+function constraintCause(context, placement, codes, counterpartGameIds) {
+  const constraintIds = registryConstraintIdsFor(context.engines.registry, codes);
+  const availability = /** @type {Object} */ (placement.availability ?? {});
+  const binding = availability.binding ?? null;
+  return Object.freeze({
+    kind: 'constraint',
+    codes: [...codes].sort().join(', '),
+    constraintId: constraintIds[0] ?? null,
+    constraintIds: Object.freeze([...constraintIds]),
+    counterpartGameIds: Object.freeze([...counterpartGameIds].sort()),
+    bindingKinds: Object.freeze([...(availability.bindingKinds ?? [])]),
+    slackMinutes: binding === null ? null : (binding.slackMinutes ?? null),
+  });
+}
 
 /**
  * Grew, in the sense that matters: this game breaks a blocking code **more
@@ -180,25 +232,99 @@ function unsatisfiable(state, context, gameId, placement, stageId, slot) {
 }
 
 /**
- * Place one pending game on the first legal slot its ordering offers.
+ * Where a game is held from, for the objective to measure its drift against:
+ * the slot a change request named for it, or the one the reference schedule
+ * gave it.
+ *
+ * **Never the slot it happens to be standing on right now.** `context.anchors`
+ * is populated only for games a change request names, so a game already
+ * displaced by an earlier stage has no entry here and must fall back to
+ * `state.baseline` — the position it was *published* at. Anchoring such a game
+ * on its displaced slot measures its drift from the damage rather than from the
+ * schedule families were given, and makes walking it back to a free published
+ * slot score **worse** than moving it further away. That is incident 1's shape
+ * appearing inside the code written to prevent it, so all three placing stages
+ * come through this one function rather than each carrying its own fallback —
+ * the "adopt the sibling's contract" rule in `CLAUDE.md` §3.
  *
  * @param {import('./types.js').ResolveState} state
  * @param {Object} context
  * @param {string} gameId
- * @param {string} stageId
- * @returns {{ state: import('./types.js').ResolveState, placed: boolean }}
+ * @returns {import('./types.js').Slot}
  */
-function placePending(state, context, gameId, stageId) {
-  const anchor =
-    context.anchors[gameId] ??
-    /** @type {import('./types.js').Slot} */ ({
-      date: state.baseline[gameId].date,
-      surfaceId: state.baseline[gameId].surfaceId,
-      startMinutes: state.baseline[gameId].startMinutes,
-    });
-  const candidates = candidateSlotsFor(state, gameId, anchor, context.order);
+function anchorOf(state, context, gameId) {
+  const baseline = state.baseline[gameId];
+  return (
+    context.anchors[gameId] ?? {
+      date: baseline.date,
+      surfaceId: baseline.surfaceId,
+      startMinutes: baseline.startMinutes,
+    }
+  );
+}
 
-  for (const candidate of candidates) {
+/**
+ * **The one place a slot is chosen**, and the only consumer of the objective's
+ * quality half.
+ *
+ * All three placing stages come through here — `initial-assignment` for a game
+ * that was lifted out, `local-search` for one standing somewhere illegal,
+ * `pair-repair` for the movable half of a clash — so "the objective decides
+ * where a game goes" is a statement about the pipeline rather than about one
+ * stage that happens to consult it.
+ *
+ * ## Two exact short-circuits, and why they are not heuristics
+ *
+ * `candidateSlotsFor()` returns candidates ordered by **change cost ascending**,
+ * and every quality term is non-negative. So:
+ *
+ * 1. once a candidate's change cost alone reaches the best total found so far,
+ *    no later candidate can beat it — the ordering guarantees the change cost
+ *    never falls again; and
+ * 2. a candidate scoring zero cannot be beaten at all.
+ *
+ * Both stop the scan without changing the answer, and both still hold with the
+ * quality half charged relative to the baseline: an excess clamped at zero is
+ * still non-negative. The second one now fires where it should — a game offered
+ * the slot it was published on, carrying only what that slot already carried,
+ * scores zero and the scan stops there.
+ *
+ * Under the default weights the
+ * first is what makes this cost roughly what "first legal slot" cost before,
+ * because a candidate that differs from the anchor already pays `changedGame`
+ * and no ordinary quality shortfall reaches that. Under a run with the change
+ * terms switched off neither fires until a clean slot is found, which is
+ * precisely the exhaustive search that run is asking for.
+ *
+ * The first stops at `changeCost > best.score` rather than `>=`, which is the
+ * same exactness one candidate wider: a candidate whose change cost *equals* the
+ * best total can only tie it, never beat it, and a tie is decided below by
+ * whichever slot carries fewer findings outright. Declining to repair what the
+ * schedule was handed is the point of the relative scoring; spreading it to a
+ * slot that never had it is not, and the two slots score the same once the
+ * accepted half is discounted.
+ *
+ * @param {import('./types.js').ResolveState} state
+ * @param {Object} context
+ * @param {string} gameId
+ * @param {{ anchor: import('./types.js').Slot, excludeSlotKey?: string }} options
+ * @returns {{ slot: import('./types.js').Slot, placement: ReturnType<typeof checkPlacement>, score: number, findingsCarried: number }|null}
+ */
+function chooseSlot(state, context, gameId, options) {
+  const { anchor } = options;
+  /** @type {{ slot: import('./types.js').Slot, placement: ReturnType<typeof checkPlacement>, score: number, findingsCarried: number }|null} */
+  let best = null;
+
+  for (const candidate of candidateSlotsFor(state, gameId, anchor, context.weights)) {
+    if (options.excludeSlotKey !== undefined && slotKey(candidate) === options.excludeSlotKey) {
+      continue;
+    }
+    const changeCost = scoreObjective(
+      changeCountsFor(anchor, candidate),
+      context.weights
+    ).changeCost;
+    if (best !== null && changeCost > best.score) break;
+
     state.ledger.meta.candidatesEvaluated += 1;
     const placement = checkPlacement(context.engines, state, gameId, candidate);
     const grown = newBlockingCodes(
@@ -209,6 +335,50 @@ function placePending(state, context, gameId, stageId) {
       state.ledger.meta.candidatesRejected += 1;
       continue;
     }
+
+    const score = scoreObjective(
+      candidateObjectiveCounts({
+        reference: anchor,
+        slot: candidate,
+        placement,
+        // **Scored the way the gate above admits.** `newBlockingCodes()` accepts
+        // a finding the published schedule already carried; scoring the same
+        // candidate absolutely would then charge this game for that finding at
+        // its own published slot and move it off its published time to repair
+        // something already accepted.
+        accepted: context.baselineFindingCounts[gameId] ?? {},
+      }),
+      context.weights
+    ).total;
+    const findingsCarried = placementFindingTotal(placement);
+    state.ledger.meta.candidatesScored += 1;
+    if (
+      best === null ||
+      score < best.score ||
+      (score === best.score && findingsCarried < best.findingsCarried)
+    ) {
+      best = { slot: candidate, placement, score, findingsCarried };
+    }
+    if (best.score === 0 && best.findingsCarried === 0) break;
+  }
+  return best;
+}
+
+/**
+ * Place one pending game on the slot the objective likes best.
+ *
+ * @param {import('./types.js').ResolveState} state
+ * @param {Object} context
+ * @param {string} gameId
+ * @param {string} stageId
+ * @returns {{ state: import('./types.js').ResolveState, placed: boolean }}
+ */
+function placePending(state, context, gameId, stageId) {
+  const anchor = anchorOf(state, context, gameId);
+  const chosen = chooseSlot(state, context, gameId, { anchor });
+
+  if (chosen !== null) {
+    const candidate = chosen.slot;
     if (!mayMove(state, gameId, stageId, `place on ${slotKey(candidate)}`)) {
       return { state, placed: false };
     }
@@ -218,7 +388,12 @@ function placePending(state, context, gameId, stageId) {
         gameId,
         kind: MOVE_KIND.RELOCATE,
         to: candidate,
-        reason: `first legal slot under the ${context.order} ordering`,
+        // No `cause`: a game reaching this stage was lifted out by some earlier
+        // move, and **that** move carries the reason it had to move at all.
+        // Restating it here would be a second copy free to disagree with the
+        // first, and `report.js` reads the first cause in the game's own slice
+        // of the ledger precisely so there is only ever one.
+        reason: `the slot the objective scored lowest (${chosen.score}) among those the schedule already used`,
       },
       stageId
     );
@@ -292,6 +467,11 @@ const baselineIngest = {
       const slot = { date: game.date, surfaceId: game.surfaceId, startMinutes: game.startMinutes };
       const placement = checkPlacement(context.engines, state, gameId, slot);
       context.baselineBlockingCodes[gameId] = placement.blockingCodeCounts;
+      // The same record one severity wider: the gate compares blocking counts,
+      // the objective charges for blocking **and** compromise, and both have to
+      // be measured against the same published slot or the run pays twice for
+      // an exception the season already accepted.
+      context.baselineFindingCounts[gameId] = placementFindingCounts(placement);
       ledger.meta.constraintsConsulted += /** @type {Array<Object>} */ (
         placement.availability.constraints
       ).length;
@@ -375,6 +555,11 @@ const changeRequestApply = {
           kind: MOVE_KIND.RELOCATE,
           to: target,
           reason: change.reason ?? 'named by the change request',
+          cause: Object.freeze({
+            kind: 'requested',
+            requestedSlot: slotKey(target),
+            reason: change.reason ?? 'named by the change request',
+          }),
         },
         this.id
       );
@@ -427,6 +612,12 @@ const dislodge = {
             kind: MOVE_KIND.DISLODGE,
             to: null,
             reason: 'global re-optimisation: every thawed game is re-placed from scratch',
+            // Named, and deliberately **not** a constraint: nothing about this
+            // game forced it off the board. `report.js` reads this kind and
+            // says so rather than leaving the move unexplained, because "no
+            // constraint made this happen" is the truest and worst thing that
+            // can be said about a game families already had a time for.
+            cause: Object.freeze({ kind: 'global-reoptimisation' }),
           },
           this.id
         );
@@ -483,6 +674,7 @@ const dislodge = {
             kind: MOVE_KIND.DISLODGE,
             to: null,
             reason: `clash with ${others.join(', ') || 'nothing this run can name'}: ${grown.join(', ')}`,
+            cause: constraintCause(context, placement, grown, others),
           },
           this.id
         );
@@ -586,7 +778,19 @@ const initialAssignment = {
 
       const reason =
         'no slot the schedule already used is legal for it; kept visible as TIME TBD rather than dropped (incident 10)';
-      current = applyMove(current, { gameId, kind: MOVE_KIND.TIME_TBD, to: null, reason }, this.id);
+      current = applyMove(
+        current,
+        {
+          gameId,
+          kind: MOVE_KIND.TIME_TBD,
+          to: null,
+          reason,
+          // Deliberately not a cause of its own: a game reaching TIME TBD was
+          // lifted out by an earlier move that already named what forced it,
+          // and this one is the consequence rather than the reason.
+        },
+        this.id
+      );
       current.ledger.findings.push(
         makeResolveFinding(
           RESOLVE_REASON.RESOLVE_GAME_TIME_TBD,
@@ -623,38 +827,46 @@ const localSearch = {
         newBlockingCodes(placement.blockingCodeCounts, context.baselineBlockingCodes[gameId] ?? {})
           .length === 0
       ) {
-        // The hold rule, in one branch: a legal game is never moved. There is
-        // no objective here that could reward moving it.
+        // The hold rule, in one branch: a legal game is never moved. The
+        // objective decides *where* a game goes once something has forced it to
+        // go somewhere; it is deliberately never asked whether a game that is
+        // standing legally could score better elsewhere, because the answer to
+        // that question, applied across a season, is incident 1.
         continue;
       }
       if (!mayMove(current, gameId, this.id, 'relocate a game standing somewhere illegal')) {
         continue;
       }
 
-      const anchor = context.anchors[gameId] ?? slot;
-      for (const candidate of candidateSlotsFor(current, gameId, anchor, context.order)) {
-        if (slotKey(candidate) === slotKey(slot)) continue;
-        current.ledger.meta.candidatesEvaluated += 1;
-        const trial = checkPlacement(context.engines, current, gameId, candidate);
-        if (
-          newBlockingCodes(trial.blockingCodeCounts, context.baselineBlockingCodes[gameId] ?? {})
-            .length > 0
-        ) {
-          current.ledger.meta.candidatesRejected += 1;
-          continue;
-        }
-        current = applyMove(
-          current,
-          {
-            gameId,
-            kind: MOVE_KIND.RELOCATE,
-            to: candidate,
-            reason: 'local search: the game was standing somewhere illegal',
-          },
-          this.id
-        );
-        break;
-      }
+      // The **baseline**, not the slot it is standing on: this stage exists to
+      // walk a displaced game back toward where it was published, and a game
+      // that measured its drift from its displaced position would score the
+      // walk back as a move away.
+      const anchor = anchorOf(current, context, gameId);
+      const chosen = chooseSlot(current, context, gameId, {
+        anchor,
+        excludeSlotKey: slotKey(slot),
+      });
+      if (chosen === null) continue;
+      current = applyMove(
+        current,
+        {
+          gameId,
+          kind: MOVE_KIND.RELOCATE,
+          to: chosen.slot,
+          reason: 'local search: the game was standing somewhere illegal',
+          cause: constraintCause(
+            context,
+            placement,
+            newBlockingCodes(
+              placement.blockingCodeCounts,
+              context.baselineBlockingCodes[gameId] ?? {}
+            ),
+            placement.counterpartGameIds
+          ),
+        },
+        this.id
+      );
     }
     return current;
   },
@@ -693,32 +905,34 @@ const pairRepair = {
         const counterpartSlot = /** @type {import('./types.js').Slot} */ (
           slotOf(current, counterpart)
         );
-        const anchor = context.anchors[counterpart] ?? counterpartSlot;
-        for (const candidate of candidateSlotsFor(current, counterpart, anchor, context.order)) {
-          if (slotKey(candidate) === slotKey(counterpartSlot)) continue;
-          current.ledger.meta.candidatesEvaluated += 1;
-          const trial = checkPlacement(context.engines, current, counterpart, candidate);
-          if (
-            newBlockingCodes(
-              trial.blockingCodeCounts,
-              context.baselineBlockingCodes[counterpart] ?? {}
-            ).length > 0
-          ) {
-            current.ledger.meta.candidatesRejected += 1;
-            continue;
-          }
-          current = applyMove(
-            current,
-            {
-              gameId: counterpart,
-              kind: MOVE_KIND.RELOCATE,
-              to: candidate,
-              reason: `pair repair: it was the movable half of a clash with "${gameId}"`,
-            },
-            this.id
-          );
-          break;
-        }
+        // Measured from where the counterpart was **published**, for the same
+        // reason `local-search` is: this game is being asked to move for
+        // somebody else's benefit, and the least it is owed is that "how far
+        // has it been dragged" is counted from its own published slot.
+        const anchor = anchorOf(current, context, counterpart);
+        const chosen = chooseSlot(current, context, counterpart, {
+          anchor,
+          excludeSlotKey: slotKey(counterpartSlot),
+        });
+        if (chosen === null) continue;
+        current = applyMove(
+          current,
+          {
+            gameId: counterpart,
+            kind: MOVE_KIND.RELOCATE,
+            to: chosen.slot,
+            reason: `pair repair: it was the movable half of a clash with "${gameId}"`,
+            // The clash is the one **`gameId`** is standing in, so the cause is
+            // measured there: this counterpart is being moved for somebody
+            // else's benefit, and a report that named its own slot's findings
+            // would name the wrong constraint.
+            cause: constraintCause(context, placement, grown, [
+              gameId,
+              ...placement.counterpartGameIds.filter((id) => id !== counterpart),
+            ]),
+          },
+          this.id
+        );
       }
     }
     return current;
@@ -733,7 +947,7 @@ const verify = {
     mutationKinds: [],
     probe: STAGE_PROBE.WRITES_NOTHING,
     claim:
-      'reports; it never repairs. Turnover, round-robin and coach travel belong to the rule engine, and trading one against another needs the weighted objective Prompt 4.2 owns',
+      'reports; it never repairs. Turnover, round-robin and coach travel belong to the rule engine; the objective may prefer a slot that breaks fewer of them, and nothing here re-solves a season to improve one',
   },
   /**
    * @param {import('./types.js').ResolveState} state
