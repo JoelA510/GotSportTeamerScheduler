@@ -223,8 +223,8 @@ export function recordsAgree(a, b) {
   for (const key of keys) {
     if (a.parameters[key] !== b.parameters[key]) return false;
   }
-  const aCodes = [...a.reasonCodes].sort().join(' ');
-  const bCodes = [...b.reasonCodes].sort().join(' ');
+  const aCodes = [...a.reasonCodes].sort().join('\u0000');
+  const bCodes = [...b.reasonCodes].sort().join('\u0000');
   return aCodes === bCodes;
 }
 

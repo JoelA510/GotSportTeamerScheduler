@@ -306,6 +306,13 @@ export const RULE_VIOLATION_REASON = Object.freeze({
   HOME_AWAY_OUT_OF_RANGE: 'HOME_AWAY_OUT_OF_RANGE',
   /** A team plays a different number of games than the season states. */
   GAMES_PLAYED_OFF_TARGET: 'GAMES_PLAYED_OFF_TARGET',
+  /**
+   * A team the roster puts in a judged division appears in no counted row at
+   * all. Incident 4's own shape: a name-format change drops the team from every
+   * row, so it plays 0 of 9 and every rule that takes its subjects from the
+   * games leaves it out of the analysis rather than reporting it.
+   */
+  TEAM_ABSENT_FROM_SCHEDULE: 'TEAM_ABSENT_FROM_SCHEDULE',
 
   /* -- conflict fairness ------------------------------------------------------ */
   /** Within one age group, coach conflicts are concentrated on one team. */
@@ -331,6 +338,7 @@ export const RULE_VIOLATION_SEVERITY = Object.freeze({
 
   [RULE_VIOLATION_REASON.HOME_AWAY_OUT_OF_RANGE]: RULE_SEVERITY.COMPROMISE,
   [RULE_VIOLATION_REASON.GAMES_PLAYED_OFF_TARGET]: RULE_SEVERITY.COMPROMISE,
+  [RULE_VIOLATION_REASON.TEAM_ABSENT_FROM_SCHEDULE]: RULE_SEVERITY.BLOCKING,
 
   [RULE_VIOLATION_REASON.CONFLICT_SPREAD_EXCEEDED]: RULE_SEVERITY.COMPROMISE,
 });
@@ -340,7 +348,9 @@ export const RULE_VIOLATION_SEVERITY = Object.freeze({
  *
  * `TURNOVER_UNJUDGED` and `ROUND_ROBIN_DIVISION_UNJUDGED` say *"this rule could
  * not decide"*, which is a fact about the evidence rather than a policy
- * position. Letting a `preference` record demote them to `info` would let a
+ * position. `TEAM_ABSENT_FROM_SCHEDULE` is the same kind of statement about the
+ * join rather than about the season, and retyping the hosting-balance record
+ * must not be able to quieten a team that vanished from the schedule. Letting a `preference` record demote them to `info` would let a
  * schedule reach `allowed` on the strength of questions nobody answered — the
  * same reason `waivers/coachTravel.js` refuses to let a record soften
  * `TRAVEL_COMMITMENTS_OVERLAP`.
@@ -353,6 +363,7 @@ const UNGOVERNABLE_CODES = Object.freeze(
     RULE_VIOLATION_REASON.TURNOVER_UNGOVERNED,
     RULE_VIOLATION_REASON.ROUND_ROBIN_DIVISION_UNJUDGED,
     RULE_VIOLATION_REASON.ROUND_ROBIN_NOT_REQUIRED,
+    RULE_VIOLATION_REASON.TEAM_ABSENT_FROM_SCHEDULE,
   ])
 );
 

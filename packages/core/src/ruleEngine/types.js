@@ -145,7 +145,11 @@
  *
  * @typedef {Object} RuleContext
  * @property {import('../constraints/types.js').ConstraintRegistry} registry
- * @property {import('../constraints/types.js').EffectiveSeverityTable} severityTable
+ * @property {import('../constraints/types.js').EffectiveSeverityTable} severityTable -
+ *   the table for the **run's** context. A rule sees the whole schedule and
+ *   stands nowhere in particular; each subject's findings are re-severitied
+ *   afterwards through the table for that subject's own scope, which is the
+ *   only level at which a venue- or division-scoped record can decide anything
  * @property {Record<string, unknown>} resources - evaluator handles supplied by
  *   the caller (`graph`, `timingTable`, `calendar`); a rule that needs one it
  *   was not given must say so rather than skip itself

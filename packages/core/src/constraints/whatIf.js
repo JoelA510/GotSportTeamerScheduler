@@ -98,7 +98,11 @@ export function whatIfConstraintType(registry, constraintId, proposedType, optio
 
   const before = effectiveSeverityTable(registry, context);
   const after = effectiveSeverityTable(projectedRegistry, context);
+  // Both tables, not just the first: the projection asked the registry twice
+  // and its own counters have to say so, or half of the work it did is
+  // invisible to the caller checking that it did any.
   mergeConstraintMeta(meta, before.meta);
+  mergeConstraintMeta(meta, after.meta);
 
   /** @type {Array<{ code: string, from: string, to: string }>} */
   const severityDeltas = [];
@@ -129,6 +133,9 @@ export function whatIfConstraintType(registry, constraintId, proposedType, optio
         if (affected.has(finding.code)) {
           touched = true;
           matched += 1;
+          // Per finding, because that is what the counter is named for: one
+          // evaluation carrying three affected findings re-severitied three.
+          meta.findingsReseverified += 1;
           countByCode[finding.code] = (countByCode[finding.code] ?? 0) + 1;
           reseverified.push({ ...finding, severity: severityUnder(finding.code, after) });
         } else {
@@ -136,7 +143,6 @@ export function whatIfConstraintType(registry, constraintId, proposedType, optio
         }
       }
       if (!touched) continue;
-      meta.findingsReseverified += 1;
       const statusBefore = deriveConstraintStatus(evaluation.findings);
       const statusAfter = deriveConstraintStatus(reseverified);
       if (statusBefore !== statusAfter) {

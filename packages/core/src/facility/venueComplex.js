@@ -98,13 +98,17 @@ export const VenueComplexMapInputSchema = z
 export function buildVenueComplexMap(input) {
   const parsed = VenueComplexMapInputSchema.parse(input);
 
+  // Null-prototype: ids come from declared data, and a complex called
+  // `constructor` or a venue called `toString` must not collide with
+  // `Object.prototype` — the builder would refuse the first as a duplicate and
+  // `getVenueComplex()` would answer the second with a function.
   /** @type {Record<string, import('./types.js').VenueComplex>} */
-  const complexes = {};
+  const complexes = Object.create(null);
   /** @type {Record<string, string>} */
-  const complexIdByVenueId = {};
+  const complexIdByVenueId = Object.create(null);
 
   for (const complex of parsed.complexes) {
-    if (complexes[complex.id]) {
+    if (Object.hasOwn(complexes, complex.id)) {
       throw new Error(`facility: duplicate venue complex id "${complex.id}"`);
     }
     const venueIds = [...complex.venueIds].sort();
@@ -112,7 +116,7 @@ export function buildVenueComplexMap(input) {
       throw new Error(`facility: venue complex "${complex.id}" names the same venue twice`);
     }
     for (const venueId of venueIds) {
-      const owner = complexIdByVenueId[venueId];
+      const owner = Object.hasOwn(complexIdByVenueId, venueId) ? complexIdByVenueId[venueId] : null;
       if (owner) {
         throw new Error(
           `facility: venue "${venueId}" is claimed by two complexes - "${owner}" and "${complex.id}"`

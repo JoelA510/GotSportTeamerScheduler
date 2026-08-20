@@ -279,6 +279,45 @@ export function summariseComputed(computed) {
   return parts.join(', ');
 }
 
+/**
+ * The fields of a subject's own context that a constraint scope can be judged
+ * against — every key `ScopeContextSchema` accepts, and nothing else. A
+ * subject's `venueIds` (a coach's transition touches two) is deliberately not
+ * mapped onto `venueId`: a venue-scoped record judged against a subject that
+ * spans two venues is unjudged, and says so.
+ *
+ * @type {ReadonlyArray<string>}
+ */
+const SUBJECT_SCOPE_FIELDS = Object.freeze([
+  'date',
+  'venueId',
+  'surfaceId',
+  'surfaceLineage',
+  'divisionLabel',
+  'teamId',
+  'teamIds',
+  'personId',
+  'personIds',
+]);
+
+/**
+ * Where one subject stands, for the registry to judge scope against: the run's
+ * context, narrowed by whatever the subject itself names.
+ *
+ * @param {import('../constraints/types.js').ScopeContext} runContext
+ * @param {Record<string, unknown>} [subjectContext]
+ * @returns {import('../constraints/types.js').ScopeContext}
+ */
+function subjectScopeContext(runContext, subjectContext = {}) {
+  /** @type {Record<string, unknown>} */
+  const context = { ...runContext };
+  for (const field of SUBJECT_SCOPE_FIELDS) {
+    const value = subjectContext[field];
+    if (value !== undefined && value !== null) context[field] = value;
+  }
+  return /** @type {import('../constraints/types.js').ScopeContext} */ (context);
+}
+
 /** Detail keys that are computed values rather than identifiers or provenance. */
 const IDENTIFIER_KEYS = new Set([
   'ruleId',
@@ -399,7 +438,30 @@ export function runRuleEngine(rawSchedule, options) {
   meta.constraintsCovered = coverage.enforcedConstraintIds.length;
   meta.constraintsUnenforced = coverage.unenforcedConstraintIds.length;
 
-  const severityTable = effectiveSeverityTable(registry, context);
+  // One table per distinct scope context, not one per run. Built once for the
+  // caller's context and then again wherever a subject narrows it: a table
+  // computed only from a context that defaults to naming nothing can never let
+  // a venue-scoped or division-scoped record decide a severity, which made the
+  // registry's scoping inert for every wired constraint.
+  /** @type {Map<string, import('../constraints/types.js').EffectiveSeverityTable>} */
+  const severityTables = new Map();
+  /**
+   * @param {import('../constraints/types.js').ScopeContext} scopeContext
+   * @returns {import('../constraints/types.js').EffectiveSeverityTable}
+   */
+  const severityTableFor = (scopeContext) => {
+    const key = JSON.stringify(
+      SUBJECT_SCOPE_FIELDS.map(
+        (field) => /** @type {Record<string, unknown>} */ (scopeContext)[field] ?? null
+      )
+    );
+    const cached = severityTables.get(key);
+    if (cached) return cached;
+    const table = effectiveSeverityTable(registry, scopeContext);
+    severityTables.set(key, table);
+    return table;
+  };
+  const severityTable = severityTableFor(subjectScopeContext(context));
   const constraintIdByCode = constraintIdsByReasonCode(engine, registry);
 
   /** @type {import('./types.js').RuleResult[]} */
@@ -414,12 +476,21 @@ export function runRuleEngine(rawSchedule, options) {
     /** @type {import('./types.js').RuleFinding[]} */
     const ruleFindings = [];
 
+    /** @type {import('./types.js').RuleExerciseVerdict|null} */
+    let judged = null;
+
+    // The judge is inside the guard with the evaluator, because a rule that
+    // returns *half* an output does not throw in its own evaluator — it throws
+    // in `judgeExercise`, and a throw there took the whole run down instead of
+    // costing that one rule its verdict.
     try {
       output = rule.evaluate(schedule, { registry, severityTable, resources, rule });
       meta.rulesRun += 1;
+      judged = judgeExercise(rule, output, schedule);
     } catch (error) {
       ran = false;
       meta.rulesThrew += 1;
+      output = { subjects: [], findings: [], counters: {}, matched: {} };
       ruleFindings.push(
         makeRuleFinding(
           RULE_REASON.RULE_THREW,
@@ -429,7 +500,9 @@ export function runRuleEngine(rawSchedule, options) {
       );
     }
 
-    const verdict = judgeExercise(rule, output, schedule);
+    // A rule that threw is still judged against its own expectation, over the
+    // empty output: "it examined nothing" is part of what went wrong.
+    const verdict = judged ?? judgeExercise(rule, output, schedule);
     meta.exerciseChecksRun += 1;
     meta.identifiersChecked += verdict.identifiersChecked;
     if (ran && verdict.satisfied) meta.rulesExercised += 1;
@@ -441,7 +514,10 @@ export function runRuleEngine(rawSchedule, options) {
     // timing and availability codes.
     const reseverified = output.subjects.map((subject) => ({
       ...subject,
-      findings: applyRegistrySeverity(subject.findings, severityTable).findings,
+      findings: applyRegistrySeverity(
+        subject.findings,
+        severityTableFor(subjectScopeContext(context, subject.context))
+      ).findings,
     }));
     for (const subject of reseverified) allSubjects.push(subject);
 
@@ -465,6 +541,23 @@ export function runRuleEngine(rawSchedule, options) {
   }
 
   meta.subjectsExamined = allSubjects.length;
+
+  // The tables' own findings are the registry saying which record it applied
+  // and which it could not judge here; discarding them threw away the
+  // provenance of every severity this run reports, and its status with it. One
+  // per record and code — a table per subject would otherwise repeat each of
+  // them once for every subject that stands in the same place.
+  /** @type {Set<string>} */
+  const severityFindingKeys = new Set();
+  for (const table of severityTables.values()) {
+    for (const finding of table.findings) {
+      const details = /** @type {Record<string, unknown>} */ (finding.details);
+      const key = `${finding.code}\u0000${details.constraintId ?? ''}\u0000${details.code ?? ''}`;
+      if (severityFindingKeys.has(key)) continue;
+      severityFindingKeys.add(key);
+      engineFindings.push(/** @type {import('./types.js').RuleFinding} */ (finding));
+    }
+  }
 
   const waivers =
     ledger === null ? null : applyWaivers(allSubjects, { ledger, registry, constraintIdByCode });
@@ -500,15 +593,13 @@ export function runRuleEngine(rawSchedule, options) {
     }
   }
 
-  if (waivers)
-    // Ledger-level findings only. Every subject-level waiver finding is already
-    // on the subject it belongs to, and pushing it twice would double-count it
-    // in anything that tallies the flat list.
-    findings.push(
-      ...waivers.findings.filter(
-        (finding) => finding.code.startsWith('WAIVER_') && finding.details?.subjectId === undefined
-      )
-    );
+  // Ledger-level findings only, taken from the list the applier keeps for the
+  // purpose. Every subject-level waiver finding is already on the subject it
+  // belongs to, and pushing it twice would double-count it in anything that
+  // tallies the flat list — which is what filtering on `details.subjectId` did,
+  // because the applicability findings (`WAIVER_EXPIRED` and friends) never
+  // carry one.
+  if (waivers) findings.push(...waivers.ledgerFindings);
   if (dormancy) findings.push(...dormancy.findings);
 
   meta.violationsReported = violations.length;
