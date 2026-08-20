@@ -316,8 +316,14 @@ export function season2026ReserveCapacityInput(season, options) {
     requirement: season2026CapacityRequirement(season.teams),
     cap: season2026LeagueCap(),
     reservedSlots,
-    bookings: season2026ReserveBookings(season.combinedGames, {
-      excludeIds: reservedSlots.map((slot) => slot.id),
-    }),
+    // **Every** published row, reserved ground included. A reservation is not a
+    // game and it still occupies a field (GAP-17), so excluding the slots here
+    // would delete the only field reservation the corpus has from the very
+    // bookings the conditions are judged against — and a condition can then
+    // never be blocked by held ground, which is most of what a conditional slot
+    // is for. A candidate slot is not blocked by *itself*, structurally: a
+    // condition never names the surface its own slot stands on, so nothing
+    // standing on that surface is watched at all.
+    bookings: season2026ReserveBookings(season.combinedGames),
   };
 }

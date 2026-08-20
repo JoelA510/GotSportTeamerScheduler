@@ -468,6 +468,12 @@ export function applySlotBindings(slots, rawBindings, options) {
  * published schedule is not something a binding introduced, and reporting it
  * here would blame the wrong operation.
  *
+ * Three answers, not two. `bookingsOverlapInTime()` returns `null` when a
+ * footprint is unknown, and that is neither a clash nor an all-clear; it gets
+ * `RESERVED_SLOT_TEAM_OVERLAP_UNDECIDABLE` at `compromise`. The corpus's own
+ * `Scrimmage` reservation has no `game_formats.csv` row and therefore no
+ * measurable end, so this is a real shape rather than a hypothetical one.
+ *
  * @param {ReadonlyArray<import('./types.js').ReservedSlot>} slots
  * @param {ReadonlyArray<string>} boundSlotIds
  * @returns {import('./types.js').ReserveFinding[]}
@@ -498,13 +504,32 @@ function doubleBookingFindings(slots, boundSlotIds) {
           /** @type {import('../facility/types.js').FacilityBooking} */ ({ ...a }),
           /** @type {import('../facility/types.js').FacilityBooking} */ ({ ...b })
         );
-        if (overlap !== true) continue;
+        if (overlap === false) continue;
+        // `null` is `bookingsOverlapInTime()`'s deliberate third answer: one of
+        // these two has no known footprint (GAP-14), so whether they overlap
+        // cannot be measured. It is reported as its own thing rather than
+        // folded into either of the other two — a fabricated all-clear on one
+        // side, a fabricated clash on the other.
         findings.push(
-          makeReserveFinding(
-            RESERVE_REASON.RESERVED_SLOT_TEAM_DOUBLE_BOOKED,
-            `team "${teamId}" is named in "${a.id}" and "${b.id}", which overlap on ${a.date}`,
-            { teamId, slotIds: [a.id, b.id].sort(), date: a.date }
-          )
+          overlap === null
+            ? makeReserveFinding(
+                RESERVE_REASON.RESERVED_SLOT_TEAM_OVERLAP_UNDECIDABLE,
+                `team "${teamId}" is named in "${a.id}" and "${b.id}" on ${a.date}, and at least one of them has no known footprint, so whether they overlap cannot be decided`,
+                {
+                  teamId,
+                  slotIds: [a.id, b.id].sort(),
+                  date: a.date,
+                  unmeasurableSlotIds: [a, b]
+                    .filter((slot) => slot.endMinutes === null)
+                    .map((slot) => slot.id)
+                    .sort(),
+                }
+              )
+            : makeReserveFinding(
+                RESERVE_REASON.RESERVED_SLOT_TEAM_DOUBLE_BOOKED,
+                `team "${teamId}" is named in "${a.id}" and "${b.id}", which overlap on ${a.date}`,
+                { teamId, slotIds: [a.id, b.id].sort(), date: a.date }
+              )
         );
       }
     }

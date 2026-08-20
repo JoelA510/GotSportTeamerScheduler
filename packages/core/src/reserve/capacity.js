@@ -33,6 +33,15 @@
  *    stands on *overlapping* ground is reported through the condition. Feeding
  *    the reservations back in as occupancy would make the capacity of a fully
  *    booked date zero.
+ *
+ *    That is a statement about the **same** ground, and it is not a licence to
+ *    ignore reservations when a *condition* is evaluated. A condition names
+ *    other, overlapping surfaces, and held ground standing there is precisely
+ *    what it asks about (GAP-17). A candidate cannot block *itself*, and that is
+ *    structural rather than filtered: a condition never names the surface its
+ *    own slot stands on, so nothing standing on that surface is watched at all.
+ *    Ignoring every reservation instead meant a reservation could never block a
+ *    conditional slot, which is most of what a conditional slot is for.
  * 2. **The grid is anchored at a stated first kickoff, not at the permit open.**
  *    A permit that opens at 07:00 does not mean the club plays at 07:00.
  *    `earliestKickoffMinutes` is a required input with no default for exactly
@@ -68,7 +77,7 @@ import {
   mergeReserveMeta,
 } from './reasonCodes.js';
 import { ReserveCapacityInputSchema } from './schemas.js';
-import { makeReservedSlot, slotIsSettled } from './slots.js';
+import { makeReservedSlot, slotNamesATeam } from './slots.js';
 
 /** How a candidate slot's id is spelled. Stable, and derived from its position. */
 export function capacitySlotId(date, surfaceId, kickoffMinutes) {
@@ -102,7 +111,6 @@ export function buildReserveCapacityReport(engines, rawInput) {
   const bookings = /** @type {ReadonlyArray<import('../facility/types.js').FacilityBooking>} */ (
     input.bookings
   );
-  const reservedIds = new Set(reservedSlots.map((slot) => slot.id));
 
   /** In scope: this format, on a date and surface the report covers. */
   const inScope = reservedSlots.filter(
@@ -195,10 +203,23 @@ export function buildReserveCapacityReport(engines, rawInput) {
               endMinutes: answer.endMinutes,
               condition,
             },
-            bookings,
-            { ignoreBookingIds: [...reservedIds] }
+            // No ignore list, and none is needed. A candidate cannot be
+            // blocked by the booking that *is* that candidate, because
+            // `conditionForSurface()` never names the surface its own slot
+            // stands on — so nothing on this surface is ever watched, whatever
+            // its id. Passing an ignore list here would be a guard that cannot
+            // fire, and a guard nothing can make fire proves nothing. What is
+            // watched is the *overlapping* ground, and every reservation
+            // standing there is exactly what the condition asks about.
+            bookings
           );
           mergeReserveMeta(meta, evaluation.meta);
+          // Every verdict's findings, not only its counters. A number that moves
+          // — `available` falling because five slots became undecidable — with
+          // no finding to explain it is the hollow-guarantee shape: the count
+          // and the findings must be two views of one evaluation rather than a
+          // number and a silence.
+          findings.push(...evaluation.findings);
           if (evaluation.verdict === CONDITION_VERDICT.SATISFIED) conditionSatisfied += 1;
           else if (evaluation.verdict === CONDITION_VERDICT.BLOCKED) conditionBlocked += 1;
           else conditionUndecidable += 1;
@@ -338,7 +359,12 @@ function summariseDate(date, bySurface, inScope, input) {
 
   const reservedOnDate = inScope.filter((slot) => slot.date === date);
   const reserved = reservedOnDate.length;
-  const assigned = reservedOnDate.filter((slot) => slotIsSettled(slot)).length;
+  // `slotNamesATeam()`, not `slotIsSettled()`. A Minis session is *settled* —
+  // there is nobody left to name — and it assigns no team to anything, so
+  // counting it as assigned would report a whole Minis morning as allocated
+  // with no team named anywhere. The sibling predicate is adopted rather than a
+  // third one invented.
+  const assigned = reservedOnDate.filter((slot) => slotNamesATeam(slot)).length;
 
   const meetsRequirement = slots >= input.requirement.slots;
   const availableMeetsRequirement = available >= input.requirement.slots;

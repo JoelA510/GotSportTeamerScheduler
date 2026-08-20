@@ -28,9 +28,12 @@
  *
  * ## The one thing it checks
  *
- * That every subject produced at least one row. The export is the last place a
- * fixture can quietly disappear, and a projection that silently emitted nothing
- * for a TIME TBD fixture would reproduce incident 10 at the final step.
+ * That every subject produced at least one row — every reserved slot as well as
+ * every unplaced fixture, both enumerated from the input rather than from the
+ * rows. The export is the last place a fixture can quietly disappear, and a
+ * projection that silently emitted nothing for a TIME TBD fixture would
+ * reproduce incident 10 at the final step. {@link publicationCoverageFindings}
+ * is that check, exported so a test can construct the drop and watch it fire.
  *
  * @module reserve/publication
  */
@@ -60,14 +63,41 @@ export const PUBLICATION_EVENT_TYPE = Object.freeze({
   UNPLACED: 'Game (unscheduled)',
 });
 
+/** Minutes in one calendar day. */
+const MINUTES_PER_DAY = 24 * 60;
+
+/**
+ * `date` plus `days`, as calendar arithmetic.
+ *
+ * Still naive. The instant a wall-clock time denotes is never constructed and no
+ * offset is ever applied to it; what is computed here is which *day* the clock
+ * rolled onto, and it is done in UTC so that no local zone — and no DST
+ * transition (GAP-30) — can move the answer. `days` is `0` for every time inside
+ * its own day, which is every time the corpus contains.
+ *
+ * @param {string} date - `YYYY-MM-DD`
+ * @param {number} days
+ * @returns {string}
+ */
+function addDays(date, days) {
+  if (days === 0) return date;
+  const [year, month, day] = date.split('-').map(Number);
+  return new Date(Date.UTC(year, month - 1, day + days)).toISOString().slice(0, 10);
+}
+
 /**
  * Render minutes past local midnight as a naive local datetime.
  *
  * The first place in Phases 1-5 that renders a time for a human, and it stays
- * **naive**: no `Date` is constructed and no offset is applied, because the
- * corpus is wall-clock only and two of its dates fall after DST ends (GAP-30).
- * Turning these into absolute instants before the domain model carries a venue
- * timezone is how an evening kickoff moves an hour without anybody asking.
+ * **naive**: the wall clock is never turned into an instant and no offset is
+ * applied to it, because the corpus is wall-clock only and two of its dates fall
+ * after DST ends (GAP-30). Turning these into absolute instants before the
+ * domain model carries a venue timezone is how an evening kickoff moves an hour
+ * without anybody asking.
+ *
+ * A time at or past midnight rolls onto the next calendar date rather than
+ * printing a 24th hour. `${date}T24:00:00` is not a time, and an `End` column
+ * carrying one is a cell no calendar or spreadsheet can read.
  *
  * @param {string} date - `YYYY-MM-DD`
  * @param {number|null} minutes
@@ -76,9 +106,15 @@ export const PUBLICATION_EVENT_TYPE = Object.freeze({
  */
 export function naiveDateTime(date, minutes, fallback) {
   if (minutes === null || minutes === undefined) return fallback;
-  const hours = String(Math.floor(minutes / 60)).padStart(2, '0');
-  const mins = String(minutes % 60).padStart(2, '0');
-  return `${date}T${hours}:${mins}:00`;
+  // A day holds 1440 minutes and no more. An 11v11 block that starts at 23:00
+  // ends at minute 1470, and `T24:30:00` is not a time — no parser accepts it,
+  // so a late game's `End` column would arrive at a family's calendar as
+  // garbage. The overflow rolls onto the next calendar date instead.
+  const dayOffset = Math.floor(minutes / MINUTES_PER_DAY);
+  const withinDay = minutes - dayOffset * MINUTES_PER_DAY;
+  const hours = String(Math.floor(withinDay / 60)).padStart(2, '0');
+  const mins = String(withinDay % 60).padStart(2, '0');
+  return `${addDays(date, dayOffset)}T${hours}:${mins}:00`;
 }
 
 /**
@@ -254,9 +290,60 @@ export function publicationRowsFor(input) {
     }
   }
 
-  // The export is the last place a fixture can disappear.
+  findings.push(...publicationCoverageFindings(input, rows));
+
+  return {
+    rows,
+    columns: SCHEDULE_EXPORT_COLUMNS,
+    findings,
+    status: deriveReserveStatus(findings),
+    meta,
+  };
+}
+
+/**
+ * Did every subject reach the export?
+ *
+ * The export is the last place a fixture can quietly disappear, so this is the
+ * check that says it did not — and it is **exported and given both its inputs**
+ * for one reason. The subjects come from `input`, the inventory the rows were
+ * built *from*; they are never enumerated from `rows`, because a subject that
+ * produced no row is exactly what is missing from `rows` and a check that took
+ * its universe from there would be comparing a set against itself. `CLAUDE.md`
+ * §"Verification conventions" names that shape by name, and this is the third
+ * time it has been found in this repository.
+ *
+ * Taking `rows` as an argument rather than closing over them is what makes the
+ * check **falsifiable**: `tests/reserveCapacity.test.js` hands it the same
+ * inventory with one subject's rows removed and proves it fires. A coverage
+ * assertion nobody can make fail is not a coverage assertion.
+ *
+ * A missing reserved slot is `RESERVED_SLOT_DROPPED` and a missing fixture is
+ * `FIXTURE_DROPPED`: both `blocking`, and each named for what was lost — ground
+ * the club committed that would print as free, or a game a team would never be
+ * told about.
+ *
+ * @param {{ slots?: ReadonlyArray<import('./types.js').ReservedSlot>, unplaced?: ReadonlyArray<import('./types.js').UnplacedFixture> }} input
+ * @param {ReadonlyArray<import('./types.js').PublicationRow>} rows
+ * @returns {import('./types.js').ReserveFinding[]}
+ */
+export function publicationCoverageFindings(input, rows) {
   const covered = new Set(rows.map((entry) => entry.subjectId));
-  for (const fixture of unplaced) {
+  /** @type {import('./types.js').ReserveFinding[]} */
+  const findings = [];
+
+  for (const slot of input.slots ?? []) {
+    if (covered.has(slot.id)) continue;
+    findings.push(
+      makeReserveFinding(
+        RESERVE_REASON.RESERVED_SLOT_DROPPED,
+        `reserved slot "${slot.id}" (${slot.label}) produced no export row, so the ground the club committed on ${slot.date} would print as free`,
+        { slotId: slot.id, label: slot.label, date: slot.date, surfaceId: slot.surfaceId }
+      )
+    );
+  }
+
+  for (const fixture of input.unplaced ?? []) {
     if (covered.has(fixture.fixtureId)) continue;
     findings.push(
       makeReserveFinding(
@@ -267,11 +354,5 @@ export function publicationRowsFor(input) {
     );
   }
 
-  return {
-    rows,
-    columns: SCHEDULE_EXPORT_COLUMNS,
-    findings,
-    status: deriveReserveStatus(findings),
-    meta,
-  };
+  return findings;
 }

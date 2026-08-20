@@ -125,7 +125,10 @@ function reasonCodesOf(codes) {
  * lifted out by an earlier move that already named what forced it, and this one
  * is the consequence rather than the reason"* — so this function follows that
  * comment to its source and takes the last cause-bearing entry for the game from
- * the run's **move ledger**, falling back to the report's own entry. A fixture
+ * the run's **move ledger**, falling back to the report's own entry. One of the
+ * two, entire: the kind, the codes, the constraint ids and the counterparts all
+ * come from the same cause, because a record that took its kind from one and its
+ * codes from the other would be describing two different events. A fixture
  * unplaced because it was *asked* to go somewhere impossible has no earlier
  * move and therefore no codes; the full sentence is in `reason`, which is the
  * run's honest position rather than a gap papered over here.
@@ -155,13 +158,20 @@ export function unplacedFromResolveRun(run, options = {}) {
   return entries
     .map((entry) => {
       const game = baseline[entry.gameId] ?? {};
-      const cause = {
-        ...(causes.get(entry.gameId) ?? {}),
-        ...(ledgerCauses.get(entry.gameId) ?? {}),
-      };
+      const reported = causes.get(entry.gameId) ?? null;
+      // **One cause, whole.** Merging the two would take the kind from one
+      // event and the codes from another, so a single record could describe a
+      // `global-reoptimisation` that named `SUNSET_MARGIN_VIOLATED` — two events
+      // wearing one row. The ledger's last cause-bearing move wins, exactly as
+      // this file's header says, and the report's entry is the fallback rather
+      // than a second contributor.
+      const cause = ledgerCauses.get(entry.gameId) ?? reported ?? {};
       return makeUnplacedFixture({
         fixtureId: entry.gameId,
-        label: cause.label || labelFor(game, entry.gameId),
+        // The label identifies the *fixture*, not the event that unplaced it, so
+        // it is read from the report's record of the game and not from whichever
+        // cause won above.
+        label: reported?.label || labelFor(game, entry.gameId),
         date: game.date ?? null,
         format: game.format ?? null,
         divisionLabel: game.divisionLabel ?? null,

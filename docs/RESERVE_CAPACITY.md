@@ -203,6 +203,15 @@ follow-up; see GAP-16, GAP-17 and GAP-28 in [`MODEL_GAPS.md`](MODEL_GAPS.md).
    on *overlapping* ground is reported through the condition. Feeding the
    reservations back in as occupancy would make a fully booked date's capacity
    zero.
+
+   That holds for the **same** ground only. A condition names *other*,
+   overlapping surfaces, and held ground standing there is exactly what it asks
+   about (GAP-17), so every reservation stays in the bookings a condition is
+   judged against. A candidate cannot block itself, and that is structural
+   rather than filtered: `conditionForSurface()` never names the surface its own
+   slot stands on, so nothing standing there is watched at all. Ignoring every
+   reservation instead would mean a reservation could never block a conditional
+   slot, which is most of what a conditional slot is for.
 2. **The grid is anchored at a stated first kickoff, not at the permit open.**
    Five venues open at 07:00 and the club does not play at 07:00.
    `earliestKickoffMinutes` is a required input with no default, and the model
@@ -292,7 +301,7 @@ columns are in the report; neither is hidden behind the other.
 
 ## 7. Reason codes
 
-Thirty, in one frozen table with one severity each, and
+Thirty-one, in one frozen table with one severity each, and
 `tests/reserveCapacity.test.js` asserts that **every one of them is actually
 emitted somewhere in the suite** — a code a module can declare but never produce
 is a code nothing proves the meaning of. Adding a temporary code with no case

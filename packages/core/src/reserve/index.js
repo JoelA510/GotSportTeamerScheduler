@@ -104,7 +104,12 @@ export {
 
 export { buildReserveCapacityReport, capacitySlotId } from './capacity.js';
 
-export { PUBLICATION_EVENT_TYPE, naiveDateTime, publicationRowsFor } from './publication.js';
+export {
+  PUBLICATION_EVENT_TYPE,
+  naiveDateTime,
+  publicationCoverageFindings,
+  publicationRowsFor,
+} from './publication.js';
 
 export {
   SEASON_2026_EARLIEST_KICKOFF_MINUTES,

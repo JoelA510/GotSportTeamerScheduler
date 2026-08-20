@@ -218,6 +218,17 @@ export const RESERVE_REASON = Object.freeze({
    * places at once.
    */
   RESERVED_SLOT_TEAM_DOUBLE_BOOKED: 'RESERVED_SLOT_TEAM_DOUBLE_BOOKED',
+  /**
+   * One team is named in two slots whose overlap **cannot be measured**,
+   * because one of the two has no known footprint (GAP-14).
+   *
+   * `compromise`, and deliberately not `RESERVED_SLOT_TEAM_DOUBLE_BOOKED`: this
+   * is not a measured clash, and it is not an all-clear either. Zero is a
+   * measurement; unknown is not, and folding the second into the first is the
+   * lesson `OCCUPANCY_FOOTPRINT_UNKNOWN` landed in Prompt 1.2 and the Phase 3
+   * review landed twice more.
+   */
+  RESERVED_SLOT_TEAM_OVERLAP_UNDECIDABLE: 'RESERVED_SLOT_TEAM_OVERLAP_UNDECIDABLE',
   /** A binding filled one side and left the other TBD. `compromise`. */
   RESERVED_SLOT_PARTIALLY_BOUND: 'RESERVED_SLOT_PARTIALLY_BOUND',
   /** A slot was bound. Provenance, and the counters behind it. */
@@ -349,6 +360,7 @@ export const RESERVE_REASON_SEVERITY = Object.freeze({
   [RESERVE_REASON.RESERVED_SLOT_SIDE_ALREADY_NAMED]: RESERVE_SEVERITY.BLOCKING,
   [RESERVE_REASON.RESERVED_SLOT_SIDES_IDENTICAL]: RESERVE_SEVERITY.BLOCKING,
   [RESERVE_REASON.RESERVED_SLOT_TEAM_DOUBLE_BOOKED]: RESERVE_SEVERITY.BLOCKING,
+  [RESERVE_REASON.RESERVED_SLOT_TEAM_OVERLAP_UNDECIDABLE]: RESERVE_SEVERITY.COMPROMISE,
   [RESERVE_REASON.RESERVED_SLOT_PARTIALLY_BOUND]: RESERVE_SEVERITY.COMPROMISE,
   [RESERVE_REASON.RESERVED_SLOT_BOUND]: RESERVE_SEVERITY.INFO,
 
