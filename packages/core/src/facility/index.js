@@ -68,8 +68,20 @@ export {
 } from './eligibility.js';
 
 export {
+  EMPTY_VENUE_COMPLEX_MAP,
+  VenueComplexMapInputSchema,
+  VenueComplexSchema,
+  buildVenueComplexMap,
+  complexIdOf,
+  getVenueComplex,
+  sameVenueComplex,
+} from './venueComplex.js';
+
+export {
   SEASON_2026_FORMAT_EQUIPMENT,
+  SEASON_2026_VENUE_COMPLEXES,
   buildFacilityGraphFromSeason2026,
+  buildSeason2026VenueComplexMap,
   classifyEquipmentStatus,
   season2026SurfaceId,
   season2026VenueId,

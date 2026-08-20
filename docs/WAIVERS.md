@@ -183,6 +183,53 @@ this module supplies the missing evaluation — narrowly:
 - it reads its numbers from the registry via `resolvePolicy()`, so there is no
   second copy of "60" to find later.
 
+### 6.1 One venue complex, declared
+
+Which floor applies is decided by
+[`facility/venueComplex.js`](../packages/core/src/facility/venueComplex.js), not
+by `from.venueId === to.venueId`.
+
+Prompt 2.1 seeded the walking rule as *"15 min within one venue complex"*, but
+nothing could express **which named venues form one complex**, so name equality
+was the whole test and the rule was structurally unreachable for the case it
+was written for: it could only ever fire for two commitments at the *identical*
+venue. On the published season-2026 schedule that misread produced 18
+inter-venue shortfalls across five coaches — 17 of them `Maplewood Back` →
+`Maplewood Front`, gaps of 30–50 minutes, a walk across one park judged as a
+drive. Incident 9 records the board waiving the floor for **one** coach because
+two sites are ~5 minutes apart; one waiver implies one genuine inter-venue
+case, not five.
+
+The model lives in `facility/` because that package owns venue identity, and
+deliberately **not** on the facility graph: containment and overlap are
+intra-venue statements about bookable ground and no check built on them would
+be changed by a complex, while a complex answers a different question — how
+long a person takes to get across. Putting it on the graph would invite an
+occupancy check to read "one complex" as "one patch of ground".
+
+A complex is **declared data**. There is no rule turning `"Maplewood Back"`
+into `"Maplewood"`: a shared word is not a fact about geography, and a
+heuristic would merge any two sites that happened to share one. The season-2026
+complex is seeded in
+`facility/adapters/season2026Geometry.js` as an operator statement of standing
+practice, with that provenance recorded on the record — the same footing as the
+15-minute figure itself, which no corpus file carries either. The builder
+throws on a duplicate id, a one-venue complex, or a venue claimed twice.
+
+The map is a parameter of `evaluateCoachTravel()`, defaulting to
+`EMPTY_VENUE_COMPLEX_MAP` — which reproduces venue-name equality exactly,
+because a venue is always its own site. The rule engine does **not** default:
+`coachConflictRule` demands `resources.venueComplexes`, so a season run cannot
+silently lose it.
+
+When two venues in one complex are judged as one site, the transition carries an
+`info` **`TRAVEL_WITHIN_COMPLEX_CROSS_VENUE`** finding whether or not the gap
+passes, naming the complex and the floor that applied. A reader seeing a
+30-minute gap measured against 15 minutes needs to be told *why* that was the
+applicable rule; silence would leave the 60-minute floor looking forgotten.
+`sameVenue` and `sameComplex` are both kept on the transition, and they are not
+the same claim — `!sameVenue && sameComplex` is precisely the Maplewood case.
+
 **Severity comes from the constraint record's own `type`**, through
 `severityForType()` — the same frozen table `constraints/severity.js` uses. A
 `soft` travel record makes a short gap a `compromise`; retype the record to

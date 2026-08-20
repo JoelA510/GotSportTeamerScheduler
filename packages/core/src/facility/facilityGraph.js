@@ -62,11 +62,15 @@ export function mergeMeta(target, source) {
  * Recursively freeze a value. The graph is immutable so that no consumer can
  * turn it into hidden shared state.
  *
+ * Exported for `venueComplex.js`, which is immutable for the same reason and
+ * must not carry a second copy. Plumbing, not API: deliberately not re-exported
+ * from the barrel, exactly like {@link createMeta}.
+ *
  * @template T
  * @param {T} value
  * @returns {T}
  */
-function deepFreeze(value) {
+export function deepFreeze(value) {
   if (value === null || typeof value !== 'object' || Object.isFrozen(value)) return value;
   Object.freeze(value);
   for (const inner of Object.values(value)) deepFreeze(inner);

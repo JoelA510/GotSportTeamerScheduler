@@ -25,6 +25,48 @@
  */
 
 /**
+ * Two or more separately-named venues that are one site to walk between.
+ *
+ * Declared, never inferred: see `venueComplex.js` for why no rule turns
+ * `"Maplewood Back"` into `"Maplewood"`. `id` is opaque; `name` is the display
+ * label; `source` records who stated the complex, in the style of
+ * `ConstraintRecord.source`.
+ *
+ * @typedef {Object} VenueComplex
+ * @property {string} id - opaque
+ * @property {string} name - display label
+ * @property {string[]} venueIds - at least two, sorted
+ * @property {string|null} note
+ * @property {string|null} source
+ */
+
+/**
+ * Which venues form which complex. Deep-frozen, and holds no schedule state.
+ *
+ * Kept separate from {@link FacilityGraph} on purpose: containment and overlap
+ * are intra-venue statements about bookable ground, while a complex is a
+ * statement about travel time between sites. See `venueComplex.js`.
+ *
+ * @typedef {Object} VenueComplexMap
+ * @property {Record<string, VenueComplex>} complexes
+ * @property {string[]} complexIds
+ * @property {Record<string, string>} complexIdByVenueId - venue id -> complex id
+ * @property {string[]} venueIds - every venue that belongs to some complex, sorted
+ * @property {VenueComplexStats} stats
+ */
+
+/**
+ * Structural counts, so a test can meta-assert the map before asserting any
+ * behaviour on it. A map with zero complexes makes every "these two sites are
+ * one" test pass trivially — which is precisely the state that made the
+ * 15-minute walking rule unreachable in the first place.
+ *
+ * @typedef {Object} VenueComplexStats
+ * @property {number} complexCount
+ * @property {number} venueCount
+ */
+
+/**
  * One node of the facility graph: a patch of ground that can hold a game.
  *
  * Containment (`parentId` / `childIds`) is a **forest**: every surface has at

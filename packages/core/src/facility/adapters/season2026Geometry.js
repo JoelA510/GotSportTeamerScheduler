@@ -15,6 +15,7 @@
  */
 
 import { buildFacilityGraph } from '../facilityGraph.js';
+import { buildVenueComplexMap } from '../venueComplex.js';
 
 /**
  * Equipment each format requires, stated explicitly.
@@ -29,6 +30,58 @@ import { buildFacilityGraph } from '../facilityGraph.js';
 export const SEASON_2026_FORMAT_EQUIPMENT = Object.freeze({
   '9v9': Object.freeze(['9v9 goals']),
 });
+
+/**
+ * The venue complexes of the season-2026 club, **declared**.
+ *
+ * `Maplewood Back` and `Maplewood Front` are two named venues in
+ * `facility_geometry.json` and one site on the ground: a coach moving between
+ * them walks. Nothing in the corpus says so — the geometry file carries venue
+ * names, lighting and overlap prose, and no field that could express a complex
+ * — so this is an operator statement of standing practice, recorded here with
+ * that provenance on it. It is the same footing as the 15-minute within-venue
+ * figure in `constraints/adapters/season2026Constraints.js`, which no corpus
+ * file carries either.
+ *
+ * It is spelled out rather than derived. There is no rule turning
+ * `"Maplewood Back"` into `"Maplewood"`: a shared first word is not a fact
+ * about geography, and a heuristic would merge any two sites that happened to
+ * share one. The venue ids come from {@link season2026VenueId} so that a
+ * renamed corpus venue produces a complex naming a venue nothing else knows —
+ * which a test catches — rather than a quietly different id.
+ *
+ * @type {ReadonlyArray<Object>}
+ */
+export const SEASON_2026_VENUE_COMPLEXES = Object.freeze([
+  Object.freeze({
+    id: 'maplewood',
+    name: 'Maplewood',
+    venueIds: Object.freeze([
+      season2026VenueId('Maplewood Back'),
+      season2026VenueId('Maplewood Front'),
+    ]),
+    note: 'two halves of one park; a coach crossing between them walks, and the club has always scheduled them as one site',
+    source:
+      'club operations — operator statement of standing practice; no corpus file carries it, exactly as with the 15-minute within-venue figure in constraints/adapters/season2026Constraints.js',
+  }),
+]);
+
+/**
+ * Build the season-2026 venue-complex map.
+ *
+ * Takes no corpus argument: like `season2026Constraints.js` this is a
+ * transcription, not a loader, and it reads nothing from disk. The check that
+ * the venues it names are venues the corpus actually has belongs to the test
+ * that holds the corpus, and `tests/facilityGraph.test.js` makes it.
+ *
+ * @param {{ complexes?: ReadonlyArray<Object> }} [options]
+ * @returns {import('../types.js').VenueComplexMap}
+ */
+export function buildSeason2026VenueComplexMap(options = {}) {
+  return buildVenueComplexMap({
+    complexes: [...(options.complexes ?? SEASON_2026_VENUE_COMPLEXES)],
+  });
+}
 
 /**
  * Slugify a corpus name into an id component.
