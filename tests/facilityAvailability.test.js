@@ -48,8 +48,10 @@ import {
 
 import {
   TIMING_REASON,
+  buildFormatTimingTable,
   buildFormatTimingTableFromSeason2026,
   requireFormatTiming,
+  toFormatTimingInput,
 } from '@squadlogic/core/timing/index.js';
 
 import {
@@ -727,6 +729,52 @@ describe('facility availability :: a date-scoped exception beats the weekday def
     });
     expect(codesOf(result)).toContain(AVAILABILITY_REASON.PERMIT_PRECEDENCE_AMBIGUOUS);
   });
+
+  it('resolves two equally restrictive records the same way whichever order they arrive in', () => {
+    // Two blackouts are equally restrictive, so the documented id tie-break is
+    // the only thing left to decide between them. A resolver that answers
+    // "aaa" or "zzz" depending on the order the records were loaded in is the
+    // non-determinism "report the tie, never silently pick" exists to prevent.
+    const venueId = season2026VenueId(UNLIT_VENUE);
+    const input = toAvailabilityCalendarInput(permits, sunsets);
+    const blackout = (id) => ({
+      id,
+      venueId,
+      scopeKind: 'date-exception',
+      weekday: null,
+      date: ACCEPTANCE_DATE,
+      hasPermit: false,
+      openMinutes: null,
+      closeMinutes: null,
+      lit: null,
+      lightsOffMinutes: null,
+      note: 'field closed',
+      source: 'test',
+    });
+    const first = blackout('aaa-blackout');
+    const second = blackout('zzz-blackout');
+    const resolveWith = (windows) =>
+      resolvePermitWindow(
+        buildAvailabilityCalendar({
+          ...input,
+          permitWindows: [...input.permitWindows, ...windows],
+        }),
+        { venueId, date: ACCEPTANCE_DATE }
+      );
+
+    const forwards = resolveWith([first, second]);
+    const backwards = resolveWith([second, first]);
+
+    // Meta-assertion: both records really did survive to the tie-break.
+    expect(forwards.candidates).toHaveLength(2);
+    expect(backwards.candidates).toHaveLength(2);
+
+    expect(forwards.window.id).toBe(backwards.window.id);
+    expect(forwards.window.id).toBe(first.id);
+    expect(forwards.candidates.map((window) => window.id)).toEqual(
+      backwards.candidates.map((window) => window.id)
+    );
+  });
 });
 
 /* -------------------------------------------------------------------------- */
@@ -805,6 +853,29 @@ describe('facility availability :: lighting is a property of the field', () => {
       format: '9v9',
     });
     expect(codesOf(result)).toContain(AVAILABILITY_REASON.LIGHTING_FROM_ANCESTOR);
+  });
+
+  it('reports two lighting records for one field instead of silently overwriting', () => {
+    // The permit and sunset paths both report a duplicate and apply the more
+    // restrictive record; lighting must not be the one place a second record
+    // wins by arriving last.
+    const lit = { surfaceId: UNLIT, lit: true, lightsOffMinutes: 22 * 60, note: 'floodlights' };
+    const dark = { surfaceId: UNLIT, lit: false, note: 'floodlights taken out of service' };
+
+    const forwards = calendarWith({ lighting: [lit, dark] });
+    const backwards = calendarWith({ lighting: [dark, lit] });
+
+    for (const tuned of [forwards, backwards]) {
+      expect(codesOf(tuned)).toContain(AVAILABILITY_REASON.LIGHTING_PRECEDENCE_AMBIGUOUS);
+      // Meta-assertion: both records were read, and one field is resolved.
+      expect(tuned.meta.lightingRecordsConsulted).toBe(2);
+      expect(tuned.stats.lightingRecordCount).toBe(1);
+      // The more restrictive record is applied, whichever order they arrive in.
+      expect(resolveLighting(graph, tuned, UNLIT).lit).toBe(false);
+    }
+
+    // Reported, not refused: an ambiguity is informational in all three paths.
+    expect(deriveAvailabilityStatus(forwards.findings)).toBe(AVAILABILITY_STATUS.ALLOWED);
   });
 
   it('bounds a lit field by its lights-off time when one is recorded', () => {
@@ -1250,6 +1321,51 @@ describe('facility availability :: unknowns stay unknown', () => {
     });
     expect(derived.kickoffMinutes).toBeNull();
     expect(codesOf(derived)).toContain(FACILITY_REASON.SURFACE_UNKNOWN);
+  });
+
+  it('keeps the Phase 1.2 format verdicts in the same list', () => {
+    // A format whose own arithmetic disagrees must never produce a clean
+    // availability verdict - that is incident 7 wearing a different hat.
+    // Derived from the corpus row with only the half length moved, so the
+    // declared occupancy no longer follows from the halves.
+    const input = toFormatTimingInput(rawFormats);
+    const broken = buildFormatTimingTable({
+      ...input,
+      formats: input.formats.map((entry) =>
+        entry.format === ELEVEN ? { ...entry, halfMinutes: entry.halfMinutes + 5 } : entry
+      ),
+    });
+    expect(broken.findings.map((finding) => finding.code)).toContain(
+      TIMING_REASON.OCCUPANCY_DERIVATION_DISAGREES
+    );
+    // The format is still perfectly well *known*: this is not the GAP-14 path.
+    expect(requireFormatTiming(broken, ELEVEN).occupancyMinutes.scheduled).toBe(OCCUPANCY);
+
+    const permitClose = resolvePermitWindow(calendar, {
+      venueId: season2026VenueId(LIT_VENUE),
+      date: ACCEPTANCE_DATE,
+    }).window.closeMinutes;
+    // Lit ground, an hour inside the permit close: nothing else can object.
+    const kickoffMinutes = permitClose - OCCUPANCY - 60;
+    const result = checkKickoffAvailability(graph, broken, calendar, {
+      surfaceId: LIT,
+      date: ACCEPTANCE_DATE,
+      kickoffMinutes,
+      format: ELEVEN,
+    });
+    expect(codesOf(result)).toContain(TIMING_REASON.OCCUPANCY_DERIVATION_DISAGREES);
+    expect(result.status).toBe(AVAILABILITY_STATUS.REJECTED);
+
+    // Meta-assertion: the very same query against the corpus's own table is
+    // clean, so it is the broken arithmetic doing the rejecting.
+    const clean = checkKickoffAvailability(graph, table, calendar, {
+      surfaceId: LIT,
+      date: ACCEPTANCE_DATE,
+      kickoffMinutes,
+      format: ELEVEN,
+    });
+    expect(clean.status).toBe(AVAILABILITY_STATUS.ALLOWED);
+    expect(codesOf(clean)).not.toContain(TIMING_REASON.OCCUPANCY_DERIVATION_DISAGREES);
   });
 
   it('keeps the Phase 1.1 verdicts in the same list', () => {

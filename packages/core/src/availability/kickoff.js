@@ -592,13 +592,18 @@ export function checkKickoffAvailability(graph, table, calendar, rawQuery, optio
   // checks that do *not* need one still run: a permit blackout closes a site
   // whatever is being played on it, and answering "we could not tell" for an
   // untimed booking on a blacked-out date would be a false all-clear.
+  //
+  // Everything blocking or compromising the format table said is carried
+  // whether or not the occupancy is known, exactly as `timing/windows.js`
+  // carries it: a format whose declared occupancy disagrees with its own
+  // arithmetic must never reach an `accepted` verdict here — that is incident 7
+  // wearing a different hat. Informational table provenance stays on the table,
+  // where it belongs, rather than repeating on every kickoff.
   const timing = formatTimingOrUnknown(table, query.format);
-  if (timing.occupancyMinutes === null) {
-    const timingFindings = /** @type {import('./types.js').AvailabilityFinding[]} */ (
-      timing.findings
-    );
-    findings.push(...timingFindings);
-  }
+  const timingFindings = /** @type {import('./types.js').AvailabilityFinding[]} */ (
+    timing.findings.filter((finding) => finding.severity !== AVAILABILITY_SEVERITY.INFO)
+  );
+  findings.push(...timingFindings);
   const occupancyMinutes = timing.occupancyMinutes?.scheduled ?? null;
   const endMinutes = occupancyMinutes === null ? null : query.kickoffMinutes + occupancyMinutes;
   answer.occupancyMinutes = occupancyMinutes;
