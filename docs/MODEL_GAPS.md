@@ -1,18 +1,39 @@
 # Model Gaps — `fixtures/season-2026` vs. the current domain types
 
-> **Status**: input to the next phase of the scheduling build plan. Written while
-> building the read-only fixture loader (`packages/core/src/fixtures/`) for the
-> [season-2026 regression corpus](../fixtures/season-2026/README.md).
+> **Status**: a **living ledger**, kept current as phases land. It began as a one-time
+> Phase 0 artefact — the input to the next phase of the scheduling build plan, written
+> while building the read-only fixture loader (`packages/core/src/fixtures/`) for the
+> [season-2026 regression corpus](../fixtures/season-2026/README.md) — and later phases
+> navigate by it, so it is now maintained rather than frozen.
 >
 > **Rule that produced this file**: where the corpus contains something the current
 > domain types cannot represent, the loader neither forces nor drops it. It keeps the
 > value in a fixture-native shape and leaves a `TODO(GAP-nn)` at the site pointing
 > here. Twenty honest gaps beat a loader that silently flattens the data.
+>
+> **The `Status` lines postdate every other line in this file.** They were added after
+> Phases 1, 2 and 3 merged; the Source / Example / Today / Needed by bullets are the
+> original Prompt 0.2 entries and are left exactly as written, because they record what
+> was true when the corpus was first loaded. Where a `Today` bullet and a `Status`
+> bullet disagree, **the `Status` bullet is the current answer** — `Today` is history
+> and is not rewritten.
+>
+> **What "Closed" does and does not mean.** Everything Phases 1–3 built is **in-memory
+> only**: no SQL home, no persistence, and no wiring into the shipping
+> `gameScheduling.js` / `autoScheduler.js` / `gameMetrics.js` path, which is
+> week-indexed while every new module is date-indexed. "Closed" means the domain model
+> can represent the thing **and something evaluates it**. It does not mean the shipping
+> solver honours it. Where a record exists and nothing evaluates it, the entry says so —
+> the constraint registry carries an `enforcement: 'declared-only'` value for exactly
+> this distinction, and a status that read as closed on the strength of a record alone
+> would be the same lie the registry invented that value to prevent.
 
 ## How to read an entry
 
 Each gap records **the source field**, **a concrete example from the corpus**, **what
-the current domain type does instead**, and **which later phase is likely to need it**.
+the current domain type does instead**, **which later phase is likely to need it**, and
+— added later — **its current status**: `Closed`, `Partial`, `Open`, or `In progress`,
+naming the module and symbol that closes it and the test that pins it.
 
 Current domain types referenced throughout:
 
@@ -21,46 +42,67 @@ Current domain types referenced throughout:
 - `packages/core/src/gameScheduling.js` — `generateRoundRobinWeeks()`, `scheduleGames()`
 - `packages/core/src/gameValidation.js` — `checkSlotAvailability()`, `checkCoachConflict()`, `validateGameMove()`
 
+Modules the `Status` lines cite (all added by Phases 1–3, all in-memory, each with a
+barrel at `index.js`):
+
+- `packages/core/src/facility/` — venues, surfaces, containment, spatial overlap, size vs. lining, date-scoped equipment, venue complexes (Prompts 1.1 and 2.2)
+- `packages/core/src/timing/` — play time vs. occupancy vs. block, halftime ranges, warm-up as schedulable occupancy (Prompt 1.2), analysed in [`DURATION_MIGRATION.md`](DURATION_MIGRATION.md)
+- `packages/core/src/availability/` — permit windows, per-date exceptions and blackouts, lighting, sunset, margins, the binding constraint (Prompt 1.3)
+- `packages/core/src/constraints/` — constraint records with hardness, scope and provenance (Prompt 2.1), documented in [`CONSTRAINT_REGISTRY.md`](CONSTRAINT_REGISTRY.md)
+- `packages/core/src/placement/` — a bounded **demonstration harness**, explicitly not a scheduler (Prompt 2.1)
+- `packages/core/src/waivers/` — waivers as records with a lifecycle (Prompt 2.2), documented in [`WAIVERS.md`](WAIVERS.md)
+- `packages/core/src/ruleEngine/` — the standing rule set and the validation report (Prompt 2.3), documented in [`RULE_ENGINE.md`](RULE_ENGINE.md)
+- `packages/core/src/people/` — person timelines, sealed sources, derived must-attend, identity review (Prompt 3.1), documented in [`PEOPLE.md`](PEOPLE.md)
+
+Every status below was established by reading the code, and where a test pins the
+behaviour that test is cited by name. The nine suites cited throughout —
+`tests/facilityGraph.test.js`, `tests/gameTimeModel.test.js`,
+`tests/facilityAvailability.test.js`, `tests/constraintRegistry.test.js`,
+`tests/placementHarness.test.js`, `tests/waiverLedger.test.js`,
+`tests/ruleEngine.test.js`, `tests/people.test.js` and
+`tests/season2026Fixture.test.js` — were run together at this revision: 487 cases, all
+passing.
+
 ---
 
 ## Index
 
-| ID                | Gap                                                | Corpus source                                              |
-| ----------------- | -------------------------------------------------- | ---------------------------------------------------------- |
-| [GAP-01](#gap-01) | No venue or field entity                           | `facility_geometry.json`                                   |
-| [GAP-02](#gap-02) | Parent/child sub-fields                            | `facility_geometry.json`                                   |
-| [GAP-03](#gap-03) | Spatial overlap between distinct fields            | `facility_geometry.json`                                   |
-| [GAP-04](#gap-04) | Field size vs. lining eligibility                  | `facility_geometry.json`                                   |
-| [GAP-05](#gap-05) | Venue lighting                                     | `facility_geometry.json`, `facility_permits.csv`           |
-| [GAP-06](#gap-06) | Sunset per date                                    | `sunsets.csv`                                              |
-| [GAP-07](#gap-07) | Venue permit windows                               | `facility_permits.csv`                                     |
-| [GAP-08](#gap-08) | Per-venue-per-date permit exceptions and blackouts | `facility_permits.csv`                                     |
-| [GAP-09](#gap-09) | Occupancy vs. play time                            | `game_formats.csv`                                         |
-| [GAP-10](#gap-10) | Halftime as a range                                | `game_formats.csv`                                         |
-| [GAP-11](#gap-11) | Block, turnover floor, turnover preference         | `game_formats.csv`                                         |
-| [GAP-12](#gap-12) | Constraint hardness and scope                      | `facility_permits.csv`, `facility_geometry.json`           |
-| [GAP-13](#gap-13) | Game format as a first-class attribute             | schedule CSVs                                              |
-| [GAP-14](#gap-14) | Row formats with no timing definition              | `combined_schedule.csv`                                    |
-| [GAP-15](#gap-15) | Opponent-less sessions (Minis)                     | `published_rec_schedule.csv`                               |
-| [GAP-16](#gap-16) | Unnamed / TBD fixtures                             | `combined_schedule.csv`                                    |
-| [GAP-17](#gap-17) | Field reservations that are not games              | `combined_schedule.csv`                                    |
-| [GAP-18](#gap-18) | External (non-member) opponents                    | `combined_schedule.csv`, `external_fixtures_published.csv` |
-| [GAP-19](#gap-19) | Person-centric commitment timeline                 | `coach_roster.csv` + `combined_schedule.csv`               |
-| [GAP-20](#gap-20) | Multi-coach teams and coach slots                  | `coach_roster.csv`                                         |
-| [GAP-21](#gap-21) | Identity resolution across roster revisions        | `coach_roster_v1.csv`                                      |
-| [GAP-22](#gap-22) | Person entity distinct from `Profile`              | `coach_roster.csv`                                         |
-| [GAP-23](#gap-23) | Coach-assignment status                            | `coach_roster.csv`                                         |
-| [GAP-24](#gap-24) | Division labels are not a key                      | `combined_schedule.csv`                                    |
-| [GAP-25](#gap-25) | Date-scoped equipment                              | `facility_geometry.json`                                   |
-| [GAP-26](#gap-26) | Waivers as records with a lifecycle                | incident 9 (not in any file)                               |
-| [GAP-27](#gap-27) | Warm-up as schedulable occupancy                   | incident 8                                                 |
-| [GAP-28](#gap-28) | Unplaceable fixtures as first-class state          | incident 10                                                |
-| [GAP-29](#gap-29) | Freeze scope and published baseline                | incidents 1 and 2                                          |
-| [GAP-30](#gap-30) | Wall-clock times, timezone and DST                 | schedule CSVs, `sunsets.csv`                               |
-| [GAP-31](#gap-31) | Per-field kickoff cadence                          | `game_formats.csv` + `combined_schedule.csv`               |
-| [GAP-32](#gap-32) | Calendar dates vs. `weekIndex`                     | schedule CSVs                                              |
-| [GAP-33](#gap-33) | Hosting balance and 9-game seasons                 | `published_rec_schedule.csv`                               |
-| [GAP-34](#gap-34) | Import impact: published vs. agreed times          | `external_fixtures_published.csv`                          |
+| ID                | Gap                                                | Corpus source                                              | Status                                 |
+| ----------------- | -------------------------------------------------- | ---------------------------------------------------------- | -------------------------------------- |
+| [GAP-01](#gap-01) | No venue or field entity                           | `facility_geometry.json`                                   | Closed · `facility/` |
+| [GAP-02](#gap-02) | Parent/child sub-fields                            | `facility_geometry.json`                                   | Closed · `facility/` |
+| [GAP-03](#gap-03) | Spatial overlap between distinct fields            | `facility_geometry.json`                                   | Closed · `facility/` |
+| [GAP-04](#gap-04) | Field size vs. lining eligibility                  | `facility_geometry.json`                                   | Closed · `facility/` |
+| [GAP-05](#gap-05) | Venue lighting                                     | `facility_geometry.json`, `facility_permits.csv`           | Closed · `facility/` + `availability/` |
+| [GAP-06](#gap-06) | Sunset per date                                    | `sunsets.csv`                                              | Closed · `availability/` |
+| [GAP-07](#gap-07) | Venue permit windows                               | `facility_permits.csv`                                     | Closed · `availability/` |
+| [GAP-08](#gap-08) | Per-venue-per-date permit exceptions and blackouts | `facility_permits.csv`                                     | Closed · `availability/` |
+| [GAP-09](#gap-09) | Occupancy vs. play time                            | `game_formats.csv`                                         | Closed · `timing/` |
+| [GAP-10](#gap-10) | Halftime as a range                                | `game_formats.csv`                                         | Closed · `timing/` |
+| [GAP-11](#gap-11) | Block, turnover floor, turnover preference         | `game_formats.csv`                                         | Partial · `timing/` — no block-derived slots |
+| [GAP-12](#gap-12) | Constraint hardness and scope                      | `facility_permits.csv`, `facility_geometry.json`           | Closed · `constraints/` — not in the legacy solver |
+| [GAP-13](#gap-13) | Game format as a first-class attribute             | schedule CSVs                                              | Partial · `timing/` — new types only |
+| [GAP-14](#gap-14) | Row formats with no timing definition              | `combined_schedule.csv`                                    | Closed · `timing/` + every consumer |
+| [GAP-15](#gap-15) | Opponent-less sessions (Minis)                     | `published_rec_schedule.csv`                               | Partial · represented, not generated |
+| [GAP-16](#gap-16) | Unnamed / TBD fixtures                             | `combined_schedule.csv`                                    | Partial · matched safely, no entity |
+| [GAP-17](#gap-17) | Field reservations that are not games              | `combined_schedule.csv`                                    | Partial · constrains, not persisted |
+| [GAP-18](#gap-18) | External (non-member) opponents                    | `combined_schedule.csv`, `external_fixtures_published.csv` | Partial · a label, not an entity |
+| [GAP-19](#gap-19) | Person-centric commitment timeline                 | `coach_roster.csv` + `combined_schedule.csv`               | Closed · `people/` |
+| [GAP-20](#gap-20) | Multi-coach teams and coach slots                  | `coach_roster.csv`                                         | Closed · `people/` |
+| [GAP-21](#gap-21) | Identity resolution across roster revisions        | `coach_roster_v1.csv`                                      | Closed · `people/` |
+| [GAP-22](#gap-22) | Person entity distinct from `Profile`              | `coach_roster.csv`                                         | Closed · `people/` |
+| [GAP-23](#gap-23) | Coach-assignment status                            | `coach_roster.csv`                                         | Closed · `people/` — no audit trail |
+| [GAP-24](#gap-24) | Division labels are not a key                      | `combined_schedule.csv`                                    | Open · still a label |
+| [GAP-25](#gap-25) | Date-scoped equipment                              | `facility_geometry.json`                                   | Closed · `facility/` |
+| [GAP-26](#gap-26) | Waivers as records with a lifecycle                | incident 9 (not in any file)                               | Closed · `waivers/` |
+| [GAP-27](#gap-27) | Warm-up as schedulable occupancy                   | incident 8                                                 | Closed · `timing/` — no standing rule |
+| [GAP-28](#gap-28) | Unplaceable fixtures as first-class state          | incident 10                                                | Partial · `placement/` harness only |
+| [GAP-29](#gap-29) | Freeze scope and published baseline                | incidents 1 and 2                                          | In progress · Prompt 4.1, unmerged |
+| [GAP-30](#gap-30) | Wall-clock times, timezone and DST                 | schedule CSVs, `sunsets.csv`                               | Partial · new modules only |
+| [GAP-31](#gap-31) | Per-field kickoff cadence                          | `game_formats.csv` + `combined_schedule.csv`               | Partial · data, unenforced |
+| [GAP-32](#gap-32) | Calendar dates vs. `weekIndex`                     | schedule CSVs                                              | Partial · no season calendar |
+| [GAP-33](#gap-33) | Hosting balance and 9-game seasons                 | `published_rec_schedule.csv`                               | Partial · validated, not generated |
+| [GAP-34](#gap-34) | Import impact: published vs. agreed times          | `external_fixtures_published.csv`                          | Open |
 
 ---
 
@@ -72,6 +114,7 @@ Current domain types referenced throughout:
 - **Example**: 7 venues and 24 distinct fields appear in `combined_schedule.csv`, each row carrying separate `Venue` and `Field` columns (`Alder Park`, `Pitch 1A`).
 - **Today**: there is no `Venue` or `Field` type. `Event.location_id` is a bare UUID string and `GameSlot.fieldId` is an opaque string with no structure. The loader is forced to flatten to a synthetic composite key, `makeFieldId(venue, field)` → `"Alder Park::Pitch 1A"`.
 - **Needed by**: Phase 1 (facility model). Everything from GAP-02 to GAP-05 hangs off this.
+- **Status**: **Closed** — `packages/core/src/facility/facilityGraph.js` (`buildFacilityGraph()`, over `FacilityVenue` / `FacilitySurface` in `facility/types.js`) models venues and surfaces as entities with opaque ids, `lineage`, `cells` and `depth`; `facility/adapters/season2026Geometry.js` builds the corpus's venues and surfaces from the parsed geometry. Pinned by `tests/facilityGraph.test.js` ("is built from the real season-2026 geometry, not an empty shell", "never mints a colon-bearing id"). The legacy `GameSlot.fieldId` is still an opaque string; `packages/core/src/types.js` now carries only an `@see` pointing at `FacilitySurface`.
 
 <a id="gap-02"></a>
 
@@ -81,6 +124,7 @@ Current domain types referenced throughout:
 - **Example**: Alder Park has `Pitch 1` split into `1A`/`1B` and `Pitch 4` into `4A`/`4B`. The corpus never books a parent and one of its own halves at once, but nothing in the domain model expresses why that is illegal.
 - **Today**: `checkSlotAvailability()` compares `String(a.fieldId) === String(fieldId)` — a booking on `Pitch 1` and one on `Pitch 1A` are two different strings, so it reports the slot as available.
 - **Needed by**: Phase 1 (facility graph), Phase 2 (occupancy constraints).
+- **Status**: **Closed** — containment is a forest on the graph (`parentId` / `childIds`, with `lineageOf()`, `descendantsOf()`, `cellsOf()` in `facility/facilityGraph.js`), and `surfacesConflict()` / `checkOccupancy()` / `findFacilityConflicts()` in `facility/occupancy.js` decide mutual exclusion over **cells**, so a parent and its own half are the same ground. `tests/facilityGraph.test.js` "acceptance 3 — a parent and its halves are the same ground" (both directions), "allows the two halves of one pitch to run at the same time", and "agrees with every concurrent 1A/1B pair the published season actually ran". `gameValidation.checkSlotAvailability()` still compares `fieldId` as a string and is deliberately untouched.
 
 <a id="gap-03"></a>
 
@@ -90,6 +134,7 @@ Current domain types referenced throughout:
 - **Example**: a 9v9 on `Pitch 1A` and an 11v11 on `Pitch 2` at the same time is physically impossible; `Pitch 2` and `Pitch 3` at the same time is fine.
 - **Today**: fields are modelled as independent strings. The fixture test has to supply its own `fieldsOverlap()` helper because nothing in `packages/core` can answer the question.
 - **Needed by**: Phase 1/2. This is incident 3 in the fixture README — the rule arrived mid-project after several schedule versions had already been produced against an independent-strings model.
+- **Status**: **Closed** — `overlapPairs` / `overlapBySurface` live on the graph and are answered by `surfacesConflict()` and `conflictingSurfacesOf()` (`facility/occupancy.js`); the relation is canonicalised, symmetric, non-transitive and venue-local, and the builder refuses a pair naming an unknown surface, spanning two venues, or naming one surface twice. `tests/facilityGraph.test.js` acceptance 1 and 2, "matches the fixture-declared truth table exactly", "is not transitive", and — the closing of this gap in one assertion — "agrees with the existing `fieldsOverlap()` oracle everywhere": the helper the fixture test had to supply for itself is now the oracle the module is checked against, not a stand-in for a missing model.
 
 <a id="gap-04"></a>
 
@@ -99,6 +144,7 @@ Current domain types referenced throughout:
 - **Example**: Brookside Park `Upper 1` is _big enough_ for 9v9 but is _lined_ only for 7v7 this season. Alder Park `Pitch 2`/`Pitch 3` are the only 11v11-sized surfaces at that venue.
 - **Today**: nothing associates a field with the formats it can host. `GameSlot` has `capacity` (a count of concurrent games) and an optional `priority`, neither of which encodes eligibility. A solver has no way to refuse to put an 11v11 game on a 4v4 field.
 - **Needed by**: Phase 2 (placement eligibility). Note "capable" and "eligible this season" are two different sets and both matter — a what-if query may legitimately ask about re-lining.
+- **Status**: **Closed** — `facility/eligibility.js`: `checkSizeEligibility()` ranks a format against the surface's declared `sizes` under an explicit `sizePolicy` of `'downward-closed'` (capable) or `'declared'` (literally listed), and `checkLining()` reads the separate `lined` list, reporting `LINING_MISMATCH` at `compromise` rather than as a block — "big enough but not lined this season" is a different answer from "too small". `tests/facilityGraph.test.js` "acceptance 4 — size eligibility" and "acceptance 4 companion — lining is separate from size", including "places every published 11v11 row on a size-eligible surface". Lining is data on the surface, so a re-lining scenario is expressible by rebuilding the graph; there is no lining-specific what-if query (`constraints/whatIf.js` projects a constraint retype only).
 
 <a id="gap-05"></a>
 
@@ -108,6 +154,7 @@ Current domain types referenced throughout:
 - **Example**: Summit HS is the only lit venue; every scrimmage that runs past sunset is there. All other venues are `"lit": false`.
 - **Today**: no lighting attribute anywhere. Without it the sunset rule (GAP-06) has no way to know which games it applies to.
 - **Needed by**: Phase 1 (facility model), Phase 2 (daylight constraint).
+- **Status**: **Closed** — `FacilityVenue.lit` on the graph, plus a per-**surface** `SurfaceLighting` record resolved by `resolveLighting()` (`availability/calendar.js`) with inheritance from an ancestor surface and a `LIGHTING_FROM_VENUE` note when, as in this corpus, only the venue flag exists. The sunset constraint reads it, so it knows exactly which games it applies to. `tests/facilityAvailability.test.js` "lighting is a property of the field" — falls back to the venue flag and says so, lets one field of an unlit venue be lit, inherits a parent's record down to its halves, and bounds a lit field by its lights-off time.
 
 <a id="gap-06"></a>
 
@@ -117,6 +164,7 @@ Current domain types referenced throughout:
 - **Example**: on 10/31 sunset is 5:59 PM, so an unlit 9v9 (65-minute occupancy) cannot kick off after 4:39 PM. The corpus honours a 15-minute margin on all 669 unlit rows with a known footprint.
 - **Today**: there is no sunset, daylight or per-date environment concept in any type. The 15-minute margin also has nowhere to live — see GAP-12.
 - **Needed by**: Phase 2 (daylight constraint), Phase 4 (what-if "latest legal kickoff").
+- **Status**: **Closed** — `SunsetRecord`, `sunsetOn()` and `daylightLimitMinutes()` in `availability/calendar.js`, consumed by `checkKickoffAvailability()` and `latestLegalKickoff()` (`availability/kickoff.js`) as one of four ranked constraints. Sunset is **stored, not computed** (the corpus publishes the numbers the season was built against), and the 15-minute margin is a calendar parameter — `SEASON_2026_SUNSET_MARGIN_MINUTES` — not a literal in a check. `tests/facilityAvailability.test.js` "acceptance 1 — the latest unlit kickoff is bound by sunset" (4:24 PM, derived), "moves with the margin, which is configurable and never hard-coded", "moves with the date", and the full-corpus replay.
 
 <a id="gap-07"></a>
 
@@ -126,6 +174,7 @@ Current domain types referenced throughout:
 - **Example**: Brookside Park closes at 6:00 PM while Alder Park runs to 8:00 PM; every one of the 675 rows with a known footprint sits inside its venue's window.
 - **Today**: `GameSlot` is a `{ start, end, capacity }` triple that the caller must pre-generate. There is no venue-availability entity, so nothing can _derive_ legal slots or validate an arbitrary time against a venue.
 - **Needed by**: Phase 1 (availability model), Phase 2 (slot generation).
+- **Status**: **Closed** — `PermitWindow` + `resolvePermitWindow()` (`availability/calendar.js`) is the venue-availability entity, and `latestLegalKickoff()` **derives** the legal kickoff rather than validating against hand-supplied slots. `tests/facilityAvailability.test.js` "acceptance 2 — the lit stadium is bound by the permit close", "acceptance 4 — a legal kickoff with under 15 minutes of margin", "rejects a kickoff before the permit opens", and "finds no permit breach and no daylight breach anywhere in the published season" with an injected-breach control.
 
 <a id="gap-08"></a>
 
@@ -135,6 +184,7 @@ Current domain types referenced throughout:
 - **Example**: Summit HS normally opens at 5:00 PM on Saturdays, opens at 2:00 PM on 09/12, and is entirely unavailable on 09/19 (the corpus schedules zero games there that day).
 - **Today**: no exception, override or blackout representation, and no precedence rule for "a date-scoped row wins over the weekday default". The loader implements `resolvePermit()` itself. An em-dash in both time columns is a third state — _not available at all_ — distinct from both "open all day" and "unknown".
 - **Needed by**: Phase 1/2. Blackouts are what make incident 10 (unplaceable fixtures) reachable.
+- **Status**: **Closed** — `PermitWindow.scopeKind` makes precedence a data property (`date-exception` beats `weekday-default`), `hasPermit: false` is the third state — a *stated* blackout, distinct from "no record" — and two equally specific records that disagree produce `PERMIT_PRECEDENCE_AMBIGUOUS` with the more restrictive applied, never a silent pick. `tests/facilityAvailability.test.js` "acceptance 3 — no permit at all on the blackout date" (and "the corpus schedules nothing there that day"), "a date-scoped exception beats the weekday default", "honours a one-off Sunday exception", "applies the more restrictive record when two of equal specificity disagree".
 
 <a id="gap-09"></a>
 
@@ -144,6 +194,7 @@ Current domain types referenced throughout:
 - **Example**: an 11v11 game is 2×40 minutes of play plus 5–10 minutes of halftime — 85 to 90 minutes of _occupancy_ — and the corpus instructs scheduling at the worst case, 90.
 - **Today**: `Event` has `start_time`/`end_time` and `AssignmentSchema` has `start`/`end`. A single interval cannot distinguish "the ball is in play" from "the field is not available to anyone else", so a margin computed against play time silently under-counts.
 - **Needed by**: Phase 1 (format model), Phase 2 (every margin computation). This is incident 7 — modelling 11v11 as a flat 90 minutes would have made several published margins go tight with no error firing.
+- **Status**: **Closed** — `timing/formatTiming.js` keeps the three spans apart by name: `ballInPlayMinutes` (`halves × halfMinutes`), `occupancyMinutes` (a `ScheduledMinutesRange` whose `scheduled` is the corpus's own worst-case instruction) and `blockMinutes`; `timing/windows.js` `computeGameWindows()` decomposes one kickoff into first half, halftime, second half, occupancy, block and schedulable window. The word "duration" is banned from the module's public surface. Every margin in `availability/kickoff.js` is computed against `occupancyMinutes.scheduled`. `tests/gameTimeModel.test.js` "occupancy is not play time (GAP-09, incident 7)", including `OCCUPANCY_DERIVATION_DISAGREES` when derived and declared occupancy stop reconciling.
 
 <a id="gap-10"></a>
 
@@ -153,6 +204,7 @@ Current domain types referenced throughout:
 - **Example**: the loader emits `{ min: 5, max: 10 }` for 11v11 and `null` for Minis (which has no halves at all).
 - **Today**: no format entity exists to carry it, and no numeric field in the domain accepts a range. Any single number chosen here is a guess in one direction or the other.
 - **Needed by**: Phase 1 (format model), Phase 4 (worst-case what-if queries).
+- **Status**: **Closed** — `MinutesRange` / `ScheduledMinutesRange` carry the range whole, `halftimeIsRange` says which formats have one, and `OccupancyWindow` reports `bestCaseEndMinutes` beside `endMinutes` so the best case is visible without ever being the number a check uses. `tests/gameTimeModel.test.js` "halftime is a range and margins use the worst case (GAP-10)": "keeps both ends of the 11v11 occupancy and schedules against the worst", "books the worst case, so a five-minute halftime never buys a booking through", "collapses to a point range for every fixed-halftime format".
 
 <a id="gap-11"></a>
 
@@ -162,6 +214,7 @@ Current domain types referenced throughout:
 - **Example**: 9v9 is 65 minutes of occupancy inside an 85-minute block, with a 20-minute preferred turnover and a 10-minute floor. 11v11 has `Turnover preferred = 30 (in block)` — the preference is _already counted_ inside the 120-minute block, unlike every other format.
 - **Today**: `GameSlot.capacity` is a count of concurrent games, not a cadence. There is no notion of a block, a turnover floor, or a soft turnover preference; `scheduleGames()` places matchups into pre-built slots and never reasons about the gap between them.
 - **Needed by**: Phase 1 (format model), Phase 2 (slot generation and per-field cadence — see GAP-31).
+- **Status**: **Partial**. The data is complete and reconciled: `FormatTiming.blockMinutes`, `turnoverMinMinutes`, `turnoverPreferredMinutes`, `turnoverInsideBlock` (the 11v11 `30 (in block)` note is read, not assumed) and `blockSlackMinutes` in `timing/formatTiming.js`, tested by `tests/gameTimeModel.test.js` "block and turnover, and what the block leaves out (GAP-11)". The floor, the preference and the Orchard Park override are three constraint records resolved per venue per date and enforced by `turnoverMinimumRule` (`ruleEngine/rules.js`), which holds none of the numbers itself — `tests/ruleEngine.test.js` "reads the turnover numbers from the registry rather than carrying any". **What remains**: nothing generates slots from blocks. The placement harness searches the kickoffs the corpus itself used (`placement/adapters/season2026Placement.js`), and no module enforces kickoff-to-kickoff cadence — see GAP-31. Phase 4 (solver).
 
 <a id="gap-12"></a>
 
@@ -171,6 +224,7 @@ Current domain types referenced throughout:
 - **Example**: the 20-minute turnover is a _preference_ almost everywhere and a _hard_ rule at Orchard Park only. It is expressed as free text in a `Notes` column, scoped to one venue.
 - **Today**: there is no constraint record at all — no id, no hardness (`hard`/`soft`), no scope (global / venue / date / division / person), no weight. Rules live as inline conditionals inside `scheduleGames()` and `gameValidation.js`. The rule "unlit games end 15 minutes before sunset" is in the same position: real, load-bearing, and unrepresentable.
 - **Needed by**: Phase 2 (constraint registry). Prerequisite for GAP-26 (waivers are exceptions _to_ a constraint).
+- **Status**: **Closed** — `packages/core/src/constraints/`: `ConstraintRecord` carries `id`, `policy`, `type` (`hard` / `soft` / `preference`), a one-dimensional `scope`, `parameters`, `restrictiveDirection`, required `rationale` and `source.reference`, an effective window, `enforcement`, `reasonCodes`, `weight`, `waivable` and a `history`. `constraints/registry.js` (`buildConstraintRegistry()`, `resolvePolicy()`, `retypeConstraint()`) and `constraints/scope.js` implement the precedence rule — narrowest scope wins within a hardness tier, a missing scope dimension is `CONSTRAINT_SCOPE_UNJUDGED` rather than a fall-through, and a tie emits `CONSTRAINT_PRECEDENCE_AMBIGUOUS`. `constraints/severity.js` `applyRegistrySeverity()` is the seam: it re-severities Phase 1 findings from the record's `type`, demoting and never deleting. Fourteen seeded records in `constraints/adapters/season2026Constraints.js`, documented in [`CONSTRAINT_REGISTRY.md`](CONSTRAINT_REGISTRY.md). `tests/constraintRegistry.test.js` "lets the Orchard Park venue rule beat the global floor (GAP-12)" and "changes a reason code's severity without touching any Phase 1 module"; `tests/ruleEngine.test.js` "takes a violation severity from the constraint record, not from a call site". **Scope of the closure**: the registry governs the date-indexed modules and the rule engine. `scheduleGames()` and `gameValidation.js` still carry their rules as inline control flow and read no record; wiring them is Phase 4.
 
 <a id="gap-13"></a>
 
@@ -180,6 +234,7 @@ Current domain types referenced throughout:
 - **Example**: division `U06B` plays `4v4`; division `U12B` plays `9v9`. Format drives duration, field eligibility and cadence, and it is **not** derivable from division in general (`Select` covers both `11v11` league slots and `Scrimmage` rows).
 - **Today**: neither `Team`, `Event`, `GameSlot` nor `DivisionConfig` has a `format` field. `DivisionConfig` has `slotsPerWeek` and roster sizes but nothing about the game itself.
 - **Needed by**: Phase 1 (format model), Phase 2 (eligibility, duration).
+- **Status**: **Partial**. Format is a first-class attribute of every type Phases 1–3 introduced — `FormatTimingTable` keyed by format name (`timing/formatTiming.js`), `TimingFixture.format`, `FacilityBooking.format`, `ScheduledGame.format` (`ruleEngine/types.js`), `PlacementGame.format` — and it drives duration, size eligibility and lining without ever being inferred from division. **What remains**: `Team`, `GameSlot`, `DivisionConfig`, `AssignmentSchema` and every table still have no format field, so nothing persisted carries one; steps 2 and 3 of [`DURATION_MIGRATION.md`](DURATION_MIGRATION.md) §6 (format on the slot types, then a `game_formats` reference table and `game_slots.format_id`) are unimplemented, and §4 records that backfilling it from division is not generally possible. Phase 4 and later.
 
 <a id="gap-14"></a>
 
@@ -189,6 +244,7 @@ Current domain types referenced throughout:
 - **Example**: `08/22/2026,5:20 PM,Summit HS,Stadium,Scrimmage,16GS,16GSelect01,16GSelect02`. How long does it occupy the Stadium? The corpus does not say.
 - **Today**: nothing distinguishes "duration 90" from "duration unknown". `AssignmentSchema` requires `end > start`, so an unknown-duration row cannot validate at all. **Loader behaviour**: `durationMinutes: null` and `end: null`, and the row is excluded from every duration-dependent check rather than being given an invented footprint. This is the one place the loader is knowingly blind, and the fixture test asserts the blindness explicitly.
 - **Needed by**: Phase 1 (format model must allow an explicit unknown), Phase 5 (these rows still block a field).
+- **Status**: **Closed** — "unknown" is now an explicit, propagating state, and each consumer says precisely what it therefore cannot decide: `unknownFormatTiming()` and `footprint: 'unknown'` with `FORMAT_TIMING_UNDEFINED` (`timing/formatTiming.js`); `FacilityBooking.endMinutes: null` producing `OCCUPANCY_FOOTPRINT_UNKNOWN` instead of a fabricated "no conflict" (`facility/occupancy.js`); `SIZE_UNKNOWN_FORMAT` at `blocking` (`facility/eligibility.js`); `latestLegalKickoff()` **refusing to answer at all** rather than guessing (`availability/kickoff.js`); `COMMITMENT_FOOTPRINT_UNKNOWN` on a person-day (`people/timeline.js`); `TRAVEL_FOOTPRINT_UNKNOWN` on a transition out of one (`waivers/coachTravel.js`); `TURNOVER_UNJUDGED` on a consecutive pair (`ruleEngine/rules.js`). `tests/gameTimeModel.test.js` "Scrimmage keeps an explicit unknown footprint (GAP-14)" and `tests/facilityAvailability.test.js` "refuses to answer for a format with no timing row, and says why (GAP-14)"; the four rows account for twelve of the rule engine's 58 accepted exceptions outright (`SIZE_UNKNOWN_FORMAT`, `FORMAT_TIMING_UNDEFINED` and `OCCUPANCY_FOOTPRINT_UNKNOWN`, four each), plus four of the forty `LINING_MISMATCH` and the single `TURNOVER_UNJUDGED` — see [`RULE_ENGINE.md`](RULE_ENGINE.md) §9. Phase 3 also fixed a loader bug of the same shape — `buildCoachTimelines()` used to *skip* these rows, reproducing incident 5 inside our own loader ([`PEOPLE.md`](PEOPLE.md) §2). **Still true from "Today"**: `SlotSchema` / `AssignmentSchema` require `end > start`, so an unknown-footprint row cannot validate or persist.
 
 <a id="gap-15"></a>
 
@@ -198,6 +254,7 @@ Current domain types referenced throughout:
 - **Example**: `MinisA`–`MinisD` are four _sessions_, not rostered teams. Each appears 9 times, always as `Home`, always with `Away = "-"`, and none of them is in `coach_roster.csv`. `game_formats.csv` gives Minis `Halves = -` and `Halftime = -` — there are no halves.
 - **Today**: `AssignmentSchema.awayTeamId` is `refine(val => !!val)`, so a Minis session cannot be represented as an assignment. `Event` requires nothing but would model it as a "game" with a missing away side. The 122 rec entities are _not_ 122 teams (118 teams + 4 sessions), which is exactly the sort of miscount that produces phantom results.
 - **Needed by**: Phase 1 (fixture kinds), Phase 3 (round-robin generation must skip these divisions).
+- **Status**: **Partial**. Representable and carried without ever becoming a team: the loader classifies `SEASON_2026_ROW_KIND.MINIS_SESSION`, and `ruleEngine/adapters/season2026Schedule.js` refuses the loader's lenient ids — a team identifier is a member of the roster's team universe or it is not one — so `MinisA`..`MinisD` land in `schedule.placeholderLabels` and a rule that matched one as a team gets `RULE_MATCHED_PLACEHOLDER` at `blocking`. `roundRobinRule` reports `ROUND_ROBIN_DIVISION_UNJUDGED` for the Minis division `BB` rather than counting it complete, and the corpus's 118 teams + 4 sessions split is asserted by `tests/season2026Fixture.test.js` ("accounts for all 132 roster teams as 118 rec teams plus 14 Select teams", "keeps the Minis sessions with their placeholder opponent"). **What remains**: `AssignmentSchema.awayTeamId` still requires a truthy id, so a session is still not a storable assignment, and `generateRoundRobinWeeks()` is unchanged — nothing yet *skips* these divisions at generation time. Matchup generation, Phase 4/5.
 
 <a id="gap-16"></a>
 
@@ -207,6 +264,7 @@ Current domain types referenced throughout:
 - **Example**: 100 rows — 10 labels (`Select Game 1` … `Select Game 10`) across 10 dates. These are real reserved league slots whose participating teams were not yet known when the schedule was published.
 - **Today**: there is no placeholder-fixture entity. `Team.coachNeeded` is the only placeholder concept in the model and it is about a missing _coach_, not a missing team. Treating `Select Game 7` as a team code is precisely the second half of incident 4 — a checker that misread placeholder labels as team codes and reported phantom violations. **Loader behaviour**: classified as `league_placeholder`, `homeTeamId: null`, `homeIsPlaceholder: true`, never counted as a team.
 - **Needed by**: Phase 5.1 (unnamed fixtures).
+- **Status**: **Partial**. The loader's `league_placeholder` classification now has enforcement behind it: `ruleEngine/adapters/season2026Schedule.js` derives `placeholderLabels` from what the roster does *not* know, and `ruleEngine/exercise.js` `checkIdentifiers()` reports `RULE_MATCHED_PLACEHOLDER` at `blocking` for any rule that matches `Select Game 7` as a team id — the only one of the three exercise claims that catches a rule matching the **wrong** data rather than too little of it. `tests/ruleEngine.test.js` "incident 4, reproduced :: (b) a join that matches the wrong data" rebuilds the schedule from the raw `Home`/`Away` cells, produces the phantom violations the source project shipped, and catches them on shape rather than on count. **What remains**: there is still no placeholder-fixture entity — nothing reserves a slot in a form that can later be bound to two named teams — and no publication path for one. Phase 5.1.
 
 <a id="gap-17"></a>
 
@@ -216,6 +274,7 @@ Current domain types referenced throughout:
 - **Example**: exactly one row. It occupies Alder Park Pitch 2 and therefore blocks Pitch 1 (GAP-03), but it has no home team, no away team, and no result.
 - **Today**: `Event.type` is `'game' | 'practice' | 'meeting' | 'other'`. `'other'` loses the fact that this blocks a field, and `Event` still expects `home_team_id`/`away_team_id` to mean something. **Loader behaviour**: classified as `reservation` with both team ids null.
 - **Needed by**: Phase 5.1 (reservations), Phase 2 (occupancy — a reservation must constrain the solver even though it is not a fixture).
+- **Status**: **Partial**. The single reservation is representable (`SEASON_2026_ROW_KIND.RESERVATION`; a `ScheduledGame` with both team ids null and its label in `placeholderLabels`) and — the part that matters — it now genuinely constrains: `ruleEngine/rules.js` filters on `game.counted` in **only** the round-robin and home/away rules, so the same-ground, adjacency, eligibility, permit, sunset and turnover rules see it and it blocks Alder Pitch 2 and, through the overlap relation, Pitch 1. `tests/season2026Fixture.test.js` "keeps the single field reservation as a non-game row". **What remains**: no `Event` kind, no persistence, and the shipping solver knows nothing of it. Phase 5.1.
 
 <a id="gap-18"></a>
 
@@ -225,6 +284,7 @@ Current domain types referenced throughout:
 - **Example**: 5 of the 8 seeding fixtures face a club that has no roster, no coaches and no id in this system; the other 3 are internal Select-vs-Select.
 - **Today**: `AssignmentSchema.awayTeamId` requires a truthy id and `Team` requires a division; inventing a `Team` row for `Visiting Club A` would pollute team counts, round-robin generation and every division metric. There is no external-club or opponent-label entity.
 - **Needed by**: Phase 5 (external fixtures), Phase 7.3 (import impact analysis).
+- **Status**: **Partial**. An externally-published fixture survives end to end: `SEASON_2026_ROW_KIND.EXTERNAL_FIXTURE` in the loader, `awayTeamId: null` with the opponent preserved as `awayLabel` and listed in `placeholderLabels` (`ruleEngine/adapters/season2026Schedule.js`) so no rule can join on it, and `COMMITMENT_SOURCE.EXTERNAL_FIXTURE` (`people/reasonCodes.js`) so an external commitment enters a personal timeline **before** it is sealed — a required source that was never ingested is `TIMELINE_SOURCE_NOT_INGESTED` at `blocking`. `tests/people.test.js` "files every corpus row kind under a source, and never silently drops a layer". **What remains**: there is no external-club or opponent entity — the opponent is display text, not an identity, so nothing can be said *about* the visiting club — and no import-impact analysis (GAP-34). Phase 5 / 7.3.
 
 <a id="gap-19"></a>
 
@@ -234,6 +294,7 @@ Current domain types referenced throughout:
 - **Example**: incident 5 — a scrimmage appended after solving left one coach with a 6.5-hour gap because the optimizer never saw the evening commitment. In this corpus the three single-coach games are only detectable when Select and scrimmage rows are on the timeline alongside rec games.
 - **Today**: `checkCoachConflict()` re-derives conflicts on every call from `team.coachId` over an `assignments` array, and only from that array. There is no persisted per-person timeline, no way to add a commitment that is not a scheduled assignment, and no notion of gap/idle time. **Loader behaviour**: `buildCoachTimelines()` assembles the timeline from the combined schedule, deliberately including non-rec rows.
 - **Needed by**: Phase 3/4 (coach-experience objectives), Phase 5 (external commitments enter the timeline _before_ solving).
+- **Status**: **Closed** — `packages/core/src/people/timeline.js` replaces re-derivation with a built, sealed artefact: `createTimelineSet()` → `ingestCommitments(set, batch, { source })` → `sealTimelines(set, { requiredSources })` → `requireSealedTimelines()`, then `personTimeline()`, `buildPersonDays()`, `evaluatePersonDays()`, `findAttendanceClashes()` and `toTravelCommitments()`. A commitment need not be a scheduled assignment (`COMMITMENT_SOURCE.NON_CLUB`, `teamId` nullable), and gap/idle time is first-class (`PersonDay.idleMinutes`, `PersonTransition.gapMinutes`, `PERSON_DAY_GAP_EXCEEDED` reading its number and its severity from the `coach-maximum-gap` record). Incident 5 becomes mechanical rather than remembered: a required source never ingested is `TIMELINE_SOURCE_NOT_INGESTED` at `blocking`, and an append to a sealed set is `TIMELINE_SEALED_APPEND`. `tests/people.test.js` "requirement 2, external commitments before the solve" — including "adding an evening scrimmage BEFORE the solve prevents the 6.5-hour-gap outcome" and "finds the corpus's own stranded evening, and only when the scrimmages are on" (265 minutes; the 6.5-hour figure is constructed and labelled as constructed). **One honest-but-unenforced edge**: the standing rule set has **no** rule for `coach-maximum-gap`, so a whole-schedule run still reports that record `RULE_CONSTRAINT_UNENFORCED` at `compromise` (`tests/ruleEngine.test.js` "reports the two constraints no rule enforces, at compromise"). The gap check exists — `evaluatePersonDays()` — but only a caller who runs it sees it.
 
 <a id="gap-20"></a>
 
@@ -243,6 +304,7 @@ Current domain types referenced throughout:
 - **Example**: 81 teams have 2 coaches, 50 have 1, and one has 3. Greta Wynn and Mara Calder co-coach _both_ `06BMicro04` and `08BJunior03`, whose 10/24 games overlap — so the pair splits, one each, and both games run single-coach.
 - **Today**: `Team` has `coachId` plus `assistantCoachIds[]`, which loses the slot number and any notion of "who is required to attend". Worse, `checkCoachConflict()` only ever inspects `homeTeam.coachId` / `awayTeam.coachId`, so the assistant's conflicts are invisible to it — the three single-coach games in this corpus cannot be found with the current code. There is also no place to record _which_ coach covered a split.
 - **Needed by**: Phase 3 (coach conflict objective), Phase 6 (derived must-attend).
+- **Status**: **Closed** — `CoachAssignment` (`people/types.js`, built by `people/roster.js` `buildCoachRoster()`) carries `personId`, `teamId`, `slot`, `status` and an effective window, with `coachSlotOf()`, `coCoachesOf()`, `teamsCoachedBy()` and `soleCoachRiskRegister()` over it. The slot is used as an **order**, not a boolean: `resolveAttendance()` (`people/mustAttend.js`) keeps the person where their slot is lower, releases the other team, records that release as the released team's conflict, and reports `ATTENDANCE_SLOT_TIE` rather than breaking a tie silently. `tests/people.test.js` "keeps the coach slot as an order, not a boolean" and "requirement 4, fallback priority by coach slot", which finds the corpus's three single-coach games and cross-checks them against the loader's own `findSingleCoachGames()` — all three are ties, so the corpus exercises the tie path and the ordering case is constructed and labelled as such.
 
 <a id="gap-21"></a>
 
@@ -252,6 +314,7 @@ Current domain types referenced throughout:
 - **Example**: the same person is slot-1 coach of `12G9v906` as "Nathaniel" in both files. In v1 the two-team link is hidden behind two distinct `Person Key`s — 197 keys instead of 196 — and he is the _sole_ coach of both teams, so the hidden link had no fallback.
 - **Today**: `Person Key` is a lower-cased name string used as the identity key; there is no `Person` entity, no alias set, no confidence score and no review queue for probable matches. Any name-derived key silently splits or merges people.
 - **Needed by**: Phase 6 (identity resolution with a review queue). Incident 6.
+- **Status**: **Closed** — `people/identity.js` scores and queues, and never merges on its own: `buildIdentityReviewQueue()` blocks on normalised surname, vetoes two identities that hold two slots on one team (`IDENTITY_MATCH_VETOED`, reported rather than dropped), and scores from a frozen weight table that sums to 1 (`SURNAME_EXACT`, `GIVEN_NAME_CONTRACTION`, `GIVEN_NAME_PREFIX`, `GIVEN_NAME_SIMILARITY` via Jaro-Winkler, `GIVEN_NAME_INITIAL`, `TEAM_DISJOINT`). A merge exists only through `applyIdentityDecisions()` with an `accepted` decision; `IDENTITY_REVIEW_PENDING` is a `compromise`. `tests/people.test.js` "requirement 5, identity resolution with a review queue" surfaces the Nate/Nathaniel pair from `coach_roster_v1.csv` at confidence 0.968, proposes nothing on the corrected roster (having compared 205 same-surname pairs), and pins the transitive-merge alias collapse.
 
 <a id="gap-22"></a>
 
@@ -261,6 +324,7 @@ Current domain types referenced throughout:
 - **Example**: 196 distinct people, none of whom has an email address, a UUID, or an authentication account in the corpus.
 - **Today**: the only person-shaped type is `Profile`, which requires `id` (an Auth UUID), `email`, `role` and `organization_id`. A coach who exists on a roster but has never logged in cannot be represented, and the project's data-minimisation rule forbids fabricating an email to make one fit. **Loader behaviour**: people are emitted with the fixture's own `personKey`.
 - **Needed by**: Phase 6 (people as domain entities separate from auth identities).
+- **Status**: **Closed** — `Person` in `people/types.js` and `PersonSchema` in `people/schemas.js`: a given name, a family name, a display name, an id whose provenance is stated, and an alias set. No auth UUID, no email, no organization id, and no link to `Profile` — deliberately, because the moment the two are one type every coach needs an account. `tests/people.test.js` "names nobody: no corpus person key, display name or team code is in this package" greps every source file under `people/` for all 329 person keys, display names and team codes across both roster revisions and requires zero hits, with a positive control over a file that does name the corpus.
 
 <a id="gap-23"></a>
 
@@ -270,6 +334,7 @@ Current domain types referenced throughout:
 - **Example**: a single-valued column in this corpus, but it is clearly an enum position (pending / declined / withdrawn would all be meaningful) and it is the natural home for the lifecycle of an assignment.
 - **Today**: `Team.assistantCoachIds` is a bare array of ids. There is no assignment record, therefore no status, no effective date, and nothing to audit against.
 - **Needed by**: Phase 6 (roster assignment records). Also interacts with the `audit_log` requirement in `CLAUDE.md` — state-altering roster changes have nothing to log a _transition_ on.
+- **Status**: **Closed** — `ASSIGNMENT_STATUS` (`assigned` / `pending` / `declined` / `withdrawn`) with `ACTIVE_ASSIGNMENT_STATUSES` deliberately excluding `pending`, and `effectiveFrom` / `effectiveTo` that are **applied**, not merely stored: `buildCoachRoster(input, { asOf })` treats an out-of-window assignment as inactive everywhere activity is judged, and reports `ASSIGNMENT_WINDOW_UNJUDGED` at `compromise` when no `asOf` was supplied rather than letting a field read as enforced when it is not. `tests/people.test.js` "excludes an assignment that is not active, and says so in the counters", "refuses a status the vocabulary does not know rather than defaulting", and "honours an assignment's effective window wherever activity is judged (finding 6)". **What remains**: there is no persistence, so the `audit_log` transition this gap also asks for still has nothing to write to.
 
 <a id="gap-24"></a>
 
@@ -279,6 +344,7 @@ Current domain types referenced throughout:
 - **Example**: `16GSelect02` appears under division `U16G` (a scrimmage on 08/29) _and_ `16GS` (a scrimmage on 08/22) — the same team, two labels. `16BSelect02` is on the roster but appears in **no** fixture, so it has no observed division at all. Division values in the corpus mix schemes: `U05B`, `BB` (Minis), `Select`, `U14`, `16GS`.
 - **Today**: `TeamSchema.division` is `refine(val => !!val)` — required and single-valued. `scheduleGames()` keys `roundRobinByDivision` by that string, so two labels for one team split it across two round robins. **Loader behaviour**: `division` is set only when exactly one division is observed; otherwise `null`, with every observed value kept in `observedDivisions`.
 - **Needed by**: Phase 1 (division entity with a stable id), Phase 3 (round-robin grouping). This is the other half of incident 4 — a team-code format change made a validator's join match zero rows.
+- **Status**: **Open**. Division is still a label everywhere; what changed is that the repo now says so at every site instead of quietly relying on it. `ScheduledGame.divisionLabel` is documented "a label, not a key (GAP-24)" (`ruleEngine/types.js`) and `PlacementGame.divisionLabel` likewise; a division-scoped constraint matches on `scope.divisionLabel` and emits `CONSTRAINT_DIVISION_LABEL_MATCH` at `info` to record that the match was a best effort (`constraints/scope.js`, `constraints/reasonCodes.js`); the corpus's own label parsing is quarantined in the adapter (`season2026AgeGroup()`) precisely so the engine never does it. There is **no division entity and no stable division id anywhere under `packages/core/src/`** — a `divisionId` grep over all eight new packages returns nothing, and the loader still sets `division` only when exactly one is observed, keeping the rest in `observedDivisions`. `tests/constraintRegistry.test.js` "says out loud that a division match is a label match (GAP-24)". Phase 4 or later; the Phase 1 "division entity with a stable id" was never built.
 
 <a id="gap-25"></a>
 
@@ -288,6 +354,7 @@ Current domain types referenced throughout:
 - **Example**: one entry, kept deliberately as a fixture for the date-scoped-equipment case.
 - **Today**: no equipment, resource or per-date-per-venue capability model. A field's ability to host a format is treated as static (and even that is missing — see GAP-04).
 - **Needed by**: Phase 2 (eligibility that varies by date), Phase 4 (what-if under reduced equipment).
+- **Status**: **Closed** — `EquipmentWindow` in `facility/types.js`: a tri-state `status` (`available` / `unavailable` / `unknown`, so "was in doubt; confirmed available" does not collapse to a boolean), an `EquipmentScope` of `venue` or `surface` with descendants inheriting, and an inclusive date range. `checkEquipment()` (`facility/eligibility.js`) resolves them narrowest-first per format via `formatEquipment`, treats an unknown status as a `compromise`, and emits `EQUIPMENT_PRECEDENCE_AMBIGUOUS` when two equally specific records disagree. `tests/facilityGraph.test.js` "acceptance 5 — date-scoped equipment" (with a non-vacuous-scenario guard) and the "equipment resolution" suite.
 
 <a id="gap-26"></a>
 
@@ -297,6 +364,7 @@ Current domain types referenced throughout:
 - **Example**: a 60-minute travel floor was waived for one coach because two venues are ~5 minutes apart. The waiver later became unnecessary when times shifted, then relevant again.
 - **Today**: no waiver, exception or override record of any kind. There is nowhere to store the subject (person / team / venue pair), the constraint being waived, the rationale, who approved it, or its validity window — and therefore no way to detect that a waiver has gone dormant.
 - **Needed by**: Phase 2 (constraint registry — GAP-12 is a prerequisite), Phase 6 (waiver lifecycle and dormancy detection).
+- **Status**: **Closed** — `packages/core/src/waivers/`: `WaiverRecord` with a multi-dimensional scope, required `reason`, `approval.approvedBy` and `approval.reference`, an optional expiry and the `parameters` the approval rested on; `buildWaiverLedger()` / `reconcileWaiverLedger()` (`ledger.js`) make a waiver whose constraint the registry no longer holds `blocking`; `applyWaivers()` (`apply.js`) keeps and re-severities the violation rather than deleting it and stamps `waived`, `waiverId`, `waivedBy`, `severityBeforeWaiver`; the `clean` / `unwaived` / `waived` / `waived-partial` disposition keeps "waived" distinguishable from "clean"; and `detectDormantWaivers()` (`dormancy.js`) computes dormancy per solve — `WaiverRecordSchema` is `.strict()`, so a record carrying a cached dormancy flag is rejected. Documented in [`WAIVERS.md`](WAIVERS.md). `tests/waiverLedger.test.js` "incident 9, end to end" reproduces all three acts against real corpus rows: load-bearing at the agreed 12:00 kickoff, dormant at the externally-published 12:30, live again when the times shift back. **Note**: `waivers/annotations.js` renders `Notes`-ready rows but `outputGeneration.js` is not yet wired to them.
 
 <a id="gap-27"></a>
 
@@ -306,6 +374,7 @@ Current domain types referenced throughout:
 - **Example**: on the busiest date, the earliest kickoff with a full 30-minute warm-up was 3:25 PM — bounded by a 9v9 game on the _overlapping_ field running until 2:55, not by anything on the field itself.
 - **Today**: occupancy is whatever `start`–`end` says. Nothing models a pre-game window that also needs a legal, non-overlapping surface, so a warm-up requirement cannot even be stated, let alone checked.
 - **Needed by**: Phase 2 (occupancy model), Phase 4 (what-if queries). Depends on GAP-03 and GAP-09.
+- **Status**: **Closed** — `timing/warmup.js` makes the warm-up a real `FacilityBooking` (`warmupBookingFor()`, `buildTimingBookings()`) that flows through the Phase 1.1 overlap machinery instead of a second implementation of it, and answers incident 8's questions directly: `warmupWindowAvailability()`, `earliestKickoffWithWarmup()` and `findTimingConflicts()`. `tests/gameTimeModel.test.js` "acceptance 2b — what kickoff yields a full 30-minute warm-up" returns 3:25 PM, bounded by the 9v9 finishing at 2:55 on the **overlapping** field, and proves both that the candidate it skipped was illegal and that the answer it returned is clean; "finds warm-up clashes the published season hides, and no game clashes" replays the whole corpus, and "finds nothing at all once warm-ups are not modelled" is the source-project view as a control. **Read this honestly**: the requirement is a *policy* input and `SEASON_2026_WARMUP_POLICY` ships **empty**, so an unstated warm-up is `WARMUP_DURATION_UNSPECIFIED` and never a silently applied 30; and there is **no warm-up rule in the standing rule set** and no warm-up booking in the placement harness, so a season run checks warm-up only when a caller invokes `findTimingConflicts()` with a policy of its own.
 
 <a id="gap-28"></a>
 
@@ -314,6 +383,7 @@ Current domain types referenced throughout:
 - **Source**: incident 10 — in a reduced-venue scenario, one game had no legal slot and was kept visible with `TIME TBD` / `LOCATION TBD` and a reason.
 - **Today**: `scheduleGames()` returns `unscheduled: [{ weekIndex, division, matchup, reason }]`. That is a transient return value: it has no id, no venue/time TBD representation, no persistence, and no path into the published output. `Event` requires `start_time` and `end_time`, so a TBD fixture cannot be stored at all. The failure mode this guards against — silently dropping a fixture — is currently only prevented by whoever remembers to read `unscheduled`.
 - **Needed by**: Phase 3 (solver output), Phase 5 (publication must show TBD rows, not omit them).
+- **Status**: **Partial**. The representation exists: `UnplacedGame { gameId, label, attempts, publishedSurfaceId, publishedKickoffMinutes, reason }` in `placement/types.js`, produced by `replaceGames()` (`placement/replaceGames.js`) and pinned by `tests/placementHarness.test.js` "keeps an unplaceable fixture visible with a reason (incident 10)". The other half of incident 10 is answered in `people/`: a fixture naming a team whose coaches have all gone inactive is `FIXTURE_TEAM_UNCOACHED` at `blocking` via `season2026UncoachedFixtures()`, so such a fixture cannot leave the timelines with nothing said about it (`tests/people.test.js` "reports a team whose coaches have all declined, from ordinary roster input"). **What remains**: this lives in a bounded demonstration harness. There is no id, no persisted TIME TBD / LOCATION TBD state, `Event` and `AssignmentSchema` still require times, `scheduleGames()` still returns the same transient `unscheduled[]`, and no publication path shows TBD rows. Phase 5.
 
 <a id="gap-29"></a>
 
@@ -323,6 +393,7 @@ Current domain types referenced throughout:
 - **Example**: integrating 8 external fixtures required changes on two dates; only those dates were frozen and the solver re-optimized the rest, silently moving 366 of 679 games. After freeze support was added, the local-search and pair-repair stages still swapped four frozen games.
 - **Today**: neither `Event` nor the `scheduleGames()` assignment shape has a `frozen` flag, a freeze scope (date / division / venue / fixture), or a link to a published baseline version. There is no diff primitive, so "how many games moved" is not a question the model can answer.
 - **Needed by**: Phase 3 (freeze-aware solver, per-stage freeze tests), Phase 7 (minimal-diff objective and publication parity).
+- **Status**: **In progress — do not read this as closed.** Prompt 4.1 is being implemented in parallel and is **not merged**: `packages/core/src/freeze/` exists in the working tree, untracked and still being written, and nothing in this ledger has been checked against it. Nothing **committed** carries a `frozen` flag, a freeze scope or a link to a published baseline (a `frozen` / `freeze` / `baseline` grep over `gameScheduling.js`, `schemas/index.js` and `types.js` returns nothing, and `autoScheduler.js`'s `source === 'locked'` is the pre-existing practice lock, not a game freeze). What does exist is a diff primitive, and only inside the demonstration harness: `PlacementDiff` / `diffVsPublished` and `compareRuns()` (`placement/replaceGames.js`, `placement/types.js`) report **which specific games** moved with before-and-after coordinates rather than a count — deliberately, because incident 1 is a count that said "366" long after the damage was done. `tests/placementHarness.test.js` "reports which specific games differ, not just how many" and "refuses two runs over different games". The per-stage freeze tests and the minimal-diff objective are Prompt 4.1 and Phase 7.
 
 <a id="gap-30"></a>
 
@@ -332,6 +403,7 @@ Current domain types referenced throughout:
 - **Example**: two scheduled dates fall after the DST transition. Nothing in the corpus states a timezone — the times are local wall clock, as published to families.
 - **Today**: `SlotSchema` and `AssignmentSchema` use `z.coerce.date()`, which turns a string into an absolute instant using the _host_ timezone. `Organization.settings` is an untyped blob with no timezone field, and there is no per-venue timezone. Round-tripping a published 8:30 AM through a differently-configured machine can move it. **Loader behaviour**: emits naive local ISO strings (`2026-11-07T16:44:00`, no offset) and does all arithmetic in minutes-past-midnight, never constructing a `Date` for schedule math.
 - **Needed by**: Phase 1 (time model), and any persistence work — this one silently corrupts data rather than failing loudly.
+- **Status**: **Partial**. Every module Phases 1–3 built is `Date`-free by construction: minutes past local midnight plus ISO `YYYY-MM-DD` throughout, with `weekdayCodeOf()` doing pure civil-date arithmetic rather than constructing a `Date` (`availability/calendar.js`). This is enforced mechanically, not by convention — `tests/facilityAvailability.test.js` "imports nothing from node: and nothing from the fixture loaders" also asserts `new Date(` appears in no file of the package, and "agrees with the corpus loader about every weekday, without building a Date" cross-checks the arithmetic against the loader for every corpus date. **What remains**: `SlotSchema` and `AssignmentSchema` still use `z.coerce.date()`, `Organization.settings` still has no timezone field, there is still no per-venue timezone, and nothing on the persistence or `calendar-feed` path changed — the silent-corruption route described in [`DURATION_MIGRATION.md`](DURATION_MIGRATION.md) §5.3 is intact. Any persistence work still has to close this itself.
 
 <a id="gap-31"></a>
 
@@ -341,6 +413,7 @@ Current domain types referenced throughout:
 - **Example**: all 183 same-field, same-date 11v11 kickoff pairs are at least 120 minutes apart. That is the block driving the cadence, not the 90-minute occupancy.
 - **Today**: `GameSlot.capacity` limits how many games share a slot; nothing constrains the _spacing_ between consecutive games on one field. A solver could legally emit back-to-back 11v11 games 90 minutes apart.
 - **Needed by**: Phase 2 (slot generation from blocks rather than hand-supplied slots). Depends on GAP-11.
+- **Status**: **Partial**. The block is data and is reconciled against occupancy and turnover for every format (`FormatTiming.blockMinutes`, `blockSlackMinutes`, `GameTimingWindows.block` in `timing/`), and the corpus invariant is pinned: all 183 same-field, same-date 11v11 kickoff pairs are at least 120 minutes apart, asserted with a `pairsExamined` meta-assertion in `tests/season2026Fixture.test.js` ("spaces 11v11 kickoffs on one field by at least the format block"). The *turnover* between consecutive games — end to next start — is enforced per venue per date by `turnoverMinimumRule`. **What remains, precisely**: that 183-pair check lives in the test and not in `packages/core`; no rule or module enforces kickoff-to-kickoff **block** cadence, which is a different quantity from the turnover floor; and nothing generates slots from blocks, so a solver could still emit back-to-back 11v11 games 90 minutes apart. Phase 4.
 
 <a id="gap-32"></a>
 
@@ -350,6 +423,7 @@ Current domain types referenced throughout:
 - **Example**: 9 rec dates but 13 scheduled dates overall, with different layers active on different dates.
 - **Today**: `AssignmentSchema.weekIndex` is `z.number().positive()` and `generateRoundRobinWeeks()` emits `weekIndex: 1..n-1`. Mapping dates onto week indices erases the gaps (there is no "week 3 has no rec games"), and there is no season-calendar entity holding the actual playing dates, holidays or per-layer date sets.
 - **Needed by**: Phase 1 (season calendar), Phase 3 (the solver currently cannot express "this division does not play this week").
+- **Status**: **Partial**. Everything Phases 1–3 built is date-indexed — ISO `YYYY-MM-DD` end to end, per-date permits, sunsets, equipment windows, person-days, rule subjects and placements — and `weekIndex` appears nowhere at all in the eight modules those phases added; the only mention anywhere near the new code is the `TODO(GAP-32)` still standing in `fixtures/season2026Parsers.js`. **What remains, precisely**: (a) there is still **no season-calendar entity** — no set of playing dates, no holiday or skipped-date record, no per-layer date sets; `AvailabilityCalendar` holds permits, sunsets and lighting keyed *by* date but never states which dates the season plays on, so "09/05 and 10/10 are skipped" and "the Select layer does play 10/10" are still facts only the corpus rows carry. (b) `gameScheduling.js` is **deliberately unchanged**: `indexSlots()` still throws unless every slot carries a positive integer `weekIndex`, and `generateRoundRobinWeeks()` still emits `weekIndex: 1..n-1`. The shipping engine therefore still cannot express "this division does not play this week", and the date-indexed modules cannot be handed to it without a translation layer neither side has. Phase 4.
 
 <a id="gap-33"></a>
 
@@ -359,6 +433,7 @@ Current domain types referenced throughout:
 - **Example**: `U06B` has 12 teams — a full round robin is 11 weeks, but the season is 9 games, so each team meets 9 of its 11 opponents once. `U05B` has 8 teams — 7 opponents over 9 games, so each team plays two opponents twice. Both satisfy "opponent counts differ by at most 1".
 - **Today**: `generateRoundRobinWeeks()` produces exactly `n-1` weeks of a single round robin and assigns home/away by lexicographic sort of the two ids. It cannot target a fixed games-per-team count, cannot do a partial round robin fairly, and has no hosting-balance objective at all. `DivisionConfig` has `slotsPerWeek` but no games-per-season.
 - **Needed by**: Phase 3 (matchup generation). This is the single largest behavioural gap between the current engine and the corpus.
+- **Status**: **Partial — the validation half only.** The corpus's shape is now checkable and is checked: `roundRobinRule` reads `gamesPerTeam` from the `round-robin-completeness` record and distinguishes a division where a full round robin fits from one where it cannot (`ROUND_ROBIN_NOT_REQUIRED` — the U06B case of 12 teams in a 9-game season — while still requiring the opponent-count spread), and `homeAwayBalanceRule` reads the 4–5-of-9 range from the `home-away-balance` record; the codes are `ROUND_ROBIN_INCOMPLETE`, `ROUND_ROBIN_SPREAD_EXCEEDED`, `HOME_AWAY_OUT_OF_RANGE` and `GAMES_PLAYED_OFF_TARGET` (`ruleEngine/rules.js`). On the published season the hosting-balance rule reports **zero** violations and the only round-robin finding is the single `ROUND_ROBIN_DIVISION_UNJUDGED` for the Minis division `BB`, with coverage proving **every** division was examined; `tests/ruleEngine.test.js` "finds nothing at all wrong with the four rules the corpus README states as invariants" and "(d) one team the name change dropped" — which shows the rules failing when they should. `tests/season2026Fixture.test.js` pins the corpus facts themselves. **What remains — the entire generation half**: `generateRoundRobinWeeks()` is unchanged. It still emits exactly `n - 1` weeks, still assigns home/away by `localeCompare` of the two ids, still cannot target a games-per-team count, still cannot do a partial round robin fairly, and still has no hosting-balance objective; `DivisionConfig` still has no games-per-season. This remains the single largest behavioural gap between the shipping engine and the corpus. Phase 4 (matchup generation).
 
 <a id="gap-34"></a>
 
@@ -368,6 +443,7 @@ Current domain types referenced throughout:
 - **Example**: 4 fixtures moved, 4 unchanged. The 08/22 shift was negotiated with the _external_ league precisely so that already-published 9v9 games would not have to move — the externally-published 12:30 slot made an existing 9v9 block illegal by exactly 10 minutes (incident 3).
 - **Today**: there is no import-impact concept: no way to represent "here is a proposed external commitment, tell me what it would break and what it would cost to move", and no representation of a negotiated delta between what an external party published and what was agreed. The two files can only be compared by hand.
 - **Needed by**: Phase 7.3 (import impact analysis). Depends on GAP-18, GAP-29.
+- **Status**: **Open**. Both sides are loaded — `season.externalFixtures` from `external_fixtures_published.csv` against the `external_fixture` rows of the combined schedule — and the 4-moved / 4-unchanged delta with its 30-minute shift on 08/22 is asserted, but **by hand, in a test** (`tests/season2026Fixture.test.js` "keeps the 8 externally-published fixtures and the agreed-time delta"), which is exactly the state this gap describes. Nothing takes a *proposed* external commitment and reports what it would break or what moving it would cost, and no type carries a negotiated delta between a published and an agreed time. The nearest primitives are `whatIfConstraintType()` (`constraints/whatIf.js`), which projects a constraint retype rather than a fixture and refuses a vacuous projection (`CONSTRAINT_PROJECTION_VACUOUS`), and `tests/waiverLedger.test.js`, which uses the externally-published 12:30 kickoff as a genuine counterfactual for waiver dormancy — a precedent for the shape, not the query itself. Phase 7.3; still depends on GAP-18 and GAP-29.
 
 ---
 
