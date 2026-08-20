@@ -25,9 +25,26 @@
  *   daylight, size and lining come from Phase 1.3 through `legality.js`.
  *   Turnover floors, round-robin completeness, home/away balance and coach
  *   travel are the rule engine's; the `verify` stage reports what a change
- *   introduced and repairs none of it, because trading one soft constraint
- *   against another needs the weighted objective **Prompt 4.2** owns by name.
+ *   introduced and repairs none of it. Prompt 4.2's objective lets the placer
+ *   *prefer* a slot that breaks fewer of them; nothing here re-solves a season
+ *   to improve one.
  * - **It does not touch practices.** `autoScheduler.js` has its own locks.
+ *
+ * ## What it optimises for, since Prompt 4.2
+ *
+ * One objective, in `objective.js`, weighing **change minimisation** —
+ * `changedGame`, `driftMinute`, `changedSurface` against a reference schedule —
+ * against **quality** — `unplacedGame`, `blockingViolation`,
+ * `compromiseViolation`. `scoreObjective()` is structurally the only function in
+ * the package that multiplies a count by a weight, which is the whole reason the
+ * file is shaped the way it is: `docs/ARCHITECTURE.md` §6.10 records two fitness
+ * functions already in this repository with nothing detecting the drift between
+ * them.
+ *
+ * And **a re-solve is a dry run**. Neither entry point below can produce a
+ * committed result however it is called; `commitResolve()` is the second step,
+ * by name, and it refuses a run that breached its change budget with no override
+ * at all. See `docs/MINIMAL_DIFF.md`.
  *
  * ## Its relationship with `placement/`
  *
@@ -46,9 +63,9 @@
  * is what happens when a commitment arrives *after* the solve rather than
  * before it.
  *
- * Phase 4.1 is **in-memory only**. There is no SQL home for a freeze plan or a
- * resolve run yet and this work deliberately does not create one, consistently
- * with Phases 1-3.
+ * Phase 4 is **in-memory only**. There is no SQL home for a freeze plan, a
+ * resolve run, a dry-run report or a committed schedule, and this work
+ * deliberately does not create one, consistently with Phases 1-3.
  *
  * @module resolve
  */
@@ -93,6 +110,24 @@ export { FrozenGameUnsatisfiable, frozenGameUnsatisfiable } from './errors.js';
 export { buildSlotInventory, candidateSlotsFor } from './inventory.js';
 
 export { bookingsOn, checkPlacement } from './legality.js';
+
+export {
+  RESOLVE_CHANGE_TERMS,
+  RESOLVE_OBJECTIVE_TERM,
+  RESOLVE_OBJECTIVE_WEIGHTS,
+  RESOLVE_QUALITY_TERMS,
+  candidateObjectiveCounts,
+  changeCountsFor,
+  changeTermsDisabled,
+  objectiveCountsForSchedule,
+  resolveObjectiveWeights,
+  scoreObjective,
+  scoreSchedule,
+} from './objective.js';
+
+export { buildChangeReport } from './report.js';
+
+export { ChangeBudgetExceeded, commitResolve } from './commit.js';
 
 export { FREEZE_AUDIT_STAGE_ID, RESOLVE_STAGES, buildResolvePipeline } from './stages.js';
 

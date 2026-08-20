@@ -14,12 +14,13 @@
  *   no lookahead and no backtracking.
  *
  * That last point is a real limitation and it is intentional. The production
- * objective must be *minimal diff against the published schedule* — incident 1
- * in `fixtures/season-2026/README.md` is 366 games silently moving because
- * nothing rewarded leaving them alone — and earliest-first is the opposite of
- * that. A minimal-diff placer would also be useless here: the published schedule
- * is legal under both hardnesses, so "keep everything where it is" would report
- * no difference and demonstrate nothing.
+ * objective is *minimal diff against the published schedule* — incident 1 in
+ * `fixtures/season-2026/README.md` is 366 games silently moving because nothing
+ * rewarded leaving them alone — and earliest-first is the opposite of that. It
+ * now exists, in `packages/core/src/resolve/objective.js` (Prompt 4.2), and this
+ * harness still does not use it: a minimal-diff placer would be useless here,
+ * because the published schedule is legal under both hardnesses, so "keep
+ * everything where it is" would report no difference and demonstrate nothing.
  *
  * **The real path is `packages/core/src/resolve/` (Phase 4.1).** That package
  * re-places existing games against a freeze plan, holds everything a change

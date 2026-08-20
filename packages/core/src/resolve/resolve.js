@@ -29,6 +29,7 @@ import { runRuleEngine } from '../ruleEngine/engine.js';
 import { ScheduleSchema } from '../ruleEngine/schemas.js';
 
 import { buildSlotInventory } from './inventory.js';
+import { RESOLVE_OBJECTIVE_WEIGHTS, resolveObjectiveWeights } from './objective.js';
 import {
   RESOLVE_REASON,
   createResolveMeta,
@@ -36,6 +37,7 @@ import {
   makeResolveFinding,
   mergeResolveMeta,
 } from './reasonCodes.js';
+import { buildChangeReport } from './report.js';
 import { ScheduleChangeRequestSchema } from './schemas.js';
 import { buildResolvePipeline } from './stages.js';
 import {
@@ -104,7 +106,45 @@ export function resolvedScheduleOf(baseSchedule, state) {
   const games = state.gameIds
     .filter((gameId) => state.games[gameId] !== undefined)
     .map((gameId) => ({ ...state.games[gameId] }));
-  return /** @type {import('../ruleEngine/types.js').Schedule} */ ({ ...baseSchedule, games });
+
+  // **A commitment to a game follows the game.** The schedule carries a
+  // person-day timeline alongside the rows, and the standing rule engine's
+  // coach-conflict rule reads it rather than the games — so a resolved schedule
+  // that kept the baseline's commitments would be judged on where the coaches
+  // used to be. Every knock-on to a coach's day, which is the half of a change
+  // request nobody notices until somebody complains, would be invisible, and
+  // the run would report a clean coach column for a schedule it had just broken.
+  //
+  // A commitment whose game has no time left is **not a commitment to a time**,
+  // so it does not travel: the game itself is carried as TIME TBD with a reason
+  // (incident 10) and that is where it is reported. Commitments naming no game,
+  // or a game this run does not hold — a scrimmage, a field reservation, an
+  // external club's window — pass through untouched, because a change request
+  // cannot edit one.
+  const commitments = (baseSchedule.commitments ?? [])
+    .map((commitment) => {
+      const gameId = commitment.gameId;
+      if (typeof gameId !== 'string' || state.baseline[gameId] === undefined) return commitment;
+      const game = state.games[gameId];
+      if (game === undefined) return null;
+      const occupancy =
+        commitment.endMinutes === null ? null : commitment.endMinutes - commitment.startMinutes;
+      return {
+        ...commitment,
+        date: game.date,
+        startMinutes: game.startMinutes,
+        endMinutes: occupancy === null ? null : game.startMinutes + occupancy,
+        venueId: game.venueId,
+        surfaceId: game.surfaceId,
+      };
+    })
+    .filter((commitment) => commitment !== null);
+
+  return /** @type {import('../ruleEngine/types.js').Schedule} */ ({
+    ...baseSchedule,
+    games,
+    commitments,
+  });
 }
 
 /**
@@ -206,6 +246,19 @@ function runResolve(input) {
     );
   }
 
+  // The objective, resolved once for the whole run. Every stage that chooses a
+  // slot, the dry-run report and the change budget all read this one table.
+  const weights = resolveObjectiveWeights(input.objectiveWeights);
+  if (weights !== RESOLVE_OBJECTIVE_WEIGHTS) {
+    ledger.findings.push(
+      makeResolveFinding(
+        RESOLVE_REASON.RESOLVE_OBJECTIVE_WEIGHTS_OVERRIDDEN,
+        'this run was scored under weights the caller supplied rather than the defaults; two runs of one change request under different objectives are not comparable, so the objective travels with the report',
+        Object.fromEntries(Object.entries(weights).map(([term, weight]) => [term, weight]))
+      )
+    );
+  }
+
   let state = createResolveState({ games, dispositions, admittedSlotsByGameId, inventory, ledger });
 
   const touchedDates = input.dislodgeAll
@@ -225,7 +278,7 @@ function runResolve(input) {
     changes,
     plan,
     judgements,
-    order: input.order,
+    weights,
     dislodgeAll: input.dislodgeAll === true,
     onUnsatisfiable: input.onUnsatisfiable ?? 'throw',
     touchedDates,
@@ -316,12 +369,50 @@ function runResolve(input) {
     );
   }
 
+  // **The dry run's report, built before the run is handed back**, because a
+  // re-solve that could be read without it would be a re-solve somebody read
+  // without it. It carries the three categories, checks its own partition, and
+  // is what the change budget is measured against.
+  const resolvedSchedule = resolvedScheduleOf(baseSchedule, state);
+  const moved = diffAgainstBaseline(state);
+  const report = buildChangeReport({
+    name: input.name,
+    baselineSchedule: baseSchedule,
+    schedule: resolvedSchedule,
+    changes,
+    moved,
+    unplaced: state.unplaced,
+    moves: ledger.moves,
+    state,
+    baselineVerification: context.baselineVerification,
+    verification: context.verificationCache.get(ledger.moves.length) ?? null,
+    weights,
+    changeBudget: input.changeBudget ?? null,
+  });
+  for (const finding of report.findings) ledger.findings.push(finding);
+
+  ledger.findings.push(
+    makeResolveFinding(
+      RESOLVE_REASON.RESOLVE_DRY_RUN,
+      `this is a dry run: ${moved.length} game(s) would move, ${report.meta.movedRequested} named by the request and ${report.meta.movedConsequential} as a consequence. Nothing has been committed; commitResolve() is the second step`,
+      {
+        movedGames: moved.length,
+        movedRequested: report.meta.movedRequested,
+        movedConsequential: report.meta.movedConsequential,
+      }
+    )
+  );
+
   const findings = [...judgements.findings, ...ledger.findings];
   const meta = mergeResolveMeta(createResolveMeta(), ledger.meta);
   meta.freezeJudgements = Math.max(meta.freezeJudgements, judgements.meta.gamesJudged);
   // How many distinct (date, surface, kickoff) slots the baseline ever used —
   // the whole of what this package is allowed to offer anybody.
   meta.slotsAvailable = inventory.slotCount;
+  meta.movedGames = Number(report.meta.movedGames);
+  meta.movedRequested = Number(report.meta.movedRequested);
+  meta.movedConsequential = Number(report.meta.movedConsequential);
+  meta.movedConsequentialExplained = Number(report.meta.movedConsequentialExplained);
 
   /** @type {import('./types.js').StageResult[]} */
   const stages = pipeline.map((stage) => {
@@ -340,17 +431,25 @@ function runResolve(input) {
 
   return {
     name: input.name,
-    schedule: resolvedScheduleOf(baseSchedule, state),
+    // **Always false, from both entry points, however they are called.** There
+    // is no `commit` argument anywhere in this module; `commitResolve()` is the
+    // only function in the package that can produce a committed result, and a
+    // structural test asserts it.
+    committed: false,
+    schedule: resolvedSchedule,
     baselineSchedule: baseSchedule,
     freeze: plan,
     judgements,
     state,
-    moved: diffAgainstBaseline(state),
+    moved,
     unplaced: [...state.unplaced],
     moves: [...ledger.moves],
     stages,
     unsatisfiable: [...context.unsatisfiableErrors],
     verification: context.verificationCache.get(ledger.moves.length) ?? null,
+    objective: report.objective,
+    budget: report.budget,
+    report,
     findings,
     status: deriveResolveStatus(findings),
     meta,
@@ -387,7 +486,6 @@ export function applyChangeRequest(input) {
     name: input.name ?? 'change request',
     plan,
     changes,
-    order: 'baseline-first',
     dislodgeAll: false,
   });
 }
@@ -398,15 +496,39 @@ export function applyChangeRequest(input) {
  * This is the only function in the package that can produce a plan whose
  * default is `thawed`, and everything about the way it is reached is
  * deliberate: the name says what it does, `reason` must say why, `acknowledged`
- * must be the literal `true`, the plan it builds carries
- * `FREEZE_GLOBAL_REOPTIMISATION` at **blocking**, and the ordering it hands the
- * placer is earliest-legal-first rather than nearest-to-where-it-was.
+ * must be the literal `true`, and the plan it builds carries
+ * `FREEZE_GLOBAL_REOPTIMISATION` at **blocking**.
  *
- * The last of those is the one that matters. Under the hold rule a legal game
- * is never moved, so a "global re-optimisation" that kept the hold rule would
- * move nothing and prove nothing. This one genuinely re-solves the season the
- * way incident 1's solver did — which is what makes the number of games it
- * moves a measurement rather than a claim.
+ * ## What Prompt 4.2 changed here
+ *
+ * Until 4.2 this function handed the placer an **earliest-legal-first**
+ * ordering. That was not a policy anybody wanted; it was the absence of one.
+ * Under 4.1's hold rule a legal game was never moved, so a global re-solve that
+ * kept the hold rule would have moved nothing and proved nothing, and
+ * earliest-first was the only way to make the operation genuinely re-solve the
+ * season the way incident 1's solver did.
+ *
+ * There is now an objective, so it uses the objective — the same one
+ * `applyChangeRequest()` uses, with the same default weights. Every game still
+ * comes off the board and is placed again from scratch (`dislodgeAll`), but the
+ * objective's change terms mean each one is offered the slot it already had
+ * first. **A global re-optimisation is therefore no longer a synonym for a
+ * reshuffle**, which is the whole of what this prompt is about, and the number
+ * of games it moves is the measurement of that.
+ *
+ * The old behaviour is still reachable, by name and only by name:
+ *
+ * ```js
+ * reoptimiseWholeSeason({
+ *   …,
+ *   objectiveWeights: { changedGame: 0, driftMinute: 0, changedSurface: 0 },
+ * });
+ * ```
+ *
+ * — the objective with change minimisation switched off, which stamps
+ * `RESOLVE_OBJECTIVE_CHANGE_TERM_DISABLED` at `compromise` on the run. That is
+ * what the positive control in `tests/freezeScopes.test.js` asks for, and it is
+ * what makes "what did the freeze prevent" a measurement rather than a claim.
  *
  * @param {import('./types.js').ResolveInput} input - `reason` and `acknowledged` are required
  * @returns {import('./types.js').ResolveRun}
@@ -427,7 +549,6 @@ export function reoptimiseWholeSeason(input) {
     name: input.name ?? 'global re-optimisation',
     plan,
     changes: input.changes ?? [],
-    order: 'earliest-first',
     dislodgeAll: true,
   });
 }

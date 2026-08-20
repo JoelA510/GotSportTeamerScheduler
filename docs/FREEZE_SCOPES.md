@@ -155,6 +155,17 @@ Everything about how it is reached is deliberate:
   nothing. This one genuinely re-solves the season the way incident 1's solver
   did, which is what makes the number of games it moves a measurement.
 
+> **Superseded by Phase 4.2 on the last point only.** There is now an objective,
+> so `reoptimiseWholeSeason()` uses it — the same one a change request uses, with
+> the same default weights — and a global re-optimisation is no longer a synonym
+> for a reshuffle: on this corpus it moves 8 games rather than 311. The old
+> behaviour is reachable by name, as
+> `objectiveWeights: { changedGame: 0, driftMinute: 0, changedSurface: 0 }`, which
+> is the objective with change minimisation switched off and stamps
+> `RESOLVE_OBJECTIVE_CHANGE_TERM_DISABLED` at `compromise`. That is what the
+> positive control below now asks for, and it reproduces 4.1's 311/275 exactly.
+> See [`MINIMAL_DIFF.md`](MINIMAL_DIFF.md).
+
 ---
 
 ## 4. The eight stages, and the contract each one signs
@@ -258,7 +269,10 @@ visible with a reason (incident 10), nothing raised.
   round-robin completeness, home/away balance and coach travel are the rule
   engine's; the `verify` stage reports what a change _introduced_ and repairs
   none of it, because trading one soft constraint against another needs the
-  weighted objective **Prompt 4.2** owns by name.
+  weighted objective **Prompt 4.2** owns by name. (4.2 has landed and the
+  statement still holds: the objective's quality terms let the placer *prefer* a
+  slot that breaks fewer of them, and nothing re-solves a season to improve one.
+  See [`MINIMAL_DIFF.md`](MINIMAL_DIFF.md) §6.)
 - **Blame the change request for what the schedule already carried.** Both
   halves of that are derived, not assumed. `baseline-ingest` records the
   blocking codes every game arrives with, so the four `Scrimmage` rows with no
@@ -306,7 +320,8 @@ moved" would be trivially true.
 | Games elsewhere in the season            | 606, every one byte-for-byte where families had it                                                                 |
 | Games moved                              | the two 10:30 fixtures, both named by the request                                                                  |
 | The 12:30 pair                           | displaced to **12:00** — the nearest kickoff the schedule already used, which is what the club actually negotiated |
-| Same scenario, `reoptimiseWholeSeason()` | **275** games moved outside those dates (311 in total)                                                             |
+| Same scenario, `reoptimiseWholeSeason()` with the change terms at zero | **275** games moved outside those dates (311 in total)                                        |
+| Same scenario, `reoptimiseWholeSeason()` under the objective's defaults (4.2) | **8** in total, none of them outside those dates                                       |
 
 The positive control is the most important assertion in the file. "Zero moved"
 proves the freeze works only if the alternative would have moved something. The

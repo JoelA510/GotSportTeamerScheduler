@@ -45,6 +45,9 @@
  * @property {'relocate'|'dislodge'|'time-tbd'} kind
  * @property {Slot|null} to - null for `dislodge` and `time-tbd`
  * @property {string} reason
+ * @property {Record<string, unknown>} [cause] - why, in machine-readable form,
+ *   from the machinery that decided. Omitted by a move that inherits its reason
+ *   from an earlier one
  */
 
 /**
@@ -57,7 +60,11 @@
  * @property {string} kind
  * @property {Slot|null} from
  * @property {Slot|null} to
- * @property {string} reason
+ * @property {string} reason - a sentence for a human; never parsed
+ * @property {Record<string, unknown>|null} cause - machine-readable: which
+ *   reason codes, which registry constraints, which other games, which binding
+ *   edge and how many minutes short. `report.js` reads this to name what forced
+ *   a consequential move
  */
 
 /**
@@ -152,6 +159,12 @@
  * @property {ReadonlyArray<Object>} [extraStages] - inserted before `freeze-audit`
  * @property {Object|null} [baselineVerification] - a `runRuleEngine()` result over the baseline
  * @property {boolean} [verify] - false skips the rule-engine pass
+ * @property {Record<string, number>} [objectiveWeights] - overrides for
+ *   `RESOLVE_OBJECTIVE_WEIGHTS`; an unknown term is refused rather than ignored
+ * @property {number|null} [changeBudget] - a hard cap on **moved games**,
+ *   requested and consequential together. Exceeding it is
+ *   `RESOLVE_CHANGE_BUDGET_EXCEEDED` at blocking and a refusal at
+ *   `commitResolve()`, never a silent large diff
  * @property {string} [name]
  * @property {string} [reason] - `reoptimiseWholeSeason()` only, and required there
  * @property {true} [acknowledged] - `reoptimiseWholeSeason()` only, and required there
@@ -160,10 +173,95 @@
  */
 
 /**
+ * One requested change and what became of it — category (a) of the report.
+ *
+ * Enumerated from the **change request**, so a change that did not happen is
+ * still in the list. "We ignored four of your eight fixtures" is the most
+ * useful line a report can carry and a list built from what moved cannot
+ * contain it.
+ *
+ * @typedef {Object} RequestedChange
+ * @property {string} gameId
+ * @property {string|null} label
+ * @property {string|null} disposition
+ * @property {string|null} requestedSlot
+ * @property {string|null} before
+ * @property {string|null} after
+ * @property {string} outcome - `applied` | `displaced` | `refused` | `no-op` | `unplaced` | `unknown-game`
+ * @property {boolean} moved
+ * @property {string[]} personIds - whose day this is
+ */
+
+/**
+ * One game that moved because something else did — **category (b), the one the
+ * build plan says nobody notices until families complain**.
+ *
+ * Every field naming a cause is consumed from the move ledger, which the
+ * deciding stage filled in from `checkPlacement()` (Phase 1.3 + the Phase 2.1
+ * registry). A consequential move with `causeKind: null` is a bug and is
+ * reported at blocking.
+ *
+ * @typedef {Object} ConsequentialChange
+ * @property {string} gameId
+ * @property {string} label
+ * @property {string} disposition
+ * @property {string} before
+ * @property {string|null} after - null when it ended with no time at all
+ * @property {string[]} changedFields
+ * @property {string|null} causeKind - `constraint` | `global-reoptimisation`
+ * @property {string|null} codes - the reason codes that forced it
+ * @property {string|null} constraintId - the registry constraint, primary
+ * @property {string[]} constraintIds
+ * @property {string[]} counterpartGameIds - the specific games it clashed with
+ * @property {string[]} bindingKinds - Phase 1.3's tightest edge
+ * @property {number|null} slackMinutes - by how much it missed
+ * @property {string|null} forcedByStageId
+ * @property {string|null} reason
+ * @property {string[]} personIds - whose day this is
+ */
+
+/**
+ * The dry-run report: what would change, before anything is committed.
+ *
+ * @typedef {Object} ChangeReport
+ * @property {string} name
+ * @property {true} dryRun
+ * @property {RequestedChange[]} requested - (a)
+ * @property {ConsequentialChange[]} consequential - (b)
+ * @property {Object} quality - (c) violations by code and by severity, before and after
+ * @property {Object} objective - the weights, the two scores and the delta
+ * @property {{ limit: number|null, moved: number, requested: number, consequential: number, withinBudget: boolean, blockingConstraintIds: string[] }} budget
+ * @property {Array<{ gameId: string, reason: string }>} unplaced
+ * @property {Record<string, number|boolean>} meta
+ * @property {import('../freeze/types.js').FreezeFinding[]} findings
+ */
+
+/**
+ * A committed re-solve: the one thing in the package `committed: true` can come
+ * from, and only through `commitResolve()`.
+ *
+ * @typedef {Object} CommittedResolve
+ * @property {true} committed
+ * @property {string} name
+ * @property {import('../ruleEngine/types.js').Schedule} schedule
+ * @property {import('../ruleEngine/types.js').Schedule} baselineSchedule
+ * @property {ScheduleChange[]} moved
+ * @property {Array<{ gameId: string, reason: string }>} unplaced
+ * @property {ChangeReport} report
+ * @property {ReadonlyArray<string>} acceptedFindingCodes
+ * @property {string|null} committedBy
+ * @property {ResolveRun} run
+ */
+
+/**
  * The whole answer.
  *
  * @typedef {Object} ResolveRun
  * @property {string} name
+ * @property {false} committed - always. `commitResolve()` is the second step
+ * @property {ChangeReport} report - the dry run, categories (a), (b) and (c)
+ * @property {Object} objective - the weights this run was scored under and what it scored
+ * @property {{ limit: number|null, moved: number, requested: number, consequential: number, withinBudget: boolean, blockingConstraintIds: string[] }} budget
  * @property {import('../ruleEngine/types.js').Schedule} schedule - the resolved schedule
  * @property {import('../ruleEngine/types.js').Schedule} baselineSchedule
  * @property {import('../freeze/types.js').FreezePlan} freeze
@@ -205,6 +303,7 @@
  * @property {number} movesApplied
  * @property {number} candidatesEvaluated
  * @property {number} candidatesRejected
+ * @property {number} candidatesScored - survived legality and went to the objective
  * @property {number} conflictsExamined
  * @property {number} gamesDislodged
  * @property {number} gamesReplaced
@@ -214,6 +313,10 @@
  * @property {number} rulesExercised
  * @property {number} constraintsConsulted
  * @property {number} slotsAvailable
+ * @property {number} movedGames
+ * @property {number} movedRequested
+ * @property {number} movedConsequential
+ * @property {number} movedConsequentialExplained - of which named what forced them
  */
 
 export {};
