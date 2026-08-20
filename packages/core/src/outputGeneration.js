@@ -17,6 +17,24 @@ const HEADERS = {
 const MASTER_HEADERS = Object.values(HEADERS);
 
 /**
+ * The export column vocabulary, published so other modules can emit rows this
+ * function would accept without keeping a second copy of the header names.
+ *
+ * Added for `packages/core/src/reserve/publication.js`, which projects reserved
+ * slots and TIME TBD fixtures into these columns. `generateScheduleExports()`
+ * below now builds its header list from the same constant rather than repeating
+ * it, so the two sides cannot drift into two spellings of the same column — the
+ * only behavioural change here, and it produces an identical list.
+ */
+export const SCHEDULE_EXPORT_HEADERS = Object.freeze({
+  ...HEADERS,
+  ASSISTANT_COACHES: 'Assistant Coaches',
+});
+
+/** The master export's columns, in order. */
+export const SCHEDULE_EXPORT_COLUMNS = Object.freeze([...MASTER_HEADERS, 'Assistant Coaches']);
+
+/**
  * Generate flattened schedule exports for practices and games.
  *
  * @param {Object} params
@@ -145,7 +163,7 @@ export function generateScheduleExports({
     rows.sort(compareRows);
   }
 
-  const headers = [...MASTER_HEADERS, 'Assistant Coaches']; // Add new header dynamically
+  const headers = [...SCHEDULE_EXPORT_COLUMNS];
 
   return {
     master: {
