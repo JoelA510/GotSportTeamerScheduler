@@ -384,6 +384,28 @@ describe('season-2026 corpus :: coach coverage', () => {
     expect(nonRec.length).toBeGreaterThan(0);
   });
 
+  it('keeps unknown-footprint rows on the timeline instead of dropping them', () => {
+    // Incident 5, guarded at the seam where it reappeared: the loader used to
+    // skip `durationMinutes === null`, and the corpus's only such rows are its
+    // scrimmages — so the skip made exactly the evening commitments the
+    // incident is about invisible to every consumer of this timeline.
+    const scrimmages = season.combinedGames.filter(
+      (game) => game.kind === SEASON_2026_ROW_KIND.SCRIMMAGE
+    );
+    expect(scrimmages.length).toBeGreaterThan(0);
+    for (const game of scrimmages) expect(game.durationMinutes).toBeNull();
+
+    const entries = [...season.coachTimelines.values()].flat();
+    const unknownFootprint = entries.filter((entry) => entry.endMinutes === null);
+    expect(unknownFootprint.length).toBeGreaterThan(0);
+    // Every one of them is a scrimmage row, and every scrimmage row with a
+    // rostered side is represented.
+    for (const entry of unknownFootprint) {
+      expect(entry.game.kind).toBe(SEASON_2026_ROW_KIND.SCRIMMAGE);
+    }
+    expect(new Set(unknownFootprint.map((entry) => entry.gameId)).size).toBe(scrimmages.length);
+  });
+
   it('has exactly 3 single-coach rec games, at most 1 per team', () => {
     expect(singleCoach).toHaveLength(3);
     expect(new Set(singleCoach.map((entry) => entry.gameId)).size).toBe(3);

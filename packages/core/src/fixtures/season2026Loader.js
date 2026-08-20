@@ -309,9 +309,22 @@ export function buildPeople(assignments) {
  * the rec layer only, so the timeline is deliberately assembled from the
  * combined schedule.
  *
+ * **A row of unknown footprint is still a commitment.** This function used to
+ * skip `durationMinutes === null` rows, which — since the corpus's only
+ * unknown-footprint rows are its four `Scrimmage` entries — reproduced incident
+ * 5 inside our own loader: every consumer of this timeline, the rule engine
+ * included, was blind to exactly the evening commitments the incident is about.
+ * They are now carried with `endMinutes: null` (GAP-14 stays representable) and
+ * every downstream check says so out loud: `evaluateCoachTravel()` reports
+ * `TRAVEL_FOOTPRINT_UNKNOWN` for a transition out of one, and
+ * `people/timeline.js` reports `COMMITMENT_FOOTPRINT_UNKNOWN` for the day
+ * around it. A commitment of unknown length is a commitment somebody has to be
+ * at; dropping it is how an evening disappears from a coach's day.
+ *
  * TODO(GAP-19): the domain model has no per-person commitment timeline;
  * `checkCoachConflict()` re-derives conflicts from `team.coachId` on the fly and
- * only ever considers one coach per team.
+ * only ever considers one coach per team. `packages/core/src/people/` (Prompt
+ * 3.1) is the domain-side answer; this stays the fixture-side one.
  *
  * @param {import('./season2026Parsers.js').Season2026Game[]} games
  * @param {Array<Object>} teams
@@ -324,7 +337,6 @@ export function buildCoachTimelines(games, teams) {
   const timelines = new Map();
 
   for (const game of games) {
-    if (game.durationMinutes === null) continue; // TODO(GAP-14): unknown footprint.
     for (const teamId of [game.homeTeamId, game.awayTeamId]) {
       if (!teamId) continue;
       for (const personKey of coachesByTeam.get(teamId) ?? []) {
@@ -391,8 +403,14 @@ export function findSingleCoachGames(recGames, timelines, teams) {
           (entry) =>
             entry.teamId !== teamId &&
             entry.date === game.date &&
+            // Explicit, not incidental: the timeline now carries rows of
+            // unknown footprint, and `null > n` happens to be false. An
+            // overlap that cannot be measured is not an overlap that did not
+            // happen, so it is skipped here and reported by the modules that
+            // own that distinction.
+            entry.endMinutes !== null &&
             entry.startMinutes < /** @type {number} */ (game.endMinutes) &&
-            /** @type {number} */ (entry.endMinutes) > game.kickoffMinutes
+            entry.endMinutes > game.kickoffMinutes
         );
         if (clash) {
           conflictedCoaches.push(personKey);
