@@ -221,6 +221,21 @@ export function unplacedFromPlacementRun(run, options = {}) {
 /**
  * Reconcile what must exist against what a run produced.
  *
+ * **`accounted` counts expected fixtures, not claims about them.** A fixture a
+ * run reports as both placed and unplaced is `FIXTURE_DOUBLE_COUNTED` at
+ * `blocking`, and it is counted **once** here: adding it to both totals made
+ * `accounted` exceed `expected` while `missing` stayed at zero, so a
+ * disagreement the reconciler had just reported also inflated the total it was
+ * reconciling. `placed` and `unplaced` still report each source's own claim,
+ * because that is what each source said; `doubleCounted` names the overlap, and
+ * `accounted + missing === expected` always.
+ *
+ * All three inputs are required. `expectedFixtureIds` is required for the
+ * reason on this module's header; the other two are required because a
+ * reconciliation handed one list and not the other is not a reconciliation, and
+ * a missing `placedFixtureIds` would otherwise crash on a property read rather
+ * than say what was wrong.
+ *
  * @param {{ expectedFixtureIds: ReadonlyArray<string>, placedFixtureIds: ReadonlyArray<string>, unplaced: ReadonlyArray<import('./types.js').UnplacedFixture>, expectedSource?: string }} input
  * @returns {import('./types.js').FixtureAccounting}
  */
@@ -228,6 +243,16 @@ export function accountForFixtures(input) {
   if (!input || !Array.isArray(input.expectedFixtureIds)) {
     throw new Error(
       'reserve: accountForFixtures needs expectedFixtureIds — derived from the roster or the baseline, never from the run, because a dropped fixture is exactly what is missing from the run'
+    );
+  }
+  if (!Array.isArray(input.placedFixtureIds)) {
+    throw new Error(
+      'reserve: accountForFixtures needs placedFixtureIds — an absent list is not an empty one, and reconciling against a list nobody supplied would report every expected fixture dropped'
+    );
+  }
+  if (!Array.isArray(input.unplaced)) {
+    throw new Error(
+      'reserve: accountForFixtures needs unplaced — an absent list is not an empty one, and reconciling against a list nobody supplied would report every TIME TBD fixture dropped'
     );
   }
   const meta = createReserveMeta();
@@ -241,11 +266,14 @@ export function accountForFixtures(input) {
 
   /** @type {string[]} */
   const missing = [];
+  /** @type {string[]} */
+  const doubleCounted = [];
   for (const fixtureId of expected) {
     meta.fixturesAccountedFor += 1;
     const isPlaced = placed.has(fixtureId);
     const isUnplaced = unplacedById.has(fixtureId);
     if (isPlaced && isUnplaced) {
+      doubleCounted.push(fixtureId);
       findings.push(
         makeReserveFinding(
           RESERVE_REASON.FIXTURE_DOUBLE_COUNTED,
@@ -318,13 +346,19 @@ export function accountForFixtures(input) {
   return {
     totals: {
       expected: expected.length,
+      // Each source's own claim, kept whole: the two lists are what was said,
+      // and `doubleCounted` is where they disagree.
       placed: placedExpected.length,
       unplaced: unplacedExpected.length,
-      accounted: placedExpected.length + unplacedExpected.length,
+      doubleCounted: doubleCounted.length,
+      // Expected fixtures the run said *something* about — each counted once,
+      // so this and `missing` partition `expected` exactly.
+      accounted: placedExpected.length + unplacedExpected.length - doubleCounted.length,
       missing: missing.length,
     },
     placedFixtureIds: placedExpected,
     unplacedFixtureIds: unplacedExpected,
+    doubleCountedFixtureIds: doubleCounted,
     missingFixtureIds: missing,
     findings,
     status: deriveReserveStatus(findings),

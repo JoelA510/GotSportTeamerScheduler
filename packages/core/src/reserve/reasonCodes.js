@@ -340,8 +340,28 @@ export const RESERVE_REASON = Object.freeze({
    * `blocking`. The model claims to describe the ground the club actually books;
    * a published reservation it cannot account for means the model is wrong, and
    * a capacity number from a wrong model is worse than none.
+   *
+   * This is the **time** half of that guarantee. Its space half is
+   * {@link RESERVE_REASON.RESERVED_SLOT_UNCOVERED}.
    */
   RESERVED_SLOT_OFF_GRID: 'RESERVED_SLOT_OFF_GRID',
+  /**
+   * A reserved slot of the report's format stands on a surface, or on a date,
+   * the report does not cover.
+   *
+   * `blocking`, and the space half of {@link RESERVE_REASON.RESERVED_SLOT_OFF_GRID}.
+   * A slot outside the reported surfaces was previously filtered out before any
+   * count or check saw it, so an eleventh reservation on ground the report does
+   * not cover left the date reading `reserved: 10, atCap: true` rather than over
+   * its cap. A commitment that vanishes from every total without a word is how a
+   * team loses a game (incident 10), whichever axis it vanishes along.
+   *
+   * A slot on a date the report *does* cover is still counted against that
+   * date's cap, because the cap is a rule about how many games a day carries and
+   * not about where they stand; one on a date the report does not cover has no
+   * row to be counted on, and its finding says so in `countedOnDate`.
+   */
+  RESERVED_SLOT_UNCOVERED: 'RESERVED_SLOT_UNCOVERED',
   /** The capacity report examined zero dates, zero surfaces or generated zero slots. `blocking`. */
   RESERVE_CAPACITY_VACUOUS: 'RESERVE_CAPACITY_VACUOUS',
   /** A date's slot count is bounded by named availability constraints. Provenance. */
@@ -387,6 +407,7 @@ export const RESERVE_REASON_SEVERITY = Object.freeze({
   [RESERVE_REASON.RESERVE_CAP_REACHED]: RESERVE_SEVERITY.INFO,
   [RESERVE_REASON.RESERVE_CAP_EXCEEDED]: RESERVE_SEVERITY.BLOCKING,
   [RESERVE_REASON.RESERVED_SLOT_OFF_GRID]: RESERVE_SEVERITY.BLOCKING,
+  [RESERVE_REASON.RESERVED_SLOT_UNCOVERED]: RESERVE_SEVERITY.BLOCKING,
   [RESERVE_REASON.RESERVE_CAPACITY_VACUOUS]: RESERVE_SEVERITY.BLOCKING,
   [RESERVE_REASON.RESERVE_CAPACITY_BOUND]: RESERVE_SEVERITY.INFO,
 });
@@ -470,6 +491,21 @@ export function createReserveMeta() {
     candidatesTested: 0,
     /** Candidates that survived and became slots. */
     slotsGenerated: 0,
+    /**
+     * Reserved slots of some *other* format than the one the report counts.
+     *
+     * Not a defect — the report's format is its stated subject, and the corpus's
+     * `Scrimmage` reservation is held ground rather than a game of it — but a
+     * number rather than a silence, so the exclusion is visible in the same
+     * reconciliation as the rest.
+     */
+    slotsOtherFormat: 0,
+    /**
+     * Reserved slots of the report's format standing on a surface or a date the
+     * report does not cover. Never above zero on a report that covers its own
+     * reservations.
+     */
+    reservedSlotsUncovered: 0,
     /** Reserved slots matched to a generated slot. */
     reservedSlotsMatched: 0,
     /** Reserved slots the model could not account for. Never above zero. */

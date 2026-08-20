@@ -1862,6 +1862,326 @@ describe('the pre-PR review :: a session is not an assignment', () => {
 });
 
 /* -------------------------------------------------------------------------- */
+/* The three defects the /code-review pass found                               */
+/* -------------------------------------------------------------------------- */
+
+describe('the code review :: a reservation the report does not cover is reconciled, not dropped', () => {
+  // DEFECT 1. `inScope` filtered reserved slots on `surfaceIds` and nothing
+  // reconciled the remainder, so `RESERVED_SLOT_OFF_GRID` caught a reservation
+  // misplaced in *time* and nothing at all caught one misplaced in *space*: a
+  // slot standing on ground the report does not cover fell out of every count
+  // and every check. A commitment that disappears without a word is incident 10
+  // in one line.
+  const strandedDate = '2026-10-10';
+  const brookside = season2026SurfaceId('Brookside Park', 'Upper 1');
+
+  /**
+   * Constructed, in the corpus's own row shape: an eleventh league placeholder
+   * on a date the report covers, of the report's own format, standing on
+   * Brookside ground the report's surface universe does not include.
+   *
+   * Brookside on purpose. It is 9v9/7v7 ground at a venue with no overlap pairs
+   * at all, so this row can block no condition anywhere — the only thing it can
+   * change is the reconciliation, which is what is under test.
+   */
+  const stranded = {
+    id: 'constructed#brookside-placeholder',
+    kind: SEASON_2026_KIND.LEAGUE_PLACEHOLDER,
+    date: strandedDate,
+    venue: 'Brookside Park',
+    field: 'Upper 1',
+    kickoffMinutes: 600,
+    endMinutes: 690,
+    format: SEASON_2026_RESERVE_FORMAT,
+    division: 'Select',
+    homeLabel: 'Select Game 101',
+    awayLabel: '-',
+  };
+
+  const strandedInput = season2026ReserveCapacityInput(
+    { ...season, combinedGames: [...season.combinedGames, stranded] },
+    { graph, table }
+  );
+  const strandedReport = buildReserveCapacityReport(
+    { graph, table, calendar, registry },
+    strandedInput
+  );
+
+  it('really is out of the report — the premise, checked rather than assumed', () => {
+    expect(strandedInput.surfaceIds).not.toContain(brookside);
+    expect(strandedInput.surfaceIds).toEqual(capacityInput.surfaceIds);
+    expect(strandedInput.dates).toEqual(capacityInput.dates);
+    expect(strandedInput.reservedSlots.some((slot) => slot.id === stranded.id)).toBe(true);
+  });
+
+  it('counts it against the external cap and names the ground the report does not cover', () => {
+    const dateRow = /** @type {Object} */ (
+      strandedReport.dates.find((row) => row.date === strandedDate)
+    );
+    expect(dateRow.reserved).toBe(SEASON_2026_LEAGUE_CAP_PER_DATE + 1);
+    expect(dateRow.overCap).toBe(true);
+    expect(dateRow.atCap).toBe(false);
+
+    const codes = observe(strandedReport.findings).map((finding) => finding.code);
+    expect(codes).toContain(RESERVE_REASON.RESERVE_CAP_EXCEEDED);
+    expect(codes).toContain(RESERVE_REASON.RESERVED_SLOT_UNCOVERED);
+    const uncovered = strandedReport.findings.filter(
+      (finding) => finding.code === RESERVE_REASON.RESERVED_SLOT_UNCOVERED
+    );
+    expect(uncovered).toHaveLength(1);
+    expect(/** @type {Object} */ (uncovered[0]).details.slotId).toBe(stranded.id);
+    expect(/** @type {Object} */ (uncovered[0]).details.surfaceCovered).toBe(false);
+    expect(/** @type {Object} */ (uncovered[0]).details.dateCovered).toBe(true);
+    expect(/** @type {Object} */ (uncovered[0]).details.countedOnDate).toBe(true);
+    expect(uncovered[0].severity).toBe(RESERVE_SEVERITY.BLOCKING);
+    expect(strandedReport.status).toBe(RESERVE_STATUS.REJECTED);
+  });
+
+  it('reports a reservation on a date it does not cover, and says it counted nowhere', () => {
+    const oneDate = capacityInput.dates[0];
+    const narrowed = buildReserveCapacityReport(
+      { graph, table, calendar, registry },
+      { ...capacityInput, dates: [oneDate] }
+    );
+    const offDate = observe(narrowed.findings).filter(
+      (finding) => finding.code === RESERVE_REASON.RESERVED_SLOT_UNCOVERED
+    );
+    // Ninety of the hundred stand on dates this narrowed report does not cover.
+    expect(offDate).toHaveLength(90);
+    expect(offDate.every((finding) => finding.details.dateCovered === false)).toBe(true);
+    expect(offDate.every((finding) => finding.details.countedOnDate === false)).toBe(true);
+    expect(narrowed.dates).toHaveLength(1);
+    expect(/** @type {Object} */ (narrowed.dates[0]).reserved).toBe(
+      SEASON_2026_LEAGUE_CAP_PER_DATE
+    );
+  });
+
+  it('reconciles every reserved slot it was handed — the meta-assertion, with the identity', () => {
+    // Every slot given is in exactly one of four buckets: another format (the
+    // report's stated subject), uncovered ground or an uncovered date, matched
+    // to a generated slot, or off the grid. A slot in none of them is the
+    // silence this defect was.
+    const balances = (meta) =>
+      meta.slotsOtherFormat +
+      meta.reservedSlotsUncovered +
+      meta.reservedSlotsMatched +
+      meta.reservedSlotsOffGrid;
+
+    expect(report.meta.slotsExamined).toBe(slots.length);
+    expect(report.meta.slotsExamined).toBe(101);
+    // The corpus's own remainder: the single `Scrimmage` reservation, which is
+    // held ground rather than a game of the format this report counts.
+    expect(report.meta.slotsOtherFormat).toBe(1);
+    expect(report.meta.reservedSlotsUncovered).toBe(0);
+    expect(balances(report.meta)).toBe(report.meta.slotsExamined);
+
+    // …and it balances where the remainder is not zero, which is what makes the
+    // identity worth asserting.
+    expect(strandedReport.meta.reservedSlotsUncovered).toBe(1);
+    expect(strandedReport.meta.reservedSlotsMatched).toBe(100);
+    expect(balances(strandedReport.meta)).toBe(strandedReport.meta.slotsExamined);
+  });
+
+  it('moves no other corpus figure', () => {
+    expect(strandedReport.minSlots).toBe(report.minSlots);
+    expect(strandedReport.maxSlots).toBe(report.maxSlots);
+    for (const dateRow of strandedReport.dates) {
+      const control = /** @type {Object} */ (report.dates.find((row) => row.date === dateRow.date));
+      expect(dateRow.slots).toBe(control.slots);
+      expect(dateRow.available).toBe(control.available);
+      if (dateRow.date !== strandedDate) expect(dateRow.reserved).toBe(control.reserved);
+    }
+  });
+});
+
+describe('the code review :: held ground whose condition fails is blocking, from the production path', () => {
+  // DEFECT 2. `RESERVED_SLOT_CONDITION_BLOCKED` fired only on `{ reserved: true }`
+  // and `capacity.js` never passed it, so the code was declared, severity-tabled,
+  // documented — and unreachable from anything but a test. Held ground whose
+  // condition has failed is exactly the case that should block; that is what
+  // holding the ground means.
+  const pitch3 = season2026SurfaceId('Alder Park', 'Pitch 3');
+  const pitch4 = season2026SurfaceId('Alder Park', 'Pitch 4');
+  const heldDate = '2026-10-10';
+  const heldKickoff = 10 * 60;
+
+  /** Where the corpus's reserved slots actually stand, from the slots. */
+  const reservedPositions = new Set(
+    slots
+      .filter((slot) => slot.format === SEASON_2026_RESERVE_FORMAT)
+      .map((slot) => `${slot.date}|${slot.surfaceId}|${slot.startMinutes}`)
+  );
+
+  it('states plainly that the corpus produces no such case', () => {
+    // The honest finding, asserted rather than assumed: the corpus's 26 blocked
+    // conditional candidates are all on Alder Pitch 2, where the club reserved
+    // nothing, and the only rows standing on Pitch 3's overlapping neighbours
+    // (Pitch 4 and its halves) fall on two August dates the reserve season does
+    // not reach. So no reserved slot in this corpus has a condition that fails:
+    // the code is reachable in principle, and exercised by the constructed case
+    // below rather than by the corpus.
+    expect(reservedPositions.size).toBe(100);
+    const blocked = report.findings.filter(
+      (finding) => finding.code === RESERVE_REASON.SLOT_CONDITION_BLOCKED
+    );
+    // The check has subjects — without this it would pass on an empty set.
+    expect(blocked.length).toBeGreaterThan(0);
+    expect(
+      blocked.filter((finding) => reservedPositions.has(String(finding.details.slotId)))
+    ).toHaveLength(0);
+    expect(
+      report.findings.some(
+        (finding) => finding.code === RESERVE_REASON.RESERVED_SLOT_CONDITION_BLOCKED
+      )
+    ).toBe(false);
+    const onPitch4 = season.combinedGames.filter(
+      (row) => row.venue === 'Alder Park' && String(row.field).startsWith('Pitch 4')
+    );
+    expect(onPitch4.length).toBeGreaterThan(0);
+    expect([...new Set(onPitch4.map((row) => row.date))].sort()).toEqual([
+      '2026-08-22',
+      '2026-08-29',
+    ]);
+    for (const row of onPitch4) expect(capacityInput.dates).not.toContain(row.date);
+  });
+
+  /**
+   * Constructed: ground held on Alder Pitch 4, which physically overlaps
+   * Pitch 3, across a kickoff the club has an 11v11 slot reserved on.
+   *
+   * A `Scrimmage` like the corpus's own reservation, so it is none of the
+   * report's reserved slots and can move no slot or reserved count; it carries
+   * an end, so the overlap is measurable and the verdict is `blocked` rather
+   * than `undecidable`.
+   */
+  const heldGround = {
+    id: 'constructed#alder-pitch-4-reservation',
+    kind: SEASON_2026_KIND.RESERVATION,
+    date: heldDate,
+    venue: 'Alder Park',
+    field: 'Pitch 4',
+    kickoffMinutes: heldKickoff,
+    endMinutes: heldKickoff + 90,
+    format: 'Scrimmage',
+    division: 'Select',
+    homeLabel: 'Scrimmage - teams TBD',
+    awayLabel: '-',
+  };
+  const heldInput = season2026ReserveCapacityInput(
+    { ...season, combinedGames: [...season.combinedGames, heldGround] },
+    { graph, table }
+  );
+  const heldReport = buildReserveCapacityReport({ graph, table, calendar, registry }, heldInput);
+
+  it('fires the blocking code through buildReserveCapacityReport, not only a direct call', () => {
+    const candidateId = `${heldDate}|${pitch3}|${heldKickoff}`;
+    // The premise: that candidate really is ground the club reserved.
+    expect(reservedPositions.has(candidateId)).toBe(true);
+    expect(heldInput.surfaceIds).not.toContain(pitch4);
+
+    const fired = observe(heldReport.findings).filter(
+      (finding) => finding.code === RESERVE_REASON.RESERVED_SLOT_CONDITION_BLOCKED
+    );
+    expect(fired).toHaveLength(1);
+    expect(/** @type {Object} */ (fired[0]).details.slotId).toBe(candidateId);
+    expect(/** @type {Object} */ (fired[0]).details.blockingBookingIds).toEqual([heldGround.id]);
+    expect(fired[0].severity).toBe(RESERVE_SEVERITY.BLOCKING);
+    expect(heldReport.status).toBe(RESERVE_STATUS.REJECTED);
+  });
+
+  it('leaves an unreserved candidate at info — the same block, judged by who holds it', () => {
+    // The control that makes the escalation falsifiable: the corpus's 26 Pitch 2
+    // blocks are candidates nobody reserved and stay `info` in the very same
+    // report. A fix that simply marked every candidate reserved would fail here.
+    const stillInfo = heldReport.findings.filter(
+      (finding) => finding.code === RESERVE_REASON.SLOT_CONDITION_BLOCKED
+    );
+    expect(stillInfo).toHaveLength(26);
+    expect(stillInfo.every((finding) => finding.severity === RESERVE_SEVERITY.INFO)).toBe(true);
+    expect(
+      stillInfo.every((finding) => !reservedPositions.has(String(finding.details.slotId)))
+    ).toBe(true);
+    // The counts and the findings stay two views of one evaluation: 27 blocked
+    // verdicts, 26 reported at `info` and one at `blocking`.
+    const judged = heldReport.dates.reduce((total, dateRow) => total + dateRow.conditionBlocked, 0);
+    expect(judged).toBe(27);
+    expect(stillInfo.length + 1).toBe(judged);
+  });
+
+  it('moves the slot and reserved counts not at all, and `available` by exactly one', () => {
+    const control = /** @type {Object} */ (report.dates.find((row) => row.date === heldDate));
+    const held = /** @type {Object} */ (heldReport.dates.find((row) => row.date === heldDate));
+    expect(held.slots).toBe(control.slots);
+    expect(held.reserved).toBe(control.reserved);
+    expect(held.conditionBlocked).toBe(control.conditionBlocked + 1);
+    expect(held.available).toBe(control.available - 1);
+    expect(heldReport.meta.reservedSlotsMatched).toBe(100);
+    expect(heldReport.meta.reservedSlotsOffGrid).toBe(0);
+  });
+});
+
+describe('the code review :: fixture accounting totals that cannot both be right', () => {
+  // DEFECT 3. A fixture reported both placed and unplaced was counted in both
+  // `placed` and `unplaced`, so `accounted` exceeded `expected` while `missing`
+  // stayed 0 — a total inflated by the very disagreement the finding reports.
+  // And `placedFixtureIds` / `unplaced` were unguarded where `expectedFixtureIds`
+  // was guarded, in the same function.
+  const unplacedFixture = (fixtureId) =>
+    makeUnplacedFixture({ fixtureId, label: `${fixtureId} v control`, reason: 'nowhere to go' });
+
+  it('counts a double-counted fixture once and names it', () => {
+    const both = accountForFixtures({
+      expectedFixtureIds: ['constructed-a', 'constructed-b', 'constructed-c'],
+      placedFixtureIds: ['constructed-a', 'constructed-b'],
+      unplaced: [unplacedFixture('constructed-b')],
+    });
+    expect(observe(both.findings).map((finding) => finding.code)).toContain(
+      RESERVE_REASON.FIXTURE_DOUBLE_COUNTED
+    );
+    // The defect, first: `accounted` counted the disputed fixture twice, so it
+    // exceeded `expected` while `missing` still named the one genuinely absent.
+    expect(both.totals.expected).toBe(3);
+    expect(both.totals.accounted).toBe(2);
+    expect(both.totals.missing).toBe(1);
+    expect(both.totals.accounted + both.totals.missing).toBe(both.totals.expected);
+    expect(both.missingFixtureIds).toEqual(['constructed-c']);
+    // Both source lists are still reported as each source stated them…
+    expect(both.totals.placed).toBe(2);
+    expect(both.totals.unplaced).toBe(1);
+    // …and the disagreement is named rather than folded into a total.
+    expect(both.doubleCountedFixtureIds).toEqual(['constructed-b']);
+    expect(both.totals.doubleCounted).toBe(1);
+  });
+
+  it('keeps the identity on a clean accounting too', () => {
+    const clean = accountForFixtures({
+      expectedFixtureIds: ['constructed-a', 'constructed-b'],
+      placedFixtureIds: ['constructed-a'],
+      unplaced: [unplacedFixture('constructed-b')],
+    });
+    expect(clean.totals.doubleCounted).toBe(0);
+    expect(clean.doubleCountedFixtureIds).toEqual([]);
+    expect(clean.totals.accounted).toBe(2);
+    expect(clean.totals.accounted + clean.totals.missing).toBe(clean.totals.expected);
+    expect(clean.status).toBe(RESERVE_STATUS.COMPROMISED);
+  });
+
+  it('guards its other two inputs the way it guards the first', () => {
+    expect(() => accountForFixtures(/** @type {Object} */ ({ expectedFixtureIds: ['x'] }))).toThrow(
+      /placedFixtureIds/
+    );
+    expect(() =>
+      accountForFixtures(
+        /** @type {Object} */ ({ expectedFixtureIds: ['x'], placedFixtureIds: [] })
+      )
+    ).toThrow(/unplaced/);
+    expect(() =>
+      accountForFixtures(/** @type {Object} */ ({ placedFixtureIds: [], unplaced: [] }))
+    ).toThrow(/expectedFixtureIds/);
+  });
+});
+
+/* -------------------------------------------------------------------------- */
 /* Reason-code hygiene                                                         */
 /* -------------------------------------------------------------------------- */
 

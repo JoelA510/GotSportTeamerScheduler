@@ -51,6 +51,25 @@
  *    cannot account for the club's own published reservations is wrong, and a
  *    number from a wrong model is worse than no number.
  *
+ *    That guarantee has two halves and needs both. `RESERVED_SLOT_OFF_GRID` is
+ *    the **time** half — a reservation at a minute no candidate stands on.
+ *    `RESERVED_SLOT_UNCOVERED` is the **space** half — a reservation on a
+ *    surface, or a date, this report does not cover. Every reserved slot handed
+ *    in is accounted for in exactly one of four buckets, and the counters say
+ *    which: `slotsOtherFormat` (a different format is this report's stated
+ *    subject, not a silent drop), `reservedSlotsUncovered`,
+ *    `reservedSlotsMatched` and `reservedSlotsOffGrid` sum to `slotsExamined`.
+ *
+ * A candidate that coincides with a reserved slot is evaluated as **held
+ * ground**: its condition failing is not a fact about the day but a commitment
+ * that cannot be kept, so it reports `RESERVED_SLOT_CONDITION_BLOCKED` at
+ * `blocking` where an unreserved candidate reports `SLOT_CONDITION_BLOCKED` at
+ * `info`. The season-2026 corpus produces no such case — its blocked candidates
+ * are all on Alder Pitch 2, where the club reserved nothing — so that code is
+ * reachable in principle and exercised by a constructed case in
+ * `tests/reserveCapacity.test.js`, which says so out loud rather than leaving a
+ * declared code with no path.
+ *
  * The candidate loop stops at the first rejection rather than scanning the day.
  * That is sound and not an optimisation: with no bookings in play the three
  * remaining edges — permit close, lights-off and the daylight limit — are all
@@ -112,14 +131,72 @@ export function buildReserveCapacityReport(engines, rawInput) {
     input.bookings
   );
 
-  /** In scope: this format, on a date and surface the report covers. */
-  const inScope = reservedSlots.filter(
-    (slot) =>
-      slot.format === input.format &&
-      dates.includes(slot.date) &&
-      surfaceIds.includes(slot.surfaceId)
+  const coveredDates = new Set(dates);
+  const coveredSurfaces = new Set(surfaceIds);
+
+  /**
+   * The universe this report must account for: reserved slots of its format.
+   *
+   * The format filter is the report's **stated subject** rather than a silent
+   * drop — a `Scrimmage` reservation is held ground, not a game of the format
+   * being counted — and the slots it removes are counted in
+   * `meta.slotsOtherFormat` so the removal is a number rather than a silence.
+   */
+  const forFormat = reservedSlots.filter((slot) => slot.format === input.format);
+  meta.slotsOtherFormat = reservedSlots.length - forFormat.length;
+
+  /** In scope: on a date and surface the report covers, so the grid can judge it. */
+  const inScope = forFormat.filter(
+    (slot) => coveredDates.has(slot.date) && coveredSurfaces.has(slot.surfaceId)
   );
-  meta.slotsExamined = inScope.length;
+  /**
+   * The remainder, reconciled rather than dropped.
+   *
+   * `RESERVED_SLOT_OFF_GRID` catches a reservation misplaced in *time*; this is
+   * the same guarantee in *space*. A slot filtered out here used to fall out of
+   * every count and every check, so an eleventh reservation standing on ground
+   * the report does not cover left its date reading `reserved: 10, atCap: true`
+   * instead of over its cap — a commitment that disappears without a word, which
+   * is the whole of incident 10.
+   */
+  const uncovered = forFormat.filter(
+    (slot) => !coveredDates.has(slot.date) || !coveredSurfaces.has(slot.surfaceId)
+  );
+  meta.slotsExamined = reservedSlots.length;
+
+  for (const slot of uncovered) {
+    meta.reservedSlotsUncovered += 1;
+    const dateCovered = coveredDates.has(slot.date);
+    findings.push(
+      makeReserveFinding(
+        RESERVE_REASON.RESERVED_SLOT_UNCOVERED,
+        `reserved slot "${slot.id}" stands on ${slot.surfaceId} on ${slot.date}, which this report does not cover (${dateCovered ? 'the date is covered, the surface is not' : 'the date is not covered'}), so no grid, condition or requirement check in it applies to that ground`,
+        {
+          slotId: slot.id,
+          date: slot.date,
+          surfaceId: slot.surfaceId,
+          startMinutes: slot.startMinutes,
+          format: slot.format,
+          dateCovered,
+          surfaceCovered: coveredSurfaces.has(slot.surfaceId),
+          // A slot on a covered date is still counted against that date's cap;
+          // one on a date with no row cannot be counted anywhere, and saying so
+          // is the difference between a reported gap and a silent one.
+          countedOnDate: dateCovered,
+          reportedSurfaceIds: [...surfaceIds],
+        }
+      )
+    );
+  }
+
+  /**
+   * What each date's `reserved` / `assigned` / `spare` are counted from.
+   *
+   * The cap is a rule about how many games a day carries, not about where they
+   * stand, so a reservation on a covered date counts against it whether or not
+   * the report covers its ground.
+   */
+  const counted = [...inScope, ...uncovered.filter((slot) => coveredDates.has(slot.date))];
 
   /** @type {import('./types.js').DateCapacity[]} */
   const dateRows = [];
@@ -194,6 +271,13 @@ export function buildReserveCapacityReport(engines, rawInput) {
         meta.slotsGenerated += 1;
 
         if (condition) {
+          // Does the club actually hold this candidate? A candidate whose
+          // condition fails is a fact about the day; *held ground* whose
+          // condition fails is ground committed to families that cannot be
+          // used, and `RESERVED_SLOT_CONDITION_BLOCKED` exists for exactly that
+          // difference. Passing this is what makes that code reachable from the
+          // production path rather than only from a test that forges the flag.
+          const reserved = reservedHere.some((slot) => slot.startMinutes === kickoff);
           const evaluation = evaluateSlotCondition(
             graph,
             {
@@ -211,7 +295,8 @@ export function buildReserveCapacityReport(engines, rawInput) {
             // fire, and a guard nothing can make fire proves nothing. What is
             // watched is the *overlapping* ground, and every reservation
             // standing there is exactly what the condition asks about.
-            bookings
+            bookings,
+            { reserved }
           );
           mergeReserveMeta(meta, evaluation.meta);
           // Every verdict's findings, not only its counters. A number that moves
@@ -258,7 +343,7 @@ export function buildReserveCapacityReport(engines, rawInput) {
       bySurface.push(row);
     }
 
-    dateRows.push(summariseDate(date, bySurface, inScope, input));
+    dateRows.push(summariseDate(date, bySurface, counted, input));
   }
 
   const bestSlotsBySurface = bestPerSurface(dateRows);
@@ -337,11 +422,11 @@ function permitOpenFloor(calendar, surface, date) {
  *
  * @param {string} date
  * @param {import('./types.js').SurfaceCapacity[]} bySurface
- * @param {ReadonlyArray<import('./types.js').ReservedSlot>} inScope
+ * @param {ReadonlyArray<import('./types.js').ReservedSlot>} counted - every reserved slot of this report's format standing on a date it covers, whether or not it covers the ground
  * @param {{ requirement: import('./types.js').CapacityRequirement, cap: import('./types.js').CapacityCap|null }} input
  * @returns {import('./types.js').DateCapacity}
  */
-function summariseDate(date, bySurface, inScope, input) {
+function summariseDate(date, bySurface, counted, input) {
   /** @type {import('./types.js').ReserveFinding[]} */
   const findings = [];
 
@@ -357,7 +442,7 @@ function summariseDate(date, bySurface, inScope, input) {
   const slots = unconditionalSlots + conditionalSlots;
   const available = unconditionalSlots + conditionSatisfied;
 
-  const reservedOnDate = inScope.filter((slot) => slot.date === date);
+  const reservedOnDate = counted.filter((slot) => slot.date === date);
   const reserved = reservedOnDate.length;
   // `slotNamesATeam()`, not `slotIsSettled()`. A Minis session is *settled* —
   // there is nobody left to name — and it assigns no team to anything, so

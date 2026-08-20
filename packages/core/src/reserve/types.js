@@ -124,10 +124,15 @@
 /**
  * The reconciliation between what must exist and what a run produced.
  *
+ * `placed` and `unplaced` are each source's own claim; `doubleCounted` names the
+ * fixtures both claimed, counted once in `accounted`, so `accounted + missing`
+ * always equals `expected`.
+ *
  * @typedef {Object} FixtureAccounting
- * @property {{ expected: number, placed: number, unplaced: number, accounted: number, missing: number }} totals
+ * @property {{ expected: number, placed: number, unplaced: number, doubleCounted: number, accounted: number, missing: number }} totals
  * @property {string[]} placedFixtureIds
  * @property {string[]} unplacedFixtureIds
+ * @property {string[]} doubleCountedFixtureIds - expected fixtures reported both placed and unplaced
  * @property {string[]} missingFixtureIds
  * @property {ReserveFinding[]} findings
  * @property {string} status
@@ -248,6 +253,8 @@
  * @property {number} surfaceDatesExamined
  * @property {number} candidatesTested
  * @property {number} slotsGenerated
+ * @property {number} slotsOtherFormat
+ * @property {number} reservedSlotsUncovered
  * @property {number} reservedSlotsMatched
  * @property {number} reservedSlotsOffGrid
  * @property {number} fixturesAccountedFor

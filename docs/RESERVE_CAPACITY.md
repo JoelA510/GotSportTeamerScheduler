@@ -113,7 +113,20 @@ conditional slot satisfied on the ground the build plan asks to keep separate.
 Severity is split by who is standing on the ground: an unreserved candidate whose
 condition fails is `SLOT_CONDITION_BLOCKED` at `info` (a fact about the day),
 while a slot the club actually reserved is `RESERVED_SLOT_CONDITION_BLOCKED` at
-`blocking` (ground held that cannot be used).
+`blocking` (ground held that cannot be used). `capacity.js` makes that split on
+the production path — a candidate kickoff that coincides with a reserved slot on
+the same surface and date is evaluated as held ground — rather than leaving the
+blocking code reachable only from a test that sets the flag by hand.
+
+**This corpus produces no such case, and the suite says so rather than implying
+otherwise.** Its twenty-six blocked conditional candidates are all on Alder
+Pitch 2, where the club reserved nothing; Pitch 3 *is* reserved and conditional,
+but the only rows ever standing on its overlapping neighbours (Pitch 4 and its
+halves) fall on two August dates the reserve season does not reach. So
+`RESERVED_SLOT_CONDITION_BLOCKED` is reachable in principle and fired by a
+constructed case — ground held on Pitch 4 across a Pitch 3 kickoff the club
+reserved — with the twenty-six unreserved blocks staying at `info` in the same
+report as the control that makes the escalation falsifiable.
 
 ---
 
@@ -134,7 +147,13 @@ Three verbs, three functions:
   missing from the run's own output, so a check enumerating its subjects from
   there would report a clean season. Anything in neither list is
   `FIXTURE_DROPPED` at `blocking`; an accounting that reconciled nothing is
-  `FIXTURE_ACCOUNTING_VACUOUS`.
+  `FIXTURE_ACCOUNTING_VACUOUS`. A fixture a run reports as **both** placed and
+  unplaced is `FIXTURE_DOUBLE_COUNTED` at `blocking` and is counted **once** in
+  `accounted`: `placed` and `unplaced` report each source's own claim,
+  `doubleCounted` names the overlap, and `accounted + missing === expected`
+  always — a disagreement the reconciler has just reported must not also inflate
+  the total it is reconciling. All three inputs are required, for the same reason
+  the first one is: an absent list is not an empty one.
 - **exported** — `publicationRowsFor()` emits rows carrying both tokens and the
   reason, and reports `FIXTURE_DROPPED` for any subject that produced no row,
   because the export is the last place a fixture can quietly disappear.
@@ -220,6 +239,26 @@ follow-up; see GAP-16, GAP-17 and GAP-28 in [`MODEL_GAPS.md`](MODEL_GAPS.md).
    `RESERVED_SLOT_OFF_GRID` at `blocking`. All 100 do. Raising the anchor to
    09:00 leaves 94 of them off the grid, which is the positive control.
 
+   That guarantee needs both of its halves. `RESERVED_SLOT_OFF_GRID` catches a
+   reservation misplaced in **time**; `RESERVED_SLOT_UNCOVERED` catches one
+   misplaced in **space** — a slot standing on a surface, or a date, the report
+   does not cover. Without the second, a slot outside the reported surfaces was
+   filtered out before any count or check saw it, so an eleventh reservation on
+   ground the report did not cover left its date reading `reserved: 10,
+   atCap: true` rather than over its cap: a commitment vanishing without a word,
+   which is exactly what Phase 5 exists to prevent. A slot on a covered date is
+   still counted against that date's cap — the cap is a rule about how many games
+   a day carries, not about where they stand — and one on an uncovered date has
+   no row to be counted on, which its finding states in `countedOnDate`.
+
+   Every reserved slot handed in therefore lands in exactly one of four buckets,
+   and the counters name it:
+   `slotsOtherFormat + reservedSlotsUncovered + reservedSlotsMatched +
+   reservedSlotsOffGrid === slotsExamined`. On this corpus that reads
+   `1 + 0 + 100 + 0 === 101`; the one is the `Scrimmage` reservation, which is
+   held ground rather than a game of the format being counted, and it is a number
+   rather than a silence for that reason.
+
 The candidate loop stops at the first rejection. That is sound rather than an
 optimisation: with no bookings in play, permit close, lights-off and the daylight
 limit are all monotone in the kickoff. The rejected candidate is kept, because it
@@ -301,7 +340,7 @@ columns are in the report; neither is hidden behind the other.
 
 ## 7. Reason codes
 
-Thirty-one, in one frozen table with one severity each, and
+Thirty-two, in one frozen table with one severity each, and
 `tests/reserveCapacity.test.js` asserts that **every one of them is actually
 emitted somewhere in the suite** — a code a module can declare but never produce
 is a code nothing proves the meaning of. Adding a temporary code with no case
