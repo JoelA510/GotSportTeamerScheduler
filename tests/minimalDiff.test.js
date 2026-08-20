@@ -60,11 +60,19 @@ import {
   STAGE_PROBE,
   applyChangeRequest,
   buildChangeReport,
+  buildSlotInventory,
+  candidateObjectiveCounts,
   candidateSlotsFor,
   changeCountsFor,
   changeTermsDisabled,
+  checkPlacement,
   commitResolve,
+  createResolveLedger,
+  createResolveState,
+  disabledChangeTerms,
   objectiveCountsForSchedule,
+  objectiveWeightsAreDefault,
+  placementFindingCounts,
   reoptimiseWholeSeason,
   resolveObjectiveWeights,
   scoreObjective,
@@ -1055,6 +1063,474 @@ describe('structural guarantees', () => {
       'ChangeBudgetExceeded',
     ]) {
       expect(barrel, name).toContain(name);
+    }
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* The pre-PR review's six findings, each with the case that reproduces it     */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * **The two that defeat the phase's purpose**, and the schedule they need.
+ *
+ * Findings 1 and 2 are both about the objective moving a published game it
+ * should have left alone. Neither can be shown against the season-2026 corpus as
+ * it stands, and the reason is worth recording rather than working around: the
+ * corpus carries **no baseline-accepted blocking finding that depends on the
+ * slot**. Its four accepted blocking findings are `SIZE_UNKNOWN_FORMAT` on the
+ * `Scrimmage` rows (GAP-14: no `game_formats.csv` entry), which is a fact about
+ * the game's *format* and follows it to every candidate slot, so no candidate is
+ * ever cleaner than the published one and the anchor wins on change cost either
+ * way. It is verified below that those four rows do not move.
+ *
+ * So the scenario is **constructed**, out of the corpus and named as such: one
+ * published row is stacked onto another's exact slot, which is a published
+ * schedule carrying an accepted double-booking. That is the shape the review
+ * describes and the shape `newBlockingCodes()` was written for — "a change
+ * request is not asked to repair the schedule it was handed".
+ */
+const busiestVenue = [
+  ...schedule.games
+    .filter((game) => game.date === SEEDING_DATE)
+    .reduce(
+      (tally, game) => tally.set(game.venueId, (tally.get(game.venueId) ?? 0) + 1),
+      new Map()
+    ),
+].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0][0];
+
+const busiestWave = schedule.games
+  .filter((game) => game.date === SEEDING_DATE && game.venueId === busiestVenue)
+  .sort((a, b) => a.startMinutes - b.startMinutes || a.id.localeCompare(b.id));
+const STACK_KICKOFF = busiestWave[0].startMinutes;
+const stackHeld = busiestWave.filter((game) => game.startMinutes === STACK_KICKOFF)[0];
+const stackMoved = busiestWave.find(
+  (game) =>
+    game.startMinutes === STACK_KICKOFF &&
+    game.id !== stackHeld.id &&
+    game.format === stackHeld.format &&
+    game.surfaceId !== stackHeld.surfaceId
+);
+
+/** The published season with one row standing on another's slot. */
+const stackedSchedule = {
+  ...schedule,
+  games: schedule.games.map((game) =>
+    game.id === stackMoved.id
+      ? {
+          ...game,
+          surfaceId: stackHeld.surfaceId,
+          startMinutes: stackHeld.startMinutes,
+          endMinutes: stackHeld.startMinutes + (game.endMinutes - game.startMinutes),
+        }
+      : game
+  ),
+};
+const STACK_SLOT = {
+  date: SEEDING_DATE,
+  surfaceId: stackHeld.surfaceId,
+  startMinutes: stackHeld.startMinutes,
+};
+
+/**
+ * A resolve state over the constructed baseline, so the accepted finding can be
+ * read out of `checkPlacement()` — the same function the pipeline's gate asks —
+ * rather than asserted from this file's own idea of what a double-booking is.
+ */
+const stackedState = createResolveState({
+  games: stackedSchedule.games.map((game) => ({ ...game })),
+  dispositions: Object.fromEntries(
+    stackedSchedule.games.map((game) => [game.id, FREEZE_DISPOSITION.THAWED])
+  ),
+  admittedSlotsByGameId: {},
+  inventory: buildSlotInventory(stackedSchedule.games),
+  ledger: createResolveLedger(),
+});
+const stackedPlacement = checkPlacement(engines, stackedState, stackMoved.id, STACK_SLOT);
+const stackedAccepted = placementFindingCounts(stackedPlacement);
+
+/**
+ * Which games of a resolved schedule stand somewhere other than the schedule it
+ * was handed — enumerated from that schedule's own rows, never from the run.
+ *
+ * @param {import('@squadlogic/core/ruleEngine/types.js').Schedule} before
+ * @param {import('@squadlogic/core/ruleEngine/types.js').Schedule} after
+ * @returns {string[]}
+ */
+function movedBetween(before, after) {
+  const byId = new Map(after.games.map((game) => [game.id, game]));
+  return before.games
+    .filter((game) => slotOf(game) !== slotOf(byId.get(game.id) ?? null))
+    .map((game) => game.id)
+    .sort();
+}
+
+const globalControl = reoptimiseWholeSeason({
+  schedule,
+  changes: [],
+  engines,
+  reason: 'the control: a global re-solve of the published season, default objective',
+  acknowledged: true,
+  verify: false,
+});
+const globalStacked = reoptimiseWholeSeason({
+  schedule: stackedSchedule,
+  changes: [],
+  engines,
+  reason: 'a global re-solve of a season carrying one accepted double-booking',
+  acknowledged: true,
+  verify: false,
+});
+
+describe('review finding 2 :: quality was scored absolutely while the gate is relative', () => {
+  it('builds the case out of the corpus, and says why the corpus alone cannot make it', () => {
+    // Meta-assertions. Each one, mis-set, would make the assertions below true
+    // of nothing.
+    expect(stackMoved, 'two same-format rows on one wave').toBeTruthy();
+    // The one placed first takes the shared slot, so the *other* is the one the
+    // objective has to decide about. Ordering is by baseline date, kickoff, id.
+    expect([stackHeld.id, stackMoved.id].sort()[0]).toBe(stackHeld.id);
+    // The constructed baseline really does carry a blocking finding at that
+    // slot, read from `checkPlacement()` rather than assumed.
+    expect(stackedPlacement.blockingCodeCounts.OCCUPIED_SAME_SURFACE).toBe(1);
+    expect(stackedAccepted.OCCUPIED_SAME_SURFACE).toBe(1);
+    // …and the published corpus carries no such thing, which is why it is
+    // constructed: its four accepted blocking findings are all
+    // `SIZE_UNKNOWN_FORMAT` on the `Scrimmage` rows, a property of the format
+    // rather than of the slot.
+    const scrimmage = schedule.games.filter((game) => game.format === 'Scrimmage');
+    expect(scrimmage).toHaveLength(4);
+    expect(movedBetween(schedule, globalStacked.schedule)).not.toContain(scrimmage[0].id);
+  });
+
+  it('reproduces the published season exactly when nothing is wrong with it', () => {
+    // The control the row below is read against: with the objective the module
+    // ships with, a global re-optimisation of a schedule that is already good
+    // gives it back unchanged. Without this, "one game moved" would not be a
+    // measurement of anything.
+    expect(movedBetween(schedule, globalControl.schedule)).toEqual([]);
+    expect(globalControl.unplaced).toEqual([]);
+    expect(globalControl.meta.movesConsidered).toBeGreaterThan(0);
+  });
+
+  it('leaves a game standing on an accepted violation exactly where it was published', () => {
+    // **The finding.** The gate above `chooseSlot()`'s scoring accepts a
+    // blocking finding the published schedule already carried; scoring the same
+    // candidate absolutely charged the game a full `blockingViolation` at its own
+    // published slot — 10000 — against roughly 1001 for a clean slot one field
+    // over, so the placer moved a published game to repair a violation it had
+    // already decided not to repair.
+    expect(movedBetween(stackedSchedule, globalStacked.schedule)).toEqual([]);
+    expect(globalStacked.unplaced).toEqual([]);
+    // Named rather than counted, because a count is what incident 1 had.
+    const after = new Map(globalStacked.schedule.games.map((game) => [game.id, game]));
+    expect(slotOf(after.get(stackMoved.id))).toBe(slotOf(STACK_SLOT));
+    expect(slotOf(after.get(stackHeld.id))).toBe(slotOf(STACK_SLOT));
+  });
+
+  it('charges the excess over what was accepted, and never a negative', () => {
+    // The counting rule on its own, including the clamp. A candidate carrying
+    // *fewer* findings than the baseline is not paid a bonus for it: a negative
+    // quality term would let a solver buy a move with somebody else's accepted
+    // exception, and the short-circuits in `chooseSlot()` rest on every quality
+    // term being non-negative.
+    const placement = /** @type {any} */ ({
+      findings: [
+        { code: 'X', severity: 'blocking' },
+        { code: 'X', severity: 'blocking' },
+        { code: 'Y', severity: 'compromise' },
+      ],
+    });
+    const absolute = candidateObjectiveCounts({
+      reference: STACK_SLOT,
+      slot: STACK_SLOT,
+      placement,
+    });
+    expect(absolute[RESOLVE_OBJECTIVE_TERM.BLOCKING_VIOLATION]).toBe(2);
+    expect(absolute[RESOLVE_OBJECTIVE_TERM.COMPROMISE_VIOLATION]).toBe(1);
+
+    const relative = candidateObjectiveCounts({
+      reference: STACK_SLOT,
+      slot: STACK_SLOT,
+      placement,
+      accepted: { X: 1, Y: 2 },
+    });
+    expect(relative[RESOLVE_OBJECTIVE_TERM.BLOCKING_VIOLATION]).toBe(1);
+    expect(relative[RESOLVE_OBJECTIVE_TERM.COMPROMISE_VIOLATION]).toBeUndefined();
+
+    // And on the real placement: everything it carries was already accepted, so
+    // it costs nothing beyond the change it does not make.
+    expect(
+      candidateObjectiveCounts({
+        reference: STACK_SLOT,
+        slot: STACK_SLOT,
+        placement: stackedPlacement,
+        accepted: stackedAccepted,
+      })
+    ).toEqual({});
+  });
+});
+
+/**
+ * The constructed scenario that gets `local-search` and `pair-repair` off the
+ * ground at all — see the finding-1 block below for why that takes doing.
+ */
+const stackThird = busiestWave.find(
+  (game) =>
+    game.startMinutes === STACK_KICKOFF &&
+    game.format === stackHeld.format &&
+    game.id !== stackHeld.id &&
+    game.id !== stackMoved.id &&
+    game.surfaceId !== stackHeld.surfaceId
+);
+const stackedRepairRun = applyChangeRequest({
+  schedule: stackedSchedule,
+  changes: [
+    {
+      gameId: /** @type {any} */ (stackThird).id,
+      date: SEEDING_DATE,
+      surfaceId: stackHeld.surfaceId,
+      startMinutes: STACK_KICKOFF,
+      reason: 'a third game onto the slot two others already share',
+    },
+  ],
+  engines,
+  freeze: freezeAllExcept([{ date: SEEDING_DATE }]),
+  holdChanges: true,
+  onUnsatisfiable: 'report',
+  verify: false,
+});
+
+describe('review finding 1 :: drift was measured from the wrong anchor', () => {
+  const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+  const STAGES = path.join(ROOT, 'packages', 'core', 'src', 'resolve', 'stages.js');
+  const code = readFileSync(STAGES, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+
+  it('asks one function where a game is held from, in all three places a slot is chosen', () => {
+    // **The finding, as the structural claim it is.** `local-search` and
+    // `pair-repair` each carried their own `context.anchors[id] ?? currentSlot`
+    // fallback. `context.anchors` holds only the games a change request names, so
+    // a game already displaced by `initial-assignment` measured its drift from
+    // the displaced position — and walking it back toward its published slot
+    // then scored *worse* than moving it further away, in the stage whose entire
+    // job is that walk. `placePending`'s `anchorOf()` already fell back to
+    // `state.baseline`; this is `CLAUDE.md` §3's "adopt the sibling's contract
+    // rather than inventing a third one", on its third appearance in this
+    // project.
+    //
+    // Meta-assertion first: this is reading the real file.
+    expect(code.length).toBeGreaterThan(5000);
+    expect(code).toContain('function anchorOf(');
+
+    // Exactly one expression in the file resolves a game's anchor.
+    expect([...code.matchAll(/context\.anchors\[[^\]]*\]\s*\?\?/g)]).toHaveLength(1);
+    // …and it is the one inside `anchorOf`, which is the only reader that also
+    // knows about `state.baseline`.
+    const anchorBody = code.slice(code.indexOf('function anchorOf('));
+    expect(anchorBody.slice(0, anchorBody.indexOf('}\n'))).toMatch(/state\.baseline\[gameId\]/);
+
+    // Three stages choose a slot, and three call sites ask `anchorOf`.
+    expect([...code.matchAll(/\bchooseSlot\(/g)].length - 1).toBe(3);
+    expect([...code.matchAll(/(?<!function )\banchorOf\(/g)]).toHaveLength(3);
+  });
+
+  it('gets local-search and pair-repair off the ground, which the corpus alone does not', () => {
+    // **Reported rather than papered over.** On the published corpus these two
+    // stages never apply a move at all, and it is structural rather than
+    // incidental: `initial-assignment` only ever places a game where its blocking
+    // codes do not grow against the baseline, so it cannot make a *standing* game
+    // illegal unless the game it is placing already carried an accepted overlap —
+    // and the corpus has none. With one constructed, the two stages run.
+    const byStage = new Map(stackedRepairRun.stages.map((stage) => [stage.stageId, stage]));
+    const search = /** @type {any} */ (byStage.get('local-search'));
+    const repair = /** @type {any} */ (byStage.get('pair-repair'));
+    expect(search.movesConsidered).toBeGreaterThan(0);
+    // The frozen half of the clash is refused and counted, which is incident 2's
+    // guarantee stated by a stage that actually looked.
+    expect(search.movesRejectedByFreeze).toBeGreaterThan(0);
+    expect(search.movesApplied).toBe(0);
+    expect(repair.movesApplied).toBeGreaterThan(0);
+
+    // And what it repairs, it repairs without spreading: the game it moves ends
+    // on a slot that carries no finding the schedule did not already have.
+    const repaired = stackedRepairRun.moves.filter((move) => move.stageId === 'pair-repair');
+    for (const move of repaired) {
+      const slot = /** @type {any} */ (move.to);
+      const placement = checkPlacement(engines, stackedRepairRun.state, move.gameId, slot);
+      expect(placement.blockingCodeCounts.OCCUPIED_SAME_SURFACE ?? 0, move.gameId).toBe(0);
+    }
+  });
+});
+
+describe('review finding 3 :: one zeroed change term stripped the pressure and said nothing', () => {
+  const run = applyChangeRequest({
+    schedule,
+    changes: nineChanges,
+    engines,
+    freeze: freezeAllExcept([{ date: SEEDING_DATE }]),
+    holdChanges: true,
+    onUnsatisfiable: 'report',
+    verify: false,
+    objectiveWeights: { changedGame: 0 },
+  });
+
+  it('stamps the warning when any change term is zeroed, and names which', () => {
+    // `{ changedGame: 0 }` alone leaves `driftMinute` and `changedSurface` at 1
+    // each, so a thirty-minute move costs 30 against a single
+    // `compromiseViolation` at 100: essentially all change pressure is gone and
+    // the run behaves like a re-optimisation. The predicate that only fired when
+    // all three were zero let it do that in silence.
+    const finding = run.findings.find(
+      (candidate) => candidate.code === RESOLVE_REASON.RESOLVE_OBJECTIVE_CHANGE_TERM_DISABLED
+    );
+    expect(finding?.severity).toBe('compromise');
+    expect(finding?.details.disabledTerms).toEqual([RESOLVE_OBJECTIVE_TERM.CHANGED_GAME]);
+    expect(finding?.details.allChangeTermsDisabled).toBe(false);
+    expect(String(finding?.message)).toContain(RESOLVE_OBJECTIVE_TERM.CHANGED_GAME);
+  });
+
+  it('keeps "switched off entirely" a separate and stronger statement', () => {
+    // Two of three is not "switched off", and the report's own flag must not
+    // read as it — that flag is what tells a reader this run had the objective
+    // incident 1's solver had.
+    expect(run.objective.changeTermsDisabled).toBe(false);
+    expect(run.objective.disabledChangeTerms).toEqual([RESOLVE_OBJECTIVE_TERM.CHANGED_GAME]);
+    expect(disabledChangeTerms(resolveObjectiveWeights({ changedGame: 0 }))).toEqual([
+      RESOLVE_OBJECTIVE_TERM.CHANGED_GAME,
+    ]);
+    expect(disabledChangeTerms(RESOLVE_OBJECTIVE_WEIGHTS)).toEqual([]);
+    expect(
+      disabledChangeTerms(
+        resolveObjectiveWeights({ changedGame: 0, driftMinute: 0, changedSurface: 0 })
+      )
+    ).toEqual([...RESOLVE_CHANGE_TERMS]);
+    expect(
+      changeTermsDisabled(
+        resolveObjectiveWeights({ changedGame: 0, driftMinute: 0, changedSurface: 0 })
+      )
+    ).toBe(true);
+  });
+});
+
+describe('review finding 4 :: the objective delta could report an improvement it had not made', () => {
+  const mismatched = applyChangeRequest({
+    schedule,
+    changes: externalChanges,
+    engines,
+    // The two together are the whole finding: a quality-inclusive baseline
+    // supplied by the caller, and a resolved schedule the rule engine never ran
+    // over.
+    baselineVerification,
+    verify: false,
+    onUnsatisfiable: 'report',
+  });
+
+  it('refuses to subtract a measured baseline from an unmeasured result', () => {
+    // Meta-assertion: the baseline really does carry quality worth thousands, so
+    // the mismatch was worth thousands too and not a rounding error.
+    expect(baselineVerification.violations.length).toBeGreaterThan(50);
+    expect(mismatched.report.quality.measured).toBe(false);
+    expect(mismatched.report.objective.deltaIncludesQuality).toBe(false);
+    // Both sides measured the same way, or neither.
+    expect(mismatched.report.objective.baseline.qualityMeasured).toBe(false);
+    expect(mismatched.report.objective.resolvedSchedule.qualityMeasured).toBe(false);
+    expect(mismatched.report.objective.baseline.qualityCost).toBe(0);
+  });
+
+  it('never reads as a gain: a re-solve that moved games costs more than the season it started from', () => {
+    // With quality dropped from both sides the delta is a pure change cost, and
+    // a change cost against the reference schedule cannot be negative. Before
+    // the fix this run reported a large *improvement* that was entirely the
+    // artefact of subtracting the baseline's 62 accepted exceptions from a score
+    // that had never been given any.
+    expect(mismatched.report.objective.delta).toBeGreaterThan(0);
+    expect(mismatched.report.objective.delta).toBe(
+      mismatched.report.objective.resolvedSchedule.changeCost
+    );
+    expect(mismatched.moved.length).toBeGreaterThan(0);
+  });
+
+  it('still includes quality when both sides were measured', () => {
+    // The other half, so the fix is not "the delta never includes quality".
+    expect(seedingRun.report.objective.deltaIncludesQuality).toBe(true);
+    expect(seedingRun.report.objective.baseline.qualityCost).toBeGreaterThan(0);
+  });
+});
+
+describe('review finding 5 :: an override was detected by object identity', () => {
+  /** @param {Record<string, number>|undefined} objectiveWeights */
+  const runWith = (objectiveWeights) =>
+    applyChangeRequest({
+      schedule,
+      changes: externalChanges,
+      engines,
+      verify: false,
+      onUnsatisfiable: 'report',
+      ...(objectiveWeights === undefined ? {} : { objectiveWeights }),
+    });
+  const codesOf = (/** @type {any} */ run) => run.findings.map((finding) => finding.code);
+  const OVERRIDDEN = RESOLVE_REASON.RESOLVE_OBJECTIVE_WEIGHTS_OVERRIDDEN;
+
+  it('does not tell an operator that two identically-scored runs are incomparable', () => {
+    // `{}` and a table spelled out to the shipped numbers both resolve to a
+    // fresh object that scores every run exactly as the defaults do.
+    expect(codesOf(runWith({}))).not.toContain(OVERRIDDEN);
+    expect(codesOf(runWith({ ...RESOLVE_OBJECTIVE_WEIGHTS }))).not.toContain(OVERRIDDEN);
+    expect(codesOf(runWith(undefined))).not.toContain(OVERRIDDEN);
+    expect(objectiveWeightsAreDefault(resolveObjectiveWeights({}))).toBe(true);
+    expect(objectiveWeightsAreDefault(resolveObjectiveWeights(undefined))).toBe(true);
+  });
+
+  it('still says so when the weights genuinely differ', () => {
+    // The other half: a check that cannot fire is a check nobody has tested.
+    const overridden = runWith({ changedGame: RESOLVE_OBJECTIVE_WEIGHTS.changedGame + 1 });
+    expect(codesOf(overridden)).toContain(OVERRIDDEN);
+    expect(objectiveWeightsAreDefault(resolveObjectiveWeights({ changedGame: 0 }))).toBe(false);
+  });
+});
+
+describe('review finding 6 :: the candidate comparator scored twice per comparison', () => {
+  const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+  const INVENTORY = path.join(ROOT, 'packages', 'core', 'src', 'resolve', 'inventory.js');
+  const code = readFileSync(INVENTORY, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+
+  it('scores each candidate once, not once per comparison', () => {
+    // Meta-assertion: the real file, and the helper still exists.
+    expect(code).toContain('function changeCostOf(');
+    // The declaration and exactly one call. Two calls means the cost is being
+    // computed inside the comparator, which is O(n log n) scorings and a fresh
+    // six-term breakdown allocated for each: about 6,800 calls and 48,000
+    // objects thrown away per placement on a busy date.
+    expect([...code.matchAll(/\bchangeCostOf\(/g)]).toHaveLength(2);
+  });
+
+  it('produces the identical ordering, asserted rather than assumed', () => {
+    const game = /** @type {any} */ (baselineById.get(nineChanges[0].gameId));
+    const anchor = { date: game.date, surfaceId: game.surfaceId, startMinutes: game.startMinutes };
+    const zeroed = resolveObjectiveWeights({ changedGame: 0, driftMinute: 0, changedSurface: 0 });
+
+    for (const weights of [RESOLVE_OBJECTIVE_WEIGHTS, zeroed]) {
+      const ordered = candidateSlotsFor(seedingRun.state, game.id, anchor, weights);
+      // Meta-assertion: enough candidates for an ordering to mean anything.
+      expect(ordered.length).toBeGreaterThan(3);
+      // The comparator the decorate-sort-undecorate replaced, applied to the
+      // result. `Array.prototype.sort` is stable, so re-sorting an already
+      // correctly ordered list is the identity — and is not, the moment the two
+      // orderings disagree anywhere.
+      const cost = (/** @type {any} */ slot) =>
+        scoreObjective(changeCountsFor(anchor, slot), weights).changeCost;
+      const resorted = [...ordered].sort(
+        (a, b) =>
+          cost(a) - cost(b) ||
+          a.startMinutes - b.startMinutes ||
+          a.surfaceId.localeCompare(b.surfaceId)
+      );
+      expect(resorted.map(slotOf)).toEqual(ordered.map(slotOf));
+      // Non-decreasing in cost, which is what `chooseSlot()`'s short-circuits
+      // rest on.
+      for (let index = 1; index < ordered.length; index += 1) {
+        expect(cost(ordered[index]) >= cost(ordered[index - 1]), String(index)).toBe(true);
+      }
     }
   });
 });

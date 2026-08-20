@@ -82,6 +82,42 @@ past midnight on two different days are not a distance, and this package
 constructs no `Date` and holds no season calendar that could make them one
 (GAP-32). A game that changed date pays `changedGame`, and no invented drift.
 
+### Quality is charged against what the published schedule already carried
+
+The gate that decides whether a candidate slot is *admissible* —
+`newBlockingCodes()` — is relative: it accepts a blocking finding the published
+schedule already carried, because a change request is not asked to repair the
+schedule it was handed. `candidateObjectiveCounts()` charges quality the same
+way, per reason code and clamped at zero. The two have to agree, and the
+direction they disagreed in was the one that matters: scored absolutely, a game
+standing on a baseline-accepted blocking finding cost a full `blockingViolation`
+(10000) at its own published slot against roughly 1001 for a clean slot one field
+over, so a default-weight global re-solve moved it off its published time to
+repair a violation the gate had already decided not to repair.
+
+The clamp at zero is load-bearing twice over. A candidate carrying *fewer*
+findings than the baseline is not paid a bonus for it — a negative quality term
+would let the placer buy a move with somebody else's accepted exception, which is
+the same defect wearing the other sign — and the short-circuits below rest on
+every quality term being non-negative.
+
+Declining to repair is not licence to **spread**: among slots the objective
+values identically, `chooseSlot()` takes the one carrying fewer findings
+outright, so a game with an accepted overlap is never placed on top of a clean
+game when free ground costs the same.
+
+### Every stage measures drift from the same anchor
+
+`anchorOf()` is the one function that answers "where is this game held from": the
+slot a change request named for it, or — for every game the request did not name
+— the slot the **published** schedule gave it. Never the slot it happens to be
+standing on mid-run. `local-search` and `pair-repair` each used to carry their
+own `context.anchors[id] ?? currentSlot` fallback, and `context.anchors` holds
+only change-requested games, so a game already displaced by `initial-assignment`
+measured its drift from the displacement. Walking such a game back toward its
+published slot then scored *worse* than moving it further away, in the stage
+whose whole job is that walk.
+
 ### It replaced two hand-written orderings
 
 `candidateSlotsFor()` used to carry `'baseline-first'` (nearest to the anchor,
@@ -94,9 +130,19 @@ scores each candidate through the same one function.
 
 Two exact short-circuits keep it about as cheap as "first legal slot" was: the
 candidates arrive ordered by change cost ascending and every quality term is
-non-negative, so a scan can stop once a candidate's change cost alone reaches
-the best total found so far, and can stop outright at a candidate scoring zero.
-Neither changes the answer.
+non-negative, so a scan can stop once a candidate's change cost alone *exceeds*
+the best total found so far, and can stop outright at a candidate that costs
+nothing and carries nothing. Neither changes the answer. The first stops at `>`
+rather than `>=` so that the equal-cost tie group is still seen, which is what
+gives the "fewer findings outright" tie-break above something to decide between;
+a candidate whose change cost equals the best total can only tie it, never beat
+it, so the exactness is unchanged.
+
+The ordering itself is computed **once per candidate**, not once per comparison:
+`candidateSlotsFor()` decorates, sorts and undecorates. Asking the objective
+inside the comparator meant roughly 6,800 scorings and 48,000 discarded six-term
+breakdowns per placement on a busy date, for an ordering the test file asserts is
+byte-for-byte identical.
 
 ---
 
@@ -198,6 +244,17 @@ with nothing able to say why, and the report must catch it.
 **(c) quality deltas** come from the standing rule engine, per code and per
 severity, before against after, alongside the objective's own two totals.
 
+The objective's `delta` compares **like with like or not at all**. A caller who
+supplies a `baselineVerification` alongside `verify: false` would otherwise have
+a quality-inclusive baseline subtracted from a quality-free result: on the
+external-fixtures run that read as an improvement of 73,440 on a change that
+moved two games, entirely an artefact of the mismatch, and
+`RESOLVE_REPORT_QUALITY_UNMEASURED` is an `info` that would not stop anybody
+reading the number. Quality is now dropped from both sides unless both were
+measured, `objective.deltaIncludesQuality` says which happened, and the delta of
+an unmeasured run is a pure change cost — a number that can never be negative,
+because a re-solve is not rewarded for having moved something.
+
 ### The commitment fix category (b) needed
 
 `resolvedScheduleOf()` used to hand the rule engine the **baseline's**
@@ -226,8 +283,15 @@ All figures derived at test time from `fixtures/season-2026/`.
 | **08/22 seeding integration**: the 9v9 block asked to move, date thawed, held | 8 | 4 | 4 | each consequential move names `field-same-ground-exclusive`, its counterpart game, and its coaches |
 | The same, budgeted at 12 | 8 | 4 | 4 | under the cap; `RESOLVE_CHANGE_BUDGET_MET` |
 | **Constructed**: Maplewood Back's middle wave slid onto the late kickoff | 14 | 7 | 7 | over the cap; blocking, naming `field-same-ground-exclusive`; commit refused |
+| `reoptimiseWholeSeason()`, default objective, no change request | **0** | — | — | the whole season re-solved from scratch and handed back unchanged |
 | `reoptimiseWholeSeason()`, default objective | 8 | 4 | 4 | all on the affected dates; four games end TIME TBD |
 | `reoptimiseWholeSeason()`, change terms at zero | 311 | — | — | 275 of them outside the two affected dates |
+
+The **0** row is the control the row below it has to be read against, and it is
+the sharpest single statement of what this phase does: every one of the 679
+published games comes off the board (1,358 moves considered) and is placed again
+from scratch, and under the objective the module ships with every one of them
+lands exactly where it was published.
 
 The last two rows are the phase in one comparison. **The same operation, the
 same freeze plan, the same 679 rows, and the only difference is the objective**:
@@ -264,6 +328,40 @@ and `holdChanges` (so the requested times are facts rather than preferences).
 The knock-on reaches coach assignments exactly as the plan predicts: two coaches
 end up short of the between-venues travel floor, reported in category (c) and
 visible only because commitments now follow their games.
+
+### The pre-PR review moved none of these figures, and that is a fact about the corpus
+
+Making the objective's quality half relative and giving all three placing stages
+one anchor was expected to change what the placer prefers, and every figure in
+the table above was re-derived afterwards. **All of them are unchanged**, and the
+reason is worth writing down rather than reading as "nothing happened":
+
+- The corpus carries **no baseline-accepted blocking finding that depends on the
+  slot**. Its four accepted blocking findings are `SIZE_UNKNOWN_FORMAT` on the
+  `Scrimmage` rows (GAP-14), which is a fact about the game's *format*, so it
+  follows the game to every candidate slot: no candidate is ever cleaner than the
+  published one, and the anchor won on change cost under either scoring. The
+  scenario that does bite is therefore **constructed** in
+  `tests/minimalDiff.test.js` — one published row stacked onto another's slot,
+  which is a published schedule carrying an accepted double-booking. Scored
+  absolutely, a default-weight global re-solve moves that game off its published
+  slot; scored relative to the baseline, it leaves it alone.
+- `local-search` and `pair-repair` **apply no move at all on the published
+  corpus**, and structurally so: `initial-assignment` only ever places a game
+  where its blocking codes do not grow against the baseline, so it cannot make a
+  standing game illegal unless the game being placed already carried an accepted
+  overlap — and the corpus has none. The same constructed schedule gets both
+  stages off the ground (`local-search` considers a move and is refused by the
+  freeze, `pair-repair` applies one), which is the first coverage either has of
+  its own placement path. The anchor fix is correct and is asserted structurally;
+  its *behavioural* consequence is not reachable on the corpus today.
+
+The three smaller findings changed no figure by construction: they are about what
+a run **reports** — which change terms were zeroed, whether the weights were
+really overridden, and refusing an objective delta that subtracts a
+quality-inclusive baseline from a quality-free result (on the external-fixtures
+run with `verify: false` that delta read as an improvement of 73,440 on a
+two-game change, and now reads as its true change cost).
 
 ---
 

@@ -43,7 +43,10 @@
  * conspicuous act: it is the objective incident 1's solver had, it is what the
  * positive control in `tests/freezeScopes.test.js` runs, and a run scored that
  * way stamps `RESOLVE_OBJECTIVE_CHANGE_TERM_DISABLED` at `compromise` so it can
- * never be mistaken for an ordinary one.
+ * never be mistaken for an ordinary one. **Zeroing any one of them stamps it**,
+ * naming which: `changedGame` alone is 1000 of the 1002 units of change pressure
+ * the objective has, so a run without it behaves like a re-optimisation, and a
+ * warning that only fired on all three let it do so in silence.
  *
  * @module resolve/objective
  */
@@ -146,13 +149,55 @@ export function resolveObjectiveWeights(overrides) {
 }
 
 /**
+ * Which change terms this run switched off, named.
+ *
+ * **Any, not all.** `{ changedGame: 0 }` on its own strips essentially every
+ * unit of change pressure the objective has: what is left is `driftMinute` at 1
+ * and `changedSurface` at 1, so a thirty-minute move costs 30 against a single
+ * `compromiseViolation` at 100 and the placer will move a published game to
+ * shave one compromise. A run configured that way behaves like a global
+ * re-optimisation, and a predicate that only fired when all three were zero let
+ * it do so while reporting nothing at all.
+ *
+ * @param {Readonly<Record<string, number>>} weights
+ * @returns {string[]} the zeroed change terms, in the order they are declared
+ */
+export function disabledChangeTerms(weights) {
+  return RESOLVE_CHANGE_TERMS.filter((term) => (weights[term] ?? 0) === 0);
+}
+
+/**
  * Are all three change terms switched off?
+ *
+ * The stronger statement, and the one the report's `changeTermsDisabled` flag
+ * carries: this run is scored with change minimisation switched off entirely,
+ * which is the objective incident 1's solver had. Two of three is not that, and
+ * must not read as it — {@link disabledChangeTerms} is what a warning is stamped
+ * from.
  *
  * @param {Readonly<Record<string, number>>} weights
  * @returns {boolean}
  */
 export function changeTermsDisabled(weights) {
-  return RESOLVE_CHANGE_TERMS.every((term) => (weights[term] ?? 0) === 0);
+  return disabledChangeTerms(weights).length === RESOLVE_CHANGE_TERMS.length;
+}
+
+/**
+ * Is this weight table the defaults, **by value**?
+ *
+ * Object identity is not the question a caller is asking. `objectiveWeights: {}`
+ * and a table spelled out to exactly the shipped numbers both produce a fresh
+ * object, and telling an operator that two identically-scored runs are
+ * incomparable is as wrong as failing to tell them when they are.
+ *
+ * @param {Readonly<Record<string, number>>} weights
+ * @returns {boolean}
+ */
+export function objectiveWeightsAreDefault(weights) {
+  if (weights === RESOLVE_OBJECTIVE_WEIGHTS) return true;
+  return Object.entries(RESOLVE_OBJECTIVE_WEIGHTS).every(
+    ([term, value]) => (weights[term] ?? 0) === value
+  );
 }
 
 /**
@@ -216,16 +261,95 @@ export function changeCountsFor(reference, slot) {
 }
 
 /**
+ * How many blocking and compromise findings one placement carries, per reason
+ * code.
+ *
+ * This is what "the schedule already carried this" is recorded as, so that
+ * {@link candidateObjectiveCounts} can charge for what a candidate slot adds
+ * rather than for everything it has. Counted here rather than in `stages.js`
+ * because `stages.js` counts nothing.
+ *
+ * @param {ReturnType<import('./legality.js').checkPlacement>|null} placement
+ * @returns {Record<string, number>}
+ */
+export function placementFindingCounts(placement) {
+  /** @type {Record<string, number>} */
+  const counts = {};
+  if (placement === null || placement === undefined) return counts;
+  for (const finding of placement.findings) {
+    if (
+      finding.severity !== CONSTRAINT_SEVERITY.BLOCKING &&
+      finding.severity !== CONSTRAINT_SEVERITY.COMPROMISE
+    ) {
+      continue;
+    }
+    counts[finding.code] = (counts[finding.code] ?? 0) + 1;
+  }
+  return counts;
+}
+
+/**
+ * How many blocking and compromise findings one placement carries in total,
+ * ignoring what the baseline already accepted.
+ *
+ * Not a score and not weighed: it is the tie-break `chooseSlot()` uses among
+ * slots the objective values identically. Charging quality relative to the
+ * baseline is what stops a game being moved off its published slot to repair an
+ * accepted exception; this is what stops the same game **spreading** that
+ * exception to a slot that did not have it, when the two cost the same.
+ *
+ * @param {ReturnType<import('./legality.js').checkPlacement>|null} placement
+ * @returns {number}
+ */
+export function placementFindingTotal(placement) {
+  let total = 0;
+  if (placement === null || placement === undefined) return total;
+  // Counted straight off the findings rather than through
+  // {@link placementFindingCounts}: this runs once per candidate slot, and a
+  // throwaway map per candidate is the allocation churn the decorate-sort in
+  // `inventory.js` was cleaned up to avoid.
+  for (const finding of placement.findings) {
+    if (
+      finding.severity === CONSTRAINT_SEVERITY.BLOCKING ||
+      finding.severity === CONSTRAINT_SEVERITY.COMPROMISE
+    ) {
+      total += 1;
+    }
+  }
+  return total;
+}
+
+/**
  * The terms one candidate slot for one game carries.
  *
  * The quality half is **consumed** from `checkPlacement()` — which is Phase 1.3's
  * `checkKickoffAvailability()` re-severitied by the Phase 2.1 registry — rather
  * than re-derived here. This file weighs; it does not decide what is illegal.
  *
+ * ## Quality is charged **against what the schedule already carried**
+ *
+ * `accepted` is the same game's findings at the slot the published schedule gave
+ * it, per code, and only the *excess* over that is counted. Without it the
+ * objective scores quality absolutely while the gate that admits a candidate
+ * (`newBlockingCodes()` in `stages.js`) compares against the baseline, and the
+ * two disagree in the one direction that matters: a game standing on a
+ * baseline-accepted blocking finding scores a full `blockingViolation` at its own
+ * published slot and a fraction of that anywhere clean, so the placer moves it
+ * off its published time to repair a violation the gate had already accepted.
+ * A change request is not asked to repair the schedule it was handed, and it may
+ * not charge a family a new kickoff time for doing so.
+ *
+ * The clamp at zero matters as much as the subtraction: a candidate that carries
+ * *fewer* findings than the baseline is not paid a bonus for it, because a
+ * negative quality term would let a solver buy a move with somebody else's
+ * accepted exception — and because the short-circuits in `chooseSlot()` rest on
+ * every quality term being non-negative.
+ *
  * @param {Object} input
  * @param {import('./types.js').Slot|null} input.reference - where the game is held from
  * @param {import('./types.js').Slot} input.slot - the candidate
  * @param {ReturnType<import('./legality.js').checkPlacement>|null} [input.placement]
+ * @param {Readonly<Record<string, number>>} [input.accepted] - {@link placementFindingCounts} for the baseline slot
  * @returns {Record<string, number>}
  */
 export function candidateObjectiveCounts(input) {
@@ -233,11 +357,29 @@ export function candidateObjectiveCounts(input) {
   const counts = { ...changeCountsFor(input.reference, input.slot) };
   const placement = input.placement ?? null;
   if (placement === null) return counts;
+  const accepted = input.accepted ?? {};
+
+  /** @type {Map<string, { severity: string, count: number }>} */
+  const here = new Map();
+  for (const finding of placement.findings) {
+    if (
+      finding.severity !== CONSTRAINT_SEVERITY.BLOCKING &&
+      finding.severity !== CONSTRAINT_SEVERITY.COMPROMISE
+    ) {
+      continue;
+    }
+    const entry = here.get(finding.code);
+    if (entry === undefined) here.set(finding.code, { severity: finding.severity, count: 1 });
+    else entry.count += 1;
+  }
+
   let blocking = 0;
   let compromise = 0;
-  for (const finding of placement.findings) {
-    if (finding.severity === CONSTRAINT_SEVERITY.BLOCKING) blocking += 1;
-    else if (finding.severity === CONSTRAINT_SEVERITY.COMPROMISE) compromise += 1;
+  for (const [code, entry] of here) {
+    const excess = entry.count - (accepted[code] ?? 0);
+    if (excess <= 0) continue;
+    if (entry.severity === CONSTRAINT_SEVERITY.BLOCKING) blocking += excess;
+    else compromise += excess;
   }
   if (blocking > 0) counts[RESOLVE_OBJECTIVE_TERM.BLOCKING_VIOLATION] = blocking;
   if (compromise > 0) counts[RESOLVE_OBJECTIVE_TERM.COMPROMISE_VIOLATION] = compromise;

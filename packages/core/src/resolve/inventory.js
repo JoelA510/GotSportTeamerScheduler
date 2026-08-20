@@ -204,14 +204,23 @@ export function candidateSlotsFor(state, gameId, anchor, weights) {
     }
   }
 
-  candidates.sort((a, b) => {
-    const byCost = changeCostOf(anchor, a, weights) - changeCostOf(anchor, b, weights);
-    if (byCost !== 0) return byCost;
+  // **Decorate, sort, undecorate.** Scoring inside the comparator asked the
+  // objective twice per comparison and allocated a fresh six-term breakdown for
+  // each call: for the ~400 candidates a busy date offers, roughly 6,800 calls
+  // and 48,000 objects thrown away per placement. The cost of a candidate does
+  // not depend on what it is being compared against, so it is computed once per
+  // candidate. `tests/minimalDiff.test.js` asserts the ordering is byte-for-byte
+  // the one the comparator produced rather than assuming it.
+  const scored = candidates.map((slot) => ({ slot, cost: changeCostOf(anchor, slot, weights) }));
+  scored.sort((a, b) => {
+    if (a.cost !== b.cost) return a.cost - b.cost;
     // Deterministic and reference-blind, so two runs over the same data produce
     // the same answer and a run with the change terms switched off is genuinely
     // free to move things.
-    if (a.startMinutes !== b.startMinutes) return a.startMinutes - b.startMinutes;
-    return a.surfaceId.localeCompare(b.surfaceId);
+    if (a.slot.startMinutes !== b.slot.startMinutes) {
+      return a.slot.startMinutes - b.slot.startMinutes;
+    }
+    return a.slot.surfaceId.localeCompare(b.slot.surfaceId);
   });
-  return candidates;
+  return scored.map((entry) => entry.slot);
 }

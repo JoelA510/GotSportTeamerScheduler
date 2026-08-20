@@ -55,7 +55,7 @@
 import { CONSTRAINT_SEVERITY } from '../constraints/reasonCodes.js';
 
 import { RESOLVE_REASON, makeResolveFinding } from './reasonCodes.js';
-import { RESOLVE_CHANGE_TERMS, changeTermsDisabled, scoreSchedule } from './objective.js';
+import { changeTermsDisabled, disabledChangeTerms, scoreSchedule } from './objective.js';
 import { slotKey } from './state.js';
 
 /**
@@ -357,33 +357,53 @@ export function buildChangeReport(input) {
 
   /* -- the objective, scored through the one function ---------------------- */
 
+  // **Both sides measured the same way, or neither.** `measured` is exactly
+  // "the rule engine ran over both", and a caller who supplies a
+  // `baselineVerification` alongside `verify: false` would otherwise have a
+  // quality-inclusive baseline subtracted from a quality-free result: a delta of
+  // several thousand to the good, entirely an artefact of the mismatch, reading
+  // as the one thing this report exists to be trusted about. The `measured:
+  // false` finding is an `info` and would not stop anybody reading the number,
+  // so the number itself is made honest instead. With quality dropped from both
+  // sides the delta is a pure change cost, which can only ever be >= 0 — a
+  // re-solve is never *rewarded* for having moved something.
   const baselineScore = scoreSchedule({
     referenceGames: baselineSchedule.games,
     games: baselineSchedule.games,
-    verification: baselineVerification,
+    verification: measured ? baselineVerification : null,
     weights,
   });
   const resolvedScore = scoreSchedule({
     referenceGames: baselineSchedule.games,
     games: schedule.games,
-    verification,
+    verification: measured ? verification : null,
     weights,
   });
 
-  if (changeTermsDisabled(weights)) {
+  const disabledTerms = disabledChangeTerms(weights);
+  // "All of them" is the stronger statement and is asked for as such, rather
+  // than by counting this list against a number written here.
+  const all = changeTermsDisabled(weights);
+  if (disabledTerms.length > 0) {
     findings.push(
       makeResolveFinding(
         RESOLVE_REASON.RESOLVE_OBJECTIVE_CHANGE_TERM_DISABLED,
-        'every change term of the objective is weighted zero, so this run was scored with change minimisation switched off: it returns the best schedule it could find rather than the nearest acceptable one, which is the objective incident 1’s solver had',
+        all
+          ? `every change term of the objective (${disabledTerms.join(', ')}) is weighted zero, so this run was scored with change minimisation switched off: it returns the best schedule it could find rather than the nearest acceptable one, which is the objective incident 1’s solver had`
+          : `the change term(s) ${disabledTerms.join(', ')} are weighted zero, so this run was scored with change minimisation partly switched off; what is left of it cannot outweigh an ordinary quality shortfall, and the run behaves like a re-optimisation while reading as an ordinary change request`,
         // Read back out of the score this run actually used, rather than out of
         // the weight table: no file outside `objective.js` reads an individual
         // weight, which is what keeps one table one table. It also means the
         // finding reports the weights that were *applied* rather than the ones
         // that were passed, and those are the same number only while nothing in
         // between has gone wrong.
-        Object.fromEntries(
-          RESOLVE_CHANGE_TERMS.map((term) => [term, resolvedScore.terms[term].weight])
-        )
+        {
+          disabledTerms: [...disabledTerms],
+          allChangeTermsDisabled: all,
+          ...Object.fromEntries(
+            disabledTerms.map((term) => [term, resolvedScore.terms[term].weight])
+          ),
+        }
       )
     );
   }
@@ -457,9 +477,14 @@ export function buildChangeReport(input) {
     objective: {
       weights,
       changeTermsDisabled: changeTermsDisabled(weights),
+      disabledChangeTerms: [...disabledTerms],
       baseline: baselineScore,
       resolvedSchedule: resolvedScore,
       delta: resolvedScore.total - baselineScore.total,
+      // Whether the delta above includes the quality half at all. It says so
+      // rather than the reader having to infer it from two `qualityMeasured`
+      // flags that would agree by construction.
+      deltaIncludesQuality: measured,
     },
     budget,
     unplaced: input.unplaced.map((entry) => ({ ...entry })),

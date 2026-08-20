@@ -29,7 +29,7 @@ import { runRuleEngine } from '../ruleEngine/engine.js';
 import { ScheduleSchema } from '../ruleEngine/schemas.js';
 
 import { buildSlotInventory } from './inventory.js';
-import { RESOLVE_OBJECTIVE_WEIGHTS, resolveObjectiveWeights } from './objective.js';
+import { objectiveWeightsAreDefault, resolveObjectiveWeights } from './objective.js';
 import {
   RESOLVE_REASON,
   createResolveMeta,
@@ -248,8 +248,13 @@ function runResolve(input) {
 
   // The objective, resolved once for the whole run. Every stage that chooses a
   // slot, the dry-run report and the change budget all read this one table.
+  // **By value, never by identity.** `objectiveWeights: {}` — and a table
+  // spelled out to exactly the shipped numbers — resolves to a fresh object that
+  // scores every run identically. Stamping those as overridden tells an operator
+  // that two comparable runs are incomparable, which is the same disservice as
+  // failing to stamp a real override.
   const weights = resolveObjectiveWeights(input.objectiveWeights);
-  if (weights !== RESOLVE_OBJECTIVE_WEIGHTS) {
+  if (!objectiveWeightsAreDefault(weights)) {
     ledger.findings.push(
       makeResolveFinding(
         RESOLVE_REASON.RESOLVE_OBJECTIVE_WEIGHTS_OVERRIDDEN,
@@ -283,6 +288,7 @@ function runResolve(input) {
     onUnsatisfiable: input.onUnsatisfiable ?? 'throw',
     touchedDates,
     baselineBlockingCodes: {},
+    baselineFindingCounts: {},
     anchors: {},
     requestedSlots: {},
     unsatisfiableErrors: [],

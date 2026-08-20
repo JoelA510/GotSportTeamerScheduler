@@ -180,6 +180,7 @@ export function buildAdversarialState(input) {
     onUnsatisfiable: 'report',
     touchedDates: [...new Set(games.map((game) => game.date))].sort(),
     baselineBlockingCodes: {},
+    baselineFindingCounts: {},
     anchors: {},
     requestedSlots: {},
     unsatisfiableErrors: [],
