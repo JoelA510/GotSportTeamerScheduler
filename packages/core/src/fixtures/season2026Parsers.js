@@ -18,6 +18,9 @@
 
 import Papa from 'papaparse';
 
+import { season2026ParityRow } from '../publication/adapters/season2026Publication.js';
+import { PARITY_FIELD_ORDER, parityRowKey } from '../publication/rows.js';
+
 /**
  * The placeholder token the source CSVs use for "no opponent" / "not applicable".
  * It appears in `Away` for Minis sessions, unnamed league slots and the single
@@ -743,23 +746,32 @@ export function parseScheduleCsv(text, options = {}) {
 }
 
 /**
- * The publication-parity key: date, slot, field, format, division and both
- * sides. Two rows with the same key are the same published fixture.
+ * The publication-parity key: date, kickoff, venue, field, format, division and
+ * both sides. Two rows with the same key are the same published fixture.
+ *
+ * **The comparator that used to be built on this has moved.**
+ * `tests/season2026Fixture.test.js` once counted keys into a map by hand;
+ * `packages/core/src/publication/parity.js` `checkParity()` is the production
+ * checker now, and this function delegates to that package's single key
+ * derivation rather than keeping a second spelling of it. It stays because the
+ * corpus's *full* published identity — every parity field at once, rather than
+ * the date-plus-both-sides key a parity subject usually runs on — is a useful
+ * thing to be able to ask for.
+ *
+ * The key text changed shape when it moved: the kickoff is now minutes past
+ * midnight rather than `HH:MM`, and a trailing empty cell appears for the
+ * `participant` field that only per-team artifacts carry. Nothing parses a key,
+ * so the only property that matters is that two rows share it exactly when they
+ * agree on all eight of the columns a schedule row has.
  *
  * @param {Season2026Game} game
  * @returns {string}
  */
 export function publicationKey(game) {
-  return [
-    game.date,
-    game.kickoff,
-    game.venue,
-    game.field,
-    game.format,
-    game.division,
-    game.homeLabel,
-    game.awayLabel,
-  ].join('|');
+  return parityRowKey(
+    season2026ParityRow(game, 'season2026Parsers.publicationKey'),
+    PARITY_FIELD_ORDER
+  );
 }
 
 /* -------------------------------------------------------------------------- */
@@ -787,6 +799,14 @@ export function publicationKey(game) {
  * The `Venue (external naming)` column uses the other league's names
  * (`Alder Park (Back Pitch 2)`); we keep the raw label **and** a best-effort
  * resolution, never replacing one with the other.
+ *
+ * The regex below is **the** external-naming transform and it is deliberately
+ * fixture-local: it knows the shape of one file's one column. The production
+ * field-name mapping (`publication/parity.js`) matches exact labels rather than
+ * patterns, and `publication/adapters/season2026Publication.js`
+ * `season2026ExternalVenueMapping()` records *this* split as mapping rules with
+ * provenance rather than re-deriving it. One transform, two representations —
+ * never two transforms.
  *
  * TODO(GAP-18/GAP-19): there is no external-club entity and no external
  * commitment timeline, so these rows cannot be represented as domain
