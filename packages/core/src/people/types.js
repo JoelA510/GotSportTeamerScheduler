@@ -81,8 +81,8 @@
  * @property {string} teamId
  * @property {number} slot - 1 is the team's primary coach; lower wins a clash
  * @property {string} status - an `ASSIGNMENT_STATUS` value
- * @property {string|null} effectiveFrom
- * @property {string|null} effectiveTo
+ * @property {string|null} effectiveFrom - applied against `buildCoachRoster()`'s `asOf`
+ * @property {string|null} effectiveTo - applied against `buildCoachRoster()`'s `asOf`
  * @property {string|null} source
  */
 
@@ -103,8 +103,8 @@
 /**
  * @typedef {Object} TeamCoaching
  * @property {string} teamId
- * @property {ReadonlyArray<CoachAssignment>} slots - sorted by slot ascending
- * @property {ReadonlyArray<string>} personIds - sorted by slot ascending
+ * @property {ReadonlyArray<CoachAssignment>} slots - sorted by slot ascending; empty when uncoached
+ * @property {ReadonlyArray<string>} personIds - sorted by slot ascending; empty when uncoached
  */
 
 /**
@@ -152,7 +152,7 @@
  * @property {string} date
  * @property {ReadonlyArray<PersonCommitment>} commitments - sorted
  * @property {number} firstStartMinutes
- * @property {number|null} lastEndMinutes - null when the last end is unknown
+ * @property {number|null} lastEndMinutes - the latest end, null when any commitment's end is unknown
  * @property {number|null} spanMinutes
  * @property {ReadonlyArray<PersonTransition>} transitions
  * @property {number|null} idleMinutes - total measurable gap between commitments
@@ -185,7 +185,7 @@
  * @property {string} date
  * @property {PersonCommitment} from
  * @property {PersonCommitment} to
- * @property {number} overlapMinutes
+ * @property {number|null} overlapMinutes - null when the later commitment has no known end
  */
 
 /**

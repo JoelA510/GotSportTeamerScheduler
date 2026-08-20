@@ -274,6 +274,26 @@ export const PEOPLE_REASON = Object.freeze({
   PERSON_SOLE_COACH_OF_MULTIPLE_TEAMS: 'PERSON_SOLE_COACH_OF_MULTIPLE_TEAMS',
   /** The sole-coach scan examined zero teams. Incident 4. */
   SOLE_COACH_SCAN_VACUOUS: 'SOLE_COACH_SCAN_VACUOUS',
+  /**
+   * An active assignment carries an effective window and the roster was built
+   * with no as-of date, so the window could not be applied. The assignment is
+   * still counted active — dropping a coach on a window nobody judged would be
+   * the worse error — but "we applied the window" and "there was no window" are
+   * different claims and this is the one that says which happened.
+   *
+   * The sibling of `CONSTRAINT_WINDOW_UNJUDGED`, and `compromise` for the same
+   * reason, differing only in which way it fails safe: an unjudged *rule* does
+   * not apply, because inventing a live rule is the risk there, while an
+   * unjudged *coach* stays on the roster, because losing coverage is the risk
+   * here. Both say so out loud rather than choosing in silence.
+   */
+  ASSIGNMENT_WINDOW_UNJUDGED: 'ASSIGNMENT_WINDOW_UNJUDGED',
+  /**
+   * A scheduled fixture names a team the roster carries with **no active
+   * coach**, so no personal timeline can hold it. Incident 10: a fixture that
+   * leaves the model without a word said about it is how a team loses a game.
+   */
+  FIXTURE_TEAM_UNCOACHED: 'FIXTURE_TEAM_UNCOACHED',
 
   /* -- the personal timeline (GAP-19) -------------------------------------- */
   /**
@@ -318,6 +338,13 @@ export const PEOPLE_REASON = Object.freeze({
   PERSONAL_CONSTRAINT_POLICY_EMPTY: 'PERSONAL_CONSTRAINT_POLICY_EMPTY',
   /** A declared personal constraint names a person no roster carries. */
   PERSONAL_CONSTRAINT_PERSON_UNKNOWN: 'PERSONAL_CONSTRAINT_PERSON_UNKNOWN',
+  /**
+   * A declared personal constraint carries a window and the derivation was
+   * given no date, so the window could not be applied. The record is still
+   * honoured, for the same reason an unjudged assignment window is: silently
+   * dropping a declared must-attend is worse than reporting an unjudged one.
+   */
+  PERSONAL_CONSTRAINT_WINDOW_UNJUDGED: 'PERSONAL_CONSTRAINT_WINDOW_UNJUDGED',
   /** The clash was resolved by coach slot; the lower slot kept the person. */
   ATTENDANCE_RESOLVED_BY_SLOT: 'ATTENDANCE_RESOLVED_BY_SLOT',
   /**
@@ -328,6 +355,13 @@ export const PEOPLE_REASON = Object.freeze({
   ATTENDANCE_SLOT_TIE: 'ATTENDANCE_SLOT_TIE',
   /** A must-attend person is wanted in two places; no resolution exists. */
   ATTENDANCE_MUST_ATTEND_UNRESOLVABLE: 'ATTENDANCE_MUST_ATTEND_UNRESOLVABLE',
+  /**
+   * A clashing commitment names a team the roster gives this person no active
+   * slot on, so the clash could not be ranked by slot order. Reported rather
+   * than encoded as a very large slot number, which reads downstream as a
+   * genuine — and very low priority — coach slot.
+   */
+  ATTENDANCE_TEAM_LINK_MISSING: 'ATTENDANCE_TEAM_LINK_MISSING',
   /** The losing team is covered by a co-coach — recorded as its conflict. */
   TEAM_FALLBACK_TO_CO_COACH: 'TEAM_FALLBACK_TO_CO_COACH',
   /** The losing team's only co-coach is clashing too; the pair must split. */
@@ -375,6 +409,8 @@ export const PEOPLE_REASON_SEVERITY = Object.freeze({
   [PEOPLE_REASON.ASSIGNMENT_PERSON_UNKNOWN]: PEOPLE_SEVERITY.BLOCKING,
   [PEOPLE_REASON.PERSON_SOLE_COACH_OF_MULTIPLE_TEAMS]: PEOPLE_SEVERITY.COMPROMISE,
   [PEOPLE_REASON.SOLE_COACH_SCAN_VACUOUS]: PEOPLE_SEVERITY.COMPROMISE,
+  [PEOPLE_REASON.ASSIGNMENT_WINDOW_UNJUDGED]: PEOPLE_SEVERITY.COMPROMISE,
+  [PEOPLE_REASON.FIXTURE_TEAM_UNCOACHED]: PEOPLE_SEVERITY.BLOCKING,
 
   [PEOPLE_REASON.TIMELINE_SOURCE_NOT_INGESTED]: PEOPLE_SEVERITY.BLOCKING,
   [PEOPLE_REASON.TIMELINE_SOURCE_EMPTY]: PEOPLE_SEVERITY.COMPROMISE,
@@ -387,9 +423,11 @@ export const PEOPLE_REASON_SEVERITY = Object.freeze({
 
   [PEOPLE_REASON.PERSONAL_CONSTRAINT_POLICY_EMPTY]: PEOPLE_SEVERITY.INFO,
   [PEOPLE_REASON.PERSONAL_CONSTRAINT_PERSON_UNKNOWN]: PEOPLE_SEVERITY.BLOCKING,
+  [PEOPLE_REASON.PERSONAL_CONSTRAINT_WINDOW_UNJUDGED]: PEOPLE_SEVERITY.COMPROMISE,
   [PEOPLE_REASON.ATTENDANCE_RESOLVED_BY_SLOT]: PEOPLE_SEVERITY.INFO,
   [PEOPLE_REASON.ATTENDANCE_SLOT_TIE]: PEOPLE_SEVERITY.COMPROMISE,
   [PEOPLE_REASON.ATTENDANCE_MUST_ATTEND_UNRESOLVABLE]: PEOPLE_SEVERITY.BLOCKING,
+  [PEOPLE_REASON.ATTENDANCE_TEAM_LINK_MISSING]: PEOPLE_SEVERITY.COMPROMISE,
   [PEOPLE_REASON.TEAM_FALLBACK_TO_CO_COACH]: PEOPLE_SEVERITY.COMPROMISE,
   [PEOPLE_REASON.TEAM_FALLBACK_CONTESTED]: PEOPLE_SEVERITY.COMPROMISE,
   [PEOPLE_REASON.TEAM_NO_FALLBACK_AVAILABLE]: PEOPLE_SEVERITY.BLOCKING,

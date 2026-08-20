@@ -67,6 +67,14 @@ export const PersonSchema = z
  * — the corpus's only value — rather than optional, so a producer that means
  * "declined" has to say so.
  *
+ * `effectiveFrom`/`effectiveTo` are the assignment's window, and they are
+ * *applied*: `buildCoachRoster()` takes an `asOf` date and an assignment whose
+ * window does not cover it is inactive, so a departed coach stops counting as
+ * fallback capacity everywhere the roster is read. The ordering refinement
+ * below mirrors {@link PersonalConstraintSchema}'s, because a window that
+ * closes before it opens governs nothing and every question asked across it
+ * would be nonsense.
+ *
  * @see {@link import('./types.js').CoachAssignment}
  */
 export const CoachAssignmentSchema = z
@@ -82,7 +90,17 @@ export const CoachAssignmentSchema = z
     effectiveTo: IsoDateSchema.nullable().default(null),
     source: z.string().min(1).nullable().default(null),
   })
-  .strict();
+  .strict()
+  .refine(
+    (value) =>
+      value.effectiveFrom === null ||
+      value.effectiveTo === null ||
+      value.effectiveTo >= value.effectiveFrom,
+    {
+      message: 'an assignment may not end before it takes effect',
+      path: ['effectiveTo'],
+    }
+  );
 
 /**
  * One commitment on one person's day.

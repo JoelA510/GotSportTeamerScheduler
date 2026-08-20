@@ -66,6 +66,7 @@ import {
   createPeopleMeta,
   derivePeopleStatus,
   makePeopleFinding,
+  mergePeopleMeta,
 } from './reasonCodes.js';
 import { IdentityDecisionSchema } from './schemas.js';
 
@@ -430,12 +431,21 @@ export function buildIdentityReviewQueue(people, options = {}) {
  * becomes an alias. Which one survives is arbitrary and stated to be arbitrary;
  * what matters is that the mapping is total and deterministic.
  *
+ * The queue's **own** findings and counters come through: this pass accumulates
+ * rather than replaces, as every other module here does. Replacing them turned
+ * a vacuous queue — one that compared no pair at all, and whose empty result
+ * therefore says nothing — into a clean `allowed` answer with zeroed counters,
+ * and lost every {@link PEOPLE_REASON.IDENTITY_MATCH_VETOED} explanation for a
+ * pair that is deliberately absent. The one code not carried is
+ * {@link PEOPLE_REASON.IDENTITY_REVIEW_PENDING}, because this pass restates the
+ * pending set itself and carrying the build's copy would double every entry.
+ *
  * @param {import('./types.js').IdentityReviewQueue} queue
  * @param {ReadonlyArray<Object>} decisions
  * @returns {{ queue: import('./types.js').IdentityReviewQueue, canonicalIdByPersonId: Map<string, string>, aliasesByCanonicalId: Map<string, string[]>, findings: import('./types.js').PeopleFinding[], meta: import('./types.js').PeopleMeta, status: string }}
  */
 export function applyIdentityDecisions(queue, decisions) {
-  const meta = createPeopleMeta();
+  const meta = mergePeopleMeta(createPeopleMeta(), queue.meta);
   /** @type {import('./types.js').PeopleFinding[]} */
   const findings = [];
   const byId = new Map(queue.entries.map((entry) => [entry.id, entry]));
@@ -518,23 +528,41 @@ export function applyIdentityDecisions(queue, decisions) {
     }
     canonicalIdByPersonId.set(personId, current);
   }
-  for (const [survivor, aliases] of aliasesByCanonicalId) {
-    aliasesByCanonicalId.set(survivor, [...new Set(aliases)].sort());
+
+  // …and rebuild the alias index *from* the chased mapping rather than from the
+  // pair-by-pair one. Filing an alias under the id it was merged into leaves it
+  // under a non-surviving id once that id is itself absorbed — with `a::b` and
+  // `b::c` accepted, `c` would sit under `b` and the survivor's alias list
+  // would be short by one.
+  aliasesByCanonicalId.clear();
+  for (const [personId, canonicalId] of [...canonicalIdByPersonId.entries()].sort((a, b) =>
+    a[0].localeCompare(b[0])
+  )) {
+    if (canonicalId === personId) continue;
+    if (!aliasesByCanonicalId.has(canonicalId)) aliasesByCanonicalId.set(canonicalId, []);
+    /** @type {string[]} */ (aliasesByCanonicalId.get(canonicalId)).push(personId);
   }
+
+  // The queue's own findings, minus the ones this pass restates.
+  const carried = queue.findings.filter(
+    (finding) => finding.code !== PEOPLE_REASON.IDENTITY_REVIEW_PENDING
+  );
+  const allFindings = [...carried, ...findings];
+  const status = derivePeopleStatus(allFindings);
 
   return {
     queue: {
       ...queue,
       entries: Object.freeze(entries),
-      findings,
+      findings: allFindings,
       meta,
-      status: derivePeopleStatus(findings),
+      status,
     },
     canonicalIdByPersonId,
     aliasesByCanonicalId,
-    findings,
+    findings: allFindings,
     meta,
-    status: derivePeopleStatus(findings),
+    status,
   };
 }
 

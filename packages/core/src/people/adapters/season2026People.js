@@ -29,7 +29,13 @@ import {
   season2026SurfaceId,
   season2026VenueId,
 } from '../../facility/adapters/season2026Geometry.js';
-import { ASSIGNMENT_STATUS, COMMITMENT_SOURCE } from '../reasonCodes.js';
+import {
+  ASSIGNMENT_STATUS,
+  COMMITMENT_SOURCE,
+  PEOPLE_REASON,
+  derivePeopleStatus,
+  makePeopleFinding,
+} from '../reasonCodes.js';
 import { buildCoachRoster } from '../roster.js';
 import { createTimelineSet, ingestCommitments, sealTimelines } from '../timeline.js';
 
@@ -148,21 +154,25 @@ export function toSeason2026CoachAssignments(assignments) {
  * The whole roster in one call.
  *
  * @param {ReadonlyArray<Object>} assignments - parsed `coach_roster*.csv` rows
+ * @param {{ asOf?: string|null }} [options] - passed to `buildCoachRoster()`
  * @returns {import('../types.js').CoachRoster}
  */
-export function buildSeason2026CoachRoster(assignments) {
-  return buildCoachRoster({
-    people: toSeason2026People(
-      /** @type {ReadonlyArray<{ personKey: string, firstName: string, lastName: string }>} */ (
-        assignments
-      )
-    ),
-    assignments: toSeason2026CoachAssignments(
-      /** @type {ReadonlyArray<{ teamCode: string, personKey: string, coachSlot: number, status: string }>} */ (
-        assignments
-      )
-    ),
-  });
+export function buildSeason2026CoachRoster(assignments, options = {}) {
+  return buildCoachRoster(
+    {
+      people: toSeason2026People(
+        /** @type {ReadonlyArray<{ personKey: string, firstName: string, lastName: string }>} */ (
+          assignments
+        )
+      ),
+      assignments: toSeason2026CoachAssignments(
+        /** @type {ReadonlyArray<{ teamCode: string, personKey: string, coachSlot: number, status: string }>} */ (
+          assignments
+        )
+      ),
+    },
+    options
+  );
 }
 
 /**
@@ -171,6 +181,17 @@ export function buildSeason2026CoachRoster(assignments) {
  * A row contributes a commitment for every **rostered** coach of every side the
  * roster recognises as a team. A side the roster does not know is a placeholder
  * label, not a team (incident 4's second half), and contributes nothing.
+ *
+ * A side the roster *does* know but has no active coach on contributes nothing
+ * either — there is nobody to hold the commitment — and that is exactly the
+ * silent drop incident 10 is about, so it is not left silent:
+ * {@link season2026UncoachedFixtures} names every such fixture and
+ * {@link buildSeason2026Timelines} carries those findings into the sealed set.
+ *
+ * The commitment id carries the **team** as well as the person and the game,
+ * because one person can coach both sides of an intra-club fixture — this
+ * corpus already contains intra-club rows — and `<personId>|<gameId>` gives
+ * that person's two duties one id.
  *
  * @param {{ combinedGames: ReadonlyArray<Object> }} season
  * @param {import('../types.js').CoachRoster} roster
@@ -196,7 +217,7 @@ export function toSeason2026CommitmentBatches(season, roster) {
       if (!team) continue;
       for (const personId of team.personIds) {
         /** @type {Array<Object>} */ (batches.get(source)).push({
-          id: `${personId}|${game.id}`,
+          id: `${personId}|${teamId}|${game.id}`,
           personId,
           date: String(game.date),
           startMinutes: Number(game.kickoffMinutes),
@@ -222,6 +243,49 @@ export function toSeason2026CommitmentBatches(season, roster) {
 }
 
 /**
+ * Every fixture whose side the roster carries with **no active coach**.
+ *
+ * Such a fixture contributes no commitment — nobody is rostered to hold one —
+ * and reporting it is the difference between "this team has nobody on the
+ * touchline for these nine games" and silence. `TEAM_UNCOACHED` says the team
+ * has no coach; this says which fixtures that costs, which is the half that
+ * incident 10 turns on.
+ *
+ * @param {{ combinedGames: ReadonlyArray<Object> }} season
+ * @param {import('../types.js').CoachRoster} roster
+ * @returns {Array<import('../types.js').PeopleFinding>}
+ */
+export function season2026UncoachedFixtures(season, roster) {
+  /** @type {Array<import('../types.js').PeopleFinding>} */
+  const findings = [];
+  for (const row of season.combinedGames) {
+    const game = /** @type {Record<string, any>} */ (row);
+    for (const teamId of [game.homeTeamId, game.awayTeamId]) {
+      if (!teamId) continue;
+      const team = roster.teams.get(String(teamId));
+      if (team === undefined || team.personIds.length > 0) continue;
+      findings.push(
+        makePeopleFinding(
+          PEOPLE_REASON.FIXTURE_TEAM_UNCOACHED,
+          `fixture "${game.id}" on ${game.date} names team "${teamId}", which the roster carries with no active coach; no personal timeline holds this fixture and nobody is on that touchline`,
+          {
+            gameId: String(game.id),
+            teamId: String(teamId),
+            date: String(game.date),
+            kind: String(game.kind),
+          }
+        )
+      );
+    }
+  }
+  return findings.sort((a, b) =>
+    `${a.details.gameId}|${a.details.teamId}`.localeCompare(
+      `${b.details.gameId}|${b.details.teamId}`
+    )
+  );
+}
+
+/**
  * Build the corpus's personal timelines, ingesting the named sources in order
  * and sealing against the required set.
  *
@@ -244,5 +308,12 @@ export function buildSeason2026Timelines(season, roster, options = {}) {
   for (const source of sources) {
     set = ingestCommitments(set, batches.get(source) ?? [], { source });
   }
-  return options.seal === false ? set : sealTimelines(set, { requiredSources });
+  const sealed = options.seal === false ? set : sealTimelines(set, { requiredSources });
+
+  // The fixtures nobody was rostered to hold. They contribute no commitment, so
+  // without this they would leave the model with nothing said about them.
+  const uncoached = season2026UncoachedFixtures(season, roster);
+  if (uncoached.length === 0) return sealed;
+  const findings = [...sealed.findings, ...uncoached];
+  return { ...sealed, findings, status: derivePeopleStatus(findings) };
 }

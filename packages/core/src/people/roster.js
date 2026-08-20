@@ -37,6 +37,28 @@ import {
 import { CoachRosterInputSchema } from './schemas.js';
 
 /**
+ * Does an inclusive `[fromDate, toDate]` window cover a date?
+ *
+ * A null bound is open. ISO `YYYY-MM-DD` strings order correctly under `<` and
+ * `>`, which is why every date in this package is one and no `Date` is ever
+ * constructed.
+ *
+ * Shared with the declared-personal-constraint policy in `mustAttend.js`: an
+ * effective window means the same thing on an assignment and on a constraint,
+ * and two implementations of it would be two things to keep in step.
+ *
+ * @param {string} date - `YYYY-MM-DD`
+ * @param {string|null} fromDate
+ * @param {string|null} toDate
+ * @returns {boolean}
+ */
+export function windowCoversDate(date, fromDate, toDate) {
+  if (fromDate !== null && date < fromDate) return false;
+  if (toDate !== null && date > toDate) return false;
+  return true;
+}
+
+/**
  * Build the roster from people and assignments.
  *
  * Structural defects are **reported, not thrown**: a duplicate slot or an
@@ -51,10 +73,30 @@ import { CoachRosterInputSchema } from './schemas.js';
  * fallback capacity, and counting them would make a sole-coach team look
  * covered.
  *
+ * **Every team the roster names is indexed, coached or not.** Indexing teams
+ * from the active assignments alone made a team whose coaches had all declined
+ * *vanish*: no {@link PEOPLE_REASON.TEAM_UNCOACHED} finding, because the
+ * register never saw the team, and — since the season adapter skips a side the
+ * roster does not know — every one of that team's fixtures dropped out of the
+ * timelines with nothing said about it. An uncoached team is present and
+ * uncoached, which is a fact somebody can act on.
+ *
+ * `asOf` is the date the roster is being read *as of*, and it is what makes
+ * `effectiveFrom`/`effectiveTo` load-bearing: an assignment whose window does
+ * not cover it is inactive, exactly as a declined one is, so the sole-coach
+ * register, the must-attend derivation and the co-coach fallback search all
+ * honour the window without knowing it exists. With no `asOf` the window cannot
+ * be applied at all; the assignment stays active and
+ * {@link PEOPLE_REASON.ASSIGNMENT_WINDOW_UNJUDGED} says so, because a departed
+ * coach silently counted as fallback capacity is the failure this field exists
+ * to prevent.
+ *
  * @param {{ people?: ReadonlyArray<Object>, assignments?: ReadonlyArray<Object> }} input
+ * @param {{ asOf?: string|null }} [options] - the date the roster is read as of
  * @returns {import('./types.js').CoachRoster}
  */
-export function buildCoachRoster(input) {
+export function buildCoachRoster(input, options = {}) {
+  const asOf = options.asOf ?? null;
   const parsed = CoachRosterInputSchema.parse(input);
   const meta = createPeopleMeta();
   /** @type {import('./types.js').PeopleFinding[]} */
@@ -67,13 +109,41 @@ export function buildCoachRoster(input) {
     meta.peopleExamined += 1;
   }
 
+  /** @type {Map<string, import('./types.js').CoachAssignment[]>} */
+  const byTeam = new Map();
+
   /** @type {import('./types.js').CoachAssignment[]} */
   const active = [];
   for (const assignment of parsed.assignments) {
     meta.assignmentsExamined += 1;
+    // Before any other question: the roster names this team, so the team
+    // exists. See the docstring — a team indexed only from active assignments
+    // disappears the moment its coaches all decline, and takes its fixtures
+    // with it.
+    if (!byTeam.has(assignment.teamId)) byTeam.set(assignment.teamId, []);
     if (!ACTIVE_ASSIGNMENT_STATUSES.has(assignment.status)) {
       meta.assignmentsInactive += 1;
       continue;
+    }
+    if (assignment.effectiveFrom !== null || assignment.effectiveTo !== null) {
+      if (asOf === null) {
+        findings.push(
+          makePeopleFinding(
+            PEOPLE_REASON.ASSIGNMENT_WINDOW_UNJUDGED,
+            `assignment "${assignment.id}" is effective ${assignment.effectiveFrom ?? 'always'} to ${assignment.effectiveTo ?? 'always'} and this roster was built with no as-of date, so the window was not applied and this person counts as active throughout`,
+            {
+              assignmentId: assignment.id,
+              personId: assignment.personId,
+              teamId: assignment.teamId,
+              effectiveFrom: assignment.effectiveFrom,
+              effectiveTo: assignment.effectiveTo,
+            }
+          )
+        );
+      } else if (!windowCoversDate(asOf, assignment.effectiveFrom, assignment.effectiveTo)) {
+        meta.assignmentsInactive += 1;
+        continue;
+      }
     }
     if (!peopleById.has(assignment.personId)) {
       findings.push(
@@ -94,11 +164,8 @@ export function buildCoachRoster(input) {
   }
 
   /** @type {Map<string, import('./types.js').CoachAssignment[]>} */
-  const byTeam = new Map();
-  /** @type {Map<string, import('./types.js').CoachAssignment[]>} */
   const byPerson = new Map();
   for (const assignment of active) {
-    if (!byTeam.has(assignment.teamId)) byTeam.set(assignment.teamId, []);
     /** @type {import('./types.js').CoachAssignment[]} */ (byTeam.get(assignment.teamId)).push(
       assignment
     );
