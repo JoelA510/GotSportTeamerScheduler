@@ -230,7 +230,7 @@ reason.
 
 `tests/ruleEngine.test.js` runs the engine over the published season-2026
 combined schedule and asserts it produces **exactly** this set of accepted
-exceptions — 58 violations, 7 `blocking` and 51 `compromise`, and no others:
+exceptions — 62 violations, 7 `blocking` and 55 `compromise`, and no others:
 
 | Code | Count | Severity | Why it is expected |
 | --- | --- | --- | --- |
@@ -240,7 +240,7 @@ exceptions — 58 violations, 7 `blocking` and 51 `compromise`, and no others:
 | `LINING_MISMATCH` | 40 | compromise | 36 Minis sessions on ground that is big enough and not lined for Minis, plus the 4 `Scrimmage` rows whose format cannot be checked against lining. |
 | `TRAVEL_BETWEEN_VENUES_TOO_SHORT` | 1 | compromise | The 60-minute inter-venue floor is `soft`, and the published season breaks it exactly once: `gray judd` on 2026-08-22, a rec 7v7 at Brookside Park ending 11:10 and an 11v11 at Alder Park at 12:00, 50 minutes apart. That is incident 9's own scenario, and the case its waiver covers. |
 | `TRAVEL_COMMITMENTS_OVERLAP` | 3 | blocking | The corpus's own *"3 rec games are single-coach (a co-coach covered)"*. The overlap is real; the corpus records how it was handled, not that it did not happen. |
-| `ROUND_ROBIN_DIVISION_UNJUDGED` | 1 | compromise | The Minis division `BB` has no two named teams, so no round robin can be judged in it. |
+| `ROUND_ROBIN_DIVISION_UNJUDGED` | 5 | compromise | The Minis division `BB` has no two named teams, so no round robin can be judged in it — and, since the division universe became roster-derived, the four Select divisions (`U14`, `16BS`, `16GS`, `U16G`) join it: rostered teams whose layer is external fixtures and reserved slots, so they have no two-sided counted games either. Reported unjudged rather than never looked at. |
 | `TURNOVER_UNJUDGED` | 1 | compromise | One consecutive pair on one surface whose earlier row is a `Scrimmage` of unknown footprint. |
 
 This baseline read **18** across five coaches until `Maplewood Back` and

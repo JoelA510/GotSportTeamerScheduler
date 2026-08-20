@@ -105,7 +105,12 @@ export {
   stageCounters,
 } from './state.js';
 
-export { FrozenGameUnsatisfiable, frozenGameUnsatisfiable } from './errors.js';
+export {
+  FrozenGameUnsatisfiable,
+  frozenGameUnsatisfiable,
+  registryConstraintIdsFor,
+  violationsAbout,
+} from './errors.js';
 
 export { buildSlotInventory, candidateSlotsFor } from './inventory.js';
 

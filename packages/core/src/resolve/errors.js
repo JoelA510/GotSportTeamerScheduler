@@ -135,11 +135,16 @@ function subjectNamesGame(subjectId, gameId) {
  * of the violation, the `gameId` detail, and the identifiers the subject id was
  * assembled from.
  *
+ * Exported because Prompt 4.3's attribution layer needs exactly this answer for
+ * every game in the season, and a second matcher written there would be free to
+ * reintroduce the substring bug this one documents — on the one report whose
+ * whole purpose is to name things precisely. One question, one answer.
+ *
  * @param {Object|null} verification - a `runRuleEngine()` result
  * @param {string} gameId
  * @returns {Array<Object>}
  */
-function violationsAbout(verification, gameId) {
+export function violationsAbout(verification, gameId) {
   if (!verification) return [];
   return verification.violations.filter((violation) => {
     if (subjectNamesGame(violation.subjectId, gameId)) return true;
