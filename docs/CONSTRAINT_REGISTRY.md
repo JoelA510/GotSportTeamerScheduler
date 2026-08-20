@@ -12,7 +12,8 @@ be added, scoped, relaxed and audited without a code change.
 > sort key. Nothing in between, and nothing per-instance.
 
 The model answers [GAP-12](MODEL_GAPS.md#gap-12) and is the prerequisite for
-[GAP-26](MODEL_GAPS.md#gap-26), waivers with a lifecycle (Phase 2.2).
+[GAP-26](MODEL_GAPS.md#gap-26), waivers with a lifecycle — built on top of this
+registry in Phase 2.2 and documented in [Waivers](WAIVERS.md).
 
 Code: `packages/core/src/constraints/` (barrel at `index.js`). In-memory only —
 there is no SQL home for constraint records and this phase deliberately does not
