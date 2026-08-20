@@ -40,7 +40,18 @@
  * **0**. It is not that such an obligation is more important; it is that no
  * co-coach can stand in for it, so releasing it is not a move that exists.
  * `CoachAssignmentSchema` forbids a slot below 1, so 0 cannot collide with a
- * real one.
+ * real one. A commitment whose team the roster gives the person no active slot
+ * on ranks behind every real slot — that is the one to release — but the rank is
+ * not a slot, and {@link PEOPLE_REASON.ATTENDANCE_TEAM_LINK_MISSING} says so
+ * rather than letting a very large number travel as one.
+ *
+ * ## Both declared kinds have a consumer
+ *
+ * `cannot-split` is a must-attend basis above. `unavailable` is read *here*: a
+ * person the operator has recorded as unavailable on a date is not fallback
+ * capacity for that date, on exactly the reasoning that a coach who has not
+ * accepted their assignment is not. Both honour the record's `fromDate`/
+ * `toDate`, because a constraint that has expired governs nothing.
  *
  * @module people/mustAttend
  */
@@ -54,14 +65,32 @@ import {
   derivePeopleStatus,
   makePeopleFinding,
 } from './reasonCodes.js';
-import { coCoachesOf, coachSlotOf, teamsCoachedBy } from './roster.js';
+import { coCoachesOf, coachSlotOf, teamsCoachedBy, windowCoversDate } from './roster.js';
 import { PersonalConstraintPolicyInputSchema } from './schemas.js';
 
 /** The rank a commitment nobody else could cover is given. See the docstring. */
 const UNDELEGABLE_SLOT = 0;
 
-/** The rank of a team commitment the roster cannot link the person to. */
+/**
+ * The rank of a team commitment the roster cannot link the person to.
+ *
+ * It orders such a commitment behind every real slot, which is the right
+ * ranking — an unlinked team is the one to release — but it is **not a slot**,
+ * and it never leaves this module as one:
+ * {@link PEOPLE_REASON.ATTENDANCE_TEAM_LINK_MISSING} reports the missing link
+ * and `slotOrNull()` keeps the number out of every result and every detail bag.
+ */
 const UNKNOWN_SLOT = Number.MAX_SAFE_INTEGER;
+
+/**
+ * A rank as a coach slot, or `null` when it is not one.
+ *
+ * @param {number} rank
+ * @returns {number|null}
+ */
+function slotOrNull(rank) {
+  return rank === UNKNOWN_SLOT ? null : rank;
+}
 
 /**
  * Build an immutable policy of declared personal constraints.
@@ -98,13 +127,46 @@ export function buildPersonalConstraintPolicy(input) {
 export const EMPTY_PERSONAL_CONSTRAINT_POLICY = buildPersonalConstraintPolicy({ constraints: [] });
 
 /**
+ * Is a declared constraint in force on a date?
+ *
+ * `null` means the caller gave no date, and then the window cannot be judged
+ * at all — which is a different answer from "not in force" and is reported as
+ * one by the two callers below.
+ *
+ * @param {import('./types.js').PersonalConstraint} constraint
+ * @param {string|null} date
+ * @returns {boolean}
+ */
+function isInForceOn(constraint, date) {
+  if (date === null) return true;
+  return windowCoversDate(date, constraint.fromDate, constraint.toDate);
+}
+
+/** Does this constraint carry a window at all? */
+function hasWindow(constraint) {
+  return constraint.fromDate !== null || constraint.toDate !== null;
+}
+
+/**
  * Derive who is must-attend, and on what basis.
  *
- * @param {{ roster: import('./types.js').CoachRoster, policy?: import('./types.js').PersonalConstraintPolicy }} options
+ * `date` is the day the question is being asked about, and it is what applies a
+ * declared constraint's `fromDate`/`toDate`: a `cannot-split` that expired in
+ * August does not govern a September fixture. With no `date` the window cannot
+ * be applied; the record is still honoured — silently dropping a declared
+ * must-attend is the worse failure of the two — and
+ * {@link PEOPLE_REASON.PERSONAL_CONSTRAINT_WINDOW_UNJUDGED} says which
+ * happened, on the same contract as `ASSIGNMENT_WINDOW_UNJUDGED`.
+ *
+ * The roster basis needs no date here: `buildCoachRoster()` has already applied
+ * every assignment's own window, so "the only active coach" is already an
+ * as-of answer.
+ *
+ * @param {{ roster: import('./types.js').CoachRoster, policy?: import('./types.js').PersonalConstraintPolicy, date?: string|null }} options
  * @returns {{ byPerson: Map<string, import('./types.js').MustAttendVerdict>, findings: import('./types.js').PeopleFinding[], meta: import('./types.js').PeopleMeta, status: string }}
  */
 export function deriveMustAttend(options) {
-  const { roster, policy = EMPTY_PERSONAL_CONSTRAINT_POLICY } = options;
+  const { roster, policy = EMPTY_PERSONAL_CONSTRAINT_POLICY, date = null } = options;
   const meta = createPeopleMeta();
   /** @type {import('./types.js').PeopleFinding[]} */
   const findings = [];
@@ -165,7 +227,26 @@ export function deriveMustAttend(options) {
       );
       continue;
     }
+    // `unavailable` records are examined and counted here but decide nothing
+    // about must-attend; their consumer is `resolveAttendance()`, which reads
+    // them as "not fallback capacity that day".
     if (constraint.kind !== PERSONAL_CONSTRAINT_KIND.CANNOT_SPLIT) continue;
+    if (hasWindow(constraint) && date === null) {
+      findings.push(
+        makePeopleFinding(
+          PEOPLE_REASON.PERSONAL_CONSTRAINT_WINDOW_UNJUDGED,
+          `declared personal constraint "${constraint.id}" runs ${constraint.fromDate ?? 'always'} to ${constraint.toDate ?? 'always'} and this derivation was given no date, so the window was not applied and the constraint was honoured throughout`,
+          {
+            constraintId: constraint.id,
+            personId: constraint.personId,
+            fromDate: constraint.fromDate,
+            toDate: constraint.toDate,
+          }
+        )
+      );
+    } else if (!isInForceOn(constraint, date)) {
+      continue;
+    }
     record(
       constraint.personId,
       MUST_ATTEND_BASIS.DECLARED_PERSONAL_CONSTRAINT,
@@ -252,13 +333,48 @@ function isFreeAcross(set, personId, commitment) {
 }
 
 /**
+ * Every person a declared `unavailable` record covers on one date.
+ *
+ * This is the consumer of {@link PERSONAL_CONSTRAINT_KIND.UNAVAILABLE}: a
+ * person who has declared themself unavailable that day is not fallback
+ * capacity, on exactly the reasoning that a coach who has not accepted is not.
+ * The record's window decides, so an `unavailable` that ended last month costs
+ * a team nothing.
+ *
+ * @param {import('./types.js').PersonalConstraintPolicy} policy
+ * @param {string} date
+ * @returns {Set<string>}
+ */
+function unavailableOn(policy, date) {
+  /** @type {Set<string>} */
+  const people = new Set();
+  for (const constraint of policy.constraints) {
+    if (constraint.kind !== PERSONAL_CONSTRAINT_KIND.UNAVAILABLE) continue;
+    if (!windowCoversDate(date, constraint.fromDate, constraint.toDate)) continue;
+    people.add(constraint.personId);
+  }
+  return people;
+}
+
+/**
  * Resolve every clash by coach slot, and say what became of the released team.
  *
- * @param {{ roster: import('./types.js').CoachRoster, timelines: import('./types.js').TimelineSet, clashes: ReadonlyArray<import('./types.js').AttendanceClash>, mustAttend?: ReadonlyMap<string, import('./types.js').MustAttendVerdict> }} options
+ * `policy` is the declared-personal-constraint policy, and it is read for the
+ * `unavailable` records that bear on the question this function asks: can
+ * anybody else cover? A co-coach the operator has recorded as unavailable that
+ * day is not a fallback, and the contested finding names them.
+ *
+ * @param {{ roster: import('./types.js').CoachRoster, timelines: import('./types.js').TimelineSet, clashes: ReadonlyArray<import('./types.js').AttendanceClash>, mustAttend?: ReadonlyMap<string, import('./types.js').MustAttendVerdict>, policy?: import('./types.js').PersonalConstraintPolicy }} options
  * @returns {{ resolutions: Array<import('./types.js').AttendanceResolution>, findings: import('./types.js').PeopleFinding[], meta: import('./types.js').PeopleMeta, status: string }}
  */
 export function resolveAttendance(options) {
-  const { roster, timelines, clashes, mustAttend = new Map() } = options;
+  const {
+    roster,
+    timelines,
+    clashes,
+    mustAttend = new Map(),
+    policy = EMPTY_PERSONAL_CONSTRAINT_POLICY,
+  } = options;
   const meta = createPeopleMeta();
   /** @type {import('./types.js').PeopleFinding[]} */
   const scanFindings = [];
@@ -275,6 +391,28 @@ export function resolveAttendance(options) {
 
     const fromRank = slotRankOf(roster, clash.personId, clash.from);
     const toRank = slotRankOf(roster, clash.personId, clash.to);
+
+    /** @type {Array<{ rank: number, commitment: import('./types.js').PersonCommitment }>} */
+    const ranked = [
+      { rank: fromRank, commitment: clash.from },
+      { rank: toRank, commitment: clash.to },
+    ];
+    for (const { rank, commitment } of ranked) {
+      if (rank !== UNKNOWN_SLOT) continue;
+      findings.push(
+        makePeopleFinding(
+          PEOPLE_REASON.ATTENDANCE_TEAM_LINK_MISSING,
+          `the roster gives "${clash.personId}" no active slot on team "${commitment.teamId}", so commitment "${commitment.id}" on ${clash.date} could not be ranked by slot order; it is ordered behind every real slot and that is a fallback, not a reading of the roster`,
+          {
+            clashId: clash.id,
+            personId: clash.personId,
+            teamId: commitment.teamId,
+            commitmentId: commitment.id,
+            date: clash.date,
+          }
+        )
+      );
+    }
 
     let retained = clash.from;
     let released = clash.to;
@@ -297,12 +435,12 @@ export function resolveAttendance(options) {
       findings.push(
         makePeopleFinding(
           PEOPLE_REASON.ATTENDANCE_SLOT_TIE,
-          `"${clash.personId}" holds the same coach rank (${fromRank}) on both "${clash.from.id}" and "${clash.to.id}" on ${clash.date}, so slot order cannot decide; the clash was broken by commitment id and needs a human`,
+          `"${clash.personId}" holds the same coach rank (${slotOrNull(fromRank) ?? 'unknown'}) on both "${clash.from.id}" and "${clash.to.id}" on ${clash.date}, so slot order cannot decide; the clash was broken by commitment id and needs a human`,
           {
             clashId: clash.id,
             personId: clash.personId,
             date: clash.date,
-            rank: fromRank,
+            rank: slotOrNull(fromRank),
             commitmentIds: [clash.from.id, clash.to.id].sort(),
           }
         )
@@ -313,15 +451,15 @@ export function resolveAttendance(options) {
       findings.push(
         makePeopleFinding(
           PEOPLE_REASON.ATTENDANCE_RESOLVED_BY_SLOT,
-          `"${clash.personId}" stays with "${retained.teamId ?? retained.id}" (rank ${retainedRank}) and is released from "${released.teamId ?? released.id}" (rank ${releasedRank}) on ${clash.date}`,
+          `"${clash.personId}" stays with "${retained.teamId ?? retained.id}" (rank ${slotOrNull(retainedRank) ?? 'unknown'}) and is released from "${released.teamId ?? released.id}" (rank ${slotOrNull(releasedRank) ?? 'unknown'}) on ${clash.date}`,
           {
             clashId: clash.id,
             personId: clash.personId,
             date: clash.date,
             retainedTeamId: retained.teamId,
-            retainedSlot: retainedRank,
+            retainedSlot: slotOrNull(retainedRank),
             releasedTeamId: released.teamId,
-            releasedSlot: releasedRank,
+            releasedSlot: slotOrNull(releasedRank),
           }
         )
       );
@@ -339,8 +477,9 @@ export function resolveAttendance(options) {
       outcome = ATTENDANCE_OUTCOME.UNCOVERED;
     } else {
       const coCoaches = coCoachesOf(roster, releasedTeamId, clash.personId);
-      const available = coCoaches.filter((candidate) =>
-        isFreeAcross(timelines, candidate, released)
+      const unavailable = unavailableOn(policy, clash.date);
+      const available = coCoaches.filter(
+        (candidate) => !unavailable.has(candidate) && isFreeAcross(timelines, candidate, released)
       );
       if (coCoaches.length === 0) {
         findings.push(
@@ -362,7 +501,7 @@ export function resolveAttendance(options) {
         findings.push(
           makePeopleFinding(
             PEOPLE_REASON.TEAM_FALLBACK_CONTESTED,
-            `team "${releasedTeamId}" loses "${clash.personId}" on ${clash.date}; its ${coCoaches.length} co-coach(es) are all committed elsewhere at the same time, so the pair has to split one game each`,
+            `team "${releasedTeamId}" loses "${clash.personId}" on ${clash.date}; its ${coCoaches.length} co-coach(es) are all committed elsewhere at the same time or declared unavailable, so the pair has to split one game each`,
             {
               clashId: clash.id,
               teamId: releasedTeamId,
@@ -370,6 +509,7 @@ export function resolveAttendance(options) {
               date: clash.date,
               commitmentId: released.id,
               coCoachIds: coCoaches,
+              unavailablePersonIds: coCoaches.filter((candidate) => unavailable.has(candidate)),
             }
           )
         );
@@ -421,9 +561,9 @@ export function resolveAttendance(options) {
       personId: clash.personId,
       date: clash.date,
       retainedTeamId: retained.teamId,
-      retainedSlot: retained.teamId === null ? null : retainedRank,
+      retainedSlot: retained.teamId === null ? null : slotOrNull(retainedRank),
       releasedTeamId,
-      releasedSlot: releasedTeamId === null ? null : releasedRank,
+      releasedSlot: releasedTeamId === null ? null : slotOrNull(releasedRank),
       outcome,
       fallbackPersonIds: Object.freeze(fallbackPersonIds),
       mustAttend: personMustAttend,

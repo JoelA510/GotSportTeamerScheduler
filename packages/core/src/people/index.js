@@ -80,6 +80,7 @@ export {
   coachSlotOf,
   soleCoachRiskRegister,
   teamsCoachedBy,
+  windowCoversDate,
 } from './roster.js';
 
 export {
@@ -122,6 +123,7 @@ export {
   buildSeason2026CoachRoster,
   buildSeason2026Timelines,
   season2026AssignmentStatus,
+  season2026UncoachedFixtures,
   toSeason2026CoachAssignments,
   toSeason2026CommitmentBatches,
   toSeason2026People,

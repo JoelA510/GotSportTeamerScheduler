@@ -347,8 +347,15 @@ export function buildPersonDays(set) {
         );
       }
 
-      const last = commitments[commitments.length - 1];
-      const lastEndMinutes = last.endMinutes;
+      // The day's end is the **latest end**, not the end of the commitment that
+      // started last: a 09:00-12:00 commitment straddling a 10:00-10:30 one
+      // does not make the day finish at 10:30. And one unknown end anywhere in
+      // the day makes the day's end unknown, wherever it happens to sort —
+      // nothing after it can be shown to be the last.
+      const ends = commitments.map((commitment) => commitment.endMinutes);
+      const lastEndMinutes = ends.some((end) => end === null)
+        ? null
+        : Math.max(.../** @type {number[]} */ (ends));
       const measurableGaps = transitions
         .map((transition) => transition.gapMinutes)
         .filter((gap) => gap !== null && gap > 0);
@@ -521,10 +528,13 @@ export function evaluatePersonDays(set, options) {
  * Person-days are small (this corpus's largest holds two commitments), so the
  * within-day all-pairs comparison costs nothing and cannot be wrong.
  *
- * A commitment of unknown footprint cannot be shown to overlap anything and is
- * skipped here; {@link evaluatePersonDays} reports it as
- * {@link PEOPLE_REASON.COMMITMENT_FOOTPRINT_UNKNOWN} rather than letting it
- * pass silently.
+ * A commitment of unknown footprint cannot be shown to overlap anything *after*
+ * it and is skipped as a clash's earlier half; {@link evaluatePersonDays}
+ * reports it as {@link PEOPLE_REASON.COMMITMENT_FOOTPRINT_UNKNOWN} rather than
+ * letting it pass silently. It can still be the *later* half of one — a
+ * commitment that begins before a known one ends is a clash however long it
+ * runs — and then `overlapMinutes` is `null`, because the clash is certain and
+ * its magnitude is unknown.
  *
  * @param {import('./types.js').TimelineSet} set
  * @returns {Array<import('./types.js').AttendanceClash>}
@@ -540,7 +550,6 @@ export function findAttendanceClashes(set) {
       for (let j = i + 1; j < commitments.length; j += 1) {
         const to = commitments[j];
         if (to.startMinutes >= from.endMinutes) continue;
-        const toEnd = to.endMinutes === null ? to.startMinutes : to.endMinutes;
         clashes.push(
           Object.freeze({
             id: `${day.personId}|${day.date}|${from.id}><${to.id}`,
@@ -548,7 +557,15 @@ export function findAttendanceClashes(set) {
             date: day.date,
             from,
             to,
-            overlapMinutes: Math.min(from.endMinutes, toEnd) - to.startMinutes,
+            // The later commitment starts before the earlier one ends, so the
+            // clash is certain; its *magnitude* is not, when the later one has
+            // no known end. Zero is a measurement and this is not one — a
+            // scrimmage starting mid-game would otherwise read as a
+            // zero-minute overlap, which is what "no overlap" looks like.
+            overlapMinutes:
+              to.endMinutes === null
+                ? null
+                : Math.min(from.endMinutes, to.endMinutes) - to.startMinutes,
           })
         );
       }

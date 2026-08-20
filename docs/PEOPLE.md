@@ -111,10 +111,25 @@ explicit property a consumer can require:
 | `TIMELINE_SOURCE_EMPTY` | `compromise` | a source was ingested and contributed nothing — "we read it" ≠ "it had rows" |
 | `COMMITMENT_FOOTPRINT_UNKNOWN` | `compromise` | GAP-14: a row with no known end, so the day around it cannot be measured |
 | `TIMELINE_SCAN_VACUOUS` | `compromise` | the scan examined zero person-days |
+| `FIXTURE_TEAM_UNCOACHED` | `blocking` | a fixture names a team the roster carries with no active coach, so no timeline holds it |
 
 The four sources are `club-fixture`, `external-fixture`, `scrimmage` and
 `non-club`. The last is for a commitment no schedule produced — an obligation a
 person declared — and it is the reason `teamId` is nullable on a commitment.
+
+A commitment id is `<personId>|<teamId>|<gameId>`. The team is in it because one
+person can coach **both sides** of an intra-club fixture — this corpus already
+carries intra-club rows — and `<personId>|<gameId>` gives that person's two
+duties one id.
+
+Unknown ends are carried rather than guessed, and every measurement across one
+says so instead of returning a number:
+
+- a person-day's `lastEndMinutes` is the **latest end**, not the end of whatever
+  started last, and it is `null` when any commitment that day has no known end;
+- an `AttendanceClash` whose later commitment has no known end has
+  `overlapMinutes: null`. The clash is certain — it begins before the other one
+  ends — but its magnitude is not, and `0` is what "no overlap" looks like.
 
 ### The 6.5-hour hole, both ways
 
@@ -178,13 +193,34 @@ column is single-valued (`Assigned`) and obviously an enum position. Only
 accepted is not fallback capacity, and counting them would make a sole-coach team
 look covered.
 
+`effectiveFrom`/`effectiveTo` are **applied, not merely stored**.
+`buildCoachRoster(input, { asOf })` treats an assignment whose window does not
+cover `asOf` as inactive, exactly as it treats a declined one, so a coach who
+left in August stops being fallback capacity in September — in the sole-coach
+register, in the must-attend derivation and in the co-coach search alike, none
+of which needed a change, because all three read the roster's own answer about
+who is active. With no `asOf` the window cannot be applied at all; the
+assignment stays active and `ASSIGNMENT_WINDOW_UNJUDGED` (`compromise`) says so,
+because a field that reads as enforced and is not is how incident 9's waiver got
+lost. The corpus's 215 rows carry no window, so it never fires there.
+
+**Every team the roster names is indexed, coached or not.** Indexing teams from
+the active assignments alone made a team whose coaches had all declined vanish:
+no `TEAM_UNCOACHED` finding, because the register never saw the team, and — since
+the season adapter contributes nothing for a side it does not recognise — every
+one of that team's fixtures left the timelines with nothing said about it. That
+is incident 10, and `FIXTURE_TEAM_UNCOACHED` is the other half of the answer:
+`season2026UncoachedFixtures()` names each fixture that lost its coaches, and
+`buildSeason2026Timelines()` carries those findings into the sealed set.
+
 `soleCoachRiskRegister(roster)` reports:
 
 | Reason code | Severity | Corpus count |
 | --- | --- | --- |
 | `TEAM_SOLE_COACH` | `info` | 50 of 132 teams |
 | `PERSON_SOLE_COACH_OF_MULTIPLE_TEAMS` | `compromise` | 2 people |
-| `TEAM_UNCOACHED` | `blocking` | 0 |
+| `TEAM_UNCOACHED` | `blocking` | 0 — reachable from ordinary roster input, and asserted from it |
+| `ASSIGNMENT_WINDOW_UNJUDGED` | `compromise` | 0 — no corpus row carries a window |
 
 One coach is not a violation — 50 teams were in that position and the season ran —
 so it is `info` and the register is a report. Being the sole coach of *two* teams
@@ -212,6 +248,18 @@ such record, and seeding one would put a real family's domestic arrangement into
 repository forbidden from holding PII. `PERSONAL_CONSTRAINT_POLICY_EMPTY` (`info`)
 says out loud that one of the two bases had nothing to contribute.
 
+Both constraint kinds are consumed, and both honour `fromDate`/`toDate`:
+
+| Kind | Consumer | What the window does |
+| --- | --- | --- |
+| `cannot-split` | `deriveMustAttend({ roster, policy, date })` | a record that expired in August does not make somebody must-attend in September |
+| `unavailable` | `resolveAttendance({ …, policy })` | a person declared unavailable that day is **not fallback capacity**, on the same reasoning that a coach who has not accepted is not |
+
+`deriveMustAttend()` with no `date` cannot apply a window. It honours the record
+anyway — silently dropping a declared must-attend is the worse of the two
+failures — and reports `PERSONAL_CONSTRAINT_WINDOW_UNJUDGED` (`compromise`), on
+the same contract as `ASSIGNMENT_WINDOW_UNJUDGED`.
+
 **No person id, name or team code from the corpus appears anywhere under
 `packages/core/src/people/`**, and `tests/people.test.js` proves it: it greps
 every source file in the package for all 329 person keys, display names and team
@@ -233,12 +281,20 @@ team.
 | `TEAM_FALLBACK_CONTESTED` | `compromise` | the co-coaches are clashing too; the pair must split |
 | `TEAM_NO_FALLBACK_AVAILABLE` | `blocking` | no other active coach exists |
 | `ATTENDANCE_MUST_ATTEND_UNRESOLVABLE` | `blocking` | a must-attend person is wanted in two places |
+| `ATTENDANCE_TEAM_LINK_MISSING` | `compromise` | the roster gives the person no active slot on a clashing commitment's team, so slot order could not decide |
 
 A commitment with **no team** — a declared non-club obligation — ranks as slot
 **0**. Not because such an obligation is more important, but because no co-coach
 can stand in for it, so releasing it is not a move that exists.
 `CoachAssignmentSchema` forbids a slot below 1, so 0 cannot collide with a real
 one.
+
+A commitment whose team the roster gives the person no active slot on ranks
+*behind* every real slot, which is the right ordering — that is the one to
+release — but the rank is **not a slot** and never leaves the module as one:
+`retainedSlot`/`releasedSlot` are `null` and `ATTENDANCE_TEAM_LINK_MISSING`
+reports the missing link, rather than `9007199254740991` travelling downstream
+dressed as a very low-priority coach slot.
 
 On the corpus this finds 3 clashes, matching the README's *"3 rec games are
 single-coach (a co-coach covered)"* and the loader's own `findSingleCoachGames()`.
@@ -311,6 +367,14 @@ the queue has an explanation.
 `accepted` decision moves it. The surviving id is the lexicographically smaller of
 the pair (arbitrary, and stated to be arbitrary), the other becomes an alias, and
 chains are collapsed so the mapping is idempotent.
+
+A decision pass **accumulates**, as every other module here does. It carries the
+queue's own findings and merges its counters, so a vacuous queue does not come
+back `allowed` with zeroed counters and a veto's explanation is not lost; the one
+code it does not carry is `IDENTITY_REVIEW_PENDING`, which the pass restates
+itself. The alias index is rebuilt from the *collapsed* mapping rather than
+pair-by-pair: with `a::b` and `b::c` both accepted, filing `c` under `b` would
+leave it under an id that is itself no longer a survivor.
 
 ---
 

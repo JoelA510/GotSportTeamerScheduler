@@ -55,6 +55,7 @@ import {
   PEOPLE_SEVERITY,
   PEOPLE_STATUS,
   PERSONAL_CONSTRAINT_KIND,
+  CoachAssignmentSchema,
   PersonCommitmentSchema,
   PersonalConstraintSchema,
   applyIdentityDecisions,
@@ -404,21 +405,85 @@ describe('people :: requirement 6, the sole-coach risk register', () => {
     expect(nothing.status).toBe(PEOPLE_STATUS.COMPROMISED);
   });
 
-  it('reports a team with no active coach as blocking', () => {
-    const uncoached = buildCoachRoster({
-      people: [makePerson('p1', 'Ada', 'Stone')],
-      assignments: [makeAssignment('p1', 'team-a', 1)],
-    });
-    // A team only exists in the index because an active assignment named it,
-    // so the uncoached case is constructed by emptying one after the fact.
-    /** @type {Map<string, Object>} */ (uncoached.teams).set('team-b', {
-      teamId: 'team-b',
-      slots: [],
-      personIds: [],
-    });
-    const register2 = soleCoachRiskRegister(uncoached);
-    expect(codesOf(register2.findings)).toContain(PEOPLE_REASON.TEAM_UNCOACHED);
-    expect(register2.status).toBe(PEOPLE_STATUS.REJECTED);
+  /**
+   * **Finding 1 of the Milestone 3 review.** The previous version of this test
+   * forged the state it checked — it reached into `roster.teams` and put an
+   * empty team there by hand, which is exactly incident 4's shape: a check that
+   * passes because the test manufactured a state the real code could not
+   * produce. Everything below comes from ordinary adapter input, and it asserts
+   * the other half of the damage as well: an absent team's fixtures leave the
+   * corpus with nothing said about them.
+   */
+  it('reports a team whose coaches have all declined, from ordinary roster input', () => {
+    // Chosen from the corpus rather than named: the first team in id order that
+    // actually has fixtures, so the fixture assertions below are about real
+    // rows. `fixturesByTeam` is built from `season.combinedGames`, a different
+    // assembly path than the roster the assertions are about.
+    /** @type {Map<string, string[]>} */
+    const fixturesByTeam = new Map();
+    for (const game of season.combinedGames) {
+      for (const teamId of [game.homeTeamId, game.awayTeamId]) {
+        if (!teamId || !roster.teams.has(String(teamId))) continue;
+        if (!fixturesByTeam.has(String(teamId))) fixturesByTeam.set(String(teamId), []);
+        fixturesByTeam.get(String(teamId)).push(String(game.id));
+      }
+    }
+    const [targetTeamId, targetGameIds] = [...fixturesByTeam.entries()].sort((a, b) =>
+      a[0].localeCompare(b[0])
+    )[0];
+    expect(targetGameIds.length).toBeGreaterThan(0);
+    const coachCount = roster.teams.get(targetTeamId).personIds.length;
+    expect(coachCount).toBeGreaterThan(0);
+
+    // Ordinary adapter input: the corpus's own rows, with every assignment on
+    // that one team declined. Nothing here touches an index.
+    const declinedRows = season.assignments.map((row) =>
+      row.teamCode === targetTeamId ? { ...row, status: 'Declined' } : row
+    );
+    expect(declinedRows.filter((row) => row.status === 'Declined')).toHaveLength(coachCount);
+
+    const damaged = buildSeason2026CoachRoster(declinedRows);
+    // The team is present-and-uncoached rather than absent: a team the roster
+    // names does not stop existing because nobody accepted it.
+    expect(damaged.teams.size).toBe(roster.teams.size);
+    expect(damaged.teams.get(targetTeamId).personIds).toEqual([]);
+    expect(damaged.meta.assignmentsInactive).toBe(coachCount);
+
+    const register = soleCoachRiskRegister(damaged);
+    const uncoached = register.findings.filter(
+      (finding) => finding.code === PEOPLE_REASON.TEAM_UNCOACHED
+    );
+    expect(uncoached).toHaveLength(1);
+    expect(uncoached[0].details.teamId).toBe(targetTeamId);
+    expect(uncoached[0].severity).toBe(PEOPLE_SEVERITY.BLOCKING);
+    expect(register.meta.uncoachedTeams).toBe(1);
+    expect(register.status).toBe(PEOPLE_STATUS.REJECTED);
+    // …and the published corpus has none, so the finding is not simply always on.
+    expect(soleCoachRiskRegister(roster).meta.uncoachedTeams).toBe(0);
+
+    // Nobody is left to hold a commitment, so the batch count drops by exactly
+    // the commitments those coaches carried — and every fixture that lost its
+    // coaches is named rather than silently absent. This is incident 10: a
+    // dropped fixture is how a team loses a game.
+    const total = (batches) =>
+      [...batches.values()].reduce((sum, entries) => sum + entries.length, 0);
+    const before = total(toSeason2026CommitmentBatches(season, roster));
+    const after = total(toSeason2026CommitmentBatches(season, damaged));
+    expect(before - after).toBe(targetGameIds.length * coachCount);
+
+    const damagedTimelines = buildSeason2026Timelines(season, damaged);
+    const dropped = damagedTimelines.findings.filter(
+      (finding) => finding.code === PEOPLE_REASON.FIXTURE_TEAM_UNCOACHED
+    );
+    expect(dropped.map((finding) => finding.details.gameId).sort()).toEqual(
+      [...targetGameIds].sort()
+    );
+    for (const finding of dropped) expect(finding.details.teamId).toBe(targetTeamId);
+    expect(damagedTimelines.status).toBe(PEOPLE_STATUS.REJECTED);
+    // The published corpus reports none of them, so this is not always on either.
+    expect(
+      timelines.findings.filter((finding) => finding.code === PEOPLE_REASON.FIXTURE_TEAM_UNCOACHED)
+    ).toEqual([]);
   });
 });
 
@@ -1503,7 +1568,18 @@ describe('people :: requirement 5, identity resolution with a review queue', () 
     expect(distinctIdentityCount(untouched.canonicalIdByPersonId)).toBe(197);
     expect(untouched.meta.identityMergesApplied).toBe(0);
     expect(untouched.queue.entries[0].state).toBe(IDENTITY_REVIEW_STATE.PENDING);
-    expect(codesOf(untouched.findings)).toEqual([PEOPLE_REASON.IDENTITY_REVIEW_PENDING]);
+    // A decision pass accumulates rather than replaces: the queue's own vetoes
+    // come through, because a pair that was deliberately never queued still
+    // needs its explanation, and the pending entry is restated once and not
+    // twice. The veto count is read off the queue rather than typed here.
+    const vetoedPairs = countByCode(v1Queue.findings)[PEOPLE_REASON.IDENTITY_MATCH_VETOED];
+    expect(vetoedPairs).toBeGreaterThan(0);
+    expect(countByCode(untouched.findings)).toEqual({
+      [PEOPLE_REASON.IDENTITY_MATCH_VETOED]: vetoedPairs,
+      [PEOPLE_REASON.IDENTITY_REVIEW_PENDING]: 1,
+    });
+    expect(untouched.meta.peopleExamined).toBe(197);
+    expect(untouched.meta.identityPairsCompared).toBe(v1Queue.meta.identityPairsCompared);
 
     const accepted = applyIdentityDecisions(v1Queue, [
       {
@@ -1516,7 +1592,10 @@ describe('people :: requirement 5, identity resolution with a review queue', () 
     ]);
     expect(distinctIdentityCount(accepted.canonicalIdByPersonId)).toBe(196);
     expect(accepted.meta.identityMergesApplied).toBe(1);
-    expect(codesOf(accepted.findings)).toEqual([PEOPLE_REASON.IDENTITY_MERGE_APPLIED]);
+    expect(countByCode(accepted.findings)).toEqual({
+      [PEOPLE_REASON.IDENTITY_MATCH_VETOED]: vetoedPairs,
+      [PEOPLE_REASON.IDENTITY_MERGE_APPLIED]: 1,
+    });
     expect(accepted.queue.entries[0].state).toBe('accepted');
 
     const rejected = applyIdentityDecisions(v1Queue, [
@@ -1680,5 +1759,503 @@ describe('people :: feeding a complete timeline to the Phase 2 travel evaluator'
     const clashPeople = new Set(findAttendanceClashes(timelines).map((clash) => clash.personId));
     expect(clashPeople.size).toBe(3);
     expect(new Set(overlaps.map((finding) => finding.details.personId))).toEqual(clashPeople);
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* Regressions from the Milestone 3 review                                      */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * One `it` per remaining finding of the Milestone 3 code review, each written
+ * to fail on the code as it stood and named with the finding number so the
+ * trail from review to regression is not a matter of memory. Finding 1's
+ * regression lives with the sole-coach register above, where its subject is.
+ *
+ * Every case here is built the way a caller would build it. Finding 1 exists
+ * because a test forged internal state; none of these does.
+ */
+describe('people :: regressions from the Milestone 3 review', () => {
+  /** A human decision accepting one review entry. */
+  const accept = (entryId) => ({
+    entryId,
+    state: 'accepted',
+    decidedBy: 'registrar',
+    decidedAt: null,
+    note: null,
+  });
+
+  it('carries a queue’s own findings and counters through a decision pass (finding 2)', () => {
+    // A vacuous queue: one identity, no pair compared, so an empty queue says
+    // nothing. Deciding nothing on it must not turn that answer clean.
+    const vacuous = buildIdentityReviewQueue([makePerson('p1', 'Ada', 'Stone')]);
+    expect(vacuous.status).toBe(PEOPLE_STATUS.COMPROMISED);
+    const decided = applyIdentityDecisions(vacuous, []);
+    expect(codesOf(decided.findings)).toContain(PEOPLE_REASON.IDENTITY_SCAN_VACUOUS);
+    expect(decided.status).toBe(PEOPLE_STATUS.COMPROMISED);
+    expect(decided.queue.status).toBe(PEOPLE_STATUS.COMPROMISED);
+    expect(decided.meta.peopleExamined).toBe(1);
+
+    // The veto is evidence about a pair that was deliberately never queued;
+    // losing it makes a surprising absence unexplained again.
+    const vetoedRoster = buildCoachRoster({
+      people: [makePerson('p1', 'Dan', 'Vale'), makePerson('p2', 'Daniel', 'Vale')],
+      assignments: [makeAssignment('p1', 'team-a', 1), makeAssignment('p2', 'team-a', 2)],
+    });
+    const vetoed = buildIdentityReviewQueue([...vetoedRoster.peopleById.values()], {
+      assignmentsByPerson: vetoedRoster.assignmentsByPerson,
+    });
+    const afterVeto = applyIdentityDecisions(vetoed, []);
+    expect(codesOf(afterVeto.findings)).toContain(PEOPLE_REASON.IDENTITY_MATCH_VETOED);
+    expect(afterVeto.meta.identityVetoed).toBe(1);
+    expect(afterVeto.meta.identityPairsCompared).toBe(1);
+  });
+
+  it('files every absorbed id under the surviving id after a transitive merge (finding 3)', () => {
+    const local = buildCoachRoster({
+      people: [
+        makePerson('id-a', 'Dan', 'Vale'),
+        makePerson('id-b', 'Danie', 'Vale'),
+        makePerson('id-c', 'Daniel', 'Vale'),
+      ],
+      assignments: [
+        makeAssignment('id-a', 'team-a', 1),
+        makeAssignment('id-b', 'team-b', 1),
+        makeAssignment('id-c', 'team-c', 1),
+      ],
+    });
+    const queue = buildIdentityReviewQueue([...local.peopleById.values()], {
+      assignmentsByPerson: local.assignmentsByPerson,
+    });
+    expect(queue.entries.map((entry) => entry.id)).toEqual([
+      'id-a::id-b',
+      'id-a::id-c',
+      'id-b::id-c',
+    ]);
+
+    // Two accepted decisions that chain: a absorbs b, and b absorbs c.
+    const applied = applyIdentityDecisions(queue, [accept('id-a::id-b'), accept('id-b::id-c')]);
+    expect(applied.canonicalIdByPersonId.get('id-b')).toBe('id-a');
+    expect(applied.canonicalIdByPersonId.get('id-c')).toBe('id-a');
+    expect(distinctIdentityCount(applied.canonicalIdByPersonId)).toBe(1);
+    // The alias index has to agree with the canonical map, or "who was this
+    // person also called?" and "who is this person?" give different answers.
+    expect(applied.aliasesByCanonicalId.get('id-a')).toEqual(['id-b', 'id-c']);
+    expect(applied.aliasesByCanonicalId.has('id-b')).toBe(false);
+    for (const [survivor, aliases] of applied.aliasesByCanonicalId) {
+      expect(applied.canonicalIdByPersonId.get(survivor)).toBe(survivor);
+      for (const alias of aliases) {
+        expect(applied.canonicalIdByPersonId.get(alias)).toBe(survivor);
+      }
+    }
+  });
+
+  it('reports an unknown overlap as unknown rather than as zero minutes (finding 4)', () => {
+    const set = timelineOf([
+      makeCommitment({
+        id: 'game',
+        teamId: 'team-a',
+        gameId: 'g-game',
+        startMinutes: at('10:00'),
+        endMinutes: at('11:00'),
+      }),
+      makeCommitment({
+        id: 'open',
+        teamId: 'team-b',
+        gameId: 'g-open',
+        startMinutes: at('10:30'),
+        endMinutes: null,
+      }),
+    ]);
+    const [clash] = findAttendanceClashes(set);
+    expect(clash.from.id).toBe('game');
+    expect(clash.to.id).toBe('open');
+    // Zero is a measurement and this is not one: a commitment of unknown
+    // footprint starting mid-game overlaps by an amount nobody knows.
+    expect(clash.overlapMinutes).toBeNull();
+
+    // Positive control: give the same commitment an end and the magnitude is
+    // measured again, so `null` means "unknown" and not "always".
+    const measured = timelineOf([
+      makeCommitment({
+        id: 'game',
+        teamId: 'team-a',
+        gameId: 'g-game',
+        startMinutes: at('10:00'),
+        endMinutes: at('11:00'),
+      }),
+      makeCommitment({
+        id: 'open',
+        teamId: 'team-b',
+        gameId: 'g-open',
+        startMinutes: at('10:30'),
+        endMinutes: at('11:30'),
+      }),
+    ]);
+    expect(findAttendanceClashes(measured)[0].overlapMinutes).toBe(30);
+  });
+
+  it('ends a day at its latest end, not at the last commitment to start (finding 5)', () => {
+    const straddled = timelineOf([
+      makeCommitment({
+        id: 'long',
+        teamId: 'team-a',
+        gameId: 'g-long',
+        startMinutes: at('09:00'),
+        endMinutes: at('12:00'),
+      }),
+      makeCommitment({
+        id: 'short',
+        teamId: 'team-b',
+        gameId: 'g-short',
+        startMinutes: at('10:00'),
+        endMinutes: at('10:30'),
+      }),
+    ]);
+    const [day] = buildPersonDays(straddled);
+    expect(day.commitments.map((commitment) => commitment.id)).toEqual(['long', 'short']);
+    expect(day.lastEndMinutes).toBe(at('12:00'));
+    expect(day.spanMinutes).toBe(180);
+
+    // An unknown end anywhere in the day makes the day's end unknown, whether
+    // or not that commitment happens to sort last.
+    const openEarly = timelineOf([
+      makeCommitment({
+        id: 'open',
+        teamId: 'team-a',
+        gameId: 'g-open',
+        startMinutes: at('09:00'),
+        endMinutes: null,
+      }),
+      makeCommitment({
+        id: 'later',
+        teamId: 'team-b',
+        gameId: 'g-later',
+        startMinutes: at('14:00'),
+        endMinutes: at('15:00'),
+      }),
+    ]);
+    const [openDay] = buildPersonDays(openEarly);
+    expect(openDay.commitments[openDay.commitments.length - 1].id).toBe('later');
+    expect(openDay.lastEndMinutes).toBeNull();
+    expect(openDay.spanMinutes).toBeNull();
+  });
+
+  it('honours an assignment’s effective window wherever activity is judged (finding 6)', () => {
+    const people = [makePerson('p1', 'Ada', 'Stone'), makePerson('p2', 'Bo', 'Reed')];
+    // p2 co-coaches both of p1's teams and leaves at the end of August.
+    const assignments = [
+      makeAssignment('p1', 'team-a', 1),
+      makeAssignment('p1', 'team-b', 1),
+      { ...makeAssignment('p2', 'team-a', 2), effectiveTo: '2026-08-31' },
+      { ...makeAssignment('p2', 'team-b', 2), effectiveTo: '2026-08-31' },
+    ];
+
+    const during = buildCoachRoster({ people, assignments }, { asOf: '2026-08-15' });
+    expect(during.teams.get('team-a').personIds).toEqual(['p1', 'p2']);
+    expect(during.meta.assignmentsActive).toBe(4);
+    expect(soleCoachRiskRegister(during).teams).toEqual([]);
+    expect(deriveMustAttend({ roster: during }).byPerson.size).toBe(0);
+
+    const after = buildCoachRoster({ people, assignments }, { asOf: '2026-09-05' });
+    expect(after.teams.get('team-a').personIds).toEqual(['p1']);
+    expect(after.meta.assignmentsActive).toBe(2);
+    expect(after.meta.assignmentsInactive).toBe(2);
+    expect(coCoachesOf(after, 'team-a', 'p1')).toEqual([]);
+    expect(teamsCoachedBy(after, 'p2')).toEqual([]);
+    expect(coachSlotOf(after, 'p2', 'team-a')).toBeNull();
+    // The register and the must-attend derivation both move, because both read
+    // the roster's own answer about who is active.
+    expect(soleCoachRiskRegister(after).teams.map((entry) => entry.teamId)).toEqual([
+      'team-a',
+      'team-b',
+    ]);
+    expect(deriveMustAttend({ roster: after }).byPerson.get('p1').bases).toEqual([
+      MUST_ATTEND_BASIS.SOLE_COACH_OF_MULTIPLE_TEAMS,
+    ]);
+
+    // With no as-of date the window cannot be applied, and the roster says so
+    // rather than counting a departed coach as fallback capacity in silence.
+    const undated = buildCoachRoster({ people, assignments });
+    const unjudged = undated.findings.filter(
+      (finding) => finding.code === PEOPLE_REASON.ASSIGNMENT_WINDOW_UNJUDGED
+    );
+    expect(unjudged).toHaveLength(2);
+    expect(unjudged.map((finding) => finding.details.assignmentId).sort()).toEqual([
+      'team-a|p2|2',
+      'team-b|p2|2',
+    ]);
+    expect(undated.teams.get('team-a').personIds).toEqual(['p1', 'p2']);
+
+    // A roster whose assignments carry no window raises nothing — the corpus
+    // included, whose 215 rows have no such column.
+    expect(
+      codesOf(
+        buildCoachRoster({ people, assignments: [makeAssignment('p1', 'team-a', 1)] }).findings
+      )
+    ).toEqual([]);
+    expect(codesOf(roster.findings)).toEqual([]);
+
+    // The schema refuses a window that closes before it opens, exactly as
+    // `PersonalConstraintSchema` refuses one.
+    expect(() =>
+      CoachAssignmentSchema.parse({
+        ...makeAssignment('p1', 'team-a', 1),
+        effectiveFrom: '2026-09-01',
+        effectiveTo: '2026-08-01',
+      })
+    ).toThrow(/may not end before it takes effect/);
+  });
+
+  it('honours a declared UNAVAILABLE record when judging fallback capacity (finding 7)', () => {
+    const local = buildCoachRoster({
+      people: [
+        makePerson('p1', 'Ada', 'Stone'),
+        makePerson('p2', 'Bo', 'Reed'),
+        makePerson('p3', 'Cy', 'Nolan'),
+      ],
+      assignments: [
+        makeAssignment('p1', 'team-a', 2),
+        makeAssignment('p2', 'team-a', 1),
+        makeAssignment('p1', 'team-b', 1),
+        makeAssignment('p3', 'team-b', 2),
+      ],
+    });
+    const set = timelineOf([
+      makeCommitment({
+        id: 'ta',
+        personId: 'p1',
+        teamId: 'team-a',
+        gameId: 'ga',
+        startMinutes: at('10:00'),
+        endMinutes: at('11:00'),
+      }),
+      makeCommitment({
+        id: 'tb',
+        personId: 'p1',
+        teamId: 'team-b',
+        gameId: 'gb',
+        startMinutes: at('10:30'),
+        endMinutes: at('11:30'),
+      }),
+      makeCommitment({
+        id: 'ta-p2',
+        personId: 'p2',
+        teamId: 'team-a',
+        gameId: 'ga',
+        startMinutes: at('10:00'),
+        endMinutes: at('11:00'),
+      }),
+    ]);
+    const clashes = findAttendanceClashes(set);
+    expect(clashes).toHaveLength(1);
+
+    // With no declared record, team-a's co-coach covers.
+    const covered = resolveAttendance({ roster: local, timelines: set, clashes });
+    expect(covered.resolutions[0].releasedTeamId).toBe('team-a');
+    expect(covered.resolutions[0].outcome).toBe(ATTENDANCE_OUTCOME.FALLBACK);
+
+    // A person declared unavailable that day is not fallback capacity, on the
+    // same reasoning that a coach who has not accepted is not.
+    const away = buildPersonalConstraintPolicy({
+      constraints: [
+        {
+          id: 'away-1',
+          personId: 'p2',
+          kind: PERSONAL_CONSTRAINT_KIND.UNAVAILABLE,
+          teamIds: null,
+          fromDate: DATE,
+          toDate: DATE,
+          rationale: 'declared away for the weekend',
+          source: { setBy: 'registrar', setAt: null, reference: null, note: null },
+        },
+      ],
+    });
+    const contested = resolveAttendance({
+      roster: local,
+      timelines: set,
+      clashes,
+      policy: away,
+    });
+    const [resolution] = contested.resolutions;
+    expect(resolution.outcome).toBe(ATTENDANCE_OUTCOME.FALLBACK_CONTESTED);
+    const contestedFinding = resolution.findings.find(
+      (finding) => finding.code === PEOPLE_REASON.TEAM_FALLBACK_CONTESTED
+    );
+    expect(contestedFinding.details.unavailablePersonIds).toEqual(['p2']);
+
+    // …and a record whose window has closed does not bite, so the dates are
+    // applied rather than decorative.
+    const expired = buildPersonalConstraintPolicy({
+      constraints: [
+        {
+          id: 'away-2',
+          personId: 'p2',
+          kind: PERSONAL_CONSTRAINT_KIND.UNAVAILABLE,
+          teamIds: null,
+          fromDate: '2026-08-01',
+          toDate: '2026-08-21',
+          rationale: 'declared away the weekend before',
+          source: { setBy: 'registrar', setAt: null, reference: null, note: null },
+        },
+      ],
+    });
+    expect(
+      resolveAttendance({ roster: local, timelines: set, clashes, policy: expired }).resolutions[0]
+        .outcome
+    ).toBe(ATTENDANCE_OUTCOME.FALLBACK);
+  });
+
+  it('applies a personal constraint’s window, and says so when it cannot (finding 7)', () => {
+    const local = buildCoachRoster({
+      people: [makePerson('p1', 'Ada', 'Stone'), makePerson('p2', 'Bo', 'Reed')],
+      assignments: [
+        makeAssignment('p1', 'team-a', 1),
+        makeAssignment('p2', 'team-a', 2),
+        makeAssignment('p1', 'team-b', 1),
+        makeAssignment('p2', 'team-b', 2),
+      ],
+    });
+    const windowed = buildPersonalConstraintPolicy({
+      constraints: [
+        {
+          id: 'household-4',
+          personId: 'p1',
+          kind: PERSONAL_CONSTRAINT_KIND.CANNOT_SPLIT,
+          teamIds: ['team-a', 'team-b'],
+          fromDate: '2026-08-01',
+          toDate: '2026-08-31',
+          rationale: 'one household, one car, for the weeks the other car is off the road',
+          source: { setBy: 'registrar', setAt: null, reference: null, note: null },
+        },
+      ],
+    });
+
+    const inForce = deriveMustAttend({ roster: local, policy: windowed, date: DATE });
+    expect(inForce.byPerson.get('p1').bases).toEqual([
+      MUST_ATTEND_BASIS.DECLARED_PERSONAL_CONSTRAINT,
+    ]);
+    expect(inForce.meta.personalConstraintsExamined).toBe(1);
+    expect(codesOf(inForce.findings)).toEqual([]);
+
+    // An expired `cannot-split` is not permanent.
+    const expired = deriveMustAttend({ roster: local, policy: windowed, date: '2026-09-05' });
+    expect(expired.byPerson.has('p1')).toBe(false);
+    expect(expired.meta.personalConstraintsExamined).toBe(1);
+
+    // With no date the window cannot be judged: the record is still applied,
+    // because dropping a declared must-attend in silence is the worse failure,
+    // but the caller is told the window went unjudged.
+    const undated = deriveMustAttend({ roster: local, policy: windowed });
+    expect(codesOf(undated.findings)).toContain(PEOPLE_REASON.PERSONAL_CONSTRAINT_WINDOW_UNJUDGED);
+    expect(undated.byPerson.has('p1')).toBe(true);
+
+    // A record with no window is judged the same way with or without a date,
+    // and raises nothing.
+    const openEnded = buildPersonalConstraintPolicy({
+      constraints: [
+        {
+          id: 'household-5',
+          personId: 'p1',
+          kind: PERSONAL_CONSTRAINT_KIND.CANNOT_SPLIT,
+          teamIds: ['team-a', 'team-b'],
+          fromDate: null,
+          toDate: null,
+          rationale: 'one household, one car',
+          source: { setBy: 'registrar', setAt: null, reference: null, note: null },
+        },
+      ],
+    });
+    expect(codesOf(deriveMustAttend({ roster: local, policy: openEnded }).findings)).toEqual([]);
+    expect(
+      deriveMustAttend({ roster: local, policy: openEnded, date: '2026-09-05' }).byPerson.has('p1')
+    ).toBe(true);
+  });
+
+  it('gives one person coaching both sides of a fixture two distinct commitments (finding 8)', () => {
+    // The corpus already carries intra-club fixtures — rows whose two sides are
+    // both teams this roster knows — so the collision is reachable from real
+    // data the moment one person is appointed to both sides.
+    const intraClub = season.combinedGames
+      .filter(
+        (game) =>
+          game.homeTeamId &&
+          game.awayTeamId &&
+          roster.teams.has(String(game.homeTeamId)) &&
+          roster.teams.has(String(game.awayTeamId))
+      )
+      .sort((a, b) => String(a.id).localeCompare(String(b.id)));
+    expect(intraClub.length).toBeGreaterThan(0);
+    const [game] = intraClub;
+
+    const homeCoach = season.assignments.find((row) => row.teamCode === String(game.homeTeamId));
+    expect(homeCoach).toBeDefined();
+    // Ordinary adapter input: the same roster rows, plus one appointing that
+    // person to the other side of the same fixture.
+    const both = buildSeason2026CoachRoster([
+      ...season.assignments,
+      { ...homeCoach, teamCode: String(game.awayTeamId), coachSlot: 9 },
+    ]);
+    expect(teamsCoachedBy(both, homeCoach.personKey)).toContain(String(game.awayTeamId));
+
+    const mine = [...toSeason2026CommitmentBatches(season, both).values()]
+      .flat()
+      .filter(
+        (commitment) =>
+          commitment.personId === homeCoach.personKey && commitment.gameId === String(game.id)
+      );
+    expect(mine).toHaveLength(2);
+    expect(new Set(mine.map((commitment) => commitment.teamId)).size).toBe(2);
+    expect(new Set(mine.map((commitment) => commitment.id)).size).toBe(2);
+
+    // …and ids stay unique across the whole corpus, not merely in this pair.
+    const all = [...toSeason2026CommitmentBatches(season, roster).values()].flat();
+    expect(new Set(all.map((commitment) => commitment.id)).size).toBe(all.length);
+  });
+
+  it('says the roster carries no link for a team instead of a very large slot (finding 9)', () => {
+    const local = buildCoachRoster({
+      people: [makePerson('p1', 'Ada', 'Stone'), makePerson('p2', 'Bo', 'Reed')],
+      assignments: [makeAssignment('p1', 'team-a', 1), makeAssignment('p2', 'team-a', 2)],
+    });
+    // A commitment naming a team this roster does not link p1 to — a timeline
+    // built over one roster revision and judged against another.
+    const set = timelineOf([
+      makeCommitment({
+        id: 'ta',
+        personId: 'p1',
+        teamId: 'team-a',
+        gameId: 'ga',
+        startMinutes: at('10:00'),
+        endMinutes: at('11:00'),
+      }),
+      makeCommitment({
+        id: 'tz',
+        personId: 'p1',
+        teamId: 'team-z',
+        gameId: 'gz',
+        startMinutes: at('10:30'),
+        endMinutes: at('11:30'),
+      }),
+    ]);
+    const verdict = resolveAttendance({
+      roster: local,
+      timelines: set,
+      clashes: findAttendanceClashes(set),
+    });
+    const [resolution] = verdict.resolutions;
+    expect(resolution.retainedTeamId).toBe('team-a');
+    expect(resolution.retainedSlot).toBe(1);
+    expect(resolution.releasedTeamId).toBe('team-z');
+    // Not `Number.MAX_SAFE_INTEGER` dressed as a coach slot.
+    expect(resolution.releasedSlot).toBeNull();
+    const missing = resolution.findings.filter(
+      (finding) => finding.code === PEOPLE_REASON.ATTENDANCE_TEAM_LINK_MISSING
+    );
+    expect(missing).toHaveLength(1);
+    expect(missing[0].details.teamId).toBe('team-z');
+    expect(missing[0].details.commitmentId).toBe('tz');
+    expect(JSON.stringify(verdict.resolutions)).not.toContain(String(Number.MAX_SAFE_INTEGER));
+    expect(JSON.stringify(verdict.findings)).not.toContain(String(Number.MAX_SAFE_INTEGER));
   });
 });
