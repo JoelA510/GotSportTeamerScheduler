@@ -45,6 +45,8 @@
  */
 
 import { latestLegalKickoff } from '../availability/kickoff.js';
+import { applyRegistrySeverity, effectiveSeverityTable } from '../constraints/severity.js';
+import { getSurface } from '../facility/facilityGraph.js';
 import { coCoachesOf } from '../people/roster.js';
 import { registryConstraintIdsFor, violationsAbout } from '../resolve/errors.js';
 import { bookingsOn, checkPlacement } from '../resolve/legality.js';
@@ -52,6 +54,7 @@ import { slotKey } from '../resolve/state.js';
 import { earliestKickoffWithWarmup } from '../timing/warmup.js';
 
 import {
+  categoryOnlyClaimFindings,
   claimFromAvailabilityConstraint,
   claimFromFinding,
   claimFromRosterFinding,
@@ -59,7 +62,6 @@ import {
   claimFromViolation,
   claimFromWarmupBound,
   groupFindingsByConstraintKind,
-  isSpecificClaim,
   mergeClaimsByTightness,
 } from './claims.js';
 import {
@@ -70,6 +72,7 @@ import {
   createAttributionMeta,
   deriveAttributionStatus,
   makeAttributionFinding,
+  mergeAttributionMeta,
 } from './reasonCodes.js';
 import {
   AlternativeTimeQuerySchema,
@@ -119,26 +122,92 @@ function consequential(findings) {
 }
 
 /**
- * Turn one `checkPlacement()` result into claims and the constraints that did
- * not apply.
+ * The registry's own view of a set of findings, at one place on one date.
  *
- * Used for the slot a game has **and** for a slot it does not, which is what
- * makes the counterfactual comparable with the fact.
+ * `checkPlacement()` runs everything it reports through this seam — it is the
+ * whole mechanism by which hardness is data (`docs/MODEL_GAPS.md` GAP-12) — so
+ * `explainGame()` and everything built on it already honours a retyped
+ * constraint. The two boundary answers read their owner's findings **directly**,
+ * which means the same constraint would read `blocking` in one answer and `info`
+ * in the other the moment it is retyped, with nothing to say which to believe.
+ * Retyping is what Prompt 2.1 exists to make routine, so both go through the
+ * same seam.
  *
- * @param {Object} placement - a `checkPlacement()` result
- * @param {{ registry: Object, gameId: string|null, surfaceId: string, venueId: string|null, date: string }} ctx
+ * The seam's own provenance findings are discarded here exactly as
+ * `checkPlacement()` discards them: this is a severity lookup, not a second
+ * report about the registry.
+ *
+ * @param {import('./types.js').AttributionContext} context
+ * @param {{ surfaceId: string, venueId: string|null, date: string, divisionLabel?: string|null }} where
+ * @param {ReadonlyArray<import('./types.js').AttributionFinding>} findings
+ * @returns {import('./types.js').AttributionFinding[]}
+ */
+function underRegistry(context, where, findings) {
+  const surface = getSurface(
+    /** @type {import('../facility/types.js').FacilityGraph} */ (context.engines.graph),
+    where.surfaceId
+  );
+  const table = effectiveSeverityTable(
+    /** @type {import('../constraints/types.js').ConstraintRegistry} */ (context.engines.registry),
+    {
+      date: where.date,
+      venueId: surface?.venueId ?? where.venueId,
+      surfaceId: where.surfaceId,
+      surfaceLineage: surface ? [...surface.lineage] : [where.surfaceId],
+      ...(where.divisionLabel ? { divisionLabel: where.divisionLabel } : {}),
+    }
+  );
+  return /** @type {import('./types.js').AttributionFinding[]} */ (
+    applyRegistrySeverity(
+      /** @type {ReadonlyArray<import('../constraints/types.js').ConstraintFinding>} */ (findings),
+      table
+    ).findings
+  );
+}
+
+/**
+ * Turn a set of availability bounds and the findings raised alongside them into
+ * claims, plus the bounds that did not apply.
+ *
+ * **Every consequential finding reaches a claim, and that is the whole point.**
+ * `groupFindingsByConstraintKind()`'s own doc-comment says a finding that
+ * belongs to no bound must get a claim of its own or it becomes "a blocking
+ * violation nothing reported" — and there are *two* ways to belong to no bound,
+ * not one. A finding whose code no kind buckets is the obvious one. The other is
+ * a finding bucketed under a kind whose bound turned out **inapplicable**: an
+ * `OCCUPIED_SAME_SURFACE` against a booking that started *earlier* is filed
+ * under `occupancy`, while the occupancy *edge* is inapplicable precisely
+ * because nothing starts *later*. Consuming `byKind` only for applicable bounds
+ * drops it, and the answer then says "blocked" while carrying no claim that says
+ * by what — which is the one thing this module exists to do.
+ *
+ * So the kinds a bound actually took responsibility for are tracked, and
+ * everything else — unbucketed, or bucketed under a kind no bound claimed —
+ * becomes a claim in its own right, in the order its owner raised it.
+ *
+ * Used for the slot a game has, for a slot it does not, and for the latest-legal
+ * kickoff query, which is what makes those three answers comparable.
+ *
+ * @param {ReadonlyArray<import('../availability/types.js').AvailabilityConstraint>} constraints
+ * @param {ReadonlyArray<import('./types.js').AttributionFinding>} findings - already re-severitied
+ * @param {{ registry: Object, source: string, gameId: string|null, surfaceId: string, venueId: string|null, date: string }} ctx
  * @param {import('./types.js').AttributionMeta} meta
  * @returns {{ claims: import('./types.js').ConstraintClaim[], notApplicable: import('./types.js').InapplicableConstraint[] }}
  */
-function claimsForPlacement(placement, ctx, meta) {
-  const availability = /** @type {Object} */ (placement.availability);
-  const grouped = groupFindingsByConstraintKind(consequential(placement.findings));
+function claimsFromBounds(constraints, findings, ctx, meta) {
+  const grouped = groupFindingsByConstraintKind(consequential(findings));
 
   /** @type {import('./types.js').ConstraintClaim[]} */
   const bounds = [];
   /** @type {import('./types.js').InapplicableConstraint[]} */
   const notApplicable = [];
-  for (const constraint of availability.constraints ?? []) {
+  /**
+   * The kinds whose findings a bound has already taken responsibility for.
+   *
+   * @type {Set<string>}
+   */
+  const boundKinds = new Set();
+  for (const constraint of constraints ?? []) {
     meta.availabilityConstraintsConsulted += 1;
     if (!constraint.applicable) {
       notApplicable.push({
@@ -148,15 +217,22 @@ function claimsForPlacement(placement, ctx, meta) {
       });
       continue;
     }
+    boundKinds.add(constraint.kind);
     bounds.push(
       claimFromAvailabilityConstraint(constraint, ctx, grouped.byKind[constraint.kind] ?? [])
     );
   }
 
-  const others = grouped.ungrouped.map((finding) =>
+  const orphaned = [
+    ...Object.entries(grouped.byKind)
+      .filter(([kind]) => !boundKinds.has(kind))
+      .flatMap(([, group]) => group),
+    ...grouped.ungrouped,
+  ];
+  const others = orphaned.map((finding) =>
     claimFromFinding(finding, {
       registry: ctx.registry,
-      source: ATTRIBUTION_SOURCE.FACILITY,
+      source: ctx.source,
       gameId: ctx.gameId,
       surfaceId: ctx.surfaceId,
       venueId: ctx.venueId,
@@ -168,34 +244,22 @@ function claimsForPlacement(placement, ctx, meta) {
 }
 
 /**
- * Every claim that fails the specific-instance test, as findings.
+ * Turn one `checkPlacement()` result into claims and the constraints that did
+ * not apply.
  *
- * Checked in production, not only in a test: an attribution that names a
- * category is the answer this whole module exists to replace, and it must make
- * its own answer `rejected` rather than being caught by whoever reads it.
- *
- * @param {ReadonlyArray<import('./types.js').ConstraintClaim>} claims
- * @param {Record<string, unknown>} where
+ * @param {Object} placement - a `checkPlacement()` result
+ * @param {{ registry: Object, gameId: string|null, surfaceId: string, venueId: string|null, date: string }} ctx
  * @param {import('./types.js').AttributionMeta} meta
- * @returns {import('./types.js').AttributionFinding[]}
+ * @returns {{ claims: import('./types.js').ConstraintClaim[], notApplicable: import('./types.js').InapplicableConstraint[] }}
  */
-function categoryOnlyFindings(claims, where, meta) {
-  /** @type {import('./types.js').AttributionFinding[]} */
-  const findings = [];
-  for (const claim of claims) {
-    meta.claimsBuilt += 1;
-    if (claim.binding) meta.claimsBinding += 1;
-    if (isSpecificClaim(claim)) continue;
-    meta.claimsCategoryOnly += 1;
-    findings.push(
-      makeAttributionFinding(
-        ATTRIBUTION_REASON.ATTRIBUTION_CLAIM_CATEGORY_ONLY,
-        `the claim "${claim.kind}" from ${claim.source} names no constraint instance and carries no computed value; "${claim.kind}" is a category label and is exactly the answer somebody had to derive the real one from`,
-        { ...where, source: claim.source, kind: claim.kind }
-      )
-    );
-  }
-  return findings;
+function claimsForPlacement(placement, ctx, meta) {
+  const availability = /** @type {Object} */ (placement.availability);
+  return claimsFromBounds(
+    availability.constraints ?? [],
+    /** @type {import('./types.js').AttributionFinding[]} */ (placement.findings),
+    { ...ctx, source: ATTRIBUTION_SOURCE.FACILITY },
+    meta
+  );
 }
 
 /**
@@ -260,7 +324,7 @@ export function explainGame(context, rawQuery) {
   }
 
   const claims = mergeClaimsByTightness([placed.claims, violationClaims]);
-  findings.push(...categoryOnlyFindings(claims, { gameId: query.gameId }, meta));
+  findings.push(...categoryOnlyClaimFindings(claims, { gameId: query.gameId }, meta));
 
   if (claims.length === 0) {
     findings.push(
@@ -311,6 +375,11 @@ export function explainKickoffTime(context, rawQuery) {
   const query = AlternativeTimeQuerySchema.parse(rawQuery);
   const meta = createAttributionMeta();
   const current = explainGame(context, { gameId: query.gameId });
+  // The half of the answer that `explainGame()` did is work this answer did.
+  // Leaving it out reports `gamesExamined: 0` after examining a game and one
+  // placement check after two — and the counters are exactly how a caller tells
+  // "nothing applied" from "nothing was checked".
+  mergeAttributionMeta(meta, current.meta);
   const game = gameOf(context, query.gameId);
   /** @type {import('./types.js').AttributionFinding[]} */
   const findings = [...current.findings];
@@ -367,7 +436,7 @@ export function explainKickoffTime(context, rawQuery) {
   };
   const placed = claimsForPlacement(placement, ctx, meta);
   findings.push(
-    ...categoryOnlyFindings(
+    ...categoryOnlyClaimFindings(
       placed.claims,
       { gameId: query.gameId, slot: slotKey(alternative) },
       meta
@@ -379,6 +448,26 @@ export function explainKickoffTime(context, rawQuery) {
     (claim) => claim.severity === ATTRIBUTION_SEVERITY.BLOCKING
   );
   const binding = blocking[0] ?? placed.claims.find((claim) => claim.binding) ?? null;
+
+  // **The margin, reported only when there is one.** A claim's `slackMinutes` is
+  // the room left against *its own* bound. The occupancy edge measures the gap to
+  // the next booking, which is a different question from how deeply this game
+  // would run into one that started *earlier* — and a permit that closes hours
+  // later measures nothing about an overlap at all. Rendering `-slackMinutes`
+  // regardless turned 15 minutes of room into `by -15 min` and a permit with 405
+  // minutes of headroom into `by -405 min`: a confident number about a constraint
+  // that blocked nothing. So the margin is taken only from the claim that
+  // actually blocked the placement, and only when its owner reported that bound
+  // as broken. Otherwise the answer says the margin is not available rather than
+  // inventing one; the codes, the constraints and the counterpart games are the
+  // answer, and they are all still there.
+  const marginMinutes =
+    binding !== null &&
+    binding.severity === ATTRIBUTION_SEVERITY.BLOCKING &&
+    binding.slackMinutes !== null &&
+    binding.slackMinutes < 0
+      ? binding.slackMinutes
+      : null;
 
   findings.push(
     placement.legal
@@ -394,7 +483,9 @@ export function explainKickoffTime(context, rawQuery) {
       : makeAttributionFinding(
           ATTRIBUTION_REASON.ATTRIBUTION_ALTERNATIVE_BLOCKED,
           `game "${query.gameId}" stands at minute ${current.slot.startMinutes} rather than minute ${alternative.startMinutes} because at minute ${alternative.startMinutes} it breaks ${placement.blockingCodes.join(', ')} (${constraintIds.join(', ') || 'no registry constraint claims those codes'})${
-            binding && binding.slackMinutes !== null ? `, by ${-binding.slackMinutes} min` : ''
+            marginMinutes === null
+              ? ', by a margin nothing that blocked it measures'
+              : `, by ${-marginMinutes} min`
           }${
             placement.counterpartGameIds.length > 0
               ? `, against ${placement.counterpartGameIds.join(', ')}`
@@ -407,7 +498,7 @@ export function explainKickoffTime(context, rawQuery) {
             constraintIds,
             constraintId: constraintIds[0] ?? null,
             counterpartGameIds: [...placement.counterpartGameIds],
-            slackMinutes: binding?.slackMinutes ?? null,
+            slackMinutes: marginMinutes,
           }
         )
   );
@@ -485,34 +576,30 @@ export function explainLatestKickoff(context, rawQuery) {
 
   const ctx = {
     registry: context.engines.registry,
+    source: ATTRIBUTION_SOURCE.FACILITY,
     gameId: query.gameId,
     surfaceId: game.surfaceId,
     venueId: game.venueId,
     date: game.date,
   };
-  const grouped = groupFindingsByConstraintKind(
-    consequential(/** @type {import('./types.js').AttributionFinding[]} */ (result.findings))
+  const bounded = claimsFromBounds(
+    result.constraints,
+    underRegistry(
+      context,
+      {
+        surfaceId: game.surfaceId,
+        venueId: game.venueId,
+        date: game.date,
+        divisionLabel: game.divisionLabel ?? null,
+      },
+      /** @type {import('./types.js').AttributionFinding[]} */ (result.findings)
+    ),
+    ctx,
+    meta
   );
-  /** @type {import('./types.js').ConstraintClaim[]} */
-  const bounds = [];
-  /** @type {import('./types.js').InapplicableConstraint[]} */
-  const notApplicable = [];
-  for (const constraint of result.constraints) {
-    meta.availabilityConstraintsConsulted += 1;
-    if (!constraint.applicable) {
-      notApplicable.push({
-        source: ATTRIBUTION_SOURCE.AVAILABILITY,
-        kind: constraint.kind,
-        reason: String(constraint.detail?.reason ?? 'the machinery that owns it stated no reason'),
-      });
-      continue;
-    }
-    bounds.push(
-      claimFromAvailabilityConstraint(constraint, ctx, grouped.byKind[constraint.kind] ?? [])
-    );
-  }
-  const claims = mergeClaimsByTightness([bounds]);
-  findings.push(...categoryOnlyFindings(claims, { gameId: query.gameId }, meta));
+  const claims = bounded.claims;
+  const notApplicable = bounded.notApplicable;
+  findings.push(...categoryOnlyClaimFindings(claims, { gameId: query.gameId }, meta));
 
   if (result.bindingKinds.length === 0) {
     findings.push(
@@ -592,7 +679,11 @@ export function explainEarliestKickoff(context, rawQuery) {
     date: query.date,
   });
   const others = consequential(
-    /** @type {import('./types.js').AttributionFinding[]} */ (result.findings)
+    underRegistry(
+      context,
+      { surfaceId: query.surfaceId, venueId: null, date: query.date },
+      /** @type {import('./types.js').AttributionFinding[]} */ (result.findings)
+    )
   ).map((finding) =>
     claimFromFinding(finding, {
       registry: context.engines.registry,
@@ -605,19 +696,34 @@ export function explainEarliestKickoff(context, rawQuery) {
   );
   const claims = mergeClaimsByTightness([bound === null ? [] : [bound], others]);
   findings.push(
-    ...categoryOnlyFindings(claims, { surfaceId: query.surfaceId, date: query.date }, meta)
+    ...categoryOnlyClaimFindings(claims, { surfaceId: query.surfaceId, date: query.date }, meta)
   );
 
   if (result.kickoffMinutes === null) {
+    // **What actually happened, not what a search would have looked like.** An
+    // unstated warm-up length stops `earliestKickoffWithWarmup()` before it
+    // tests a single candidate, and a format with no timing row stops it before
+    // that; "no kickoff in the range that was searched" describes work none of
+    // those three cases did. The counter is the owner's own.
+    const tested = /** @type {number} */ (result.candidatesTested ?? 0);
+    const warmupMinutes = /** @type {number|null} */ (result.warmupMinutes ?? null);
+    const what =
+      warmupMinutes === null
+        ? 'no warm-up length was stated, so no candidate kickoff was tested at all'
+        : tested === 0
+          ? `no candidate kickoff was tested between minute ${query.notBeforeMinutes} and minute ${query.notAfterMinutes}`
+          : `${tested} candidate kickoff(s) were tested between minute ${query.notBeforeMinutes} and minute ${query.notAfterMinutes} and none yields a full ${warmupMinutes} min warm-up`;
     findings.push(
       makeAttributionFinding(
         ATTRIBUTION_REASON.ATTRIBUTION_QUESTION_UNANSWERABLE,
-        `no kickoff on ${query.date} yields a full warm-up on ${query.surfaceId} in the range that was searched, so there is no boundary to attribute`,
+        `no kickoff on ${query.date} can be reported as the earliest with a full warm-up on ${query.surfaceId}: ${what}, so there is no boundary to attribute`,
         {
           surfaceId: query.surfaceId,
           date: query.date,
           notBeforeMinutes: query.notBeforeMinutes,
           notAfterMinutes: query.notAfterMinutes,
+          candidatesTested: tested,
+          warmupMinutes,
         }
       )
     );
@@ -774,7 +880,7 @@ export function explainTeamConflict(context, rawQuery) {
   }
 
   const claims = mergeClaimsByTightness(groups);
-  findings.push(...categoryOnlyFindings(claims, { teamId: query.teamId }, meta));
+  findings.push(...categoryOnlyClaimFindings(claims, { teamId: query.teamId }, meta));
 
   if (conflicts.length === 0) {
     findings.push(

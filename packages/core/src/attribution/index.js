@@ -53,9 +53,11 @@ export {
   ATTRIBUTION_REASON_SEVERITY,
   ATTRIBUTION_SEVERITY,
   ATTRIBUTION_SOURCE,
+  ATTRIBUTION_SOURCE_BY_REASON_CODE,
   ATTRIBUTION_SOURCE_ORDER,
   ATTRIBUTION_STATUS,
   attributionSeverityOf,
+  attributionSourceOf,
   createAttributionMeta,
   deriveAttributionStatus,
   makeAttributionFinding,
@@ -72,7 +74,9 @@ export {
 } from './schemas.js';
 
 export {
+  categoryOnlyClaimFindings,
   claimFromAvailabilityConstraint,
+  claimFromConstraintFindings,
   claimFromFinding,
   claimFromRosterFinding,
   claimFromTravelTransition,

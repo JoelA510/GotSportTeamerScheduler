@@ -34,6 +34,7 @@ import {
   AVAILABILITY_CONSTRAINT,
   AVAILABILITY_REASON,
   buildAvailabilityCalendarFromSeason2026,
+  latestLegalKickoff,
   resolveLighting,
   resolvePermitWindow,
 } from '@squadlogic/core/availability/index.js';
@@ -46,6 +47,7 @@ import {
   buildSeason2026ConstraintRegistry,
 } from '@squadlogic/core/constraints/index.js';
 import {
+  FACILITY_REASON,
   buildFacilityGraphFromSeason2026,
   buildSeason2026VenueComplexMap,
   season2026SurfaceId,
@@ -59,15 +61,18 @@ import {
   loadSeason2026,
   loadSunsets,
 } from '@squadlogic/core/fixtures/index.js';
-import { buildSeason2026CoachRoster } from '@squadlogic/core/people/index.js';
+import { PEOPLE_REASON, buildSeason2026CoachRoster } from '@squadlogic/core/people/index.js';
 import {
+  bookingsOn,
   checkPlacement,
   season2026ExternalFixtureChanges,
 } from '@squadlogic/core/resolve/index.js';
 import { runRuleEngine, toSeason2026Schedule } from '@squadlogic/core/ruleEngine/index.js';
 import {
   SEASON_2026_INCIDENT_8_WARMUP_MINUTES,
+  TIMING_REASON,
   buildFormatTimingTableFromSeason2026,
+  earliestKickoffWithWarmup,
 } from '@squadlogic/core/timing/index.js';
 
 import {
@@ -77,9 +82,14 @@ import {
   ATTRIBUTION_REASON_SEVERITY,
   ATTRIBUTION_SEVERITY,
   ATTRIBUTION_SOURCE,
+  ATTRIBUTION_SOURCE_BY_REASON_CODE,
   ATTRIBUTION_STATUS,
   attributionSeverityOf,
+  attributionSourceOf,
   buildAttributionContext,
+  categoryOnlyClaimFindings,
+  claimFromRosterFinding,
+  createAttributionMeta,
   explainEarliestKickoff,
   explainGame,
   explainKickoffTime,
@@ -1172,6 +1182,817 @@ describe('attribution :: acceptance 2 — a minimal blocking set, not the regist
     expect(answer.findings.map((finding) => finding.code)).toContain(
       ATTRIBUTION_REASON.ATTRIBUTION_PLACEMENT_NOT_BLOCKED
     );
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* The counterfactual sweep — the path the coverage sweep does not walk        */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Every game against every *other* kickoff its own venue uses on its own date.
+ *
+ * The 679-game coverage sweep walks `explainGame()`: the slot each row already
+ * occupies, where the corpus is by construction almost entirely legal. The
+ * counterfactual is the other half of "why here and not there", it is where a
+ * placement is actually *blocked*, and it is a different code path — so it gets
+ * its own population rather than borrowing the coverage sweep's clean bill of
+ * health. Only kickoff minutes the corpus itself uses at that venue on that
+ * date are tried, never invented ones.
+ *
+ * Reduced to the fields the checks below need, because 3,000-odd whole answers
+ * held at once is a memory cost with no reader.
+ */
+const counterfactuals = [];
+for (const game of schedule.games) {
+  const kickoffs = [
+    ...new Set(
+      schedule.games
+        .filter((entry) => entry.date === game.date && entry.venueId === game.venueId)
+        .map((entry) => entry.startMinutes)
+    ),
+  ].sort((a, b) => a - b);
+  for (const minutes of kickoffs) {
+    if (minutes === game.startMinutes) continue;
+    const answer = explainKickoffTime(context, {
+      gameId: game.id,
+      insteadOfMinutes: minutes,
+    });
+    counterfactuals.push({
+      where: `${game.id} at minute ${minutes}`,
+      legal: answer.counterfactual.legal,
+      blockingCodes: answer.counterfactual.blockingCodes,
+      claimCodes: answer.counterfactual.claims.flatMap((claim) => claim.codes),
+      binding: answer.counterfactual.binding,
+      blocked:
+        answer.findings.find(
+          (finding) => finding.code === ATTRIBUTION_REASON.ATTRIBUTION_ALTERNATIVE_BLOCKED
+        ) ?? null,
+    });
+  }
+}
+
+describe('attribution :: every blocking code in an answer is carried by a claim', () => {
+  it('holds over the whole counterfactual sweep, not over one example', () => {
+    // The invariant this module exists for: saying "blocked" and being unable to
+    // say by what is the failure it was written to replace. Asserted over every
+    // counterfactual the corpus supports rather than over the one the narrative
+    // happens to name.
+    let blocked = 0;
+    /** @type {string[]} */
+    const orphaned = [];
+    for (const entry of counterfactuals) {
+      if (entry.legal) {
+        expect(entry.blockingCodes, entry.where).toEqual([]);
+        continue;
+      }
+      blocked += 1;
+      expect(entry.blockingCodes.length, entry.where).toBeGreaterThan(0);
+      const carried = new Set(entry.claimCodes);
+      const missing = entry.blockingCodes.filter((code) => !carried.has(code));
+      if (missing.length > 0) orphaned.push(`${entry.where} :: ${missing.join(', ')}`);
+    }
+    // Meta-assertions: a real population, and a real population of *blocked*
+    // ones. A sweep that found nothing to block would pass the check below for
+    // the worst possible reason.
+    expect(counterfactuals.length).toBeGreaterThan(3000);
+    expect(blocked).toBeGreaterThan(1000);
+    expect(orphaned).toEqual([]);
+  });
+
+  it('keeps the same promise for "why can\'t this game go later?"', () => {
+    // The other function that sorts findings into constraint kinds, and the
+    // other place a finding can fall between a bound and no bound. Every
+    // consequential finding `latestLegalKickoff()` raised must reach a claim.
+    let withConsequential = 0;
+    /** @type {string[]} */
+    const orphaned = [];
+    /** @type {Set<string>} */
+    const population = new Set();
+    for (const game of schedule.games) {
+      const owner = latestLegalKickoff(
+        graph,
+        table,
+        calendar,
+        {
+          surfaceId: game.surfaceId,
+          date: game.date,
+          format: game.format,
+          notBeforeMinutes: game.startMinutes,
+          ignoreBookingIds: [game.id],
+        },
+        { existingBookings: bookingsOn(context.state, game.date, game.id) }
+      );
+      const spoke = owner.findings.filter(
+        (finding) => finding.severity !== ATTRIBUTION_SEVERITY.INFO
+      );
+      if (spoke.length === 0) continue;
+      withConsequential += 1;
+      for (const finding of spoke) population.add(finding.code);
+      const answer = explainLatestKickoff(context, { gameId: game.id });
+      const carried = new Set(answer.claims.flatMap((claim) => claim.codes));
+      const missing = [...new Set(spoke.map((finding) => finding.code))].filter(
+        (code) => !carried.has(code)
+      );
+      if (missing.length > 0) orphaned.push(`${game.id} :: ${missing.join(', ')}`);
+    }
+    // Meta-assertions: a real population, and one the registry does not
+    // re-severity — so the owner's severity and the effective one agree and this
+    // comparison is exact rather than approximately right.
+    expect(withConsequential).toBeGreaterThan(100);
+    expect(population.size).toBeGreaterThan(1);
+    for (const code of population) expect(registry.idsByReasonCode[code], code).toBeUndefined();
+    expect(orphaned).toEqual([]);
+  });
+});
+
+describe('attribution :: a blocked alternative never reports a margin nobody measured', () => {
+  it('renders no positive slack as a negative one, over the whole counterfactual sweep', () => {
+    // An attribution that reports a wrong number confidently is worse than one
+    // that declines to report. Where a margin is stated it must be the binding
+    // *blocking* claim's own negative slack — the amount the bound is broken by
+    // — and never a sign-flipped edge belonging to a different constraint.
+    let blocked = 0;
+    let withMargin = 0;
+    let withoutMargin = 0;
+    /** @type {string[]} */
+    const wrong = [];
+    for (const entry of counterfactuals) {
+      if (entry.legal) continue;
+      blocked += 1;
+      const finding = /** @type {Object} */ (entry.blocked);
+      const slack = finding.details.slackMinutes;
+      const binding = /** @type {Object} */ (entry.binding);
+      if (slack === null) {
+        withoutMargin += 1;
+        // No number claimed anywhere in the sentence either.
+        if (/by -?\d+ min/.test(finding.message)) {
+          wrong.push(`${entry.where} :: says a margin while reporting none: ${finding.message}`);
+        }
+        continue;
+      }
+      withMargin += 1;
+      if (typeof slack !== 'number' || slack >= 0) {
+        wrong.push(`${entry.where} :: slackMinutes ${slack} is not a broken bound`);
+        continue;
+      }
+      if (!finding.message.includes(`by ${-slack} min`)) {
+        wrong.push(`${entry.where} :: message and details disagree: ${finding.message}`);
+      }
+      // …and the margin belongs to the thing that blocked it, not to whichever
+      // edge happened to be tightest.
+      if (binding === null || binding.severity !== ATTRIBUTION_SEVERITY.BLOCKING) {
+        wrong.push(`${entry.where} :: margin taken from a ${binding?.severity ?? 'missing'} claim`);
+      }
+      if (binding !== null && binding.slackMinutes !== slack) {
+        wrong.push(`${entry.where} :: margin is not the binding claim's own slack`);
+      }
+    }
+    // Meta-assertions: both branches were exercised on a real population, so
+    // neither "always reports a margin" nor "never reports one" could pass this.
+    expect(blocked).toBeGreaterThan(1000);
+    expect(withMargin).toBeGreaterThan(100);
+    expect(withoutMargin).toBeGreaterThan(0);
+    expect(wrong).toEqual([]);
+  });
+});
+
+describe('attribution :: the sole-coach claim counts each team once', () => {
+  /** The register the context already built, read rather than rebuilt. */
+  const register = /** @type {Object} */ (context.soleCoach);
+
+  it('reports the teams the register named, not one more', () => {
+    // `PERSON_SOLE_COACH_OF_MULTIPLE_TEAMS` names *every* team in `teamIds`, the
+    // subject included, so counting "the others, plus this one" counts the
+    // subject twice: two teams reported as three, on the one claim whose whole
+    // content is how many teams have nobody to fall back to.
+    const multi = /** @type {Object} */ (
+      register.findings.find(
+        (finding) => finding.code === PEOPLE_REASON.PERSON_SOLE_COACH_OF_MULTIPLE_TEAMS
+      )
+    );
+    expect(multi).toBeDefined();
+    const teamIds = /** @type {string[]} */ (multi.details.teamIds);
+    expect(teamIds.length).toBeGreaterThan(1);
+
+    const claim = claimFromRosterFinding(multi, {
+      teamId: teamIds[0],
+      personId: /** @type {string} */ (multi.details.personId),
+    });
+    expect(claim.computed.coversTeams).toBe(teamIds.length);
+    // …and the subject team appears once in the entity list, not twice.
+    const teams = claim.entities
+      .filter((entity) => entity.kind === 'team')
+      .map((entity) => entity.id);
+    expect(teams).toEqual([...new Set(teams)]);
+    expect([...teams].sort()).toEqual([...teamIds].sort());
+  });
+
+  it('still counts the subject team for the register’s other finding', () => {
+    // The control that stops the fix above becoming an off-by-one the other way.
+    // `TEAM_SOLE_COACH` names the subject team separately and lists only the
+    // *other* teams that coach takes, so the subject genuinely has to be added.
+    const sole = /** @type {Object} */ (
+      register.findings.find(
+        (finding) =>
+          finding.code === PEOPLE_REASON.TEAM_SOLE_COACH &&
+          /** @type {string[]} */ (finding.details.alsoCoaches ?? []).length > 0
+      )
+    );
+    expect(sole).toBeDefined();
+    const alsoCoaches = /** @type {string[]} */ (sole.details.alsoCoaches);
+    expect(alsoCoaches).not.toContain(sole.details.teamId);
+
+    const claim = claimFromRosterFinding(sole, {
+      teamId: /** @type {string} */ (sole.details.teamId),
+      personId: /** @type {string} */ (sole.details.personId),
+    });
+    expect(claim.computed.coversTeams).toBe(alsoCoaches.length + 1);
+    const teams = claim.entities
+      .filter((entity) => entity.kind === 'team')
+      .map((entity) => entity.id);
+    expect(teams).toEqual([...new Set(teams)]);
+    expect([...teams].sort()).toEqual([sole.details.teamId, ...alsoCoaches].sort());
+  });
+});
+
+/**
+ * A registry record built for one test, claiming one reason code at one
+ * hardness.
+ *
+ * **Constructed**, and it has to be: the published season's fourteen records are
+ * all hard or soft over codes whose base severity already agrees with them, so
+ * nothing in the corpus separates "the frozen table said so" from "the registry
+ * said so". Retyping a constraint is what Prompt 2.1 exists to make routine, and
+ * this is the smallest thing that makes the difference observable.
+ *
+ * @param {{ id: string, type: string, reasonCodes: string[], note: string }} spec
+ * @returns {Object}
+ */
+function constructedConstraint(spec) {
+  return {
+    id: spec.id,
+    policy: spec.id,
+    name: spec.note,
+    type: spec.type,
+    scope: { kind: CONSTRAINT_SCOPE_KIND.GLOBAL },
+    parameters: {},
+    restrictiveDirection: 'none',
+    rationale: `Constructed by tests/attribution.test.js: ${spec.note}`,
+    source: {
+      setBy: 'tests/attribution.test.js',
+      setAt: null,
+      reference: 'tests/attribution.test.js — the registry-severity seam',
+      note: 'constructed for a test; never part of the seeded season-2026 set',
+    },
+    effectiveFrom: null,
+    effectiveTo: null,
+    enforcement: CONSTRAINT_ENFORCEMENT.REASON_CODES,
+    reasonCodes: spec.reasonCodes,
+    weight: spec.type === CONSTRAINT_TYPE.PREFERENCE ? 1 : null,
+    waivable: false,
+    history: [],
+  };
+}
+
+describe('attribution :: the boundary answers honour the registry too', () => {
+  it('re-severities "why can\'t this game go later?" the way "why is it here?" does', () => {
+    // `explainGame()` reads `checkPlacement()`, which runs the registry's own
+    // severity table over the findings. `explainLatestKickoff()` read
+    // `latestLegalKickoff()` raw. Today the two agree because nothing in the
+    // corpus is retyped; the moment one is, they disagree and nothing says which
+    // to believe. So: a hard constraint claiming a code whose frozen severity is
+    // `compromise`, and both answers must report the same thing about it.
+    const harder = buildSeason2026ConstraintRegistry({
+      extraConstraints: [
+        constructedConstraint({
+          id: 'lining-is-hard-this-season',
+          type: CONSTRAINT_TYPE.HARD,
+          reasonCodes: [FACILITY_REASON.LINING_MISMATCH],
+          note: 'line markings, stated as hard rather than as a compromise',
+        }),
+      ],
+    });
+    // Meta-assertion: the frozen table and the registry really do disagree here,
+    // or this test would pass without exercising the seam at all.
+    expect(harder.idsByReasonCode[FACILITY_REASON.LINING_MISMATCH]).toEqual([
+      'lining-is-hard-this-season',
+    ]);
+    expect(registry.idsByReasonCode[FACILITY_REASON.LINING_MISMATCH]).toBeUndefined();
+
+    // The subject has to be a game *both* answers speak about, or the comparison
+    // would be between a claim and an absence. Found by asking the boundary
+    // query's own owner, never assumed: the corpus's four `Scrimmage` rows carry
+    // the code at their placement and stop at `FORMAT_TIMING_UNDEFINED` before
+    // the boundary search ever reaches the lining check.
+    const subject = /** @type {Object} */ (
+      sweep.attributions.find((attribution) => {
+        if (
+          !attribution.claims.some((claim) => claim.codes.includes(FACILITY_REASON.LINING_MISMATCH))
+        )
+          return false;
+        const game = /** @type {Object} */ (
+          schedule.games.find((entry) => entry.id === attribution.gameId)
+        );
+        const owner = latestLegalKickoff(
+          graph,
+          table,
+          calendar,
+          {
+            surfaceId: game.surfaceId,
+            date: game.date,
+            format: game.format,
+            notBeforeMinutes: game.startMinutes,
+            ignoreBookingIds: [game.id],
+          },
+          { existingBookings: bookingsOn(context.state, game.date, game.id) }
+        );
+        return owner.findings.some((finding) => finding.code === FACILITY_REASON.LINING_MISMATCH);
+      })
+    );
+    expect(subject).toBeDefined();
+    expect(
+      /** @type {Object} */ (
+        subject.claims.find((claim) => claim.codes.includes(FACILITY_REASON.LINING_MISMATCH))
+      ).severity
+    ).toBe(ATTRIBUTION_SEVERITY.COMPROMISE);
+
+    const retyped = buildAttributionContext({
+      graph,
+      table,
+      calendar,
+      registry: harder,
+      schedule,
+      verification,
+      venueComplexes,
+      roster,
+    });
+    const placed = explainGame(retyped, { gameId: subject.gameId });
+    const later = explainLatestKickoff(retyped, { gameId: subject.gameId });
+
+    const fromPlacement = /** @type {Object} */ (
+      placed.claims.find((claim) => claim.codes.includes(FACILITY_REASON.LINING_MISMATCH))
+    );
+    const fromBoundary = /** @type {Object} */ (
+      later.claims.find((claim) => claim.codes.includes(FACILITY_REASON.LINING_MISMATCH))
+    );
+    expect(fromPlacement).toBeDefined();
+    expect(fromBoundary).toBeDefined();
+    expect(fromPlacement.severity).toBe(ATTRIBUTION_SEVERITY.BLOCKING);
+    expect(fromBoundary.severity).toBe(fromPlacement.severity);
+    expect(fromBoundary.binding).toBe(fromPlacement.binding);
+    expect(fromBoundary.constraintIds).toEqual(['lining-is-hard-this-season']);
+  });
+
+  it('re-severities "the earliest kickoff with a full warm-up" the same way', () => {
+    // The other direction, so the seam is shown to demote as well as promote: a
+    // preference claiming a code whose frozen severity is `blocking`.
+    const softer = buildSeason2026ConstraintRegistry({
+      extraConstraints: [
+        constructedConstraint({
+          id: 'exhausted-search-is-only-a-preference',
+          type: CONSTRAINT_TYPE.PREFERENCE,
+          reasonCodes: [TIMING_REASON.KICKOFF_SEARCH_EXHAUSTED],
+          note: 'an exhausted kickoff search, stated as a preference',
+        }),
+      ],
+    });
+    const relaxed = buildAttributionContext({
+      graph,
+      table,
+      calendar,
+      registry: softer,
+      schedule,
+      verification,
+      venueComplexes,
+      roster,
+    });
+
+    /** The same question as the incident-8 one, asked with no room to answer in. */
+    const query = {
+      surfaceId: PITCH_2,
+      date: busyDate,
+      format: '11v11',
+      warmupMinutes: WARMUP,
+      notBeforeMinutes: floor,
+      notAfterMinutes: floor + WARMUP + 5,
+    };
+    // Meta-assertion: the corpus really does exhaust the search here, so the
+    // claim under test exists at all.
+    const base = explainEarliestKickoff(context, query);
+    expect(base.kickoffMinutes).toBeNull();
+    const strict = /** @type {Object} */ (
+      base.claims.find((claim) => claim.codes.includes(TIMING_REASON.KICKOFF_SEARCH_EXHAUSTED))
+    );
+    expect(strict).toBeDefined();
+    expect(strict.severity).toBe(ATTRIBUTION_SEVERITY.BLOCKING);
+
+    // Under the registry the code is `info`, and an `info` finding is not a
+    // claim — the same rule the placement path has always applied. The point is
+    // that the boundary answer now applies it too.
+    const answer = explainEarliestKickoff(relaxed, query);
+    expect(
+      answer.claims.some((entry) => entry.codes.includes(TIMING_REASON.KICKOFF_SEARCH_EXHAUSTED))
+    ).toBe(false);
+    expect(answer.claims.every((entry) => entry.severity !== ATTRIBUTION_SEVERITY.BLOCKING)).toBe(
+      true
+    );
+
+    // …and it is the *same* rule, not one invented here: demoting a code the
+    // placement path reports does exactly the same thing to `explainGame()`.
+    const liningIsAPreference = buildSeason2026ConstraintRegistry({
+      extraConstraints: [
+        constructedConstraint({
+          id: 'lining-is-only-a-preference',
+          type: CONSTRAINT_TYPE.PREFERENCE,
+          reasonCodes: [FACILITY_REASON.LINING_MISMATCH],
+          note: 'line markings, stated as a preference rather than a compromise',
+        }),
+      ],
+    });
+    const subject = /** @type {Object} */ (
+      sweep.attributions.find((attribution) =>
+        attribution.claims.some((claim) => claim.codes.includes(FACILITY_REASON.LINING_MISMATCH))
+      )
+    );
+    expect(subject).toBeDefined();
+    const demoted = explainGame(
+      buildAttributionContext({
+        graph,
+        table,
+        calendar,
+        registry: liningIsAPreference,
+        schedule,
+        verification,
+        venueComplexes,
+        roster,
+      }),
+      { gameId: subject.gameId }
+    );
+    // The placement-derived copy is gone. The rule engine's copy of the same
+    // fact is not, and must not be: that run was made against the original
+    // registry and this module keeps both routes rather than deciding which of
+    // two other modules to believe.
+    expect(
+      demoted.claims.some(
+        (claim) =>
+          claim.source === ATTRIBUTION_SOURCE.FACILITY &&
+          claim.codes.includes(FACILITY_REASON.LINING_MISMATCH)
+      )
+    ).toBe(false);
+    expect(
+      subject.claims.some(
+        (claim) =>
+          claim.source === ATTRIBUTION_SOURCE.FACILITY &&
+          claim.codes.includes(FACILITY_REASON.LINING_MISMATCH)
+      )
+    ).toBe(true);
+  });
+});
+
+describe('attribution :: the counters count what the answer actually did', () => {
+  it('folds the current placement’s work into the counterfactual’s own meta', () => {
+    // The counters are how a caller tells "nothing applied" from "nothing was
+    // checked". `explainKickoffTime()` asks `explainGame()` a whole question and
+    // then runs a second placement check of its own, so an answer reporting
+    // `gamesExamined: 0` after examining one game and `placementChecksRun: 1`
+    // after two is under-reporting its own work — the incident-4 shape moved
+    // into the reporting layer.
+    const game = schedule.games[0];
+    const elsewhere = /** @type {Object} */ (
+      schedule.games.find(
+        (entry) =>
+          entry.date === game.date &&
+          entry.venueId === game.venueId &&
+          entry.startMinutes !== game.startMinutes
+      )
+    );
+    expect(elsewhere).toBeDefined();
+
+    const answer = explainKickoffTime(context, {
+      gameId: game.id,
+      insteadOfMinutes: elsewhere.startMinutes,
+    });
+
+    expect(answer.current.meta.gamesExamined).toBe(1);
+    expect(answer.current.meta.placementChecksRun).toBe(1);
+    expect(answer.meta.gamesExamined).toBe(answer.current.meta.gamesExamined);
+    expect(answer.meta.placementChecksRun).toBe(answer.current.meta.placementChecksRun + 1);
+    expect(answer.meta.claimsBuilt).toBeGreaterThanOrEqual(
+      answer.current.meta.claimsBuilt + answer.counterfactual.claims.length
+    );
+    expect(answer.meta.availabilityConstraintsConsulted).toBeGreaterThanOrEqual(
+      answer.current.meta.availabilityConstraintsConsulted
+    );
+  });
+
+  it('reports the work it did even when it refuses to compare a slot with itself', () => {
+    // The early return still ran a placement check, and saying otherwise would
+    // make "nothing was checked" and "the comparison was vacuous" look alike.
+    const game = schedule.games[0];
+    const answer = explainKickoffTime(context, {
+      gameId: game.id,
+      insteadOfMinutes: game.startMinutes,
+    });
+    expect(answer.findings.map((finding) => finding.code)).toContain(
+      ATTRIBUTION_REASON.ATTRIBUTION_ALTERNATIVE_NO_OP
+    );
+    expect(answer.meta.gamesExamined).toBe(1);
+    expect(answer.meta.placementChecksRun).toBe(1);
+  });
+});
+
+describe('attribution :: the minimal set reports one claim per member', () => {
+  it('holds over every blocked placement the corpus supports, not just the built one', () => {
+    // `MinimalBlockingSet.claims` is documented as "one per member, tightest
+    // first", and the acceptance case has one finding per member so it cannot
+    // tell the difference. A placement that breaks the *same* constraint twice —
+    // two spatial overlaps, one registry record — reports two claims for one
+    // member, and a reader counting claims then counts the set as bigger than it
+    // is, on the one answer whose whole subject is how small it is.
+    let blocked = 0;
+    let multiFinding = 0;
+    /** @type {string[]} */
+    const wrong = [];
+    for (const game of schedule.games) {
+      const kickoffs = [
+        ...new Set(
+          schedule.games
+            .filter((entry) => entry.date === game.date && entry.venueId === game.venueId)
+            .map((entry) => entry.startMinutes)
+        ),
+      ].sort((a, b) => a - b);
+      for (const minutes of kickoffs) {
+        const answer = minimalBlockingSet(context, {
+          gameId: game.id,
+          slot: { date: game.date, surfaceId: game.surfaceId, startMinutes: minutes },
+        });
+        if (!answer.blocked) continue;
+        blocked += 1;
+        const where = `${game.id} at minute ${minutes}`;
+        // Counted from the placement rather than from the answer, so "a member
+        // that raised several findings exists" stays true whatever the module
+        // does with them.
+        const placement = checkPlacement(
+          { graph, table, calendar, registry },
+          context.state,
+          game.id,
+          { date: game.date, surfaceId: game.surfaceId, startMinutes: minutes }
+        );
+        const raised = placement.findings.filter(
+          (finding) => finding.severity !== ATTRIBUTION_SEVERITY.INFO
+        );
+        const crowded = answer.constraintIds.some(
+          (constraintId) =>
+            raised.filter((finding) =>
+              (registry.idsByReasonCode[finding.code] ?? []).includes(constraintId)
+            ).length > 1
+        );
+        if (crowded) multiFinding += 1;
+
+        if (answer.claims.length !== answer.constraintIds.length) {
+          wrong.push(
+            `${where} :: ${answer.claims.length} claims for ${answer.constraintIds.length} members`
+          );
+          continue;
+        }
+        for (const constraintId of answer.constraintIds) {
+          const carrying = answer.claims.filter((claim) =>
+            claim.constraintIds.includes(constraintId)
+          );
+          if (carrying.length !== 1) {
+            wrong.push(`${where} :: ${carrying.length} claims name ${constraintId}`);
+          }
+        }
+        // Every claim still has to be an instance rather than a category, which
+        // is the guard this answer never used to run over its own claims.
+        for (const claim of answer.claims) {
+          if (!isSpecificClaim(claim)) wrong.push(`${where} :: ${claim.kind} names no instance`);
+        }
+      }
+    }
+    // Meta-assertions: a real population of blocked placements, and a real
+    // population of the *crowded* case — a set whose members each raised exactly
+    // one finding would satisfy the invariant without ever exercising it.
+    expect(blocked).toBeGreaterThan(1000);
+    expect(multiFinding).toBeGreaterThan(0);
+    expect(wrong).toEqual([]);
+    // Every blocked placement in the corpus, each with its own relaxation
+    // search: slower than a sample and the only version that means anything.
+  }, 60_000);
+
+  it('runs the category-only guard over its claims, as every other answer does', () => {
+    // The acceptance case for minimality was the one answer that counted its
+    // claims without ever checking them. It cannot fire on this corpus — every
+    // claim here names the registry constraint that put it in the set, so the
+    // instance half of the predicate is satisfied by construction, which is the
+    // same reason `ATTRIBUTION_CLAIM_CATEGORY_ONLY` is one of the two codes the
+    // corpus cannot reach. So the guard is asserted two ways: it is the shared
+    // one, and the shared one rejects a category label.
+    const answer = minimalBlockingSet(over.stackedContext, {
+      gameId: over.subject.id,
+      slot: over.slot,
+    });
+    expect(answer.meta.claimsCategoryOnly).toBe(0);
+    expect(answer.meta.claimsBuilt).toBe(answer.claims.length);
+
+    const guarded = categoryOnlyClaimFindings(
+      [makeClaim({ source: ATTRIBUTION_SOURCE.AVAILABILITY, kind: 'sunset' }), ...answer.claims],
+      { gameId: over.subject.id },
+      createAttributionMeta()
+    );
+    expect(guarded.map((finding) => finding.code)).toEqual([
+      ATTRIBUTION_REASON.ATTRIBUTION_CLAIM_CATEGORY_ONLY,
+    ]);
+
+    // …and `minimal.js` is wired to that guard rather than to a private count.
+    const source = readFileSync(path.join(CORE, 'attribution', 'minimal.js'), 'utf8');
+    expect(source).toContain('categoryOnlyClaimFindings');
+  });
+});
+
+/**
+ * Which module's frozen reason-code table declares each code.
+ *
+ * Built here from the three enums rather than read from the module under test:
+ * `source` is provenance, it says where to go and argue with a number, and a
+ * claim that sends an operator to `facility/` about a permit close sends them to
+ * argue with the wrong file.
+ */
+/** @type {Map<string, string>} */
+const OWNER_OF_CODE = new Map();
+for (const [owner, codes] of /** @type {Array<[string, string[]]>} */ ([
+  [ATTRIBUTION_SOURCE.AVAILABILITY, Object.values(AVAILABILITY_REASON)],
+  [ATTRIBUTION_SOURCE.FACILITY, Object.values(FACILITY_REASON)],
+  [ATTRIBUTION_SOURCE.WARMUP, Object.values(TIMING_REASON)],
+])) {
+  for (const code of codes) OWNER_OF_CODE.set(code, owner);
+}
+
+/**
+ * The sources whose claims are not built from one module's reason code.
+ *
+ * @type {Set<string>}
+ */
+const NOT_CODE_SOURCED = new Set([
+  ATTRIBUTION_SOURCE.RULE_ENGINE,
+  ATTRIBUTION_SOURCE.COACH_TRAVEL,
+  ATTRIBUTION_SOURCE.ROSTER,
+]);
+
+/**
+ * The claim kinds that are a bound rather than a reason code.
+ *
+ * @type {string[]}
+ */
+const BOUND_KINDS = [...Object.values(AVAILABILITY_CONSTRAINT), 'warmup-occupancy'];
+
+describe('attribution :: a claim names the module that raised it', () => {
+  it('has one owner per code, because the three tables do not overlap', () => {
+    // The table the module builds is only unambiguous if the three enums it is
+    // built from are disjoint. Re-derived here rather than trusted: a code
+    // appearing in two of them would silently take whichever owner was assembled
+    // last.
+    const codes = [
+      ...Object.values(AVAILABILITY_REASON),
+      ...Object.values(FACILITY_REASON),
+      ...Object.values(TIMING_REASON),
+    ];
+    expect(codes.length).toBeGreaterThan(50);
+    expect(new Set(codes).size).toBe(codes.length);
+    expect(Object.keys(ATTRIBUTION_SOURCE_BY_REASON_CODE).sort()).toEqual([...codes].sort());
+    for (const [code, owner] of Object.entries(ATTRIBUTION_SOURCE_BY_REASON_CODE)) {
+      expect(owner, code).toBe(OWNER_OF_CODE.get(code));
+    }
+    // …and a code from a module with no source of its own keeps the caller's.
+    expect(attributionSourceOf(PEOPLE_REASON.TEAM_SOLE_COACH, ATTRIBUTION_SOURCE.ROSTER)).toBe(
+      ATTRIBUTION_SOURCE.ROSTER
+    );
+  });
+
+  it('sources the minimal set’s claims by their code’s owner, not by where they were built', () => {
+    const answer = minimalBlockingSet(over.stackedContext, {
+      gameId: over.subject.id,
+      slot: over.slot,
+    });
+    const bySource = Object.fromEntries(answer.claims.map((claim) => [claim.kind, claim.source]));
+    // The headline example of this phase: a permit close and a daylight margin
+    // are `availability/`'s findings; only the overlap is `facility/`'s.
+    expect(bySource[AVAILABILITY_REASON.PERMIT_CLOSE_EXCEEDED]).toBe(
+      ATTRIBUTION_SOURCE.AVAILABILITY
+    );
+    expect(bySource[AVAILABILITY_REASON.SUNSET_MARGIN_VIOLATED]).toBe(
+      ATTRIBUTION_SOURCE.AVAILABILITY
+    );
+    expect(bySource[FACILITY_REASON.OCCUPIED_SAME_SURFACE]).toBe(ATTRIBUTION_SOURCE.FACILITY);
+  });
+
+  it('holds for every finding-derived claim the corpus produces', () => {
+    /** @type {Array<import('@squadlogic/core/attribution/types.js').ConstraintClaim>} */
+    const claims = [];
+    for (const attribution of sweep.attributions) claims.push(...attribution.claims);
+    for (const game of schedule.games) {
+      claims.push(...explainLatestKickoff(context, { gameId: game.id }).claims);
+    }
+    claims.push(
+      ...minimalBlockingSet(over.stackedContext, { gameId: over.subject.id, slot: over.slot })
+        .claims
+    );
+
+    let checked = 0;
+    /** @type {Set<string>} */
+    const owners = new Set();
+    /** @type {string[]} */
+    const wrong = [];
+    for (const claim of claims) {
+      if (NOT_CODE_SOURCED.has(claim.source)) continue;
+      const owner = OWNER_OF_CODE.get(claim.kind);
+      // A claim whose `kind` is a constraint *kind* rather than a reason code is
+      // the bound itself, and the bound is `availability/`'s by definition.
+      if (owner === undefined) {
+        expect(BOUND_KINDS, claim.kind).toContain(claim.kind);
+        continue;
+      }
+      checked += 1;
+      owners.add(owner);
+      if (claim.source !== owner) wrong.push(`${claim.kind} sourced ${claim.source}, not ${owner}`);
+    }
+    // Meta-assertions: a real population, spanning more than one owner.
+    expect(checked).toBeGreaterThan(50);
+    expect(owners.size).toBeGreaterThan(1);
+    expect([...new Set(wrong)].sort()).toEqual([]);
+  });
+});
+
+describe('attribution :: an unanswerable question says what was actually done', () => {
+  /**
+   * @param {Object} answer
+   * @returns {Object}
+   */
+  const unanswerable = (answer) =>
+    /** @type {Object} */ (
+      answer.findings.find(
+        (finding) => finding.code === ATTRIBUTION_REASON.ATTRIBUTION_QUESTION_UNANSWERABLE
+      )
+    );
+
+  it('does not claim a range was searched when nothing was searched', () => {
+    // With no warm-up length stated the timing module answers
+    // `WARMUP_DURATION_UNSPECIFIED` and tests zero candidates. Saying "no
+    // kickoff in the range that was searched" describes work that did not
+    // happen, on the finding whose only job is to say why there is no answer.
+    const query = {
+      surfaceId: PITCH_2,
+      date: busyDate,
+      format: '11v11',
+      notBeforeMinutes: floor,
+    };
+    const owner = earliestKickoffWithWarmup(
+      graph,
+      table,
+      { ...query, notAfterMinutes: 1440 },
+      { existingBookings: bookingsOn(context.state, busyDate, '') }
+    );
+    // Meta-assertions, from the owner rather than from the answer.
+    expect(owner.kickoffMinutes).toBeNull();
+    expect(owner.warmupMinutes).toBeNull();
+    expect(owner.candidatesTested).toBe(0);
+    expect(owner.findings.map((finding) => finding.code)).toContain(
+      TIMING_REASON.WARMUP_DURATION_UNSPECIFIED
+    );
+
+    const finding = unanswerable(explainEarliestKickoff(context, query));
+    expect(finding).toBeDefined();
+    expect(finding.details.candidatesTested).toBe(0);
+    expect(finding.details.warmupMinutes).toBeNull();
+    expect(finding.message).not.toContain('in the range that was searched');
+    expect(finding.message).toContain('no warm-up length');
+  });
+
+  it('says how many candidates were tested when some were', () => {
+    // The control: the same code, the same corpus surface, a stated warm-up and
+    // a ceiling too low to fit one. Here a range really was searched, and the
+    // answer has to be able to tell the two apart.
+    const query = {
+      surfaceId: PITCH_2,
+      date: busyDate,
+      format: '11v11',
+      warmupMinutes: WARMUP,
+      notBeforeMinutes: floor,
+      notAfterMinutes: floor + WARMUP + 5,
+    };
+    const owner = earliestKickoffWithWarmup(graph, table, query, {
+      existingBookings: bookingsOn(context.state, busyDate, ''),
+    });
+    expect(owner.kickoffMinutes).toBeNull();
+    expect(owner.candidatesTested).toBeGreaterThan(0);
+
+    const finding = unanswerable(explainEarliestKickoff(context, query));
+    expect(finding).toBeDefined();
+    expect(finding.details.candidatesTested).toBe(owner.candidatesTested);
+    expect(finding.details.warmupMinutes).toBe(WARMUP);
+    expect(finding.message).toContain(`${owner.candidatesTested} candidate`);
+    expect(finding.message).not.toContain('no warm-up length');
   });
 });
 

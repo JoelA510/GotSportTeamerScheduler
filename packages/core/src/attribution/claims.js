@@ -44,9 +44,12 @@ import { registryConstraintIdsFor } from '../resolve/errors.js';
 
 import {
   ATTRIBUTION_CODES_BY_CONSTRAINT_KIND,
+  ATTRIBUTION_REASON,
   ATTRIBUTION_SEVERITY,
   ATTRIBUTION_SOURCE,
   ATTRIBUTION_SOURCE_ORDER,
+  attributionSourceOf,
+  makeAttributionFinding,
 } from './reasonCodes.js';
 
 /** Detail keys that are identifiers or provenance rather than computed values. */
@@ -123,6 +126,43 @@ export function isSpecificClaim(claim) {
   const namesInstance = Boolean(claim.instanceId) || Boolean(claim.constraintId);
   const saysSomething = Object.keys(claim.computed).length > 0 || claim.codes.length > 0;
   return namesInstance && saysSomething;
+}
+
+/**
+ * Every claim that fails the specific-instance test, as findings.
+ *
+ * Lives here, beside the predicate, because **every** answer has to run it and
+ * one of them did not: the minimal blocking set counted its claims without ever
+ * checking them, so the acceptance case for minimality was the single place a
+ * category-only claim could have passed unremarked. One guard, called from
+ * everywhere, rather than a rule each answer is trusted to remember.
+ *
+ * Checked in production, not only in a test: an attribution that names a
+ * category is the answer this whole module exists to replace, and it must make
+ * its own answer `rejected` rather than being caught by whoever reads it.
+ *
+ * @param {ReadonlyArray<import('./types.js').ConstraintClaim>} claims
+ * @param {Record<string, unknown>} where
+ * @param {import('./types.js').AttributionMeta} meta
+ * @returns {import('./types.js').AttributionFinding[]}
+ */
+export function categoryOnlyClaimFindings(claims, where, meta) {
+  /** @type {import('./types.js').AttributionFinding[]} */
+  const findings = [];
+  for (const claim of claims) {
+    meta.claimsBuilt += 1;
+    if (claim.binding) meta.claimsBinding += 1;
+    if (isSpecificClaim(claim)) continue;
+    meta.claimsCategoryOnly += 1;
+    findings.push(
+      makeAttributionFinding(
+        ATTRIBUTION_REASON.ATTRIBUTION_CLAIM_CATEGORY_ONLY,
+        `the claim "${claim.kind}" from ${claim.source} names no constraint instance and carries no computed value; "${claim.kind}" is a category label and is exactly the answer somebody had to derive the real one from`,
+        { ...where, source: claim.source, kind: claim.kind }
+      )
+    );
+  }
+  return findings;
 }
 
 /**
@@ -268,20 +308,17 @@ function boundSentence(constraint) {
 }
 
 /**
- * A finding that belongs to no one of the four edges — field size, lining,
- * equipment, an undeclared permit — as a claim in its own right.
+ * Whatever identifies the record a finding is about, most specific first.
  *
- * @param {import('./types.js').AttributionFinding} finding
- * @param {{ registry: Object, source: string, gameId: string|null, surfaceId: string|null, venueId: string|null, date: string|null }} ctx
- * @returns {import('./types.js').ConstraintClaim}
+ * `format` is in the list because a timing row that does not exist is still a
+ * named thing — "the format Scrimmage has no timing row" is an instance, and the
+ * alternative is a claim this module refuses as a category label.
+ *
+ * @param {Record<string, unknown>} details
+ * @returns {string|null}
  */
-export function claimFromFinding(finding, ctx) {
-  const details = /** @type {Record<string, unknown>} */ (finding.details ?? {});
-  // Whatever identifies the record the finding is about, most specific first.
-  // `format` is in the list because a timing row that does not exist is still a
-  // named thing — "the format Scrimmage has no timing row" is an instance, and
-  // the alternative is a claim this module refuses as a category label.
-  const instanceId = /** @type {string|null} */ (
+function instanceIdOf(details) {
+  return /** @type {string|null} */ (
     [
       details.permitId,
       details.recordId,
@@ -297,8 +334,25 @@ export function claimFromFinding(finding, ctx) {
       details.date,
     ].find((value) => typeof value === 'string' && value.length > 0) ?? null
   );
+}
+
+/**
+ * A finding that belongs to no one of the four edges — field size, lining,
+ * equipment, an undeclared permit — or one whose edge did not apply, as a claim
+ * in its own right.
+ *
+ * @param {import('./types.js').AttributionFinding} finding
+ * @param {{ registry: Object, source: string, gameId: string|null, surfaceId: string|null, venueId: string|null, date: string|null }} ctx
+ * @returns {import('./types.js').ConstraintClaim}
+ */
+export function claimFromFinding(finding, ctx) {
+  const details = /** @type {Record<string, unknown>} */ (finding.details ?? {});
+  const instanceId = instanceIdOf(details);
   return makeClaim({
-    source: ctx.source,
+    // Whose finding this is, not where the claim happened to be built. The
+    // caller's `source` is the fallback for a code no reason-code table this
+    // module knows about declares.
+    source: attributionSourceOf(finding.code, ctx.source),
     kind: finding.code,
     instanceId,
     constraintIds: registryConstraintIdsFor(ctx.registry, [finding.code]),
@@ -314,6 +368,76 @@ export function claimFromFinding(finding, ctx) {
       venueId: ctx.venueId,
       date: ctx.date,
     }),
+  });
+}
+
+/**
+ * One registry constraint, and everything it raised about one placement, as
+ * **one** claim.
+ *
+ * `MinimalBlockingSet.claims` is documented as *one per member*, and the
+ * acceptance case cannot tell whether that holds because each of its three
+ * members raised exactly one finding. A placement that breaks the same
+ * constraint twice — two spatial overlaps against two different games, one
+ * `field-overlap-adjacency` record — raised two, and reporting both as claims
+ * makes a set of one look like a set of two on the one answer whose entire
+ * subject is how small it is.
+ *
+ * Collapsed exactly the way {@link claimFromAvailabilityConstraint} collapses a
+ * bound and the findings about it: the worst finding carries the sentence and
+ * the numbers, **every** code is listed, and every counterpart booking is in
+ * `entities`, so which games are involved survives the collapse. `findingsRaised`
+ * appears only when there was more than one, so the claim says out loud that it
+ * stands for several.
+ *
+ * @param {string} constraintId
+ * @param {ReadonlyArray<import('./types.js').AttributionFinding>} findings - non-empty
+ * @param {{ registry: Object, source: string, gameId: string|null, surfaceId: string|null, venueId: string|null, date: string|null }} ctx
+ * @returns {import('./types.js').ConstraintClaim}
+ */
+export function claimFromConstraintFindings(constraintId, findings, ctx) {
+  const worst =
+    findings.find((finding) => finding.severity === ATTRIBUTION_SEVERITY.BLOCKING) ??
+    findings.find((finding) => finding.severity === ATTRIBUTION_SEVERITY.COMPROMISE) ??
+    findings[0];
+  const details = /** @type {Record<string, unknown>} */ (worst.details ?? {});
+  const counterparts = [
+    ...new Set(
+      findings.flatMap((finding) => {
+        const raised = /** @type {Record<string, unknown>} */ (finding.details ?? {});
+        return /** @type {string[]} */ (
+          ['bookingAId', 'bookingBId', 'otherBookingId', 'bookingId']
+            .map((key) => raised[key])
+            .filter(
+              (value) => typeof value === 'string' && value.length > 0 && value !== ctx.gameId
+            )
+        );
+      })
+    ),
+  ];
+  return makeClaim({
+    source: attributionSourceOf(worst.code, ctx.source),
+    kind: worst.code,
+    instanceId: instanceIdOf(details),
+    constraintId,
+    constraintIds: [constraintId],
+    codes: findings.map((finding) => finding.code),
+    severity: worst.severity,
+    binding: worst.severity === ATTRIBUTION_SEVERITY.BLOCKING,
+    computed: {
+      ...numbersIn(details),
+      ...(findings.length > 1 ? { findingsRaised: findings.length } : {}),
+    },
+    detail: worst.message,
+    entities: entitiesOf(
+      {
+        gameId: ctx.gameId,
+        surfaceId: ctx.surfaceId,
+        venueId: ctx.venueId,
+        date: ctx.date,
+      },
+      counterparts
+    ),
   });
 }
 
@@ -440,11 +564,17 @@ export function claimFromRosterFinding(finding, ctx) {
         ? details.teamIds
         : []
   );
+  // The teams this claim is about, each named once. `alsoCoaches` excludes the
+  // subject team and `teamIds` includes it, so a flat "the others, plus this
+  // one" counts the subject twice on the second of the two findings — reporting
+  // a person who is the sole coach of two teams as covering three, and listing
+  // the subject team twice in `entities`. The union is the honest answer to
+  // both, and it is the register's own list either way.
+  const coveredTeamIds = [...new Set([...(ctx.teamId ? [ctx.teamId] : []), ...otherTeamIds])];
   /** @type {Array<{ kind: string, id: string }>} */
   const entities = [];
   if (ctx.personId) entities.push({ kind: RULE_IDENTIFIER_KIND.PERSON, id: ctx.personId });
-  if (ctx.teamId) entities.push({ kind: RULE_IDENTIFIER_KIND.TEAM, id: ctx.teamId });
-  for (const teamId of otherTeamIds) {
+  for (const teamId of coveredTeamIds) {
     entities.push({ kind: RULE_IDENTIFIER_KIND.TEAM, id: teamId });
   }
   return makeClaim({
@@ -456,8 +586,8 @@ export function claimFromRosterFinding(finding, ctx) {
     binding: false,
     computed: {
       ...numbersIn(details),
-      // How many teams this person is the only coach of, counting this one.
-      coversTeams: otherTeamIds.length + 1,
+      // How many distinct teams this finding names, the subject included.
+      coversTeams: coveredTeamIds.length,
     },
     detail: finding.message,
     entities,

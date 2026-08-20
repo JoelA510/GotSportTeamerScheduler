@@ -32,6 +32,7 @@ import {
   deriveConstraintStatus,
 } from '../constraints/reasonCodes.js';
 import { FACILITY_REASON } from '../facility/reasonCodes.js';
+import { TIMING_REASON } from '../timing/reasonCodes.js';
 
 /**
  * How badly a finding counts against an answer.
@@ -71,7 +72,15 @@ export const ATTRIBUTION_SOURCE = Object.freeze({
   COACH_TRAVEL: 'coach-travel',
   /** `people/roster.js` — who else could have covered, and who could not. */
   ROSTER: 'roster',
-  /** `timing/warmup.js` — warm-up as occupancy (incident 8). */
+  /**
+   * `timing/` — the format's own timing row, and warm-up as occupancy
+   * (incident 8).
+   *
+   * One member for the whole package because `TIMING_REASON` is one table: the
+   * warm-up model and the format timing table share it, and splitting the
+   * source on a code prefix would be a string heuristic standing in for a fact
+   * the module already states.
+   */
   WARMUP: 'warmup',
 });
 
@@ -151,6 +160,45 @@ export const ATTRIBUTION_CODES_BY_CONSTRAINT_KIND = Object.freeze({
     AVAILABILITY_REASON.PERMIT_MARGIN_TIGHT,
   ]),
 });
+
+/**
+ * Which module's frozen reason-code table declares each code.
+ *
+ * Assembled from the three tables themselves rather than typed out, so a code
+ * added to any of them is sourced correctly without a second list to maintain.
+ * The three are disjoint, which `tests/attribution.test.js` re-derives from the
+ * enums rather than trusting.
+ *
+ * The point is that `source` is **provenance**: it says where to go and argue
+ * with a number. A `PERMIT_CLOSE_EXCEEDED` claim labelled `facility` sends an
+ * operator to argue with the wrong file about a permit record, and it happened
+ * because the code was labelled by *where the claim was built* rather than by
+ * whose finding it is.
+ *
+ * @type {Readonly<Record<string, string>>}
+ */
+export const ATTRIBUTION_SOURCE_BY_REASON_CODE = Object.freeze(
+  Object.fromEntries([
+    ...Object.values(AVAILABILITY_REASON).map((code) => [code, ATTRIBUTION_SOURCE.AVAILABILITY]),
+    ...Object.values(FACILITY_REASON).map((code) => [code, ATTRIBUTION_SOURCE.FACILITY]),
+    ...Object.values(TIMING_REASON).map((code) => [code, ATTRIBUTION_SOURCE.WARMUP]),
+  ])
+);
+
+/**
+ * The source of a claim built from one reason code.
+ *
+ * Falls back to whatever the caller declared rather than throwing: a code from a
+ * module with no `ATTRIBUTION_SOURCE` member of its own — a waiver code, a
+ * people code — is still legitimately sourced by the answer that carried it.
+ *
+ * @param {string} code
+ * @param {string} fallback - an {@link ATTRIBUTION_SOURCE} value
+ * @returns {string} an {@link ATTRIBUTION_SOURCE} value
+ */
+export function attributionSourceOf(code, fallback) {
+  return ATTRIBUTION_SOURCE_BY_REASON_CODE[code] ?? fallback;
+}
 
 /**
  * Every reason an attribution can give **about itself**.

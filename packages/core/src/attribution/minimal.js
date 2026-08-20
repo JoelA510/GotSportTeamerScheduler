@@ -61,8 +61,11 @@ import { checkPlacement } from '../resolve/legality.js';
 import { slotKey } from '../resolve/state.js';
 
 import {
+  categoryOnlyClaimFindings,
+  claimFromConstraintFindings,
+  entitiesOf,
   groupFindingsByConstraintKind,
-  claimFromFinding,
+  makeClaim,
   mergeClaimsByTightness,
 } from './claims.js';
 import {
@@ -278,9 +281,17 @@ export function minimalBlockingSet(context, rawQuery) {
     );
   }
 
-  // One claim per member, each carrying the finding that member's constraint
+  // **One claim per member**, each carrying what that member's constraint
   // actually raised — so the set is not a list of ids but a list of instances
-  // with their numbers.
+  // with their numbers, and counting the claims counts the set.
+  //
+  // A member can raise more than one finding here (two spatial overlaps against
+  // two different games are one `field-overlap-adjacency` record twice), so the
+  // findings for a member are collapsed into its single claim rather than
+  // reported as several. It cannot raise *none* — every candidate governs one of
+  // the blocking codes, and every blocking code is a finding — but the invariant
+  // is held structurally rather than argued, because a later change to how
+  // candidates are derived is exactly what would break it quietly.
   const consequentialFindings = placement.findings.filter(
     (finding) => finding.severity !== ATTRIBUTION_SEVERITY.INFO
   );
@@ -293,24 +304,47 @@ export function minimalBlockingSet(context, rawQuery) {
       if (bucket) bucket.push(finding);
     }
   }
+  const where = {
+    registry,
+    gameId: query.gameId,
+    surfaceId: slot.surfaceId,
+    venueId: game.venueId,
+    date: slot.date,
+  };
   const claims = mergeClaimsByTightness(
-    working.map((id) =>
-      (byConstraint.get(id) ?? []).map((finding) =>
-        claimFromFinding(finding, {
-          registry,
+    working.map((id) => {
+      const raised = byConstraint.get(id) ?? [];
+      if (raised.length === 0) {
+        // The member is in the set because relaxing it changed the answer, and
+        // nothing it governs spoke. Reported as the constraint it is, naming the
+        // blocking codes it claims here, rather than left out of a list whose
+        // length is the answer.
+        return [
+          makeClaim({
+            source: ATTRIBUTION_SOURCE.FACILITY,
+            kind: id,
+            constraintId: id,
+            constraintIds: [id],
+            codes: placement.blockingCodes.filter((code) =>
+              (registry.idsByReasonCode[code] ?? []).includes(id)
+            ),
+            severity: ATTRIBUTION_SEVERITY.BLOCKING,
+            binding: true,
+            entities: entitiesOf(where),
+          }),
+        ];
+      }
+      return [
+        claimFromConstraintFindings(id, raised, {
+          ...where,
           source: ATTRIBUTION_SOURCE.FACILITY,
-          gameId: query.gameId,
-          surfaceId: slot.surfaceId,
-          venueId: game.venueId,
-          date: slot.date,
-        })
-      )
-    )
+        }),
+      ];
+    })
   );
-  for (const claim of claims) {
-    meta.claimsBuilt += 1;
-    if (claim.binding) meta.claimsBinding += 1;
-  }
+  findings.push(
+    ...categoryOnlyClaimFindings(claims, { gameId: query.gameId, slot: slotKey(slot) }, meta)
+  );
 
   return {
     ...answer,
