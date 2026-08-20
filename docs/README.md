@@ -1,7 +1,7 @@
 # SquadLogic Documentation
 
 > **Status**: v1.0.1 shipped; the Lightning-class enterprise redesign is merged on `main`.
-> **Documentation standard**: Active docs live in categorized subdirectories and describe the *current* system. Historical records (completed plans, point-in-time audits, progress logs) are retired to git history; their durable knowledge is consolidated in [`LESSONS_LEARNED.md`](LESSONS_LEARNED.md).
+> **Documentation standard**: Active docs live in categorized subdirectories and describe the _current_ system. Historical records (completed plans, point-in-time audits, progress logs) are retired to git history; their durable knowledge is consolidated in [`LESSONS_LEARNED.md`](LESSONS_LEARNED.md).
 
 ## Reading Path for New Contributors
 
@@ -86,6 +86,7 @@
 - [Constraint Registry](CONSTRAINT_REGISTRY.md) — Constraints as records rather than control flow: hardness (hard/soft/preference), scope and its precedence rule, effective windows, provenance, the seeded season-2026 set, the "what if this went back to being a preference?" query, and the bounded placement demonstration harness.
 - [Waivers](WAIVERS.md) — Exceptions to constraints as records with a lifecycle: scope composition, the `waived`/`clean` disposition, dormancy detection by counterfactual, row annotations for published output, the narrow coach-travel evaluator that makes incident 9 testable, and the declared venue-complex model that decides whether a coach's next commitment is a walk or a drive.
 - [Rule Engine](RULE_ENGINE.md) — The standing rule engine: rules as records with a **required** declared exercise level, the two meta-assertion families incident 4 needs (matched too little / matched the wrong data), the ten standing rules, honest reporting of the constraints nothing enforces, structured violations, waiver integration, and the full-schedule validation report.
+- [Freeze Scopes](FREEZE_SCOPES.md) — What is held still when a schedule has to change: composable freeze scopes over eight dimensions, the maximum-freeze default a change request gets by construction, the single loud door to a global re-optimisation, the one mutation chokepoint and the generated per-stage probe that keeps every pipeline stage honest, the audit that runs as a stage rather than as a test, and the clear error a frozen game raises when it cannot be satisfied.
 - [People, Timelines and Identity](PEOPLE.md) — The coach model as person-centric timelines rather than pairwise team comparison: why pairwise both misses and invents conflicts, commitment sources and the seal that makes "appended after the solve" a blocking finding, coach slots and the sole-coach risk register, must-attend derived with no name in the source, fallback priority by slot, and fuzzy identity resolution with a review queue that never auto-merges.
 - [Duration Migration Path](DURATION_MIGRATION.md) — Analysis only: every place a game duration lives today, what it silently means, what it becomes under the occupancy/play/block/warm-up model, and what would break. No migration has been performed.
 

@@ -97,6 +97,9 @@ export function generateRoundRobinWeeks({ teamIds }) {
  *   - Slot definitions with optional division restriction.
  * @param {Record<string, Array<{ weekIndex: number, matchups: Array<{ homeTeamId: string, awayTeamId: string }>, byes: Array<string> }>>} params.roundRobinByDivision
  *   - Precomputed round-robin output keyed by division.
+ * @param {unknown} [params.freeze]
+ *   - **Refused.** See {@link scheduleGames} for why this parameter exists only
+ *     to throw.
  * @returns {{
  *   assignments: Array<{ weekIndex: number, division: string, slotId: string, start: string, end: string, homeTeamId: string, awayTeamId: string, fieldId: string | null }>,
  *   byes: Array<{ weekIndex: number, division: string, teamId: string }>,
@@ -104,7 +107,26 @@ export function generateRoundRobinWeeks({ teamIds }) {
  *   sharedSlotUsage: Array<Object>,
  * }}
  */
-export function scheduleGames({ teams, slots, roundRobinByDivision }) {
+export function scheduleGames({ teams, slots, roundRobinByDivision, freeze }) {
+  // Freeze scopes are Phase 4.1 and they do not live here. This engine is
+  // week-indexed and *generates* matchups from a round robin; it has no game
+  // ids (assignments are keyed by division, week and the alphabetised pair) and
+  // it cannot ingest an existing schedule, so there is nothing here for a
+  // freeze to hold still. Accepting the argument and ignoring it would be the
+  // worst available answer — that is incident 1's shape exactly: a caller who
+  // believes a schedule is protected while every game is free to move.
+  //
+  // The real path is `packages/core/src/resolve/`:
+  // `resolve/applyChangeRequest()` for a scoped change, and
+  // `resolve/reoptimiseWholeSeason()` for the deliberate, named global
+  // re-solve. GAP-32 (week index vs calendar date) and GAP-29 (no persisted
+  // freeze scope) are why the bridge does not exist yet.
+  if (freeze !== undefined) {
+    throw new TypeError(
+      'gameScheduling: scheduleGames() cannot honour a freeze and will not pretend to. It is week-indexed, it generates matchups rather than re-placing existing games, and its assignments carry no game id to freeze. Use resolve/applyChangeRequest() to apply a scoped change to an existing schedule, or resolve/reoptimiseWholeSeason() to re-solve one on purpose. See GAP-29 and GAP-32.'
+    );
+  }
+
   if (!roundRobinByDivision || typeof roundRobinByDivision !== 'object') {
     throw new TypeError('roundRobinByDivision must be an object');
   }
