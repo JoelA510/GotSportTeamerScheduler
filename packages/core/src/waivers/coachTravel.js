@@ -25,12 +25,30 @@
  *   carrying any, so when 3.1 generalises it there is no second copy of "60" to
  *   find.
  *
- * When Prompt 3.1 lands, the expected disposition is that these reason codes
- * move into the module that owns personal timelines, get registered in
- * `constraints/baseSeverity.js`, and the coach-travel constraint stops being
- * `declared-only` and claims them. At that point
- * {@link travelConstraintIdByCode} becomes unnecessary, because
- * `registry.idsByReasonCode` will answer the same question.
+ * ## What Prompt 3.1 actually did, and why this file stayed
+ *
+ * The paragraph that used to stand here predicted that 3.1 would move these
+ * reason codes into the module that owns personal timelines. It did not, and
+ * the reason is worth recording rather than quietly dropping.
+ *
+ * `packages/core/src/people/` supplies the missing half — the roster join,
+ * identity resolution, external-commitment ingestion and the sealed timeline —
+ * and hands this evaluator a *complete* commitment list through
+ * `people/timeline.js` `toTravelCommitments()`. What it did **not** need to
+ * change is the judgement itself: this function was already grouped by person,
+ * already sorted, and already judging *consecutive* same-day pairs, which is
+ * exactly the model Prompt 3.1's requirement 1 asks for. The pairwise
+ * team-comparison the build plan condemns is `gameValidation.checkCoachConflict()`,
+ * not this.
+ *
+ * Moving the codes would also have moved the **waiver seam** —
+ * {@link travelConstraintIdByCode}, incident 9's board exception and the ledger
+ * that excepts it — into a module with no waivers in it, and would have churned
+ * three green Phase 2 suites to arrive at the same behaviour. So the codes stay
+ * here, the constraint stays `declared-only`, and
+ * {@link travelConstraintIdByCode} stays necessary.
+ *
+ * `people/reasonCodes.js` makes the same call for the same reason and says so.
  *
  * ## Which floor applies: the complex, not the venue name
  *

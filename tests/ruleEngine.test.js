@@ -587,9 +587,25 @@ describe('rule engine :: the published season-2026 schedule', () => {
 
   it('exercises each of the three rules the build plan names by number', () => {
     // "The coach rule must assert it evaluated > 0 person-pairs."
+    //
+    // These three numbers moved in Prompt 3.1, and nothing about the verdict
+    // moved with them. `buildCoachTimelines()` used to skip rows of unknown
+    // footprint, and since the corpus's only unknown-footprint rows are its
+    // four `Scrimmage` entries, that skip reproduced incident 5 inside the
+    // loader: the rule engine could not see the evening commitments the
+    // incident is about. Carrying them adds 9 commitments (three scrimmages ×
+    // the rostered coaches of their named sides), which brings the last 6 of
+    // the corpus's 196 people onto a timeline, adds 8 person-days, and creates
+    // exactly one new consecutive pair — a coach whose 11:50 rec game is
+    // followed by a 17:20 scrimmage at the same venue. It is judged, it clears
+    // the 15-minute walking floor, and `ACCEPTED_EXCEPTIONS` below is
+    // unchanged in every entry.
     const coach = run.byRuleId[RULE_ID.COACH_CONFLICT].exercise.counters;
-    expect(coach.personPairsCompared).toBe(136);
-    expect(coach.peopleExamined).toBe(190);
+    expect(coach.personPairsCompared).toBe(137);
+    // Every rostered person now has a timeline; before, six coaches whose only
+    // fixture was a scrimmage had none at all.
+    expect(coach.peopleExamined).toBe(196);
+    expect(coach.peopleExamined).toBe(season.people.length);
     expect(coach.commitmentsExamined).toBe(schedule.commitments.length);
 
     // "The round-robin rule must assert it examined every division."
