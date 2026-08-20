@@ -83,6 +83,7 @@
 - [Fall 2026 Field Availability](fixtures/fall-2026-field-availability.md) — Canonical field-availability fixture used by lifecycle tests.
 - [Season 2026 Regression Corpus](../fixtures/season-2026/README.md) — A full anonymized season: known-good invariants and the numbered incident log the build plan references. Loaded read-only by `packages/core/src/fixtures/`.
 - [Model Gaps](MODEL_GAPS.md) — What the season-2026 corpus contains that the current domain types cannot represent, with source field, example, current behaviour, and the phase that needs each one.
+- [Constraint Registry](CONSTRAINT_REGISTRY.md) — Constraints as records rather than control flow: hardness (hard/soft/preference), scope and its precedence rule, effective windows, provenance, the seeded season-2026 set, the "what if this went back to being a preference?" query, and the bounded placement demonstration harness.
 - [Duration Migration Path](DURATION_MIGRATION.md) — Analysis only: every place a game duration lives today, what it silently means, what it becomes under the occupancy/play/block/warm-up model, and what would break. No migration has been performed.
 
 ## SQL
