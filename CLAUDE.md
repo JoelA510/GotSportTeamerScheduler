@@ -56,6 +56,42 @@ Within any work unit:
   reason.
 - Incident background for all of the above: [`fixtures/season-2026/README.md`](fixtures/season-2026/README.md).
 
+### Verification conventions (learned from Phase 0-3 reviews)
+
+Twenty-six defects reached `main` across Phases 1-3 and were caught only by an
+adversarial post-merge review. Not one was a broken feature; every one was a
+*hollow guarantee* that passed its own tests. The recurring shapes, so they are
+recognised rather than rediscovered:
+
+- **A meta-assertion you cannot make fail is not a meta-assertion.** For every
+  coverage or exercise assertion you write, construct the case that makes it
+  fail and prove it. The Phase 2 review found the flagship "examined every
+  division" check deriving its universe from the same filter the rule applied --
+  it compared a set against itself.
+- **Never derive a check's subject set from the data a break would corrupt.**
+  Teams were enumerated from the games, so a team dropped by a rename played
+  zero of nine and was silently absent rather than reported. Enumerate from the
+  roster, the registry, or whatever a break would leave intact.
+- **A test that forges internal state the production path cannot reach is
+  evidence of a bug, not coverage.** `TEAM_UNCOACHED` had a passing test that
+  hand-built a state the real code could never produce -- because the real code
+  was dropping the team's fixtures instead.
+- **Never leave a field parsed and unread.** Honour it or delete it. A field
+  that reads as load-bearing and is not is how the board waiver was lost.
+- **When a sibling function already handles an edge case, adopt its contract
+  rather than inventing a third one.** Several defects were one path filtering
+  correctly while its neighbour did not.
+- **Declared is not enforced.** A constraint with no evaluator, a rule with no
+  registry claim, and a policy nothing optimises toward must each say so. An
+  engine reporting "all constraints pass" while most cannot be checked is the
+  same falsely perfect result in a larger disguise.
+- **No raw control characters in source.** `tests/sourceHygiene.test.js`
+  enforces this; use `\u0000`-style escapes. Raw NUL bytes once made a 57 KB
+  file merge as an opaque binary blob whose diff nobody could read.
+- **Run `/code-review` on every PR before opening it**, and fix the findings in
+  that same PR. Reviewing per-milestone left defects sitting in `main` between
+  phases.
+
 ### Core principles (apply within every PR)
 
 - **Refactor First**: If a PR requires modifying existing messy code, refactor it into a clean utility/hook _before_ adding new logic.
