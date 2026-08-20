@@ -31,7 +31,12 @@ import {
   requireConstraint,
   retypeConstraint,
 } from '@squadlogic/core/constraints/index.js';
-import { season2026VenueId } from '@squadlogic/core/facility/index.js';
+import {
+  EMPTY_VENUE_COMPLEX_MAP,
+  buildSeason2026VenueComplexMap,
+  buildVenueComplexMap,
+  season2026VenueId,
+} from '@squadlogic/core/facility/index.js';
 import { loadSeason2026 } from '@squadlogic/core/fixtures/index.js';
 
 import {
@@ -686,6 +691,8 @@ describe('applying waivers', () => {
 /* -------------------------------------------------------------------------- */
 
 describe('the narrow coach-travel evaluator', () => {
+  /** Codes of a finding list, for terse assertions. */
+  const codesOf = (findings) => findings.map((finding) => finding.code);
   const commitment = (overrides) => ({
     id: 'c1',
     personId: 'coach-a',
@@ -755,6 +762,123 @@ describe('the narrow coach-travel evaluator', () => {
     expect(result.findings.map((finding) => finding.code)).toContain(
       TRAVEL_REASON.TRAVEL_WITHIN_VENUE_TOO_SHORT
     );
+  });
+
+  /**
+   * The regression that this whole model exists for.
+   *
+   * Before venue complexes, the walking floor could only ever fire for two
+   * commitments at the *identical* venue id, so for a move between two named
+   * venues it was unreachable code. These two tests prove it is reachable now:
+   * the same pair of commitments, judged under two different declarations,
+   * takes two different floors — and under the complex it can still be short.
+   */
+  const complexOfTwo = buildVenueComplexMap({
+    complexes: [
+      {
+        id: 'one-park',
+        name: 'One Park',
+        venueIds: ['venue-one', 'venue-two'],
+        note: 'the two ends of one site',
+        source: 'tests/waiverLedger.test.js',
+      },
+    ],
+  });
+
+  it('judges two venues in one complex against the walking floor, not the drive floor', () => {
+    // 30 minutes: short of the 60-minute drive floor, comfortably over the
+    // 15-minute walk. The declaration is the only thing that changes.
+    const commitments = [
+      commitment({}),
+      commitment({ id: 'c2', startMinutes: 675, endMinutes: 720, venueId: 'venue-two' }),
+    ];
+    const apart = evaluateCoachTravel(commitments, { registry });
+    const together = evaluateCoachTravel(commitments, {
+      registry,
+      venueComplexes: complexOfTwo,
+    });
+
+    expect(apart.meta.withinComplexTransitions).toBe(0);
+    expect(together.meta.withinComplexTransitions).toBe(1);
+    expect(together.meta.crossVenueTransitions).toBe(1);
+
+    expect(apart.transitions[0].policy).toBe(TRAVEL_POLICY.BETWEEN_VENUES);
+    expect(together.transitions[0].policy).toBe(TRAVEL_POLICY.WITHIN_VENUE);
+    expect(apart.transitions[0].minimumGapMinutes).toBe(60);
+    expect(together.transitions[0].minimumGapMinutes).toBe(15);
+    expect(together.transitions[0].sameVenue).toBe(false);
+    expect(together.transitions[0].sameComplex).toBe(true);
+    expect(together.transitions[0].complexId).toBe('one-park');
+
+    // The verdict flips, and the reason it flipped is reported rather than
+    // implied by the absence of a violation.
+    expect(codesOf(apart.findings)).toContain(TRAVEL_REASON.TRAVEL_BETWEEN_VENUES_TOO_SHORT);
+    expect(codesOf(together.findings)).not.toContain(TRAVEL_REASON.TRAVEL_BETWEEN_VENUES_TOO_SHORT);
+    const context = together.findings.find(
+      (finding) => finding.code === TRAVEL_REASON.TRAVEL_WITHIN_COMPLEX_CROSS_VENUE
+    );
+    expect(context).toBeDefined();
+    expect(context.severity).toBe(WAIVER_SEVERITY.INFO);
+    expect(context.details).toMatchObject({
+      complexId: 'one-park',
+      fromVenueId: 'venue-one',
+      toVenueId: 'venue-two',
+      gapMinutes: 30,
+    });
+    // `info` is provenance: it does not move the status.
+    expect(together.status).toBe(CONSTRAINT_STATUS.ALLOWED);
+    expect(together.meta.violationsFound).toBe(0);
+  });
+
+  it('lets the 15-minute walking floor actually fire between two named venues', () => {
+    // Ten minutes to cross a complex. Under the old venue-name test this pair
+    // could only ever have been judged against 60 minutes; the walking rule was
+    // dead code for it.
+    const result = evaluateCoachTravel(
+      [
+        commitment({}),
+        commitment({ id: 'c2', startMinutes: 655, endMinutes: 700, venueId: 'venue-two' }),
+      ],
+      { registry, venueComplexes: complexOfTwo }
+    );
+    expect(result.meta.withinComplexTransitions).toBe(1);
+    expect(result.meta.violationsFound).toBe(1);
+    const violation = result.findings.find(
+      (finding) => finding.code === TRAVEL_REASON.TRAVEL_WITHIN_VENUE_TOO_SHORT
+    );
+    expect(violation).toBeDefined();
+    expect(violation.details).toMatchObject({
+      policy: TRAVEL_POLICY.WITHIN_VENUE,
+      gapMinutes: 10,
+      minimumGapMinutes: 15,
+      shortfallMinutes: 5,
+      // The distinction a reader needs: one site, two names.
+      sameVenue: false,
+      complexId: 'one-park',
+      constraintId: SEASON_2026_CONSTRAINT_ID.COACH_TRAVEL_WITHIN_VENUE,
+    });
+    expect(violation.severity).toBe(WAIVER_SEVERITY.COMPROMISE);
+    expect(result.status).toBe(CONSTRAINT_STATUS.COMPROMISED);
+    // …and the context note rides along, so the 15 is explained.
+    expect(codesOf(result.findings)).toContain(TRAVEL_REASON.TRAVEL_WITHIN_COMPLEX_CROSS_VENUE);
+  });
+
+  it('defaults to no complexes, which is exactly venue-name equality', () => {
+    const commitments = [
+      commitment({}),
+      commitment({ id: 'c2', startMinutes: 675, endMinutes: 720, venueId: 'venue-two' }),
+    ];
+    const defaulted = evaluateCoachTravel(commitments, { registry });
+    const explicit = evaluateCoachTravel(commitments, {
+      registry,
+      venueComplexes: EMPTY_VENUE_COMPLEX_MAP,
+    });
+    expect(codesOf(defaulted.findings)).toEqual(codesOf(explicit.findings));
+    expect(defaulted.transitions[0].policy).toBe(explicit.transitions[0].policy);
+    expect(defaulted.transitions[0].sameComplex).toBe(false);
+    expect(defaulted.transitions[0].complexId).toBeNull();
+    // The season's own map is not empty, so the default is a real choice.
+    expect(buildSeason2026VenueComplexMap().stats.complexCount).toBeGreaterThan(0);
   });
 
   it('keeps an overlap blocking whatever the record says', () => {

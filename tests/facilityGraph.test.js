@@ -55,6 +55,13 @@ import {
   season2026VenueId,
   surfacesConflict,
   toSeason2026FacilityGraphInput,
+  EMPTY_VENUE_COMPLEX_MAP,
+  SEASON_2026_VENUE_COMPLEXES,
+  buildSeason2026VenueComplexMap,
+  buildVenueComplexMap,
+  complexIdOf,
+  getVenueComplex,
+  sameVenueComplex,
 } from '@squadlogic/core/facility/index.js';
 
 /* -------------------------------------------------------------------------- */
@@ -1086,6 +1093,111 @@ describe('facility graph :: the builder refuses malformed input', () => {
 /* -------------------------------------------------------------------------- */
 /* Schema and purity                                                           */
 /* -------------------------------------------------------------------------- */
+
+/* -------------------------------------------------------------------------- */
+/* Venue complexes - declared, never inferred                                  */
+/* -------------------------------------------------------------------------- */
+
+describe('facility graph :: venue complexes', () => {
+  const complexes = buildSeason2026VenueComplexMap();
+  const MAPLEWOOD_BACK = season2026VenueId('Maplewood Back');
+  const MAPLEWOOD_FRONT = season2026VenueId('Maplewood Front');
+
+  it('declares one complex, over two venues the corpus really has', () => {
+    // Meta-assertion first: a complex map naming venues nothing else knows
+    // would silently govern no transition at all, which is incident 4 wearing
+    // a geography hat.
+    expect(complexes.stats).toEqual({ complexCount: 1, venueCount: 2 });
+    expect(complexes.complexIds).toEqual(['maplewood']);
+    for (const venueId of complexes.venueIds) {
+      expect(graph.venueIds, venueId).toContain(venueId);
+    }
+    // …and they are two *distinct* venues in the corpus, not one venue twice.
+    expect(MAPLEWOOD_BACK).not.toBe(MAPLEWOOD_FRONT);
+    expect(complexes.venueIds).toEqual([MAPLEWOOD_BACK, MAPLEWOOD_FRONT].sort());
+    expect(graph.venues[MAPLEWOOD_BACK].name).toBe('Maplewood Back');
+    expect(graph.venues[MAPLEWOOD_FRONT].name).toBe('Maplewood Front');
+  });
+
+  it('carries the provenance of a fact no corpus file states', () => {
+    const complex = getVenueComplex(complexes, 'maplewood');
+    expect(complex.source).toMatch(/standing practice/);
+    expect(complex.note).toBeTruthy();
+    // Nothing in the geometry file could have carried it: the venue records
+    // have no field for a complex, which is why this is an operator statement.
+    for (const venue of geometry.venues) {
+      expect(Object.keys(venue)).not.toContain('complex');
+    }
+  });
+
+  it('answers "one site?" by declaration and never by name', () => {
+    expect(sameVenueComplex(complexes, MAPLEWOOD_BACK, MAPLEWOOD_FRONT)).toBe(true);
+    expect(complexIdOf(complexes, MAPLEWOOD_BACK)).toBe('maplewood');
+
+    // Two venues sharing a word are not a complex. This is the heuristic the
+    // model refuses: "Alder Park" and "Brookside Park" share "Park", and
+    // "Maplewood Back" would slugify to a "maplewood" prefix that a name parse
+    // would happily merge with anything else beginning the same way.
+    const alder = season2026VenueId(ALDER);
+    const brookside = season2026VenueId(BROOKSIDE);
+    expect(graph.venues[alder].name.split(' ').pop()).toBe(
+      graph.venues[brookside].name.split(' ').pop()
+    );
+    expect(sameVenueComplex(complexes, alder, brookside)).toBe(false);
+    expect(complexIdOf(complexes, alder)).toBeNull();
+    expect(complexIdOf(complexes, brookside)).toBeNull();
+    // A venue in no complex is still its own site.
+    expect(sameVenueComplex(complexes, alder, alder)).toBe(true);
+    expect(getVenueComplex(complexes, 'no-such-complex')).toBeNull();
+  });
+
+  it('reproduces venue-name equality exactly when nothing is declared', () => {
+    // The empty map is the honest spelling of "this club has no complexes",
+    // and it must behave as the old `from.venueId === to.venueId` test did.
+    expect(EMPTY_VENUE_COMPLEX_MAP.stats).toEqual({ complexCount: 0, venueCount: 0 });
+    let compared = 0;
+    for (const a of graph.venueIds) {
+      for (const b of graph.venueIds) {
+        compared += 1;
+        expect(sameVenueComplex(EMPTY_VENUE_COMPLEX_MAP, a, b), `${a}/${b}`).toBe(a === b);
+      }
+    }
+    expect(compared).toBe(graph.venueIds.length ** 2);
+    expect(compared).toBeGreaterThan(0);
+  });
+
+  it('refuses a malformed declaration rather than repairing it', () => {
+    const one = { id: 'c1', name: 'C1', venueIds: ['a', 'b'] };
+    expect(() => buildVenueComplexMap({ complexes: [one, { ...one }] })).toThrow(
+      /duplicate venue complex id/
+    );
+    expect(() =>
+      buildVenueComplexMap({ complexes: [one, { id: 'c2', name: 'C2', venueIds: ['b', 'c'] }] })
+    ).toThrow(/claimed by two complexes/);
+    // A one-venue complex decides nothing and can only mislead a reader.
+    expect(() =>
+      buildVenueComplexMap({ complexes: [{ id: 'c1', name: 'C1', venueIds: ['a'] }] })
+    ).toThrow(/at least two venues/);
+    expect(() =>
+      buildVenueComplexMap({ complexes: [{ id: 'c1', name: 'C1', venueIds: ['a', 'a'] }] })
+    ).toThrow(/same venue twice/);
+    // `.strict()`, exactly like every other schema in this package.
+    expect(() =>
+      buildVenueComplexMap({ complexes: [{ ...one, venueName: 'not a field' }] })
+    ).toThrow();
+    expect(() => buildVenueComplexMap({ complexes: [] })).not.toThrow();
+  });
+
+  it('does not mutate its input and returns a frozen map', () => {
+    const input = { complexes: [...SEASON_2026_VENUE_COMPLEXES] };
+    const before = JSON.stringify(input);
+    const built = buildVenueComplexMap(input);
+    expect(JSON.stringify(input)).toBe(before);
+    expect(Object.isFrozen(built)).toBe(true);
+    expect(Object.isFrozen(built.complexes.maplewood.venueIds)).toBe(true);
+    expect(built.stats).toEqual(complexes.stats);
+  });
+});
 
 describe('facility graph :: schema and purity', () => {
   it('produces adapter output that satisfies the strict input schema', () => {

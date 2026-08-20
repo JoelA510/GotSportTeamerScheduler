@@ -32,6 +32,28 @@
  * {@link travelConstraintIdByCode} becomes unnecessary, because
  * `registry.idsByReasonCode` will answer the same question.
  *
+ * ## Which floor applies: the complex, not the venue name
+ *
+ * Whether a pair of commitments is a *walk* or a *drive* is decided by
+ * `facility/venueComplex.js`, not by `from.venueId === to.venueId`. Two
+ * separately-named venues that an operator has declared to be one complex —
+ * `Maplewood Back` and `Maplewood Front` — take the 15-minute walking floor,
+ * and every other pair takes the 60-minute drive floor.
+ *
+ * Before that, name equality was the whole test, and the 15-minute rule the
+ * registry describes as *"within one venue complex"* was structurally
+ * unreachable for the case it was written for: it could only ever fire for two
+ * commitments at the *identical* venue. On the published season-2026 schedule
+ * that misread produced 18 inter-venue shortfalls across five coaches, 17 of
+ * them Maplewood-to-Maplewood. Incident 9 records the board waiving the floor
+ * for **one** coach, which is one genuine inter-venue case, not five.
+ *
+ * The complex map is a **parameter**, defaulting to
+ * {@link EMPTY_VENUE_COMPLEX_MAP} — which reproduces venue-name equality
+ * exactly, because a venue is always its own site. A caller with a real season
+ * must pass the season's declared map; `ruleEngine/rules.js` demands it as a
+ * required resource rather than defaulting, so a run cannot silently lose it.
+ *
  * ## Why the codes are not in `BASE_REASON_SEVERITY` yet
  *
  * Registering them there is precisely the act of saying "a constraint record
@@ -61,6 +83,11 @@ import {
   severityForType,
 } from '../constraints/reasonCodes.js';
 import { resolvePolicy } from '../constraints/registry.js';
+import {
+  EMPTY_VENUE_COMPLEX_MAP,
+  complexIdOf,
+  sameVenueComplex,
+} from '../facility/venueComplex.js';
 
 /** The two policies this evaluator speaks to, spelled once. */
 export const TRAVEL_POLICY = Object.freeze({
@@ -77,8 +104,19 @@ export const TRAVEL_POLICY = Object.freeze({
 export const TRAVEL_REASON = Object.freeze({
   /** Two commitments at different venues are closer together than the floor. */
   TRAVEL_BETWEEN_VENUES_TOO_SHORT: 'TRAVEL_BETWEEN_VENUES_TOO_SHORT',
-  /** Two commitments at one venue are closer together than the walking floor. */
+  /** Two commitments at one site are closer together than the walking floor. */
   TRAVEL_WITHIN_VENUE_TOO_SHORT: 'TRAVEL_WITHIN_VENUE_TOO_SHORT',
+  /**
+   * The two commitments are at **different venues in one complex**, so the
+   * walking floor applied rather than the drive floor.
+   *
+   * `info`, and reported whether or not the gap passes: a reader looking at a
+   * 30-minute gap judged against a 15-minute minimum needs to be told *why*
+   * that was the applicable rule, and silence would leave the 60-minute floor
+   * looking as though it had been forgotten. Provenance, never a violation —
+   * `info` findings do not move a status or a disposition.
+   */
+  TRAVEL_WITHIN_COMPLEX_CROSS_VENUE: 'TRAVEL_WITHIN_COMPLEX_CROSS_VENUE',
   /**
    * Two commitments overlap in time. Always `blocking` and never a travel
    * question: no gap policy makes a person able to be in two places at once,
@@ -107,6 +145,7 @@ export const TRAVEL_REASON = Object.freeze({
 export const TRAVEL_REASON_SEVERITY = Object.freeze({
   [TRAVEL_REASON.TRAVEL_BETWEEN_VENUES_TOO_SHORT]: CONSTRAINT_SEVERITY.COMPROMISE,
   [TRAVEL_REASON.TRAVEL_WITHIN_VENUE_TOO_SHORT]: CONSTRAINT_SEVERITY.COMPROMISE,
+  [TRAVEL_REASON.TRAVEL_WITHIN_COMPLEX_CROSS_VENUE]: CONSTRAINT_SEVERITY.INFO,
   [TRAVEL_REASON.TRAVEL_COMMITMENTS_OVERLAP]: CONSTRAINT_SEVERITY.BLOCKING,
   [TRAVEL_REASON.TRAVEL_FOOTPRINT_UNKNOWN]: CONSTRAINT_SEVERITY.COMPROMISE,
   [TRAVEL_REASON.TRAVEL_POLICY_UNGOVERNED]: CONSTRAINT_SEVERITY.COMPROMISE,
@@ -148,6 +187,15 @@ export function createTravelMeta() {
     daysExamined: 0,
     transitionsExamined: 0,
     transitionsJudged: 0,
+    /** Transitions between two *different* venue ids. */
+    crossVenueTransitions: 0,
+    /**
+     * Cross-venue transitions the complex map made one site. Zero on a season
+     * whose map declares nothing — which is the state that made the walking
+     * floor unreachable, so a test can meta-assert the map was consulted rather
+     * than assume it (incident 4).
+     */
+    withinComplexTransitions: 0,
     policiesResolved: 0,
     violationsFound: 0,
   };
@@ -212,11 +260,14 @@ export function travelConstraintIdByCode(registry, context = {}) {
  * Evaluate every consecutive same-day pair of commitments for every person.
  *
  * @param {ReadonlyArray<Object>} commitments - see {@link CoachCommitmentSchema}
- * @param {{ registry: import('../constraints/types.js').ConstraintRegistry }} options
+ * @param {{ registry: import('../constraints/types.js').ConstraintRegistry, venueComplexes?: import('../facility/types.js').VenueComplexMap }} options
+ *   - `venueComplexes` decides walk vs drive; it defaults to
+ *     {@link EMPTY_VENUE_COMPLEX_MAP}, under which every distinct venue is its
+ *     own site
  * @returns {{ transitions: Array<Object>, subjects: import('./types.js').WaiverSubject[], findings: import('../constraints/types.js').ConstraintFinding[], meta: ReturnType<typeof createTravelMeta>, status: string }}
  */
 export function evaluateCoachTravel(commitments, options) {
-  const { registry } = options;
+  const { registry, venueComplexes = EMPTY_VENUE_COMPLEX_MAP } = options;
   const meta = createTravelMeta();
   /** @type {import('../constraints/types.js').ConstraintFinding[]} */
   const scanFindings = [];
@@ -274,8 +325,18 @@ export function evaluateCoachTravel(commitments, options) {
         const to = ordered[index + 1];
         meta.transitionsExamined += 1;
         const sameVenue = from.venueId === to.venueId;
-        const policy = sameVenue ? TRAVEL_POLICY.WITHIN_VENUE : TRAVEL_POLICY.BETWEEN_VENUES;
-        const code = sameVenue
+        // One *site*, which is not the same question as one venue name: two
+        // venues an operator has declared to be one complex are a walk apart.
+        const oneSite = sameVenueComplex(venueComplexes, from.venueId, to.venueId);
+        // Null unless the complex is what made the two one site: naming the
+        // `from` venue's complex on a transition that leaves it would read as
+        // though the complex governed a decision it had no part in.
+        const complexId = oneSite ? complexIdOf(venueComplexes, from.venueId) : null;
+        const crossVenueWithinComplex = oneSite && !sameVenue;
+        if (!sameVenue) meta.crossVenueTransitions += 1;
+        if (crossVenueWithinComplex) meta.withinComplexTransitions += 1;
+        const policy = oneSite ? TRAVEL_POLICY.WITHIN_VENUE : TRAVEL_POLICY.BETWEEN_VENUES;
+        const code = oneSite
           ? TRAVEL_REASON.TRAVEL_WITHIN_VENUE_TOO_SHORT
           : TRAVEL_REASON.TRAVEL_BETWEEN_VENUES_TOO_SHORT;
         const id = `${personId}|${date}|${from.id}->${to.id}`;
@@ -298,6 +359,8 @@ export function evaluateCoachTravel(commitments, options) {
               from,
               to,
               sameVenue,
+              sameComplex: oneSite,
+              complexId,
               policy,
               gapMinutes: null,
               minimumGapMinutes: null,
@@ -328,6 +391,8 @@ export function evaluateCoachTravel(commitments, options) {
               from,
               to,
               sameVenue,
+              sameComplex: oneSite,
+              complexId,
               policy,
               gapMinutes,
               minimumGapMinutes: null,
@@ -336,6 +401,32 @@ export function evaluateCoachTravel(commitments, options) {
             })
           );
           continue;
+        }
+
+        // Context, not a verdict: say out loud that two *different* venues were
+        // judged as one site, and which complex made them one. Without this a
+        // reader sees a 30-minute gap measured against 15 minutes and cannot
+        // tell whether the drive floor was applied and passed, deliberately
+        // replaced, or simply forgotten.
+        if (crossVenueWithinComplex) {
+          findings.push(
+            makeTravelFinding(
+              TRAVEL_REASON.TRAVEL_WITHIN_COMPLEX_CROSS_VENUE,
+              `"${personId}" moves from "${from.venueId}" to "${to.venueId}" on ${date}; both belong to venue complex "${complexId}", so the ${gapMinutes}-minute gap is judged as a walk under policy "${policy}" rather than as a drive between venues`,
+              {
+                transitionId: id,
+                personId,
+                date,
+                policy,
+                complexId,
+                gapMinutes,
+                fromVenueId: from.venueId,
+                toVenueId: to.venueId,
+                fromId: from.id,
+                toId: to.id,
+              }
+            )
+          );
         }
 
         const resolved = resolve(policy, date, personId);
@@ -371,6 +462,11 @@ export function evaluateCoachTravel(commitments, options) {
                 shortfallMinutes: minimum - gapMinutes,
                 fromVenueId: from.venueId,
                 toVenueId: to.venueId,
+                // Which floor applied and why, on the violation itself: a
+                // within-venue shortfall between two *named* venues is a
+                // different thing to explain than one inside a single venue.
+                sameVenue,
+                complexId,
                 fromId: from.id,
                 toId: to.id,
               },
@@ -387,6 +483,8 @@ export function evaluateCoachTravel(commitments, options) {
             from,
             to,
             sameVenue,
+            sameComplex: oneSite,
+            complexId,
             policy,
             gapMinutes,
             minimumGapMinutes: minimum,
@@ -424,7 +522,15 @@ export function evaluateCoachTravel(commitments, options) {
  *
  * The subject's context names **both** venues, which is what lets incident 9's
  * waiver — scoped to a coach *and a pair of sites* — match this transition and
- * not a different one involving a third venue.
+ * not a different one involving a third venue. The venue ids stay on the
+ * context even when both belong to one complex: a waiver is granted over the
+ * sites somebody named, and collapsing them to a complex id would silently
+ * widen or narrow its scope.
+ *
+ * `sameVenue` and `sameComplex` are both carried, and they are not the same
+ * claim: `sameVenue && !sameComplex` is impossible, while
+ * `!sameVenue && sameComplex` is exactly the Maplewood case — one site, two
+ * names — and is the reason the walking floor applied.
  *
  * @param {Object} input
  * @returns {Object}
@@ -437,6 +543,8 @@ function buildTransition(input) {
     from,
     to,
     sameVenue,
+    sameComplex,
+    complexId,
     policy,
     gapMinutes,
     minimumGapMinutes,
@@ -462,6 +570,8 @@ function buildTransition(input) {
     date,
     policy,
     sameVenue,
+    sameComplex,
+    complexId,
     gapMinutes,
     minimumGapMinutes,
     constraintId,
@@ -483,6 +593,9 @@ function buildTransition(input) {
         toCommitmentId: to.id,
         fromVenueId: from.venueId,
         toVenueId: to.venueId,
+        sameVenue,
+        sameComplex,
+        complexId,
       },
     },
   };
