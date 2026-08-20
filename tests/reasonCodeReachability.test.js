@@ -1,0 +1,3382 @@
+/**
+ * Repo-wide reachability audit for every frozen reason-code table in
+ * `packages/core/src` — the generalisation of the per-module audit
+ * `tests/attribution.test.js` already carries. Fourteen vocabularies, 280
+ * codes, of which 272 are shown to be producible and eight are named as holes.
+ *
+ * **The defect this exists to catch.** Four times now, in four unrelated
+ * modules, a reason code has been declared, given a severity, documented, and
+ * tested — while no production path could actually emit it. The 15-minute
+ * within-complex travel rule had no venue-complex concept to fire against;
+ * `TEAM_UNCOACHED` named a state the roster index could not hold;
+ * `RESERVED_SLOT_CONDITION_BLOCKED` answered a flag only tests set. Each was
+ * caught by adversarial review rather than by the suite, and in three of the
+ * four the *test* was the tell: it forged a state the production path could not
+ * reach, which is the shape `CLAUDE.md` §3 names outright.
+ *
+ * **How this audit judges reachability.** Every code must be either
+ *
+ *   (a) *emitted* — the driver below calls a production entry point and a
+ *       finding carrying that code comes back; or
+ *   (b) *registered in {@link UNREACHABLE}* with a stated reason, which
+ *       distinguishes a code no production path can emit at all from one this
+ *       driver simply does not construct an input for.
+ *
+ * The driver is deliberately confined to **public entry points fed input
+ * data** — corpus loaders, schema-validated builders, plain query objects. It
+ * never reaches inside a returned structure and mutates it. That restriction is
+ * the whole value of the check: the `TEAM_UNCOACHED` test passed by setting a
+ * key on the roster's internal `teams` map after the fact, and a driver allowed
+ * to do that would have proved exactly as little as that test did. Constructed
+ * inputs are fine — the point is that some arrangement of *input* reaches the
+ * code, not that the season corpus happens to contain one.
+ *
+ * Emission is observed by harvesting, from each returned value, every object of
+ * the shape every module's `make*Finding()` produces (`{ code, severity, … }`)
+ * whose code belongs to a declared table. No production code is instrumented
+ * and no cross-file state is involved, so this file is order-independent and
+ * behaves identically when it is the only file vitest runs.
+ *
+ * **What this does not do, stated plainly.**
+ *
+ * - It observes only the calls written below. A code the rest of the suite
+ *   fires and this driver does not still reads as unaccounted for, which is a
+ *   maintenance cost paid deliberately: the alternatives were instrumenting
+ *   production `make*Finding()` with a module-level registry, or aggregating
+ *   emissions across vitest workers through a file on disk. Both work; both
+ *   also pass under `vitest run one.test.js`, which the first cannot do
+ *   honestly and the second cannot do at all.
+ * - It proves a code *can* be produced, never that anything sensible produces
+ *   it. `RESERVED_SLOT_CONDITION_BLOCKED` is reachable and fires here from a
+ *   constructed slot; whether the club would ever hold that ground is a
+ *   different question this file does not ask.
+ * - A driver call that quietly stopped reaching its code would take the
+ *   coverage down with it, and the audit would then read as a defect in the
+ *   module rather than in this file. The labels passed to {@link harvest} exist
+ *   so the failure names the call that used to work.
+ * - Five declared codes cannot be produced through any entry point at all, and
+ *   three more only by calling an exported helper the pipeline itself never
+ *   calls that way. Each is named in {@link UNREACHABLE} with what stands in
+ *   the way, and that list — not this file's machinery — is the finding worth
+ *   reading.
+ *
+ * One apparent exception to the input-only rule is deliberate. Two of the
+ * resolve scenarios register a *stage* that writes without asking, because that
+ * is what `RESOLVE_AUDIT_FROZEN_GAME_MOVED` and its neighbours exist to catch —
+ * incident 2 in miniature. A stage is an input the pipeline validates
+ * (`ResolveStageSchema`, `extraStages`), not a state reached inside and
+ * altered, and the misbehaviour happens inside the stage's own `run()` exactly
+ * as a real non-compliant pass would.
+ */
+
+import { readdirSync, readFileSync, statSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { describe, it, expect } from 'vitest';
+
+import {
+  ATTRIBUTION_REASON,
+  buildAttributionContext,
+  explainEarliestKickoff,
+  explainGame,
+  explainKickoffTime,
+  explainSchedule,
+  explainLatestKickoff,
+  explainTeamConflict,
+  minimalBlockingSet,
+} from '@squadlogic/core/attribution/index.js';
+import {
+  AVAILABILITY_REASON,
+  buildAvailabilityCalendar,
+  buildAvailabilityCalendarFromSeason2026,
+  checkKickoffAvailability,
+  latestLegalKickoff,
+  resolveLighting,
+  resolvePermitWindow,
+  weekdayCodeOf,
+} from '@squadlogic/core/availability/index.js';
+import {
+  CONSTRAINT_ENFORCEMENT,
+  CONSTRAINT_REASON,
+  CONSTRAINT_SCOPE_KIND,
+  CONSTRAINT_TYPE,
+  buildConstraintRegistry,
+  buildSeason2026ConstraintRegistry,
+  effectiveSeverityTable,
+  resolveConstraints,
+  resolvePolicy,
+  retypeConstraint,
+  whatIfConstraintType,
+} from '@squadlogic/core/constraints/index.js';
+import {
+  FACILITY_REASON,
+  buildFacilityGraph,
+  buildFacilityGraphFromSeason2026,
+  buildSeason2026VenueComplexMap,
+  checkBooking,
+  checkEquipment,
+  checkLining,
+  checkSizeEligibility,
+  makeFinding as makeFacilityFinding,
+  season2026SurfaceId,
+} from '@squadlogic/core/facility/index.js';
+import {
+  SEASON_2026_ROW_KIND,
+  loadCoachRoster,
+  loadExternalFixtures,
+  loadFacilityGeometry,
+  loadFacilityPermits,
+  loadGameFormats,
+  loadSeason2026,
+  loadSunsets,
+} from '@squadlogic/core/fixtures/index.js';
+import {
+  FREEZE_REASON,
+  buildFreezePlan,
+  freezeAllExcept,
+  judgeFreeze,
+  judgeFreezeAll,
+} from '@squadlogic/core/freeze/index.js';
+import {
+  ASSIGNMENT_STATUS,
+  COMMITMENT_SOURCE,
+  PEOPLE_REASON,
+  applyIdentityDecisions,
+  buildCoachRoster,
+  buildIdentityReviewQueue,
+  buildPersonDays,
+  buildPersonalConstraintPolicy,
+  buildSeason2026CoachRoster,
+  createTimelineSet,
+  deriveMustAttend,
+  evaluatePersonDays,
+  findAttendanceClashes,
+  ingestCommitments,
+  requireSealedTimelines,
+  resolveAttendance,
+  sealTimelines,
+  season2026UncoachedFixtures,
+  soleCoachRiskRegister,
+} from '@squadlogic/core/people/index.js';
+import {
+  PARITY_FIELD,
+  PUBLICATION_REASON,
+  SYNC_DESTINATION_KIND,
+  buildChangeNotices,
+  buildSyncRegistryReport,
+  checkParity,
+  compareParityRows,
+  makeParityRow,
+  makePublicationSnapshot,
+  parityPartitionFindings,
+  season2026ExternalParityInput,
+  season2026PublishedParityInput,
+  verifySnapshotDigest,
+} from '@squadlogic/core/publication/index.js';
+import {
+  CONDITION_VERDICT,
+  FIXTURE_SIDE,
+  RESERVE_KIND,
+  RESERVE_REASON,
+  SEASON_2026_LEAGUE_CAP_PER_DATE,
+  accountForFixtures,
+  applySlotBindings,
+  buildReserveCapacityReport,
+  checkSlotsUnmoved,
+  conditionForSurface,
+  describeSlotCondition,
+  evaluateSlotCondition,
+  makeReservedSlot,
+  makeUnplacedFixture,
+  publicationCoverageFindings,
+  publicationRowsFor,
+  season2026FixtureSides,
+  season2026ReserveBookings,
+  season2026ReserveCapacityInput,
+  season2026ReservedSlots,
+  season2026SelectTeamIds,
+} from '@squadlogic/core/reserve/index.js';
+import {
+  MOVE_KIND,
+  RESOLVE_OBJECTIVE_TERM,
+  RESOLVE_OBJECTIVE_WEIGHTS,
+  RESOLVE_REASON,
+  STAGE_PROBE,
+  applyChangeRequest,
+  applyMove,
+  commitResolve,
+  season2026ExternalFixtureChanges,
+} from '@squadlogic/core/resolve/index.js';
+import {
+  RULE_REASON,
+  RULE_VIOLATION_REASON,
+  buildRuleEngine,
+  buildValidationReport,
+  runRuleEngine,
+  toSeason2026Schedule,
+} from '@squadlogic/core/ruleEngine/index.js';
+import {
+  SEASON_2026_INCIDENT_8_WARMUP_MINUTES,
+  TIMING_REASON,
+  buildFormatTimingTable,
+  buildFormatTimingTableFromSeason2026,
+  checkFixtureTiming,
+  computeGameWindows,
+  earliestKickoffWithWarmup,
+  warmupWindowAvailability,
+} from '@squadlogic/core/timing/index.js';
+import {
+  TRAVEL_REASON,
+  WAIVER_REASON,
+  applyWaivers,
+  buildWaiverLedger,
+  detectDormantWaivers,
+  evaluateCoachTravel,
+  reconcileWaiverLedger,
+} from '@squadlogic/core/waivers/index.js';
+
+/* -------------------------------------------------------------------------- */
+/* The universe of declared codes                                              */
+/* -------------------------------------------------------------------------- */
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const CORE = path.join(ROOT, 'packages', 'core', 'src');
+
+/**
+ * Every table this audit knows about, by the name it is exported under.
+ *
+ * Registered by hand *and* cross-checked against a scan of the source below, so
+ * a new module's table cannot arrive without either being audited or being
+ * named as something other than a reason-code table.
+ *
+ * @type {Readonly<Record<string, Readonly<Record<string, string>>>>}
+ */
+const TABLES = Object.freeze({
+  ATTRIBUTION_REASON,
+  AVAILABILITY_REASON,
+  CONSTRAINT_REASON,
+  FACILITY_REASON,
+  FREEZE_REASON,
+  PEOPLE_REASON,
+  PUBLICATION_REASON,
+  RESERVE_REASON,
+  RESOLVE_REASON,
+  RULE_REASON,
+  RULE_VIOLATION_REASON,
+  TIMING_REASON,
+  TRAVEL_REASON,
+  WAIVER_REASON,
+});
+
+/**
+ * Frozen identity-mapped tables that are *not* finding vocabularies, and why.
+ *
+ * Same discipline as {@link UNREACHABLE}: a table is excluded by a stated
+ * reason, never by being forgotten.
+ *
+ * @type {Readonly<Record<string, string>>}
+ */
+const NOT_A_FINDING_TABLE = Object.freeze({
+  DORMANCY_REASON:
+    'the three verdicts detectDormantWaivers() gives a waiver (never-matched, not-status-bearing, load-bearing). It is a classification carried on a dormancy row, not a finding code: the findings that report it are WAIVER_DORMANT and WAIVER_NOT_STATUS_BEARING, and both are audited above.',
+  IDENTITY_SIGNAL:
+    'a similarity-signal enum carried on identity proposals, weighted by IDENTITY_SIGNAL_WEIGHT; it never appears as a finding code and has no severity table',
+});
+
+/**
+ * Finding vocabularies this audit does **not** drive yet, and why.
+ *
+ * One entry, and the cap below keeps it that way: parking a module here is a
+ * declared gap, not a way of absorbing new modules quietly. An entry naming a
+ * table the scan cannot find is inert rather than an error, because a table may
+ * live on a branch this one does not carry.
+ *
+ * @type {Readonly<Record<string, string>>}
+ */
+const TABLES_AWAITING_DRIVER = Object.freeze({});
+
+/** Which table each code belongs to. */
+const TABLE_OF = new Map(
+  Object.entries(TABLES).flatMap(([name, table]) =>
+    Object.values(table).map((code) => [code, name])
+  )
+);
+
+/** Every declared code, once. */
+const DECLARED = new Set(TABLE_OF.keys());
+
+/* -------------------------------------------------------------------------- */
+/* The allowlist — an entry without a reason cannot be constructed             */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Why a declared code is not emitted by the driver.
+ *
+ * The two are different claims and the audit refuses to let them blur:
+ * `NO_PRODUCTION_PATH` is a defect being carried deliberately, `NOT_CONSTRUCTED`
+ * is a limit of this driver.
+ *
+ * @readonly
+ * @enum {string}
+ */
+const WHY = Object.freeze({
+  /**
+   * Nothing a caller can pass to the module's own entry points reaches it — the
+   * guard sits behind a refusal, or behind an invariant the calling code
+   * establishes one line earlier. A known hole, carried deliberately.
+   */
+  NO_PRODUCTION_PATH: 'no-production-path',
+  /**
+   * A production path exists but this driver does not build the input for it —
+   * usually a helper the package exports and the pipeline calls with data that
+   * cannot trip the guard. The reason has to say which call would.
+   */
+  NOT_CONSTRUCTED: 'not-constructed-here',
+});
+
+/**
+ * One allowlist entry.
+ *
+ * Constructed rather than written as an object literal so that the reason is
+ * *structurally* required — the same move `RuleExerciseSchema` and
+ * `StageDefinition.freezeContract` make. A bare list of code names would be a
+ * way to silence this audit, which is the failure mode it exists to prevent.
+ *
+ * @param {string} code
+ * @param {string} why - a {@link WHY} value
+ * @param {string} reason - prose; what is missing, or where it does fire
+ * @returns {{ code: string, why: string, reason: string }}
+ */
+function allow(code, why, reason) {
+  if (!DECLARED.has(code)) {
+    throw new Error(
+      `reason-code audit: "${code}" is allowlisted but no table declares it; delete the entry`
+    );
+  }
+  if (!(/** @type {string[]} */ (Object.values(WHY)).includes(why))) {
+    throw new Error(`reason-code audit: "${code}" has no valid WHY (got ${JSON.stringify(why)})`);
+  }
+  if (typeof reason !== 'string' || reason.trim().length < 40) {
+    throw new Error(
+      `reason-code audit: "${code}" needs a stated reason of at least 40 characters, not ${JSON.stringify(reason)}`
+    );
+  }
+  return Object.freeze({ code, why, reason: reason.trim() });
+}
+
+/** @type {ReadonlyArray<{ code: string, why: string, reason: string }>} */
+const UNREACHABLE = Object.freeze([
+  allow(
+    'ATTRIBUTION_GAME_UNATTRIBUTED',
+    WHY.NO_PRODUCTION_PATH,
+    'explainGame() raises it when a game produces no claim at all, but every placement answer turns the four availability constraint kinds and every facility/timing finding into claims, so the list is never empty for a game the schedule holds. The driver above asks it of the emptiest world the constructors allow — rig ground, a calendar declaring no permit, no sunset and no lighting, and a registry governing no reason code — and claims still come back.'
+  ),
+  allow(
+    'ATTRIBUTION_SWEEP_VACUOUS',
+    WHY.NO_PRODUCTION_PATH,
+    'explainSchedule() raises it when the sweep saw no games, but buildAttributionContext() cannot build a context for a zero-game schedule at all \u2014 buildSlotInventory() throws first ("a slot inventory built from zero games would offer nothing to anybody"). The only way to reach the guard is to assemble a context by spreading a real one over an emptier schedule, which is the hand-built state this audit refuses to count; tests/attribution.test.js does exactly that, which is how the code reads as covered there.'
+  ),
+  allow(
+    'ATTRIBUTION_CLAIM_CATEGORY_ONLY',
+    WHY.NO_PRODUCTION_PATH,
+    'isSpecificClaim() fails only when a claim names neither an instance nor a constraint, and every claim built from a module finding carries the finding\u2019s own code plus an identifier out of its details. The guard is real and is exercised as a predicate with its own positive control in tests/attribution.test.js; nothing the six source modules emit can trip it.'
+  ),
+  allow(
+    'RESOLVE_RUN_VACUOUS',
+    WHY.NO_PRODUCTION_PATH,
+    'The stage raises it when the run holds no games, but runResolve() throws on an empty schedule before any stage runs ("every verdict this run could produce would be true of nothing"), and applyChangeRequest() throws again on an empty change list. It is a third guard standing behind two hard refusals.'
+  ),
+  allow(
+    'RESOLVE_AUDIT_VACUOUS',
+    WHY.NO_PRODUCTION_PATH,
+    'Same shape as RESOLVE_RUN_VACUOUS and the same two upstream refusals: the freeze audit reports it when state.gameIds is empty, and no run with an empty game list ever reaches a stage.'
+  ),
+  allow(
+    'RESOLVE_REPORT_PARTITION_INCOMPLETE',
+    WHY.NOT_CONSTRUCTED,
+    'buildChangeReport() counts each moved game across the requested and consequential lists, but the consequential list is built as "every moved game the request did not name", so the two partition `moved` by construction and the only detectable failure is a duplicate inside `moved` itself \u2014 which comes from diffAgainstBaseline(), one entry per baseline game. Reachable only by calling the exported buildChangeReport() with a hand-built `moved` list naming one game twice.'
+  ),
+  allow(
+    'RULE_EXERCISE_DOMAIN_UNKNOWN',
+    WHY.NOT_CONSTRUCTED,
+    'checkCoverage() raises it when universeOf() cannot bound a coverage domain, but RuleExerciseSchema validates every coverage value against the RULE_IDENTIFIER_KIND enum and every member of that enum has a universe \u2014 game and date are computed, the other five read schedule fields ScheduleSchema defaults to arrays. Reachable only by calling the exported checkCoverage() with a schedule ScheduleSchema would reject.'
+  ),
+  allow(
+    'RULE_IDENTIFIER_KIND_UNKNOWN',
+    WHY.NOT_CONSTRUCTED,
+    'The same seam in checkIdentifiers(): identifierKinds is enum-validated by RuleExerciseSchema, and every member of the enum has a universe, so universeOf() never returns null for a rule the engine will run. Reachable only by bypassing the schema.'
+  ),
+]);
+
+/** Any real code, for the allowlist's own positive control. */
+const SOME_DECLARED_CODE = FACILITY_REASON.LINING_MISMATCH;
+
+/* -------------------------------------------------------------------------- */
+/* Harvest                                                                     */
+/* -------------------------------------------------------------------------- */
+
+/** Every code the driver has seen come back from production. */
+const emitted = new Map();
+
+/**
+ * Record every finding-shaped object anywhere in `value`.
+ *
+ * Shape rather than position: every module's `make*Finding()` returns
+ * `{ code, severity, message, details }`, so one walker covers all of them and
+ * a code emitted three levels down inside a report is still counted.
+ *
+ * `planted` is the answer to the one way this could lie. A few entry points —
+ * `applyWaivers()`, `detectDormantWaivers()` — take findings *as input* and
+ * hand them back annotated, so a code the driver constructed would otherwise be
+ * credited to the module that merely carried it. Those calls name what they
+ * planted and it is refused here, which means a module that stopped emitting
+ * one of those codes could not be covered for it by an echo.
+ *
+ * @template T
+ * @param {string} label - which driver call produced this, for the failure text
+ * @param {T} value
+ * @param {ReadonlyArray<string>} [planted] - codes this call handed in itself
+ * @returns {T}
+ */
+function harvest(label, value, planted = []) {
+  const seen = new Set();
+  const refused = new Set(planted);
+  /** @param {unknown} node */
+  const walk = (node) => {
+    if (!node || typeof node !== 'object') return;
+    // Cycle guard only. There is deliberately no depth cap: one that returned
+    // before marking a node seen would leave that node's descendants unwalked
+    // and remembered as visited, so a finding could be missed depending on the
+    // order the keys happened to be reached in.
+    if (seen.has(node)) return;
+    seen.add(node);
+    if (Array.isArray(node)) {
+      for (const item of node) walk(item);
+      return;
+    }
+    const record = /** @type {Record<string, unknown>} */ (node);
+    if (
+      typeof record.code === 'string' &&
+      typeof record.severity === 'string' &&
+      DECLARED.has(record.code) &&
+      !refused.has(record.code) &&
+      !emitted.has(record.code)
+    ) {
+      emitted.set(record.code, label);
+    }
+    for (const item of Object.values(record)) walk(item);
+  };
+  walk(value);
+  return value;
+}
+
+/* -------------------------------------------------------------------------- */
+/* The corpus, loaded once                                                     */
+/* -------------------------------------------------------------------------- */
+
+const season = loadSeason2026();
+const geometry = loadFacilityGeometry();
+const graph = buildFacilityGraphFromSeason2026(geometry);
+const timingTable = buildFormatTimingTableFromSeason2026(loadGameFormats());
+const sunsets = loadSunsets();
+/** Derived from the corpus rather than typed in, so a re-dated fixture moves it. */
+const SEASON_YEAR = Number(sunsets[0].date.slice(0, 4));
+const calendar = buildAvailabilityCalendarFromSeason2026(
+  loadFacilityPermits({ seasonYear: SEASON_YEAR }),
+  sunsets
+);
+const venueComplexes = buildSeason2026VenueComplexMap();
+const registry = buildSeason2026ConstraintRegistry();
+const schedule = toSeason2026Schedule(season);
+const roster = buildSeason2026CoachRoster(loadCoachRoster());
+const resources = { graph, timingTable, calendar, venueComplexes };
+
+/* -------------------------------------------------------------------------- */
+/* Driver                                                                      */
+/* -------------------------------------------------------------------------- */
+
+const verification = harvest(
+  'runRuleEngine(season)',
+  runRuleEngine(schedule, { registry, resources })
+);
+harvest(
+  'buildValidationReport',
+  buildValidationReport(verification, { scheduleName: schedule.name })
+);
+
+const context = harvest(
+  'buildAttributionContext',
+  buildAttributionContext({
+    graph,
+    table: timingTable,
+    calendar,
+    registry,
+    schedule,
+    verification,
+    venueComplexes,
+    roster,
+  })
+);
+harvest('explainSchedule', explainSchedule(context));
+
+/* -- facility ------------------------------------------------------------- */
+
+/**
+ * A purpose-built graph for the facility cases the published season has no
+ * example of. Built through `buildFacilityGraph`, which is the same validated
+ * constructor the season adapter calls — the rig is *input*, not a hand-made
+ * graph object.
+ */
+const rig = buildFacilityGraph({
+  venues: [{ id: 'rig', name: 'Rig Park' }],
+  surfaces: [
+    {
+      id: 'rig/full',
+      venueId: 'rig',
+      name: 'Full',
+      sizes: ['11v11'],
+      lined: ['11v11'],
+      childIds: ['rig/half'],
+    },
+    {
+      id: 'rig/half',
+      venueId: 'rig',
+      name: 'Half',
+      sizes: ['9v9'],
+      lined: [],
+      parentId: 'rig/full',
+    },
+    { id: 'rig/bare', venueId: 'rig', name: 'Bare', sizes: [], lined: [] },
+    {
+      id: 'rig/shut',
+      venueId: 'rig',
+      name: 'Shut',
+      sizes: ['9v9'],
+      lined: ['9v9'],
+      bookable: false,
+    },
+    { id: 'rig/next', venueId: 'rig', name: 'Next', sizes: ['9v9'], lined: ['9v9'] },
+  ],
+  overlapPairs: [['rig/next', 'rig/half']],
+  formatEquipment: { '9v9': ['goals'] },
+});
+
+const rigBooking = (overrides) => ({
+  id: 'rig-booking',
+  surfaceId: 'rig/half',
+  date: '2026-08-15',
+  startMinutes: 540,
+  endMinutes: 600,
+  format: '9v9',
+  ...overrides,
+});
+
+harvest('checkBooking(unknown surface)', checkBooking(rig, rigBooking({ surfaceId: 'rig/nope' })));
+harvest('checkBooking(not bookable)', checkBooking(rig, rigBooking({ surfaceId: 'rig/shut' })));
+harvest(
+  'checkBooking(same surface)',
+  checkBooking(rig, rigBooking(), { existingBookings: [rigBooking({ id: 'other' })] })
+);
+harvest(
+  'checkBooking(parent/child)',
+  checkBooking(rig, rigBooking({ surfaceId: 'rig/full', format: '11v11' }), {
+    existingBookings: [rigBooking({ id: 'child' })],
+  })
+);
+harvest(
+  'checkBooking(spatial overlap)',
+  checkBooking(rig, rigBooking({ surfaceId: 'rig/next' }), {
+    existingBookings: [rigBooking({ id: 'neighbour' })],
+  })
+);
+harvest(
+  'checkSizeEligibility(too small)',
+  checkSizeEligibility(rig, { surfaceId: 'rig/half', format: '11v11' })
+);
+harvest(
+  'checkSizeEligibility(declared policy)',
+  checkSizeEligibility(rig, { surfaceId: 'rig/full', format: '9v9' }, { sizePolicy: 'declared' })
+);
+harvest(
+  'checkSizeEligibility(undeclared)',
+  checkSizeEligibility(rig, { surfaceId: 'rig/bare', format: '9v9' })
+);
+harvest('checkLining(undeclared)', checkLining(rig, { surfaceId: 'rig/half', format: '9v9' }));
+harvest(
+  'checkEquipment(assumed available)',
+  checkEquipment(rig, { surfaceId: 'rig/half', format: '9v9', date: '2026-08-15' })
+);
+harvest(
+  'checkEquipment(undeclared requirement)',
+  checkEquipment(rig, { surfaceId: 'rig/full', format: '11v11', date: '2026-08-15' })
+);
+
+/** The same rig, with equipment records to resolve. One window per status. */
+const equipmentWindow = (overrides) => ({
+  id: 'window',
+  equipment: 'goals',
+  status: 'available',
+  scope: { kind: 'venue', id: 'rig' },
+  fromDate: '2026-08-01',
+  toDate: '2026-08-31',
+  ...overrides,
+});
+for (const [label, windows] of /** @type {Array<[string, Array<Object>]>} */ ([
+  ['available', [equipmentWindow({ id: 'yes' })]],
+  ['unavailable', [equipmentWindow({ id: 'no', status: 'unavailable' })]],
+  ['unknown', [equipmentWindow({ id: 'dunno', status: 'unknown' })]],
+  [
+    'ambiguous',
+    [
+      equipmentWindow({ id: 'left', status: 'available' }),
+      equipmentWindow({ id: 'right', status: 'unavailable' }),
+    ],
+  ],
+])) {
+  const built = buildFacilityGraph({
+    venues: [{ id: 'rig', name: 'Rig Park' }],
+    surfaces: [{ id: 'rig/half', venueId: 'rig', name: 'Half', sizes: ['9v9'], lined: ['9v9'] }],
+    formatEquipment: { '9v9': ['goals'] },
+    equipmentWindows: windows,
+  });
+  harvest(
+    `checkEquipment(${label})`,
+    checkEquipment(built, { surfaceId: 'rig/half', format: '9v9', date: '2026-08-15' })
+  );
+}
+
+/* -- timing --------------------------------------------------------------- */
+
+/** A well-formed format row; each case below breaks exactly one field of it. */
+const rigFormat = (overrides = {}) => ({
+  format: '9v9',
+  halves: 2,
+  halfMinutes: 30,
+  halftimeMinutes: { min: 5, max: 5 },
+  occupancyMinutes: { min: 65, max: 65, scheduled: 65 },
+  blockMinutes: 70,
+  turnoverMinMinutes: 5,
+  ...overrides,
+});
+
+const rigTable = harvest(
+  'buildFormatTimingTable(clean)',
+  buildFormatTimingTable({ formats: [rigFormat()], warmupPolicy: { '9v9': 30 } })
+);
+harvest(
+  'buildFormatTimingTable(duplicate row)',
+  buildFormatTimingTable({ formats: [rigFormat(), rigFormat({ blockMinutes: 80 })] })
+);
+harvest(
+  'buildFormatTimingTable(derivation disagrees)',
+  buildFormatTimingTable({ formats: [rigFormat({ halfMinutes: 25 })] })
+);
+harvest(
+  'buildFormatTimingTable(block shorter than occupancy)',
+  buildFormatTimingTable({ formats: [rigFormat({ blockMinutes: 60 })] })
+);
+harvest(
+  'buildFormatTimingTable(no turnover floor)',
+  buildFormatTimingTable({ formats: [rigFormat({ turnoverMinMinutes: null })] })
+);
+
+/** No warm-up policy at all — the season-warm-up hole, asked directly. */
+const unwarmedTable = harvest(
+  'buildFormatTimingTable(no warm-up policy)',
+  buildFormatTimingTable({ formats: [rigFormat()] })
+);
+
+const rigFixture = (overrides = {}) => ({
+  id: 'rig-fixture',
+  surfaceId: 'rig/half',
+  date: '2026-08-15',
+  kickoffMinutes: 600,
+  format: '9v9',
+  ...overrides,
+});
+
+harvest(
+  'checkFixtureTiming(no warm-up length)',
+  checkFixtureTiming(rig, unwarmedTable, rigFixture())
+);
+harvest(
+  'computeGameWindows(warm-up before day start)',
+  computeGameWindows(rigTable, {
+    format: '9v9',
+    kickoffMinutes: 20,
+    warmupMinutes: 30,
+    dayStartMinutes: 0,
+  })
+);
+
+/** The warm-up window, contended three ways and left unbounded once. */
+const rigOccupied = (overrides = {}) => ({
+  id: 'sitting-tenant',
+  surfaceId: 'rig/half',
+  date: '2026-08-15',
+  startMinutes: 540,
+  endMinutes: 600,
+  format: '9v9',
+  ...overrides,
+});
+for (const [label, existing] of /** @type {Array<[string, Array<Object>]>} */ ([
+  ['same surface', [rigOccupied()]],
+  ['parent/child', [rigOccupied({ surfaceId: 'rig/full', format: '11v11' })]],
+  ['spatial overlap', [rigOccupied({ surfaceId: 'rig/next' })]],
+  ['unknown footprint', [rigOccupied({ endMinutes: null, format: null })]],
+])) {
+  harvest(
+    `checkFixtureTiming(warm-up meets ${label})`,
+    checkFixtureTiming(rig, rigTable, rigFixture(), { existingBookings: existing })
+  );
+}
+
+harvest(
+  'warmupWindowAvailability(short window)',
+  warmupWindowAvailability(
+    rig,
+    rigTable,
+    { surfaceId: 'rig/half', date: '2026-08-15', kickoffMinutes: 600, format: '9v9' },
+    { existingBookings: [rigOccupied({ startMinutes: 500, endMinutes: 585 })] }
+  )
+);
+harvest(
+  'warmupWindowAvailability(unbounded)',
+  warmupWindowAvailability(rig, rigTable, {
+    surfaceId: 'rig/half',
+    date: '2026-08-15',
+    kickoffMinutes: 600,
+    format: '9v9',
+  })
+);
+harvest(
+  'earliestKickoffWithWarmup(unbounded)',
+  earliestKickoffWithWarmup(rig, rigTable, {
+    surfaceId: 'rig/half',
+    date: '2026-08-15',
+    format: '9v9',
+  })
+);
+harvest(
+  'earliestKickoffWithWarmup(bound by same surface)',
+  earliestKickoffWithWarmup(
+    rig,
+    rigTable,
+    { surfaceId: 'rig/half', date: '2026-08-15', format: '9v9', notBeforeMinutes: 540 },
+    { existingBookings: [rigOccupied()] }
+  )
+);
+harvest(
+  'earliestKickoffWithWarmup(bound by another surface)',
+  earliestKickoffWithWarmup(
+    rig,
+    rigTable,
+    { surfaceId: 'rig/half', date: '2026-08-15', format: '9v9', notBeforeMinutes: 540 },
+    { existingBookings: [rigOccupied({ surfaceId: 'rig/next' })] }
+  )
+);
+harvest(
+  'earliestKickoffWithWarmup(search exhausted)',
+  earliestKickoffWithWarmup(
+    rig,
+    rigTable,
+    {
+      surfaceId: 'rig/half',
+      date: '2026-08-15',
+      format: '9v9',
+      notBeforeMinutes: 540,
+      notAfterMinutes: 560,
+    },
+    { existingBookings: [rigOccupied({ startMinutes: 0, endMinutes: 1400 })] }
+  )
+);
+
+/* -- availability --------------------------------------------------------- */
+
+const RIG_DATE = '2026-08-15';
+/** Derived, not typed in, so a re-dated rig cannot silently miss its weekday. */
+const RIG_WEEKDAY = weekdayCodeOf(RIG_DATE);
+
+/** A rig graph whose venue carries the floodlight flag, for the venue fallback. */
+const litRig = buildFacilityGraph({
+  venues: [{ id: 'rig', name: 'Rig Park', lit: true }],
+  surfaces: [
+    {
+      id: 'rig/full',
+      venueId: 'rig',
+      name: 'Full',
+      sizes: ['11v11', '9v9'],
+      lined: ['11v11', '9v9'],
+      childIds: ['rig/half'],
+    },
+    {
+      id: 'rig/half',
+      venueId: 'rig',
+      name: 'Half',
+      sizes: ['9v9'],
+      lined: ['9v9'],
+      parentId: 'rig/full',
+    },
+  ],
+});
+
+const permit = (overrides = {}) => ({
+  id: 'permit',
+  venueId: 'rig',
+  scopeKind: 'weekday-default',
+  weekday: RIG_WEEKDAY,
+  openMinutes: 480,
+  closeMinutes: 1200,
+  ...overrides,
+});
+const sunset = (overrides = {}) => ({ date: RIG_DATE, sunsetMinutes: 1200, ...overrides });
+
+const emptyCalendar = harvest('buildAvailabilityCalendar(empty)', buildAvailabilityCalendar({}));
+const openCalendar = harvest(
+  'buildAvailabilityCalendar(weekday default)',
+  buildAvailabilityCalendar({ permitWindows: [permit()], sunsets: [sunset()] })
+);
+harvest(
+  'buildAvailabilityCalendar(two sunsets for one date)',
+  buildAvailabilityCalendar({ sunsets: [sunset(), sunset({ sunsetMinutes: 1150 })] })
+);
+harvest(
+  'buildAvailabilityCalendar(two lighting records for one surface)',
+  buildAvailabilityCalendar({
+    lighting: [
+      { surfaceId: 'rig/half', lit: true, lightsOffMinutes: 1300 },
+      { surfaceId: 'rig/half', lit: false },
+    ],
+  })
+);
+
+const kickoffQuery = (overrides = {}) => ({
+  surfaceId: 'rig/half',
+  date: RIG_DATE,
+  kickoffMinutes: 600,
+  format: '9v9',
+  ...overrides,
+});
+
+harvest(
+  'checkKickoffAvailability(nothing declared)',
+  checkKickoffAvailability(rig, rigTable, emptyCalendar, kickoffQuery())
+);
+harvest(
+  'checkKickoffAvailability(inside the permit)',
+  checkKickoffAvailability(rig, rigTable, openCalendar, kickoffQuery())
+);
+harvest(
+  'checkKickoffAvailability(blackout on the date)',
+  checkKickoffAvailability(
+    rig,
+    rigTable,
+    buildAvailabilityCalendar({
+      permitWindows: [
+        permit({
+          id: 'shut',
+          scopeKind: 'date-exception',
+          weekday: null,
+          date: RIG_DATE,
+          hasPermit: false,
+          openMinutes: null,
+          closeMinutes: null,
+        }),
+      ],
+    }),
+    kickoffQuery()
+  )
+);
+harvest(
+  'checkKickoffAvailability(before open, past close)',
+  checkKickoffAvailability(
+    rig,
+    rigTable,
+    buildAvailabilityCalendar({ permitWindows: [permit({ openMinutes: 660, closeMinutes: 664 })] }),
+    kickoffQuery()
+  )
+);
+harvest(
+  'checkKickoffAvailability(margin tight)',
+  checkKickoffAvailability(
+    rig,
+    rigTable,
+    buildAvailabilityCalendar({ permitWindows: [permit({ closeMinutes: 670 })] }),
+    kickoffQuery()
+  )
+);
+harvest(
+  'checkKickoffAvailability(two date exceptions disagree)',
+  checkKickoffAvailability(
+    rig,
+    rigTable,
+    buildAvailabilityCalendar({
+      permitWindows: [
+        permit({ id: 'a', scopeKind: 'date-exception', weekday: null, date: RIG_DATE }),
+        permit({
+          id: 'b',
+          scopeKind: 'date-exception',
+          weekday: null,
+          date: RIG_DATE,
+          closeMinutes: 900,
+        }),
+      ],
+    }),
+    kickoffQuery()
+  )
+);
+harvest(
+  'checkKickoffAvailability(sunset margin violated)',
+  checkKickoffAvailability(
+    rig,
+    rigTable,
+    buildAvailabilityCalendar({
+      permitWindows: [permit()],
+      sunsets: [sunset({ sunsetMinutes: 620 })],
+    }),
+    kickoffQuery()
+  )
+);
+harvest(
+  'checkKickoffAvailability(lit surface, lights-off undeclared)',
+  checkKickoffAvailability(
+    rig,
+    rigTable,
+    buildAvailabilityCalendar({
+      permitWindows: [permit({ lit: false })],
+      lighting: [{ surfaceId: 'rig/half', lit: true }],
+    }),
+    kickoffQuery()
+  )
+);
+harvest(
+  'checkKickoffAvailability(lit ancestor, lights off early)',
+  checkKickoffAvailability(
+    rig,
+    rigTable,
+    buildAvailabilityCalendar({
+      permitWindows: [permit()],
+      lighting: [{ surfaceId: 'rig/full', lit: true, lightsOffMinutes: 620 }],
+    }),
+    kickoffQuery()
+  )
+);
+harvest(
+  'checkKickoffAvailability(lit venue)',
+  checkKickoffAvailability(litRig, rigTable, openCalendar, kickoffQuery())
+);
+harvest(
+  'checkKickoffAvailability(a booking bounds the occupancy)',
+  checkKickoffAvailability(rig, rigTable, openCalendar, kickoffQuery(), {
+    existingBookings: [rigOccupied({ startMinutes: 700, endMinutes: 800 })],
+  })
+);
+harvest(
+  'latestLegalKickoff(bounded)',
+  latestLegalKickoff(rig, rigTable, openCalendar, {
+    surfaceId: 'rig/half',
+    date: RIG_DATE,
+    format: '9v9',
+  })
+);
+harvest(
+  'latestLegalKickoff(nothing legal)',
+  latestLegalKickoff(
+    rig,
+    rigTable,
+    buildAvailabilityCalendar({ permitWindows: [permit({ openMinutes: 480, closeMinutes: 500 })] }),
+    { surfaceId: 'rig/half', date: RIG_DATE, format: '9v9' }
+  )
+);
+
+/* -- constraints ---------------------------------------------------------- */
+
+/** A minimal valid constraint record; each case below changes one field. */
+const constraintRecord = (overrides = {}) => ({
+  id: 'rig-constraint',
+  policy: 'rig-policy',
+  name: 'A constraint the audit reasons about',
+  type: CONSTRAINT_TYPE.HARD,
+  scope: { kind: CONSTRAINT_SCOPE_KIND.GLOBAL },
+  rationale: 'the audit needs a governed reason code to ask questions about',
+  source: {
+    setBy: 'the reason-code reachability audit',
+    setAt: '2026-08-20',
+    reference: 'tests/reasonCodeReachability.test.js',
+  },
+  enforcement: CONSTRAINT_ENFORCEMENT.REASON_CODES,
+  reasonCodes: [FACILITY_REASON.LINING_MISMATCH],
+  ...overrides,
+});
+const registryOf = (...constraints) => buildConstraintRegistry({ name: 'rig', constraints });
+
+harvest(
+  'buildConstraintRegistry(empty)',
+  buildConstraintRegistry({ name: 'rig', constraints: [] })
+);
+harvest(
+  'buildConstraintRegistry(duplicate id)',
+  registryOf(constraintRecord(), constraintRecord({ policy: 'other' }))
+);
+harvest(
+  'buildConstraintRegistry(unknown reason code)',
+  registryOf(constraintRecord({ reasonCodes: ['NOT_A_REGISTERED_CODE'] }))
+);
+harvest(
+  'buildConstraintRegistry(declared only)',
+  registryOf(
+    constraintRecord({ enforcement: CONSTRAINT_ENFORCEMENT.DECLARED_ONLY, reasonCodes: [] })
+  )
+);
+harvest(
+  'retypeConstraint(hard to soft)',
+  retypeConstraint(registryOf(constraintRecord()), 'rig-constraint', {
+    type: CONSTRAINT_TYPE.SOFT,
+    by: 'the reason-code reachability audit',
+    at: null,
+    note: 'what if this were a preference?',
+    weight: 1,
+  })
+);
+
+/** Windows and scopes, judged with and without the context to judge them by. */
+const windowedRegistry = registryOf(
+  constraintRecord({ id: 'not-yet', effectiveFrom: '2026-12-01' }),
+  constraintRecord({ id: 'expired', effectiveTo: '2026-01-01', policy: 'rig-policy' }),
+  constraintRecord({
+    id: 'at-a-venue',
+    scope: { kind: CONSTRAINT_SCOPE_KIND.VENUE, venueId: 'rig' },
+  }),
+  constraintRecord({
+    id: 'in-a-division',
+    scope: { kind: CONSTRAINT_SCOPE_KIND.DIVISION, divisionLabel: 'U12B' },
+  })
+);
+harvest('resolvePolicy(no date, no scope context)', resolvePolicy(windowedRegistry, 'rig-policy'));
+harvest(
+  'resolvePolicy(dated and scoped)',
+  resolvePolicy(windowedRegistry, 'rig-policy', {
+    date: RIG_DATE,
+    venueId: 'rig',
+    divisionLabel: 'U12B',
+  })
+);
+harvest('resolvePolicy(ungoverned policy)', resolvePolicy(windowedRegistry, 'no-such-policy'));
+harvest('resolveConstraints(dated)', resolveConstraints(windowedRegistry, { date: RIG_DATE }));
+
+/** Severity: one code claimed by two records of different hardness. */
+const contested = registryOf(
+  constraintRecord({ id: 'as-hard', type: CONSTRAINT_TYPE.HARD }),
+  constraintRecord({
+    id: 'as-preference',
+    type: CONSTRAINT_TYPE.PREFERENCE,
+    policy: 'rig-policy',
+    weight: 1,
+  })
+);
+harvest('effectiveSeverityTable(contested code)', effectiveSeverityTable(contested, {}));
+harvest(
+  'resolvePolicy(two global records of one hardness that disagree)',
+  resolvePolicy(
+    registryOf(
+      constraintRecord({ id: 'ninety', parameters: { minutes: 90 } }),
+      constraintRecord({ id: 'sixty', parameters: { minutes: 60 } })
+    ),
+    'rig-policy'
+  )
+);
+harvest(
+  'effectiveSeverityTable(demoted code)',
+  effectiveSeverityTable(
+    registryOf(constraintRecord({ type: CONSTRAINT_TYPE.PREFERENCE, weight: 1 })),
+    {}
+  )
+);
+harvest(
+  'whatIfConstraintType(no-op)',
+  whatIfConstraintType(registryOf(constraintRecord()), 'rig-constraint', CONSTRAINT_TYPE.HARD)
+);
+harvest(
+  'whatIfConstraintType(nothing to reseverify)',
+  whatIfConstraintType(registryOf(constraintRecord()), 'rig-constraint', CONSTRAINT_TYPE.SOFT, {
+    evaluations: [{ id: 'a-subject-the-constraint-says-nothing-about', findings: [] }],
+  })
+);
+
+/* -- waivers and coach travel --------------------------------------------- */
+
+/** A waivable constraint to hang waivers off, and one that is not waivable. */
+const waivableRegistry = registryOf(
+  constraintRecord({ id: 'waivable', waivable: true }),
+  constraintRecord({ id: 'not-waivable', policy: 'rig-policy-2', waivable: false })
+);
+
+const waiverRecord = (overrides = {}) => ({
+  id: 'rig-waiver',
+  constraintId: 'waivable',
+  name: 'A waiver the audit reasons about',
+  scope: { divisionLabel: 'U12B' },
+  reasonCodes: [FACILITY_REASON.LINING_MISMATCH],
+  reason: 'the audit needs a granted exception to ask questions about',
+  approval: {
+    approvedBy: 'the reason-code reachability audit',
+    approvedAt: '2026-08-20',
+    reference: 'tests/reasonCodeReachability.test.js',
+  },
+  ...overrides,
+});
+const ledgerOf = (...waivers) => buildWaiverLedger({ name: 'rig', waivers });
+
+harvest('buildWaiverLedger(empty)', buildWaiverLedger({ name: 'rig', waivers: [] }));
+harvest(
+  'buildWaiverLedger(duplicate id)',
+  ledgerOf(waiverRecord(), waiverRecord({ scope: { teamId: 'team-a' } }))
+);
+harvest(
+  'reconcileWaiverLedger(unknown and un-waivable constraints)',
+  reconcileWaiverLedger(
+    ledgerOf(
+      waiverRecord({ id: 'orphan', constraintId: 'no-such-constraint' }),
+      waiverRecord({ id: 'barred', constraintId: 'not-waivable' }),
+      waiverRecord({ id: 'unclaimed', reasonCodes: [FACILITY_REASON.SIZE_TOO_SMALL] })
+    ),
+    waivableRegistry
+  )
+);
+
+/** One subject per shape of applicability question. */
+/**
+ * The codes the waiver subjects below hand in. `applyWaivers()` returns them
+ * annotated rather than emitting them, so {@link harvest} is told to refuse
+ * them: a facility code the facility module stopped producing must not read as
+ * covered because a waiver echoed the driver's own input back.
+ */
+const PLANTED_WAIVER_CODES = [FACILITY_REASON.LINING_MISMATCH, FACILITY_REASON.SIZE_TOO_SMALL];
+
+const waivedFinding = makeFacilityFinding(
+  FACILITY_REASON.LINING_MISMATCH,
+  'the pitch is not lined for this format',
+  { surfaceId: 'rig/half' }
+);
+const subject = (overrides = {}) => ({
+  id: 'rig-subject',
+  findings: [waivedFinding],
+  context: { divisionLabel: 'U12B', date: RIG_DATE },
+  ...overrides,
+});
+const waiverOptions = {
+  ledger: ledgerOf(
+    waiverRecord(),
+    waiverRecord({ id: 'not-yet', effectiveFrom: '2026-12-01', scope: { teamId: 'team-a' } }),
+    waiverRecord({ id: 'expired', effectiveTo: '2026-01-01', scope: { teamId: 'team-b' } }),
+    waiverRecord({ id: 'by-person', scope: { personId: 'person-1' } })
+  ),
+  registry: waivableRegistry,
+  constraintIdByCode: { [FACILITY_REASON.LINING_MISMATCH]: 'waivable' },
+};
+harvest(
+  'applyWaivers(a waiver covers the finding)',
+  applyWaivers([subject()], waiverOptions),
+  PLANTED_WAIVER_CODES
+);
+harvest(
+  'applyWaivers(no date, no person in the context)',
+  applyWaivers([subject({ context: { divisionLabel: 'U12B' } })], waiverOptions),
+  PLANTED_WAIVER_CODES
+);
+harvest(
+  'applyWaivers(nothing the ledger covers)',
+  applyWaivers(
+    [
+      subject({
+        findings: [
+          makeFacilityFinding(FACILITY_REASON.SIZE_TOO_SMALL, 'the ground is too small', {}),
+        ],
+      }),
+    ],
+    waiverOptions
+  ),
+  PLANTED_WAIVER_CODES
+);
+harvest(
+  'applyWaivers(a waiver broader than its constraint)',
+  applyWaivers([subject({ context: { venueId: 'rig', surfaceId: 'rig/half', date: RIG_DATE } })], {
+    ledger: ledgerOf(waiverRecord({ scope: { venueIds: ['rig'] } })),
+    registry: registryOf(
+      constraintRecord({
+        id: 'waivable',
+        waivable: true,
+        scope: { kind: CONSTRAINT_SCOPE_KIND.SURFACE, surfaceId: 'rig/half' },
+      })
+    ),
+    constraintIdByCode: { [FACILITY_REASON.LINING_MISMATCH]: 'waivable' },
+  }),
+  PLANTED_WAIVER_CODES
+);
+harvest(
+  'applyWaivers(a waived code, but no waiver in scope)',
+  applyWaivers([subject({ context: { divisionLabel: 'U14G', date: RIG_DATE } })], waiverOptions),
+  PLANTED_WAIVER_CODES
+);
+harvest(
+  'detectDormantWaivers(over the subjects)',
+  detectDormantWaivers([subject()], waiverOptions),
+  PLANTED_WAIVER_CODES
+);
+harvest(
+  'detectDormantWaivers(over nothing)',
+  detectDormantWaivers([], waiverOptions),
+  PLANTED_WAIVER_CODES
+);
+
+/* Coach travel: the policy the registry governs, and the same scan ungoverned. */
+const commitment = (overrides = {}) => ({
+  id: 'commitment',
+  personId: 'person-1',
+  date: RIG_DATE,
+  startMinutes: 540,
+  endMinutes: 600,
+  venueId: 'rig',
+  ...overrides,
+});
+harvest(
+  'evaluateCoachTravel(same venue, no time to walk)',
+  evaluateCoachTravel(
+    [commitment(), commitment({ id: 'next', startMinutes: 605, endMinutes: 665 })],
+    {
+      registry,
+    }
+  )
+);
+harvest(
+  'evaluateCoachTravel(a commitment with no known end)',
+  evaluateCoachTravel(
+    [
+      commitment({ endMinutes: null }),
+      commitment({ id: 'next', startMinutes: 605, endMinutes: 665 }),
+    ],
+    { registry }
+  )
+);
+harvest(
+  'evaluateCoachTravel(no travel policy in the registry)',
+  evaluateCoachTravel(
+    [commitment(), commitment({ id: 'next', startMinutes: 605, endMinutes: 665 })],
+    { registry: registryOf(constraintRecord()) }
+  )
+);
+harvest('evaluateCoachTravel(nothing to judge)', evaluateCoachTravel([], { registry }));
+
+/* -- freeze --------------------------------------------------------------- */
+
+const freezeRule = (overrides = {}) => ({
+  id: 'freeze-rule',
+  kind: 'freeze',
+  match: { divisionLabel: 'U12B' },
+  reason: 'the audit needs a frozen scope to ask questions about',
+  ...overrides,
+});
+const freezeContext = (overrides = {}) => ({
+  gameId: 'g1',
+  date: RIG_DATE,
+  divisionLabel: 'U12B',
+  venueId: 'rig',
+  surfaceId: 'rig/half',
+  teamId: 'team-a',
+  ...overrides,
+});
+
+harvest(
+  'buildFreezePlan(global re-optimisation, acknowledged)',
+  buildFreezePlan({
+    name: 'rig',
+    defaultDisposition: 'thawed',
+    rules: [],
+    globalReoptimisation: {
+      reason: 'the audit asks what a declared whole-season re-solve reports',
+      acknowledged: true,
+      requestedBy: 'the reason-code reachability audit',
+    },
+  })
+);
+
+const mixedPlan = buildFreezePlan({
+  name: 'rig',
+  rules: [
+    freezeRule({ id: 'freeze-one-game', match: { gameId: 'g1' } }),
+    freezeRule({ id: 'thaw-the-division', kind: 'thaw', match: { divisionLabel: 'U12B' } }),
+    freezeRule({ id: 'freeze-by-format', match: { format: '9v9' } }),
+    freezeRule({ id: 'freeze-nothing-here', match: { venueId: 'elsewhere' } }),
+  ],
+});
+harvest(
+  'judgeFreezeAll(a plan whose rules disagree)',
+  judgeFreezeAll(mixedPlan, [
+    freezeContext(),
+    freezeContext({ gameId: 'g2', divisionLabel: 'U14G' }),
+  ])
+);
+harvest(
+  'judgeFreeze(a game carrying no format for a format rule)',
+  judgeFreeze(mixedPlan, freezeContext({ gameId: 'g3' }))
+);
+harvest(
+  'judgeFreeze(a thaw that ties the freeze it opposes)',
+  judgeFreeze(
+    buildFreezePlan({
+      name: 'rig',
+      rules: [
+        freezeRule({ id: 'freeze-the-division', match: { divisionLabel: 'U12B' } }),
+        freezeRule({ id: 'thaw-the-venue', kind: 'thaw', match: { venueId: 'rig' } }),
+      ],
+    }),
+    freezeContext()
+  )
+);
+harvest(
+  'judgeFreeze(nothing matches, the default applies)',
+  judgeFreeze(
+    mixedPlan,
+    freezeContext({ gameId: 'g4', divisionLabel: 'U16B', venueId: 'far-away', format: '11v11' })
+  )
+);
+
+/* -- rule engine ---------------------------------------------------------- */
+
+/** A minimal valid rule definition; each case below breaks one part of it. */
+const ruleDefinition = (overrides = {}) => ({
+  id: 'rig-rule',
+  title: 'A rule the audit runs',
+  constraintIds: [],
+  reasonCodes: [],
+  exercise: {
+    minimums: { thingsExamined: 1 },
+    coverage: {},
+    identifierKinds: [],
+    rationale: 'a rule that examined nothing has not examined this schedule',
+  },
+  rationale: 'exists so the engine has something to run',
+  evaluate: () => ({ subjects: [], findings: [], counters: { thingsExamined: 1 }, matched: {} }),
+  ...overrides,
+});
+
+/** A schedule small enough to reason about and broken in named ways. */
+const rigGame = (overrides = {}) => ({
+  id: 'g1',
+  date: RIG_DATE,
+  startMinutes: 540,
+  endMinutes: 600,
+  venueId: 'rig',
+  surfaceId: 'rig/half',
+  format: '9v9',
+  divisionLabel: 'U12B',
+  homeTeamId: 'team-a',
+  awayTeamId: 'team-b',
+  homeLabel: 'team-a',
+  awayLabel: 'team-b',
+  ...overrides,
+});
+const rigSchedule = (overrides = {}) => ({
+  name: 'rig schedule',
+  games: [rigGame(), rigGame({ id: 'g2', startMinutes: 600, endMinutes: 660 })],
+  commitments: [],
+  teams: [
+    { id: 'team-a', divisionLabel: 'U12B', groupLabel: 'U12B' },
+    { id: 'team-b', divisionLabel: 'U12B', groupLabel: 'U12B' },
+    { id: 'team-c', divisionLabel: 'U12B', groupLabel: 'U12B' },
+  ],
+  teamUniverse: ['team-a', 'team-b', 'team-c'],
+  personUniverse: ['person-1'],
+  divisionUniverse: ['U12B'],
+  surfaceUniverse: ['rig/half'],
+  venueUniverse: ['rig'],
+  placeholderLabels: ['-'],
+  ...overrides,
+});
+
+harvest('buildRuleEngine(no rules)', buildRuleEngine({ name: 'rig', rules: [] }));
+harvest(
+  'buildRuleEngine(duplicate id, unknown constraint)',
+  buildRuleEngine({
+    name: 'rig',
+    rules: [
+      ruleDefinition(),
+      ruleDefinition({ constraintIds: ['no-such-constraint'], title: 'The same id again' }),
+    ],
+  })
+);
+
+const brokenEngine = buildRuleEngine({
+  name: 'rig',
+  rules: [
+    ruleDefinition({
+      id: 'examined-too-little',
+      evaluate: () => ({
+        subjects: [],
+        findings: [],
+        counters: { thingsExamined: 0 },
+        matched: {},
+      }),
+    }),
+    ruleDefinition({
+      id: 'counted-nothing',
+      evaluate: () => ({ subjects: [], findings: [], counters: {}, matched: {} }),
+    }),
+    ruleDefinition({
+      id: 'covered-too-little',
+      exercise: {
+        minimums: {},
+        coverage: { divisionsExamined: 'division' },
+        identifierKinds: [],
+        rationale: 'a rule that skipped a division has not judged the season',
+      },
+      evaluate: () => ({
+        subjects: [],
+        findings: [],
+        counters: { divisionsExamined: 0 },
+        matched: { divisionsExamined: [] },
+      }),
+    }),
+    ruleDefinition({
+      id: 'matched-a-placeholder',
+      exercise: {
+        minimums: { teamsExamined: 1 },
+        coverage: {},
+        identifierKinds: ['team'],
+        rationale: 'a rule reading labels as ids reports violations that do not exist',
+      },
+      evaluate: () => ({
+        subjects: [],
+        findings: [],
+        counters: { teamsExamined: 2 },
+        matched: { team: ['-', 'not-a-team'] },
+      }),
+    }),
+    ruleDefinition({
+      id: 'threw',
+      evaluate: () => {
+        throw new Error('the audit made this rule throw on purpose');
+      },
+    }),
+  ],
+});
+const brokenRun = harvest(
+  'runRuleEngine(rules that cannot prove they looked)',
+  runRuleEngine(rigSchedule(), { registry, resources, engine: brokenEngine })
+);
+harvest('buildValidationReport(a run nothing exercised)', buildValidationReport(brokenRun, {}));
+harvest(
+  'runRuleEngine(an empty schedule)',
+  runRuleEngine(rigSchedule({ games: [], teams: [], teamUniverse: [] }), { registry, resources })
+);
+
+/** The standing rules over a schedule that breaks each of them. */
+harvest(
+  'runRuleEngine(a lopsided, incomplete, back-to-back schedule)',
+  runRuleEngine(
+    rigSchedule({
+      commitments: [
+        {
+          id: 'c1',
+          personId: 'person-1',
+          date: RIG_DATE,
+          startMinutes: 540,
+          endMinutes: 600,
+          venueId: 'rig',
+          surfaceId: 'rig/half',
+          teamId: 'team-a',
+          gameId: 'g1',
+        },
+        {
+          id: 'c2',
+          personId: 'person-1',
+          date: RIG_DATE,
+          startMinutes: 545,
+          endMinutes: 605,
+          venueId: 'elsewhere',
+          surfaceId: null,
+          teamId: 'team-b',
+          gameId: 'g2',
+        },
+      ],
+    }),
+    { registry, resources }
+  )
+);
+harvest(
+  'runRuleEngine(conflicts piled on one team)',
+  runRuleEngine(
+    rigSchedule({
+      personUniverse: ['person-1', 'person-2'],
+      teams: [
+        {
+          id: 'team-a',
+          divisionLabel: 'U12B',
+          groupLabel: 'U12B',
+          personIds: ['person-1', 'person-2'],
+        },
+        {
+          id: 'team-b',
+          divisionLabel: 'U12B',
+          groupLabel: 'U12B',
+          personIds: ['person-1', 'person-2'],
+        },
+        {
+          id: 'team-c',
+          divisionLabel: 'U12B',
+          groupLabel: 'U12B',
+          personIds: ['person-1', 'person-2'],
+        },
+      ],
+      commitments: [
+        ['person-1', 'team-a', 540, 600, 'c1'],
+        ['person-1', 'team-b', 545, 605, 'c2'],
+        ['person-2', 'team-a', 700, 760, 'c3'],
+        ['person-2', 'team-b', 705, 765, 'c4'],
+      ].map(([personId, teamId, startMinutes, endMinutes, id]) => ({
+        id: /** @type {string} */ (id),
+        personId: /** @type {string} */ (personId),
+        date: RIG_DATE,
+        startMinutes: /** @type {number} */ (startMinutes),
+        endMinutes: /** @type {number} */ (endMinutes),
+        venueId: 'rig',
+        surfaceId: 'rig/half',
+        teamId: /** @type {string} */ (teamId),
+        gameId: /** @type {string} */ (id),
+      })),
+    }),
+    { registry, resources }
+  )
+);
+harvest(
+  'runRuleEngine(the same schedule, no turnover policy)',
+  runRuleEngine(rigSchedule(), { registry: registryOf(constraintRecord()), resources })
+);
+
+/* -- people --------------------------------------------------------------- */
+
+const person = (id, givenName, familyName) => ({
+  id,
+  givenName,
+  familyName,
+  displayName: `${givenName} ${familyName}`,
+  aliases: [],
+});
+const assignment = (personId, teamId, slot, overrides = {}) => ({
+  id: `${teamId}|${personId}|${slot}`,
+  personId,
+  teamId,
+  slot,
+  status: ASSIGNMENT_STATUS.ASSIGNED,
+  source: 'the reason-code reachability audit',
+  ...overrides,
+});
+
+harvest(
+  'buildCoachRoster(every assignment declined)',
+  buildCoachRoster({
+    people: [person('p1', 'Ada', 'Stone')],
+    assignments: [assignment('p1', 'team-a', 1, { status: ASSIGNMENT_STATUS.DECLINED })],
+  })
+);
+harvest(
+  'buildCoachRoster(duplicate slot, duplicate person, unknown person, unjudged window)',
+  buildCoachRoster({
+    people: [person('p1', 'Ada', 'Stone'), person('p2', 'Bo', 'Stone')],
+    assignments: [
+      assignment('p1', 'team-a', 1),
+      assignment('p2', 'team-a', 1),
+      assignment('p1', 'team-a', 2),
+      assignment('ghost', 'team-a', 3),
+      assignment('p1', 'team-b', 1, { id: 'windowed', effectiveTo: '2026-09-30' }),
+    ],
+  })
+);
+
+/** A roster whose one team has a coach who is alone on two teams. */
+const soleRoster = buildCoachRoster({
+  people: [person('p1', 'Ada', 'Stone'), person('p2', 'Bo', 'Stone')],
+  assignments: [
+    assignment('p1', 'team-a', 1),
+    assignment('p1', 'team-b', 1),
+    assignment('p2', 'team-c', 1, { status: ASSIGNMENT_STATUS.DECLINED }),
+  ],
+});
+harvest('soleCoachRiskRegister(a coach alone on two teams)', soleCoachRiskRegister(soleRoster));
+harvest(
+  'soleCoachRiskRegister(a roster with no teams at all)',
+  soleCoachRiskRegister(
+    buildCoachRoster({ people: [person('p1', 'Ada', 'Stone')], assignments: [] })
+  )
+);
+
+/** A roster with a co-coach, for the fallback questions. */
+const coveredRoster = buildCoachRoster({
+  people: [person('p1', 'Ada', 'Stone'), person('p2', 'Bo', 'Stone'), person('p3', 'Cy', 'Stone')],
+  assignments: [
+    assignment('p1', 'team-a', 1),
+    assignment('p2', 'team-a', 2),
+    assignment('p1', 'team-b', 1),
+    assignment('p3', 'team-b', 2),
+  ],
+});
+
+const peopleCommitment = (overrides = {}) => ({
+  id: 'c1',
+  personId: 'p1',
+  date: RIG_DATE,
+  startMinutes: 540,
+  endMinutes: 600,
+  venueId: 'rig',
+  surfaceId: 'rig/half',
+  teamId: 'team-a',
+  gameId: 'g1',
+  label: null,
+  source: COMMITMENT_SOURCE.CLUB_FIXTURE,
+  ...overrides,
+});
+
+harvest(
+  'ingestCommitments(an empty batch)',
+  ingestCommitments(createTimelineSet(), [], { source: COMMITMENT_SOURCE.SCRIMMAGE })
+);
+const openSet = ingestCommitments(
+  createTimelineSet(),
+  [
+    peopleCommitment(),
+    peopleCommitment({
+      id: 'c2',
+      teamId: 'team-b',
+      gameId: 'g2',
+      startMinutes: 590,
+      endMinutes: 650,
+    }),
+    peopleCommitment({
+      id: 'c3',
+      teamId: 'team-b',
+      gameId: 'g3',
+      startMinutes: 900,
+      endMinutes: null,
+    }),
+  ],
+  { source: COMMITMENT_SOURCE.CLUB_FIXTURE }
+);
+harvest('buildPersonDays(a set nobody sealed)', buildPersonDays(openSet));
+harvest('requireSealedTimelines(a set nobody sealed)', requireSealedTimelines(openSet));
+harvest(
+  'sealTimelines(a source that was never ingested)',
+  sealTimelines(openSet, {
+    requiredSources: [COMMITMENT_SOURCE.CLUB_FIXTURE, COMMITMENT_SOURCE.EXTERNAL_FIXTURE],
+  })
+);
+const sealedSet = sealTimelines(openSet, { requiredSources: [COMMITMENT_SOURCE.CLUB_FIXTURE] });
+harvest(
+  'ingestCommitments(appending to a sealed set)',
+  ingestCommitments(sealedSet, [peopleCommitment({ id: 'late' })], {
+    source: COMMITMENT_SOURCE.SCRIMMAGE,
+  })
+);
+harvest('evaluatePersonDays(a governed registry)', evaluatePersonDays(sealedSet, { registry }));
+harvest(
+  'evaluatePersonDays(a registry with no gap policy)',
+  evaluatePersonDays(sealedSet, { registry: registryOf(constraintRecord()) })
+);
+harvest(
+  'evaluatePersonDays(a set with no commitments at all)',
+  evaluatePersonDays(
+    sealTimelines(
+      ingestCommitments(createTimelineSet(), [], { source: COMMITMENT_SOURCE.CLUB_FIXTURE }),
+      {
+        requiredSources: [COMMITMENT_SOURCE.CLUB_FIXTURE],
+      }
+    ),
+    { registry }
+  )
+);
+
+/** Declared personal constraints, and the must-attend verdicts they produce. */
+const personalSource = {
+  setBy: 'the reason-code reachability audit',
+  setAt: '2026-08-20',
+  reference: 'tests/reasonCodeReachability.test.js',
+};
+const personalPolicy = buildPersonalConstraintPolicy({
+  constraints: [
+    {
+      id: 'cannot-split',
+      personId: 'p1',
+      kind: 'cannot-split',
+      teamIds: ['team-a'],
+      fromDate: RIG_DATE,
+      toDate: RIG_DATE,
+      rationale: 'the audit needs a declared personal constraint to read',
+      source: personalSource,
+    },
+    {
+      id: 'unavailable',
+      personId: 'p2',
+      kind: 'unavailable',
+      rationale: 'a co-coach the operator recorded as unavailable is not a fallback',
+      source: personalSource,
+    },
+    {
+      id: 'unavailable-too',
+      personId: 'p3',
+      kind: 'unavailable',
+      rationale: 'the only other coach of the released team is unavailable as well',
+      source: personalSource,
+    },
+    {
+      id: 'about-a-stranger',
+      personId: 'nobody-on-the-roster',
+      kind: 'unavailable',
+      rationale: 'a constraint about somebody the roster does not know',
+      source: personalSource,
+    },
+  ],
+});
+harvest(
+  'deriveMustAttend(no date to judge the window with)',
+  deriveMustAttend({ roster: coveredRoster, policy: personalPolicy })
+);
+harvest(
+  'deriveMustAttend(no declared policy at all)',
+  deriveMustAttend({ roster: coveredRoster, date: RIG_DATE })
+);
+const mustAttend = deriveMustAttend({
+  roster: coveredRoster,
+  policy: personalPolicy,
+  date: RIG_DATE,
+});
+harvest('deriveMustAttend(dated)', mustAttend);
+
+const clashes = findAttendanceClashes(sealedSet);
+harvest(
+  'resolveAttendance(a clash with a co-coach recorded unavailable)',
+  resolveAttendance({
+    roster: coveredRoster,
+    timelines: sealedSet,
+    clashes,
+    mustAttend: mustAttend.byPerson,
+    policy: personalPolicy,
+  })
+);
+harvest(
+  'resolveAttendance(a clash on a roster nobody else covers)',
+  resolveAttendance({ roster: soleRoster, timelines: sealedSet, clashes })
+);
+/** A second rig where the ranks differ, and one commitment names no rostered team. */
+const rankedRoster = buildCoachRoster({
+  people: [person('p1', 'Ada', 'Stone'), person('p2', 'Bo', 'Stone')],
+  assignments: [
+    assignment('p1', 'team-a', 1),
+    assignment('p1', 'team-b', 2),
+    assignment('p2', 'team-b', 1),
+  ],
+});
+const rankedSet = sealTimelines(
+  ingestCommitments(
+    createTimelineSet(),
+    [
+      peopleCommitment(),
+      peopleCommitment({
+        id: 'c2',
+        teamId: 'team-b',
+        gameId: 'g2',
+        startMinutes: 590,
+        endMinutes: 650,
+      }),
+      peopleCommitment({
+        id: 'c3',
+        teamId: 'team-z',
+        gameId: 'g3',
+        startMinutes: 595,
+        endMinutes: 655,
+      }),
+    ],
+    { source: COMMITMENT_SOURCE.CLUB_FIXTURE }
+  ),
+  { requiredSources: [COMMITMENT_SOURCE.CLUB_FIXTURE] }
+);
+harvest(
+  'resolveAttendance(ranks that differ, and a team the roster does not know)',
+  resolveAttendance({
+    roster: rankedRoster,
+    timelines: rankedSet,
+    clashes: findAttendanceClashes(rankedSet),
+  })
+);
+harvest(
+  'resolveAttendance(no clashes to resolve)',
+  resolveAttendance({
+    roster: coveredRoster,
+    timelines: sealTimelines(
+      ingestCommitments(createTimelineSet(), [], { source: COMMITMENT_SOURCE.CLUB_FIXTURE }),
+      { requiredSources: [COMMITMENT_SOURCE.CLUB_FIXTURE] }
+    ),
+    clashes: [],
+  })
+);
+
+/** Identity review: near-duplicate names, then a decision on each proposal. */
+const identityQueue = harvest(
+  'buildIdentityReviewQueue(two spellings of one name)',
+  buildIdentityReviewQueue(
+    [
+      person('p1', 'Ada', 'Stone'),
+      person('p2', 'Adaline', 'Stone'),
+      person('p3', 'Bea', 'Rivers'),
+      person('p4', 'Beatrice', 'Rivers'),
+    ],
+    {
+      assignmentsByPerson: new Map([
+        ['p1', [{ teamId: 'team-a' }]],
+        ['p2', [{ teamId: 'team-b' }]],
+        ['p3', [{ teamId: 'team-c' }]],
+        ['p4', [{ teamId: 'team-c' }]],
+      ]),
+    }
+  )
+);
+harvest(
+  'buildIdentityReviewQueue(one person, so no pair to compare)',
+  buildIdentityReviewQueue([person('p1', 'Ada', 'Stone')])
+);
+harvest(
+  'applyIdentityDecisions(one accepted, one about an entry that is not there)',
+  applyIdentityDecisions(identityQueue, [
+    ...identityQueue.entries.map((entry) => ({
+      entryId: entry.id,
+      state: 'accepted',
+      decidedBy: 'the reason-code reachability audit',
+      decidedAt: '2026-08-20',
+    })),
+    {
+      entryId: 'no-such-entry',
+      state: 'rejected',
+      decidedBy: 'the reason-code reachability audit',
+      decidedAt: '2026-08-20',
+    },
+  ])
+);
+
+/**
+ * The corpus's own roster with one team's coaches declined — incident 10's
+ * shape, built by changing the *input rows*, never the built roster.
+ */
+const rosterRows = loadCoachRoster();
+const uncoachedTeamCode = rosterRows[0].teamCode;
+const uncoachedRoster = buildSeason2026CoachRoster(
+  rosterRows.map((row) =>
+    row.teamCode === uncoachedTeamCode ? { ...row, status: 'Declined' } : row
+  )
+);
+harvest(
+  'soleCoachRiskRegister(the corpus roster, one team declined)',
+  soleCoachRiskRegister(uncoachedRoster)
+);
+harvest(
+  'season2026UncoachedFixtures(the fixtures that team loses)',
+  season2026UncoachedFixtures(season, uncoachedRoster)
+);
+
+/* -- resolve -------------------------------------------------------------- */
+
+const engines = { graph, table: timingTable, calendar, registry, resources };
+const externalChanges = season2026ExternalFixtureChanges(loadExternalFixtures(), schedule);
+/** Derived from the corpus, so a re-dated fixture moves it. */
+const RESOLVE_DATE = [...new Set(externalChanges.map((change) => change.date))].sort()[0];
+const onDate = schedule.games
+  .filter((game) => game.date === RESOLVE_DATE && game.format === '9v9')
+  .sort((a, b) => a.startMinutes - b.startMinutes || a.surfaceId.localeCompare(b.surfaceId));
+const KICKOFFS = [...new Set(onDate.map((game) => game.startMinutes))].sort((a, b) => a - b);
+const movers = onDate.filter((game) => game.startMinutes === KICKOFFS[1]);
+const anchor = onDate[0];
+
+/** The knock-on run: the late 9v9 block asks for the early kickoff it already holds. */
+harvest(
+  'applyChangeRequest(a block that displaces what already stands there)',
+  applyChangeRequest({
+    schedule,
+    changes: movers.map((game) => ({
+      gameId: game.id,
+      date: RESOLVE_DATE,
+      surfaceId: game.surfaceId,
+      startMinutes: KICKOFFS[0],
+      reason: 'the 9v9 block moves instead of the externally published fixture',
+    })),
+    engines,
+    freeze: freezeAllExcept([{ date: RESOLVE_DATE }]),
+    baselineVerification: verification,
+    holdChanges: true,
+    onUnsatisfiable: 'report',
+    changeBudget: 12,
+  })
+);
+harvest(
+  'applyChangeRequest(the same request under a budget of one)',
+  applyChangeRequest({
+    schedule,
+    changes: movers.map((game) => ({
+      gameId: game.id,
+      date: RESOLVE_DATE,
+      surfaceId: game.surfaceId,
+      startMinutes: KICKOFFS[0],
+      reason: 'the same request, under a budget it cannot meet',
+    })),
+    engines,
+    freeze: freezeAllExcept([{ date: RESOLVE_DATE }]),
+    baselineVerification: verification,
+    holdChanges: true,
+    onUnsatisfiable: 'report',
+    changeBudget: 1,
+  })
+);
+harvest(
+  'applyChangeRequest(unknown game, no-op, frozen game, slot off the inventory)',
+  applyChangeRequest({
+    schedule,
+    changes: [
+      {
+        gameId: 'no-such-game',
+        date: RESOLVE_DATE,
+        surfaceId: anchor.surfaceId,
+        startMinutes: 600,
+      },
+      {
+        gameId: anchor.id,
+        date: anchor.date,
+        surfaceId: anchor.surfaceId,
+        startMinutes: anchor.startMinutes,
+      },
+      {
+        gameId: /** @type {Object} */ (schedule.games.find((game) => game.date !== RESOLVE_DATE))
+          .id,
+        date: RESOLVE_DATE,
+        surfaceId: anchor.surfaceId,
+        startMinutes: KICKOFFS[0],
+      },
+      {
+        gameId: movers[0].id,
+        date: RESOLVE_DATE,
+        surfaceId: movers[0].surfaceId,
+        startMinutes: 3,
+      },
+    ],
+    engines,
+    freeze: freezeAllExcept([{ date: RESOLVE_DATE }]),
+    baselineVerification: verification,
+    onUnsatisfiable: 'report',
+    verify: false,
+  })
+);
+harvest(
+  'applyChangeRequest(a request that asks for the slot it already holds, weights overridden)',
+  applyChangeRequest({
+    schedule,
+    changes: [
+      {
+        gameId: anchor.id,
+        date: anchor.date,
+        surfaceId: anchor.surfaceId,
+        startMinutes: anchor.startMinutes,
+        reason: 'a request that asks for the slot the game already holds',
+      },
+    ],
+    engines,
+    freeze: freezeAllExcept([{ date: RESOLVE_DATE }]),
+    baselineVerification: verification,
+    verify: false,
+    objectiveWeights: { ...RESOLVE_OBJECTIVE_WEIGHTS, [RESOLVE_OBJECTIVE_TERM.CHANGED_GAME]: 0 },
+  })
+);
+harvest(
+  'applyChangeRequest(a stage that moves a frozen game without asking)',
+  applyChangeRequest({
+    schedule: { ...schedule, games: onDate },
+    changes: [
+      {
+        gameId: movers[0].id,
+        date: RESOLVE_DATE,
+        surfaceId: movers[0].surfaceId,
+        startMinutes: KICKOFFS[0],
+        reason: 'a real request, so the leaky stage below has a run to leak into',
+      },
+    ],
+    engines,
+    baselineVerification: verification,
+    verify: false,
+    extraStages: [
+      {
+        id: 'leaky-repair',
+        title: 'A pass that swaps without asking, exactly as incident 2 records',
+        freezeContract: {
+          mutationKinds: [MOVE_KIND.RELOCATE],
+          probe: STAGE_PROBE.OFFERS_FROZEN_MOVE,
+          claim: 'claims to honour the freeze and does not consult it at all',
+        },
+        run(state) {
+          const target = /** @type {string} */ (state.gameIds.find((id) => state.games[id]));
+          const game = state.games[target];
+          return {
+            ...state,
+            games: {
+              ...state.games,
+              [target]: { ...game, startMinutes: game.startMinutes + 5 },
+            },
+          };
+        },
+      },
+    ],
+  })
+);
+harvest(
+  'commitResolve(a run nothing verified)',
+  commitResolve(
+    applyChangeRequest({
+      schedule: { ...schedule, games: onDate },
+      changes: [
+        {
+          gameId: movers[0].id,
+          date: RESOLVE_DATE,
+          surfaceId: movers[0].surfaceId,
+          startMinutes: KICKOFFS[0],
+          reason: 'a request to commit without a verification behind it',
+        },
+      ],
+      engines,
+      verify: false,
+    }),
+    {
+      acknowledged: true,
+      committedBy: 'the reason-code reachability audit',
+      acceptFindingCodes: [RESOLVE_REASON.RESOLVE_REPORT_QUALITY_UNMEASURED],
+    }
+  )
+);
+
+harvest(
+  'applyChangeRequest(a stage that writes without declaring it will)',
+  applyChangeRequest({
+    schedule: { ...schedule, games: onDate },
+    changes: [
+      {
+        gameId: movers[0].id,
+        date: RESOLVE_DATE,
+        surfaceId: movers[0].surfaceId,
+        startMinutes: KICKOFFS[0],
+        reason: 'a real request, so the silent stage below has a run to write into',
+      },
+    ],
+    engines,
+    baselineVerification: verification,
+    verify: false,
+    extraStages: [
+      {
+        id: 'silent-repair',
+        title: 'A pass that declares it writes nothing and then writes',
+        freezeContract: {
+          mutationKinds: [],
+          probe: STAGE_PROBE.WRITES_NOTHING,
+          claim: 'claims to write nothing at all',
+        },
+        run(state) {
+          const target = /** @type {string} */ (state.gameIds.find((id) => state.games[id]));
+          const game = state.games[target];
+          return {
+            ...state,
+            games: { ...state.games, [target]: { ...game, startMinutes: game.startMinutes + 5 } },
+          };
+        },
+      },
+    ],
+  })
+);
+harvest(
+  'applyChangeRequest(a stage that offers a move onto a slot no game ever used)',
+  applyChangeRequest({
+    schedule: { ...schedule, games: onDate },
+    changes: [
+      {
+        gameId: movers[0].id,
+        date: RESOLVE_DATE,
+        surfaceId: movers[0].surfaceId,
+        startMinutes: KICKOFFS[0],
+        reason: 'a real request, so the stage below has a run to move inside',
+      },
+    ],
+    engines,
+    baselineVerification: verification,
+    verify: false,
+    extraStages: [
+      {
+        id: 'off-inventory-repair',
+        title: 'A pass that offers a slot the inventory does not hold',
+        freezeContract: {
+          mutationKinds: [MOVE_KIND.RELOCATE],
+          probe: STAGE_PROBE.OFFERS_FROZEN_MOVE,
+          claim: 'offers frozen games moves and expects the freeze to refuse them',
+        },
+        run(state) {
+          // Both writes below are refused and both throw. The ledger already
+          // carries the finding by then — that is the only way to observe
+          // either code — so the stage keeps the state it was handed.
+          for (const [gameId, slot] of [
+            [
+              movers[0].id,
+              { date: RESOLVE_DATE, surfaceId: 'a-surface-no-game-ever-used', startMinutes: 7 },
+            ],
+            [
+              /** @type {Object} */ (onDate.find((game) => game.id !== movers[0].id)).id,
+              { date: RESOLVE_DATE, surfaceId: anchor.surfaceId, startMinutes: KICKOFFS[0] },
+            ],
+          ]) {
+            try {
+              applyMove(
+                state,
+                {
+                  gameId: /** @type {string} */ (gameId),
+                  kind: MOVE_KIND.RELOCATE,
+                  to: slot,
+                  reason: 'the audit asks what the writer says when it refuses',
+                },
+                'off-inventory-repair'
+              );
+            } catch {
+              // Refused, as designed; the ledger holds the reason.
+            }
+          }
+          return state;
+        },
+      },
+    ],
+  })
+);
+harvest(
+  'applyChangeRequest(a whole wave onto one slot, with nowhere for the losers to go)',
+  applyChangeRequest({
+    schedule: { ...schedule, games: onDate },
+    changes: onDate.map((game) => ({
+      gameId: game.id,
+      date: RESOLVE_DATE,
+      surfaceId: anchor.surfaceId,
+      startMinutes: KICKOFFS[0],
+      reason: 'every 9v9 game asks for one slot, so all but one must go somewhere else',
+    })),
+    engines,
+    baselineVerification: verification,
+    holdChanges: true,
+    onUnsatisfiable: 'report',
+    verify: false,
+  })
+);
+
+/**
+ * A rig where a displaced game has nowhere legal to stand: two surfaces, one of
+ * which is too small for 11v11, and a frozen 11v11 game holding the only other
+ * slot on the big pitch. Built from inputs — a graph, a timing table, a
+ * schedule — through the same constructors the season adapter uses.
+ */
+const resolveRig = buildFacilityGraph({
+  venues: [{ id: 'rig', name: 'Rig Park' }],
+  surfaces: [
+    {
+      id: 'rig/big',
+      venueId: 'rig',
+      name: 'Big',
+      sizes: ['11v11', '9v9'],
+      lined: ['11v11', '9v9'],
+    },
+    { id: 'rig/small', venueId: 'rig', name: 'Small', sizes: ['9v9'], lined: ['9v9'] },
+  ],
+});
+const resolveRigTable = buildFormatTimingTable({
+  formats: [
+    rigFormat(),
+    rigFormat({
+      format: '11v11',
+      halfMinutes: 40,
+      halftimeMinutes: { min: 10, max: 10 },
+      occupancyMinutes: { min: 90, max: 90, scheduled: 90 },
+      blockMinutes: 100,
+    }),
+  ],
+  warmupPolicy: {},
+});
+const resolveRigEngines = {
+  graph: resolveRig,
+  table: resolveRigTable,
+  calendar: openCalendar,
+  registry,
+  resources: {
+    graph: resolveRig,
+    timingTable: resolveRigTable,
+    calendar: openCalendar,
+    venueComplexes,
+  },
+};
+const tbdGame = (id, surfaceId, startMinutes, format, endMinutes) => ({
+  id,
+  date: RIG_DATE,
+  startMinutes,
+  endMinutes,
+  venueId: 'rig',
+  surfaceId,
+  format,
+  divisionLabel: 'U12B',
+  homeTeamId: `${id}-home`,
+  awayTeamId: `${id}-away`,
+  homeLabel: `${id}-home`,
+  awayLabel: `${id}-away`,
+});
+const tbdSchedule = rigSchedule({
+  games: [
+    tbdGame('small-nine', 'rig/small', 600, '9v9', 665),
+    tbdGame('big-eleven', 'rig/big', 780, '11v11', 870),
+    tbdGame('frozen-eleven', 'rig/big', 600, '11v11', 690),
+  ],
+  teams: [],
+  teamUniverse: [],
+  surfaceUniverse: ['rig/big', 'rig/small'],
+});
+harvest(
+  'applyChangeRequest(a displaced game with no legal slot left)',
+  applyChangeRequest({
+    schedule: /** @type {Object} */ (tbdSchedule),
+    changes: [
+      {
+        gameId: 'small-nine',
+        date: RIG_DATE,
+        surfaceId: 'rig/big',
+        startMinutes: 780,
+        reason: 'the 9v9 game asks for the big pitch, and the 11v11 there has nowhere to go',
+      },
+    ],
+    engines: resolveRigEngines,
+    freeze: freezeAllExcept([{ gameId: 'small-nine' }, { gameId: 'big-eleven' }]),
+    holdChanges: true,
+    onUnsatisfiable: 'report',
+    verify: false,
+  })
+);
+
+/* -- reserve -------------------------------------------------------------- */
+
+const teamUniverse = season.teams.map((team) => String(team.id));
+const reservedSlots = season2026ReservedSlots(season.combinedGames, { graph, teamUniverse });
+const selectTeamIds = season2026SelectTeamIds(season.teams);
+const unnamedSlots = reservedSlots.filter((slot) => slot.kind === RESERVE_KIND.UNNAMED_FIXTURE);
+const reservationSlots = reservedSlots.filter((slot) => slot.kind === RESERVE_KIND.RESERVATION);
+const capacityInput = season2026ReserveCapacityInput(season, { graph, table: timingTable });
+const capacityEngines = { graph, table: timingTable, calendar, registry };
+
+const capacityReport = harvest(
+  'buildReserveCapacityReport(the published season)',
+  buildReserveCapacityReport(capacityEngines, capacityInput)
+);
+harvest(
+  'buildReserveCapacityReport(a surface no format fits)',
+  buildReserveCapacityReport(capacityEngines, {
+    ...capacityInput,
+    surfaceIds: [season2026SurfaceId('Orchard Park', 'Field 1')],
+    reservedSlots: [],
+  })
+);
+harvest(
+  'buildReserveCapacityReport(the anchor moved off the grid)',
+  buildReserveCapacityReport(capacityEngines, { ...capacityInput, earliestKickoffMinutes: 9 * 60 })
+);
+harvest(
+  'buildReserveCapacityReport(a cap one below what the season reserves)',
+  buildReserveCapacityReport(capacityEngines, {
+    ...capacityInput,
+    cap: { ...capacityInput.cap, limit: SEASON_2026_LEAGUE_CAP_PER_DATE - 1 },
+  })
+);
+harvest(
+  'buildReserveCapacityReport(a requirement the ground cannot meet)',
+  buildReserveCapacityReport(capacityEngines, {
+    ...capacityInput,
+    requirement: {
+      ...capacityInput.requirement,
+      slots: /** @type {number} */ (capacityReport.maxSlots) + 1,
+    },
+  })
+);
+harvest(
+  'buildReserveCapacityReport(a reservation on ground the report does not cover)',
+  buildReserveCapacityReport(
+    capacityEngines,
+    season2026ReserveCapacityInput(
+      {
+        ...season,
+        combinedGames: [
+          ...season.combinedGames,
+          {
+            ...season.combinedGames.find((row) =>
+              String(row.homeLabel ?? '').startsWith('Select Game')
+            ),
+            id: 'constructed#stranded',
+            venue: 'Brookside Park',
+            field: 'Field 1',
+            homeLabel: 'Select Game 101',
+          },
+        ],
+      },
+      { graph, table: timingTable }
+    )
+  )
+);
+
+/** Bindings: one that works, and one of each refusal. */
+const goodBindings = unnamedSlots.slice(0, 4).map((slot, index) => ({
+  slotId: slot.id,
+  homeTeamId: selectTeamIds[(index * 2) % selectTeamIds.length],
+  awayTeamId: selectTeamIds[(index * 2 + 1) % selectTeamIds.length],
+}));
+const boundSlots = harvest(
+  'applySlotBindings(four slots, both sides named)',
+  applySlotBindings(unnamedSlots, goodBindings, { teamUniverse })
+);
+harvest(
+  'applySlotBindings(a slot nobody holds)',
+  applySlotBindings(unnamedSlots, [{ slotId: 'no-such-slot', homeTeamId: selectTeamIds[0] }], {
+    teamUniverse,
+  })
+);
+harvest(
+  'applySlotBindings(a team the roster does not know)',
+  applySlotBindings(
+    unnamedSlots,
+    [{ slotId: unnamedSlots[0].id, homeTeamId: unnamedSlots[0].label }],
+    {
+      teamUniverse,
+    }
+  )
+);
+harvest(
+  'applySlotBindings(a side that already names a team)',
+  applySlotBindings(
+    [
+      makeReservedSlot({
+        ...unnamedSlots[0],
+        homeSide: FIXTURE_SIDE.TEAM,
+        homeTeamId: selectTeamIds[0],
+        homeLabel: null,
+      }),
+    ],
+    [{ slotId: unnamedSlots[0].id, homeTeamId: selectTeamIds[1] }],
+    { teamUniverse }
+  )
+);
+harvest(
+  'applySlotBindings(a team against itself, and a half-filled slot)',
+  applySlotBindings(
+    [unnamedSlots[0]],
+    [{ slotId: unnamedSlots[0].id, homeTeamId: selectTeamIds[0], awayTeamId: selectTeamIds[0] }],
+    { teamUniverse }
+  )
+);
+harvest(
+  'applySlotBindings(one side only)',
+  applySlotBindings(
+    [unnamedSlots[0]],
+    [{ slotId: unnamedSlots[0].id, homeTeamId: selectTeamIds[0] }],
+    {
+      teamUniverse,
+    }
+  )
+);
+{
+  const sameDate = unnamedSlots.filter((slot) => slot.date === unnamedSlots[0].date);
+  const overlapping = sameDate
+    .filter((slot) => slot.startMinutes === sameDate[0].startMinutes)
+    .slice(0, 2);
+  harvest(
+    'applySlotBindings(one team in two overlapping slots)',
+    applySlotBindings(
+      unnamedSlots,
+      overlapping.map((slot) => ({ slotId: slot.id, homeTeamId: selectTeamIds[0] })),
+      { teamUniverse }
+    )
+  );
+  /** The corpus's own untimed reservation, moved beside a slot of the same day. */
+  const unmeasurable = makeReservedSlot({
+    ...reservationSlots[0],
+    id: 'constructed#unmeasurable',
+    date: overlapping[0].date,
+    startMinutes: overlapping[0].startMinutes + 10,
+    endMinutes: null,
+  });
+  harvest(
+    'applySlotBindings(the same team beside a slot of unknown footprint)',
+    applySlotBindings(
+      [overlapping[0], unmeasurable],
+      [
+        { slotId: overlapping[0].id, homeTeamId: selectTeamIds[0] },
+        { slotId: unmeasurable.id, homeTeamId: selectTeamIds[0] },
+      ],
+      { teamUniverse }
+    )
+  );
+}
+{
+  /** A Minis session's absent opponent is not a side waiting to be filled. */
+  const minisRow = /** @type {Object} */ (
+    season.combinedGames.find((row) => row.kind === 'minis_session')
+  );
+  const minisSides = season2026FixtureSides(minisRow, { teamUniverse });
+  const minisSlot = makeReservedSlot({
+    id: String(minisRow.id),
+    kind: RESERVE_KIND.UNNAMED_FIXTURE,
+    label: String(minisRow.homeLabel),
+    date: String(minisRow.date),
+    venueId: 'orchard-park',
+    surfaceId: season2026SurfaceId(minisRow.venue, minisRow.field),
+    startMinutes: Number(minisRow.kickoffMinutes),
+    endMinutes: Number(minisRow.endMinutes),
+    format: String(minisRow.format),
+    homeSide: minisSides.homeSide,
+    awaySide: minisSides.awaySide,
+    homeLabel: String(minisRow.homeLabel),
+  });
+  harvest(
+    'applySlotBindings(a side that cannot be filled at all)',
+    applySlotBindings([minisSlot], [{ slotId: minisSlot.id, awayTeamId: selectTeamIds[0] }], {
+      teamUniverse,
+    })
+  );
+}
+
+/** The footprint comparison, in each of its three answers. */
+const nudged = boundSlots.slots.map((slot, index) => {
+  if (index === 0) return makeReservedSlot({ ...slot, startMinutes: slot.startMinutes + 30 });
+  if (index === 1) {
+    return makeReservedSlot({ ...slot, surfaceId: season2026SurfaceId('Riverbend', 'Turf') });
+  }
+  return slot;
+});
+harvest('checkSlotsUnmoved(nothing moved)', checkSlotsUnmoved(unnamedSlots, boundSlots.slots));
+harvest('checkSlotsUnmoved(two moved)', checkSlotsUnmoved(unnamedSlots, nudged));
+harvest('checkSlotsUnmoved(two dropped)', checkSlotsUnmoved(unnamedSlots, nudged.slice(2)));
+harvest('checkSlotsUnmoved(nothing to compare)', checkSlotsUnmoved([], []));
+
+/** Slot conditions: declared but unchecked, satisfied, blocked, undecidable. */
+{
+  const pitch3 = season2026SurfaceId('Alder Park', 'Pitch 3');
+  const pitch2 = season2026SurfaceId('Alder Park', 'Pitch 2');
+  const bookings = season2026ReserveBookings(season.combinedGames, {
+    excludeIds: reservedSlots.map((slot) => slot.id),
+  });
+  const onPitch3 = unnamedSlots.filter((slot) => slot.surfaceId === pitch3);
+  harvest('describeSlotCondition(stored, never checked)', describeSlotCondition(onPitch3[0]));
+  for (const slot of onPitch3.slice(0, 3)) {
+    harvest(
+      'evaluateSlotCondition(the neighbour is idle)',
+      evaluateSlotCondition(graph, slot, bookings, { reserved: true })
+    );
+  }
+  /**
+   * The same held ground moved onto Pitch 2 on a day the rec layer stands on
+   * Pitch 1A/1B, so its condition fails. Searched for rather than dated by
+   * hand: a re-dated corpus moves the day, and a `find` on a literal date would
+   * return `undefined` and take the whole audit down at module scope.
+   */
+  const contended = (() => {
+    for (const slot of onPitch3) {
+      const moved = makeReservedSlot({
+        ...slot,
+        id: `${slot.id}#control`,
+        surfaceId: pitch2,
+        condition: conditionForSurface(graph, pitch2),
+      });
+      if (
+        evaluateSlotCondition(graph, moved, bookings, { reserved: true }).verdict ===
+        CONDITION_VERDICT.BLOCKED
+      ) {
+        return slot;
+      }
+    }
+    return null;
+  })();
+  if (contended === null) {
+    throw new Error(
+      'reason-code audit: no reserved Pitch 3 slot in the corpus lands on a day the rec layer occupies the ground Pitch 2 overlaps; the driver for SLOT_CONDITION_BLOCKED needs rebuilding'
+    );
+  }
+  for (const reserved of [true, false]) {
+    harvest(
+      `evaluateSlotCondition(the neighbour is busy, reserved: ${reserved})`,
+      evaluateSlotCondition(
+        graph,
+        makeReservedSlot({
+          ...contended,
+          id: `${contended.id}#control-${reserved}`,
+          surfaceId: pitch2,
+          condition: conditionForSurface(graph, pitch2),
+        }),
+        bookings,
+        { reserved }
+      )
+    );
+  }
+  harvest(
+    'evaluateSlotCondition(a booking of unknown footprint)',
+    evaluateSlotCondition(
+      graph,
+      reservationSlots[0],
+      season2026ReserveBookings(season.combinedGames, { excludeIds: [reservationSlots[0].id] }),
+      { reserved: true }
+    )
+  );
+}
+
+/** Fixture accounting, in each of its answers. */
+const unplacedFixture = makeUnplacedFixture({
+  fixtureId: 'constructed-1',
+  label: 'constructed v control',
+  reason: 'no candidate slot on the date was legal for it',
+});
+harvest(
+  'accountForFixtures(one fixture carried as TIME TBD)',
+  accountForFixtures({
+    expectedFixtureIds: ['constructed-1'],
+    placedFixtureIds: [],
+    unplaced: [unplacedFixture],
+    expectedSource: 'the reason-code reachability audit',
+  })
+);
+harvest(
+  'accountForFixtures(one fixture nobody accounted for)',
+  accountForFixtures({
+    expectedFixtureIds: ['constructed-1', 'constructed-missing'],
+    placedFixtureIds: [],
+    unplaced: [unplacedFixture],
+  })
+);
+harvest(
+  'accountForFixtures(a reason that is only whitespace)',
+  accountForFixtures({
+    expectedFixtureIds: ['constructed-blank'],
+    placedFixtureIds: [],
+    unplaced: [
+      makeUnplacedFixture({ fixtureId: 'constructed-blank', label: 'a v b', reason: '   ' }),
+    ],
+  })
+);
+harvest(
+  'accountForFixtures(a fixture both placed and unplaced)',
+  accountForFixtures({
+    expectedFixtureIds: ['constructed-1'],
+    placedFixtureIds: ['constructed-1'],
+    unplaced: [unplacedFixture],
+  })
+);
+harvest(
+  'accountForFixtures(nothing reconciled at all)',
+  accountForFixtures({ expectedFixtureIds: [], placedFixtureIds: [], unplaced: [] })
+);
+harvest(
+  'publicationRowsFor(a bound slot, an unbound one and an unplaced fixture)',
+  publicationRowsFor({
+    slots: [unnamedSlots[0], boundSlots.slots[0]],
+    unplaced: [unplacedFixture],
+  })
+);
+harvest(
+  'publicationCoverageFindings(a projection missing rows)',
+  publicationCoverageFindings(
+    { slots: unnamedSlots.slice(0, 2), unplaced: [unplacedFixture] },
+    publicationRowsFor({ slots: [], unplaced: [] }).rows
+  )
+);
+
+/* -- attribution ---------------------------------------------------------- */
+
+/** The later of the corpus's two negotiated external kickoffs — incident 3. */
+const attributionExternal = [
+  ...externalChanges.filter(
+    (change) =>
+      /** @type {Object} */ (schedule.games.find((game) => game.id === change.gameId))
+        .startMinutes !== change.startMinutes
+  ),
+].sort((a, b) => b.startMinutes - a.startMinutes)[0];
+
+/**
+ * The over-constrained placement, built exactly as `tests/attribution.test.js`
+ * builds it: two corpus games on one surface, one moved to the minute its
+ * venue's permit closes and the other asked to stand on top of it.
+ */
+const overConstrained = (() => {
+  /** @type {Map<string, { date: string, surfaceId: string, venueId: string, games: Object[] }>} */
+  const groups = new Map();
+  for (const game of schedule.games) {
+    if (game.endMinutes === null) continue;
+    const key = `${game.date}|${game.surfaceId}`;
+    if (!groups.has(key)) {
+      groups.set(key, {
+        date: game.date,
+        surfaceId: game.surfaceId,
+        venueId: game.venueId,
+        games: [],
+      });
+    }
+    /** @type {Object} */ (groups.get(key)).games.push(game);
+  }
+  /** @type {Array<Object>} */
+  const candidates = [];
+  for (const { date, surfaceId, venueId, games } of groups.values()) {
+    if (games.length < 2) continue;
+    if (resolveLighting(graph, calendar, surfaceId).lit) continue;
+    const permit = resolvePermitWindow(calendar, { venueId, date });
+    if (permit.window === null || permit.window.closeMinutes === null) continue;
+    candidates.push({
+      date,
+      surfaceId,
+      venueId,
+      closeMinutes: permit.window.closeMinutes,
+      games: [...games].sort((a, b) => a.startMinutes - b.startMinutes),
+    });
+  }
+  candidates.sort(
+    (a, b) =>
+      b.games.length - a.games.length ||
+      b.date.localeCompare(a.date) ||
+      a.surfaceId.localeCompare(b.surfaceId)
+  );
+  const chosen = candidates[0];
+  const [movedAnchor, subject] = chosen.games;
+  return {
+    subject,
+    slot: { date: chosen.date, surfaceId: chosen.surfaceId, startMinutes: chosen.closeMinutes },
+    stackedContext: buildAttributionContext({
+      graph,
+      table: timingTable,
+      calendar,
+      registry,
+      venueComplexes,
+      verification,
+      roster,
+      schedule: {
+        ...schedule,
+        games: schedule.games.map((game) =>
+          game.id === movedAnchor.id
+            ? {
+                ...game,
+                startMinutes: chosen.closeMinutes,
+                endMinutes:
+                  chosen.closeMinutes +
+                  /** @type {number} */ (movedAnchor.endMinutes - movedAnchor.startMinutes),
+              }
+            : game
+        ),
+      },
+    }),
+  };
+})();
+
+harvest(
+  'buildAttributionContext(without the verification, travel or roster)',
+  buildAttributionContext({ graph, table: timingTable, calendar, registry, schedule })
+);
+harvest(
+  'explainGame(a game the schedule does not hold)',
+  explainGame(context, { gameId: 'not-a-game' })
+);
+harvest(
+  'explainTeamConflict(a team the schedule does not hold)',
+  explainTeamConflict(context, { teamId: 'not-a-team' })
+);
+harvest(
+  'explainTeamConflict(a team with nothing to report)',
+  explainTeamConflict(context, {
+    teamId: /** @type {string} */ (
+      schedule.teamUniverse.find(
+        (teamId) =>
+          !(
+            /** @type {Object} */ (context.travel).transitions.some(
+              (transition) =>
+                (transition.from.teamId === teamId || transition.to.teamId === teamId) &&
+                transition.findings.some((finding) => finding.severity !== 'info')
+            )
+          )
+      )
+    ),
+  })
+);
+
+/** The alternatives: one that is a no-op, one that is blocked, one that is legal. */
+const attributionSubject = schedule.games[0];
+harvest(
+  'explainKickoffTime(the time it already holds)',
+  explainKickoffTime(context, {
+    gameId: attributionSubject.id,
+    insteadOfMinutes: attributionSubject.startMinutes,
+  })
+);
+harvest(
+  'explainKickoffTime(the time the other league published)',
+  explainKickoffTime(context, {
+    gameId: attributionExternal.gameId,
+    insteadOfMinutes: attributionExternal.startMinutes,
+    insteadOfSurfaceId: attributionExternal.surfaceId,
+    insteadOfDate: attributionExternal.date,
+  })
+);
+for (const game of schedule.games) {
+  const kickoffs = [
+    ...new Set(
+      schedule.games
+        .filter((entry) => entry.date === game.date && entry.venueId === game.venueId)
+        .map((entry) => entry.startMinutes)
+    ),
+  ];
+  const legal = kickoffs
+    .filter((minutes) => minutes !== game.startMinutes)
+    .map((minutes) => explainKickoffTime(context, { gameId: game.id, insteadOfMinutes: minutes }))
+    .find((answer) => answer.counterfactual.legal);
+  if (legal) {
+    harvest('explainKickoffTime(an alternative that is legal)', legal);
+    break;
+  }
+}
+
+/** The earliest-kickoff question, answered and unanswerable. */
+{
+  const PITCH_2 = season2026SurfaceId('Alder Park', 'Pitch 2');
+  const PITCH_1A = season2026SurfaceId('Alder Park', 'Pitch 1A');
+  const PITCH_1B = season2026SurfaceId('Alder Park', 'Pitch 1B');
+  const busyDate = [
+    ...new Set(
+      schedule.games.filter((game) => game.surfaceId === PITCH_2).map((game) => game.date)
+    ),
+  ]
+    .sort()
+    .filter((date) =>
+      schedule.games.some(
+        (game) =>
+          game.date === date &&
+          game.format === '9v9' &&
+          [PITCH_1A, PITCH_1B].includes(game.surfaceId)
+      )
+    )[0];
+  const searchFloor = Math.max(
+    ...schedule.games
+      .filter((game) => game.surfaceId === PITCH_2 && game.date === busyDate)
+      .map((game) => /** @type {number} */ (game.endMinutes))
+  );
+  harvest(
+    'explainEarliestKickoff(with a stated warm-up)',
+    explainEarliestKickoff(context, {
+      surfaceId: PITCH_2,
+      date: busyDate,
+      format: '11v11',
+      warmupMinutes: SEASON_2026_INCIDENT_8_WARMUP_MINUTES,
+      notBeforeMinutes: searchFloor,
+    })
+  );
+  harvest(
+    'explainEarliestKickoff(with no warm-up length anywhere)',
+    explainEarliestKickoff(context, {
+      surfaceId: PITCH_2,
+      date: busyDate,
+      format: '11v11',
+      notBeforeMinutes: searchFloor,
+    })
+  );
+  /**
+   * A floor nothing had taken yet — searched for across the corpus's own
+   * surface/date pairs rather than guessed at, and asserted found below.
+   */
+  const unboundedFloor = (() => {
+    for (const date of [...new Set(schedule.games.map((game) => game.date))].sort()) {
+      for (const surfaceId of schedule.surfaceUniverse) {
+        const answer = explainEarliestKickoff(context, {
+          surfaceId,
+          date,
+          format: '11v11',
+          warmupMinutes: SEASON_2026_INCIDENT_8_WARMUP_MINUTES,
+          notBeforeMinutes: 8 * 60,
+        });
+        if (answer.kickoffMinutes !== null && answer.bindingKinds.length === 0) return answer;
+      }
+    }
+    return null;
+  })();
+  if (unboundedFloor === null) {
+    // Refused rather than skipped: a search that stopped finding one would
+    // otherwise surface as ATTRIBUTION_BOUND_UNSTATED "unreachable", which
+    // reads as a defect in the attribution module rather than in this file.
+    throw new Error(
+      'reason-code audit: no surface/date in the corpus offers an unbounded warm-up floor any more; the driver for ATTRIBUTION_BOUND_UNSTATED needs rebuilding'
+    );
+  }
+  harvest('explainEarliestKickoff(a floor nothing had taken yet)', unboundedFloor);
+  harvest(
+    'explainLatestKickoff(the last legal kickoff on a busy day)',
+    explainLatestKickoff(context, {
+      gameId: /** @type {Object} */ (
+        schedule.games.find((game) => game.surfaceId === PITCH_2 && game.date === busyDate)
+      ).id,
+    })
+  );
+}
+
+/** The minimal blocking set: over-constrained, illegal, and legal. */
+harvest(
+  'minimalBlockingSet(an over-constrained placement)',
+  minimalBlockingSet(overConstrained.stackedContext, {
+    gameId: overConstrained.subject.id,
+    slot: overConstrained.slot,
+  })
+);
+{
+  const sweep = explainSchedule(context);
+  harvest('explainSchedule(the whole season)', sweep);
+  const illegal = sweep.attributions.find((attribution) => !attribution.legal);
+  if (illegal) {
+    harvest(
+      'minimalBlockingSet(a placement the season already breaks)',
+      minimalBlockingSet(context, { gameId: illegal.gameId })
+    );
+  }
+  const legal = /** @type {Object} */ (sweep.attributions.find((attribution) => attribution.legal));
+  harvest(
+    'minimalBlockingSet(a placement nothing blocks)',
+    minimalBlockingSet(context, { gameId: legal.gameId })
+  );
+}
+
+/**
+ * Two answers the published season cannot produce, asked of contexts built from
+ * *inputs* that can: a registry that governs no reason code at all (the corpus
+ * has eight declared-only constraints, so a registry of nothing but those is a
+ * real arrangement), and a roster nobody filled.
+ */
+const ungovernedContext = buildAttributionContext({
+  graph,
+  table: timingTable,
+  calendar,
+  registry: registryOf(
+    constraintRecord({ enforcement: CONSTRAINT_ENFORCEMENT.DECLARED_ONLY, reasonCodes: [] })
+  ),
+  venueComplexes,
+  verification,
+  roster,
+  schedule: { ...schedule, games: schedule.games.slice(0, 4) },
+});
+harvest(
+  'explainSchedule(a registry that governs no reason code)',
+  explainSchedule(ungovernedContext)
+);
+harvest(
+  'explainGame(the same, one game at a time)',
+  explainGame(ungovernedContext, { gameId: schedule.games[0].id })
+);
+harvest(
+  'explainTeamConflict(a context whose roster nobody filled)',
+  explainTeamConflict(
+    buildAttributionContext({
+      graph,
+      table: timingTable,
+      calendar,
+      registry,
+      venueComplexes,
+      verification,
+      roster: buildCoachRoster({ people: [], assignments: [] }),
+      schedule,
+    }),
+    { teamId: schedule.teamUniverse[0] }
+  )
+);
+
+/**
+ * The same two questions again, this time on rig ground: a calendar that
+ * declares no permit, no sunset and no lighting, and a registry that governs
+ * nothing, which is the emptiest world an attribution context can be built for.
+ */
+const bareContext = buildAttributionContext({
+  graph: rig,
+  table: rigTable,
+  calendar: emptyCalendar,
+  registry: registryOf(
+    constraintRecord({ enforcement: CONSTRAINT_ENFORCEMENT.DECLARED_ONLY, reasonCodes: [] })
+  ),
+  venueComplexes,
+  schedule: /** @type {Object} */ ({
+    ...rigSchedule({ games: [rigGame({ endMinutes: 665 })] }),
+    surfaceUniverse: ['rig/half'],
+    venueUniverse: ['rig'],
+  }),
+});
+harvest('explainSchedule(the emptiest world a context can hold)', explainSchedule(bareContext));
+harvest('explainGame(the same, one game)', explainGame(bareContext, { gameId: 'g1' }));
+
+/* -- publication ---------------------------------------------------------- */
+
+const PUBLICATION_STAMP = '2026-09-01T18:00:00';
+const publicationSnapshotInput = {
+  snapshotId: 'audit-1',
+  label: 'the rec schedule as the audit found it',
+  channel: 'nowhere; this snapshot exists to be checked',
+  publishedAt: '2026-08-01T09:15:00',
+  publishedBy: 'the reason-code reachability audit',
+  columns: ['a', 'b'],
+  rows: [
+    { a: '1', b: 'x' },
+    { a: '2', b: 'y' },
+  ],
+};
+const publicationSnapshot = harvest(
+  'makePublicationSnapshot(two rows)',
+  makePublicationSnapshot(publicationSnapshotInput)
+);
+harvest(
+  'verifySnapshotDigest(a snapshot whose rows no longer match its digest)',
+  // Not a forged internal state: a snapshot is the artefact itself, and reading
+  // one back from wherever it was stored is the path this check exists for.
+  verifySnapshotDigest({
+    ...publicationSnapshot.snapshot,
+    rows: [
+      { a: '1', b: 'x' },
+      { a: '2', b: 'MOVED' },
+    ],
+  })
+);
+
+/** Subject A: the published rec schedule against the workbook. */
+const publishedParity = harvest(
+  'checkParity(the published rec schedule vs the workbook)',
+  checkParity(
+    season2026PublishedParityInput({
+      publishedRecGames: season.recGames,
+      combinedGames: season.combinedGames,
+    })
+  )
+);
+/** Subject B: the external file, which needs the venue mapping to line up. */
+const externalParityInput = season2026ExternalParityInput({
+  externalFixtures: season.externalFixtures,
+  agreedGames: season.combinedByKind[SEASON_2026_ROW_KIND.EXTERNAL_FIXTURE],
+});
+harvest('checkParity(the external file, mapped)', checkParity(externalParityInput));
+harvest(
+  'checkParity(the external file with the mapping switched off)',
+  checkParity({ ...externalParityInput, mappingRules: [] })
+);
+harvest(
+  'checkParity(a mapping rule for a label no row spells that way)',
+  checkParity({
+    ...externalParityInput,
+    mappingRules: [
+      ...externalParityInput.mappingRules,
+      {
+        id: 'audit:no-such-ground',
+        appliesTo: 'published',
+        match: { venue: 'Brookside Park', field: 'Field 1' },
+        set: { field: 'Upper 1' },
+        provenance: 'the reason-code audit: a rule for ground the corpus does not spell this way',
+      },
+    ],
+  })
+);
+
+/** The comparator's own refusals, on constructed rows. */
+const parityRow = (overrides = {}) =>
+  makeParityRow({
+    rowId: 'r',
+    sourceLabel: 'the reason-code reachability audit',
+    date: '2026-08-22',
+    startMinutes: 600,
+    venue: 'V',
+    field: 'F',
+    format: '7v7',
+    division: 'U10B',
+    home: 'H',
+    away: 'A',
+    ...overrides,
+  });
+const paritySubject = {
+  subject: 'constructed for the audit',
+  published: { label: 'published', rows: [parityRow({ rowId: 'p1' })] },
+  current: { label: 'current', rows: [parityRow({ rowId: 'c1' })] },
+  keyFields: [PARITY_FIELD.DATE, PARITY_FIELD.HOME, PARITY_FIELD.AWAY],
+  comparedFields: [PARITY_FIELD.START_MINUTES, PARITY_FIELD.VENUE, PARITY_FIELD.FIELD],
+};
+harvest(
+  'checkParity(nothing on either side)',
+  checkParity({
+    ...paritySubject,
+    published: { label: 'published', rows: [] },
+    current: { label: 'current', rows: [] },
+  })
+);
+harvest(
+  'checkParity(two published rows with one identity)',
+  checkParity({
+    ...paritySubject,
+    published: {
+      label: 'published',
+      rows: [parityRow({ rowId: 'p1' }), parityRow({ rowId: 'p2', startMinutes: 700 })],
+    },
+  })
+);
+harvest(
+  'checkParity(a cell the current side does not carry)',
+  checkParity({
+    ...paritySubject,
+    current: { label: 'current', rows: [parityRow({ rowId: 'c1', venue: null })] },
+  })
+);
+{
+  const partition = compareParityRows({
+    published: paritySubject.published.rows,
+    current: paritySubject.current.rows,
+    keyFields: paritySubject.keyFields,
+    comparedFields: paritySubject.comparedFields,
+  });
+  harvest(
+    'parityPartitionFindings(a row that reached no bucket)',
+    parityPartitionFindings(partition, { publishedCount: 2, currentCount: 1 })
+  );
+}
+
+/** Change notices, from the parity result and the team universe. */
+const noticeTeams = season.teams.map((team) => ({
+  teamId: String(team.id),
+  teamName: String(team.name ?? team.id),
+  division: team.division ?? null,
+  coachName: team.coachId ?? null,
+  coachEmail: null,
+}));
+const noticeNonTeamLabels = [
+  ...new Set(
+    season.combinedGames.flatMap((game) => {
+      /** @type {string[]} */
+      const labels = [];
+      if (game.homeIsPlaceholder || !season.teams.some((team) => team.id === game.homeLabel)) {
+        labels.push(game.homeLabel);
+      }
+      if (!season.teams.some((team) => team.id === game.awayLabel)) labels.push(game.awayLabel);
+      return labels;
+    })
+  ),
+];
+harvest(
+  'buildChangeNotices(with contact columns, which is a disclosure)',
+  buildChangeNotices({
+    parity: publishedParity,
+    teams: noticeTeams,
+    nonTeamLabels: noticeNonTeamLabels,
+    includeContacts: true,
+  })
+);
+harvest(
+  'buildChangeNotices(a participant nothing recognises)',
+  buildChangeNotices({ parity: publishedParity, teams: noticeTeams, nonTeamLabels: [] })
+);
+harvest(
+  'buildChangeNotices(no team universe at all)',
+  buildChangeNotices({ parity: publishedParity, teams: [], nonTeamLabels: noticeNonTeamLabels })
+);
+
+/** The downstream sync registry, in each of its four states. */
+const syncSnapshot = {
+  snapshotId: 'audit-1',
+  label: 'the schedule the audit published',
+  publishedAt: PUBLICATION_STAMP,
+};
+const syncDestination = (overrides = {}) => ({
+  destinationId: 'public-site',
+  name: 'club public site',
+  kind: SYNC_DESTINATION_KIND.PULL,
+  consumes: 'master schedule export',
+  destinationSyncedAt: '2026-08-30T04:00:00',
+  owner: 'communications',
+  ...overrides,
+});
+harvest(
+  'buildSyncRegistryReport(one stale, one current, one never synced)',
+  buildSyncRegistryReport({
+    snapshot: syncSnapshot,
+    destinations: [
+      syncDestination(),
+      syncDestination({
+        destinationId: 'league-portal',
+        name: 'league portal upload',
+        kind: SYNC_DESTINATION_KIND.PUSH,
+        destinationSyncedAt: '2026-09-01T18:05:00',
+        owner: null,
+      }),
+      syncDestination({
+        destinationId: 'printed-programme',
+        name: 'printed programme',
+        kind: SYNC_DESTINATION_KIND.MANUAL,
+        destinationSyncedAt: null,
+        owner: null,
+      }),
+    ],
+  })
+);
+harvest(
+  'buildSyncRegistryReport(no destinations at all)',
+  buildSyncRegistryReport({ snapshot: syncSnapshot, destinations: [] })
+);
+
+/* -------------------------------------------------------------------------- */
+/* The audit                                                                   */
+/* -------------------------------------------------------------------------- */
+
+describe('reason codes :: the audit itself', () => {
+  it('found every frozen reason-code table the source declares', () => {
+    // The registry above is written by hand, so this is the check that keeps it
+    // honest: a new module's table must be audited or explicitly named as
+    // something other than a finding vocabulary. Neither can happen by silence.
+    const registered = new Set([
+      ...Object.keys(TABLES),
+      ...Object.keys(NOT_A_FINDING_TABLE),
+      ...Object.keys(TABLES_AWAITING_DRIVER),
+    ]);
+    const found = scanForFrozenCodeTables();
+    // Meta-assertion: a scan that matched nothing would make the line below
+    // pass while looking at an empty set.
+    expect(found.length).toBeGreaterThanOrEqual(Object.keys(TABLES).length);
+    expect(
+      found.filter((entry) => !registered.has(entry.name)).map((e) => `${e.file}:${e.name}`)
+    ).toEqual([]);
+    // …and every audited or excluded name is a table the scan can still find,
+    // so a deleted table cannot leave a registration behind. The awaiting list
+    // is exempt for the reason stated on it.
+    const foundNames = new Set(found.map((entry) => entry.name));
+    expect(
+      [...Object.keys(TABLES), ...Object.keys(NOT_A_FINDING_TABLE)].filter(
+        (name) => !foundNames.has(name)
+      )
+    ).toEqual([]);
+  });
+
+  it('drove enough production paths for a shortfall to mean something', () => {
+    // Without this, "every code is accounted for" would also be true of a
+    // driver that called nothing and allowlisted everything.
+    expect(emitted.size).toBeGreaterThanOrEqual(260);
+    expect(DECLARED.size).toBeGreaterThanOrEqual(275);
+    expect(UNREACHABLE.length).toBeLessThan(DECLARED.size / 10);
+  });
+
+  it('parks at most one vocabulary as awaiting a driver, each with a stated reason', () => {
+    // The cap is the point: one declared gap is a note to whoever lands that
+    // module, two is this audit quietly ceasing to cover the package.
+    const parked = Object.entries(TABLES_AWAITING_DRIVER);
+    expect(parked.length).toBeLessThanOrEqual(1);
+    for (const [name, reason] of parked) {
+      expect(name).toMatch(/_REASON$/);
+      expect(reason.trim().length).toBeGreaterThanOrEqual(40);
+      expect(Object.keys(TABLES)).not.toContain(name);
+    }
+  });
+
+  it('refuses an allowlist entry with no stated reason, and one for a code nothing declares', () => {
+    // The positive control for the allowlist's own construction: if these
+    // succeeded, the allowlist would be a list of names, which is a way to
+    // silence this file rather than a record of what is known to be broken.
+    expect(() => allow(SOME_DECLARED_CODE, WHY.NO_PRODUCTION_PATH, '')).toThrow(/stated reason/);
+    expect(() => allow(SOME_DECLARED_CODE, WHY.NO_PRODUCTION_PATH, 'because')).toThrow(
+      /stated reason/
+    );
+    expect(() =>
+      allow(
+        SOME_DECLARED_CODE,
+        /** @type {any} */ ('made-up-kind'),
+        'a reason long enough to clear the length floor'
+      )
+    ).toThrow(/no valid WHY/);
+    expect(() =>
+      allow(
+        'NOT_A_DECLARED_CODE',
+        WHY.NO_PRODUCTION_PATH,
+        'a reason long enough to clear the floor'
+      )
+    ).toThrow(/no table declares it/);
+  });
+
+  it('holds no allowlist entry for a code the driver did emit', () => {
+    // An allowlist that outlives its reason is how a fixed hole stays recorded
+    // as a hole. A code that fires must not also be excused.
+    const excused = UNREACHABLE.filter((entry) => emitted.has(entry.code));
+    expect(excused.map((entry) => `${entry.code} (fired by ${emitted.get(entry.code)})`)).toEqual(
+      []
+    );
+    expect(new Set(UNREACHABLE.map((entry) => entry.code)).size).toBe(UNREACHABLE.length);
+  });
+});
+
+describe('reason codes :: every declared code is reachable or registered as unreachable', () => {
+  const allowed = new Map(UNREACHABLE.map((entry) => [entry.code, entry]));
+
+  for (const [name, table] of Object.entries(TABLES)) {
+    it(`${name}: every code fires somewhere, or says why it cannot`, () => {
+      const codes = Object.values(table);
+      // Meta-assertion: an empty table would pass the loop below vacuously.
+      expect(codes.length).toBeGreaterThan(0);
+      const unaccounted = codes
+        .filter((code) => !emitted.has(code) && !allowed.has(code))
+        .sort()
+        .map(
+          (code) =>
+            `${code} was declared by ${name}, no production path this audit drives emits it, and no ` +
+            `UNREACHABLE entry says why. Either drive it from a public entry point above, or register ` +
+            `it with allow('${code}', WHY.NO_PRODUCTION_PATH | WHY.NOT_CONSTRUCTED, '<why>').`
+        );
+      expect(unaccounted).toEqual([]);
+    });
+  }
+
+  it('reports what it excused, so the list is read rather than accumulated', () => {
+    // Not a check — a record. The reasons are the deliverable; this asserts
+    // only that each is a claim somebody can check, and that the two kinds of
+    // claim stay distinguishable.
+    for (const entry of UNREACHABLE) {
+      expect(Object.values(WHY)).toContain(entry.why);
+      expect(entry.reason.length).toBeGreaterThanOrEqual(40);
+      expect(TABLE_OF.has(entry.code)).toBe(true);
+    }
+    const byKind = Object.fromEntries(
+      Object.values(WHY).map((why) => [why, UNREACHABLE.filter((e) => e.why === why).length])
+    );
+    expect(byKind[WHY.NO_PRODUCTION_PATH] + byKind[WHY.NOT_CONSTRUCTED]).toBe(UNREACHABLE.length);
+  });
+});
+
+/**
+ * Source with every comment removed and every string literal left intact.
+ *
+ * Character by character rather than by regex, because both shortcuts are
+ * wrong in this repo: a `//` inside a message would truncate a real line, and
+ * an apostrophe inside a docstring would open a string that never closes. A
+ * table this failed to see would be a table the audit never asks about.
+ *
+ * @param {string} text
+ * @returns {string}
+ */
+function stripComments(text) {
+  let out = '';
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index];
+    if (character === '/' && text[index + 1] === '*') {
+      const close = text.indexOf('*/', index + 2);
+      index = close === -1 ? text.length : close + 1;
+      continue;
+    }
+    if (character === '/' && text[index + 1] === '/') {
+      const newline = text.indexOf('\n', index);
+      index = newline === -1 ? text.length : newline - 1;
+      continue;
+    }
+    if (character === "'" || character === '"' || character === '`') {
+      const quote = character;
+      out += character;
+      index += 1;
+      while (index < text.length && text[index] !== quote) {
+        out += text[index];
+        if (text[index] === '\\') {
+          index += 1;
+          out += text[index] ?? '';
+        }
+        index += 1;
+      }
+      out += text[index] ?? '';
+      continue;
+    }
+    out += character;
+  }
+  return out;
+}
+
+/**
+ * Every exported frozen table in `packages/core/src` whose entries all map a
+ * key to itself — the shape every reason-code table has.
+ *
+ * A static read of the source rather than a sweep of module exports, so it sees
+ * a table declared in a file nothing imports. Its blind spot is a table not
+ * written as an object literal: `constraints/baseSeverity.js` builds its own by
+ * merging four others at load time, and a table built that way would not be
+ * found here. That merge is derived from tables this does find, which is why
+ * the blind spot is tolerable rather than merely unnoticed.
+ *
+ * @returns {Array<{ file: string, name: string }>}
+ */
+function scanForFrozenCodeTables() {
+  /** @param {string} dir @param {string[]} out */
+  const walk = (dir, out) => {
+    for (const entry of readdirSync(dir)) {
+      const full = path.join(dir, entry);
+      if (statSync(full).isDirectory()) walk(full, out);
+      else if (entry.endsWith('.js')) out.push(full);
+    }
+    return out;
+  };
+
+  /**
+   * The literal that follows `Object.freeze(` at `from`, brace-matched rather
+   * than matched to the first `});` — a regex terminator would make discovery
+   * depend on how the table happens to be formatted.
+   *
+   * @param {string} text
+   * @param {number} from - index of the opening `{`
+   * @returns {string|null}
+   */
+  const literalAt = (text, from) => {
+    let depth = 0;
+    for (let index = from; index < text.length; index += 1) {
+      const character = text[index];
+      if (character === '{') depth += 1;
+      else if (character === '}') {
+        depth -= 1;
+        if (depth === 0) return text.slice(from + 1, index);
+      } else if (character === "'" || character === '"' || character === '`') {
+        // Skip the string, so a brace inside a message cannot unbalance this.
+        index += 1;
+        while (index < text.length && text[index] !== character) {
+          index += text[index] === '\\' ? 2 : 1;
+        }
+      }
+    }
+    return null;
+  };
+
+  /** @type {Array<{ file: string, name: string }>} */
+  const found = [];
+  for (const file of walk(CORE, [])) {
+    // Comments go first and once: prose is full of apostrophes, and a scanner
+    // that met one while brace-matching would read the rest of a docstring as
+    // a string literal.
+    const text = stripComments(readFileSync(file, 'utf8'));
+    const pattern = /export const ([A-Z][A-Z0-9_]*) = Object\.freeze\(\{/g;
+    let match;
+    while ((match = pattern.exec(text))) {
+      const body = literalAt(text, pattern.lastIndex - 1);
+      if (body === null) continue;
+      // What is left must be nothing but `KEY: 'VALUE'` pairs, or this is not
+      // a vocabulary table and the audit has no opinion about it.
+      const chunks = body
+        .split(',')
+        .map((chunk) => chunk.trim())
+        .filter((chunk) => chunk.length > 0);
+      const entries = chunks.map((chunk) => /^([A-Za-z_$][\w$]*)\s*:\s*'([^']*)'$/.exec(chunk));
+      if (!entries.length || entries.some((entry) => entry === null)) continue;
+      // A vocabulary is either identity-mapped — the shape every finding table
+      // in this package has — or named `*_REASON`, so a table that aliased one
+      // of its codes to a different string still has to be accounted for
+      // rather than quietly failing the shape test.
+      const named = /_REASON$/.test(match[1]);
+      const identityMapped = entries.every(
+        (entry) =>
+          /** @type {RegExpExecArray} */ (entry)[1] === /** @type {RegExpExecArray} */ (entry)[2]
+      );
+      if (identityMapped || named) {
+        found.push({ file: path.relative(CORE, file), name: match[1] });
+      }
+    }
+  }
+  return found;
+}
