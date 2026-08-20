@@ -78,17 +78,21 @@ export function buildWaiverLedger(input) {
   /** @type {import('./types.js').WaiverFinding[]} */
   const findings = [];
 
+  // Null-prototype, for the same reason `buildConstraintRegistry()` uses one: a
+  // waiver whose id is `constructor` must be storable rather than read as a
+  // duplicate, and `getWaiver(ledger, 'toString')` must answer `null` rather
+  // than a function off `Object.prototype`.
   /** @type {Record<string, import('./types.js').WaiverRecord>} */
-  const byId = {};
+  const byId = Object.create(null);
   /** @type {Record<string, string[]>} */
-  const idsByConstraint = {};
+  const idsByConstraint = Object.create(null);
 
   const waivers = [...parsed.waivers].sort((a, b) => a.id.localeCompare(b.id));
 
   for (const record of waivers) {
     meta.waiversConsidered += 1;
 
-    if (byId[record.id]) {
+    if (Object.hasOwn(byId, record.id)) {
       findings.push(
         makeWaiverFinding(
           WAIVER_REASON.WAIVER_ID_DUPLICATE,
@@ -100,7 +104,9 @@ export function buildWaiverLedger(input) {
     }
 
     byId[record.id] = freezeRecord(/** @type {import('./types.js').WaiverRecord} */ (record));
-    if (!idsByConstraint[record.constraintId]) idsByConstraint[record.constraintId] = [];
+    if (!Object.hasOwn(idsByConstraint, record.constraintId)) {
+      idsByConstraint[record.constraintId] = [];
+    }
     idsByConstraint[record.constraintId].push(record.id);
   }
 
@@ -225,23 +231,27 @@ export function withoutWaiver(ledger, id) {
  *
  * @param {import('./types.js').WaiverLedger} ledger
  * @param {import('../constraints/types.js').ConstraintRegistry} registry
- * @returns {{ findings: import('./types.js').WaiverFinding[], meta: import('./types.js').WaiverMeta, status: string, unknownConstraintIds: string[], notWaivableIds: string[] }}
+ * The two id lists are **waiver** ids, and are named for it: what is unknown or
+ * unwaivable is the constraint each waiver points at, and a list of constraint
+ * ids would not tell a caller which waiver to go and look at.
+ *
+ * @returns {{ findings: import('./types.js').WaiverFinding[], meta: import('./types.js').WaiverMeta, status: string, waiverIdsWithUnknownConstraint: string[], waiverIdsNotWaivable: string[] }}
  */
 export function reconcileWaiverLedger(ledger, registry) {
   const meta = createWaiverMeta();
   /** @type {import('./types.js').WaiverFinding[]} */
   const findings = [];
   /** @type {string[]} */
-  const unknownConstraintIds = [];
+  const waiverIdsWithUnknownConstraint = [];
   /** @type {string[]} */
-  const notWaivableIds = [];
+  const waiverIdsNotWaivable = [];
 
   for (const record of ledger.waivers) {
     meta.waiversConsidered += 1;
     const constraint = getConstraint(registry, record.constraintId);
 
     if (!constraint) {
-      unknownConstraintIds.push(record.id);
+      waiverIdsWithUnknownConstraint.push(record.id);
       findings.push(
         makeWaiverFinding(
           WAIVER_REASON.WAIVER_CONSTRAINT_UNKNOWN,
@@ -259,7 +269,7 @@ export function reconcileWaiverLedger(ledger, registry) {
     meta.constraintsLinked += 1;
 
     if (!constraint.waivable) {
-      notWaivableIds.push(record.id);
+      waiverIdsNotWaivable.push(record.id);
       findings.push(
         makeWaiverFinding(
           WAIVER_REASON.WAIVER_CONSTRAINT_NOT_WAIVABLE,
@@ -290,7 +300,7 @@ export function reconcileWaiverLedger(ledger, registry) {
     findings,
     meta,
     status: deriveWaiverStatus(findings),
-    unknownConstraintIds: unknownConstraintIds.sort(),
-    notWaivableIds: notWaivableIds.sort(),
+    waiverIdsWithUnknownConstraint: waiverIdsWithUnknownConstraint.sort(),
+    waiverIdsNotWaivable: waiverIdsNotWaivable.sort(),
   };
 }

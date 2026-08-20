@@ -120,8 +120,8 @@ export function applyWaivers(subjects, options) {
   // call `reconcileWaiverLedger()` first.
   const reconciliation = reconcileWaiverLedger(ledger, registry);
   const barred = new Set([
-    ...reconciliation.unknownConstraintIds,
-    ...reconciliation.notWaivableIds,
+    ...reconciliation.waiverIdsWithUnknownConstraint,
+    ...reconciliation.waiverIdsNotWaivable,
   ]);
 
   /** @type {import('./types.js').WaiverFinding[]} */
@@ -340,6 +340,7 @@ export function applyWaivers(subjects, options) {
     subjects: results,
     byId,
     findings,
+    ledgerFindings,
     status: deriveWaiverStatus(findings),
     disposition: deriveWaiverDisposition({
       waivedCount: anyWaived ? 1 : 0,

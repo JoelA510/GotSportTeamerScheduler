@@ -139,12 +139,25 @@ export function toSeason2026Schedule(season, options = {}) {
   }
   commitments.sort((a, b) => a.id.localeCompare(b.id));
 
+  // Derived from the **team records** first, and only then widened by the
+  // division column of the counted rows. Deriving it the other way round —
+  // from `game.counted && game.divisionLabel !== null`, the exact filter
+  // `roundRobinRule` applies — made the flagship coverage assertion compare a
+  // set against itself: a division whose rows all vanish left the universe at
+  // the same instant it left the rule's reach, so "the round-robin rule
+  // examined every division" could not fail. The rows still contribute,
+  // because a label such as `BB` that no rostered team belongs to is a
+  // division this schedule genuinely carries and the rule genuinely judges.
   const divisionUniverse = [
-    ...new Set(
-      games
+    ...new Set([
+      ...teams
+        .map((team) => team.divisionLabel)
+        .filter((label) => label !== null)
+        .map((label) => /** @type {string} */ (label)),
+      ...games
         .filter((game) => game.counted && game.divisionLabel !== null)
-        .map((game) => /** @type {string} */ (game.divisionLabel))
-    ),
+        .map((game) => /** @type {string} */ (game.divisionLabel)),
+    ]),
   ].sort();
 
   return /** @type {import('../types.js').Schedule} */ ({

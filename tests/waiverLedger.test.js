@@ -60,6 +60,7 @@ import {
   deriveWaiverDisposition,
   deriveWaiverStatus,
   evaluateCoachTravel,
+  getWaiver,
   isWaived,
   judgeWaiverScope,
   makeWaiverFinding,
@@ -285,6 +286,29 @@ describe('the waiver ledger', () => {
     expect(() => requireWaiver(ledger, 'nope')).toThrow(/no waiver "nope"/);
   });
 
+  it('never answers a lookup with something off Object.prototype', () => {
+    // `byId` and `idsByConstraint` are maps, not objects with a prototype: an
+    // id of `toString` must be absent rather than a function, and a waiver id
+    // of `constructor` must be storable rather than read as a duplicate.
+    const ledger = ledgerOf(
+      makeWaiver({ id: 'constructor', constraintId: 'toString' }),
+      makeWaiver({ id: 'hasOwnProperty', constraintId: 'toString' })
+    );
+    for (const inherited of ['constructor', 'toString', 'hasOwnProperty', '__proto__']) {
+      expect(getWaiver(ledgerOf(makeWaiver()), inherited), inherited).toBeNull();
+      expect(waiversForConstraint(ledgerOf(makeWaiver()), inherited), inherited).toEqual([]);
+    }
+    expect([...ledger.waiverIds].sort()).toEqual(['constructor', 'hasOwnProperty']);
+    expect(ledger.findings.map((finding) => finding.code)).not.toContain(
+      WAIVER_REASON.WAIVER_ID_DUPLICATE
+    );
+    expect(getWaiver(ledger, 'constructor')?.id).toBe('constructor');
+    expect(waiversForConstraint(ledger, 'toString').map((record) => record.id)).toEqual([
+      'constructor',
+      'hasOwnProperty',
+    ]);
+  });
+
   it('reports a duplicate id as blocking, because the loser would vanish', () => {
     const ledger = ledgerOf(makeWaiver(), makeWaiver({ reason: 'a different reason' }));
     const duplicate = ledger.findings.filter(
@@ -321,7 +345,9 @@ describe('the waiver ledger', () => {
   it('refuses a waiver whose constraint the registry does not hold', () => {
     const ledger = ledgerOf(makeWaiver({ constraintId: 'constraint-that-was-renamed' }));
     const reconciled = reconcileWaiverLedger(ledger, registry);
-    expect(reconciled.unknownConstraintIds).toEqual(['test-waiver']);
+    // The field names what it holds: these are *waiver* ids, and the constraint
+    // the waiver names is the thing that is missing.
+    expect(reconciled.waiverIdsWithUnknownConstraint).toEqual(['test-waiver']);
     expect(reconciled.status).toBe(WAIVER_STATUS.REJECTED);
     expect(reconciled.findings[0].code).toBe(WAIVER_REASON.WAIVER_CONSTRAINT_UNKNOWN);
     expect(reconciled.meta.waiversConsidered).toBe(1);
@@ -333,7 +359,7 @@ describe('the waiver ledger', () => {
       ledgerOf(makeWaiver({ constraintId: SUNSET })),
       registry
     );
-    expect(reconciled.notWaivableIds).toEqual(['test-waiver']);
+    expect(reconciled.waiverIdsNotWaivable).toEqual(['test-waiver']);
     expect(reconciled.findings[0].severity).toBe(WAIVER_SEVERITY.BLOCKING);
   });
 

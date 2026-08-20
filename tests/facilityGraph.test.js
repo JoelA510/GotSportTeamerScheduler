@@ -1166,6 +1166,28 @@ describe('facility graph :: venue complexes', () => {
     expect(compared).toBeGreaterThan(0);
   });
 
+  it('never answers a lookup with something off Object.prototype', () => {
+    // `complexes` and `complexIdByVenueId` are maps, not objects with a
+    // prototype: a venue named `toString` must belong to no complex rather than
+    // to a function, and a complex id of `constructor` must be storable rather
+    // than read as a duplicate of Object itself.
+    for (const inherited of ['constructor', 'toString', 'hasOwnProperty', '__proto__']) {
+      expect(getVenueComplex(complexes, inherited), inherited).toBeNull();
+      expect(complexIdOf(complexes, inherited), inherited).toBeNull();
+    }
+    expect(sameVenueComplex(EMPTY_VENUE_COMPLEX_MAP, 'toString', 'valueOf')).toBe(false);
+    const awkward = buildVenueComplexMap({
+      complexes: [
+        { id: 'constructor', name: 'C', venueIds: ['toString', 'valueOf'] },
+        { id: 'hasOwnProperty', name: 'H', venueIds: ['a', 'b'] },
+      ],
+    });
+    expect(awkward.complexIds).toEqual(['constructor', 'hasOwnProperty']);
+    expect(getVenueComplex(awkward, 'constructor')?.name).toBe('C');
+    expect(sameVenueComplex(awkward, 'toString', 'valueOf')).toBe(true);
+    expect(sameVenueComplex(awkward, 'toString', 'a')).toBe(false);
+  });
+
   it('refuses a malformed declaration rather than repairing it', () => {
     const one = { id: 'c1', name: 'C1', venueIds: ['a', 'b'] };
     expect(() => buildVenueComplexMap({ complexes: [one, { ...one }] })).toThrow(

@@ -224,6 +224,9 @@
  * @property {Record<string, WaivedSubject>} byId
  * @property {WaiverFinding[]} findings - every subject's findings, flattened,
  *   plus ledger-level ones
+ * @property {WaiverFinding[]} ledgerFindings - the ledger-level ones alone, for
+ *   a caller that already reports each subject's own findings and would
+ *   otherwise count these twice
  * @property {string} status
  * @property {string} disposition
  * @property {WaiverAnnotation[]} annotations

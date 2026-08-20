@@ -314,6 +314,34 @@ describe('building a registry', () => {
     }).toThrow();
   });
 
+  it('never answers a lookup with something off Object.prototype', () => {
+    // `byId` and `idsByPolicy` are maps, not objects with a prototype: an id of
+    // `toString` must be absent, not a function, and an id of `constructor`
+    // must be storable rather than read as a duplicate of Object itself.
+    for (const inherited of ['constructor', 'toString', 'hasOwnProperty', '__proto__']) {
+      expect(getConstraint(seeded, inherited), inherited).toBeNull();
+      expect(constraintsForPolicy(seeded, inherited), inherited).toEqual([]);
+      expect(seeded.idsByReasonCode[inherited], inherited).toBeUndefined();
+    }
+    const awkward = buildConstraintRegistry({
+      name: 'awkward',
+      source: 'tests/constraintRegistry.test.js',
+      constraints: [
+        makeRecord({ id: 'constructor', policy: 'toString' }),
+        makeRecord({ id: 'hasOwnProperty', policy: 'toString' }),
+      ],
+    });
+    expect([...awkward.constraintIds].sort()).toEqual(['constructor', 'hasOwnProperty']);
+    expect(awkward.findings.map((finding) => finding.code)).not.toContain(
+      CONSTRAINT_REASON.CONSTRAINT_ID_DUPLICATE
+    );
+    expect(getConstraint(awkward, 'constructor')?.id).toBe('constructor');
+    expect(constraintsForPolicy(awkward, 'toString').map((record) => record.id)).toEqual([
+      'constructor',
+      'hasOwnProperty',
+    ]);
+  });
+
   it('answers lookups by id and by policy, and names what it holds when it cannot', () => {
     expect(getConstraint(seeded, 'no-such-constraint')).toBeNull();
     expect(() => requireConstraint(seeded, 'no-such-constraint')).toThrow(/no constraint/);
@@ -710,6 +738,25 @@ describe('effective windows and expiry', () => {
     expect(answer.meta.constraintsConsidered).toBe(2);
   });
 
+  it('answers the temporal question without scope noise it cannot answer', () => {
+    // "Which constraints are live on this date?" names no venue, division or
+    // team, and it is not asking about any: a `CONSTRAINT_SCOPE_UNJUDGED` per
+    // scoped record is noise that makes a clean answer look compromised.
+    // Meta-assertion first: the seeded set does hold scoped records, so a run
+    // with none would make the absence below mean nothing.
+    expect(seeded.stats.scopedCount).toBeGreaterThan(0);
+    const answer = activeConstraintsOn(seeded, '2026-09-12');
+    expect(answer.active.length + answer.inactive.length).toBe(seeded.constraintIds.length);
+    expect(answer.meta.constraintsConsidered).toBe(seeded.constraintIds.length);
+    expect(answer.findings.map((finding) => finding.code)).not.toContain(
+      CONSTRAINT_REASON.CONSTRAINT_SCOPE_UNJUDGED
+    );
+    // …and the same registry, asked a scoped question, still reports it.
+    expect(
+      resolvePolicy(seeded, 'turnover-minimum', {}).findings.map((finding) => finding.code)
+    ).toContain(CONSTRAINT_REASON.CONSTRAINT_SCOPE_UNJUDGED);
+  });
+
   it('does not apply an expired constraint to the severity table', () => {
     const registry = registryOf(
       makeRecord({
@@ -965,6 +1012,47 @@ describe('the what-if query', () => {
       (d) => d.code === FACILITY_REASON.OCCUPIED_SPATIAL_OVERLAP
     );
     expect(overlapDelta?.findingCount).toBe(1);
+  });
+
+  it('counts re-severitied findings, not the evaluations they came from', () => {
+    // `findingsReseverified` is a meta-assertion counter: it exists so a caller
+    // can prove the projection touched something. Counting evaluations made it
+    // under-report every evaluation that carried more than one affected
+    // finding, which is the case where the counter matters most.
+    const evaluation = {
+      id: 'game-1',
+      findings: [
+        {
+          code: FACILITY_REASON.OCCUPIED_SPATIAL_OVERLAP,
+          severity: CONSTRAINT_SEVERITY.BLOCKING,
+          message: 'clash',
+          details: {},
+        },
+        {
+          code: TIMING_REASON.WARMUP_OCCUPIED_SPATIAL_OVERLAP,
+          severity: CONSTRAINT_SEVERITY.BLOCKING,
+          message: 'warm-up clash',
+          details: {},
+        },
+        {
+          code: AVAILABILITY_REASON.PERMIT_WEEKDAY_DEFAULT,
+          severity: CONSTRAINT_SEVERITY.INFO,
+          message: 'unrelated',
+          details: {},
+        },
+      ],
+    };
+    const projection = whatIfConstraintType(seeded, ADJACENCY, CONSTRAINT_TYPE.PREFERENCE, {
+      evaluations: [evaluation],
+    });
+    expect(projection.meta.evaluationsExamined).toBe(1);
+    expect(projection.meta.findingsExamined).toBe(3);
+    // Two of the three codes belong to the projected constraint.
+    expect(projection.meta.findingsReseverified).toBe(2);
+    // Both severity tables were consulted, so both are accounted for.
+    const oneTable = effectiveSeverityTable(seeded, {}).meta;
+    expect(projection.meta.constraintsConsidered).toBe(oneTable.constraintsConsidered * 2);
+    expect(projection.meta.reasonCodesGoverned).toBe(oneTable.reasonCodesGoverned * 2);
   });
 
   it('refuses to report an empty delta as a clean answer (incident 4)', () => {

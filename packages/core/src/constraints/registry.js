@@ -34,7 +34,7 @@ import {
   makeConstraintFinding,
 } from './reasonCodes.js';
 import { ConstraintRegistryInputSchema, ScopeContextSchema } from './schemas.js';
-import { judgeApplicability, normaliseContext, pickByPrecedence } from './scope.js';
+import { judgeApplicability, judgeWindow, normaliseContext, pickByPrecedence } from './scope.js';
 
 /**
  * Freeze a record and everything hanging off it.
@@ -74,19 +74,23 @@ export function buildConstraintRegistry(input) {
   /** @type {import('./types.js').ConstraintFinding[]} */
   const findings = [];
 
+  // Null-prototype throughout: with a plain object, a constraint whose id is
+  // `constructor` reads as a duplicate of `Object` and never gets stored, and
+  // `getConstraint(registry, 'toString')` answers with a function instead of
+  // `null`. Ids are data, and data must not be able to reach `Object.prototype`.
   /** @type {Record<string, import('./types.js').ConstraintRecord>} */
-  const byId = {};
+  const byId = Object.create(null);
   /** @type {Record<string, string[]>} */
-  const idsByPolicy = {};
+  const idsByPolicy = Object.create(null);
   /** @type {Record<string, string[]>} */
-  const idsByReasonCode = {};
+  const idsByReasonCode = Object.create(null);
 
   const constraints = [...parsed.constraints].sort((a, b) => a.id.localeCompare(b.id));
 
   for (const record of constraints) {
     meta.constraintsConsidered += 1;
 
-    if (byId[record.id]) {
+    if (Object.hasOwn(byId, record.id)) {
       findings.push(
         makeConstraintFinding(
           CONSTRAINT_REASON.CONSTRAINT_ID_DUPLICATE,
@@ -108,7 +112,7 @@ export function buildConstraintRegistry(input) {
         );
         continue;
       }
-      if (!idsByReasonCode[code]) idsByReasonCode[code] = [];
+      if (!Object.hasOwn(idsByReasonCode, code)) idsByReasonCode[code] = [];
       idsByReasonCode[code].push(record.id);
       meta.reasonCodesGoverned += 1;
     }
@@ -143,7 +147,7 @@ export function buildConstraintRegistry(input) {
     }
 
     byId[record.id] = freezeRecord(/** @type {import('./types.js').ConstraintRecord} */ (record));
-    if (!idsByPolicy[record.policy]) idsByPolicy[record.policy] = [];
+    if (!Object.hasOwn(idsByPolicy, record.policy)) idsByPolicy[record.policy] = [];
     idsByPolicy[record.policy].push(record.id);
   }
 
@@ -399,6 +403,12 @@ export function resolveConstraints(registry, context = {}) {
  * skipped"*: an operator who cannot see that the travel waiver expired last
  * month cannot understand why the schedule changed.
  *
+ * Only the **window** is judged. This entry point asks a purely temporal
+ * question and names no venue, division or team; judging scope here would
+ * answer it with a compromise-level `CONSTRAINT_SCOPE_UNJUDGED` for every
+ * scoped record, about a narrowing nobody asked about. `resolvePolicy()` is
+ * where a scoped question is asked.
+ *
  * @param {import('./types.js').ConstraintRegistry} registry
  * @param {string} date - ISO `YYYY-MM-DD`
  * @returns {{ active: import('./types.js').ConstraintRecord[], inactive: Array<{ constraintId: string, code: string }>, findings: import('./types.js').ConstraintFinding[], meta: import('./types.js').ConstraintMeta }}
@@ -414,16 +424,36 @@ export function activeConstraintsOn(registry, date) {
 
   for (const record of registry.constraints) {
     meta.constraintsConsidered += 1;
-    const judged = judgeApplicability(record, normaliseContext({ date }));
-    findings.push(...judged.findings);
-    if (judged.applicability.inWindow) {
+    // The **window** only. "Which constraints are live on this date?" names no
+    // venue, division or team and is not asking about any, so judging scope
+    // here emitted a compromise-level `CONSTRAINT_SCOPE_UNJUDGED` for every
+    // scoped record and made a clean temporal answer read as compromised.
+    const judged = judgeWindow(record, date);
+    if (judged.code) {
+      findings.push(
+        makeConstraintFinding(
+          judged.code,
+          judged.code === CONSTRAINT_REASON.CONSTRAINT_WINDOW_UNJUDGED
+            ? `constraint "${record.id}" has an effective window and no date was supplied, so whether it is live cannot be decided`
+            : `constraint "${record.id}" is outside its effective window on ${date}`,
+          {
+            constraintId: record.id,
+            policy: record.policy,
+            date,
+            effectiveFrom: record.effectiveFrom,
+            effectiveTo: record.effectiveTo,
+          }
+        )
+      );
+    }
+    if (judged.active) {
       meta.constraintsApplicable += 1;
       active.push(record);
     } else {
       meta.constraintsInactive += 1;
       inactive.push({
         constraintId: record.id,
-        code: /** @type {string} */ (judged.applicability.code),
+        code: /** @type {string} */ (judged.code),
       });
     }
   }

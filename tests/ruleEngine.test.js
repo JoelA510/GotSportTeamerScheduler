@@ -39,6 +39,8 @@ import {
   AVAILABILITY_REASON,
 } from '@squadlogic/core/availability/index.js';
 import {
+  CONSTRAINT_REASON,
+  CONSTRAINT_SCOPE_KIND,
   CONSTRAINT_TYPE,
   SEASON_2026_CONSTRAINT_ID,
   buildConstraintRegistry,
@@ -592,7 +594,7 @@ describe('rule engine :: the published season-2026 schedule', () => {
 
     // "The round-robin rule must assert it examined every division."
     const roundRobin = run.byRuleId[RULE_ID.ROUND_ROBIN].exercise.counters;
-    expect(schedule.divisionUniverse).toHaveLength(15);
+    expect(schedule.divisionUniverse).toHaveLength(19);
     expect(roundRobin.divisionsExamined).toBe(schedule.divisionUniverse.length);
     expect(roundRobin.divisionsJudged).toBe(14);
     expect(roundRobin.teamPairsCompared).toBeGreaterThan(0);
@@ -662,9 +664,13 @@ describe('rule engine :: the published season-2026 schedule', () => {
     // and blocking; the corpus records how it was handled, not that it did not
     // happen.
     [TRAVEL_REASON.TRAVEL_COMMITMENTS_OVERLAP]: 3,
-    // The Minis division has no two named teams, so no round robin can be judged
-    // in it. Reported unjudged rather than counted as complete.
-    [RULE_VIOLATION_REASON.ROUND_ROBIN_DIVISION_UNJUDGED]: 1,
+    // Five divisions carry no two-sided counted game: the Minis division, whose
+    // rows name no team at all, and the four Select divisions, whose teams are
+    // on the roster and whose layer is external fixtures and reserved slots.
+    // Each is reported unjudged rather than counted as complete — and the four
+    // Select ones only appear at all because the division universe is derived
+    // from the team records rather than from the rule's own game filter.
+    [RULE_VIOLATION_REASON.ROUND_ROBIN_DIVISION_UNJUDGED]: 5,
     // One consecutive pair on one surface whose earlier row is a Scrimmage of
     // unknown footprint, so the turnover cannot be measured.
     [RULE_VIOLATION_REASON.TURNOVER_UNJUDGED]: 1,
@@ -674,8 +680,8 @@ describe('rule engine :: the published season-2026 schedule', () => {
     expect(report.countByCode).toEqual({ ...ACCEPTED_EXCEPTIONS });
     const expectedTotal = Object.values(ACCEPTED_EXCEPTIONS).reduce((sum, n) => sum + n, 0);
     expect(report.violationCount).toBe(expectedTotal);
-    expect(report.violationCount).toBe(58);
-    expect(report.countBySeverity).toEqual({ blocking: 7, compromise: 51, info: 0 });
+    expect(report.violationCount).toBe(62);
+    expect(report.countBySeverity).toEqual({ blocking: 7, compromise: 55, info: 0 });
     // Asserted positively rather than by omission: the walking floor is now
     // reachable for a move between two venues in one complex, and every such
     // gap in the published season clears it.
@@ -1100,6 +1106,179 @@ describe('incident 4, reproduced :: (b) a join that matches the wrong data', () 
 });
 
 /* -------------------------------------------------------------------------- */
+/* Incident 4, inside the machinery built to prevent it                         */
+/* -------------------------------------------------------------------------- */
+
+describe('incident 4, reproduced :: (c) a division the schedule lost and the roster kept', () => {
+  /**
+   * The corpus with every row of one division removed, and its teams left on
+   * the roster exactly where they were.
+   *
+   * This is the case the flagship coverage assertion — *"the round-robin rule
+   * examined every division"* — exists to catch, and the case it could not
+   * catch while `divisionUniverse` was derived with the same filter the rule
+   * applies: the division left the universe at the same instant it left the
+   * rule's reach, so the comparison was a set against itself.
+   */
+  const LOST_DIVISION = 'U12G';
+  const survivingRows = season.combinedGames.filter((game) => game.division !== LOST_DIVISION);
+  const thinnedSchedule = toSeason2026Schedule(
+    { ...season, combinedGames: survivingRows },
+    { name: `season-2026 with every ${LOST_DIVISION} row removed` }
+  );
+  const thinnedRun = runRuleEngine(thinnedSchedule, { registry, resources });
+
+  it('actually applies the mutation it claims to', () => {
+    expect(survivingRows.length).toBeLessThan(season.combinedGames.length);
+    expect(season.combinedGames.length - survivingRows.length).toBeGreaterThan(0);
+    expect(thinnedSchedule.games.some((game) => game.divisionLabel === LOST_DIVISION)).toBe(false);
+    // …and the roster still has the teams, which is the whole point.
+    expect(
+      thinnedSchedule.teams.filter((team) => team.divisionLabel === LOST_DIVISION).length
+    ).toBeGreaterThan(1);
+  });
+
+  it('derives the division universe from the team records, not from the rule’s own filter', () => {
+    // The tautology, spelled out: this is the set `roundRobinRule` builds.
+    const theRuleSOwnFilter = new Set(
+      schedule.games
+        .filter((game) => game.counted && game.divisionLabel !== null)
+        .map((game) => game.divisionLabel)
+    );
+    expect(theRuleSOwnFilter.size).toBe(15);
+    expect(schedule.divisionUniverse.length).toBeGreaterThan(theRuleSOwnFilter.size);
+    for (const division of theRuleSOwnFilter) {
+      expect(schedule.divisionUniverse, division).toContain(division);
+    }
+  });
+
+  it('keeps the lost division in the universe, so something is left to fail against', () => {
+    expect(thinnedSchedule.divisionUniverse).toContain(LOST_DIVISION);
+  });
+
+  it('fails the coverage check when a rule enumerates divisions the way the rows do', () => {
+    // The proof the assertion can fail: the pre-fix derivation, judged against
+    // a universe that no longer moves with it.
+    const roundRobin = RuleDefinitionSchema.parse(
+      STANDING_RULES.find((rule) => rule.id === RULE_ID.ROUND_ROBIN)
+    );
+    const fromTheRows = new Set(
+      thinnedSchedule.games
+        .filter((game) => game.counted && game.divisionLabel !== null)
+        .map((game) => game.divisionLabel)
+    );
+    expect(fromTheRows.size).toBeLessThan(thinnedSchedule.divisionUniverse.length);
+    const verdict = judgeExercise(
+      roundRobin,
+      {
+        subjects: [],
+        findings: [],
+        counters: { divisionsExamined: fromTheRows.size, teamPairsCompared: 1 },
+        matched: {},
+      },
+      thinnedSchedule
+    );
+    expect(verdict.satisfied).toBe(false);
+    expect(codesOf(verdict.findings)).toContain(RULE_REASON.RULE_EXERCISE_COVERAGE_SHORT);
+    const short = verdict.findings.find(
+      (finding) => finding.code === RULE_REASON.RULE_EXERCISE_COVERAGE_SHORT
+    );
+    expect(short.severity).toBe(RULE_SEVERITY.BLOCKING);
+    expect(short.details.required).toBe(thinnedSchedule.divisionUniverse.length);
+  });
+
+  it('reports the lost division as unjudged rather than passing over it', () => {
+    const unjudged = thinnedRun.violations.filter(
+      (violation) =>
+        violation.code === RULE_VIOLATION_REASON.ROUND_ROBIN_DIVISION_UNJUDGED &&
+        violation.details.divisionLabel === LOST_DIVISION
+    );
+    expect(unjudged).toHaveLength(1);
+    expect(unjudged[0].severity).toBe(RULE_SEVERITY.COMPROMISE);
+    // The rule still meets its own coverage expectation, because it now
+    // enumerates the divisions the roster declares as well as the ones the rows
+    // do — which is what makes the expectation worth asserting.
+    expect(thinnedRun.byRuleId[RULE_ID.ROUND_ROBIN].exercise.counters.divisionsExamined).toBe(
+      thinnedSchedule.divisionUniverse.length
+    );
+  });
+});
+
+describe('incident 4, reproduced :: (d) one team the name change dropped', () => {
+  /**
+   * The format change of incident 4, applied to **one** team instead of all of
+   * them — the case no counter can catch, because the other 117 teams still
+   * clear every minimum.
+   */
+  const DROPPED_TEAM = season.teams.find((team) => team.division === 'U12B');
+  const renamedTeams = season.teams.map((team) =>
+    team.id === DROPPED_TEAM.id ? { ...team, id: oldStyleTeamCode(team.id) } : team
+  );
+  const droppedId = oldStyleTeamCode(DROPPED_TEAM.id);
+  const droppedSchedule = toSeason2026Schedule(
+    {
+      ...season,
+      teams: renamedTeams,
+      coachTimelines: buildCoachTimelines(season.combinedGames, renamedTeams),
+    },
+    { name: 'season-2026 with one team renamed out of its own schedule' }
+  );
+  const droppedRun = runRuleEngine(droppedSchedule, { registry, resources });
+
+  it('actually applies the mutation it claims to', () => {
+    expect(DROPPED_TEAM).toBeDefined();
+    expect(droppedId).not.toBe(DROPPED_TEAM.id);
+    expect(droppedSchedule.teamUniverse).toContain(droppedId);
+    expect(droppedSchedule.teamUniverse).not.toContain(DROPPED_TEAM.id);
+    // The rows still name the team by its old label, so the join drops it.
+    expect(
+      droppedSchedule.games.filter(
+        (game) => game.homeTeamId === droppedId || game.awayTeamId === droppedId
+      )
+    ).toHaveLength(0);
+    expect(
+      season.combinedGames.filter(
+        (game) => game.homeTeamId === DROPPED_TEAM.id || game.awayTeamId === DROPPED_TEAM.id
+      ).length
+    ).toBe(9);
+  });
+
+  it('still clears every minimum, which is why a count could never catch this', () => {
+    const balance = droppedRun.byRuleId[RULE_ID.HOME_AWAY_BALANCE];
+    expect(balance.exercise.counters.teamsExamined).toBe(117);
+    expect(balance.exercise.shortfalls).toEqual([]);
+    expect(balance.exercise.badIdentifiers).toEqual([]);
+  });
+
+  it('names the team that vanished instead of leaving it out of the analysis', () => {
+    const absences = droppedRun.violations.filter(
+      (violation) => violation.code === RULE_VIOLATION_REASON.TEAM_ABSENT_FROM_SCHEDULE
+    );
+    expect(absences).toHaveLength(1);
+    expect(absences[0].details.teamId).toBe(droppedId);
+    expect(absences[0].details.divisionLabel).toBe('U12B');
+    // Blocking, and no constraint record may soften it: a join that dropped a
+    // team is a fact about the evidence, not a policy position.
+    expect(absences[0].severity).toBe(RULE_SEVERITY.BLOCKING);
+    expect(absences[0].ruleId).toBe(RULE_ID.HOME_AWAY_BALANCE);
+    // The published season has none, so this is a difference the break made.
+    expect(report.countByCode[RULE_VIOLATION_REASON.TEAM_ABSENT_FROM_SCHEDULE]).toBeUndefined();
+  });
+
+  it('reports the round robin the missing team leaves incomplete', () => {
+    const incomplete = droppedRun.violations.filter(
+      (violation) =>
+        violation.code === RULE_VIOLATION_REASON.ROUND_ROBIN_INCOMPLETE &&
+        (violation.details.teamId === droppedId || violation.details.opponentTeamId === droppedId)
+    );
+    expect(incomplete.length).toBeGreaterThan(0);
+    // Pre-fix the division read as a complete round robin over nine teams; the
+    // tenth was not missing from it, it was missing from the question.
+    expect(report.countByCode[RULE_VIOLATION_REASON.ROUND_ROBIN_INCOMPLETE]).toBeUndefined();
+  });
+});
+
+/* -------------------------------------------------------------------------- */
 /* Waivers integrate, they do not bypass                                        */
 /* -------------------------------------------------------------------------- */
 
@@ -1266,6 +1445,32 @@ describe('rule engine :: waivers', () => {
     expect(codesOf(strayRun.findings)).toContain(WAIVER_REASON.WAIVER_CONSTRAINT_UNKNOWN);
     expect(strayRun.status).toBe(RULE_STATUS.REJECTED);
   });
+
+  it('reports a subject-level waiver finding once, not once per level', () => {
+    // Incident 9's middle act: the waiver is still on the books and its window
+    // has closed. Every subject it would have covered says so — once.
+    const expired = buildSeason2026WaiverLedger({
+      personId,
+      venueIds,
+      effectiveTo: '2000-01-01',
+      subjectSource: 'tests/ruleEngine.test.js — the same waiver, out of its window',
+    });
+    const expiredRun = runRuleEngine(schedule, {
+      registry: hardRegistry,
+      ledger: expired,
+      resources,
+    });
+    const onSubjects = expiredRun.waivers.subjects
+      .flatMap((subject) => subject.findings)
+      .filter((finding) => finding.code === WAIVER_REASON.WAIVER_EXPIRED);
+    // Meta-assertion: a run where the waiver was never judged would make the
+    // equality below true for the wrong reason.
+    expect(onSubjects.length).toBeGreaterThan(0);
+    const inRun = expiredRun.findings.filter(
+      (finding) => finding.code === WAIVER_REASON.WAIVER_EXPIRED
+    );
+    expect(inRun).toHaveLength(onSubjects.length);
+  });
 });
 
 /* -------------------------------------------------------------------------- */
@@ -1366,6 +1571,126 @@ describe('rule engine :: running', () => {
     expect(result.meta.rulesRun).toBe(1);
     expect(result.byRuleId.behaves.exercised).toBe(true);
     expect(result.byRuleId.explodes.ran).toBe(false);
+  });
+
+  it('turns a partial rule output into that rule’s failure, not the run’s', () => {
+    // A rule that returns half an output throws inside the exercise judge
+    // rather than inside its own evaluator. If that throw escapes, one broken
+    // rule takes down every other rule's verdict with it.
+    const partial = buildRuleEngine({
+      rules: [
+        makeRule({ id: 'half-an-output', evaluate: () => ({ subjects: [], findings: [] }) }),
+        makeRule({ id: 'behaves' }),
+      ],
+    });
+    const result = runRuleEngine(tinySchedule(), { engine: partial, registry, resources });
+    expect(result.meta.rulesThrew).toBe(1);
+    expect(result.byRuleId['half-an-output'].ran).toBe(false);
+    expect(codesOf(result.byRuleId['half-an-output'].findings)).toContain(RULE_REASON.RULE_THREW);
+    // …and the rule next to it still produced one.
+    expect(result.byRuleId.behaves.exercised).toBe(true);
+    expect(result.status).toBe(RULE_STATUS.REJECTED);
+  });
+
+  it('reports an ungoverned travel policy once per transition, not once per level', () => {
+    // The registry with both travel policies removed: every transition the
+    // coach rule examines is then judged against no number at all.
+    const travelless = buildConstraintRegistry({
+      name: registry.name,
+      source: registry.source,
+      constraints: registry.constraints.filter(
+        (record) => !record.policy.startsWith('coach-travel')
+      ),
+    });
+    expect(travelless.constraintIds.length).toBeLessThan(registry.constraintIds.length);
+    const ungovernedRun = runRuleEngine(schedule, { registry: travelless, resources });
+    const onSubjects = ungovernedRun.byRuleId[RULE_ID.COACH_CONFLICT].subjects
+      .flatMap((subject) => subject.findings)
+      .filter((finding) => finding.code === TRAVEL_REASON.TRAVEL_POLICY_UNGOVERNED);
+    // Meta-assertion: a run that governed the policy after all would make the
+    // equality below true for the wrong reason.
+    expect(onSubjects.length).toBeGreaterThan(0);
+    const inRun = ungovernedRun.findings.filter(
+      (finding) => finding.code === TRAVEL_REASON.TRAVEL_POLICY_UNGOVERNED
+    );
+    expect(inRun).toHaveLength(onSubjects.length);
+  });
+
+  it('lets a scoped constraint decide a severity for the subjects inside its scope', () => {
+    // The registry's scoping was inert for every wired constraint: the severity
+    // table was built once, from the caller's context, which defaults to naming
+    // nothing — so a venue-scoped record could never reach the subjects it was
+    // written for. The corpus's forty lining compromises sit at three venues,
+    // which is what makes "at one of them" observable.
+    const gamesById = new Map(schedule.games.map((game) => [game.id, game]));
+    const liningByVenue = new Map();
+    for (const violation of run.violations) {
+      if (violation.code !== FACILITY_REASON.LINING_MISMATCH) continue;
+      const game = gamesById.get(violation.subjectId.split('::')[1]);
+      liningByVenue.set(game.venueId, (liningByVenue.get(game.venueId) ?? 0) + 1);
+    }
+    // Meta-assertion: two venues at least, or "only the scoped one changed"
+    // would be true for the wrong reason.
+    expect(liningByVenue.size).toBeGreaterThan(1);
+    const [scopedVenueId, scopedCount] = [...liningByVenue.entries()].sort(
+      (a, b) => b[1] - a[1]
+    )[0];
+
+    const scopedRegistry = buildConstraintRegistry({
+      name: registry.name,
+      source: registry.source,
+      constraints: [
+        ...registry.constraints,
+        {
+          id: 'lining-advisory-at-one-venue',
+          policy: 'field-lining',
+          name: 'Line markings are advisory at one venue',
+          type: CONSTRAINT_TYPE.PREFERENCE,
+          weight: 1,
+          scope: { kind: CONSTRAINT_SCOPE_KIND.VENUE, venueId: scopedVenueId },
+          parameters: {},
+          restrictiveDirection: 'none',
+          rationale:
+            'the ground at this venue is big enough and the club plays Minis on it unlined by arrangement',
+          source: {
+            setBy: 'tests/ruleEngine.test.js',
+            setAt: null,
+            reference: 'the review finding that scoped constraints could never override a severity',
+            note: 'a test fixture, not a club decision',
+          },
+          enforcement: 'reason-codes',
+          reasonCodes: [FACILITY_REASON.LINING_MISMATCH],
+          waivable: false,
+        },
+      ],
+    });
+    const scopedRun = runRuleEngine(schedule, { registry: scopedRegistry, resources });
+    const scopedReport = buildValidationReport(scopedRun, { scheduleName: 'venue-scoped lining' });
+
+    // A preference is `info`, and an `info` finding is not a violation — so the
+    // scoped venue's lining findings leave the count and every other venue's
+    // stay exactly where they were.
+    expect(report.countByCode[FACILITY_REASON.LINING_MISMATCH]).toBe(40);
+    expect(scopedReport.countByCode[FACILITY_REASON.LINING_MISMATCH]).toBe(40 - scopedCount);
+    const stillReported = scopedRun.findings.filter(
+      (finding) => finding.code === FACILITY_REASON.LINING_MISMATCH
+    );
+    expect(stillReported).toHaveLength(40);
+    const demoted = stillReported.filter((finding) => finding.severity === RULE_SEVERITY.INFO);
+    expect(demoted).toHaveLength(scopedCount);
+    for (const finding of demoted) {
+      expect(finding.details.severityBy).toBe('lining-advisory-at-one-venue');
+    }
+
+    // …and the table's own findings are reported rather than discarded: the
+    // subjects that name no venue say the scoped record could not be judged
+    // against them, once per record rather than once per subject.
+    const unjudged = scopedRun.findings.filter(
+      (finding) => finding.code === CONSTRAINT_REASON.CONSTRAINT_SCOPE_UNJUDGED
+    );
+    expect(unjudged).toHaveLength(1);
+    expect(unjudged[0].details.constraintId).toBe('lining-advisory-at-one-venue');
+    expect(codesOf(run.findings)).not.toContain(CONSTRAINT_REASON.CONSTRAINT_SCOPE_UNJUDGED);
   });
 
   it('re-severities Phase 1 findings through the registry rather than hard-coding them', () => {
