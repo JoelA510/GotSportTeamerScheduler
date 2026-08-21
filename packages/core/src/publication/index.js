@@ -78,6 +78,7 @@ export {
   DEFAULT_PARITY_KEY_FIELDS,
   PARITY_FIELD,
   PARITY_FIELD_ORDER,
+  exportCell,
   isParityField,
   makeParityRow,
   parityRowFromExportRow,

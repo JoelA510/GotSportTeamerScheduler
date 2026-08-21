@@ -196,6 +196,7 @@
  * @property {ChangeNotice[]} notices
  * @property {number} teamsEnumerated - from the team universe, never from the changes
  * @property {boolean} includeContacts
+ * @property {string} parityStatus - the standing of the parity this run was built from
  * @property {PublicationFinding[]} findings
  * @property {string} status
  * @property {PublicationMeta} meta

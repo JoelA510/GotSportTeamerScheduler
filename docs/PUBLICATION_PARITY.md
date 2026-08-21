@@ -99,7 +99,14 @@ now delegates to it rather than joining eight fields itself.
 
 `null` means **"this source does not carry that column"**. It never means
 "empty" and never means "equal": a compared field that is `null` on either side
-of a pair is `PARITY_FIELD_ABSENT` at blocking, never a silent match. A field
+of a pair is `PARITY_FIELD_ABSENT` at blocking, never a silent match. The
+corollary is `exportCell()`: a cell the artifact **carries and left blank** is a
+value, so it stays `''` rather than folding into `null`.
+`generateScheduleExports()` writes `fieldId ?? ''` and `division ?? ''`, so a
+published fixture whose field was later cleared arrives as an empty `Field`
+cell — and folding that into `null` put the pair in `matched`, counted it in
+`PARITY_ROWS_MATCHED` and told the family whose pitch had gone nothing at all.
+Absent and empty are different, exactly as unknown and zero are. A field
 that both sides carry and the subject neither keys nor compares is
 `PARITY_FIELD_UNCOMPARED` at `compromise`, because "567/567 match" means nothing
 until you know on how many columns.
@@ -176,7 +183,7 @@ with provenance. One transform, two representations.
 ## 5. Change notices
 
 `buildChangeNotices()` turns a parity result into a family-facing before/after
-list grouped by team. Two refusals:
+list grouped by team. Four refusals:
 
 **Teams are enumerated from the roster, never from the changed rows.** A team
 whose games vanished produces no _changed_ row, so grouping from rows means the
@@ -186,7 +193,27 @@ schedule and the notice for that team, with nine removals, is asserted to exist
 — alongside the independently-derived set of its opponents. A participant that
 is neither a known team nor a declared non-team label (`-`, `Select Game 7`, a
 visiting club, a Minis session) is `NOTICE_PARTICIPANT_UNKNOWN` at blocking
-rather than a silent skip.
+rather than a silent skip — and so is a label **more than one team answers to**
+(`details.reason: 'ambiguous'`, with the claiming ids). The label-to-team map is
+built with collision detection rather than a single overwriting pass, and an
+ambiguous label is routed to neither team: misrouting a family's schedule change
+to a different family is worse than failing to send it.
+
+**A per-team row is addressed to the participant it names.** One fixture in a
+per-team artifact is two rows, each written for one team; `ParityRow.participant`
+is who each is _for_, and it is honoured when set. A row with no participant —
+every row the corpus's schedule CSVs produce — is a fixture rather than a
+letter, so both sides are told. Filing a per-team row under both sides regardless
+gives every family the same change twice.
+
+**A notice run is never sounder than the parity it was built from.** `parity.status`
+is read, carried onto the result as `parityStatus` and reported in
+`NOTICE_BUILT`'s details, and three shapes of an _unfounded_ quiet season are
+`NOTICE_VACUOUS` at blocking: `no-team-universe`, `parity-examined-nothing` (the
+parity carried `PARITY_VACUOUS`, partitioned no rows, or compared no fields), and
+`divergence-told-to-nobody` (a `rejected` parity not one enumerated team was told
+about). A `rejected` parity whose changes do reach families is none of these —
+that is the ordinary case, and the run is `allowed`.
 
 **Contact columns are out unless a caller names the flag.** `CLAUDE.md` §2 is
 data minimisation: notices carry fixtures, not coaches' names and email
@@ -217,6 +244,12 @@ is constructed). Three deliberate choices:
   destination fetches on its own schedule and cannot be told from here that it
   is stale; a report that said "stale" without saying which way the data flows
   would send an operator to the wrong end of the pipe.
+- **Both sides of the comparison go through `PublicationStampSchema`.** The
+  snapshot's own `publishedAt` is validated as well as every
+  `destinationSyncedAt`, and a stamp in any other format throws. Ordering here
+  is textual, so an ISO instant (`…T18:00:00Z`) sorts a destination that synced
+  at the publication minute _before_ it and reports a current copy as stale —
+  and staleness is this module's entire output.
 - **The field is qualified `destinationSyncedAt`.** A bare `lastSyncedAt`
   already means something different in three persistence snapshots
   (`teamPersistenceSnapshot.js`, `practicePersistenceSnapshot.js`,

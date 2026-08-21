@@ -35,6 +35,7 @@ import {
   PARITY_FIELD_ORDER,
   PUBLICATION_DURABILITY,
   PUBLICATION_REASON,
+  PUBLICATION_REASON_SEVERITY,
   PUBLICATION_SEVERITY,
   PUBLICATION_STATUS,
   PublicationSnapshotInputSchema,
@@ -49,6 +50,7 @@ import {
   makePublicationSnapshot,
   mergePublicationMeta,
   parityPartitionFindings,
+  parityRowFromExportRow,
   parityRowKey,
   parityRowsFromExportRows,
   publicationDigest,
@@ -63,6 +65,7 @@ import {
 import {
   SCHEDULE_EXPORT_COLUMNS,
   SCHEDULE_EXPORT_HEADERS,
+  generateScheduleExports,
 } from '@squadlogic/core/outputGeneration.js';
 import {
   makeReservedSlot,
@@ -688,6 +691,102 @@ describe('publication :: a snapshot of the export rows compares against a fresh 
 });
 
 /* ========================================================================== */
+/* An empty cell is not an absent column                                       */
+/* ========================================================================== */
+
+describe('publication :: a cleared export cell is a change, not agreement', () => {
+  /** One row in the export vocabulary, in the shape the exporters emit. */
+  const exportRow = (over = {}) => ({
+    [SCHEDULE_EXPORT_HEADERS.TEAM_ID]: 'T1',
+    [SCHEDULE_EXPORT_HEADERS.TEAM_NAME]: 'T1',
+    [SCHEDULE_EXPORT_HEADERS.DIVISION]: 'U10B',
+    [SCHEDULE_EXPORT_HEADERS.COACH_NAME]: '',
+    [SCHEDULE_EXPORT_HEADERS.COACH_EMAIL]: '',
+    [SCHEDULE_EXPORT_HEADERS.ASSISTANT_COACHES]: '',
+    [SCHEDULE_EXPORT_HEADERS.EVENT_TYPE]: 'Game',
+    [SCHEDULE_EXPORT_HEADERS.OPPONENT]: 'T2',
+    [SCHEDULE_EXPORT_HEADERS.ROLE]: 'Home',
+    [SCHEDULE_EXPORT_HEADERS.START]: '2026-09-12T10:00:00',
+    [SCHEDULE_EXPORT_HEADERS.END]: '2026-09-12T12:00:00',
+    [SCHEDULE_EXPORT_HEADERS.FIELD]: 'surface:alder:pitch-2',
+    [SCHEDULE_EXPORT_HEADERS.SLOT]: 'slot-1',
+    [SCHEDULE_EXPORT_HEADERS.NOTES]: '',
+    ...over,
+  });
+
+  it('reads a blank Field as blank rather than as a column the artifact lacks', () => {
+    const published = parityRowFromExportRow(exportRow(), { sourceLabel: 'pub', index: 0 });
+    const cleared = parityRowFromExportRow(
+      exportRow({ [SCHEDULE_EXPORT_HEADERS.FIELD]: '', [SCHEDULE_EXPORT_HEADERS.DIVISION]: '' }),
+      { sourceLabel: 'cur', index: 0 }
+    );
+    // `rows.js`'s own header reserves `null` for "this source does not carry
+    // that column". A cell that is there and empty is a value.
+    expect(published.field).toBe('surface:alder:pitch-2');
+    expect(cleared.field, 'a cleared Field read as an absent column').toBe('');
+    expect(cleared.division, 'a cleared Division read as an absent column').toBe('');
+
+    const parity = checkParity({
+      subject: 'a published fixture whose field was cleared',
+      published: { label: 'published', rows: [published] },
+      current: { label: 'working', rows: [cleared] },
+      keyFields: [PARITY_FIELD.DATE, PARITY_FIELD.HOME, PARITY_FIELD.AWAY],
+      comparedFields: [PARITY_FIELD.FIELD, PARITY_FIELD.DIVISION],
+    });
+    // Before the fix both cells were `null` on the current side, the pair
+    // landed in `matched`, was counted by `PARITY_ROWS_MATCHED`, and the family
+    // whose pitch had been cleared was told nothing at all.
+    expect(parity.buckets.matched).toEqual([]);
+    expect(parity.buckets.differing).toHaveLength(1);
+    expect(parity.buckets.differing[0].changedFields).toEqual([
+      PARITY_FIELD.FIELD,
+      PARITY_FIELD.DIVISION,
+    ]);
+    expect(parity.buckets.differing[0].absentFields).toEqual([]);
+    expect(codesOf(parity.findings)).not.toContain(PUBLICATION_REASON.PARITY_FIELD_ABSENT);
+  });
+
+  it('still reads a column the artifact does not carry at all as absent', () => {
+    // The other half of the distinction, so the fix cannot be "never null".
+    const row = parityRowFromExportRow(
+      { [SCHEDULE_EXPORT_HEADERS.TEAM_NAME]: 'T1' },
+      { sourceLabel: 's', index: 0 }
+    );
+    expect(row.field).toBeNull();
+    expect(row.division).toBeNull();
+    expect(row.participant).toBeNull();
+    // The export vocabulary has no venue column at all, in either case.
+    expect(row.venue).toBeNull();
+  });
+
+  it('is reachable from the shipping export path, not only from a constructed row', () => {
+    // `generateScheduleExports()` writes `fieldId ?? ''` and `division ?? ''`,
+    // so the blank cells above are what a real assignment with no field on a
+    // team with no division produces.
+    const exported = generateScheduleExports({
+      teams: [
+        { id: 'T1', name: 'T1' },
+        { id: 'T2', name: 'T2' },
+      ],
+      gameAssignments: [
+        {
+          homeTeamId: 'T1',
+          awayTeamId: 'T2',
+          start: '2026-09-12T17:00:00Z',
+          end: '2026-09-12T19:00:00Z',
+        },
+      ],
+    });
+    const row = exported.master.rows[0];
+    expect(row[SCHEDULE_EXPORT_HEADERS.FIELD]).toBe('');
+    expect(row[SCHEDULE_EXPORT_HEADERS.DIVISION]).toBe('');
+    const parityRow = parityRowFromExportRow(row, { sourceLabel: 'master', index: 0 });
+    expect(parityRow.field).toBe('');
+    expect(parityRow.division).toBe('');
+  });
+});
+
+/* ========================================================================== */
 /* Change notices                                                              */
 /* ========================================================================== */
 
@@ -827,6 +926,253 @@ describe('publication :: change notices are grouped by team, enumerated from the
 });
 
 /* ========================================================================== */
+/* A notice run inherits the standing of the parity it was built from          */
+/* ========================================================================== */
+
+describe('publication :: notices cannot report a quiet season the comparison never supported', () => {
+  const noticeTeam = (over = {}) => ({
+    teamId: 'T1',
+    teamName: 'T1',
+    division: 'U10B',
+    coachName: null,
+    coachEmail: null,
+    ...over,
+  });
+  const row = (over) =>
+    makeParityRow({
+      rowId: 'r',
+      sourceLabel: 's',
+      date: '2026-08-22',
+      startMinutes: 600,
+      venue: 'V',
+      field: 'F',
+      format: '7v7',
+      division: 'U10B',
+      home: 'T1',
+      away: 'T2',
+      ...over,
+    });
+  const subjectFor = (over = {}) => ({
+    subject: 'constructed',
+    published: { label: 'p', rows: [row({ rowId: 'p1' })] },
+    current: { label: 'c', rows: [row({ rowId: 'c1' })] },
+    keyFields: [PARITY_FIELD.DATE, PARITY_FIELD.HOME, PARITY_FIELD.AWAY],
+    comparedFields: [PARITY_FIELD.START_MINUTES, PARITY_FIELD.VENUE, PARITY_FIELD.FIELD],
+    ...over,
+  });
+
+  it('refuses to call a run over a vacuous parity allowed', () => {
+    const vacuous = checkParity(
+      subjectFor({ published: { label: 'p', rows: [] }, current: { label: 'c', rows: [] } })
+    );
+    expect(codesOf(vacuous.findings)).toContain(PUBLICATION_REASON.PARITY_VACUOUS);
+
+    const result = buildChangeNotices({ parity: vacuous, teams: [noticeTeam()] });
+    // The worst available answer: "0 of 1 enumerated team(s) have something to
+    // be told", from a comparison that examined nothing.
+    expect(result.status, 'a vacuous parity yielded an allowed notice run').not.toBe(
+      PUBLICATION_STATUS.ALLOWED
+    );
+    expect(result.parityStatus).toBe(PUBLICATION_STATUS.REJECTED);
+    const vacuousFinding = findingsWith(result.findings, PUBLICATION_REASON.NOTICE_VACUOUS)[0];
+    expect(vacuousFinding.severity).toBe(PUBLICATION_SEVERITY.BLOCKING);
+    expect(vacuousFinding.details.reason).toBe('parity-examined-nothing');
+  });
+
+  it('refuses to call a run that told nobody about a rejected parity allowed', () => {
+    // The changed fixture names two participants the caller declared non-team,
+    // so the divergence is real and no family is addressed by it.
+    const diverged = checkParity(
+      subjectFor({
+        published: {
+          label: 'p',
+          rows: [row({ rowId: 'p1', home: 'Visiting Club A', away: 'Select Game 7' })],
+        },
+        current: {
+          label: 'c',
+          rows: [
+            row({
+              rowId: 'c1',
+              home: 'Visiting Club A',
+              away: 'Select Game 7',
+              startMinutes: 630,
+            }),
+          ],
+        },
+      })
+    );
+    expect(diverged.status).toBe(PUBLICATION_STATUS.REJECTED);
+    expect(diverged.buckets.differing).toHaveLength(1);
+
+    const result = buildChangeNotices({
+      parity: diverged,
+      teams: [noticeTeam()],
+      nonTeamLabels: ['Visiting Club A', 'Select Game 7'],
+    });
+    expect(result.notices).toEqual([]);
+    expect(
+      result.status,
+      'a rejected parity nobody was told about yielded an allowed notice run'
+    ).not.toBe(PUBLICATION_STATUS.ALLOWED);
+    const finding = findingsWith(result.findings, PUBLICATION_REASON.NOTICE_VACUOUS)[0];
+    expect(finding.severity).toBe(PUBLICATION_SEVERITY.BLOCKING);
+    expect(finding.details.reason).toBe('divergence-told-to-nobody');
+    expect(finding.details.divergentRows).toBe(1);
+  });
+
+  it('carries the parity’s standing onto a run that does tell somebody, and allows it', () => {
+    // The negative control for the two refusals above: a parity rejected
+    // *because* families need telling, and they are told, is allowed.
+    const diverged = checkParity(
+      subjectFor({ current: { label: 'c', rows: [row({ rowId: 'c1', startMinutes: 630 })] } })
+    );
+    expect(diverged.status).toBe(PUBLICATION_STATUS.REJECTED);
+
+    const result = buildChangeNotices({
+      parity: diverged,
+      teams: [noticeTeam(), noticeTeam({ teamId: 'T2', teamName: 'T2' })],
+    });
+    expect(result.parityStatus).toBe(PUBLICATION_STATUS.REJECTED);
+    const built = findingsWith(result.findings, PUBLICATION_REASON.NOTICE_BUILT)[0];
+    expect(built.details.parityStatus).toBe(PUBLICATION_STATUS.REJECTED);
+    expect(built.details.divergentRows).toBe(1);
+    expect(result.meta.teamsWithChanges).toBe(2);
+    expect(result.status).toBe(PUBLICATION_STATUS.ALLOWED);
+    expect(codesOf(result.findings)).not.toContain(PUBLICATION_REASON.NOTICE_VACUOUS);
+  });
+
+  it('addresses a per-team row to the participant it names, not to both sides', () => {
+    // One moved fixture in an export-vocabulary (per-team) artifact is two
+    // rows, each addressed to one team. Filing each under both sides gives
+    // every family the same change twice.
+    const perTeam = (over) =>
+      makeParityRow({
+        rowId: 'x',
+        sourceLabel: 's',
+        date: '2026-09-12',
+        startMinutes: 600,
+        field: 'surface:alder:pitch-2',
+        division: 'U10B',
+        home: 'T1',
+        away: 'T2',
+        ...over,
+      });
+    const parity = checkParity({
+      subject: 'per-team export',
+      published: {
+        label: 'p',
+        rows: [
+          perTeam({ rowId: 'p1', participant: 'T1' }),
+          perTeam({ rowId: 'p2', participant: 'T2' }),
+        ],
+      },
+      current: {
+        label: 'c',
+        rows: [
+          perTeam({ rowId: 'c1', participant: 'T1', startMinutes: 630 }),
+          perTeam({ rowId: 'c2', participant: 'T2', startMinutes: 630 }),
+        ],
+      },
+      keyFields: [
+        PARITY_FIELD.DATE,
+        PARITY_FIELD.HOME,
+        PARITY_FIELD.AWAY,
+        PARITY_FIELD.PARTICIPANT,
+      ],
+      comparedFields: [PARITY_FIELD.START_MINUTES, PARITY_FIELD.FIELD, PARITY_FIELD.DIVISION],
+    });
+    expect(parity.buckets.differing).toHaveLength(2);
+
+    const result = buildChangeNotices({
+      parity,
+      teams: [noticeTeam(), noticeTeam({ teamId: 'T2', teamName: 'T2' })],
+    });
+    const first = result.notices.find((notice) => notice.teamId === 'T1');
+    const second = result.notices.find((notice) => notice.teamId === 'T2');
+    expect(first.changes, 'T1 was told the one change twice').toHaveLength(1);
+    expect(second.changes, 'T2 was told the one change twice').toHaveLength(1);
+    expect(result.meta.noticeLinesEmitted).toBe(2);
+  });
+
+  it('still files a fixture that names no participant under both sides', () => {
+    // The control that keeps the fix from becoming "only ever one addressee":
+    // a schedule row is addressed to nobody, and both teams must hear about it.
+    const parity = checkParity(
+      subjectFor({ current: { label: 'c', rows: [row({ rowId: 'c1', startMinutes: 630 })] } })
+    );
+    expect(parity.buckets.differing[0].publishedRow.participant).toBeNull();
+    const result = buildChangeNotices({
+      parity,
+      teams: [noticeTeam(), noticeTeam({ teamId: 'T2', teamName: 'T2' })],
+    });
+    expect(result.meta.noticeLinesEmitted).toBe(2);
+    expect(result.notices.map((notice) => notice.teamId).sort()).toEqual(['T1', 'T2']);
+  });
+
+  it('refuses to route a label two teams answer to', () => {
+    // One team's id is another team's name. A single-pass map lets the later
+    // team overwrite the earlier one, and the change is filed under a family
+    // it does not belong to — worse than failing to send it.
+    const teams = [
+      {
+        teamId: '10B7v701',
+        teamName: 'Alder Falcons',
+        division: 'U10B',
+        coachName: null,
+        coachEmail: null,
+      },
+      {
+        teamId: 'T9',
+        teamName: '10B7v701',
+        division: 'U10B',
+        coachName: null,
+        coachEmail: null,
+      },
+    ];
+    const parity = checkParity(
+      subjectFor({
+        published: { label: 'p', rows: [row({ rowId: 'p1', home: '10B7v701', away: 'T9' })] },
+        current: {
+          label: 'c',
+          rows: [row({ rowId: 'c1', home: '10B7v701', away: 'T9', startMinutes: 630 })],
+        },
+      })
+    );
+    expect(parity.buckets.differing).toHaveLength(1);
+
+    const result = buildChangeNotices({ parity, teams });
+    const wrongTeam = result.notices.find((notice) => notice.teamId === 'T9');
+    // T9 is genuinely the away side, so it hears about the change once — and
+    // must not also inherit the home side's on a name collision.
+    expect(wrongTeam.changes, 'the home side’s change was filed under T9 as well').toHaveLength(1);
+    expect(result.notices.find((notice) => notice.teamId === '10B7v701')).toBeUndefined();
+
+    const ambiguous = findingsWith(
+      result.findings,
+      PUBLICATION_REASON.NOTICE_PARTICIPANT_UNKNOWN
+    ).filter((finding) => finding.details.reason === 'ambiguous');
+    expect(ambiguous).toHaveLength(1);
+    expect(ambiguous[0].severity).toBe(PUBLICATION_SEVERITY.BLOCKING);
+    expect(ambiguous[0].details.participant).toBe('10B7v701');
+    expect(String(ambiguous[0].details.teamIds).split(',').sort()).toEqual(['10B7v701', 'T9']);
+    expect(result.status).toBe(PUBLICATION_STATUS.REJECTED);
+  });
+
+  it('reports no collision when every label names one team', () => {
+    // The control: the corpus roster spells every team's id and name the same
+    // way, so the check above must be silent on it.
+    const parity = checkParity(
+      subjectFor({ current: { label: 'c', rows: [row({ rowId: 'c1', startMinutes: 630 })] } })
+    );
+    const result = buildChangeNotices({
+      parity,
+      teams: [noticeTeam(), noticeTeam({ teamId: 'T2', teamName: 'T2' })],
+    });
+    expect(codesOf(result.findings)).not.toContain(PUBLICATION_REASON.NOTICE_PARTICIPANT_UNKNOWN);
+  });
+});
+
+/* ========================================================================== */
 /* Downstream sync registry                                                    */
 /* ========================================================================== */
 
@@ -912,6 +1258,32 @@ describe('publication :: the downstream sync registry', () => {
     )[0];
     expect(unobserved.severity).toBe(PUBLICATION_SEVERITY.COMPROMISE);
     expect(report.status).toBe(PUBLICATION_STATUS.COMPROMISED);
+  });
+
+  it('validates the stamp everything is compared against, not only the destinations’', () => {
+    // Every `destinationSyncedAt` goes through `PublicationStampSchema`; the
+    // snapshot stamp they are all ordered against did not. Ordering here is
+    // textual, so an ISO instant misclassifies staleness at the boundary — a
+    // destination that synced at `2026-09-01T18:00:00` reads as *stale*
+    // against a publication stamped `2026-09-01T18:00:00Z`, because the
+    // shorter string sorts first. Staleness is this module's entire output.
+    expect(() =>
+      buildSyncRegistryReport({
+        snapshot: { ...snapshot, publishedAt: '2026-09-01T18:00:00Z' },
+        destinations,
+      })
+    ).toThrow(/naive/);
+    expect(() =>
+      buildSyncRegistryReport({
+        snapshot: { ...snapshot, publishedAt: '2026-09-01' },
+        destinations,
+      })
+    ).toThrow(/naive/);
+    expect(() =>
+      buildSyncRegistryReport({ snapshot: { ...snapshot, publishedAt: undefined }, destinations })
+    ).toThrow(/naive/);
+    // …and the valid stamp still reports, so the guard is not "always throw".
+    expect(buildSyncRegistryReport({ snapshot, destinations }).meta.destinationsExamined).toBe(3);
   });
 
   it('reports an empty registry as vacuous', () => {
@@ -1028,6 +1400,24 @@ describe('publication :: one comparator, one key, no clock', () => {
     expect(emitted.size).toBeGreaterThan(10);
     for (const code of emitted) {
       expect(PUBLICATION_REASON[code], `${code} is not a declared reason`).toBeDefined();
+      // The assertion this test is named for. Checking `PUBLICATION_REASON`
+      // alone compared the set against the enum the set was enumerated from —
+      // a check that cannot fail for the defect it names. Severity lives in a
+      // table, and a code missing from it throws at `makePublicationFinding()`
+      // rather than defaulting to `info`.
+      expect(
+        PUBLICATION_REASON_SEVERITY[code],
+        `${code} has no entry in PUBLICATION_REASON_SEVERITY`
+      ).toBeDefined();
+      expect(Object.values(PUBLICATION_SEVERITY)).toContain(PUBLICATION_REASON_SEVERITY[code]);
+    }
+    // And the table covers the whole vocabulary, not only the codes this
+    // package happens to emit today.
+    for (const code of Object.values(PUBLICATION_REASON)) {
+      expect(
+        PUBLICATION_REASON_SEVERITY[code],
+        `${code} is declared and has no registered severity`
+      ).toBeDefined();
     }
   });
 

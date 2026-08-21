@@ -240,12 +240,17 @@ export const PUBLICATION_REASON = Object.freeze({
 
   /* -- change notices ------------------------------------------------------- */
   /**
-   * A changed row names a participant that is neither in the team universe nor
-   * declared a non-team label.
+   * A changed row names a participant the notice builder cannot address.
    *
-   * `blocking`. Incident 4's second half is a checker that read `Select Game 7`
-   * as a team code; a notice builder that quietly dropped an unrecognised
-   * participant would send nobody the news.
+   * `blocking`, in both of its shapes, which `details.reason` tells apart:
+   *
+   * - `unrecognised` — neither a team in the universe nor a declared non-team
+   *   label. Incident 4's second half is a checker that read `Select Game 7` as
+   *   a team code; a builder that quietly dropped it would send nobody the news.
+   * - `ambiguous` — a label **more than one team answers to**, one team's id
+   *   spelled the same way as another's name (`details.teamIds` names them).
+   *   The change is routed to neither: misrouting a family's schedule change to
+   *   a different family is worse than failing to send it.
    */
   NOTICE_PARTICIPANT_UNKNOWN: 'NOTICE_PARTICIPANT_UNKNOWN',
   /**
@@ -258,10 +263,21 @@ export const PUBLICATION_REASON = Object.freeze({
    */
   NOTICE_CONTACTS_INCLUDED: 'NOTICE_CONTACTS_INCLUDED',
   /**
-   * The notice builder enumerated zero teams.
+   * A notice run reports a quiet season it has no basis to report.
    *
-   * `blocking`. A run over an empty team universe emits no notices and reports
-   * a quiet season.
+   * `blocking`, in three shapes, which `details.reason` tells apart:
+   *
+   * - `no-team-universe` — zero teams were enumerated, so no notice can be
+   *   addressed to anybody.
+   * - `parity-examined-nothing` — the parity behind the run carried
+   *   {@link PUBLICATION_REASON.PARITY_VACUOUS}, partitioned no rows, or
+   *   compared no fields. "0 teams have something to be told" from a comparison
+   *   that looked at nothing is incident 4 in the layer families actually read.
+   * - `divergence-told-to-nobody` — the parity was `rejected` and not one
+   *   enumerated team was told anything.
+   *
+   * A `rejected` parity whose changes *do* reach families is none of these: it
+   * is the ordinary case this module exists for, and that run is `allowed`.
    */
   NOTICE_VACUOUS: 'NOTICE_VACUOUS',
   /** Notices were built. Provenance, with the counters. */

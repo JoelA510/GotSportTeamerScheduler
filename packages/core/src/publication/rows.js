@@ -32,6 +32,16 @@
  * compare. A compared field that is `null` on either side of a pair is
  * `PARITY_FIELD_ABSENT` at blocking rather than a silent match.
  *
+ * The corollary is {@link exportCell}, and it is the whole reason that function
+ * exists rather than `row[header] || null`: **a cell the artifact carries and
+ * left blank is a value, not a missing column.** `generateScheduleExports()`
+ * writes `fieldId ?? ''` and `division ?? ''`, so a published fixture whose
+ * field was later cleared arrives here as an empty `Field` cell. Folding that
+ * into `null` made it read as a column the export vocabulary does not have,
+ * which put the pair in `buckets.matched`, counted it in `PARITY_ROWS_MATCHED`
+ * and told the family whose pitch had gone precisely nothing. Absent and empty
+ * are different, exactly as unknown and zero are.
+ *
  * @module publication/rows
  */
 
@@ -191,6 +201,26 @@ export function splitNaiveDateTime(value) {
 }
 
 /**
+ * One cell of an export-vocabulary row, keeping "the artifact does not have
+ * this column" and "the artifact has it and it is blank" apart.
+ *
+ * A column the row object does not carry is `null`, which every comparison
+ * refuses to read as agreement (`PARITY_FIELD_ABSENT`). A cell that is present
+ * is returned as it stands, **including the empty string**: a fixture whose
+ * `Field` was cleared has a field, and it is nothing. Reading that back as an
+ * absent column is what let a cleared pitch land in `buckets.matched`.
+ *
+ * @param {Record<string, string>} row
+ * @param {string} header - a `SCHEDULE_EXPORT_HEADERS` value
+ * @returns {string|null}
+ */
+export function exportCell(row, header) {
+  const value = row[header];
+  if (value === undefined || value === null) return null;
+  return String(value);
+}
+
+/**
  * Adapt one export-vocabulary row — the shape
  * `packages/core/src/reserve/publication.js` emits and
  * `packages/core/src/outputGeneration.js` consumes — into a parity row.
@@ -204,8 +234,10 @@ export function splitNaiveDateTime(value) {
  *   field here would be a name-mapping transform hidden inside an adapter.
  * - the two sides come from `Role` and `Opponent`. An export row is per team,
  *   so `Team Name` is the home side when `Role` says `Home` and the away side
- *   otherwise; a row with no role is left with `home` set and `away` null,
- *   which the absent-field check will refuse to compare rather than guess at.
+ *   otherwise; a row that carries no `Opponent` column at all is left with
+ *   `away` null, which the absent-field check will refuse to compare rather
+ *   than guess at, while a row whose `Opponent` cell is present and blank says
+ *   so with an empty string ({@link exportCell}).
  *
  * @param {Record<string, string>} row
  * @param {{ sourceLabel: string, rowId?: string, index?: number }} context
@@ -213,9 +245,9 @@ export function splitNaiveDateTime(value) {
  */
 export function parityRowFromExportRow(row, context) {
   const { date, startMinutes } = splitNaiveDateTime(row[SCHEDULE_EXPORT_HEADERS.START] ?? '');
-  const teamName = row[SCHEDULE_EXPORT_HEADERS.TEAM_NAME] ?? '';
-  const opponent = row[SCHEDULE_EXPORT_HEADERS.OPPONENT] ?? '';
-  const role = row[SCHEDULE_EXPORT_HEADERS.ROLE] ?? '';
+  const teamName = exportCell(row, SCHEDULE_EXPORT_HEADERS.TEAM_NAME);
+  const opponent = exportCell(row, SCHEDULE_EXPORT_HEADERS.OPPONENT);
+  const role = exportCell(row, SCHEDULE_EXPORT_HEADERS.ROLE);
   const isAway = role === 'Away';
 
   return makeParityRow({
@@ -224,14 +256,14 @@ export function parityRowFromExportRow(row, context) {
     date,
     startMinutes,
     venue: null,
-    field: row[SCHEDULE_EXPORT_HEADERS.FIELD] || null,
+    field: exportCell(row, SCHEDULE_EXPORT_HEADERS.FIELD),
     format: null,
-    division: row[SCHEDULE_EXPORT_HEADERS.DIVISION] || null,
-    home: isAway ? opponent || null : teamName || null,
-    away: isAway ? teamName || null : opponent || null,
+    division: exportCell(row, SCHEDULE_EXPORT_HEADERS.DIVISION),
+    home: isAway ? opponent : teamName,
+    away: isAway ? teamName : opponent,
     // The team this row is addressed to: what makes the home half and the away
     // half of one fixture two distinct rows rather than one ambiguous identity.
-    participant: row[SCHEDULE_EXPORT_HEADERS.TEAM_ID] || null,
+    participant: exportCell(row, SCHEDULE_EXPORT_HEADERS.TEAM_ID),
   });
 }
 

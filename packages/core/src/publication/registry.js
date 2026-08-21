@@ -42,7 +42,7 @@ import {
   derivePublicationStatus,
   makePublicationFinding,
 } from './reasonCodes.js';
-import { SyncDestinationSchema } from './schemas.js';
+import { PublicationStampSchema, SyncDestinationSchema } from './schemas.js';
 
 /**
  * What a destination's last sync says about it, relative to a snapshot.
@@ -72,6 +72,20 @@ export function buildSyncRegistryReport(input) {
     SyncDestinationSchema.parse(destination)
   );
   const snapshot = input.snapshot;
+  // Both sides of the comparison go through the same schema. Every
+  // `destinationSyncedAt` already did; the stamp they are all ordered *against*
+  // did not, and ordering here is textual — so an ISO instant would sort a
+  // destination that synced at the publication minute *before* it and report a
+  // current copy as stale. Staleness is this module's entire output. Thrown
+  // rather than reported, as `checkParity()`'s subject assertions are: a stamp
+  // in the wrong format is the caller's bug, not a fact about a destination.
+  if (!PublicationStampSchema.safeParse(snapshot?.publishedAt).success) {
+    throw new Error(
+      `publication: the active snapshot's publishedAt (${JSON.stringify(
+        snapshot?.publishedAt
+      )}) is not a naive YYYY-MM-DDTHH:MM:SS stamp, so no destination's sync time can be ordered against it`
+    );
+  }
   const meta = createPublicationMeta();
   /** @type {import('./types.js').PublicationFinding[]} */
   const findings = [];
