@@ -125,10 +125,15 @@ function list(cause, key) {
 /**
  * Violation counts per code and per severity.
  *
+ * **Exported since Prompt 6.1**, so `scenario/diff.js` can answer *"which
+ * constraints break"* with this tally rather than a second one. Two tallies
+ * would be free to disagree about a waived violation, and nothing would detect
+ * the drift.
+ *
  * @param {Object|null} verification
  * @returns {{ byCode: Record<string, number>, bySeverity: Record<string, number>, total: number }}
  */
-function violationTally(verification) {
+export function violationTally(verification) {
   /** @type {Record<string, number>} */
   const byCode = {};
   /** @type {Record<string, number>} */

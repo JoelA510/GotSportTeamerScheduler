@@ -446,6 +446,34 @@ export function pinGames(state, gameIds, reason) {
 }
 
 /**
+ * **The one place a slot's changed fields are computed.**
+ *
+ * Which of a game's three coordinates moved — or that it has no slot at all —
+ * is one question with one answer, and the repository keeps exactly one
+ * implementation of it. {@link diffAgainstBaseline} asks it of a re-solve;
+ * `scenario/diff.js` `diffSchedules()` asks it of two branches. Two copies would
+ * be free to disagree about whether a shelved game counts as a date change,
+ * which is precisely the kind of drift `docs/ARCHITECTURE.md` §6.10 records for
+ * the two fitness functions this repository already carries.
+ *
+ * `'placed'` rather than a per-field list when the game has no slot: a game that
+ * is nowhere has not moved to a different date, it has stopped having one.
+ *
+ * @param {import('./types.js').Slot} before
+ * @param {import('./types.js').Slot|null} after
+ * @returns {string[]}
+ */
+export function slotChangedFields(before, after) {
+  if (after === null) return ['placed'];
+  /** @type {string[]} */
+  const changedFields = [];
+  if (before.date !== after.date) changedFields.push('date');
+  if (before.surfaceId !== after.surfaceId) changedFields.push('surfaceId');
+  if (before.startMinutes !== after.startMinutes) changedFields.push('startMinutes');
+  return changedFields;
+}
+
+/**
  * Which games ended up somewhere other than where they started — **by game,
  * never as a bare count**.
  *
@@ -474,15 +502,7 @@ export function diffAgainstBaseline(state) {
         ? null
         : { date: after.date, surfaceId: after.surfaceId, startMinutes: after.startMinutes };
 
-    /** @type {string[]} */
-    const changedFields = [];
-    if (afterSlot === null) {
-      changedFields.push('placed');
-    } else {
-      if (beforeSlot.date !== afterSlot.date) changedFields.push('date');
-      if (beforeSlot.surfaceId !== afterSlot.surfaceId) changedFields.push('surfaceId');
-      if (beforeSlot.startMinutes !== afterSlot.startMinutes) changedFields.push('startMinutes');
-    }
+    const changedFields = slotChangedFields(beforeSlot, afterSlot);
     if (changedFields.length === 0) continue;
 
     changed.push({
