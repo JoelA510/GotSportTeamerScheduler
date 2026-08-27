@@ -38,53 +38,49 @@ merge, no regression to the shipping app (bundle entry hash unchanged throughout
 
 ## 2. In progress
 
-**Prompt 6.1 — scenario branching.** Built and committed (`28d8d2a`); the
-pre-PR `/code-review` returned **11 findings** and the fix pass was interrupted
-mid-edit. The WIP commit that follows this document carries it.
+**Prompt 6.1 — scenario branching.** Built (`28d8d2a`); the pre-PR
+`/code-review` returned **11 findings**; the fix pass has landed (`bfaae0f`)
+and all gates are green — typecheck 0 errors, lint 0 errors / 1 warning
+(baseline), source hygiene green, suite **1736 passed | 34 skipped | 6 todo**,
+up from 1720 (sixteen regression tests, each written to fail first).
 
-The findings file lives at
-`scratchpad/review-6.1-findings.md` **and may have been lost** — the scratchpad
-has been wiped twice. The eleven, in severity order, so they are recoverable:
+Still to do before merge: **re-run `/code-review` on the fix pass**, then PR.
 
-1. **`scenario/run.js` — `ScenarioMemo.resolve()` ignores run options.**
-   Reproduced: `relocations: false` then the positive options returns the
-   *identical object*. The acceptance run and the negative control differ only by
-   a run option, so the memo can serve one as the other. Fixing it requires
-   re-establishing the acceptance and control figures **through the memo path**,
-   stated per path.
-2. **`scenario/run.js` — `accountForFixtures()` findings never merged into
-   `result.findings`.** A branch that lost a fixture reads `ok` and promotes.
-3. **`scenario/run.js` — the `applyChangeRequest()` run's `findings`/`unplaced`
-   are discarded.** A game vanishes by two mechanisms in sequence.
-4. **`scenario/scenario.js` — no waiver ledger built, `reservedSlots` never
-   read.** Two declared override-able record sets are inert. Honour or remove.
-5. **`scenario/scenario.js` — `venue-unavailable` expands against `base`, not the
-   working copy**, so an earlier `add` survives the withdrawal.
-6. **`scenario/relocation.js` — a team double-booked across two replacement
-   surfaces is graded `clean`.** Grade issued on a placement that is not legal.
-7. **`scenario/run.js` — vacuity decided on violation count**, so a hard→soft
-   retype is stamped vacuous.
-8. **`scenario/scenario.js` — `ancestry` never checked against `parentScenarioId`.**
-9. **`scenario/run.js` — `ScenarioMemo.check()` throws where it should report.**
-10. **`scenario/scenario.js` — fingerprint omits `by`/`at`/`reason`** which do
-    reach expanded records.
-11. **`scenario/scenario.js` — `overridesApplied` counts primitive edits** (17 vs
-    1 declared).
+The eleven findings, kept here because the scratchpad copy has been lost twice:
 
-State at the pause: 58 scenario tests passing, `npm run typecheck` reporting 2
-errors in a typedef mid-extension (`UnrelocatableGame` gaining
-`candidatesRefusedTeamClash` / `reservedSlotsHonoured`). **Not mergeable as-is.**
+1. **`scenario/run.js` — `ScenarioMemo.resolve()` ignored run options.**
+   Reproduced: `relocations: false` then the positive options returned the
+   *identical object*. The acceptance run and the negative control differ only
+   by a run option, so the memo could serve one as the other. This was a threat
+   to 6.1's evidence, not merely a caching bug; the acceptance figures must be
+   re-established **through the memo path** and stated per path.
+2. **`accountForFixtures()` findings never merged into `result.findings`.**
+   A branch that lost a fixture read `ok` and could be promoted.
+3. **The `applyChangeRequest()` run's `findings`/`unplaced` were discarded.**
+   A game vanished by two mechanisms in sequence.
+4. **`scenario.js` — no waiver ledger built, `reservedSlots` never read.**
+   Two declared override-able record sets were inert.
+5. **`venue-unavailable` expanded against `base`, not the working copy**, so an
+   earlier `add` survived the withdrawal.
+6. **`relocation.js` — a team double-booked across two replacement surfaces was
+   graded `clean`.** A grade issued on a placement that is not legal.
+7. **Vacuity decided on violation count**, so a hard-to-soft retype was stamped
+   vacuous. A count is not an identity.
+8. **`ancestry` never checked against `parentScenarioId`.**
+9. **`ScenarioMemo.check()` threw where it should report.**
+10. **Fingerprint omitted `by`/`at`/`reason`**, which do reach expanded records.
+11. **`overridesApplied` counted primitive edits** (17 against 1 declared).
 
-6.1's acceptance figures before the fix pass, to be re-established rather than
+6.1's acceptance figures, to be confirmed through the memo path rather than
 assumed: 72 displaced 7v7 games; 11 clean replacements on Maplewood Front; 49
-compromised on Alder's 9v9-lined halves; 12 TIME TBD; `LINING_MISMATCH` 40 → 89;
-7v7 capacity 466 → 340 over the nine affected dates.
+compromised on Alder's 9v9-lined halves; 12 TIME TBD; `LINING_MISMATCH` 40 to
+89; 7v7 capacity 466 to 340 over the nine affected dates.
 
 ## 3. Remaining
 
 | Prompt | Scope |
 |---|---|
-| 6.1 | finish the 11 fixes, re-run `/code-review`, PR, merge |
+| 6.1 | fixes landed; re-run `/code-review`, PR, merge |
 | 7.1 | Read-only feasibility API — the build plan calls this "the highest day-to-day-value item in the whole sequence" |
 | 7.2 | Fairness and equity metrics |
 | 7.3 | External fixture import with impact analysis |
