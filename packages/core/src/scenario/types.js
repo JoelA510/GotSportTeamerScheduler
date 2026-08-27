@@ -228,6 +228,7 @@
  * @typedef {Object} ScenarioMeta
  * @property {number} overridesDeclared
  * @property {number} overridesApplied
+ * @property {number} recordEditsApplied
  * @property {number} recordsAdded
  * @property {number} recordsRemoved
  * @property {number} recordsRetyped
@@ -236,6 +237,8 @@
  * @property {number} gamesExamined
  * @property {number} gamesDisplaced
  * @property {number} candidatesConsidered
+ * @property {number} candidatesRefusedTeamClash
+ * @property {number} reservedSlotsHonoured
  * @property {number} relocationsProposed
  * @property {number} relocationsCompromised
  * @property {number} relocationsUnavailable

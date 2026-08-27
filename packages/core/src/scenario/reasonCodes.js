@@ -187,6 +187,19 @@ export const SCENARIO_REASON = Object.freeze({
   SCENARIO_OVERRIDE_VACUOUS: 'SCENARIO_OVERRIDE_VACUOUS',
   /** This scenario branches from another scenario, and the overrides compose. */
   SCENARIO_BRANCHED_FROM_SCENARIO: 'SCENARIO_BRANCHED_FROM_SCENARIO',
+  /**
+   * The ancestry handed for a branch of a branch is not the parent chain the
+   * branch names — the wrong parent, a broken chain, one crossing baselines, or
+   * none at all where the branch names one.
+   *
+   * `blocking`. `composedOverrides()` applies whatever array it is given, so an
+   * unchecked ancestry composes a stranger's edits under this branch's own id
+   * and produces a fingerprint that looks entirely legitimate.
+   * `materialiseScenario()` refuses outright; this code is how the reporting
+   * entry points — {@link import('./run.js').ScenarioMemo.check} — say the same
+   * thing without throwing at a caller who is reconciling a cache.
+   */
+  SCENARIO_ANCESTRY_UNRESOLVED: 'SCENARIO_ANCESTRY_UNRESOLVED',
 
   /* -- the memo ------------------------------------------------------------ */
   /**
@@ -281,6 +294,7 @@ export const SCENARIO_REASON_SEVERITY = Object.freeze({
   [SCENARIO_REASON.SCENARIO_OVERRIDE_ID_COLLIDES]: SCENARIO_SEVERITY.BLOCKING,
   [SCENARIO_REASON.SCENARIO_OVERRIDE_VACUOUS]: SCENARIO_SEVERITY.COMPROMISE,
   [SCENARIO_REASON.SCENARIO_BRANCHED_FROM_SCENARIO]: SCENARIO_SEVERITY.INFO,
+  [SCENARIO_REASON.SCENARIO_ANCESTRY_UNRESOLVED]: SCENARIO_SEVERITY.BLOCKING,
 
   [SCENARIO_REASON.SCENARIO_RESULT_STALE]: SCENARIO_SEVERITY.BLOCKING,
 
@@ -356,8 +370,15 @@ export function createScenarioMeta() {
   return {
     /** Overrides this scenario states, including a parent's. */
     overridesDeclared: 0,
-    /** Overrides the materialiser applied to a base array. */
+    /** Overrides the materialiser applied at least one edit for. */
     overridesApplied: 0,
+    /**
+     * Primitive record edits those overrides became.
+     *
+     * One `venue-unavailable` is one override and seventeen edits, and keeping
+     * the two under one name is what reported "17 applied against 1 declared".
+     */
+    recordEditsApplied: 0,
     /** Records the overrides added. */
     recordsAdded: 0,
     /** Records the overrides withdrew. */
@@ -380,6 +401,16 @@ export function createScenarioMeta() {
     gamesDisplaced: 0,
     /** Candidate replacement slots the proposer scored. */
     candidatesConsidered: 0,
+    /**
+     * Candidates refused because they would put a team in two places at once.
+     *
+     * `checkKickoffAvailability()` is a statement about *ground*: it knows who
+     * is standing on a surface, never who is playing. A team clash is therefore
+     * the proposer's own check, and this is the number that proves it ran.
+     */
+    candidatesRefusedTeamClash: 0,
+    /** Reserved slots the proposer treated as ground already held. */
+    reservedSlotsHonoured: 0,
     /** Displaced games given a replacement slot. */
     relocationsProposed: 0,
     /** Of those, replacements that add a lining compromise. */

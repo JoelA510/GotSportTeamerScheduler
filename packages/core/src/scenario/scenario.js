@@ -116,6 +116,16 @@ export function composedOverrides(scenario, ancestry = []) {
  * that would derive a check's subject from the very data a corruption would
  * change, which is a check that cannot fail.
  *
+ * **`by`, `at` and `reason` are part of the override**, not metadata about it,
+ * and they are digested for the same reason every other field is: they are
+ * written into the records the branch builds. A `venue-unavailable` puts
+ * `reason` in each expanded permit row's `note` and `by` in its `source`, and a
+ * `retype` puts all three into the constraint's own type-change history. Two
+ * branches differing only there build genuinely different records, and a
+ * fingerprint that could not tell them apart would call one a valid cache of
+ * the other. Scenario metadata — the name, the rationale, who asked, when the
+ * branch was created — stays out, because none of it reaches a record.
+ *
  * @param {import('./types.js').SeasonInputs} inputs
  * @param {ReadonlyArray<import('./types.js').ScenarioOverride>} overrides
  * @returns {string}
@@ -133,6 +143,9 @@ export function scenarioFingerprint(inputs, overrides) {
         weight: override.weight,
         venueId: override.venueId,
         dates: override.dates,
+        by: override.by,
+        at: override.at,
+        reason: override.reason,
       })),
     },
     ['baseline', 'overrides']
@@ -205,19 +218,28 @@ export function expandVenueUnavailable(override, permits) {
 /**
  * One override reduced to the primitive edits it performs on one record set.
  *
+ * **`current` is the branch as it stands, never the baseline as it started.**
+ * Overrides are set operations applied in order, so a `venue-unavailable`
+ * expanded against the original permits would walk past a row an earlier
+ * override of the same branch had already added for that venue — leaving an
+ * open window standing beside the blackout, which is
+ * `PERMIT_PRECEDENCE_AMBIGUOUS` on every consultation for that venue and
+ * exactly the noise the withdrawal's own `remove` half exists to prevent.
+ *
  * @param {import('./types.js').ScenarioOverride} override
- * @param {Record<string, ReadonlyArray<Object>>} base
- * @returns {Array<{ recordSet: string, op: string, recordId: string|null, record: Object|null, override: import('./types.js').ScenarioOverride }>}
+ * @param {(set: string) => ReadonlyArray<Object>} current - the effective rows of one record set, so far
+ * @returns {Array<{ recordSet: string, op: string, recordId: string|null, record: Object|null, derived: boolean, override: import('./types.js').ScenarioOverride }>}
  */
-function primitiveEditsOf(override, base) {
+function primitiveEditsOf(override, current) {
   if (override.kind === SCENARIO_OVERRIDE_KIND.VENUE_UNAVAILABLE) {
-    const expansion = expandVenueUnavailable(override, base[SCENARIO_RECORD_SET.PERMITS] ?? []);
+    const expansion = expandVenueUnavailable(override, current(SCENARIO_RECORD_SET.PERMITS));
     return [
       ...expansion.removeIds.map((recordId) => ({
         recordSet: SCENARIO_RECORD_SET.PERMITS,
         op: SCENARIO_OVERRIDE_KIND.REMOVE,
         recordId,
         record: null,
+        derived: true,
         override,
       })),
       ...expansion.added.map((record) => ({
@@ -225,6 +247,7 @@ function primitiveEditsOf(override, base) {
         op: SCENARIO_OVERRIDE_KIND.ADD,
         recordId: String(record.id),
         record,
+        derived: true,
         override,
       })),
     ];
@@ -235,9 +258,76 @@ function primitiveEditsOf(override, base) {
       op: override.kind,
       recordId: override.recordId ?? (override.record ? String(override.record.id) : null),
       record: override.record,
+      derived: false,
       override,
     },
   ];
+}
+
+/**
+ * Is this ancestry the parent chain the branch actually names?
+ *
+ * **The check the ancestry never had.** `composedOverrides()` applies whatever
+ * array it is handed, parent first, so before this any non-empty array passed:
+ * a stranger's overrides composed under the branch's own id and produced a
+ * fingerprint that looked entirely legitimate. The chain is checked end to
+ * end — outermost first, each link naming the one before it, the last naming
+ * the branch's own parent — because a half-checked chain would let the second
+ * ancestor be anybody.
+ *
+ * Returns `null` when the chain resolves, and a finding-shaped description of
+ * what is wrong when it does not. It **reports rather than throws** so that
+ * {@link import('./run.js').ScenarioMemo.check} — whose every other answer is a
+ * finding — can answer this one the same way, while `materialiseScenario()`
+ * still refuses outright.
+ *
+ * @param {import('./types.js').ScheduleScenario} scenario
+ * @param {ReadonlyArray<import('./types.js').ScheduleScenario>} ancestry - resolved parents, outermost first
+ * @returns {{ message: string, details: Record<string, unknown> }|null}
+ */
+export function ancestryProblem(scenario, ancestry) {
+  const details = {
+    scenarioId: scenario.id,
+    parentScenarioId: scenario.parentScenarioId,
+    ancestryIds: ancestry.map((ancestor) => ancestor.id),
+  };
+  if (scenario.parentScenarioId === null) {
+    if (ancestry.length === 0) return null;
+    return {
+      message: `"${scenario.id}" names no parent, and an ancestry of ${ancestry.map((a) => `"${a.id}"`).join(', ')} was passed for it; composing edits the branch never claimed would answer a question nobody asked`,
+      details,
+    };
+  }
+  if (ancestry.length === 0) {
+    return {
+      message: `"${scenario.id}" names parent "${scenario.parentScenarioId}" and no ancestry was passed; its overrides cannot compose and the branch would be missing half its edits`,
+      details,
+    };
+  }
+  const nearest = ancestry[ancestry.length - 1];
+  if (nearest.id !== scenario.parentScenarioId) {
+    return {
+      message: `"${scenario.id}" names parent "${scenario.parentScenarioId}" and the ancestry passed ends at "${nearest.id}"; the wrong parent's overrides would compose under this branch's own fingerprint`,
+      details,
+    };
+  }
+  for (let index = 0; index < ancestry.length; index += 1) {
+    const expected = index === 0 ? null : ancestry[index - 1].id;
+    const claimed = ancestry[index].parentScenarioId;
+    if (claimed !== expected) {
+      return {
+        message: `the ancestry passed for "${scenario.id}" is not a chain: "${ancestry[index].id}" names parent ${claimed === null ? 'nothing' : `"${claimed}"`} where the chain puts ${expected === null ? 'nothing' : `"${expected}"`} before it`,
+        details: { ...details, brokenAt: ancestry[index].id },
+      };
+    }
+    if (ancestry[index].baselineId !== scenario.baselineId) {
+      return {
+        message: `the ancestry passed for "${scenario.id}" crosses baselines: "${ancestry[index].id}" branches from "${ancestry[index].baselineId}" and this branch from "${scenario.baselineId}"`,
+        details: { ...details, brokenAt: ancestry[index].id },
+      };
+    }
+  }
+  return null;
 }
 
 /**
@@ -260,6 +350,8 @@ export function materialiseScenario(inputs, scenario, options = {}) {
       `scenario: "${scenario.id}" names parent "${scenario.parentScenarioId}"; pass it in options.ancestry so its overrides compose, rather than materialising a branch missing half its edits`
     );
   }
+  const misresolved = ancestryProblem(scenario, ancestry);
+  if (misresolved !== null) throw new Error(`scenario: ${misresolved.message}`);
 
   const meta = createScenarioMeta();
   /** @type {import('./types.js').ScenarioFinding[]} */
@@ -294,11 +386,26 @@ export function materialiseScenario(inputs, scenario, options = {}) {
     if (!rebuilt.has(set)) rebuilt.set(set, [...(base[set] ?? [])]);
     return /** @type {Array<Object>} */ (rebuilt.get(set));
   };
+  /**
+   * A record set as the branch has it *so far*, without forcing a rebuild.
+   *
+   * Reading through `working()` would copy the array on every consultation and
+   * silently revoke the sharing guarantee for sets no override touches.
+   */
+  const current = (set) =>
+    /** @type {ReadonlyArray<Object>} */ (rebuilt.get(set) ?? base[set] ?? []);
 
   for (const override of overrides) {
-    for (const edit of primitiveEditsOf(override, base)) {
+    let appliedThisOverride = 0;
+    for (const edit of primitiveEditsOf(override, current)) {
       const key = `${edit.recordSet}|${edit.recordId}`;
-      const claimed = claimedIds.get(key);
+      // A derived edit is not an authored claim on a record id. Two authors
+      // naming one record is the contradiction this reports; an author naming a
+      // *venue* whose rows another override happens to touch is composition,
+      // and the set operations answer it in order without a precedence ladder.
+      // A second `venue-unavailable` for the same venue is still caught, by
+      // SCENARIO_OVERRIDE_ID_COLLIDES on the blackout rows it re-adds.
+      const claimed = edit.derived ? undefined : claimedIds.get(key);
       if (claimed !== undefined) {
         // Two overrides, one record id. **Not a precedence question**: overrides
         // are set operations applied before anything is built, so there is no
@@ -322,7 +429,7 @@ export function materialiseScenario(inputs, scenario, options = {}) {
         );
         continue;
       }
-      claimedIds.set(key, override);
+      if (!edit.derived) claimedIds.set(key, override);
 
       const bucket = working(edit.recordSet);
       const index = bucket.findIndex((record) => String(record.id) === edit.recordId);
@@ -379,7 +486,8 @@ export function materialiseScenario(inputs, scenario, options = {}) {
         throw new Error(`scenario: unknown override operation "${edit.op}"`);
       }
 
-      meta.overridesApplied += 1;
+      meta.recordEditsApplied += 1;
+      appliedThisOverride += 1;
       findings.push(
         makeScenarioFinding(
           SCENARIO_REASON.SCENARIO_OVERRIDE_APPLIED,
@@ -396,6 +504,11 @@ export function materialiseScenario(inputs, scenario, options = {}) {
         )
       );
     }
+    // **One override is one override**, however many primitive edits it becomes.
+    // Counting the edits here put "17 applied against 1 declared" in the vacuity
+    // finding's own details, which reads as a bug in the materialiser rather
+    // than as one `venue-unavailable` doing what it is for.
+    if (appliedThisOverride > 0) meta.overridesApplied += 1;
   }
 
   /** @type {Record<string, ReadonlyArray<Object>>} */

@@ -3319,6 +3319,25 @@ harvest(
 /** The memo, read after its baseline moved underneath it. */
 const scenarioMemo = new ScenarioMemo();
 scenarioMemo.resolve(scenarioInputs, scenarioBranch, scenarioRunOptions);
+
+/** A branch of a branch, cached, and then checked without the ancestry it names. */
+const scenarioChild = season2026VenueUnavailableScenario({
+  venueId: scenarioVenueId.venueId,
+  baselineId: scenarioInputs.id,
+  requestedBy: 'audit@club.example',
+  at: '2026-08-01T09:00:00',
+  id: 'audit-unresolved-child',
+  parentScenarioId: scenarioBranch.id,
+  dates: [schedule.games.find((game) => game.venueId === scenarioVenueId.venueId).date],
+});
+scenarioMemo.resolve(scenarioInputs, scenarioChild, {
+  ...scenarioRunOptions,
+  ancestry: [scenarioBranch],
+});
+harvest(
+  'ScenarioMemo.check(a branch of a branch, without the ancestry it names)',
+  scenarioMemo.check(scenarioInputs, scenarioChild)
+);
 harvest(
   'ScenarioMemo.check(a cached result whose fingerprint has moved)',
   scenarioMemo.check(

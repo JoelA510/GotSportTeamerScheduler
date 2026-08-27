@@ -51,22 +51,24 @@ import {
   mayMove,
 } from '../resolve/state.js';
 import { CONSTRAINT_SEVERITY } from '../constraints/reasonCodes.js';
+import { buildWaiverLedger } from '../waivers/ledger.js';
 import { accountForFixtures, unplacedFromResolveRun } from '../reserve/unplaced.js';
 import { makePublicationSnapshot } from '../publication/snapshot.js';
 import { naiveDateTime } from '../reserve/publication.js';
 import { PUBLICATION_TBD } from '../reserve/reasonCodes.js';
 
 import { diffScenarios } from './diff.js';
-import { withRecords } from './inputs.js';
+import { recordDigest, withRecords } from './inputs.js';
 import { proposeRelocations } from './relocation.js';
 import {
   SCENARIO_REASON,
+  SCENARIO_RECORD_SET,
   createScenarioMeta,
   deriveScenarioStatus,
   makeScenarioFinding,
   mergeScenarioMeta,
 } from './reasonCodes.js';
-import { materialiseScenario } from './scenario.js';
+import { ancestryProblem, materialiseScenario } from './scenario.js';
 
 /** The stage id the shelving step signs its writes with. */
 export const SCENARIO_SHELVE_STAGE_ID = 'scenario-shelve-unplaceable';
@@ -215,10 +217,17 @@ export function scenarioDisplacements(input) {
  * a mistake here is a refusal rather than a silent extra shelving — and moves
  * each named game to TIME TBD with the cause the branch computed.
  *
+ * **An entry naming a game the schedule no longer holds is reported, never
+ * skipped.** It used to be a bare `continue`: no finding, no counter, nothing.
+ * A game the re-solve had already dropped therefore vanished a second time
+ * here, and never reached `result.unplaced` to be reconciled. `unshelvable` is
+ * how the caller learns of it, and `accountForFixtures()` is where it becomes
+ * `FIXTURE_DROPPED` at blocking.
+ *
  * @param {import('../ruleEngine/types.js').Schedule} schedule
  * @param {ReadonlyArray<import('./types.js').UnrelocatableGame>} entries
  * @param {{ name: string, registry: Object }} context
- * @returns {{ schedule: import('../ruleEngine/types.js').Schedule, run: Object, shelved: string[] }}
+ * @returns {{ schedule: import('../ruleEngine/types.js').Schedule, run: Object, shelved: string[], unshelvable: string[] }}
  */
 export function shelveUnrelocatable(schedule, entries, context) {
   const named = new Set(entries.map((entry) => entry.gameId));
@@ -240,8 +249,13 @@ export function shelveUnrelocatable(schedule, entries, context) {
 
   /** @type {string[]} */
   const shelved = [];
+  /** @type {string[]} */
+  const unshelvable = [];
   for (const entry of entries) {
-    if (!state.games[entry.gameId]) continue;
+    if (!state.games[entry.gameId]) {
+      unshelvable.push(entry.gameId);
+      continue;
+    }
     if (
       !mayMove(state, entry.gameId, SCENARIO_SHELVE_STAGE_ID, 'the branch leaves it nowhere to go')
     ) {
@@ -287,7 +301,60 @@ export function shelveUnrelocatable(schedule, entries, context) {
       report: null,
     },
     shelved,
+    unshelvable,
   };
+}
+
+/**
+ * A waiver ledger over a record set a branch may edit, or `null` for none.
+ *
+ * **`null` rather than an empty ledger** when there are no waivers, so the
+ * rule engine behaves exactly as it did before this record set was honoured: a
+ * ledger makes `runRuleEngine()` run the applier and the dormancy scan, and
+ * neither has anything to say about a season with no waivers.
+ *
+ * @param {ReadonlyArray<Object>} waivers
+ * @param {string} name
+ * @returns {import('../waivers/types.js').WaiverLedger|null}
+ */
+function waiverLedgerFor(waivers, name) {
+  if (waivers.length === 0) return null;
+  return buildWaiverLedger({ name, source: name, waivers: [...waivers] });
+}
+
+/**
+ * A violation set as an identity rather than a total.
+ *
+ * **A count is not an identity.** Vacuity used to compare
+ * `verification.violations.length` on the two sides, so a branch that retyped a
+ * constraint — moving its violations from one severity to another, changing
+ * exactly what it was asked to change — reported the same total and was stamped
+ * `SCENARIO_OVERRIDE_VACUOUS`: *"every question asked of it is answered by the
+ * baseline"*. The same total can hide a complete change of composition, and
+ * this is what tells the two apart.
+ *
+ * @param {Object|null} verification
+ * @returns {string[]} sorted, one entry per violation
+ */
+function violationShape(verification) {
+  return (verification?.violations ?? [])
+    .map(
+      (violation) =>
+        `${violation.code}|${violation.severity}|${violation.constraintId ?? ''}|${violation.subjectId ?? ''}|${violation.waived === true ? 'waived' : 'standing'}`
+    )
+    .sort();
+}
+
+/**
+ * Whether two violation sets are the same set, not merely the same size.
+ *
+ * @param {ReadonlyArray<string>} left
+ * @param {ReadonlyArray<string>} right
+ * @returns {boolean}
+ */
+function sameViolations(left, right) {
+  if (left.length !== right.length) return false;
+  return left.every((entry, index) => entry === right[index]);
 }
 
 /**
@@ -312,15 +379,36 @@ export function runScenario(inputs, scenario, options) {
   const findings = [...materialised.findings];
 
   const baselineSchedule = inputs.schedule;
+  /**
+   * The waiver ledgers, one per side, and the reason there are two.
+   *
+   * `waivers` is a record set a scenario override may edit, and until this it
+   * was inert: no ledger was ever built, so a branch that granted or withdrew
+   * an exception produced exactly the same verification as one that did not.
+   * Worse, a caller who supplied a waiver-aware `baselineVerification` had it
+   * compared against a waiver-*free* branch verification, and the diff read the
+   * waivers' absence as something the branch had done.
+   *
+   * The baseline's ledger comes from `inputs.waivers` and the branch's from its
+   * own effective records, so the two sides are judged under the same kind of
+   * rule and a difference between them is a difference the branch made.
+   */
+  const baselineLedger = waiverLedgerFor(inputs.waivers, `${inputs.label} waivers`);
+  const branchLedger = waiverLedgerFor(
+    materialised.records[SCENARIO_RECORD_SET.WAIVERS] ?? [],
+    `scenario "${scenario.id}" waivers`
+  );
   const baselineVerification =
     options.baselineVerification ??
     runRuleEngine(baselineSchedule, {
       registry: options.baselineEngines.registry,
       resources: options.baselineEngines.resources,
+      ledger: baselineLedger,
     });
   const branchVerification = runRuleEngine(baselineSchedule, {
     registry: materialised.engines.registry,
     resources: materialised.engines.resources,
+    ledger: branchLedger,
   });
   meta.gamesExamined = baselineSchedule.games.length;
 
@@ -396,6 +484,10 @@ export function runScenario(inputs, scenario, options) {
       gamesById,
       policy: options.relocationPolicy,
       requirement: options.requirement,
+      // Ground the branch itself is holding. A reserved slot is a commitment,
+      // and offering one as spare replacement ground would be this package
+      // quietly spending it.
+      reservedSlots: materialised.records[SCENARIO_RECORD_SET.RESERVED_SLOTS] ?? [],
     });
   }
   mergeScenarioMeta(meta, relocations.meta);
@@ -438,13 +530,42 @@ export function runScenario(inputs, scenario, options) {
         });
 
   const relocated = run === null ? baselineSchedule : run.schedule;
+  // **The re-solve's own verdict, carried rather than discarded.** Every
+  // judgement `applyChangeRequest()` reached about the branch's own changes —
+  // including the new violations it verified into existence — used to end at
+  // this line, invisible to `result.findings` and to `result.status`.
+  if (run !== null) findings.push(...run.findings);
+  /**
+   * Fixtures the re-solve itself could not place.
+   *
+   * The first of the two mechanisms that made a game disappear: the run's
+   * `unplaced` was dropped here, and `shelveUnrelocatable()` below then walked
+   * past the same game because the schedule no longer held it. Read through
+   * `unplacedFromResolveRun()`, the one reader of a resolve run's ledger, so
+   * these fixtures carry the same cause and the same reason as any other.
+   */
+  const resolveUnplaced =
+    run === null ? [] : unplacedFromResolveRun(run, { source: `scenario "${scenario.id}"` });
+
   const shelving = shelveUnrelocatable(relocated, relocations.unrelocatable, {
     name: `scenario "${scenario.name}"`,
     registry: materialised.engines.registry,
   });
   const schedule = shelving.schedule;
 
-  const unplaced = unplacedFromResolveRun(shelving.run, { source: `scenario "${scenario.id}"` });
+  const shelved = unplacedFromResolveRun(shelving.run, { source: `scenario "${scenario.id}"` });
+  // Both lists, by fixture id, with the shelving's own entry winning where a
+  // game somehow reached both: `accountForFixtures()` reports a fixture claimed
+  // twice as `FIXTURE_DOUBLE_COUNTED`, and handing it a list that already
+  // double-counts would make that check about this merge rather than about the
+  // run.
+  /** @type {Map<string, import('../reserve/types.js').UnplacedFixture>} */
+  const unplacedById = new Map();
+  for (const fixture of [...resolveUnplaced, ...shelved]) {
+    unplacedById.set(fixture.fixtureId, fixture);
+  }
+  const unplaced = [...unplacedById.values()];
+
   const accounting = accountForFixtures({
     // From the **baseline**, never from the result: a fixture the branch dropped
     // is exactly the record missing from the result's own output.
@@ -453,28 +574,39 @@ export function runScenario(inputs, scenario, options) {
     unplaced,
     expectedSource: inputs.label,
   });
+  // **The accounting's verdict is the result's verdict.** It was being computed
+  // and then stored on `result.accounting` alone, so `deriveScenarioStatus()`
+  // never saw it: a branch that lost a fixture reported `ok` and
+  // `promoteScenario()` would have promoted it. The whole list is carried, not
+  // the blocking half — `accountForFixtures()` reconciles as one verdict, and
+  // picking severities out of it is the same discarding in a smaller size.
+  findings.push(...accounting.findings);
 
   const verification = runRuleEngine(schedule, {
     registry: materialised.engines.registry,
     resources: materialised.engines.resources,
+    ledger: branchLedger,
   });
 
   /* -- vacuity ------------------------------------------------------------- */
 
+  const branchShape = violationShape(verification);
+  const baselineShape = violationShape(baselineVerification);
   const nothingMoved =
     displaced.length === 0 &&
     relocations.proposals.length === 0 &&
     unplaced.length === 0 &&
-    verification.violations.length === baselineVerification.violations.length;
+    sameViolations(branchShape, baselineShape);
   if (nothingMoved) {
     findings.push(
       makeScenarioFinding(
         SCENARIO_REASON.SCENARIO_OVERRIDE_VACUOUS,
-        `scenario "${scenario.id}" displaced no game, proposed no relocation and changed no violation count, so every question asked of it is answered by the baseline; an override that models ground the schedule never uses reports "nothing changed" for a reason that has nothing to do with the season`,
+        `scenario "${scenario.id}" displaced no game, proposed no relocation and left every violation standing exactly as the baseline reports it — same codes, same severities, same subjects — so every question asked of it is answered by the baseline; an override that models ground the schedule never uses reports "nothing changed" for a reason that has nothing to do with the season`,
         {
           scenarioId: scenario.id,
           overridesDeclared: materialised.meta.overridesDeclared,
           overridesApplied: materialised.meta.overridesApplied,
+          recordEditsApplied: materialised.meta.recordEditsApplied,
           violations: verification.violations.length,
         }
       )
@@ -501,20 +633,88 @@ export function runScenario(inputs, scenario, options) {
 }
 
 /**
+ * The run options that change the answer, digested.
+ *
+ * **The memo's other half of the key, and the reason it exists.** A scenario's
+ * fingerprint covers the inputs and the overrides — the *branch*. It says
+ * nothing about the *question*, and the negative control differs from the
+ * acceptance run by exactly one run option. Keyed on the branch alone, the memo
+ * served whichever of the two was asked for first: the control's nought
+ * proposals returned as the searched answer, or the searched answer returned as
+ * the control, and either way the evidence the report rests on is invalid while
+ * looking entirely well-formed.
+ *
+ * Every option the derivation reads is here. `baselineVerification` is included
+ * as its own violation shape rather than by reference, because two callers can
+ * hand the same branch two different pictures of the baseline and the displaced
+ * set is the difference between them. `baselineEngines` is deliberately *not*
+ * digested: it is a set of built engines rather than records, and the honest
+ * check on it is the fingerprint over `inputs`, which those engines are built
+ * from.
+ *
+ * @param {Object} options - as {@link runScenario}
+ * @returns {string} 16 lowercase hex characters
+ */
+export function runOptionsFingerprint(options) {
+  const policy = options.relocationPolicy ?? null;
+  return recordDigest(
+    {
+      question: [
+        {
+          relocations: options.relocations === false ? 'off' : 'on',
+          policy:
+            policy === null
+              ? null
+              : {
+                  policy: policy.policy ?? null,
+                  surfaceIds: [...(policy.surfaceIds ?? [])].sort(),
+                  cadenceMinutes: policy.cadenceMinutes ?? null,
+                  earliestKickoffMinutes: policy.earliestKickoffMinutes ?? null,
+                  latestKickoffMinutes: policy.latestKickoffMinutes ?? null,
+                  source: policy.source ?? null,
+                },
+          requirement: options.requirement ?? null,
+          objectiveWeights: options.objectiveWeights ?? null,
+          ancestryIds: (options.ancestry ?? []).map((ancestor) => ancestor.id),
+        },
+      ],
+      baseline: violationShape(options.baselineVerification ?? null).map((entry) => ({ entry })),
+    },
+    ['question', 'baseline']
+  );
+}
+
+/**
  * **The memo.** A lazily-evaluated, fingerprinted cache of scenario results.
  *
  * Nothing is stored on a scenario, and the one thing that *is* cached is
- * checked: a cached run whose fingerprint no longer matches its inputs and
- * overrides is re-derived, and a caller who reads one past the check is told
+ * checked twice over: a cached run is reused only when **the branch** still
+ * digests to the fingerprint it was derived at *and* **the question** is the
+ * one it answers. A caller who reads a result past the first check is told
  * `SCENARIO_RESULT_STALE` at blocking rather than served a schedule that no
- * longer exists.
+ * longer exists; a caller who asks a different question is given a derivation
+ * rather than somebody else's answer.
  */
 export class ScenarioMemo {
   constructor() {
-    /** @type {Map<string, import('./types.js').ScenarioResult>} */
-    this.byScenarioId = new Map();
+    /**
+     * Keyed on the scenario **and the question**, never on the scenario alone.
+     *
+     * @type {Map<string, { scenarioId: string, options: string, result: import('./types.js').ScenarioResult }>}
+     */
+    this.byKey = new Map();
     this.hits = 0;
     this.misses = 0;
+  }
+
+  /**
+   * Every entry cached for one scenario, whatever question it answers.
+   *
+   * @param {string} scenarioId
+   * @returns {Array<{ scenarioId: string, options: string, result: import('./types.js').ScenarioResult }>}
+   */
+  entriesFor(scenarioId) {
+    return [...this.byKey.values()].filter((entry) => entry.scenarioId === scenarioId);
   }
 
   /**
@@ -526,23 +726,31 @@ export class ScenarioMemo {
    * @returns {import('./types.js').ScenarioResult}
    */
   resolve(inputs, scenario, options) {
-    const cached = this.byScenarioId.get(scenario.id);
+    const key = `${scenario.id}\u0000${runOptionsFingerprint(options)}`;
+    const cached = this.byKey.get(key);
     if (cached !== undefined && this.check(inputs, scenario, options.ancestry ?? []).length === 0) {
       this.hits += 1;
-      return cached;
+      return cached.result;
     }
     this.misses += 1;
     const result = runScenario(inputs, scenario, options);
-    this.byScenarioId.set(scenario.id, result);
+    this.byKey.set(key, {
+      scenarioId: scenario.id,
+      options: runOptionsFingerprint(options),
+      result,
+    });
     return result;
   }
 
   /**
-   * Is the cached result for this scenario still the answer to this question?
+   * Is what is cached for this scenario still the answer to what was asked?
    *
    * **Exported behaviour rather than an internal branch**, for the reason
    * `parityPartitionFindings()` is exported: a check nobody can make fail is
    * not a check. A test edits one base record and watches this fire.
+   *
+   * Every entry cached for the scenario is checked, not one: the memo holds an
+   * entry per question, and a baseline that moved invalidates all of them.
    *
    * @param {import('./types.js').SeasonInputs} inputs
    * @param {import('./types.js').ScheduleScenario} scenario
@@ -550,21 +758,39 @@ export class ScenarioMemo {
    * @returns {import('./types.js').ScenarioFinding[]}
    */
   check(inputs, scenario, ancestry = []) {
-    const cached = this.byScenarioId.get(scenario.id);
-    if (cached === undefined) return [];
+    const cached = this.entriesFor(scenario.id);
+    if (cached.length === 0) return [];
+    // **Reported, not thrown.** Every other answer this method gives is a
+    // finding, and a caller reconciling a cache had to catch an exception to
+    // learn it had not passed enough. `materialiseScenario()` still refuses.
+    const misresolved = ancestryProblem(scenario, ancestry);
+    if (misresolved !== null) {
+      return [
+        makeScenarioFinding(
+          SCENARIO_REASON.SCENARIO_ANCESTRY_UNRESOLVED,
+          `the cached result for scenario "${scenario.id}" cannot be checked: ${misresolved.message}`,
+          misresolved.details
+        ),
+      ];
+    }
     const current = materialiseScenario(inputs, scenario, { ancestry }).fingerprint;
-    if (current === cached.fingerprint) return [];
-    return [
-      makeScenarioFinding(
-        SCENARIO_REASON.SCENARIO_RESULT_STALE,
-        `the cached result for scenario "${scenario.id}" was derived at fingerprint ${cached.fingerprint} and its inputs and overrides now digest to ${current}; it describes a schedule that no longer exists and must be re-derived`,
-        {
-          scenarioId: scenario.id,
-          cachedFingerprint: cached.fingerprint,
-          currentFingerprint: current,
-        }
-      ),
-    ];
+    /** @type {import('./types.js').ScenarioFinding[]} */
+    const findings = [];
+    for (const entry of cached) {
+      if (current === entry.result.fingerprint) continue;
+      findings.push(
+        makeScenarioFinding(
+          SCENARIO_REASON.SCENARIO_RESULT_STALE,
+          `the cached result for scenario "${scenario.id}" was derived at fingerprint ${entry.result.fingerprint} and its inputs and overrides now digest to ${current}; it describes a schedule that no longer exists and must be re-derived`,
+          {
+            scenarioId: scenario.id,
+            cachedFingerprint: entry.result.fingerprint,
+            currentFingerprint: current,
+          }
+        )
+      );
+    }
+    return findings;
   }
 }
 

@@ -43,6 +43,7 @@ import { describe, it, expect } from 'vitest';
 import {
   buildAvailabilityCalendar,
   resolvePermitWindow,
+  weekdayCodeOf,
 } from '@squadlogic/core/availability/index.js';
 import { toAvailabilityCalendarInput } from '@squadlogic/core/availability/adapters/season2026Permits.js';
 import {
@@ -96,6 +97,7 @@ import {
   scenarioFingerprint,
   scheduleDiffPartitionFindings,
   season2026CapacitySubjects,
+  shelveUnrelocatable,
   season2026EarliestKickoffFor,
   season2026RelocationPolicy,
   season2026SeasonInputs,
@@ -281,6 +283,9 @@ const controlDiff = diffAgainstBaselineScenario(control, {
   baselineVerification,
   capacitySubjects,
 });
+
+/** The baseline rows by id, for the footprints and labels a proposal travels with. */
+const gamesById = Object.fromEntries(schedule.games.map((game) => [String(game.id), game]));
 
 /** Every code a list of findings carries. */
 const codesOf = (findings) => findings.map((finding) => finding.code);
@@ -1433,5 +1438,572 @@ describe('structural guarantees', () => {
     const prose = scenarioSources.map((source) => source.text).join('\n');
     expect(prose).toContain('field_availability_scenarios');
     expect(prose).toContain('teamSnapshot.js');
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* The eleven defects the pre-PR review found, each with its failing case      */
+/* -------------------------------------------------------------------------- */
+
+describe('the memo answers the question it was asked, not merely the branch', () => {
+  it('never serves the negative control as the searched answer', () => {
+    // **The defect this exists to catch.** The memo keyed on the scenario id and
+    // a digest of inputs and overrides alone, so two runs that differ only by a
+    // run option were one entry. The negative control differs from the
+    // acceptance run by exactly one run option, so the memo could serve the
+    // control — nought proposals, seventy-two shelved — as the evidence the
+    // whole prompt rests on.
+    const memo = new ScenarioMemo();
+    const viaMemoControl = memo.resolve(inputs, scenario, { ...runOptions, relocations: false });
+    const viaMemoSearched = memo.resolve(inputs, scenario, runOptions);
+
+    expect(viaMemoSearched).not.toBe(viaMemoControl);
+    expect(memo.misses).toBe(2);
+    expect(memo.hits).toBe(0);
+    expect(viaMemoControl.relocations.proposals).toEqual([]);
+    expect(viaMemoSearched.relocations.proposals.length).toBeGreaterThan(0);
+
+    // …and the same question asked twice is still one derivation.
+    expect(memo.resolve(inputs, scenario, runOptions)).toBe(viaMemoSearched);
+    expect(memo.hits).toBe(1);
+    expect(memo.misses).toBe(2);
+  });
+
+  it('separates two runs that differ only by the stated relocation policy', () => {
+    const memo = new ScenarioMemo();
+    const nearest = memo.resolve(inputs, scenario, runOptions);
+    const preferClean = memo.resolve(inputs, scenario, {
+      ...runOptions,
+      relocationPolicy: { ...policy, policy: RELOCATION_POLICY.PREFER_CLEAN },
+    });
+    expect(preferClean).not.toBe(nearest);
+    expect(nearest.relocations.policy).toBe(RELOCATION_POLICY.NEAREST_KICKOFF);
+    expect(preferClean.relocations.policy).toBe(RELOCATION_POLICY.PREFER_CLEAN);
+  });
+
+  it('re-establishes the acceptance and the control figures through the memo path', () => {
+    // The acceptance numbers in `docs/SCENARIOS.md` were read off direct
+    // `runScenario()` calls. Under the defect above the memo path could have
+    // produced different ones, so both paths are asserted to agree here rather
+    // than one being assumed from the other.
+    const memo = new ScenarioMemo();
+    const viaMemoSearched = memo.resolve(inputs, scenario, runOptions);
+    const viaMemoControl = memo.resolve(inputs, scenario, { ...runOptions, relocations: false });
+    const gradeCount = (plan, grade) => plan.proposals.filter((p) => p.grade === grade).length;
+
+    expect(viaMemoSearched.displaced.length).toBe(result.displaced.length);
+    expect(gradeCount(viaMemoSearched.relocations, REPLACEMENT_GRADE.CLEAN)).toBe(
+      gradeCount(result.relocations, REPLACEMENT_GRADE.CLEAN)
+    );
+    expect(gradeCount(viaMemoSearched.relocations, REPLACEMENT_GRADE.COMPROMISED)).toBe(
+      gradeCount(result.relocations, REPLACEMENT_GRADE.COMPROMISED)
+    );
+    expect(viaMemoSearched.unplaced.length).toBe(result.unplaced.length);
+    expect(viaMemoSearched.schedule.games.length).toBe(result.schedule.games.length);
+
+    expect(viaMemoControl.displaced.length).toBe(control.displaced.length);
+    expect(viaMemoControl.relocations.proposals.length).toBe(0);
+    expect(viaMemoControl.unplaced.length).toBe(control.unplaced.length);
+  });
+});
+
+describe('nothing a branch loses is answered by silence', () => {
+  it('carries the fixture accounting’s verdict into the findings and the status', () => {
+    // `accountForFixtures()` exists to catch a fixture that disappears — the
+    // whole of incident 10 — and its verdict was being computed, stored on
+    // `result.accounting`, and then dropped before `result.status` was derived.
+    // A branch that lost a game read `ok`, and `promoteScenario()` would have
+    // promoted it.
+    expect(result.accounting.findings.length).toBeGreaterThan(0);
+    const carried = codesOf(result.findings);
+    for (const finding of result.accounting.findings) {
+      expect(carried, finding.code).toContain(finding.code);
+    }
+
+    // The consequence, on the run that shows it most plainly: the negative
+    // control shelves every displaced game and must not read as a clean branch.
+    expect(control.unplaced.length).toBe(control.displaced.length);
+    expect(control.unplaced.length).toBeGreaterThan(0);
+    expect(control.status).not.toBe('allowed');
+  });
+
+  it('carries the re-solve’s own findings into the result', () => {
+    // The `applyChangeRequest()` run's findings were discarded wholesale, so
+    // every verdict the re-solver reached about the branch's own changes —
+    // including the new violations it verified into existence — was invisible
+    // to `result.status` and to anything reading `result.findings`.
+    const run = /** @type {any} */ (result.run);
+    expect(run).not.toBeNull();
+    expect(run.findings.length).toBeGreaterThan(0);
+    const carried = new Set(codesOf(result.findings));
+    for (const code of new Set(run.findings.map((finding) => finding.code))) {
+      expect(carried, code).toContain(code);
+    }
+  });
+
+  it('reports an unrelocatable game the schedule no longer holds rather than skipping it', () => {
+    // The second mechanism in the same sequence. `shelveUnrelocatable()` walked
+    // past an entry naming a game the schedule does not hold — `continue`, no
+    // finding, no counter — so a game the re-solve had already dropped was
+    // dropped a second time here and never reached `result.unplaced`.
+    const shelving = shelveUnrelocatable(
+      result.schedule,
+      [
+        {
+          gameId: 'a-game-the-schedule-no-longer-holds',
+          label: 'gone v vanished',
+          reason: 'the re-solve left it nowhere to stand',
+          codes: Object.freeze(['PERMIT_BLACKOUT']),
+          constraintIds: Object.freeze(['permit-window']),
+          candidatesConsidered: 0,
+        },
+      ],
+      { name: 'the falsification for the silent skip', registry }
+    );
+    expect(shelving.shelved).toEqual([]);
+    expect(shelving.unshelvable).toEqual(['a-game-the-schedule-no-longer-holds']);
+  });
+
+  it('accounts for the re-solve’s unplaced fixtures as well as its own shelving', () => {
+    const run = /** @type {any} */ (result.run);
+    expect(result.unplaced.length).toBe(
+      result.relocations.unrelocatable.length + run.unplaced.length
+    );
+    expect(result.accounting.missingFixtureIds).toEqual([]);
+  });
+});
+
+describe('the two record sets a branch may override are load-bearing', () => {
+  /**
+   * A violation the branch's own registry says may be waived, and the person it
+   * is about. Derived from the corpus, never named: a waiver has to be an
+   * exception *to* something, and only two of this season's constraints admit
+   * one at all.
+   */
+  const waivable = baselineVerification.violations.find(
+    (violation) =>
+      violation.constraintId &&
+      registry.byId[violation.constraintId]?.waivable === true &&
+      violation.details?.personId
+  );
+
+  /**
+   * A branch that moves nothing, so the waiver is the only thing under test.
+   *
+   * The same shape the vacuity control uses: ground the schedule never stands
+   * on. A branch that displaced games would change which violations exist and
+   * make "the waiver did it" impossible to claim.
+   */
+  const quietBranch = (() => {
+    const used = new Set(schedule.games.map((game) => game.venueId));
+    const venueId =
+      Object.values(graph.venues)
+        .map((venue) => venue.id)
+        .find((id) => !used.has(id)) ?? 'a-venue-this-corpus-does-not-have';
+    return (baselineId) =>
+      makeScenario({
+        id: 'a-branch-that-moves-nothing',
+        name: 'ground the schedule never stands on',
+        baselineId,
+        rationale: 'so the record set under test is the only thing that differs',
+        requestedBy: REQUESTED_BY,
+        createdAt: REQUESTED_AT,
+        overrides: [
+          {
+            kind: SCENARIO_OVERRIDE_KIND.ADD,
+            recordSet: SCENARIO_RECORD_SET.PERMITS,
+            record: {
+              id: 'a-blackout-nobody-notices',
+              venueId,
+              scopeKind: 'weekday-default',
+              weekday: 'SAT',
+              date: null,
+              hasPermit: false,
+              openMinutes: null,
+              closeMinutes: null,
+              lit: null,
+              lightsOffMinutes: null,
+              note: 'a venue this schedule never uses',
+              source: 'the regression',
+            },
+            by: REQUESTED_BY,
+            at: REQUESTED_AT,
+            reason: 'withdraw ground the schedule never stands on',
+          },
+        ],
+      });
+  })();
+
+  const bundleWith = (extra) =>
+    season2026SeasonInputs({
+      schedule,
+      facilityInput,
+      timingInput,
+      calendarInput,
+      constraints: SEASON_2026_CONSTRAINTS,
+      venueComplexes,
+      ...extra,
+    });
+
+  it('honours a waiver the branch’s own record set carries', () => {
+    // Meta-assertion: with no waivable violation in the corpus there would be
+    // nothing for a waiver to excuse, and everything below would pass on air.
+    expect(waivable, 'a violation of a constraint this season says may be waived').toBeDefined();
+    const constraintId = /** @type {any} */ (waivable).constraintId;
+    const personId = /** @type {any} */ (waivable).details.personId;
+
+    const waived = bundleWith({
+      waivers: [
+        {
+          id: 'waiver-the-branch-carries',
+          constraintId,
+          name: 'the exception the board granted',
+          scope: { personId },
+          reason: 'the board granted this coach an exception, and the branch must see it',
+          approval: {
+            approvedBy: REQUESTED_BY,
+            approvedAt: '2026-07-01',
+            reference: 'board minutes 2026-07',
+          },
+        },
+      ],
+    });
+    const plain = bundleWith({});
+
+    const withWaiver = runScenario(waived, quietBranch(waived.id), {
+      ...runOptions,
+      baselineVerification: null,
+    });
+    const without = runScenario(plain, quietBranch(plain.id), {
+      ...runOptions,
+      baselineVerification: null,
+    });
+
+    // Waiver-free, this is nought — and it was nought *with* the waiver too,
+    // because no ledger was ever built from a record set the type says a branch
+    // may override.
+    expect(withWaiver.verification.meta.violationsWaived).toBeGreaterThan(0);
+    expect(without.verification.meta.violationsWaived).toBe(0);
+    expect(withWaiver.verification.violations.filter((v) => v.waived === true).length).toBe(
+      withWaiver.verification.meta.violationsWaived
+    );
+  });
+
+  it('honours a reserved slot standing on replacement ground', () => {
+    const [taken] = result.relocations.proposals;
+    expect(taken).toBeDefined();
+    const held = season2026SeasonInputs({
+      schedule,
+      facilityInput,
+      timingInput,
+      calendarInput,
+      constraints: SEASON_2026_CONSTRAINTS,
+      venueComplexes,
+      reservedSlots: [
+        {
+          id: 'ground-the-club-is-holding',
+          kind: 'reservation',
+          label: 'held for the league',
+          date: taken.to.date,
+          venueId: taken.toVenueId,
+          surfaceId: taken.to.surfaceId,
+          startMinutes: taken.to.startMinutes,
+          endMinutes: taken.to.startMinutes + 60,
+          format: AFFECTED_FORMAT,
+          homeSide: 'tbd',
+          awaySide: 'tbd',
+          source: 'the regression for an inert record set',
+        },
+      ],
+    });
+    const run = runScenario(
+      held,
+      season2026VenueUnavailableScenario({
+        venueId: WITHDRAWN.venueId,
+        baselineId: held.id,
+        requestedBy: REQUESTED_BY,
+        at: REQUESTED_AT,
+      }),
+      runOptions
+    );
+    const standing = run.relocations.proposals.filter(
+      (proposal) =>
+        proposal.to.date === taken.to.date &&
+        proposal.to.surfaceId === taken.to.surfaceId &&
+        proposal.to.startMinutes === taken.to.startMinutes
+    );
+    expect(standing).toEqual([]);
+  });
+});
+
+describe('a withdrawal sees the branch as it stands, not as it started', () => {
+  it('withdraws a permit an earlier override of the same branch added', () => {
+    // `venue-unavailable` expanded against the *original* permits, so a row an
+    // earlier override had already added for that venue survived the
+    // withdrawal — and an open window standing beside a blackout is
+    // `PERMIT_PRECEDENCE_AMBIGUOUS` on every consultation, which is the exact
+    // noise `remove` exists to prevent.
+    const date = WITHDRAWN.dates[0];
+    const branch = makeScenario({
+      id: 'add-then-withdraw',
+      name: 'a permit added, then the venue withdrawn',
+      baselineId: inputs.id,
+      rationale: 'the regression for a withdrawal that misses its own working copy',
+      requestedBy: REQUESTED_BY,
+      createdAt: REQUESTED_AT,
+      overrides: [
+        {
+          kind: SCENARIO_OVERRIDE_KIND.ADD,
+          recordSet: SCENARIO_RECORD_SET.PERMITS,
+          record: {
+            id: 'an-extra-window-nobody-withdrew',
+            venueId: WITHDRAWN.venueId,
+            scopeKind: 'weekday-default',
+            weekday: weekdayCodeOf(date),
+            date: null,
+            hasPermit: true,
+            openMinutes: 480,
+            closeMinutes: 1200,
+            lit: null,
+            lightsOffMinutes: null,
+            note: 'an extra window opened before the venue was withdrawn',
+            source: 'the regression',
+          },
+          by: REQUESTED_BY,
+          at: REQUESTED_AT,
+          reason: 'open an extra window at the venue',
+        },
+        {
+          kind: SCENARIO_OVERRIDE_KIND.VENUE_UNAVAILABLE,
+          venueId: WITHDRAWN.venueId,
+          by: REQUESTED_BY,
+          at: REQUESTED_AT,
+          reason: 'and then the whole venue goes',
+        },
+      ],
+    });
+    const materialised = materialiseScenario(inputs, branch);
+    const surviving = materialised.records.permits.filter(
+      (row) => row.venueId === WITHDRAWN.venueId && row.hasPermit === true
+    );
+    expect(surviving).toEqual([]);
+    const resolved = resolvePermitWindow(materialised.engines.calendar, {
+      venueId: WITHDRAWN.venueId,
+      date,
+    });
+    expect(resolved.window?.hasPermit).toBe(false);
+    expect(resolved.ambiguous).toBe(false);
+  });
+});
+
+describe('a replacement slot is checked for legality before it is graded', () => {
+  it('refuses to put a team in two places at once', () => {
+    // Candidates were validated by `checkKickoffAvailability()` alone, which is
+    // a statement about *ground*: it knows nothing about who is playing. Two
+    // displaced games sharing a team could therefore be proposed onto two
+    // replacement surfaces at the same minute and both be reported `clean`.
+    const withFootprint = result.displaced.filter(
+      (game) => gamesById[game.gameId]?.endMinutes !== null
+    );
+    const pair = (() => {
+      for (let i = 0; i < withFootprint.length; i += 1) {
+        for (let j = i + 1; j < withFootprint.length; j += 1) {
+          const a = withFootprint[i];
+          const b = withFootprint[j];
+          if (a.date === b.date && a.startMinutes === b.startMinutes) return [a, b];
+        }
+      }
+      return null;
+    })();
+    // Meta-assertion: a corpus with no such pair would make everything below
+    // pass while proposing nothing.
+    expect(pair, 'two displaced games on one date and one kickoff').not.toBeNull();
+    const [first, second] = /** @type {any} */ (pair);
+
+    const sharedTeam = 'one-team-cannot-be-in-two-places';
+    const doctored = {
+      ...gamesById,
+      [first.gameId]: { ...gamesById[first.gameId], homeTeamId: sharedTeam },
+      [second.gameId]: { ...gamesById[second.gameId], homeTeamId: sharedTeam },
+    };
+    const plan = proposeRelocations(result.materialised.engines, {
+      displaced: [first, second],
+      survivors: schedule.games.filter(
+        (game) => !result.displaced.some((d) => d.gameId === String(game.id))
+      ),
+      gamesById: doctored,
+      policy,
+      requirement,
+    });
+
+    // Meta-assertion: a plan that proposed nothing would satisfy the clash
+    // check vacuously.
+    expect(plan.proposals.length + plan.unrelocatable.length).toBe(2);
+    expect(plan.proposals.length).toBeGreaterThan(0);
+
+    const footprint = (proposal) => {
+      const row = doctored[proposal.gameId];
+      return {
+        start: proposal.to.startMinutes,
+        end: proposal.to.startMinutes + (row.endMinutes - row.startMinutes),
+      };
+    };
+    for (let i = 0; i < plan.proposals.length; i += 1) {
+      for (let j = i + 1; j < plan.proposals.length; j += 1) {
+        const a = plan.proposals[i];
+        const b = plan.proposals[j];
+        if (a.to.date !== b.to.date) continue;
+        const left = footprint(a);
+        const right = footprint(b);
+        const overlap = left.start < right.end && right.start < left.end;
+        expect(overlap, `${a.gameId} and ${b.gameId} share a team`).toBe(false);
+      }
+    }
+  });
+});
+
+describe('vacuity is a statement about composition, not about a total', () => {
+  it('does not call a retype vacuous when it changed exactly what it named', () => {
+    // A count is not an identity. Hardening a constraint moves its violations
+    // from one severity to another without moving the total, and the branch was
+    // being stamped `SCENARIO_OVERRIDE_VACUOUS` — "every question asked of it is
+    // answered by the baseline" — for a change that did exactly what was asked.
+    const softened = registry.constraints.find((record) => record.type === CONSTRAINT_TYPE.SOFT);
+    expect(softened).toBeDefined();
+    const branch = makeScenario({
+      id: 'harden-one-constraint',
+      name: 'one constraint hardened, nothing else',
+      baselineId: inputs.id,
+      rationale: 'the regression for vacuity decided on a count',
+      requestedBy: REQUESTED_BY,
+      createdAt: REQUESTED_AT,
+      overrides: [
+        {
+          kind: SCENARIO_OVERRIDE_KIND.RETYPE,
+          recordSet: SCENARIO_RECORD_SET.CONSTRAINTS,
+          recordId: /** @type {any} */ (softened).id,
+          type: CONSTRAINT_TYPE.HARD,
+          by: REQUESTED_BY,
+          at: REQUESTED_AT,
+          reason: 'the board made this one binding',
+        },
+      ],
+    });
+    const hardened = runScenario(inputs, branch, runOptions);
+
+    // Meta-assertion: the retype has to have changed something, or "not
+    // vacuous" would be the wrong answer rather than the right one.
+    const shape = (verification) =>
+      verification.violations
+        .map((violation) => `${violation.code}|${violation.severity}|${violation.subjectId}`)
+        .sort();
+    expect(hardened.verification.violations.length).toBe(baselineVerification.violations.length);
+    expect(shape(hardened.verification)).not.toEqual(shape(baselineVerification));
+
+    expect(codesOf(hardened.findings)).not.toContain(SCENARIO_REASON.SCENARIO_OVERRIDE_VACUOUS);
+  });
+});
+
+describe('an ancestry is checked against the parent it claims to be', () => {
+  const child = season2026VenueUnavailableScenario({
+    venueId: WITHDRAWN.venueId,
+    baselineId: inputs.id,
+    requestedBy: REQUESTED_BY,
+    at: REQUESTED_AT,
+    id: 'the-child',
+    parentScenarioId: scenario.id,
+    dates: [WITHDRAWN.dates[0]],
+  });
+
+  it('refuses an ancestry that is not the parent the branch names', () => {
+    // Any non-empty array passed, so the wrong parent's overrides composed
+    // under a fingerprint that looked entirely legitimate.
+    const stranger = makeScenario({
+      id: 'not-the-parent',
+      name: 'a branch that is not this one’s parent',
+      baselineId: inputs.id,
+      rationale: 'the regression for an unchecked ancestry',
+      requestedBy: REQUESTED_BY,
+      createdAt: REQUESTED_AT,
+      overrides: [
+        {
+          kind: SCENARIO_OVERRIDE_KIND.REMOVE,
+          recordSet: SCENARIO_RECORD_SET.PERMITS,
+          recordId: String(inputs.permits[0].id),
+          by: REQUESTED_BY,
+          at: REQUESTED_AT,
+          reason: 'a stranger’s edit',
+        },
+      ],
+    });
+    expect(() => materialiseScenario(inputs, child, { ancestry: [stranger] })).toThrow(/parent/);
+    // …and the real parent still composes.
+    expect(() => materialiseScenario(inputs, child, { ancestry: [scenario] })).not.toThrow();
+  });
+
+  it('reports rather than throws when the memo is checked without the ancestry', () => {
+    // `check()` is a reporting entry point: every other answer it gives is a
+    // finding, and this one threw, so a caller reconciling a cache had to catch
+    // an exception to learn that it had not passed enough.
+    const memo = new ScenarioMemo();
+    memo.resolve(inputs, child, { ...runOptions, ancestry: [scenario] });
+    const findings = memo.check(inputs, child);
+    expect(codesOf(findings)).toContain(SCENARIO_REASON.SCENARIO_ANCESTRY_UNRESOLVED);
+    expect(findings[0].severity).toBe(CONSTRAINT_SEVERITY.BLOCKING);
+  });
+});
+
+describe('the fingerprint covers everything that reaches a record', () => {
+  it('separates two branches whose provenance differs', () => {
+    // `by`, `at` and `reason` are written into the expanded permit rows' `note`
+    // and `source`, and into a retyped constraint's own history, so two
+    // branches carrying different ones produce genuinely different records —
+    // and shared one fingerprint.
+    const overridesOf = (by, reason) => [
+      {
+        kind: SCENARIO_OVERRIDE_KIND.VENUE_UNAVAILABLE,
+        recordSet: null,
+        record: null,
+        recordId: null,
+        type: null,
+        weight: null,
+        venueId: WITHDRAWN.venueId,
+        dates: null,
+        by,
+        at: REQUESTED_AT,
+        reason,
+      },
+    ];
+    const first = overridesOf('grounds@club.example', 'the pitch is being re-turfed');
+    const second = overridesOf('grounds@club.example', 'the lease was not renewed');
+    const third = overridesOf('board@club.example', 'the pitch is being re-turfed');
+
+    expect(scenarioFingerprint(inputs, first)).not.toBe(scenarioFingerprint(inputs, second));
+    expect(scenarioFingerprint(inputs, first)).not.toBe(scenarioFingerprint(inputs, third));
+    // The records really do differ, so this is not a digest of decoration.
+    const notesOf = (overrides) =>
+      expandVenueUnavailable(overrides[0], inputs.permits).added.map(
+        (row) => `${row.note}|${row.source}`
+      );
+    expect(notesOf(first)).not.toEqual(notesOf(second));
+    expect(notesOf(first)).not.toEqual(notesOf(third));
+  });
+});
+
+describe('the counters count what they are named for', () => {
+  it('counts overrides applied, not the primitive edits one override expands into', () => {
+    // One `venue-unavailable` is one override. It expands into every permit row
+    // the venue holds plus seven blackouts, and `overridesApplied` was counting
+    // those — so the vacuity finding's own details reported seventeen applied
+    // against one declared.
+    const meta = result.materialised.meta;
+    expect(meta.overridesDeclared).toBe(scenario.overrides.length);
+    expect(meta.overridesApplied).toBe(scenario.overrides.length);
+    // The primitive count is still kept, under its own name, and is the number
+    // that made the confusion possible in the first place.
+    expect(meta.recordEditsApplied).toBeGreaterThan(meta.overridesApplied);
+    expect(meta.recordEditsApplied).toBe(
+      meta.recordsAdded + meta.recordsRemoved + meta.recordsRetyped
+    );
   });
 });

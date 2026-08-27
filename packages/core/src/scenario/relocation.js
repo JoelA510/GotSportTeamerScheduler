@@ -46,6 +46,7 @@
 import { AVAILABILITY_SEVERITY } from '../availability/reasonCodes.js';
 import { checkKickoffAvailability } from '../availability/kickoff.js';
 import { DEFAULT_SIZE_RANK } from '../facility/eligibility.js';
+import { bookingsOverlapInTime } from '../facility/occupancy.js';
 import { FACILITY_REASON } from '../facility/reasonCodes.js';
 import { buildReserveCapacityReport } from '../reserve/capacity.js';
 
@@ -178,6 +179,50 @@ function bookingFor(game, slot) {
 }
 
 /**
+ * Who a game or a held slot commits, for the clash the facility model cannot see.
+ *
+ * **A surface knows who is standing on it, never who is playing.**
+ * `checkOccupancy()` compares ground against ground, so two games sharing a
+ * team on two different surfaces at the same minute are both perfectly legal
+ * placements and one impossible afternoon. The team id is preferred and the
+ * label is the fallback, because this corpus carries rows with a label and no
+ * id; a side with neither is skipped rather than folded into a single empty
+ * key, which would make every anonymous side clash with every other one.
+ *
+ * @param {Object} row - a schedule game or a `ReservedSlotSchema` row
+ * @returns {string[]}
+ */
+function teamsOf(row) {
+  /** @type {string[]} */
+  const teams = [];
+  for (const side of ['home', 'away']) {
+    const id = row[`${side}TeamId`];
+    const label = row[`${side}Label`];
+    const key = id ? `id:${id}` : label ? `label:${label}` : null;
+    if (key !== null && !teams.includes(key)) teams.push(key);
+  }
+  return teams;
+}
+
+/**
+ * One reserved slot as a booking, so held ground is ground already occupied.
+ *
+ * @param {Object} slot - a `ReservedSlotSchema` row
+ * @returns {import('../facility/types.js').FacilityBooking}
+ */
+function bookingForReservedSlot(slot) {
+  return {
+    id: `reserved:${slot.id}`,
+    surfaceId: slot.surfaceId,
+    date: slot.date,
+    startMinutes: slot.startMinutes,
+    endMinutes: slot.endMinutes,
+    format: slot.format ?? null,
+    label: slot.label ?? `reserved slot ${slot.id}`,
+  };
+}
+
+/**
  * Propose a replacement slot for each displaced game.
  *
  * @param {{ graph: Object, table: Object, calendar: Object, registry?: Object }} engines - the **branch's** engines
@@ -187,6 +232,7 @@ function bookingFor(game, slot) {
  * @param {Record<string, Object>} input.gamesById - the baseline rows, for footprints and labels
  * @param {Object} input.policy - see `RelocationPolicySchema`
  * @param {{ slots: number, label: string, source: string }} input.requirement - what the ground is being asked to hold
+ * @param {ReadonlyArray<Object>} [input.reservedSlots] - the branch's own `ReservedSlotSchema` rows; ground already held
  * @returns {import('./types.js').RelocationPlan}
  */
 export function proposeRelocations(engines, input) {
@@ -223,6 +269,20 @@ export function proposeRelocations(engines, input) {
   }
 
   /**
+   * Ground the branch already holds.
+   *
+   * A reserved slot is a commitment, not a hint: the record set is one a
+   * scenario override may edit, so a branch that holds a pitch for a
+   * tournament must not then be offered that pitch as spare replacement
+   * ground. They go in twice on purpose — to the capacity report, so its
+   * `reserved` and `spare` counts are about the branch's own ground, and to the
+   * booking table below, so `checkOccupancy()` refuses a candidate standing on
+   * one.
+   */
+  const reservedSlots = input.reservedSlots ?? [];
+  meta.reservedSlotsHonoured = reservedSlots.length;
+
+  /**
    * The grid, from the capacity report under the branch's own engines.
    *
    * One report per format, because a capacity report has exactly one stated
@@ -250,7 +310,7 @@ export function proposeRelocations(engines, input) {
         label: input.requirement.label,
         source: input.requirement.source,
       },
-      reservedSlots: [],
+      reservedSlots: [...reservedSlots],
       bookings: [],
     });
     if (capacity === null) capacity = report;
@@ -273,10 +333,35 @@ export function proposeRelocations(engines, input) {
    */
   /** @type {Map<string, import('../facility/types.js').FacilityBooking[]>} */
   const bookingsByDate = new Map();
+  /**
+   * Who is already committed when, per date, growing as proposals land.
+   *
+   * The half of "what already stands on the ground" that the ground itself
+   * cannot answer. Seeded from the same rows, walked the same way, and checked
+   * before a candidate is graded — because a grade is a claim about the quality
+   * of a placement and must not be issued on one that is not legal.
+   */
+  /** @type {Map<string, Array<{ teams: string[], booking: import('../facility/types.js').FacilityBooking }>>} */
+  const commitmentsByDate = new Map();
+  const commit = (date, teams, booking) => {
+    if (teams.length === 0) return;
+    const bucket = commitmentsByDate.get(date) ?? [];
+    bucket.push({ teams, booking });
+    commitmentsByDate.set(date, bucket);
+  };
   for (const game of input.survivors) {
     const bucket = bookingsByDate.get(game.date) ?? [];
-    bucket.push(bookingFor(game));
+    const booking = bookingFor(game);
+    bucket.push(booking);
     bookingsByDate.set(game.date, bucket);
+    commit(game.date, teamsOf(game), booking);
+  }
+  for (const slot of reservedSlots) {
+    const bucket = bookingsByDate.get(slot.date) ?? [];
+    const booking = bookingForReservedSlot(slot);
+    bucket.push(booking);
+    bookingsByDate.set(slot.date, bucket);
+    commit(slot.date, teamsOf(slot), booking);
   }
 
   /** @type {import('./types.js').RelocationProposal[]} */
@@ -294,6 +379,36 @@ export function proposeRelocations(engines, input) {
     }
     const format = /** @type {string} */ (game.format);
     const bookings = bookingsByDate.get(game.date) ?? [];
+    const commitments = commitmentsByDate.get(game.date) ?? [];
+    const teams = teamsOf(row);
+    const occupancy = row.endMinutes === null ? null : row.endMinutes - row.startMinutes;
+    /**
+     * Would this kickoff put one of this game's teams in two places at once?
+     *
+     * Decided by `bookingsOverlapInTime()` — the facility model's own answer,
+     * rather than a second one written here — which returns `null` for an
+     * unknown footprint. An undecidable pair is not treated as a clash: the
+     * unknown-footprint case is reported by the rule engine in its own right,
+     * and refusing every candidate over it would silently shrink the search.
+     */
+    const teamClash = (kickoff) => {
+      if (teams.length === 0) return null;
+      const candidate = {
+        id: game.gameId,
+        surfaceId: game.surfaceId,
+        date: game.date,
+        startMinutes: kickoff,
+        endMinutes: occupancy === null ? null : kickoff + occupancy,
+      };
+      for (const entry of commitments) {
+        if (entry.booking.id === game.gameId) continue;
+        if (!entry.teams.some((team) => teams.includes(team))) continue;
+        if (bookingsOverlapInTime(candidate, entry.booking) !== true) continue;
+        return entry.booking;
+      }
+      return null;
+    };
+    let refusedForTeamClash = 0;
     /** @type {Array<{ surfaceId: string, startMinutes: number, grade: string, driftMinutes: number, codes: string[] }>} */
     const options = [];
 
@@ -314,6 +429,12 @@ export function proposeRelocations(engines, input) {
           { existingBookings: bookings }
         );
         if (answer.findings.some((f) => f.severity === AVAILABILITY_SEVERITY.BLOCKING)) continue;
+        // **Legality before grade.** The ground is free; the teams may not be.
+        if (teamClash(kickoff) !== null) {
+          refusedForTeamClash += 1;
+          meta.candidatesRefusedTeamClash += 1;
+          continue;
+        }
         const codes = [
           ...new Set(
             answer.findings
@@ -336,7 +457,7 @@ export function proposeRelocations(engines, input) {
       unrelocatable.push({
         gameId: game.gameId,
         label: game.label,
-        reason: `the scenario withdraws the ground it stood on (${game.codes.join(', ')}) and no candidate slot on ${game.date} across ${policy.surfaceIds.length} replacement surface(s) is legal for it; kept visible as TIME TBD rather than dropped (incident 10)`,
+        reason: `the scenario withdraws the ground it stood on (${game.codes.join(', ')}) and no candidate slot on ${game.date} across ${policy.surfaceIds.length} replacement surface(s) is legal for it${refusedForTeamClash === 0 ? '' : ` (${refusedForTeamClash} otherwise-free slot(s) would have put one of its teams in two places at once)`}; kept visible as TIME TBD rather than dropped (incident 10)`,
         codes: Object.freeze([...game.codes]),
         constraintIds: Object.freeze([...game.constraintIds]),
         candidatesConsidered,
@@ -370,8 +491,12 @@ export function proposeRelocations(engines, input) {
     if (chosen.grade === REPLACEMENT_GRADE.COMPROMISED) meta.relocationsCompromised += 1;
     // The slot is held from this point on, keyed the way the capacity report
     // spells a candidate so the two can be reconciled.
-    bookings.push(bookingFor(row, toSlot));
+    const held = bookingFor(row, toSlot);
+    bookings.push(held);
     bookingsByDate.set(game.date, bookings);
+    // The teams are held from this point on as well, so the next displaced game
+    // sharing one of them cannot be offered the same minute on other ground.
+    commit(game.date, teams, held);
   }
 
   if (proposals.length > 0) {

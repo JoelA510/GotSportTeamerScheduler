@@ -51,6 +51,15 @@ rationale, requestedBy, createdAt }`. A structural test asserts those are its
 only keys, because a scenario that could hold a schedule is a scenario somebody
 will put one in.
 
+Every record set in that bundle is one an override may edit, and every one of
+them is **read**. The waivers become a `WaiverLedger` that both sides of the
+comparison are judged under — the baseline's from `inputs.waivers`, the branch's
+from its own effective records, because a waiver-aware baseline compared against
+a waiver-free branch reads the waivers' absence as something the branch did — and
+the reserved slots reach `proposeRelocations()`, both as the capacity report's
+own `reservedSlots` and as bookings, so ground the branch is holding is never
+offered back to it as spare.
+
 `ScenarioOverride` is a tagged union over one **named record set**:
 
 | kind                 | what it does                                                                        |
@@ -122,8 +131,27 @@ The **fingerprint** is a structural digest over the base record arrays plus the
 override list — never over scenario metadata such as an `updatedAt`, which would
 derive a check's subject from the data a corruption would also change. It reuses
 `publication/snapshot.js`'s `publicationDigest()` rather than adding a second
-digest. A cached run whose fingerprint no longer matches is re-derived, and
-reading one past the check raises `SCENARIO_RESULT_STALE` at **blocking**.
+digest. `by`, `at` and `reason` are part of an override rather than metadata
+about it, and are digested: a `venue-unavailable` writes `reason` into every
+expanded permit row's `note` and `by` into its `source`, and a `retype` writes
+all three into the constraint's own type-change history, so two branches
+differing only there build genuinely different records. A cached run whose
+fingerprint no longer matches is re-derived, and reading one past the check
+raises `SCENARIO_RESULT_STALE` at **blocking**.
+
+**The memo keys on the branch _and the question_.** The fingerprint describes the
+branch; it says nothing about which run options were asked for, and the negative
+control differs from the acceptance run by exactly one of them
+(`relocations: false`). Keyed on the branch alone the memo returned whichever of
+the two was derived first for both — the control's nought proposals served as
+the searched answer, or the searched answer served as the control — so the
+evidence in §11 would have been invalid while looking entirely well formed. The
+second half of the key is `runOptionsFingerprint()`: the relocation policy, the
+requirement, the objective weights, the ancestry ids, whether the proposer ran,
+and the *violation shape* of any caller-supplied `baselineVerification`, since
+the displaced set is a difference against it. `baselineEngines` is deliberately
+not digested — those are built engines rather than records, and the honest check
+on them is the fingerprint over the `SeasonInputs` they are built from.
 
 ---
 
@@ -298,7 +326,7 @@ proven in `tests/scenarioBranching.test.js`:
 | ------------- | -------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
 | **sharing**   | one record corrected in the baseline is seen by five re-materialised branches     | a record-copying materialiser built in the test fails the same assertion         |
 | **partition** | `changed + added + removed + unchanged` reconciles against **both** inputs        | a dropped row and a double-counted row are each caught, by totals and by identity |
-| **vacuity**   | an override that changes no result is `SCENARIO_OVERRIDE_VACUOUS` at `compromise` | an override for a venue the schedule never uses fires it; the real branch does not |
+| **vacuity**   | an override that changes no result is `SCENARIO_OVERRIDE_VACUOUS` at `compromise` | an override for a venue the schedule never uses fires it; the real branch does not, and neither does a `retype` that changes the violations' composition without changing their number |
 
 Alongside them, the **negative control**: the same branch with the proposer
 switched off. Every displaced game is TIME TBD naming `PERMIT_BLACKOUT`, **no
@@ -385,7 +413,15 @@ games that moved.
 
 **The negative control**, same branch, proposer off: 72 TIME TBD fixtures all
 naming `PERMIT_BLACKOUT`, zero games moved, zero replacement venues named, and a
-quality score roughly five times worse.
+quality score roughly five times worse. Its status is `compromised`, not `ok`:
+`accountForFixtures()`'s verdict is part of the result's findings, so a branch
+that shelves seventy-two games cannot read as a clean one — and a branch that
+*lost* one carries `FIXTURE_DROPPED` at blocking, where `promoteScenario()` will
+refuse it.
+
+Every figure above is asserted through the direct-call path **and** through
+`ScenarioMemo`, in both derivation orders, because the memo defect described in
+§3 could otherwise have produced one run's numbers under the other's name.
 
 ---
 
@@ -413,8 +449,9 @@ quality score roughly five times worse.
 | `SCENARIO_OVERRIDE_CONFLICT`         | `blocking`   | two overrides touch one record id                                        |
 | `SCENARIO_OVERRIDE_TARGET_MISSING`   | `blocking`   | a `remove` or `retype` names a record the base does not hold             |
 | `SCENARIO_OVERRIDE_ID_COLLIDES`      | `blocking`   | an `add` uses an id the base already holds                               |
-| `SCENARIO_OVERRIDE_VACUOUS`          | `compromise` | the branch changed no result at all                                      |
+| `SCENARIO_OVERRIDE_VACUOUS`          | `compromise` | the branch changed no result at all — the same violations, not as many   |
 | `SCENARIO_BRANCHED_FROM_SCENARIO`    | `info`       | the branch composes a parent's overrides under its own                   |
+| `SCENARIO_ANCESTRY_UNRESOLVED`       | `blocking`   | the ancestry passed is not the parent chain the branch names             |
 | `SCENARIO_RESULT_STALE`              | `blocking`   | a cached result's fingerprint no longer matches its inputs and overrides |
 | `SCENARIO_GAME_DISPLACED`            | `info`       | games the branch leaves standing where its own engines refuse them       |
 | `SCENARIO_RELOCATION_PROPOSED`       | `info`       | replacements were proposed, naming the policy and the ground             |

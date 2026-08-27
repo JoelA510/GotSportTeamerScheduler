@@ -84,6 +84,7 @@ export {
 } from './inputs.js';
 
 export {
+  ancestryProblem,
   composedOverrides,
   expandVenueUnavailable,
   makeScenario,
@@ -106,6 +107,7 @@ export {
   ScenarioMemo,
   diffAgainstBaselineScenario,
   promoteScenario,
+  runOptionsFingerprint,
   runScenario,
   scenarioDisplacements,
   shelveUnrelocatable,
