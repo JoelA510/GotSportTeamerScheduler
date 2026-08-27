@@ -46,6 +46,46 @@ up from 1720 (sixteen regression tests, each written to fail first).
 
 Still to do before merge: **re-run `/code-review` on the fix pass**, then PR.
 
+All six gates green: lint 0 errors / 1 warning (baseline), typecheck clean,
+`frontend:build` clean, `check:advisors` PASS, `check:bundle` PASS (217.96 KB gz
+against a 244.14 KB budget). One new reason code,
+`SCENARIO_ANCESTRY_UNRESOLVED`, in the frozen severity table with a driver entry.
+
+**Acceptance re-established through both paths and both derivation orders** —
+the order was what decided which run poisoned which, so both were run. Every
+acceptance figure below held in all three: 72 displaced, 11 clean, 49
+compromised, 12 TIME TBD, `LINING_MISMATCH` +49, capacity 466 to 340. Both
+memos recorded `hits=0 misses=2`. One figure moved, intentionally: the negative
+control's status was `allowed` and is now `compromised`, which is finding 2's
+whole point.
+
+**Not test-verified, and recorded as such:**
+
+- **Finding 3's second half did not reproduce.** The discarded-findings half is
+  fixed and test-verified. The *vanishing* itself could not be triggered through
+  any public input — `run.unplaced` was 0 on every attempt — because in
+  `runScenario()`'s configuration every game is either frozen or pinned, so the
+  only stage that shelves is never handed a pending game. The data flow was
+  fixed anyway and the second mechanism made loud, but the vanishing is
+  **statically reviewed, not reproduced**.
+- Consequently `FIXTURE_DROPPED` / `FIXTURE_DOUBLE_COUNTED` are not reachable on
+  this corpus. The accounting merge is test-verified over the whole findings
+  list, which is what makes those codes consequential when they do fire.
+- `promoteScenario()` refusing over a merged `FIXTURE_DROPPED` is unverified
+  end-to-end for the same reason.
+
+**One deliberate behaviour change** (from finding 5): a `venue-unavailable`
+derived `remove` no longer raises `SCENARIO_OVERRIDE_CONFLICT` against a record
+an earlier override wrote. Two *authors* naming one record id is the
+contradiction that guard exists for; an author naming a *venue* whose rows
+another override happens to touch is composition. A duplicate
+`venue-unavailable` for the same venue is still caught, by
+`SCENARIO_OVERRIDE_ID_COLLIDES` on the blackout rows it re-adds.
+
+Correction to finding 11 as filed: the review said 17 applied against 1
+declared; on this corpus the withdrawn venue expands to 8 edits (1 base permit
+row plus 7 weekday blackouts). Same defect, different arithmetic.
+
 The eleven findings, kept here because the scratchpad copy has been lost twice:
 
 1. **`scenario/run.js` — `ScenarioMemo.resolve()` ignored run options.**
