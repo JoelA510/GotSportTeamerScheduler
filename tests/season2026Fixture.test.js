@@ -28,12 +28,12 @@ import {
   parseFixtureDate,
   parseMinutesRange,
   classifyScheduleRow,
-  publicationKey,
   resolvePermit,
   resolveSunsetMinutes,
   SEASON_2026_FILES,
   SEASON_2026_ROW_KIND,
 } from '@squadlogic/core/fixtures/index.js';
+import { checkParity, season2026PublishedParityInput } from '@squadlogic/core/publication/index.js';
 
 /** The corpus is loaded once; every test reads from this immutable snapshot. */
 const season = loadSeason2026();
@@ -623,32 +623,33 @@ describe('season-2026 corpus :: facility geometry', () => {
 });
 
 describe('season-2026 corpus :: publication parity', () => {
+  // This used to be a hand-rolled comparator: a Map of `publicationKey()`
+  // counts, decremented row by row. It is now a call into the production
+  // checker (`packages/core/src/publication/parity.js`), with the same numbers
+  // derived the same way from the same two files — the repository does not keep
+  // a second parity comparator, and the one it keeps is the one that is tested
+  // against its own failure modes in `tests/publicationParity.test.js`.
+  const parity = checkParity(
+    season2026PublishedParityInput({
+      publishedRecGames: season.recGames,
+      combinedGames: season.combinedGames,
+    })
+  );
+
   it('matches all 567 published rec rows slot-for-slot and team-for-team', () => {
-    const combinedCounts = new Map();
-    for (const game of season.combinedGames) {
-      const key = publicationKey(game);
-      combinedCounts.set(key, (combinedCounts.get(key) ?? 0) + 1);
-    }
-    expect(combinedCounts.size).toBeGreaterThan(0);
+    expect(parity.buckets.matched).toHaveLength(567);
+    expect(parity.buckets.matched).toHaveLength(season.recGames.length);
+    expect(parity.buckets.differing).toEqual([]);
+    expect(parity.buckets.removed).toEqual([]);
+    // The meta-assertion the number rests on: 567 pairs compared on zero fields
+    // would be 567 matches meaning nothing.
+    expect(parity.meta.fieldComparisons).toBe(567 * parity.comparedFields.length);
+    expect(parity.comparedFields.length).toBeGreaterThan(0);
+  });
 
-    let matched = 0;
-    const missing = [];
-    for (const game of season.recGames) {
-      const key = publicationKey(game);
-      const remaining = combinedCounts.get(key) ?? 0;
-      if (remaining > 0) {
-        combinedCounts.set(key, remaining - 1);
-        matched += 1;
-      } else {
-        missing.push(key);
-      }
-    }
-
-    expect(missing).toEqual([]);
-    expect(matched).toBe(567);
-    expect(matched).toBe(season.recGames.length);
-
-    const leftover = [...combinedCounts.values()].reduce((sum, count) => sum + count, 0);
-    expect(leftover).toBe(679 - 567);
+  it('reports the 11v11 layer as additions rather than as differences', () => {
+    expect(parity.buckets.added).toHaveLength(679 - 567);
+    expect(parity.meta.rowsCompared).toBe(679);
+    expect(parity.status).toBe('allowed');
   });
 });
