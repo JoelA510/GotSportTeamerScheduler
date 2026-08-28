@@ -50,7 +50,49 @@ committed), each with a regression test written to fail first: suite **1746
 passed | 34 skipped | 6 todo**, up from 1736. No new reason code and no new
 export; `SCENARIO_OVERRIDE_CONFLICT` gained a second driver at the venue.
 
+The **third** review round returned **4 further findings**, the top one the same
+defect class for the third time. All four are fixed in the working tree (not yet
+committed), each with a regression test written to fail first: suite **1758
+passed | 34 skipped | 6 todo**, up from 1746. No new reason code;
+`SCENARIO_DIGEST_ORDER` is replaced by `SCENARIO_DIGEST_EXCLUSIONS` in the
+barrel, and `ScenarioMemo.check()` takes an optional fourth argument.
+
 Still to do before merge: **PR**.
+
+### The four findings of round three
+
+1. **`inputs.js` — the digest class, closed rather than the instance.** The
+   widened digest covered `schedule.games` only, so on this corpus a bundle with
+   all 132 teams removed digested identically (`a3ee968081a5219b`) to the full
+   one, as did one carrying an extra travel commitment. Rather than name the
+   seven missing fields, `digestSubjectOf()` now walks the bundle's own
+   enumerable fields at run time and renders each to full depth;
+   `SCENARIO_DIGEST_EXCLUSIONS` names the three it deliberately skips (`id`,
+   `label`, `digest`) with a reason each, and an unrenderable field throws. A
+   reflection test perturbs every field of the live bundle **and** the live
+   `Schedule` and asserts the digest moves for all of them; run against the
+   digest it replaced, the same walk reports the nine uncovered `Schedule`
+   fields. Cost: the digest 6.0 ms to 21.2 ms, a warm memo hit 8.0 ms to
+   19.9 ms, two cold questions 1,646 ms to 1,796 ms.
+2. **`scenario.js` — round two's venue-duplicate claim fired down an ancestry.**
+   It was built over `composedOverrides()`, so a child broadening its parent's
+   `venue-unavailable` was refused at blocking, skipped, and materialised its
+   parent's narrower withdrawal — with the message attributing the parent's
+   override to the child. The claim is now keyed by the **authoring scenario**.
+   Two same-scenario withdrawals over shared days still conflict; disjoint dates
+   still compose.
+3. **`run.js` — `check()` stopped answering the question it exists for.**
+   `resolve()` purges stale entries before its lookup, so after any intervening
+   resolve of the same branch a caller still holding the pre-edit result was
+   told `[]`. `check()` now takes the results a caller holds and reports
+   `SCENARIO_RESULT_STALE` for them whichever way the cache has moved; a held
+   result from another branch throws rather than being judged. Round two's
+   finding 6 is untouched — the cache half is still answered over every entry.
+4. **`run.js` — `forgetStale()` materialised the branch to read a string.** It
+   built all four engines only to take `.fingerprint`, on every resolve. It now
+   calls `scenarioFingerprint(inputs, composedOverrides(...))`, which returns
+   the identical string; a test asserts the two agree. `check()` reads it the
+   same way. Saving ~2 ms per resolve, against the ~15 ms finding 1 adds.
 
 ### The six findings of round two
 

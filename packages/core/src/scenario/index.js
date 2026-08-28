@@ -72,7 +72,7 @@ export {
 } from './schemas.js';
 
 export {
-  SCENARIO_DIGEST_ORDER,
+  SCENARIO_DIGEST_EXCLUSIONS,
   SCENARIO_RECORD_SET_ORDER,
   canonicalJson,
   digestSubjectOf,

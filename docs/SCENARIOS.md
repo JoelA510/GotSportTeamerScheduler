@@ -113,17 +113,24 @@ structural test asserts the package declares no `*_SPECIFICITY` and no
 `SCENARIO_OVERRIDE_CONFLICT` at **blocking**: a contradiction to remove, not a
 precedence to resolve.
 
-Two `venue-unavailable` overrides **naming one venue over days they share** are
-the same contradiction one level up, and are reported the same way. A
+Two `venue-unavailable` overrides **written in one scenario and naming one venue
+over days they share** are the same contradiction one level up, and are reported
+the same way. A
 withdrawal's edits are *derived*, so they make no claim on a record id — an
 author naming a venue whose rows another *kind* of override happens to touch is
-composition and stays silent. A second withdrawal of the same venue is not
-composition: its removes delete the first one's blackout rows before its adds
-put them back, so nothing collides, and applying it would replace one author's
-stated reason with the other's on every row. That is provenance lost the way
+composition and stays silent. A second withdrawal of the same venue *by the same
+author* is not composition: its removes delete the first one's blackout rows
+before its adds put them back, so nothing collides, and applying it would
+replace one author's stated reason with the other's on every row. That is provenance lost the way
 incident 9 lost a waiver, so the duplicate is claimed at the **venue**, where
 the authorship is. Two date-scoped withdrawals of one venue on **disjoint**
-dates lay different rows, keep both reasons, and compose.
+dates lay different rows, keep both reasons, and compose. So does a **child
+branch refining or broadening its parent's** withdrawal, whatever days the two
+share: that is what naming a parent is for, and claiming the venue across the
+composed override list made the inherited withdrawal one of the two authors —
+the child's own override refused at blocking and skipped, the branch
+materialising its parent's narrower withdrawal, and the message attributing the
+parent's edit to the child. The claim is per **authoring scenario**.
 
 ---
 
@@ -153,18 +160,31 @@ raises `SCENARIO_RESULT_STALE` at **blocking**.
 
 **The baseline half covers the whole bundle, and is recomputed when the question
 is asked.** Two things had to be true for the memo to be trustworthy and neither
-was. First, the digest covered the record arrays and the facility and timing
-inputs and stopped, so two bundles differing only in one game's *kickoff*
-digested identically — it now covers the `schedule`, the `calendarOptions` and
-the `venueComplexes` as well, everything a branch's answer is a function of.
+was. First, the digest covered only part of the bundle. That was closed three
+times by naming the fields somebody had noticed missing — the `schedule`, the
+`calendarOptions` and the `venueComplexes`, then everything on the `Schedule`
+that is not `games` — and each fix left the next field uncovered, so the
+enumeration is gone: `digestSubjectOf()` walks the bundle's **own enumerable
+fields at run time** and `canonicalJson()` renders each one to whatever depth it
+has, so the `commitments`, the `teams`, the four universes, the
+`placeholderLabels` and whatever is added to either structure next year are
+covered by construction. What is *not* covered is named in
+`SCENARIO_DIGEST_EXCLUSIONS` with a reason each — the bundle's `id` and `label`,
+which name it rather than describe it, and its own `digest` field — and a field
+the digest cannot render (a function, a symbol) throws rather than digesting as
+nothing. `tests/scenarioBranching.test.js` walks the live bundle and the live
+`Schedule` by reflection, perturbs every field in turn, and asserts the fields
+that leave the digest standing are **exactly** the deny-list's keys; the same
+walk run against the digest this one replaced reports the nine `Schedule` fields
+it could not see, which is what makes the walk evidence rather than decoration.
 Second, `scenarioFingerprint()` read `inputs.digest`, the value snapshotted when
 `makeSeasonInputs()` ran, which made it blind to the one workflow the sharing
 guarantee exists for: correct a constraint record **in place** and five branches
 see it, while the snapshot said nothing had changed. The digest is taken at
 question time instead. Sharing is untouched — nothing is copied and nothing new
-is frozen — and the cost is one canonical rendering of the bundle per
-materialisation (measured at ~6.7 ms on this corpus, against a ~900 ms
-derivation).
+is frozen — and the cost is one canonical rendering of the whole bundle per
+materialisation: ~21 ms on this corpus (up from ~6.7 ms while it rendered only
+the games), against a ~900 ms derivation.
 
 **The memo's staleness gate and its writes agree on scope.** `check()` answers
 over *every* entry a scenario has, because staleness is a property of the branch
@@ -173,6 +193,20 @@ branch has moved past, rather than overwriting only the key it was asked about �
 which left one stale entry for another question forcing a miss for ever on a
 live one, and `check()` reporting blocking staleness for a cache whose entries
 were all fresh.
+
+**And `check()` answers about the result its caller is holding, which is not the
+same question as whether the cache has junk in it.** Because `resolve()` purges
+before it looks up, a caller who had been handed a result and then resolved the
+branch again was told `[]` for a result that describes a schedule which no
+longer exists — the guarantee two paragraphs up, lost to the fix one paragraph
+up. A holder passes what it holds as `check()`'s fourth argument and is told
+`SCENARIO_RESULT_STALE` for it whether or not the memo still keeps a copy;
+passing a result derived from a *different* branch throws, because answering it
+would report one branch's answer under another's name. `check()` and
+`forgetStale()` both read the branch's current fingerprint through
+`scenarioFingerprint()`, which returns the identical string
+`materialiseScenario()` does without building the four engines that call
+discards.
 
 **The memo keys on the branch _and the question_.** The fingerprint describes the
 branch; it says nothing about which run options were asked for, and the negative

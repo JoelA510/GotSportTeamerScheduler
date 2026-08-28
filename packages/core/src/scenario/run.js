@@ -68,7 +68,12 @@ import {
   makeScenarioFinding,
   mergeScenarioMeta,
 } from './reasonCodes.js';
-import { ancestryProblem, materialiseScenario } from './scenario.js';
+import {
+  ancestryProblem,
+  composedOverrides,
+  materialiseScenario,
+  scenarioFingerprint,
+} from './scenario.js';
 
 /** The stage id the shelving step signs its writes with. */
 export const SCENARIO_SHELVE_STAGE_ID = 'scenario-shelve-unplaceable';
@@ -694,6 +699,12 @@ export function runOptionsFingerprint(options) {
  * `SCENARIO_RESULT_STALE` at blocking rather than served a schedule that no
  * longer exists; a caller who asks a different question is given a derivation
  * rather than somebody else's answer.
+ *
+ * That first promise is about the *result a caller holds*, and holds however
+ * many times the branch has been resolved since — `resolve()` drops the entries
+ * the branch has moved past, so the caller passes what it is holding to
+ * {@link ScenarioMemo.check} rather than relying on the cache to have kept its
+ * copy.
  */
 export class ScenarioMemo {
   constructor() {
@@ -735,7 +746,9 @@ export class ScenarioMemo {
     // for ever on a live one — and `check()` reporting blocking staleness for a
     // cache whose entries were all fresh. So a resolve that finds the branch has
     // moved forgets every entry it moved past, which is exactly the set
-    // `check()` was answering about.
+    // `check()` answers about when it is asked about the cache. A caller
+    // holding a result the purge dropped asks `check()` about *that*, which is
+    // what its `held` argument is for.
     this.forgetStale(inputs, scenario, options.ancestry ?? []);
     const cached = this.byKey.get(key);
     if (cached !== undefined) {
@@ -750,6 +763,25 @@ export class ScenarioMemo {
       result,
     });
     return result;
+  }
+
+  /**
+   * What the branch digests to **now**, without building its engines.
+   *
+   * `materialiseScenario(...).fingerprint` is the identical string — it returns
+   * `scenarioFingerprint(inputs, composedOverrides(scenario, ancestry))` and a
+   * test asserts the two agree — but it builds the facility graph, the timing
+   * table, the availability calendar and the constraint registry on the way,
+   * and every one of them is discarded here. {@link ScenarioMemo.resolve} asks
+   * this on every call, so a miss was materialising the branch twice.
+   *
+   * @param {import('./types.js').SeasonInputs} inputs
+   * @param {import('./types.js').ScheduleScenario} scenario
+   * @param {ReadonlyArray<import('./types.js').ScheduleScenario>} ancestry
+   * @returns {string}
+   */
+  fingerprintOf(inputs, scenario, ancestry) {
+    return scenarioFingerprint(inputs, composedOverrides(scenario, ancestry));
   }
 
   /**
@@ -769,7 +801,7 @@ export class ScenarioMemo {
   forgetStale(inputs, scenario, ancestry) {
     if (this.entriesFor(scenario.id).length === 0) return 0;
     if (ancestryProblem(scenario, ancestry) !== null) return 0;
-    const current = materialiseScenario(inputs, scenario, { ancestry }).fingerprint;
+    const current = this.fingerprintOf(inputs, scenario, ancestry);
     let forgotten = 0;
     for (const [entryKey, entry] of [...this.byKey]) {
       if (entry.scenarioId !== scenario.id) continue;
@@ -781,23 +813,45 @@ export class ScenarioMemo {
   }
 
   /**
-   * Is what is cached for this scenario still the answer to what was asked?
+   * Is the result this caller is holding still the answer to what was asked?
    *
    * **Exported behaviour rather than an internal branch**, for the reason
    * `parityPartitionFindings()` is exported: a check nobody can make fail is
    * not a check. A test edits one base record and watches this fire.
    *
-   * Every entry cached for the scenario is checked, not one: the memo holds an
-   * entry per question, and a baseline that moved invalidates all of them.
+   * ## Who this is for
+   *
+   * A caller holding a `ScenarioResult` wants to know whether **their** result
+   * is stale. That is not the same question as whether the cache has junk in
+   * it, and conflating the two lost the guarantee this class's docstring makes:
+   * `resolve()` forgets every entry the branch has moved past *before* it looks
+   * one up, so after any intervening resolve of the same branch there was
+   * nothing stale left to report and a caller still holding the pre-edit result
+   * was told everything was fine. So a caller passes what it holds in `held`,
+   * and gets `SCENARIO_RESULT_STALE` for it whether or not the memo still has
+   * it. `held` is empty for a caller reconciling the cache itself, which is
+   * still answered over every entry the scenario has — the memo holds an entry
+   * per question and a baseline that moved invalidates all of them.
    *
    * @param {import('./types.js').SeasonInputs} inputs
    * @param {import('./types.js').ScheduleScenario} scenario
    * @param {ReadonlyArray<import('./types.js').ScheduleScenario>} [ancestry]
+   * @param {ReadonlyArray<import('./types.js').ScenarioResult>} [held] - results the caller still holds
    * @returns {import('./types.js').ScenarioFinding[]}
    */
-  check(inputs, scenario, ancestry = []) {
+  check(inputs, scenario, ancestry = [], held = []) {
+    for (const result of held) {
+      if (result.scenarioId === scenario.id) continue;
+      // Not a finding: a caller asking about scenario A while holding B's
+      // result is a mistake about *which* branch is in hand, and answering it
+      // with a staleness verdict would be this round's finding 2 one layer up —
+      // one branch's answer reported under another's name.
+      throw new Error(
+        `scenario: ScenarioMemo.check() was asked about "${scenario.id}" and handed a held result for "${result.scenarioId}"; a result can only be stale against the branch it was derived from`
+      );
+    }
     const cached = this.entriesFor(scenario.id);
-    if (cached.length === 0) return [];
+    if (cached.length === 0 && held.length === 0) return [];
     // **Reported, not thrown.** Every other answer this method gives is a
     // finding, and a caller reconciling a cache had to catch an exception to
     // learn it had not passed enough. `materialiseScenario()` still refuses.
@@ -811,18 +865,25 @@ export class ScenarioMemo {
         ),
       ];
     }
-    const current = materialiseScenario(inputs, scenario, { ancestry }).fingerprint;
+    const current = this.fingerprintOf(inputs, scenario, ancestry);
     /** @type {import('./types.js').ScenarioFinding[]} */
     const findings = [];
-    for (const entry of cached) {
-      if (current === entry.result.fingerprint) continue;
+    // One finding per stale fingerprint, not per copy of it: a caller holding
+    // the entry the memo also holds has one stale answer between them.
+    const stale = new Set(
+      [
+        ...cached.map((entry) => entry.result.fingerprint),
+        ...held.map((result) => result.fingerprint),
+      ].filter((fingerprint) => fingerprint !== current)
+    );
+    for (const fingerprint of stale) {
       findings.push(
         makeScenarioFinding(
           SCENARIO_REASON.SCENARIO_RESULT_STALE,
-          `the cached result for scenario "${scenario.id}" was derived at fingerprint ${entry.result.fingerprint} and its inputs and overrides now digest to ${current}; it describes a schedule that no longer exists and must be re-derived`,
+          `a result for scenario "${scenario.id}" was derived at fingerprint ${fingerprint} and its inputs and overrides now digest to ${current}; it describes a schedule that no longer exists and must be re-derived`,
           {
             scenarioId: scenario.id,
-            cachedFingerprint: entry.result.fingerprint,
+            cachedFingerprint: fingerprint,
             currentFingerprint: current,
           }
         )

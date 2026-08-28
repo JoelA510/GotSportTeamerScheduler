@@ -79,9 +79,12 @@ import { verifySnapshotDigest } from '@squadlogic/core/publication/index.js';
 import {
   RELOCATION_POLICY,
   REPLACEMENT_GRADE,
+  SCENARIO_DIGEST_EXCLUSIONS,
   SCENARIO_OVERRIDE_KIND,
   SCENARIO_REASON,
   SCENARIO_RECORD_SET,
+  SCENARIO_RECORD_SET_ORDER,
+  SCENARIO_STATUS,
   ScenarioMemo,
   diffAgainstBaselineScenario,
   diffScenarios,
@@ -92,10 +95,13 @@ import {
   materialiseScenario,
   promoteScenario,
   proposeRelocations,
+  recordDigest,
+  recordsOf,
   replacementSurfacesFor,
   runScenario,
   scenarioFingerprint,
   scheduleDiffPartitionFindings,
+  seasonInputsDigest,
   season2026CapacitySubjects,
   shelveUnrelocatable,
   season2026EarliestKickoffFor,
@@ -1047,11 +1053,17 @@ describe('overrides are set operations on record arrays, not a fourth precedence
       SCENARIO_REASON.SCENARIO_BRANCHED_FROM_SCENARIO
     );
     expect(materialised.meta.overridesDeclared).toBe(2);
-    // The parent already withdrew every row for the venue, so the child's
-    // date-scoped withdrawal collides with the parent's blanket blackout rather
-    // than quietly re-applying: a conflict, reported.
+    // A child narrowing, broadening or restating its parent's withdrawal is
+    // **composition** — it is what naming a parent is for — so the two
+    // withdrawals apply in order and neither is refused. The duplicate-venue
+    // conflict is a contradiction *within one author's* edit list, and this is
+    // two authors in a chain.
     expect(materialised.overrides).toHaveLength(2);
     expect(materialised.overrides[0]).toBe(scenario.overrides[0]);
+    expect(codesOf(materialised.findings)).not.toContain(
+      SCENARIO_REASON.SCENARIO_OVERRIDE_CONFLICT
+    );
+    expect(materialised.meta.overridesApplied).toBe(2);
   });
 
   it('refuses a scenario that overrides nothing, or branches from the wrong baseline', () => {
@@ -2342,5 +2354,446 @@ describe('the memo’s staleness gate and its writes agree on scope', () => {
     expect(memo.resolve(moved, branch, runOptions)).toBe(first);
     expect(memo.hits).toBe(1);
     expect(memo.misses).toBe(2);
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* The digest class, closed: covered by construction rather than by a list      */
+/* -------------------------------------------------------------------------- */
+
+describe('the digest covers the bundle by construction, not by an allowlist', () => {
+  /**
+   * **Three review rounds found the same defect on this one function.** The
+   * memo key ignored the run options; then the baseline digest omitted the
+   * `schedule`, the `calendarOptions` and the `venueComplexes`; then it covered
+   * `schedule.games` and omitted the `commitments`, the `teams`, the four
+   * universes and the `placeholderLabels` — every one of them read by the rule
+   * engine. Each round closed the instance by naming the fields somebody had
+   * noticed, which is why there was a next round.
+   *
+   * These tests do not check the third instance. They walk **the live objects**
+   * — the season-2026 bundle and its `Schedule` — perturb every enumerable
+   * field in turn, and assert the digest moves for each one. Nothing here is
+   * enumerated from a list; a field added to either structure next year is
+   * walked without this file being edited, and a field the digest cannot see
+   * fails here rather than in a fourth review.
+   */
+  const PROBE = '__digest-probe__';
+
+  /**
+   * The same value, **definitely** changed.
+   *
+   * The trap this exists to avoid: perturbing a field to an equal value, or to
+   * one the digest legitimately canonicalises away (a different key *order*,
+   * say), reports a false failure. Every perturbation below adds something no
+   * corpus row carries, and the walk asserts the change is real before it
+   * asserts anything about the digest.
+   *
+   * @param {unknown} value
+   * @returns {unknown}
+   */
+  function perturbed(value) {
+    if (Array.isArray(value)) return [...value, PROBE];
+    if (value !== null && typeof value === 'object') {
+      return { .../** @type {Record<string, unknown>} */ (value), [PROBE]: 1 };
+    }
+    if (typeof value === 'string') return `${value}${PROBE}`;
+    if (typeof value === 'number') return value + 1;
+    if (typeof value === 'boolean') return !value;
+    // `null` and `undefined`: a field that holds nothing is perturbed to a
+    // field that holds something. Nothing is skipped silently — if a future
+    // field cannot be perturbed meaningfully it has to be named here, with the
+    // reason, rather than falling out of the walk.
+    return PROBE;
+  }
+
+  /**
+   * Walk one object's own enumerable fields and report which ones the digest
+   * did not notice.
+   *
+   * @param {Record<string, unknown>} subject - the live object, never a list of names
+   * @param {(probe: Record<string, unknown>) => Object} rebuild - the bundle around it
+   * @param {(bundle: Object) => string} digestOf
+   * @returns {{ visited: string[], unmoved: string[] }}
+   */
+  function walk(subject, rebuild, digestOf) {
+    /** @type {string[]} */
+    const visited = [];
+    /** @type {string[]} */
+    const unmoved = [];
+    const before = digestOf(rebuild(subject));
+    for (const field of Object.keys(subject)) {
+      const probe = { ...subject, [field]: perturbed(subject[field]) };
+      expect(probe[field], `the perturbation of "${field}" is not a change`).not.toEqual(
+        subject[field]
+      );
+      visited.push(field);
+      if (digestOf(rebuild(probe)) === before) unmoved.push(field);
+    }
+    return { visited, unmoved };
+  }
+
+  /**
+   * The meta-assertion `CLAUDE.md` §3 demands, as a function so its own failing
+   * case can be constructed rather than described.
+   *
+   * @param {string[]} visited
+   * @param {number} floor
+   */
+  function assertPlausibleWalk(visited, floor) {
+    expect(visited.length, `the walk visited ${visited.length} field(s)`).toBeGreaterThanOrEqual(
+      floor
+    );
+  }
+
+  it('moves for every enumerable field of the bundle, save the ones the deny-list names', () => {
+    const { visited, unmoved } = walk(
+      /** @type {any} */ (inputs),
+      (probe) => probe,
+      seasonInputsDigest
+    );
+    // The meta-assertion: the walk saw every key the live bundle has, and a
+    // plausible number of them.
+    assertPlausibleWalk(visited, Object.keys(inputs).length);
+    expect(visited.length).toBeGreaterThan(10);
+    // The only fields a perturbation may leave the digest standing on are the
+    // ones the deny-list names — **exactly** those, so adding a field to the
+    // deny-list is a decision this test makes somebody write down.
+    expect([...unmoved].sort()).toEqual(Object.keys(SCENARIO_DIGEST_EXCLUSIONS).sort());
+  });
+
+  it('moves for every enumerable field of the Schedule, and excludes none of them', () => {
+    const { visited, unmoved } = walk(
+      /** @type {any} */ (schedule),
+      (probe) => ({ ...inputs, schedule: probe }),
+      seasonInputsDigest
+    );
+    assertPlausibleWalk(visited, Object.keys(schedule).length);
+    expect(unmoved).toEqual([]);
+    // Not the source of the walk — a floor under it, naming what round three
+    // left uncovered. The walk itself is reflection over the live schedule.
+    expect(visited).toEqual(
+      expect.arrayContaining([
+        'commitments',
+        'teams',
+        'teamUniverse',
+        'personUniverse',
+        'divisionUniverse',
+        'surfaceUniverse',
+        'placeholderLabels',
+      ])
+    );
+  });
+
+  it('fails against the allowlist digest it replaced — the walk is not vacuous', () => {
+    // **The falsification.** The same walk, over round three's own subject:
+    // the six record sets, the two engine inputs, the sunsets, the calendar
+    // options, the complexes, and `schedule.games`. It has to report the fields
+    // that digest reached past, or the two tests above pass for the wrong
+    // reason.
+    const roundThree = (bundle) =>
+      recordDigest(
+        {
+          .../** @type {any} */ (recordsOf(bundle)),
+          schedule: bundle.schedule.games,
+          facilityInput: [bundle.facilityInput],
+          timingInput: [bundle.timingInput],
+          sunsets: bundle.sunsets,
+          calendarOptions: [bundle.calendarOptions],
+          venueComplexes: [bundle.venueComplexes],
+        },
+        [
+          'schedule',
+          'facilityInput',
+          'timingInput',
+          ...SCENARIO_RECORD_SET_ORDER,
+          'sunsets',
+          'calendarOptions',
+          'venueComplexes',
+        ]
+      );
+
+    const { visited, unmoved } = walk(
+      /** @type {any} */ (schedule),
+      (probe) => ({ ...inputs, schedule: probe }),
+      roundThree
+    );
+    assertPlausibleWalk(visited, Object.keys(schedule).length);
+    expect(unmoved.length).toBeGreaterThan(0);
+    expect([...unmoved].sort()).toEqual(
+      [...Object.keys(schedule)].filter((field) => field !== 'games').sort()
+    );
+    // …and the one field it did cover is still covered by the digest that
+    // replaced it, so this is a widening rather than a swap.
+    expect(unmoved).not.toContain('games');
+  });
+
+  it('counts the fields it walked, and that count is an assertion that can fail', () => {
+    // The constructed failing case for the meta-assertion above: the identical
+    // walk over an object with no enumerable fields visits nothing, and the
+    // check refuses it rather than passing quietly.
+    const empty = walk({}, (probe) => ({ ...inputs, ...probe }), seasonInputsDigest);
+    expect(empty.visited).toEqual([]);
+    expect(empty.unmoved).toEqual([]);
+    expect(() => assertPlausibleWalk(empty.visited, 1)).toThrow();
+    // …and it passes for the live objects, which is the only reason the walks
+    // above are evidence of anything.
+    expect(() => assertPlausibleWalk(Object.keys(inputs), 1)).not.toThrow();
+  });
+
+  it('separates bundles the third round’s digest could not tell apart', () => {
+    // The two cases named in the finding, on this corpus: every team removed,
+    // and one extra travel commitment. Both digested identically before.
+    const base = seasonInputsDigest(inputs);
+    expect(seasonInputsDigest({ ...inputs, schedule: { ...schedule, teams: [] } })).not.toBe(base);
+    const extraCommitment = {
+      ...schedule.commitments[0],
+      id: `${schedule.commitments[0].id}-a-second-coach-travelling`,
+    };
+    expect(
+      seasonInputsDigest({
+        ...inputs,
+        schedule: { ...schedule, commitments: [...schedule.commitments, extraCommitment] },
+      })
+    ).not.toBe(base);
+  });
+
+  it('states a reason for every field it does not cover, and refuses one it cannot render', () => {
+    for (const [field, reason] of Object.entries(SCENARIO_DIGEST_EXCLUSIONS)) {
+      // A deny-list entry for a field the bundle does not have is a reason
+      // nobody has read since the field was deleted.
+      expect(Object.keys(inputs), field).toContain(field);
+      expect(reason.length, `"${field}" is excluded without a stated reason`).toBeGreaterThan(40);
+    }
+    // A field the digest cannot render — a cache, a back-reference, a function
+    // — is a loud failure rather than a silent `null`, so it is named in the
+    // deny-list deliberately or not at all.
+    expect(() => seasonInputsDigest(/** @type {any} */ ({ ...inputs, cache: () => 1 }))).toThrow(
+      /is a function/
+    );
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* A child refining a parent's withdrawal is composition, not a contradiction  */
+/* -------------------------------------------------------------------------- */
+
+describe('the duplicate-venue conflict fires within one author, not down a chain', () => {
+  /** The parent: one date withdrawn. */
+  const narrow = season2026VenueUnavailableScenario({
+    venueId: WITHDRAWN.venueId,
+    baselineId: inputs.id,
+    requestedBy: REQUESTED_BY,
+    at: REQUESTED_AT,
+    id: 'parent-narrows',
+    dates: [WITHDRAWN.dates[0]],
+  });
+
+  /** The child: the same venue, the parent's date and one more. */
+  const broad = season2026VenueUnavailableScenario({
+    venueId: WITHDRAWN.venueId,
+    baselineId: inputs.id,
+    requestedBy: REQUESTED_BY,
+    at: REQUESTED_AT,
+    id: 'child-broadens',
+    parentScenarioId: narrow.id,
+    dates: [WITHDRAWN.dates[0], WITHDRAWN.dates[1]],
+  });
+
+  it('applies a child’s broader withdrawal of the venue its parent narrowed', () => {
+    // **The defect this exists to catch**, introduced by round two's own fix.
+    // The duplicate was claimed over `composedOverrides()`, so the *inherited*
+    // withdrawal counted as one of the two authors: the child's own override
+    // was refused at blocking and skipped, the branch materialised its parent's
+    // narrower withdrawal, and the message read `two overrides of
+    // "child-broadens"` for an edit the parent wrote.
+    const materialised = materialiseScenario(inputs, broad, { ancestry: [narrow] });
+    expect(codesOf(materialised.findings)).not.toContain(
+      SCENARIO_REASON.SCENARIO_OVERRIDE_CONFLICT
+    );
+    expect(materialised.status).not.toBe(SCENARIO_STATUS.REJECTED);
+    expect(materialised.meta.overridesDeclared).toBe(2);
+    expect(materialised.meta.overridesApplied).toBe(2);
+    // Both authors' days are blacked out — the child's second date is present,
+    // which is exactly what the refused override used to lose.
+    const blackoutDates = new Set(
+      materialised.records[SCENARIO_RECORD_SET.PERMITS]
+        .filter((row) => String(row.id).startsWith(`${SCENARIO_OVERRIDE_KIND.VENUE_UNAVAILABLE}:`))
+        .map((row) => row.date)
+    );
+    expect(blackoutDates.has(WITHDRAWN.dates[0])).toBe(true);
+    expect(blackoutDates.has(WITHDRAWN.dates[1])).toBe(true);
+  });
+
+  it('still refuses two withdrawals of one venue written in one scenario', () => {
+    // Round two's fix, intact. Both overrides here have the same author, and
+    // their date scopes overlap, so the second one still silently replaces the
+    // first one's reason on every row it lays — the contradiction stands.
+    const oneAuthor = makeScenario({
+      id: 'withdrawn-twice-in-one-branch',
+      name: 'one branch, two withdrawals of one venue',
+      baselineId: inputs.id,
+      parentScenarioId: null,
+      rationale: 'the regression that must survive the ancestry fix',
+      requestedBy: REQUESTED_BY,
+      createdAt: REQUESTED_AT,
+      overrides: [
+        {
+          kind: SCENARIO_OVERRIDE_KIND.VENUE_UNAVAILABLE,
+          venueId: WITHDRAWN.venueId,
+          dates: [WITHDRAWN.dates[0]],
+          by: 'groundskeeper@club.example',
+          at: REQUESTED_AT,
+          reason: 'the drainage works overran',
+        },
+        {
+          kind: SCENARIO_OVERRIDE_KIND.VENUE_UNAVAILABLE,
+          venueId: WITHDRAWN.venueId,
+          dates: [WITHDRAWN.dates[0], WITHDRAWN.dates[1]],
+          by: 'registrar@club.example',
+          at: REQUESTED_AT,
+          reason: 'the permit lapsed',
+        },
+      ],
+    });
+    const materialised = materialiseScenario(inputs, oneAuthor);
+    const conflict = materialised.findings.find(
+      (finding) => finding.code === SCENARIO_REASON.SCENARIO_OVERRIDE_CONFLICT
+    );
+    expect(conflict).toBeDefined();
+    expect(conflict?.severity).toBe(CONSTRAINT_SEVERITY.BLOCKING);
+    // The finding names the author it is about, which under the defect was
+    // whichever scenario was being materialised.
+    expect(conflict?.details.authoredBy).toBe(oneAuthor.id);
+    expect(conflict?.message).toContain(`two overrides of "${oneAuthor.id}"`);
+    expect(materialised.meta.overridesApplied).toBe(1);
+  });
+
+  it('still composes a parent and a child naming disjoint dates', () => {
+    const elsewhere = season2026VenueUnavailableScenario({
+      venueId: WITHDRAWN.venueId,
+      baselineId: inputs.id,
+      requestedBy: REQUESTED_BY,
+      at: REQUESTED_AT,
+      id: 'child-elsewhere',
+      parentScenarioId: narrow.id,
+      dates: [WITHDRAWN.dates[1]],
+    });
+    const materialised = materialiseScenario(inputs, elsewhere, { ancestry: [narrow] });
+    expect(codesOf(materialised.findings)).not.toContain(
+      SCENARIO_REASON.SCENARIO_OVERRIDE_CONFLICT
+    );
+    expect(materialised.meta.overridesApplied).toBe(2);
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* check() answers for the result its caller is holding                        */
+/* -------------------------------------------------------------------------- */
+
+describe('the staleness check answers for the result its caller is holding', () => {
+  /** A bundle whose records this test owns, so one can be corrected in place. */
+  const ownedBundle = () => {
+    const owned = SEASON_2026_CONSTRAINTS.map((record) => ({ ...record }));
+    return season2026SeasonInputs({
+      schedule,
+      facilityInput,
+      timingInput,
+      calendarInput,
+      constraints: owned,
+      venueComplexes,
+      id: 'held-result-baseline',
+    });
+  };
+
+  it('tells a holder its result is stale after an intervening resolve of the same branch', () => {
+    // **The defect this exists to catch**, introduced by round two's own fix.
+    // `resolve()` forgets every entry the branch has moved past *before* it
+    // looks one up, so the second resolve purged the stale entry and `check()`
+    // — which only ever read the cache — answered `[]` for a caller still
+    // holding the pre-edit result. The class docstring promises that caller
+    // `SCENARIO_RESULT_STALE` at blocking.
+    const bundle = ownedBundle();
+    const branch = season2026VenueUnavailableScenario({
+      venueId: WITHDRAWN.venueId,
+      baselineId: bundle.id,
+      requestedBy: REQUESTED_BY,
+      at: REQUESTED_AT,
+      dates: [WITHDRAWN.dates[0]],
+    });
+    const memo = new ScenarioMemo();
+    const held = memo.resolve(bundle, branch, { ...runOptions, relocations: false });
+    expect(memo.check(bundle, branch, [], [held])).toEqual([]);
+
+    const target = /** @type {any} */ (
+      bundle.constraints.find((record) => record.type === CONSTRAINT_TYPE.HARD)
+    );
+    target.type = CONSTRAINT_TYPE.SOFT;
+    target.weight = 5;
+
+    // The intervening resolve: it re-derives, and it purges what it moved past.
+    const fresh = memo.resolve(bundle, branch, { ...runOptions, relocations: false });
+    expect(fresh).not.toBe(held);
+    // The cache is clean — that is round two's finding 6, and it stays fixed…
+    expect(memo.check(bundle, branch)).toEqual([]);
+    // …and the caller still holding the pre-edit result is told, which is a
+    // different question and the one the docstring promises an answer to.
+    const findings = memo.check(bundle, branch, [], [held]);
+    expect(codesOf(findings)).toEqual([SCENARIO_REASON.SCENARIO_RESULT_STALE]);
+    expect(findings[0].severity).toBe(CONSTRAINT_SEVERITY.BLOCKING);
+    expect(findings[0].details.cachedFingerprint).toBe(held.fingerprint);
+    expect(findings[0].details.currentFingerprint).toBe(fresh.fingerprint);
+    // The result derived after the correction is not stale, held or cached.
+    expect(memo.check(bundle, branch, [], [fresh])).toEqual([]);
+    // One finding, not two, when the holder holds what the memo also holds.
+    expect(memo.check(bundle, branch, [], [fresh, fresh])).toEqual([]);
+  });
+
+  it('refuses to judge a result derived from another branch', () => {
+    const bundle = ownedBundle();
+    const branch = season2026VenueUnavailableScenario({
+      venueId: WITHDRAWN.venueId,
+      baselineId: bundle.id,
+      requestedBy: REQUESTED_BY,
+      at: REQUESTED_AT,
+      id: 'the-branch-asked-about',
+      dates: [WITHDRAWN.dates[0]],
+    });
+    const other = season2026VenueUnavailableScenario({
+      venueId: WITHDRAWN.venueId,
+      baselineId: bundle.id,
+      requestedBy: REQUESTED_BY,
+      at: REQUESTED_AT,
+      id: 'the-branch-in-hand',
+      dates: [WITHDRAWN.dates[1]],
+    });
+    const memo = new ScenarioMemo();
+    const held = memo.resolve(bundle, other, { ...runOptions, relocations: false });
+    // Answering this would be one branch's answer reported under another's
+    // name, which is the misattribution this round fixed one layer down.
+    expect(() => memo.check(bundle, branch, [], [held])).toThrow(/can only be stale against/);
+  });
+
+  it('reads what the branch digests to without building its engines', () => {
+    // The efficiency finding, as a property rather than a stopwatch:
+    // `forgetStale()` built all four engines on every resolve only to read a
+    // string that `scenarioFingerprint()` returns on its own. The substitution
+    // is only safe while the two agree, so that is what is asserted.
+    const memo = new ScenarioMemo();
+    expect(memo.fingerprintOf(inputs, scenario, [])).toBe(
+      materialiseScenario(inputs, scenario).fingerprint
+    );
+    const child = season2026VenueUnavailableScenario({
+      venueId: WITHDRAWN.venueId,
+      baselineId: inputs.id,
+      requestedBy: REQUESTED_BY,
+      at: REQUESTED_AT,
+      id: 'fingerprint-child',
+      parentScenarioId: scenario.id,
+      dates: [WITHDRAWN.dates[0]],
+    });
+    expect(memo.fingerprintOf(inputs, child, [scenario])).toBe(
+      materialiseScenario(inputs, child, { ancestry: [scenario] }).fingerprint
+    );
   });
 });

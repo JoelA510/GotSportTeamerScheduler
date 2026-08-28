@@ -21,6 +21,16 @@
  * already has, not a second one, and it carries the same honest caveat: FNV-1a
  * is not cryptographic, it catches the accident rather than the forgery.
  *
+ * **What it covers is derived from the bundle, never enumerated.** Three
+ * reviews running found the same defect — a field the digest did not reach, so
+ * two bundles that differ digested identically and the memo served one's answer
+ * as the other's — and three times it was closed by adding the field somebody
+ * had noticed. {@link digestSubjectOf} therefore walks the bundle's own
+ * enumerable fields at run time and {@link SCENARIO_DIGEST_EXCLUSIONS} names,
+ * with a reason each, the few it deliberately leaves out. A field added to
+ * `SeasonInputs` or to `Schedule` next year is covered by construction, and a
+ * field left uncovered is a written-down decision rather than an oversight.
+ *
  * @module scenario/inputs
  */
 
@@ -39,30 +49,29 @@ export const SCENARIO_RECORD_SET_ORDER = Object.freeze([
 ]);
 
 /**
- * Everything the digest covers, in a fixed order.
+ * The bundle fields the digest deliberately does **not** cover, and why.
  *
- * Wider than {@link SCENARIO_RECORD_SET_ORDER} on purpose. The six sets above
- * are what an *override* may edit; these are everything a branch's answer
- * depends on, and a fingerprint that covered only the first would serve a
- * cached result after the facility geometry underneath it had changed.
- *
- * **`schedule`, `calendarOptions` and `venueComplexes` are here because they
- * reach the answer too**, and covering only the record arrays and the two
- * engine inputs left the hole half open: two bundles differing in one game's
- * kickoff digested identically, so the memo served the result derived from one
- * schedule as the answer for the other. The schedule is digested game by game
- * rather than as one blob — a bundle *is* the inputs to a schedule, and one
- * moved kickoff is a different question.
+ * **A deny-list, because an allowlist is a defect waiting for a new field.**
+ * Three review rounds running, the digest was widened by enumerating the fields
+ * somebody had noticed were missing — the run options, then the `schedule` and
+ * the `calendarOptions` and the `venueComplexes`, then everything on the
+ * `Schedule` that is not `games` — and each time the next field added to
+ * `SeasonInputs` or to `Schedule` would have been uncovered again. So
+ * {@link digestSubjectOf} now reads the bundle's **own enumerable fields at run
+ * time** and covers every one of them; a field added next year is covered
+ * without anybody editing this file. What is *not* covered has to be named
+ * here, with a reason, so an omission is a visible decision rather than an
+ * oversight. `tests/scenarioBranching.test.js` walks the live bundle by
+ * reflection and asserts that the fields whose perturbation leaves the digest
+ * standing are **exactly** the keys below.
  */
-export const SCENARIO_DIGEST_ORDER = Object.freeze([
-  'schedule',
-  'facilityInput',
-  'timingInput',
-  ...SCENARIO_RECORD_SET_ORDER,
-  'sunsets',
-  'calendarOptions',
-  'venueComplexes',
-]);
+export const SCENARIO_DIGEST_EXCLUSIONS = Object.freeze({
+  id: 'the name a bundle gives itself, not its content. Which baseline a branch is materialised against is checked by id at materialiseScenario(), which refuses the wrong one outright; digesting it would report "this is a different bundle" as "the inputs changed"',
+  label:
+    'prose for humans that reaches no record and no engine — the reason a fingerprint is never taken over an updatedAt: a check whose subject includes its own metadata is a check the metadata can move',
+  digest:
+    "this function's own output, stamped back onto the bundle. It is the empty string while makeSeasonInputs() computes it, so digesting it would give one bundle two different digests, before construction and after",
+});
 
 /** The digest's column vocabulary: what a record is, and what it says. */
 const DIGEST_COLUMNS = Object.freeze(['recordSet', 'index', 'canonical']);
@@ -93,11 +102,16 @@ export function canonicalJson(value) {
  * fingerprint that included metadata would derive a check's subject from data
  * the corruption it detects would also change.
  *
+ * The default order is **the subject's own keys, sorted** — not a table
+ * somebody has to extend — so a caller that hands this a wider subject digests
+ * the wider subject rather than silently digesting the part of it a constant
+ * happened to name.
+ *
  * @param {Record<string, ReadonlyArray<Object>>} records
  * @param {ReadonlyArray<string>} [order] - which sets, in which order
  * @returns {string} 16 lowercase hex characters
  */
-export function recordDigest(records, order = SCENARIO_DIGEST_ORDER) {
+export function recordDigest(records, order = Object.keys(records).sort()) {
   /** @type {Record<string, string>[]} */
   const rows = [];
   for (const set of order) {
@@ -120,21 +134,40 @@ export function seasonInputsDigest(inputs) {
 }
 
 /**
- * Everything {@link seasonInputsDigest} reads, by name.
+ * Everything {@link seasonInputsDigest} reads, **derived from the bundle**.
+ *
+ * Every enumerable field of the bundle that {@link SCENARIO_DIGEST_EXCLUSIONS}
+ * does not name, in sorted order, rendered by {@link canonicalJson} to whatever
+ * depth it has. Nested structure needs no enumeration of its own: the whole
+ * `Schedule` goes through as one canonical rendering, so its `commitments`, its
+ * `teams`, its four universes and its `placeholderLabels` — every one of them
+ * read by the rule engine — are covered by construction rather than by
+ * having been listed, and so is whatever is added to it next.
+ *
+ * A field this cannot render is a **loud failure**, never a silent `null`: a
+ * function or a symbol reaching the digest is either a cache or a
+ * back-reference that belongs in the deny-list above with a stated reason, or
+ * it is a mistake, and both want saying out loud.
  *
  * @param {import('./types.js').SeasonInputs} inputs
  * @returns {Record<string, ReadonlyArray<Object>>}
  */
 export function digestSubjectOf(inputs) {
-  return {
-    ...recordsOf(inputs),
-    schedule: inputs.schedule.games,
-    facilityInput: [inputs.facilityInput],
-    timingInput: [inputs.timingInput],
-    sunsets: inputs.sunsets,
-    calendarOptions: [inputs.calendarOptions],
-    venueComplexes: [inputs.venueComplexes],
-  };
+  /** @type {Record<string, ReadonlyArray<Object>>} */
+  const subject = {};
+  for (const field of Object.keys(inputs).sort()) {
+    if (Object.hasOwn(SCENARIO_DIGEST_EXCLUSIONS, field)) continue;
+    const value = /** @type {Record<string, unknown>} */ (/** @type {unknown} */ (inputs))[field];
+    if (typeof value === 'function' || typeof value === 'symbol') {
+      throw new Error(
+        `scenario: SeasonInputs field "${field}" is a ${typeof value}, which no digest can render; name it in SCENARIO_DIGEST_EXCLUSIONS with the reason it is not part of the bundle's content, rather than letting it digest as nothing`
+      );
+    }
+    subject[field] = /** @type {ReadonlyArray<Object>} */ (
+      Array.isArray(value) ? value : [/** @type {Object} */ (value)]
+    );
+  }
+  return subject;
 }
 
 /**

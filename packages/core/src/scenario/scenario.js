@@ -421,22 +421,44 @@ export function materialiseScenario(inputs, scenario, options = {}) {
   /** @type {Array<{ recordId: string, type: string, weight: number|null, override: import('./types.js').ScenarioOverride }>} */
   const retypes = [];
   /**
-   * Which venues a `venue-unavailable` has already been written for.
+   * Which venues a `venue-unavailable` has already been written for, **per
+   * scenario that wrote one**.
    *
    * A withdrawal is the one override kind whose edits are **derived**, and the
    * derived edits deliberately make no claim on a record id — an author naming
    * a venue whose rows another *kind* of override happens to touch is
-   * composition, and last round stopped that from reporting a contradiction.
-   * Two withdrawals of the *same venue over the same days* are not that: they
-   * are one fact written twice, and the second one's removes delete the first
-   * one's blackout rows before its adds put them back, so nothing collides and
-   * the later author's reason silently replaces the earlier author's on every
-   * row. That is provenance lost exactly the way incident 9 lost a waiver, so
-   * the duplicate is claimed here, at the venue, where the authorship is.
+   * composition, and round one stopped that from reporting a contradiction.
+   * Two withdrawals of the *same venue over the same days written in one
+   * scenario* are not that: they are one fact written twice, and the second
+   * one's removes delete the first one's blackout rows before its adds put them
+   * back, so nothing collides and the later author's reason silently replaces
+   * the earlier author's on every row. That is provenance lost exactly the way
+   * incident 9 lost a waiver, so the duplicate is claimed here, at the venue,
+   * where the authorship is.
+   *
+   * **Keyed by the scenario that authored the override, not by the venue
+   * alone.** A child branch refining or broadening a parent's withdrawal is
+   * ordinary composition — it is *why* a branch may name a parent — and
+   * claiming the venue across the composed list made the inherited withdrawal
+   * one of the two authors: the child's own override was refused at blocking,
+   * skipped, and the branch materialised its parent's narrower withdrawal while
+   * the message attributed both edits to the child. Within one author's edit
+   * list a second withdrawal is still the duplicate above, whichever scenario
+   * in the chain wrote it.
    *
    * @type {Map<string, import('./types.js').ScenarioOverride[]>}
    */
   const claimedVenues = new Map();
+  /**
+   * Which scenario wrote each override, by object identity.
+   *
+   * @type {Map<import('./types.js').ScenarioOverride, string>}
+   */
+  const authorOf = new Map();
+  for (const ancestor of ancestry) {
+    for (const inherited of ancestor.overrides) authorOf.set(inherited, ancestor.id);
+  }
+  for (const own of scenario.overrides) authorOf.set(own, scenario.id);
 
   const working = (set) => {
     if (!rebuilt.has(set)) rebuilt.set(set, [...(base[set] ?? [])]);
@@ -455,15 +477,18 @@ export function materialiseScenario(inputs, scenario, options = {}) {
     let appliedThisOverride = 0;
     if (override.kind === SCENARIO_OVERRIDE_KIND.VENUE_UNAVAILABLE) {
       const venueId = /** @type {string} */ (override.venueId);
-      const claimants = claimedVenues.get(venueId) ?? [];
+      const author = authorOf.get(override) ?? scenario.id;
+      const venueKey = `${author}\u0000${venueId}`;
+      const claimants = claimedVenues.get(venueKey) ?? [];
       const clash = claimants.find((claimed) => venueScopesOverlap(claimed, override));
       if (clash !== undefined) {
         findings.push(
           makeScenarioFinding(
             SCENARIO_REASON.SCENARIO_OVERRIDE_CONFLICT,
-            `two overrides of "${scenario.id}" both withdraw venue "${venueId}" over days they share ("${clash.reason}" and "${override.reason}"); the second withdrawal writes the same blackout rows the first did, so applying it would replace one author's stated reason with the other's on every row — a contradiction to remove rather than a precedence to resolve`,
+            `two overrides of "${author}" both withdraw venue "${venueId}" over days they share ("${clash.reason}" and "${override.reason}"); the second withdrawal writes the same blackout rows the first did, so applying it would replace one author's stated reason with the other's on every row — a contradiction to remove rather than a precedence to resolve`,
             {
               scenarioId: scenario.id,
+              authoredBy: author,
               recordSet: SCENARIO_RECORD_SET.PERMITS,
               venueId,
               firstReason: clash.reason,
@@ -478,7 +503,7 @@ export function materialiseScenario(inputs, scenario, options = {}) {
         continue;
       }
       claimants.push(override);
-      claimedVenues.set(venueId, claimants);
+      claimedVenues.set(venueKey, claimants);
     }
     for (const edit of primitiveEditsOf(override, current)) {
       const key = `${edit.recordSet}|${edit.recordId}`;
