@@ -116,6 +116,38 @@ override also touched is composition — it is what naming a parent is for — s
 the claim is keyed by the authoring scenario, exactly as the venue claim below
 is.
 
+The set operations answer every such pair **but one**. A `retype` is deferred
+until the constraint registry exists, because `retypeConstraint()` is the one
+place a hardness change is written and it writes that change into the record's
+own history. A `remove` of the same constraint applied under it leaves the
+retype nothing to write on: the record is spliced out of the working array and
+out of the registry, and `requireConstraint()` threw out of
+`materialiseScenario()` — past the caller expecting findings, and past
+`runScenario()`, which catches nothing. That pair is
+`SCENARIO_OVERRIDE_RETYPE_WITHDRAWN` at **blocking**, and the *withdrawal* is
+refused rather than the retype dropped: every other refusal in the materialiser
+reports and skips before anything is applied, so each
+`SCENARIO_OVERRIDE_APPLIED` stays true and the counters stay honest, where
+dropping a queued retype afterwards would leave an "applied" finding standing
+for an edit that never landed. "This rule is a preference" and "this rule does
+not exist" are two different seasons rather than one refining the other, so the
+author is told to remove one of the two instead of being handed whichever the
+ordering favoured. Reachable only across authors: two edits of one record id
+written by one scenario are `SCENARIO_OVERRIDE_CONFLICT` first.
+
+**And a refusal names whose edit made it so.** Now that ancestor-versus-
+descendant edits of one record id reach `add` and `remove` rather than the
+conflict, "the baseline does not hold it" and "the baseline already holds it"
+were routinely false — the baseline holds exactly what its author left there,
+and it was an *ancestor's* `remove` that emptied the slot or an ancestor's `add`
+(or the derived rows of its `venue-unavailable`) that filled it.
+`SCENARIO_OVERRIDE_TARGET_MISSING` and `SCENARIO_OVERRIDE_ID_COLLIDES` say which
+of the two it was, name the responsible scenario and its stated reason in
+`precededBy` / `precedingReason`, and carry the failing override's own author in
+`authoredBy` — the same field the conflict finding carries. A finding message is
+what an operator acts on, so a message that sends them to the baseline for an
+edit a branch made is worse than a comment that overclaims.
+
 Two `venue-unavailable` overrides **written in one scenario and naming one venue
 over days they share** are the same contradiction one level up, and are reported
 the same way. A
@@ -541,8 +573,9 @@ Every figure above is asserted through the direct-call path **and** through
 | ------------------------------------ | ------------ | ------------------------------------------------------------------------ |
 | `SCENARIO_OVERRIDE_APPLIED`          | `info`       | an override edited a base record array. Provenance                       |
 | `SCENARIO_OVERRIDE_CONFLICT`         | `blocking`   | two overrides of one scenario touch one record id                        |
-| `SCENARIO_OVERRIDE_TARGET_MISSING`   | `blocking`   | a `remove` or `retype` names a record the base does not hold             |
-| `SCENARIO_OVERRIDE_ID_COLLIDES`      | `blocking`   | an `add` uses an id the base already holds                               |
+| `SCENARIO_OVERRIDE_TARGET_MISSING`   | `blocking`   | a `remove` or `retype` names a record the branch does not hold by then   |
+| `SCENARIO_OVERRIDE_ID_COLLIDES`      | `blocking`   | an `add` uses an id the branch already holds by then                     |
+| `SCENARIO_OVERRIDE_RETYPE_WITHDRAWN` | `blocking`   | one override retypes a constraint and another withdraws it               |
 | `SCENARIO_OVERRIDE_VACUOUS`          | `compromise` | the branch changed no result at all — the same violations, not as many   |
 | `SCENARIO_BRANCHED_FROM_SCENARIO`    | `info`       | the branch composes a parent's overrides under its own                   |
 | `SCENARIO_ANCESTRY_UNRESOLVED`       | `blocking`   | the ancestry passed is not the parent chain the branch names             |

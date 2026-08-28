@@ -436,6 +436,23 @@ export function materialiseScenario(inputs, scenario, options = {}) {
    * @type {Map<string, import('./types.js').ScenarioOverride>}
    */
   const claimedIds = new Map();
+  /**
+   * The last edit each record id actually received, and who wrote it — keyed by
+   * record, **across all authors**, which is the opposite of {@link claimedIds}
+   * and deliberately so.
+   *
+   * `claimedIds` answers "may this edit apply?"; this answers "why did it find
+   * what it found?". A descendant's `remove` of a record its ancestor removed
+   * lands on the missing-target refusal, and a descendant's `add` of an id its
+   * ancestor added lands on the collision refusal — both used to tell the
+   * operator the baseline was the reason, which since the claim became per
+   * author is routinely false. Derived edits count: a parent's
+   * `venue-unavailable` lays blackout rows, so a child colliding with one is
+   * colliding with the parent's edit.
+   *
+   * @type {Map<string, { author: string, op: string, reason: string }>}
+   */
+  const appliedTo = new Map();
   /** @type {Array<{ recordId: string, type: string, weight: number|null, override: import('./types.js').ScenarioOverride }>} */
   const retypes = [];
   /**
@@ -536,6 +553,10 @@ export function materialiseScenario(inputs, scenario, options = {}) {
       // never sees it: the second withdrawal removes the first's blackout rows
       // before re-adding them, so by the time the add runs there is nothing
       // left to collide with.
+      // The set operations answer every such pair **but one**: a `retype` is
+      // deferred until the registry exists, so a later `remove` of the same
+      // constraint leaves it nothing to write on. That pair is refused below,
+      // by SCENARIO_OVERRIDE_RETYPE_WITHDRAWN, rather than composed.
       const claimed = edit.derived ? undefined : claimedIds.get(key);
       if (claimed !== undefined) {
         // Two overrides of one author, one record id. **Not a precedence
@@ -565,14 +586,32 @@ export function materialiseScenario(inputs, scenario, options = {}) {
 
       const bucket = working(edit.recordSet);
       const index = bucket.findIndex((record) => String(record.id) === edit.recordId);
+      // The last edit this record id actually received, whoever wrote it. The
+      // two refusals below used to say "the baseline" whatever had happened
+      // before them, and since the record-id claim became per author that is
+      // routinely false: an ancestor's `remove` is why a descendant's `remove`
+      // now finds nothing, and an ancestor's `add` is why a descendant's `add`
+      // collides. A finding is what an operator acts on, so it names the edit
+      // and the author responsible rather than pointing at a baseline that is
+      // exactly as its author left it.
+      const preceding = appliedTo.get(`${edit.recordSet}|${edit.recordId}`) ?? null;
 
       if (edit.op === SCENARIO_OVERRIDE_KIND.ADD) {
         if (index !== -1) {
+          const addedBefore =
+            preceding !== null && preceding.op === SCENARIO_OVERRIDE_KIND.ADD ? preceding : null;
           findings.push(
             makeScenarioFinding(
               SCENARIO_REASON.SCENARIO_OVERRIDE_ID_COLLIDES,
-              `override "${override.reason}" adds ${edit.recordSet} record "${edit.recordId}", which the baseline already holds; an add that silently replaced it would be a remove nobody wrote`,
-              { scenarioId: scenario.id, recordSet: edit.recordSet, recordId: edit.recordId }
+              `override "${override.reason}" adds ${edit.recordSet} record "${edit.recordId}", which ${addedBefore === null ? 'the baseline already holds' : `the baseline never held and "${addedBefore.author}" already added ("${addedBefore.reason}")`}; an add that silently replaced it would be a remove nobody wrote`,
+              {
+                scenarioId: scenario.id,
+                authoredBy: author,
+                recordSet: edit.recordSet,
+                recordId: edit.recordId,
+                precededBy: addedBefore === null ? null : addedBefore.author,
+                precedingReason: addedBefore === null ? null : addedBefore.reason,
+              }
             )
           );
           continue;
@@ -581,11 +620,54 @@ export function materialiseScenario(inputs, scenario, options = {}) {
         meta.recordsAdded += 1;
       } else if (edit.op === SCENARIO_OVERRIDE_KIND.REMOVE) {
         if (index === -1) {
+          const removedBefore =
+            preceding !== null && preceding.op === SCENARIO_OVERRIDE_KIND.REMOVE ? preceding : null;
           findings.push(
             makeScenarioFinding(
               SCENARIO_REASON.SCENARIO_OVERRIDE_TARGET_MISSING,
-              `override "${override.reason}" withdraws ${edit.recordSet} record "${edit.recordId}", which the baseline does not hold; the branch models something other than what its author wrote`,
-              { scenarioId: scenario.id, recordSet: edit.recordSet, recordId: edit.recordId }
+              `override "${override.reason}" withdraws ${edit.recordSet} record "${edit.recordId}", which ${removedBefore === null ? 'the baseline does not hold' : `the baseline holds and "${removedBefore.author}" already withdrew ("${removedBefore.reason}")`}; the branch models something other than what its author wrote`,
+              {
+                scenarioId: scenario.id,
+                authoredBy: author,
+                recordSet: edit.recordSet,
+                recordId: edit.recordId,
+                precededBy: removedBefore === null ? null : removedBefore.author,
+                precedingReason: removedBefore === null ? null : removedBefore.reason,
+              }
+            )
+          );
+          continue;
+        }
+        // **A queued retype is not something a withdrawal can compose with.**
+        // `retypeConstraint()` writes the change into the record's own history
+        // and runs after the registry is built, so a record withdrawn under it
+        // left `requireConstraint()` throwing out of a function whose whole
+        // contract is to report — the crash the record-id claim's relaxation
+        // unmasked. The withdrawal is refused rather than the retype dropped:
+        // every other refusal in this loop reports and skips *before* anything
+        // is applied, which is what keeps each `SCENARIO_OVERRIDE_APPLIED` true
+        // and the counters honest. Dropping the retype afterwards would leave
+        // an `applied` finding standing for an edit that never landed, which is
+        // the same misdirection the two messages above just stopped doing.
+        const queued =
+          edit.recordSet === SCENARIO_RECORD_SET.CONSTRAINTS
+            ? retypes.find((entry) => entry.recordId === edit.recordId)
+            : undefined;
+        if (queued !== undefined) {
+          const retypedBy = authorOf.get(queued.override) ?? scenario.id;
+          findings.push(
+            makeScenarioFinding(
+              SCENARIO_REASON.SCENARIO_OVERRIDE_RETYPE_WITHDRAWN,
+              `override "${override.reason}" withdraws constraint "${edit.recordId}", which "${retypedBy}" retypes to "${queued.type}" ("${queued.override.reason}"); a hardness change is written into the record's own history, so there is nowhere to write it once the record is gone, and "this rule is a preference" and "this rule does not exist" are two different seasons rather than one refined by the other — the withdrawal is refused, and one of the two edits has to go`,
+              {
+                scenarioId: scenario.id,
+                authoredBy: author,
+                recordSet: edit.recordSet,
+                recordId: edit.recordId,
+                retypedBy,
+                retypeReason: queued.override.reason,
+                retypeType: queued.type,
+              }
             )
           );
           continue;
@@ -594,11 +676,20 @@ export function materialiseScenario(inputs, scenario, options = {}) {
         meta.recordsRemoved += 1;
       } else if (edit.op === SCENARIO_OVERRIDE_KIND.RETYPE) {
         if (index === -1) {
+          const removedBefore =
+            preceding !== null && preceding.op === SCENARIO_OVERRIDE_KIND.REMOVE ? preceding : null;
           findings.push(
             makeScenarioFinding(
               SCENARIO_REASON.SCENARIO_OVERRIDE_TARGET_MISSING,
-              `override "${override.reason}" retypes constraint "${edit.recordId}", which the registry does not hold`,
-              { scenarioId: scenario.id, recordSet: edit.recordSet, recordId: edit.recordId }
+              `override "${override.reason}" retypes constraint "${edit.recordId}", which ${removedBefore === null ? 'the registry does not hold' : `"${removedBefore.author}" withdrew ("${removedBefore.reason}")`}`,
+              {
+                scenarioId: scenario.id,
+                authoredBy: author,
+                recordSet: edit.recordSet,
+                recordId: edit.recordId,
+                precededBy: removedBefore === null ? null : removedBefore.author,
+                precedingReason: removedBefore === null ? null : removedBefore.reason,
+              }
             )
           );
           continue;
@@ -618,6 +709,11 @@ export function materialiseScenario(inputs, scenario, options = {}) {
         throw new Error(`scenario: unknown override operation "${edit.op}"`);
       }
 
+      appliedTo.set(`${edit.recordSet}|${edit.recordId}`, {
+        author,
+        op: edit.op,
+        reason: override.reason,
+      });
       meta.recordEditsApplied += 1;
       appliedThisOverride += 1;
       findings.push(

@@ -296,6 +296,38 @@ const gamesById = Object.fromEntries(schedule.games.map((game) => [String(game.i
 /** Every code a list of findings carries. */
 const codesOf = (findings) => findings.map((finding) => finding.code);
 
+/**
+ * A hard constraint carrying no type-change history of its own, so "the history
+ * grew by exactly two" is a statement about the branch under test rather than
+ * about the corpus's own recorded decisions.
+ *
+ * **A function of a constraint list rather than a value**, so the identical
+ * selection can be run over a corpus that holds no such record. That is what
+ * makes `expect(…).toBeDefined()` on its result a check that can fail: while
+ * the value was computed and then dereferenced in a `describe` body, a corpus
+ * without one failed at *collection* with a `TypeError` and the meta-assertion
+ * inside the test could never run.
+ *
+ * @param {ReadonlyArray<Object>} constraints
+ * @returns {Object|undefined}
+ */
+const untouchedHardConstraint = (constraints) =>
+  constraints.find(
+    (record) =>
+      record.type === CONSTRAINT_TYPE.HARD &&
+      record.enforcement === 'reason-codes' &&
+      record.history.length === 0
+  );
+
+/** A venue the schedule never stands on, so a permit edit for it changes nothing. */
+const unusedVenueId = () => {
+  const used = new Set(schedule.games.map((game) => game.venueId));
+  const unused = Object.values(graph.venues)
+    .map((venue) => venue.id)
+    .filter((venueId) => !used.has(venueId));
+  return unused[0] ?? 'a-venue-this-corpus-does-not-have';
+};
+
 /* -------------------------------------------------------------------------- */
 
 describe('the corpus supports the question being asked', () => {
@@ -2693,97 +2725,95 @@ describe('the record-id claim fires within one author, not down a chain', () => 
    * grew by exactly two" is a statement about this chain rather than about the
    * corpus's own recorded decisions.
    */
-  const REBUKED = registry.constraints.find(
-    (record) =>
-      record.type === CONSTRAINT_TYPE.HARD &&
-      record.enforcement === 'reason-codes' &&
-      record.history.length === 0
-  );
+  const REBUKED = untouchedHardConstraint(registry.constraints);
 
   /** A permit row for ground the schedule never stands on, added then withdrawn. */
   const INTERLOPER = 'parent-added-blackout';
 
-  const unusedVenueId = () => {
-    const used = new Set(schedule.games.map((game) => game.venueId));
-    const unused = Object.values(graph.venues)
-      .map((venue) => venue.id)
-      .filter((venueId) => !used.has(venueId));
-    return unused[0] ?? 'a-venue-this-corpus-does-not-have';
-  };
-
-  /** The parent: softens one constraint, and adds one permit row. */
-  const parent = makeScenario({
-    id: 'parent-softens',
-    name: 'what if this rule were a preference?',
-    baselineId: inputs.id,
-    rationale: 'the parent whose edits a child refines',
-    requestedBy: REQUESTED_BY,
-    createdAt: REQUESTED_AT,
-    overrides: [
-      {
-        kind: SCENARIO_OVERRIDE_KIND.RETYPE,
-        recordSet: SCENARIO_RECORD_SET.CONSTRAINTS,
-        recordId: /** @type {any} */ (REBUKED).id,
-        type: CONSTRAINT_TYPE.SOFT,
-        weight: 5,
-        by: 'board@club.example',
-        at: REQUESTED_AT,
-        reason: 'the board asked what this rule costs as a soft constraint',
-      },
-      {
-        kind: SCENARIO_OVERRIDE_KIND.ADD,
-        recordSet: SCENARIO_RECORD_SET.PERMITS,
-        record: {
-          id: INTERLOPER,
-          venueId: unusedVenueId(),
-          scopeKind: 'weekday-default',
-          weekday: 'SAT',
-          date: null,
-          hasPermit: false,
-          openMinutes: null,
-          closeMinutes: null,
-          lit: null,
-          lightsOffMinutes: null,
-          note: 'ground the parent withdrew',
-          source: 'test',
+  /**
+   * The parent: softens one constraint, and adds one permit row.
+   *
+   * **Built when a test asks for it, never in the `describe` body.** Every one
+   * of these reads `REBUKED.id`, so building them here dereferenced the
+   * selection at collection time and `expect(REBUKED).toBeDefined()` below
+   * could never be reached to report — a corpus holding no such record failed
+   * as a `TypeError` from the collector instead. `CLAUDE.md` §3: a check you
+   * cannot make fail is not a check.
+   */
+  const parent = () =>
+    makeScenario({
+      id: 'parent-softens',
+      name: 'what if this rule were a preference?',
+      baselineId: inputs.id,
+      rationale: 'the parent whose edits a child refines',
+      requestedBy: REQUESTED_BY,
+      createdAt: REQUESTED_AT,
+      overrides: [
+        {
+          kind: SCENARIO_OVERRIDE_KIND.RETYPE,
+          recordSet: SCENARIO_RECORD_SET.CONSTRAINTS,
+          recordId: /** @type {any} */ (REBUKED).id,
+          type: CONSTRAINT_TYPE.SOFT,
+          weight: 5,
+          by: 'board@club.example',
+          at: REQUESTED_AT,
+          reason: 'the board asked what this rule costs as a soft constraint',
         },
-        by: 'board@club.example',
-        at: REQUESTED_AT,
-        reason: 'withdraw ground the schedule never stands on',
-      },
-    ],
-  });
+        {
+          kind: SCENARIO_OVERRIDE_KIND.ADD,
+          recordSet: SCENARIO_RECORD_SET.PERMITS,
+          record: {
+            id: INTERLOPER,
+            venueId: unusedVenueId(),
+            scopeKind: 'weekday-default',
+            weekday: 'SAT',
+            date: null,
+            hasPermit: false,
+            openMinutes: null,
+            closeMinutes: null,
+            lit: null,
+            lightsOffMinutes: null,
+            note: 'ground the parent withdrew',
+            source: 'test',
+          },
+          by: 'board@club.example',
+          at: REQUESTED_AT,
+          reason: 'withdraw ground the schedule never stands on',
+        },
+      ],
+    });
 
   /** The child: hardens the constraint back, and withdraws the parent's row. */
-  const child = makeScenario({
-    id: 'child-supersedes',
-    name: 'the board changed its mind',
-    baselineId: inputs.id,
-    parentScenarioId: parent.id,
-    rationale: 'the branch that refines its parent rather than contradicting a stranger',
-    requestedBy: REQUESTED_BY,
-    createdAt: REQUESTED_AT,
-    overrides: [
-      {
-        kind: SCENARIO_OVERRIDE_KIND.RETYPE,
-        recordSet: SCENARIO_RECORD_SET.CONSTRAINTS,
-        recordId: /** @type {any} */ (REBUKED).id,
-        type: CONSTRAINT_TYPE.HARD,
-        weight: null,
-        by: 'registrar@club.example',
-        at: REQUESTED_AT,
-        reason: 'the softening was reviewed and reversed',
-      },
-      {
-        kind: SCENARIO_OVERRIDE_KIND.REMOVE,
-        recordSet: SCENARIO_RECORD_SET.PERMITS,
-        recordId: INTERLOPER,
-        by: 'registrar@club.example',
-        at: REQUESTED_AT,
-        reason: 'the ground came back',
-      },
-    ],
-  });
+  const child = () =>
+    makeScenario({
+      id: 'child-supersedes',
+      name: 'the board changed its mind',
+      baselineId: inputs.id,
+      parentScenarioId: 'parent-softens',
+      rationale: 'the branch that refines its parent rather than contradicting a stranger',
+      requestedBy: REQUESTED_BY,
+      createdAt: REQUESTED_AT,
+      overrides: [
+        {
+          kind: SCENARIO_OVERRIDE_KIND.RETYPE,
+          recordSet: SCENARIO_RECORD_SET.CONSTRAINTS,
+          recordId: /** @type {any} */ (REBUKED).id,
+          type: CONSTRAINT_TYPE.HARD,
+          weight: null,
+          by: 'registrar@club.example',
+          at: REQUESTED_AT,
+          reason: 'the softening was reviewed and reversed',
+        },
+        {
+          kind: SCENARIO_OVERRIDE_KIND.REMOVE,
+          recordSet: SCENARIO_RECORD_SET.PERMITS,
+          recordId: INTERLOPER,
+          by: 'registrar@club.example',
+          at: REQUESTED_AT,
+          reason: 'the ground came back',
+        },
+      ],
+    });
 
   it('applies a child’s edit to a record its parent also touched', () => {
     // **The defect this exists to catch**, the same shape one kind over from
@@ -2793,7 +2823,7 @@ describe('the record-id claim fires within one author, not down a chain', () => 
     // branch materialised its parent's edit while the message read `two
     // overrides of "child-supersedes"` for an edit the parent wrote.
     expect(REBUKED).toBeDefined();
-    const materialised = materialiseScenario(inputs, child, { ancestry: [parent] });
+    const materialised = materialiseScenario(inputs, child(), { ancestry: [parent()] });
     expect(codesOf(materialised.findings)).not.toContain(
       SCENARIO_REASON.SCENARIO_OVERRIDE_CONFLICT
     );
@@ -2822,7 +2852,7 @@ describe('the record-id claim fires within one author, not down a chain', () => 
     // Meta-assertion: the parent's add is what put the row there in the first
     // place, so "absent" is a withdrawal rather than a row that never existed.
     expect(
-      materialiseScenario(inputs, parent).records[SCENARIO_RECORD_SET.PERMITS].map((row) =>
+      materialiseScenario(inputs, parent()).records[SCENARIO_RECORD_SET.PERMITS].map((row) =>
         String(row.id)
       )
     ).toContain(INTERLOPER);
@@ -2931,6 +2961,452 @@ describe('the record-id claim fires within one author, not down a chain', () => 
     expect(conflict?.details.authoredBy).toBe(selfContradicting.id);
     expect(conflict?.details.scenarioId).toBe(heir.id);
     expect(conflict?.message).toContain(`two overrides of "${selfContradicting.id}"`);
+  });
+
+  it('the selection this suite rests on is a check that can fail', () => {
+    // **The unreachable meta-assertion**, made reachable and then proven.
+    // `expect(REBUKED).toBeDefined()` above could never run: `REBUKED.id` was
+    // read while building `parent` and `child` in the `describe` body, so a
+    // corpus holding no such constraint failed at *collection* with
+    // `TypeError: Cannot read properties of undefined (reading 'id')` and the
+    // assertion never got the chance to report. The scenarios are built inside
+    // the tests now — and here is the identical selection over a corpus that
+    // holds no matching record, with the assertion itself doing the reporting.
+    const historied = registry.constraints.map((record) => ({
+      ...record,
+      history: [
+        {
+          from: CONSTRAINT_TYPE.HARD,
+          to: CONSTRAINT_TYPE.SOFT,
+          at: null,
+          by: 'nobody@club.example',
+          note: 'a recorded decision, so the selection matches nothing',
+        },
+      ],
+    }));
+    expect(untouchedHardConstraint(historied)).toBeUndefined();
+    expect(() => expect(untouchedHardConstraint(historied)).toBeDefined()).toThrowError(
+      /expected undefined to be defined/i
+    );
+    // …and the corpus this suite actually runs over does hold one, so the
+    // assertion above is satisfied rather than vacuous.
+    expect(REBUKED).toBeDefined();
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* a retype and a withdrawal of one constraint, down a chain                   */
+/* -------------------------------------------------------------------------- */
+
+describe('a retype whose constraint something else withdraws', () => {
+  const RETYPED = untouchedHardConstraint(registry.constraints);
+
+  /** The ancestor: softens one constraint, and states nothing else. */
+  const softens = () =>
+    makeScenario({
+      id: 'ancestor-softens',
+      name: 'what if this rule were a preference?',
+      baselineId: inputs.id,
+      rationale: 'the ancestor whose retype a descendant leaves nowhere to land',
+      requestedBy: REQUESTED_BY,
+      createdAt: REQUESTED_AT,
+      overrides: [
+        {
+          kind: SCENARIO_OVERRIDE_KIND.RETYPE,
+          recordSet: SCENARIO_RECORD_SET.CONSTRAINTS,
+          recordId: /** @type {any} */ (RETYPED).id,
+          type: CONSTRAINT_TYPE.SOFT,
+          weight: 5,
+          by: 'board@club.example',
+          at: REQUESTED_AT,
+          reason: 'the board asked what this rule costs as a soft constraint',
+        },
+      ],
+    });
+
+  /** The descendant: withdraws the very constraint its ancestor softened. */
+  const withdraws = () =>
+    makeScenario({
+      id: 'descendant-withdraws',
+      name: 'the rule goes altogether',
+      baselineId: inputs.id,
+      parentScenarioId: 'ancestor-softens',
+      rationale: 'the branch whose withdrawal the ancestor’s retype cannot survive',
+      requestedBy: REQUESTED_BY,
+      createdAt: REQUESTED_AT,
+      overrides: [
+        {
+          kind: SCENARIO_OVERRIDE_KIND.REMOVE,
+          recordSet: SCENARIO_RECORD_SET.CONSTRAINTS,
+          recordId: /** @type {any} */ (RETYPED).id,
+          by: 'registrar@club.example',
+          at: REQUESTED_AT,
+          reason: 'the rule was struck out entirely',
+        },
+      ],
+    });
+
+  it('reports the combination rather than throwing out of the registry', () => {
+    // **The defect this exists to catch.** Keying the record-id claim on the
+    // authoring scenario let an ancestor's retype and a descendant's remove of
+    // one constraint both apply. Retypes are deferred until after the registry
+    // is built, so by then the record had been spliced out of the working array
+    // and out of the registry, and `requireConstraint()` threw
+    // `constraints: no constraint "…" in the registry` out of
+    // `materialiseScenario()` — which returns findings for every other
+    // incoherent branch, and which `runScenario()` does not catch.
+    expect(RETYPED).toBeDefined();
+    const ancestor = softens();
+    const materialised = materialiseScenario(inputs, withdraws(), { ancestry: [ancestor] });
+    const finding = materialised.findings.find(
+      (entry) => entry.code === SCENARIO_REASON.SCENARIO_OVERRIDE_RETYPE_WITHDRAWN
+    );
+    expect(finding).toBeDefined();
+    expect(finding?.severity).toBe(CONSTRAINT_SEVERITY.BLOCKING);
+    expect(materialised.status).toBe(SCENARIO_STATUS.REJECTED);
+    // Both authors are named: the one whose withdrawal is refused, and the one
+    // whose retype is already queued against the record.
+    expect(finding?.details.recordId).toBe(/** @type {any} */ (RETYPED).id);
+    expect(finding?.details.authoredBy).toBe('descendant-withdraws');
+    expect(finding?.details.retypedBy).toBe(ancestor.id);
+    // The withdrawal is refused rather than applied, so the retype still lands
+    // in the record's own history and no `SCENARIO_OVERRIDE_APPLIED` claims a
+    // removal that did not happen.
+    expect(materialised.meta.recordsRemoved).toBe(0);
+    expect(
+      materialised.findings.filter(
+        (entry) =>
+          entry.code === SCENARIO_REASON.SCENARIO_OVERRIDE_APPLIED &&
+          entry.details.operation === SCENARIO_OVERRIDE_KIND.REMOVE
+      )
+    ).toEqual([]);
+    const record = materialised.engines.registry.byId[/** @type {any} */ (RETYPED).id];
+    expect(record).toBeDefined();
+    expect(record.type).toBe(CONSTRAINT_TYPE.SOFT);
+    expect(record.history).toHaveLength(1);
+  });
+
+  it('carries the report out through runScenario() instead of crashing it', () => {
+    // `runScenario()` catches nothing the materialiser throws, so the crash
+    // reached its caller as an exception where every other incoherent branch
+    // reaches it as a rejected result.
+    const ancestor = softens();
+    const ran = runScenario(inputs, withdraws(), {
+      ...runOptions,
+      relocations: false,
+      ancestry: [ancestor],
+    });
+    expect(codesOf(ran.findings)).toContain(SCENARIO_REASON.SCENARIO_OVERRIDE_RETYPE_WITHDRAWN);
+    expect(ran.status).toBe(SCENARIO_STATUS.REJECTED);
+  });
+
+  it('still refuses a retype of a record only a later override adds', () => {
+    // The first mirror case, and it lands somewhere else: the retype is claimed
+    // before the add runs, so at that moment the registry genuinely does not
+    // hold the record and this is the ordinary missing-target refusal.
+    const invented = 'a-constraint-the-baseline-never-had';
+    const ancestor = makeScenario({
+      id: 'ancestor-retypes-nothing',
+      name: 'retype a rule nobody has written yet',
+      baselineId: inputs.id,
+      rationale: 'the mirror of the withdrawal case',
+      requestedBy: REQUESTED_BY,
+      createdAt: REQUESTED_AT,
+      overrides: [
+        {
+          kind: SCENARIO_OVERRIDE_KIND.RETYPE,
+          recordSet: SCENARIO_RECORD_SET.CONSTRAINTS,
+          recordId: invented,
+          type: CONSTRAINT_TYPE.SOFT,
+          weight: 5,
+          by: 'board@club.example',
+          at: REQUESTED_AT,
+          reason: 'soften a rule the branch below has not added yet',
+        },
+      ],
+    });
+    const heir = makeScenario({
+      id: 'descendant-adds-it',
+      name: 'and here is the rule',
+      baselineId: inputs.id,
+      parentScenarioId: ancestor.id,
+      rationale: 'the add that arrives after the retype that names it',
+      requestedBy: REQUESTED_BY,
+      createdAt: REQUESTED_AT,
+      overrides: [
+        {
+          kind: SCENARIO_OVERRIDE_KIND.ADD,
+          recordSet: SCENARIO_RECORD_SET.CONSTRAINTS,
+          record: { .../** @type {any} */ (RETYPED), id: invented },
+          by: 'registrar@club.example',
+          at: REQUESTED_AT,
+          reason: 'the rule the retype above names',
+        },
+      ],
+    });
+    const materialised = materialiseScenario(inputs, heir, { ancestry: [ancestor] });
+    const missing = materialised.findings.find(
+      (entry) => entry.code === SCENARIO_REASON.SCENARIO_OVERRIDE_TARGET_MISSING
+    );
+    expect(missing).toBeDefined();
+    expect(missing?.details.recordId).toBe(invented);
+    expect(missing?.details.authoredBy).toBe(ancestor.id);
+    // The add still happens, and it lands unretyped — the retype is refused,
+    // never queued against a record it was not written for.
+    const added = materialised.engines.registry.byId[invented];
+    expect(added).toBeDefined();
+    expect(added.type).toBe(CONSTRAINT_TYPE.HARD);
+    expect(materialised.meta.recordsRetyped).toBe(0);
+  });
+
+  it('still refuses a retype whose record is withdrawn and then re-added', () => {
+    // The second mirror case. It needs three links: a remove and an add of one
+    // id written by one author is the record-id conflict, one describe up.
+    const ancestor = softens();
+    const middle = withdraws();
+    const heir = makeScenario({
+      id: 'grandchild-restores',
+      name: 'put the rule back',
+      baselineId: inputs.id,
+      parentScenarioId: middle.id,
+      rationale: 'the branch that re-adds what the middle link struck out',
+      requestedBy: REQUESTED_BY,
+      createdAt: REQUESTED_AT,
+      overrides: [
+        {
+          kind: SCENARIO_OVERRIDE_KIND.ADD,
+          recordSet: SCENARIO_RECORD_SET.CONSTRAINTS,
+          record: { .../** @type {any} */ (RETYPED) },
+          by: 'chair@club.example',
+          at: REQUESTED_AT,
+          reason: 'the rule was reinstated',
+        },
+      ],
+    });
+    const materialised = materialiseScenario(inputs, heir, { ancestry: [ancestor, middle] });
+    // The withdrawal is refused, so the record never leaves — and the re-add
+    // therefore collides with the baseline's own row rather than with an
+    // ancestor's, which is what the collision message must say.
+    expect(codesOf(materialised.findings)).toContain(
+      SCENARIO_REASON.SCENARIO_OVERRIDE_RETYPE_WITHDRAWN
+    );
+    const collides = materialised.findings.find(
+      (entry) => entry.code === SCENARIO_REASON.SCENARIO_OVERRIDE_ID_COLLIDES
+    );
+    expect(collides).toBeDefined();
+    expect(collides?.message).toContain('the baseline already holds');
+    expect(collides?.details.precededBy).toBe(null);
+    // The retype is written once, into the record the ancestor named.
+    expect(materialised.meta.recordsRetyped).toBe(1);
+    expect(materialised.engines.registry.byId[/** @type {any} */ (RETYPED).id].type).toBe(
+      CONSTRAINT_TYPE.SOFT
+    );
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* a missing target and a colliding id say whose edit made it so               */
+/* -------------------------------------------------------------------------- */
+
+describe('a finding that blames the baseline blames the right thing', () => {
+  const VICTIM = String(inputs.permits[0].id);
+  const COLLIDER = 'ancestor-added-blackout';
+
+  /** A permit row the corpus does not hold, for ground it never stands on. */
+  const interloper = () => ({
+    id: COLLIDER,
+    venueId: unusedVenueId(),
+    scopeKind: 'weekday-default',
+    weekday: 'SAT',
+    date: null,
+    hasPermit: false,
+    openMinutes: null,
+    closeMinutes: null,
+    lit: null,
+    lightsOffMinutes: null,
+    note: 'ground the ancestor withdrew',
+    source: 'test',
+  });
+
+  /** The ancestor: withdraws one baseline row, and adds one of its own. */
+  const ancestor = makeScenario({
+    id: 'ancestor-edits',
+    name: 'one row out, one row in',
+    baselineId: inputs.id,
+    rationale: 'the ancestor whose edits the messages below must name',
+    requestedBy: REQUESTED_BY,
+    createdAt: REQUESTED_AT,
+    overrides: [
+      {
+        kind: SCENARIO_OVERRIDE_KIND.REMOVE,
+        recordSet: SCENARIO_RECORD_SET.PERMITS,
+        recordId: VICTIM,
+        by: 'groundskeeper@club.example',
+        at: REQUESTED_AT,
+        reason: 'the permit was withdrawn',
+      },
+      {
+        kind: SCENARIO_OVERRIDE_KIND.ADD,
+        recordSet: SCENARIO_RECORD_SET.PERMITS,
+        record: interloper(),
+        by: 'groundskeeper@club.example',
+        at: REQUESTED_AT,
+        reason: 'and this ground went dark',
+      },
+    ],
+  });
+
+  /** The descendant: states the same two edits over again. */
+  const heir = makeScenario({
+    id: 'descendant-repeats',
+    name: 'the same two edits, one branch down',
+    baselineId: inputs.id,
+    parentScenarioId: ancestor.id,
+    rationale: 'the branch whose edits the ancestor already made',
+    requestedBy: REQUESTED_BY,
+    createdAt: REQUESTED_AT,
+    overrides: [
+      {
+        kind: SCENARIO_OVERRIDE_KIND.REMOVE,
+        recordSet: SCENARIO_RECORD_SET.PERMITS,
+        recordId: VICTIM,
+        by: 'registrar@club.example',
+        at: REQUESTED_AT,
+        reason: 'the permit was withdrawn again',
+      },
+      {
+        kind: SCENARIO_OVERRIDE_KIND.ADD,
+        recordSet: SCENARIO_RECORD_SET.PERMITS,
+        record: interloper(),
+        by: 'registrar@club.example',
+        at: REQUESTED_AT,
+        reason: 'and this ground went dark again',
+      },
+    ],
+  });
+
+  it('says an ancestor withdrew the row, not that the baseline never held it', () => {
+    // **The falsehood this exists to catch.** Keying the record-id claim on the
+    // authoring scenario made `remove` the path an ancestor-vs-descendant edit
+    // of one id lands on, and the message an operator then acts on said the
+    // baseline does not hold the row. The baseline holds it; the ancestor
+    // withdrew it, and nothing pointed at the ancestor.
+    expect(inputs.permits.some((row) => String(row.id) === VICTIM)).toBe(true);
+    const materialised = materialiseScenario(inputs, heir, { ancestry: [ancestor] });
+    const missing = materialised.findings.find(
+      (entry) => entry.code === SCENARIO_REASON.SCENARIO_OVERRIDE_TARGET_MISSING
+    );
+    expect(missing).toBeDefined();
+    expect(missing?.severity).toBe(CONSTRAINT_SEVERITY.BLOCKING);
+    expect(missing?.message).not.toContain('the baseline does not hold');
+    expect(missing?.message).toContain(`"${ancestor.id}"`);
+    expect(missing?.details.recordId).toBe(VICTIM);
+    expect(missing?.details.authoredBy).toBe(heir.id);
+    expect(missing?.details.precededBy).toBe(ancestor.id);
+    expect(missing?.details.precedingReason).toBe('the permit was withdrawn');
+  });
+
+  it('says an ancestor added the id, not that the baseline already held it', () => {
+    // The same falsehood one operation over.
+    expect(inputs.permits.some((row) => String(row.id) === COLLIDER)).toBe(false);
+    const materialised = materialiseScenario(inputs, heir, { ancestry: [ancestor] });
+    const collides = materialised.findings.find(
+      (entry) => entry.code === SCENARIO_REASON.SCENARIO_OVERRIDE_ID_COLLIDES
+    );
+    expect(collides).toBeDefined();
+    expect(collides?.severity).toBe(CONSTRAINT_SEVERITY.BLOCKING);
+    expect(collides?.message).not.toContain('the baseline already holds');
+    expect(collides?.message).toContain(`"${ancestor.id}"`);
+    expect(collides?.details.recordId).toBe(COLLIDER);
+    expect(collides?.details.authoredBy).toBe(heir.id);
+    expect(collides?.details.precededBy).toBe(ancestor.id);
+    expect(collides?.details.precedingReason).toBe('and this ground went dark');
+  });
+
+  it('still blames the baseline when the baseline is what is wrong', () => {
+    // The negative control for both messages: with no ancestor in the way the
+    // wording is unchanged, and `precededBy` is null rather than a name.
+    const alone = makeScenario({
+      id: 'no-ancestor',
+      name: 'a withdrawal and a collision against the baseline itself',
+      baselineId: inputs.id,
+      rationale: 'the control that keeps the baseline wording honest',
+      requestedBy: REQUESTED_BY,
+      createdAt: REQUESTED_AT,
+      overrides: [
+        {
+          kind: SCENARIO_OVERRIDE_KIND.REMOVE,
+          recordSet: SCENARIO_RECORD_SET.PERMITS,
+          recordId: 'no-such-permit-row',
+          by: REQUESTED_BY,
+          at: REQUESTED_AT,
+          reason: 'this record does not exist',
+        },
+        {
+          kind: SCENARIO_OVERRIDE_KIND.ADD,
+          recordSet: SCENARIO_RECORD_SET.PERMITS,
+          record: { ...inputs.permits[1] },
+          by: REQUESTED_BY,
+          at: REQUESTED_AT,
+          reason: 'an id the baseline already holds',
+        },
+      ],
+    });
+    const materialised = materialiseScenario(inputs, alone);
+    const missing = materialised.findings.find(
+      (entry) => entry.code === SCENARIO_REASON.SCENARIO_OVERRIDE_TARGET_MISSING
+    );
+    expect(missing?.message).toContain('the baseline does not hold');
+    expect(missing?.details.precededBy).toBe(null);
+    expect(missing?.details.authoredBy).toBe(alone.id);
+    const collides = materialised.findings.find(
+      (entry) => entry.code === SCENARIO_REASON.SCENARIO_OVERRIDE_ID_COLLIDES
+    );
+    expect(collides?.message).toContain('the baseline already holds');
+    expect(collides?.details.precededBy).toBe(null);
+    expect(collides?.details.authoredBy).toBe(alone.id);
+  });
+
+  it('names the ancestor whose derived withdrawal laid the row an add collides with', () => {
+    // A `venue-unavailable`'s edits are derived, so they make no claim on a
+    // record id — but they do lay rows, and an add that collides with one is
+    // colliding with an ancestor's edit rather than with the baseline.
+    const withdrawal = season2026VenueUnavailableScenario({
+      venueId: WITHDRAWN.venueId,
+      baselineId: inputs.id,
+      requestedBy: REQUESTED_BY,
+      at: REQUESTED_AT,
+      id: 'ancestor-withdraws-a-venue',
+      dates: [WITHDRAWN.dates[0]],
+    });
+    const blackoutId = `${SCENARIO_OVERRIDE_KIND.VENUE_UNAVAILABLE}:${WITHDRAWN.venueId}:${WITHDRAWN.dates[0]}`;
+    const clasher = makeScenario({
+      id: 'descendant-collides-with-a-blackout',
+      name: 'an add on top of an inherited blackout row',
+      baselineId: inputs.id,
+      parentScenarioId: withdrawal.id,
+      rationale: 'the collision that is an ancestor’s doing rather than the baseline’s',
+      requestedBy: REQUESTED_BY,
+      createdAt: REQUESTED_AT,
+      overrides: [
+        {
+          kind: SCENARIO_OVERRIDE_KIND.ADD,
+          recordSet: SCENARIO_RECORD_SET.PERMITS,
+          record: { ...interloper(), id: blackoutId },
+          by: 'registrar@club.example',
+          at: REQUESTED_AT,
+          reason: 'a row whose id the inherited withdrawal already laid',
+        },
+      ],
+    });
+    const materialised = materialiseScenario(inputs, clasher, { ancestry: [withdrawal] });
+    expect(inputs.permits.some((row) => String(row.id) === blackoutId)).toBe(false);
+    const collides = materialised.findings.find(
+      (entry) => entry.code === SCENARIO_REASON.SCENARIO_OVERRIDE_ID_COLLIDES
+    );
+    expect(collides).toBeDefined();
+    expect(collides?.message).not.toContain('the baseline already holds');
+    expect(collides?.details.precededBy).toBe(withdrawal.id);
   });
 });
 

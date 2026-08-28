@@ -166,15 +166,42 @@ export const SCENARIO_REASON = Object.freeze({
    */
   SCENARIO_OVERRIDE_CONFLICT: 'SCENARIO_OVERRIDE_CONFLICT',
   /**
-   * A `remove` or `retype` names a record the base array does not hold.
+   * A `remove` or `retype` names a record **the branch does not hold at that
+   * point** — the baseline never held it, or an earlier override withdrew it.
    *
    * `blocking`: an override that withdraws nothing is a scenario that models
    * something other than what its author wrote, and it would otherwise be
    * indistinguishable from one that worked.
+   *
+   * The message and `precededBy` say which of the two it was. Since the
+   * record-id claim became per authoring scenario, an ancestor's `remove` is a
+   * routine way for a descendant's to find nothing, and a finding that blamed
+   * the baseline sent the operator to records nobody had touched.
    */
   SCENARIO_OVERRIDE_TARGET_MISSING: 'SCENARIO_OVERRIDE_TARGET_MISSING',
-  /** An `add` uses an id the base array already holds. `blocking`. */
+  /**
+   * An `add` uses an id **the branch already holds at that point** — the
+   * baseline's own, or one an earlier override added (including the rows a
+   * `venue-unavailable` derives). `blocking`, and `precededBy` says which.
+   */
   SCENARIO_OVERRIDE_ID_COLLIDES: 'SCENARIO_OVERRIDE_ID_COLLIDES',
+  /**
+   * One override retypes a constraint and another withdraws it.
+   *
+   * `blocking`. A retype is **deferred**: `retypeConstraint()` is the one place
+   * a hardness change is written and it writes the change into the record's own
+   * history, so it runs after the registry is built. A withdrawal of the same
+   * record leaves it nothing to write on — `requireConstraint()` threw out of
+   * `materialiseScenario()`, past the caller that expected findings — and there
+   * is no coherent branch to build either way: "this rule is a preference" and
+   * "this rule does not exist" are two different seasons. The withdrawal is
+   * refused, the retype stands, and the author is told to remove one of the two
+   * rather than being handed whichever the ordering happened to favour.
+   *
+   * Reachable only across authors: two edits of one record id written by one
+   * scenario are {@link SCENARIO_REASON.SCENARIO_OVERRIDE_CONFLICT} first.
+   */
+  SCENARIO_OVERRIDE_RETYPE_WITHDRAWN: 'SCENARIO_OVERRIDE_RETYPE_WITHDRAWN',
   /**
    * An override changed no result at all: the branch's schedule, its violations
    * and its capacity are identical to the baseline's.
@@ -292,6 +319,7 @@ export const SCENARIO_REASON_SEVERITY = Object.freeze({
   [SCENARIO_REASON.SCENARIO_OVERRIDE_CONFLICT]: SCENARIO_SEVERITY.BLOCKING,
   [SCENARIO_REASON.SCENARIO_OVERRIDE_TARGET_MISSING]: SCENARIO_SEVERITY.BLOCKING,
   [SCENARIO_REASON.SCENARIO_OVERRIDE_ID_COLLIDES]: SCENARIO_SEVERITY.BLOCKING,
+  [SCENARIO_REASON.SCENARIO_OVERRIDE_RETYPE_WITHDRAWN]: SCENARIO_SEVERITY.BLOCKING,
   [SCENARIO_REASON.SCENARIO_OVERRIDE_VACUOUS]: SCENARIO_SEVERITY.COMPROMISE,
   [SCENARIO_REASON.SCENARIO_BRANCHED_FROM_SCENARIO]: SCENARIO_SEVERITY.INFO,
   [SCENARIO_REASON.SCENARIO_ANCESTRY_UNRESOLVED]: SCENARIO_SEVERITY.BLOCKING,

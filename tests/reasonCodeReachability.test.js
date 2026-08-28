@@ -3299,6 +3299,61 @@ harvest(
   )
 );
 
+/**
+ * An ancestor's retype and a descendant's remove of one constraint. Two edits
+ * of one record id written by *one* author are the conflict above, so this
+ * refusal is only reachable down a chain.
+ */
+const scenarioRetyped = SEASON_2026_CONSTRAINTS.find(
+  (record) => record.type === CONSTRAINT_TYPE.HARD
+);
+const scenarioRetypeAncestor = makeScenario({
+  id: 'audit-softens',
+  name: 'soften one rule',
+  baselineId: scenarioInputs.id,
+  rationale: 'the audit\u2019s retype case',
+  requestedBy: 'audit@club.example',
+  createdAt: '2026-08-01T09:00:00',
+  overrides: [
+    {
+      kind: SCENARIO_OVERRIDE_KIND.RETYPE,
+      recordSet: SCENARIO_RECORD_SET.CONSTRAINTS,
+      recordId: scenarioRetyped.id,
+      type: CONSTRAINT_TYPE.SOFT,
+      weight: 5,
+      by: 'audit@club.example',
+      at: '2026-08-01T09:00:00',
+      reason: 'what does this rule cost as a preference?',
+    },
+  ],
+});
+harvest(
+  'materialiseScenario(a descendant withdraws the constraint its ancestor retypes)',
+  materialiseScenario(
+    scenarioInputs,
+    makeScenario({
+      id: 'audit-strikes-out',
+      name: 'strike the rule out entirely',
+      baselineId: scenarioInputs.id,
+      parentScenarioId: scenarioRetypeAncestor.id,
+      rationale: 'the audit\u2019s retype-then-withdraw case',
+      requestedBy: 'audit@club.example',
+      createdAt: '2026-08-01T09:00:00',
+      overrides: [
+        {
+          kind: SCENARIO_OVERRIDE_KIND.REMOVE,
+          recordSet: SCENARIO_RECORD_SET.CONSTRAINTS,
+          recordId: scenarioRetyped.id,
+          by: 'audit@club.example',
+          at: '2026-08-01T09:00:00',
+          reason: 'the rule was struck out',
+        },
+      ],
+    }),
+    { ancestry: [scenarioRetypeAncestor] }
+  )
+);
+
 harvest(
   'materialiseScenario(a branch of a branch)',
   materialiseScenario(
