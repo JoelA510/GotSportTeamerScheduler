@@ -109,9 +109,12 @@ built**. They never compete for precedence at consultation time, so none of
 `CONSTRAINT_SCOPE_SPECIFICITY`, `WAIVER_SCOPE_SPECIFICITY` or
 `FREEZE_SCOPE_TIE_BREAK` applies and this module forks none of them — a
 structural test asserts the package declares no `*_SPECIFICITY` and no
-`*_TIE_BREAK` table. Two overrides touching one record id is
-`SCENARIO_OVERRIDE_CONFLICT` at **blocking**: a contradiction to remove, not a
-precedence to resolve.
+`*_TIE_BREAK` table. Two overrides **written in one scenario** touching one
+record id is `SCENARIO_OVERRIDE_CONFLICT` at **blocking**: a contradiction to
+remove, not a precedence to resolve. A child editing a record its parent's
+override also touched is composition — it is what naming a parent is for — so
+the claim is keyed by the authoring scenario, exactly as the venue claim below
+is.
 
 Two `venue-unavailable` overrides **written in one scenario and naming one venue
 over days they share** are the same contradiction one level up, and are reported
@@ -537,7 +540,7 @@ Every figure above is asserted through the direct-call path **and** through
 | code                                 | severity     | when                                                                    |
 | ------------------------------------ | ------------ | ------------------------------------------------------------------------ |
 | `SCENARIO_OVERRIDE_APPLIED`          | `info`       | an override edited a base record array. Provenance                       |
-| `SCENARIO_OVERRIDE_CONFLICT`         | `blocking`   | two overrides touch one record id                                        |
+| `SCENARIO_OVERRIDE_CONFLICT`         | `blocking`   | two overrides of one scenario touch one record id                        |
 | `SCENARIO_OVERRIDE_TARGET_MISSING`   | `blocking`   | a `remove` or `retype` names a record the base does not hold             |
 | `SCENARIO_OVERRIDE_ID_COLLIDES`      | `blocking`   | an `add` uses an id the base already holds                               |
 | `SCENARIO_OVERRIDE_VACUOUS`          | `compromise` | the branch changed no result at all — the same violations, not as many   |

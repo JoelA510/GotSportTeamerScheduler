@@ -416,7 +416,25 @@ export function materialiseScenario(inputs, scenario, options = {}) {
   const base = recordsOf(inputs);
   /** @type {Map<string, Array<Object>>} */
   const rebuilt = new Map();
-  /** @type {Map<string, import('./types.js').ScenarioOverride>} */
+  /**
+   * Which record ids an authored override has already claimed, **per scenario
+   * that wrote one**.
+   *
+   * Two overrides of one author naming one record id is a contradiction: they
+   * are set operations applied before anything is built, so there is no
+   * consultation at which one could beat the other.
+   *
+   * **Keyed by the scenario that authored the override, not by the record id
+   * alone** — the same treatment, and for the same reason, as
+   * {@link claimedVenues} below. A child refining or superseding an edit its
+   * parent wrote is ordinary composition, and it is *why* a branch may name a
+   * parent; claiming the id across the composed list made the inherited edit
+   * one of the two overrides, so the child's own edit was refused at blocking,
+   * skipped, and the branch materialised its parent's edit while the message
+   * attributed both to the child.
+   *
+   * @type {Map<string, import('./types.js').ScenarioOverride>}
+   */
   const claimedIds = new Map();
   /** @type {Array<{ recordId: string, type: string, weight: number|null, override: import('./types.js').ScenarioOverride }>} */
   const retypes = [];
@@ -475,9 +493,9 @@ export function materialiseScenario(inputs, scenario, options = {}) {
 
   for (const override of overrides) {
     let appliedThisOverride = 0;
+    const author = authorOf.get(override) ?? scenario.id;
     if (override.kind === SCENARIO_OVERRIDE_KIND.VENUE_UNAVAILABLE) {
       const venueId = /** @type {string} */ (override.venueId);
-      const author = authorOf.get(override) ?? scenario.id;
       const venueKey = `${author}\u0000${venueId}`;
       const claimants = claimedVenues.get(venueKey) ?? [];
       const clash = claimants.find((claimed) => venueScopesOverlap(claimed, override));
@@ -506,11 +524,13 @@ export function materialiseScenario(inputs, scenario, options = {}) {
       claimedVenues.set(venueKey, claimants);
     }
     for (const edit of primitiveEditsOf(override, current)) {
-      const key = `${edit.recordSet}|${edit.recordId}`;
-      // A derived edit is not an authored claim on a record id. Two authors
-      // naming one record is the contradiction this reports; an author naming a
-      // *venue* whose rows another override happens to touch is composition,
-      // and the set operations answer it in order without a precedence ladder.
+      const key = `${author}\u0000${edit.recordSet}|${edit.recordId}`;
+      // A derived edit is not an authored claim on a record id. One author
+      // naming one record twice is the contradiction this reports; an author
+      // naming a *venue* whose rows another override happens to touch is
+      // composition, and so is a child editing a record its parent edited —
+      // both are answered by the set operations in order, without a precedence
+      // ladder, which is why the claim is keyed by the authoring scenario.
       // A second `venue-unavailable` for the same venue is caught above, at the
       // venue — **not** here and not by SCENARIO_OVERRIDE_ID_COLLIDES, which
       // never sees it: the second withdrawal removes the first's blackout rows
@@ -518,17 +538,18 @@ export function materialiseScenario(inputs, scenario, options = {}) {
       // left to collide with.
       const claimed = edit.derived ? undefined : claimedIds.get(key);
       if (claimed !== undefined) {
-        // Two overrides, one record id. **Not a precedence question**: overrides
-        // are set operations applied before anything is built, so there is no
-        // consultation at which one could beat the other, and inventing a
-        // fourth specificity ladder to pick a winner would be exactly the
-        // parallel machinery this phase exists to avoid.
+        // Two overrides of one author, one record id. **Not a precedence
+        // question**: overrides are set operations applied before anything is
+        // built, so there is no consultation at which one could beat the other,
+        // and inventing a fourth specificity ladder to pick a winner would be
+        // exactly the parallel machinery this phase exists to avoid.
         findings.push(
           makeScenarioFinding(
             SCENARIO_REASON.SCENARIO_OVERRIDE_CONFLICT,
-            `two overrides of "${scenario.id}" both touch ${edit.recordSet} record "${edit.recordId}" ("${claimed.reason}" and "${override.reason}"); overrides are set operations rather than competing scopes, so this is a contradiction to remove rather than a precedence to resolve`,
+            `two overrides of "${author}" both touch ${edit.recordSet} record "${edit.recordId}" ("${claimed.reason}" and "${override.reason}"); overrides are set operations rather than competing scopes, so this is a contradiction to remove rather than a precedence to resolve`,
             {
               scenarioId: scenario.id,
+              authoredBy: author,
               recordSet: edit.recordSet,
               recordId: edit.recordId,
               firstReason: claimed.reason,
