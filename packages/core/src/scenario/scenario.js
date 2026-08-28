@@ -437,22 +437,31 @@ export function materialiseScenario(inputs, scenario, options = {}) {
    */
   const claimedIds = new Map();
   /**
-   * The last edit each record id actually received, and who wrote it — keyed by
-   * record, **across all authors**, which is the opposite of {@link claimedIds}
-   * and deliberately so.
+   * The last edit that changed whether each record id is **present**, and who
+   * wrote it — keyed by record, **across all authors**, which is the opposite
+   * of {@link claimedIds} and deliberately so.
    *
-   * `claimedIds` answers "may this edit apply?"; this answers "why did it find
-   * what it found?". A descendant's `remove` of a record its ancestor removed
-   * lands on the missing-target refusal, and a descendant's `add` of an id its
-   * ancestor added lands on the collision refusal — both used to tell the
-   * operator the baseline was the reason, which since the claim became per
-   * author is routinely false. Derived edits count: a parent's
+   * `claimedIds` answers "may this edit apply?"; this answers "whose edit put
+   * the slot in the state this override found?". A descendant's `remove` of a
+   * record its ancestor removed lands on the missing-target refusal, and a
+   * descendant's `add` of an id its ancestor added lands on the collision
+   * refusal — both name the author responsible rather than a baseline that is
+   * exactly as *its* author left it. Derived edits count: a parent's
    * `venue-unavailable` lays blackout rows, so a child colliding with one is
    * colliding with the parent's edit.
    *
-   * @type {Map<string, { author: string, op: string, reason: string }>}
+   * **Only `add` and `remove` are recorded, and no operation is stored with
+   * them.** A `retype` leaves presence untouched, so an `add`-then-`retype`
+   * pair once left the last edit reading as a retype and the collision message
+   * losing the adder entirely. Presence at the point of the refusal is already
+   * known — `index` says it — and it determines which operation this can be: a
+   * present record's last presence edit is an `add`, an absent one's is a
+   * `remove`. Whether the *baseline* held the id is a separate question, and
+   * one {@link baselineHolds} answers from the baseline itself.
+   *
+   * @type {Map<string, { author: string, reason: string }>}
    */
-  const appliedTo = new Map();
+  const lastPresenceEdit = new Map();
   /** @type {Array<{ recordId: string, type: string, weight: number|null, override: import('./types.js').ScenarioOverride }>} */
   const retypes = [];
   /**
@@ -507,6 +516,34 @@ export function materialiseScenario(inputs, scenario, options = {}) {
    */
   const current = (set) =>
     /** @type {ReadonlyArray<Object>} */ (rebuilt.get(set) ?? base[set] ?? []);
+  /** @type {Map<string, Set<string>>} */
+  const baselineIdsBySet = new Map();
+  /**
+   * Did the **baseline** hold this record id?
+   *
+   * Read off `base`, which is the baseline's own record sets and is never
+   * written to — the working copies are what the overrides edit. The two
+   * refusals below used to deduce this from the shape of the preceding edit,
+   * which is only right for a chain two links long: the map keeps the last
+   * edit, and the last edit does not say what the baseline started with. An
+   * `add` then two `remove`s down three branches reported a row the corpus
+   * never held as one the baseline holds, and a `remove` then two `add`s
+   * reported one of the corpus's own permits as a row it never held. Both are
+   * the same defect, and both stop being deducible the moment the fact is
+   * available — which it always was.
+   *
+   * @param {string} set
+   * @param {string} recordId
+   * @returns {boolean}
+   */
+  const baselineHolds = (set, recordId) => {
+    let ids = baselineIdsBySet.get(set);
+    if (ids === undefined) {
+      ids = new Set((base[set] ?? []).map((record) => String(record.id)));
+      baselineIdsBySet.set(set, ids);
+    }
+    return ids.has(recordId);
+  };
 
   for (const override of overrides) {
     let appliedThisOverride = 0;
@@ -586,31 +623,35 @@ export function materialiseScenario(inputs, scenario, options = {}) {
 
       const bucket = working(edit.recordSet);
       const index = bucket.findIndex((record) => String(record.id) === edit.recordId);
-      // The last edit this record id actually received, whoever wrote it. The
-      // two refusals below used to say "the baseline" whatever had happened
-      // before them, and since the record-id claim became per author that is
-      // routinely false: an ancestor's `remove` is why a descendant's `remove`
-      // now finds nothing, and an ancestor's `add` is why a descendant's `add`
-      // collides. A finding is what an operator acts on, so it names the edit
-      // and the author responsible rather than pointing at a baseline that is
-      // exactly as its author left it.
-      const preceding = appliedTo.get(`${edit.recordSet}|${edit.recordId}`) ?? null;
+      // Whose edit last made this record id present or absent, whoever wrote
+      // it, and whether the baseline itself holds it. The two are independent
+      // questions and the refusals below answer them separately: an ancestor's
+      // `remove` is why a descendant's `remove` now finds nothing, and an
+      // ancestor's `add` is why a descendant's `add` collides, while what the
+      // baseline holds is a property of the baseline and is read off it. A
+      // finding is what an operator acts on, so it names the edit and the
+      // author responsible rather than pointing at a baseline that is exactly
+      // as its author left it — and it says correctly whether the baseline is
+      // where the row is to be found.
+      const preceding = lastPresenceEdit.get(`${edit.recordSet}|${edit.recordId}`) ?? null;
+      const baselineHeld = baselineHolds(edit.recordSet, /** @type {string} */ (edit.recordId));
 
       if (edit.op === SCENARIO_OVERRIDE_KIND.ADD) {
         if (index !== -1) {
-          const addedBefore =
-            preceding !== null && preceding.op === SCENARIO_OVERRIDE_KIND.ADD ? preceding : null;
+          // Present, so the last edit that moved it — if there was one — was an
+          // `add`; the map records nothing else that could leave it present.
           findings.push(
             makeScenarioFinding(
               SCENARIO_REASON.SCENARIO_OVERRIDE_ID_COLLIDES,
-              `override "${override.reason}" adds ${edit.recordSet} record "${edit.recordId}", which ${addedBefore === null ? 'the baseline already holds' : `the baseline never held and "${addedBefore.author}" already added ("${addedBefore.reason}")`}; an add that silently replaced it would be a remove nobody wrote`,
+              `override "${override.reason}" adds ${edit.recordSet} record "${edit.recordId}", which ${preceding === null ? 'the baseline already holds' : `the baseline ${baselineHeld ? 'holds' : 'never held'} and "${preceding.author}" already added ("${preceding.reason}")`}; an add that silently replaced it would be a remove nobody wrote`,
               {
                 scenarioId: scenario.id,
                 authoredBy: author,
                 recordSet: edit.recordSet,
                 recordId: edit.recordId,
-                precededBy: addedBefore === null ? null : addedBefore.author,
-                precedingReason: addedBefore === null ? null : addedBefore.reason,
+                baselineHeld,
+                precededBy: preceding === null ? null : preceding.author,
+                precedingReason: preceding === null ? null : preceding.reason,
               }
             )
           );
@@ -620,19 +661,20 @@ export function materialiseScenario(inputs, scenario, options = {}) {
         meta.recordsAdded += 1;
       } else if (edit.op === SCENARIO_OVERRIDE_KIND.REMOVE) {
         if (index === -1) {
-          const removedBefore =
-            preceding !== null && preceding.op === SCENARIO_OVERRIDE_KIND.REMOVE ? preceding : null;
+          // Absent, so the last edit that moved it — if there was one — was a
+          // `remove`; nothing else the map records could leave it absent.
           findings.push(
             makeScenarioFinding(
               SCENARIO_REASON.SCENARIO_OVERRIDE_TARGET_MISSING,
-              `override "${override.reason}" withdraws ${edit.recordSet} record "${edit.recordId}", which ${removedBefore === null ? 'the baseline does not hold' : `the baseline holds and "${removedBefore.author}" already withdrew ("${removedBefore.reason}")`}; the branch models something other than what its author wrote`,
+              `override "${override.reason}" withdraws ${edit.recordSet} record "${edit.recordId}", which ${preceding === null ? 'the baseline does not hold' : `the baseline ${baselineHeld ? 'holds' : 'never held'} and "${preceding.author}" already withdrew ("${preceding.reason}")`}; the branch models something other than what its author wrote`,
               {
                 scenarioId: scenario.id,
                 authoredBy: author,
                 recordSet: edit.recordSet,
                 recordId: edit.recordId,
-                precededBy: removedBefore === null ? null : removedBefore.author,
-                precedingReason: removedBefore === null ? null : removedBefore.reason,
+                baselineHeld,
+                precededBy: preceding === null ? null : preceding.author,
+                precedingReason: preceding === null ? null : preceding.reason,
               }
             )
           );
@@ -649,9 +691,15 @@ export function materialiseScenario(inputs, scenario, options = {}) {
         // and the counters honest. Dropping the retype afterwards would leave
         // an `applied` finding standing for an edit that never landed, which is
         // the same misdirection the two messages above just stopped doing.
+        //
+        // **The last one queued, not the first.** The retypes are applied in
+        // order after the registry is built, so with two ancestors retyping one
+        // constraint the second is the hardness the branch actually carries.
+        // Naming the first sent the operator to argue with a decision nothing
+        // was holding, and reported a type the record does not end up having.
         const queued =
           edit.recordSet === SCENARIO_RECORD_SET.CONSTRAINTS
-            ? retypes.find((entry) => entry.recordId === edit.recordId)
+            ? retypes.findLast((entry) => entry.recordId === edit.recordId)
             : undefined;
         if (queued !== undefined) {
           const retypedBy = authorOf.get(queued.override) ?? scenario.id;
@@ -676,19 +724,18 @@ export function materialiseScenario(inputs, scenario, options = {}) {
         meta.recordsRemoved += 1;
       } else if (edit.op === SCENARIO_OVERRIDE_KIND.RETYPE) {
         if (index === -1) {
-          const removedBefore =
-            preceding !== null && preceding.op === SCENARIO_OVERRIDE_KIND.REMOVE ? preceding : null;
           findings.push(
             makeScenarioFinding(
               SCENARIO_REASON.SCENARIO_OVERRIDE_TARGET_MISSING,
-              `override "${override.reason}" retypes constraint "${edit.recordId}", which ${removedBefore === null ? 'the registry does not hold' : `"${removedBefore.author}" withdrew ("${removedBefore.reason}")`}`,
+              `override "${override.reason}" retypes constraint "${edit.recordId}", which ${preceding === null ? 'the registry does not hold' : `"${preceding.author}" withdrew ("${preceding.reason}")`}`,
               {
                 scenarioId: scenario.id,
                 authoredBy: author,
                 recordSet: edit.recordSet,
                 recordId: edit.recordId,
-                precededBy: removedBefore === null ? null : removedBefore.author,
-                precedingReason: removedBefore === null ? null : removedBefore.reason,
+                baselineHeld,
+                precededBy: preceding === null ? null : preceding.author,
+                precedingReason: preceding === null ? null : preceding.reason,
               }
             )
           );
@@ -709,11 +756,15 @@ export function materialiseScenario(inputs, scenario, options = {}) {
         throw new Error(`scenario: unknown override operation "${edit.op}"`);
       }
 
-      appliedTo.set(`${edit.recordSet}|${edit.recordId}`, {
-        author,
-        op: edit.op,
-        reason: override.reason,
-      });
+      // A `retype` is not recorded: it leaves the record exactly as present as
+      // it found it, and storing it here made it the "preceding edit" the two
+      // refusals above then had to reason about.
+      if (edit.op !== SCENARIO_OVERRIDE_KIND.RETYPE) {
+        lastPresenceEdit.set(`${edit.recordSet}|${edit.recordId}`, {
+          author,
+          reason: override.reason,
+        });
+      }
       meta.recordEditsApplied += 1;
       appliedThisOverride += 1;
       findings.push(

@@ -3411,6 +3411,262 @@ describe('a finding that blames the baseline blames the right thing', () => {
 });
 
 /* -------------------------------------------------------------------------- */
+/* what the baseline held is a fact about the baseline                         */
+/* -------------------------------------------------------------------------- */
+
+describe('a refusal reads baseline membership off the baseline, not off the last edit', () => {
+  /**
+   * A permit row for ground the schedule never stands on, so the chains below
+   * change what the branch *holds* without changing what it *schedules*.
+   *
+   * @param {string} id
+   */
+  const strangerRow = (id) => ({
+    id,
+    venueId: unusedVenueId(),
+    scopeKind: 'weekday-default',
+    weekday: 'SAT',
+    date: null,
+    hasPermit: false,
+    openMinutes: null,
+    closeMinutes: null,
+    lit: null,
+    lightsOffMinutes: null,
+    note: 'ground one link of the chain withdrew',
+    source: 'test',
+  });
+
+  /**
+   * One link of a chain, stated as ordinary scenario input.
+   *
+   * @param {string} id
+   * @param {string|null} parentScenarioId
+   * @param {Array<Object>} overrides
+   */
+  const link = (id, parentScenarioId, overrides) =>
+    makeScenario({
+      id,
+      name: `chain link "${id}"`,
+      baselineId: inputs.id,
+      parentScenarioId,
+      rationale: 'a link of the three-deep chain these refusals have to describe',
+      requestedBy: REQUESTED_BY,
+      createdAt: REQUESTED_AT,
+      overrides,
+    });
+
+  /** @param {string} recordId @param {string} reason */
+  const removeRow = (recordId, reason) => ({
+    kind: SCENARIO_OVERRIDE_KIND.REMOVE,
+    recordSet: SCENARIO_RECORD_SET.PERMITS,
+    recordId,
+    by: 'groundskeeper@club.example',
+    at: REQUESTED_AT,
+    reason,
+  });
+
+  /** @param {Object} record @param {string} reason */
+  const addRow = (record, reason) => ({
+    kind: SCENARIO_OVERRIDE_KIND.ADD,
+    recordSet: SCENARIO_RECORD_SET.PERMITS,
+    record,
+    by: 'registrar@club.example',
+    at: REQUESTED_AT,
+    reason,
+  });
+
+  it('does not say the baseline holds a row the baseline never held', () => {
+    // **The defect.** Three links: an ancestor *adds* a row the corpus does not
+    // have, the next ancestor withdraws it, and the branch withdraws it again.
+    // The last edit before the branch's is a `remove`, and the message inferred
+    // "the baseline holds it" from that shape alone. The baseline never held
+    // it — the first ancestor's `add` did — and an operator sent to the corpus
+    // for this row finds nothing there to act on.
+    const NEWCOMER = 'a-row-no-corpus-holds';
+    expect(inputs.permits.some((row) => String(row.id) === NEWCOMER)).toBe(false);
+
+    const adds = link('chain-adds', null, [
+      addRow(strangerRow(NEWCOMER), 'this ground is now permitted'),
+    ]);
+    const withdraws = link('chain-withdraws', adds.id, [
+      removeRow(NEWCOMER, 'and then it was withdrawn'),
+    ]);
+    const withdrawsAgain = link('chain-withdraws-again', withdraws.id, [
+      removeRow(NEWCOMER, 'the branch withdraws it once more'),
+    ]);
+
+    // Meta-assertion: the row really is present after the first link and gone
+    // after the second, so the third link's refusal is the one under test
+    // rather than an edit that never happened.
+    expect(
+      materialiseScenario(inputs, adds).records[SCENARIO_RECORD_SET.PERMITS].map((row) =>
+        String(row.id)
+      )
+    ).toContain(NEWCOMER);
+    expect(
+      materialiseScenario(inputs, withdraws, { ancestry: [adds] }).records[
+        SCENARIO_RECORD_SET.PERMITS
+      ].map((row) => String(row.id))
+    ).not.toContain(NEWCOMER);
+
+    const materialised = materialiseScenario(inputs, withdrawsAgain, {
+      ancestry: [adds, withdraws],
+    });
+    const missing = materialised.findings.find(
+      (entry) => entry.code === SCENARIO_REASON.SCENARIO_OVERRIDE_TARGET_MISSING
+    );
+    expect(missing).toBeDefined();
+    expect(missing?.severity).toBe(CONSTRAINT_SEVERITY.BLOCKING);
+    expect(missing?.message).not.toContain('the baseline holds');
+    expect(missing?.message).toContain('the baseline never held');
+    // The attribution is unchanged and still right: the row went missing
+    // because the middle link withdrew it.
+    expect(missing?.details.precededBy).toBe(withdraws.id);
+    expect(missing?.details.precedingReason).toBe('and then it was withdrawn');
+    expect(missing?.details.authoredBy).toBe(withdrawsAgain.id);
+    expect(missing?.details.baselineHeld).toBe(false);
+  });
+
+  it('does not deny the baseline a row the baseline does hold', () => {
+    // The mirror, and the same inference: the branch's `add` collides with a
+    // row an ancestor *re-added* after another withdrew it, and "the baseline
+    // never held it" was read off that `add`. The baseline holds this row —
+    // it is one of the corpus's own permits.
+    const VICTIM = String(inputs.permits[0].id);
+    expect(inputs.permits.some((row) => String(row.id) === VICTIM)).toBe(true);
+
+    const withdraws = link('chain-withdraws-a-corpus-row', null, [
+      removeRow(VICTIM, 'the permit lapsed'),
+    ]);
+    const restores = link('chain-restores-it', withdraws.id, [
+      addRow({ ...inputs.permits[0] }, 'the permit was renewed'),
+    ]);
+    const restoresAgain = link('chain-restores-it-again', restores.id, [
+      addRow({ ...inputs.permits[0] }, 'the branch renews it once more'),
+    ]);
+
+    // Meta-assertion: the row is gone after the first link and back after the
+    // second, so the third link's `add` really does land on a re-added row.
+    expect(
+      materialiseScenario(inputs, withdraws).records[SCENARIO_RECORD_SET.PERMITS].map((row) =>
+        String(row.id)
+      )
+    ).not.toContain(VICTIM);
+    expect(
+      materialiseScenario(inputs, restores, { ancestry: [withdraws] }).records[
+        SCENARIO_RECORD_SET.PERMITS
+      ].map((row) => String(row.id))
+    ).toContain(VICTIM);
+
+    const materialised = materialiseScenario(inputs, restoresAgain, {
+      ancestry: [withdraws, restores],
+    });
+    const collides = materialised.findings.find(
+      (entry) => entry.code === SCENARIO_REASON.SCENARIO_OVERRIDE_ID_COLLIDES
+    );
+    expect(collides).toBeDefined();
+    expect(collides?.severity).toBe(CONSTRAINT_SEVERITY.BLOCKING);
+    expect(collides?.message).not.toContain('the baseline never held');
+    expect(collides?.message).toContain('the baseline holds');
+    expect(collides?.details.precededBy).toBe(restores.id);
+    expect(collides?.details.precedingReason).toBe('the permit was renewed');
+    expect(collides?.details.authoredBy).toBe(restoresAgain.id);
+    expect(collides?.details.baselineHeld).toBe(true);
+  });
+
+  it('reports the retype that stands, not the first one queued', () => {
+    // Two ancestors retype one constraint and the branch withdraws it. The
+    // registry ends up carrying the *second* retype, so naming the first tells
+    // the operator to go and argue with a decision nothing is holding.
+    const RETYPED = untouchedHardConstraint(registry.constraints);
+    expect(RETYPED).toBeDefined();
+    const constraintId = /** @type {any} */ (RETYPED).id;
+
+    /** @param {string} id @param {string|null} parent @param {string} type @param {number} weight @param {string} reason */
+    const retyper = (id, parent, type, weight, reason) =>
+      link(id, parent, [
+        {
+          kind: SCENARIO_OVERRIDE_KIND.RETYPE,
+          recordSet: SCENARIO_RECORD_SET.CONSTRAINTS,
+          recordId: constraintId,
+          type,
+          weight,
+          by: 'board@club.example',
+          at: REQUESTED_AT,
+          reason,
+        },
+      ]);
+
+    const first = retyper(
+      'chain-softens',
+      null,
+      CONSTRAINT_TYPE.SOFT,
+      5,
+      'what does this rule cost as a soft constraint?'
+    );
+    const second = retyper(
+      'chain-softens-further',
+      first.id,
+      CONSTRAINT_TYPE.PREFERENCE,
+      2,
+      'on reflection it is only a preference'
+    );
+
+    // Meta-assertion: the second retype is the one the registry ends up
+    // carrying, which is what makes naming the first a false report.
+    const bothRetypes = materialiseScenario(inputs, second, { ancestry: [first] });
+    expect(bothRetypes.engines.registry.byId[constraintId].type).toBe(CONSTRAINT_TYPE.PREFERENCE);
+
+    const strikesOut = link('chain-strikes-out', second.id, [
+      {
+        kind: SCENARIO_OVERRIDE_KIND.REMOVE,
+        recordSet: SCENARIO_RECORD_SET.CONSTRAINTS,
+        recordId: constraintId,
+        by: 'registrar@club.example',
+        at: REQUESTED_AT,
+        reason: 'the rule was struck out',
+      },
+    ]);
+    const materialised = materialiseScenario(inputs, strikesOut, {
+      ancestry: [first, second],
+    });
+    const refused = materialised.findings.find(
+      (entry) => entry.code === SCENARIO_REASON.SCENARIO_OVERRIDE_RETYPE_WITHDRAWN
+    );
+    expect(refused).toBeDefined();
+    expect(refused?.details.retypedBy).toBe(second.id);
+    expect(refused?.details.retypeType).toBe(CONSTRAINT_TYPE.PREFERENCE);
+    expect(refused?.details.retypeReason).toBe('on reflection it is only a preference');
+    expect(refused?.message).toContain(`"${second.id}"`);
+    expect(refused?.message).not.toContain(`"${first.id}"`);
+  });
+
+  it('still blames the baseline, and the sole retype, when there is no chain', () => {
+    // The negative control for all three: one author, no ancestry, and the
+    // wording and the attribution are the ones the earlier suites assert.
+    const RETYPED = untouchedHardConstraint(registry.constraints);
+    expect(RETYPED).toBeDefined();
+    const alone = link('no-chain-at-all', null, [
+      removeRow('a-permit-id-no-corpus-holds', 'this record does not exist'),
+      addRow({ ...inputs.permits[1] }, 'an id the baseline already holds'),
+    ]);
+    const materialised = materialiseScenario(inputs, alone);
+    const missing = materialised.findings.find(
+      (entry) => entry.code === SCENARIO_REASON.SCENARIO_OVERRIDE_TARGET_MISSING
+    );
+    expect(missing?.message).toContain('the baseline does not hold');
+    expect(missing?.details.precededBy).toBe(null);
+    expect(missing?.details.baselineHeld).toBe(false);
+    const collides = materialised.findings.find(
+      (entry) => entry.code === SCENARIO_REASON.SCENARIO_OVERRIDE_ID_COLLIDES
+    );
+    expect(collides?.message).toContain('the baseline already holds');
+    expect(collides?.details.precededBy).toBe(null);
+    expect(collides?.details.baselineHeld).toBe(true);
+  });
+});
+
+/* -------------------------------------------------------------------------- */
 /* check() answers for the result its caller is holding                        */
 /* -------------------------------------------------------------------------- */
 

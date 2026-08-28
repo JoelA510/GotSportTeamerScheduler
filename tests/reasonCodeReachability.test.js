@@ -1,8 +1,8 @@
 /**
  * Repo-wide reachability audit for every frozen reason-code table in
  * `packages/core/src` — the generalisation of the per-module audit
- * `tests/attribution.test.js` already carries. Fourteen vocabularies, 280
- * codes, of which 272 are shown to be producible and eight are named as holes.
+ * `tests/attribution.test.js` already carries. 15 vocabularies, 300 codes, of
+ * which 292 are shown to be producible and 8 are named as holes.
  *
  * **The defect this exists to catch.** Four times now, in four unrelated
  * modules, a reason code has been declared, given a severity, documented, and
@@ -3534,6 +3534,30 @@ describe('reason codes :: the audit itself', () => {
         (name) => !foundNames.has(name)
       )
     ).toEqual([]);
+  });
+
+  it('states its own shape in the header, and the header is read back to check it', () => {
+    // **Prose that drifts is prose nobody can trust.** The header's count has
+    // been wrong since well before the code that made it wrong was noticed:
+    // three commits added codes and none of them touched the sentence. It is
+    // parsed back out of this file rather than restated here, so the next code
+    // added fails this test instead of quietly ageing the docstring.
+    const header = readFileSync(fileURLToPath(import.meta.url), 'utf8')
+      .slice(0, 4000)
+      .replace(/\n\s*\*\s?/g, ' ');
+    const claim = header.match(
+      /(\d+) vocabularies, (\d+) codes, of which (\d+) are shown to be producible and (\d+) are named as holes/
+    );
+    // Meta-assertion: a header this failed to parse would make every
+    // comparison below vacuous.
+    expect(claim).not.toBeNull();
+    const [vocabularies, codes, producible, holes] = /** @type {RegExpMatchArray} */ (claim)
+      .slice(1)
+      .map(Number);
+    expect(vocabularies).toBe(Object.keys(TABLES).length);
+    expect(codes).toBe(DECLARED.size);
+    expect(producible).toBe(emitted.size);
+    expect(holes).toBe(UNREACHABLE.length);
   });
 
   it('drove enough production paths for a shortfall to mean something', () => {

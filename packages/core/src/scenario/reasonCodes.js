@@ -177,12 +177,21 @@ export const SCENARIO_REASON = Object.freeze({
    * record-id claim became per authoring scenario, an ancestor's `remove` is a
    * routine way for a descendant's to find nothing, and a finding that blamed
    * the baseline sent the operator to records nobody had touched.
+   *
+   * **`baselineHeld` is read from the baseline's own record set, never deduced
+   * from the preceding edit.** A chain three links long — an `add`, then two
+   * `remove`s — leaves the last edit looking like the baseline's row being
+   * withdrawn twice, and the message said so about a row the corpus never had.
    */
   SCENARIO_OVERRIDE_TARGET_MISSING: 'SCENARIO_OVERRIDE_TARGET_MISSING',
   /**
    * An `add` uses an id **the branch already holds at that point** — the
    * baseline's own, or one an earlier override added (including the rows a
-   * `venue-unavailable` derives). `blocking`, and `precededBy` says which.
+   * `venue-unavailable` derives). `blocking`, and `precededBy` says whose edit
+   * put it there. `baselineHeld` answers the separate question of whether the
+   * baseline holds the id, read from the baseline rather than deduced: a
+   * `remove` then two `add`s down a chain denied the baseline one of its own
+   * records while the last edit was, quite correctly, an `add`.
    */
   SCENARIO_OVERRIDE_ID_COLLIDES: 'SCENARIO_OVERRIDE_ID_COLLIDES',
   /**
@@ -197,6 +206,11 @@ export const SCENARIO_REASON = Object.freeze({
    * "this rule does not exist" are two different seasons. The withdrawal is
    * refused, the retype stands, and the author is told to remove one of the two
    * rather than being handed whichever the ordering happened to favour.
+   *
+   * `retypedBy` / `retypeType` name the **last** retype queued for that record,
+   * because the retypes are applied in order and that is the hardness the
+   * branch ends up carrying. With two ancestors retyping one constraint,
+   * naming the first reported a type the record does not have.
    *
    * Reachable only across authors: two edits of one record id written by one
    * scenario are {@link SCENARIO_REASON.SCENARIO_OVERRIDE_CONFLICT} first.

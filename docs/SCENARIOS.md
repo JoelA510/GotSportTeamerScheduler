@@ -133,7 +133,11 @@ for an edit that never landed. "This rule is a preference" and "this rule does
 not exist" are two different seasons rather than one refining the other, so the
 author is told to remove one of the two instead of being handed whichever the
 ordering favoured. Reachable only across authors: two edits of one record id
-written by one scenario are `SCENARIO_OVERRIDE_CONFLICT` first.
+written by one scenario are `SCENARIO_OVERRIDE_CONFLICT` first. The refusal
+names the **last** retype queued for the record in `retypedBy` / `retypeType`,
+because the retypes are applied in order and that is the hardness the branch
+ends up carrying; with two ancestors retyping one constraint, naming the first
+reported a type the record does not have.
 
 **And a refusal names whose edit made it so.** Now that ancestor-versus-
 descendant edits of one record id reach `add` and `remove` rather than the
@@ -147,6 +151,19 @@ of the two it was, name the responsible scenario and its stated reason in
 `authoredBy` — the same field the conflict finding carries. A finding message is
 what an operator acts on, so a message that sends them to the baseline for an
 edit a branch made is worse than a comment that overclaims.
+
+**And whether the baseline holds the id is read off the baseline.** It is a fact
+the materialiser has in hand — `base` is the bundle's own record sets, and the
+overrides edit working copies — so it is not deduced from the last edit
+recorded. Deducing it survives a chain two links long and no further: the map
+keeps only the *last* edit, and with an `add`, a `remove` and a `remove` down
+three branches the last edit is a withdrawal of a row the baseline never held,
+which the message reported as the baseline's own. The mirror, a `remove`, an
+`add` and an `add`, denied the baseline a permit it does hold. Both messages now
+state the fact, `baselineHeld` carries it, and `precededBy` goes on naming whose
+edit left the slot as this override found it — two questions, answered
+separately. A retype is not recorded as such an edit at all: it changes a
+record's hardness, never whether it is there.
 
 Two `venue-unavailable` overrides **written in one scenario and naming one venue
 over days they share** are the same contradiction one level up, and are reported
