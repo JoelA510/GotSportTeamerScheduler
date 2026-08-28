@@ -59,7 +59,12 @@ import { buildConstraintRegistry, retypeConstraint } from '../constraints/regist
 import { buildFacilityGraph } from '../facility/facilityGraph.js';
 import { buildFormatTimingTable } from '../timing/formatTiming.js';
 
-import { recordDigest, recordsOf, SCENARIO_RECORD_SET_ORDER } from './inputs.js';
+import {
+  recordDigest,
+  recordsOf,
+  seasonInputsDigest,
+  SCENARIO_RECORD_SET_ORDER,
+} from './inputs.js';
 import {
   SCENARIO_OVERRIDE_KIND,
   SCENARIO_RECORD_SET,
@@ -126,6 +131,22 @@ export function composedOverrides(scenario, ancestry = []) {
  * the other. Scenario metadata — the name, the rationale, who asked, when the
  * branch was created — stays out, because none of it reaches a record.
  *
+ * ## The baseline half is recomputed, never read off the bundle
+ *
+ * `inputs.digest` is the digest as it stood when `makeSeasonInputs()` ran, and
+ * reading it here made the fingerprint blind to exactly the workflow
+ * `inputs.js` documents: the record arrays are the caller's **own objects**, so
+ * *"a constraint fix must not need applying five times"* means somebody
+ * corrects one record in place and five branches see it. Against a snapshotted
+ * digest that correction moved every branch's answer and invalidated nothing —
+ * `ScenarioMemo.check()` returned no finding and `resolve()` served the
+ * pre-edit result.
+ *
+ * The sharing is **not** weakened to close it: nothing is copied and nothing is
+ * frozen that was not frozen before. The digest is simply taken when the
+ * question is asked rather than when the bundle was built, which costs one
+ * canonical rendering of the bundle per materialisation.
+ *
  * @param {import('./types.js').SeasonInputs} inputs
  * @param {ReadonlyArray<import('./types.js').ScenarioOverride>} overrides
  * @returns {string}
@@ -133,7 +154,7 @@ export function composedOverrides(scenario, ancestry = []) {
 export function scenarioFingerprint(inputs, overrides) {
   return recordDigest(
     {
-      baseline: [{ digest: inputs.digest }],
+      baseline: [{ digest: seasonInputsDigest(inputs) }],
       overrides: overrides.map((override) => ({
         kind: override.kind,
         recordSet: override.recordSet,
@@ -265,6 +286,24 @@ function primitiveEditsOf(override, current) {
 }
 
 /**
+ * Do two `venue-unavailable` overrides of one venue cover any day in common?
+ *
+ * A whole-season withdrawal (`dates === null`) covers every day, so it overlaps
+ * anything. Two date-scoped withdrawals overlap only where their date sets do —
+ * *"no Alder on 08/22"* and *"no Alder on 09/05"* are two facts about one venue
+ * that compose, lay different rows and each keep their own author's reason.
+ *
+ * @param {import('./types.js').ScenarioOverride} first
+ * @param {import('./types.js').ScenarioOverride} second
+ * @returns {boolean}
+ */
+function venueScopesOverlap(first, second) {
+  if (first.dates === null || second.dates === null) return true;
+  const covered = new Set(first.dates);
+  return second.dates.some((date) => covered.has(date));
+}
+
+/**
  * Is this ancestry the parent chain the branch actually names?
  *
  * **The check the ancestry never had.** `composedOverrides()` applies whatever
@@ -381,6 +420,23 @@ export function materialiseScenario(inputs, scenario, options = {}) {
   const claimedIds = new Map();
   /** @type {Array<{ recordId: string, type: string, weight: number|null, override: import('./types.js').ScenarioOverride }>} */
   const retypes = [];
+  /**
+   * Which venues a `venue-unavailable` has already been written for.
+   *
+   * A withdrawal is the one override kind whose edits are **derived**, and the
+   * derived edits deliberately make no claim on a record id — an author naming
+   * a venue whose rows another *kind* of override happens to touch is
+   * composition, and last round stopped that from reporting a contradiction.
+   * Two withdrawals of the *same venue over the same days* are not that: they
+   * are one fact written twice, and the second one's removes delete the first
+   * one's blackout rows before its adds put them back, so nothing collides and
+   * the later author's reason silently replaces the earlier author's on every
+   * row. That is provenance lost exactly the way incident 9 lost a waiver, so
+   * the duplicate is claimed here, at the venue, where the authorship is.
+   *
+   * @type {Map<string, import('./types.js').ScenarioOverride[]>}
+   */
+  const claimedVenues = new Map();
 
   const working = (set) => {
     if (!rebuilt.has(set)) rebuilt.set(set, [...(base[set] ?? [])]);
@@ -397,14 +453,44 @@ export function materialiseScenario(inputs, scenario, options = {}) {
 
   for (const override of overrides) {
     let appliedThisOverride = 0;
+    if (override.kind === SCENARIO_OVERRIDE_KIND.VENUE_UNAVAILABLE) {
+      const venueId = /** @type {string} */ (override.venueId);
+      const claimants = claimedVenues.get(venueId) ?? [];
+      const clash = claimants.find((claimed) => venueScopesOverlap(claimed, override));
+      if (clash !== undefined) {
+        findings.push(
+          makeScenarioFinding(
+            SCENARIO_REASON.SCENARIO_OVERRIDE_CONFLICT,
+            `two overrides of "${scenario.id}" both withdraw venue "${venueId}" over days they share ("${clash.reason}" and "${override.reason}"); the second withdrawal writes the same blackout rows the first did, so applying it would replace one author's stated reason with the other's on every row — a contradiction to remove rather than a precedence to resolve`,
+            {
+              scenarioId: scenario.id,
+              recordSet: SCENARIO_RECORD_SET.PERMITS,
+              venueId,
+              firstReason: clash.reason,
+              secondReason: override.reason,
+              firstBy: clash.by,
+              secondBy: override.by,
+              firstDates: clash.dates,
+              secondDates: override.dates,
+            }
+          )
+        );
+        continue;
+      }
+      claimants.push(override);
+      claimedVenues.set(venueId, claimants);
+    }
     for (const edit of primitiveEditsOf(override, current)) {
       const key = `${edit.recordSet}|${edit.recordId}`;
       // A derived edit is not an authored claim on a record id. Two authors
       // naming one record is the contradiction this reports; an author naming a
       // *venue* whose rows another override happens to touch is composition,
       // and the set operations answer it in order without a precedence ladder.
-      // A second `venue-unavailable` for the same venue is still caught, by
-      // SCENARIO_OVERRIDE_ID_COLLIDES on the blackout rows it re-adds.
+      // A second `venue-unavailable` for the same venue is caught above, at the
+      // venue — **not** here and not by SCENARIO_OVERRIDE_ID_COLLIDES, which
+      // never sees it: the second withdrawal removes the first's blackout rows
+      // before re-adding them, so by the time the add runs there is nothing
+      // left to collide with.
       const claimed = edit.derived ? undefined : claimedIds.get(key);
       if (claimed !== undefined) {
         // Two overrides, one record id. **Not a precedence question**: overrides

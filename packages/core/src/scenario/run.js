@@ -726,9 +726,19 @@ export class ScenarioMemo {
    * @returns {import('./types.js').ScenarioResult}
    */
   resolve(inputs, scenario, options) {
-    const key = `${scenario.id}\u0000${runOptionsFingerprint(options)}`;
+    const optionsFingerprint = runOptionsFingerprint(options);
+    const key = `${scenario.id}\u0000${optionsFingerprint}`;
+    // **The gate and the write agree on scope.** `check()` answers over *every*
+    // entry the scenario has, because staleness is a property of the branch
+    // rather than of one question. Gating on that while overwriting only the
+    // key asked about left one stale entry for another question forcing a miss
+    // for ever on a live one — and `check()` reporting blocking staleness for a
+    // cache whose entries were all fresh. So a resolve that finds the branch has
+    // moved forgets every entry it moved past, which is exactly the set
+    // `check()` was answering about.
+    this.forgetStale(inputs, scenario, options.ancestry ?? []);
     const cached = this.byKey.get(key);
-    if (cached !== undefined && this.check(inputs, scenario, options.ancestry ?? []).length === 0) {
+    if (cached !== undefined) {
       this.hits += 1;
       return cached.result;
     }
@@ -736,10 +746,38 @@ export class ScenarioMemo {
     const result = runScenario(inputs, scenario, options);
     this.byKey.set(key, {
       scenarioId: scenario.id,
-      options: runOptionsFingerprint(options),
+      options: optionsFingerprint,
       result,
     });
     return result;
+  }
+
+  /**
+   * Drop every entry for a scenario whose fingerprint the branch has moved past.
+   *
+   * The write half of the staleness rule {@link ScenarioMemo.check} reports.
+   * Nothing is dropped when there is nothing cached, and nothing is dropped
+   * when the ancestry cannot be resolved — that is a caller's mistake about
+   * *which* branch is being asked for, not evidence that what is cached went
+   * stale, and `materialiseScenario()` refuses it a moment later anyway.
+   *
+   * @param {import('./types.js').SeasonInputs} inputs
+   * @param {import('./types.js').ScheduleScenario} scenario
+   * @param {ReadonlyArray<import('./types.js').ScheduleScenario>} ancestry
+   * @returns {number} how many entries were forgotten
+   */
+  forgetStale(inputs, scenario, ancestry) {
+    if (this.entriesFor(scenario.id).length === 0) return 0;
+    if (ancestryProblem(scenario, ancestry) !== null) return 0;
+    const current = materialiseScenario(inputs, scenario, { ancestry }).fingerprint;
+    let forgotten = 0;
+    for (const [entryKey, entry] of [...this.byKey]) {
+      if (entry.scenarioId !== scenario.id) continue;
+      if (entry.result.fingerprint === current) continue;
+      this.byKey.delete(entryKey);
+      forgotten += 1;
+    }
+    return forgotten;
   }
 
   /**

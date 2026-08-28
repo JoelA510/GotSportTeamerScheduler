@@ -113,6 +113,18 @@ structural test asserts the package declares no `*_SPECIFICITY` and no
 `SCENARIO_OVERRIDE_CONFLICT` at **blocking**: a contradiction to remove, not a
 precedence to resolve.
 
+Two `venue-unavailable` overrides **naming one venue over days they share** are
+the same contradiction one level up, and are reported the same way. A
+withdrawal's edits are *derived*, so they make no claim on a record id — an
+author naming a venue whose rows another *kind* of override happens to touch is
+composition and stays silent. A second withdrawal of the same venue is not
+composition: its removes delete the first one's blackout rows before its adds
+put them back, so nothing collides, and applying it would replace one author's
+stated reason with the other's on every row. That is provenance lost the way
+incident 9 lost a waiver, so the duplicate is claimed at the **venue**, where
+the authorship is. Two date-scoped withdrawals of one venue on **disjoint**
+dates lay different rows, keep both reasons, and compose.
+
 ---
 
 ## 3. Lazily evaluated, with a fingerprinted memo
@@ -127,7 +139,7 @@ stored on the scenario, and the reason is worth stating twice:
   place. A stored diff also *cannot* answer "which constraints break", because
   breakage is a property of the result rather than of the edit.
 
-The **fingerprint** is a structural digest over the base record arrays plus the
+The **fingerprint** is a structural digest over the baseline bundle plus the
 override list — never over scenario metadata such as an `updatedAt`, which would
 derive a check's subject from the data a corruption would also change. It reuses
 `publication/snapshot.js`'s `publicationDigest()` rather than adding a second
@@ -138,6 +150,29 @@ all three into the constraint's own type-change history, so two branches
 differing only there build genuinely different records. A cached run whose
 fingerprint no longer matches is re-derived, and reading one past the check
 raises `SCENARIO_RESULT_STALE` at **blocking**.
+
+**The baseline half covers the whole bundle, and is recomputed when the question
+is asked.** Two things had to be true for the memo to be trustworthy and neither
+was. First, the digest covered the record arrays and the facility and timing
+inputs and stopped, so two bundles differing only in one game's *kickoff*
+digested identically — it now covers the `schedule`, the `calendarOptions` and
+the `venueComplexes` as well, everything a branch's answer is a function of.
+Second, `scenarioFingerprint()` read `inputs.digest`, the value snapshotted when
+`makeSeasonInputs()` ran, which made it blind to the one workflow the sharing
+guarantee exists for: correct a constraint record **in place** and five branches
+see it, while the snapshot said nothing had changed. The digest is taken at
+question time instead. Sharing is untouched — nothing is copied and nothing new
+is frozen — and the cost is one canonical rendering of the bundle per
+materialisation (measured at ~6.7 ms on this corpus, against a ~900 ms
+derivation).
+
+**The memo's staleness gate and its writes agree on scope.** `check()` answers
+over *every* entry a scenario has, because staleness is a property of the branch
+rather than of one question. `resolve()` therefore forgets every entry the
+branch has moved past, rather than overwriting only the key it was asked about —
+which left one stale entry for another question forcing a miss for ever on a
+live one, and `check()` reporting blocking staleness for a cache whose entries
+were all fresh.
 
 **The memo keys on the branch _and the question_.** The fingerprint describes the
 branch; it says nothing about which run options were asked for, and the negative
@@ -273,7 +308,7 @@ both the policy's candidate set and the proposals.
 | which games differ          | `diffSchedules()`, in `resolve/state.js`'s own `ScheduleChange` shape and `slotChangedFields()` |
 | which constraints break     | `runRuleEngine()` both sides, tallied by `resolve/report.js`'s own `violationTally()`       |
 | what capacity is lost       | `buildReserveCapacityReport()` under each side's engines, **per stated subject**            |
-| the quality delta beside them | `scoreSchedule()` — the one fitness function; nothing here multiplies a count by a weight  |
+| the quality delta beside them | `scoreSchedule()` — the one fitness function, **each side against itself**; nothing here multiplies a count by a weight |
 
 ### Why this is not `compareParityRows()`
 
@@ -304,6 +339,25 @@ The published season already carries **62 accepted exceptions**. A diff that
 listed every code either side breaks would bury the ones the branch caused, so
 `newlyViolated` is the codes whose *count grew*, and the test asserts that codes
 whose delta is zero never appear in it.
+
+### The quality delta is a comparison, not a measure of how much moved
+
+Both sides go through `scoreSchedule()` with **their own games as the
+reference**, so the objective's *change* terms are zero on both and the delta is
+the difference in the two seasons' own quality. Scoring the left against itself
+and the right against the **left** made the number a sum of two different
+things: on this corpus 1,597,760, of which 324,800 was the violation difference
+and the rest was 60 games having moved and 12 having been shelved. A quality
+number that grows because the branch differs from the baseline is the partition
+above, counted a second time and priced.
+
+How much moved is `games.changed` / `games.added` / `games.removed`, three
+fields away, and what the move *cost* is `constraints.newlyViolated` beside it —
+including the twelve shelved fixtures, which surface as `ROUND_ROBIN_INCOMPLETE`
+and the hosting codes rather than as a hidden term. The property that makes the
+delta honest is asserted rather than asserted-about: **swap the two sides and it
+negates exactly**, which it could not while either side's score was a function
+of the other.
 
 ### There is no single "capacity lost" scalar
 
@@ -403,6 +457,7 @@ its own use.
 | newly violated                  | `LINING_MISMATCH` +49, `GAMES_PLAYED_OFF_TARGET` +18, `ROUND_ROBIN_SPREAD_EXCEEDED` +6, `HOME_AWAY_OUT_OF_RANGE` +4, `ROUND_ROBIN_INCOMPLETE` +3, `TRAVEL_COMMITMENTS_OVERLAP` +1 |
 | no longer violated              | `TRAVEL_BETWEEN_VENUES_TOO_SHORT` −1                                     |
 | capacity, 7v7, those nine dates | 466 → 340 slots, **−126** — for that subject and no other                 |
+| quality, each side on its own    | 75,500 → 400,300, a delta of **+324,800**, all of it the violation difference |
 
 The `LINING_MISMATCH` delta of 49 is exactly the number of compromised
 replacements, computed by the rule engine independently of the proposer. The four
@@ -413,7 +468,9 @@ games that moved.
 
 **The negative control**, same branch, proposer off: 72 TIME TBD fixtures all
 naming `PERMIT_BLACKOUT`, zero games moved, zero replacement venues named, and a
-quality score roughly five times worse. Its status is `compromised`, not `ok`:
+quality score of 1,105,400 against the searched run's 400,300 — nearly three
+times worse on violations alone, with no credit taken for the games it did not
+move. Its status is `compromised`, not `ok`:
 `accountForFixtures()`'s verdict is part of the result's findings, so a branch
 that shelves seventy-two games cannot read as a clean one — and a branch that
 *lost* one carries `FIXTURE_DROPPED` at blocking, where `promoteScenario()` will

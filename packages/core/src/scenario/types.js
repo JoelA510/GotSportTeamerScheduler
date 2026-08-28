@@ -105,7 +105,7 @@
  * @property {string} toVenueId
  * @property {number} driftMinutes - absolute, and only ever within one date
  * @property {ReadonlyArray<string>} compromiseCodes - the codes the replacement adds
- * @property {number} candidatesConsidered
+ * @property {number} candidatesConsidered - slots offered to this game before any filter
  */
 
 /**
@@ -117,7 +117,7 @@
  * @property {string} reason
  * @property {ReadonlyArray<string>} codes - the blocking codes the branch introduced
  * @property {ReadonlyArray<string>} constraintIds
- * @property {number} candidatesConsidered
+ * @property {number} candidatesConsidered - slots offered to this game before any filter, none of which was legal
  */
 
 /**
@@ -236,9 +236,9 @@
  * @property {number} recordSetsRebuilt
  * @property {number} gamesExamined
  * @property {number} gamesDisplaced
- * @property {number} candidatesConsidered
+ * @property {number} candidatesConsidered - the sum of the per-game counts
  * @property {number} candidatesRefusedTeamClash
- * @property {number} reservedSlotsHonoured
+ * @property {number} reservedSlotsHonoured - slots installed as bookings, not slots handed in
  * @property {number} relocationsProposed
  * @property {number} relocationsCompromised
  * @property {number} relocationsUnavailable

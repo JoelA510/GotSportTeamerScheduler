@@ -45,12 +45,23 @@ export const SCENARIO_RECORD_SET_ORDER = Object.freeze([
  * are what an *override* may edit; these are everything a branch's answer
  * depends on, and a fingerprint that covered only the first would serve a
  * cached result after the facility geometry underneath it had changed.
+ *
+ * **`schedule`, `calendarOptions` and `venueComplexes` are here because they
+ * reach the answer too**, and covering only the record arrays and the two
+ * engine inputs left the hole half open: two bundles differing in one game's
+ * kickoff digested identically, so the memo served the result derived from one
+ * schedule as the answer for the other. The schedule is digested game by game
+ * rather than as one blob — a bundle *is* the inputs to a schedule, and one
+ * moved kickoff is a different question.
  */
 export const SCENARIO_DIGEST_ORDER = Object.freeze([
+  'schedule',
   'facilityInput',
   'timingInput',
   ...SCENARIO_RECORD_SET_ORDER,
   'sunsets',
+  'calendarOptions',
+  'venueComplexes',
 ]);
 
 /** The digest's column vocabulary: what a record is, and what it says. */
@@ -117,9 +128,12 @@ export function seasonInputsDigest(inputs) {
 export function digestSubjectOf(inputs) {
   return {
     ...recordsOf(inputs),
+    schedule: inputs.schedule.games,
     facilityInput: [inputs.facilityInput],
     timingInput: [inputs.timingInput],
     sunsets: inputs.sunsets,
+    calendarOptions: [inputs.calendarOptions],
+    venueComplexes: [inputs.venueComplexes],
   };
 }
 

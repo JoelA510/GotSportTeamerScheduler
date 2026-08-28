@@ -44,7 +44,54 @@ and all gates are green — typecheck 0 errors, lint 0 errors / 1 warning
 (baseline), source hygiene green, suite **1736 passed | 34 skipped | 6 todo**,
 up from 1720 (sixteen regression tests, each written to fail first).
 
-Still to do before merge: **re-run `/code-review` on the fix pass**, then PR.
+The **second** review round, over the whole PR diff including that fix pass,
+returned **6 further findings**. All six are fixed in the working tree (not yet
+committed), each with a regression test written to fail first: suite **1746
+passed | 34 skipped | 6 todo**, up from 1736. No new reason code and no new
+export; `SCENARIO_OVERRIDE_CONFLICT` gained a second driver at the venue.
+
+Still to do before merge: **PR**.
+
+### The six findings of round two
+
+1. **`inputs.js` — the baseline digest was incomplete.** It covered the record
+   arrays plus the facility and timing inputs, so two bundles differing only in
+   one game's kickoff digested identically (`927f6a6a15a16e71`). `schedule`,
+   `calendarOptions` and `venueComplexes` are now in `SCENARIO_DIGEST_ORDER`.
+2. **`scenario.js` — an in-place record edit never invalidated the memo.**
+   `scenarioFingerprint()` read `inputs.digest`, snapshotted at
+   `makeSeasonInputs()` time, so the "one fix, five branches" correction the
+   sharing guarantee exists for invalidated nothing. Recomputed at question
+   time; sharing untouched. Cost: `scenarioFingerprint()` 0.03 ms to 6.7 ms,
+   `materialiseScenario()` 1.0 ms to 7.8 ms, a warm memo hit 1.1 ms to 9.0 ms,
+   against a ~900 ms derivation. Two cold questions: 1,824 ms to 1,787 ms, i.e.
+   unchanged inside the noise.
+3. **Two `venue-unavailable` overrides for one venue produced no conflict**, and
+   the code comment asserting they were "still caught loudly, by
+   `SCENARIO_OVERRIDE_ID_COLLIDES`" was **false** — the second one's removes
+   delete the first one's rows before its adds re-add them. The later author's
+   reason silently replaced the earlier author's on all seven rows. Now claimed
+   at the venue: overlapping scopes are `SCENARIO_OVERRIDE_CONFLICT` at
+   blocking, disjoint date scopes still compose. Round one's decision — a
+   derived remove does not conflict with rows *another kind* of override wrote —
+   is untouched.
+4. **`diff.js` — the quality delta was mostly churn.** Scoring the left against
+   itself and the right against the left made the delta 1,597,760, of which only
+   324,800 was the violation difference. Each side now scores against its own
+   games; the delta negates exactly when the sides are swapped, and the test
+   asserts that.
+5. **`relocation.js` — `UnrelocatableGame.candidatesConsidered` was structurally
+   0**: `options.length` on the branch that runs only when `options.length ===
+   0`. It now carries the candidates generated before filtering — `[35 x 12]`
+   here — and the per-game counts sum to `meta.candidatesConsidered` (2,720),
+   which the test reconciles. Siblings: `candidatesRefusedTeamClash` was
+   reachable but unasserted, and is now asserted non-zero in the team-clash
+   test; `reservedSlotsHonoured` restated its own input and now counts the slots
+   actually installed as bookings.
+6. **`run.js` — the memo's staleness gate and its writes disagreed on scope.**
+   `resolve()` gated on `check()` over every entry for a scenario and overwrote
+   one, so a stale entry for another question forced misses for ever on a live
+   one. `resolve()` now forgets every entry the branch has moved past.
 
 All six gates green: lint 0 errors / 1 warning (baseline), typecheck clean,
 `frontend:build` clean, `check:advisors` PASS, `check:bundle` PASS (217.96 KB gz
@@ -78,9 +125,12 @@ whole point.
 derived `remove` no longer raises `SCENARIO_OVERRIDE_CONFLICT` against a record
 an earlier override wrote. Two *authors* naming one record id is the
 contradiction that guard exists for; an author naming a *venue* whose rows
-another override happens to touch is composition. A duplicate
+another override happens to touch is composition. ~~A duplicate
 `venue-unavailable` for the same venue is still caught, by
-`SCENARIO_OVERRIDE_ID_COLLIDES` on the blackout rows it re-adds.
+`SCENARIO_OVERRIDE_ID_COLLIDES` on the blackout rows it re-adds.~~ **That last
+sentence was false and round two's finding 3 corrected it**: nothing collided,
+because the second withdrawal removes the rows before re-adding them. The
+duplicate is now claimed at the venue instead.
 
 Correction to finding 11 as filed: the review said 17 applied against 1
 declared; on this corpus the withdrawn venue expands to 8 edits (1 base permit
@@ -115,6 +165,14 @@ The eleven findings, kept here because the scratchpad copy has been lost twice:
 assumed: 72 displaced 7v7 games; 11 clean replacements on Maplewood Front; 49
 compromised on Alder's 9v9-lined halves; 12 TIME TBD; `LINING_MISMATCH` 40 to
 89; 7v7 capacity 466 to 340 over the nine affected dates.
+
+Round two re-established all of them again — findings 1, 2 and 6 all touch the
+memo — through the direct path and the memo path, in both derivation orders.
+Every figure held identically in all four runs, and both memos recorded
+`hits=0 misses=2` with a re-ask of either question then hitting. One figure
+moved, by design: the quality delta, from +1,597,760 to +324,800, and the
+control's `quality.right` from 8,305,400 to 1,105,400 against the searched run's
+400,300 — the change terms are no longer counted inside a number called quality.
 
 ## 3. Remaining
 

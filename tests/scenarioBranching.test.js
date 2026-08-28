@@ -1840,6 +1840,11 @@ describe('a replacement slot is checked for legality before it is graded', () =>
     // check vacuously.
     expect(plan.proposals.length + plan.unrelocatable.length).toBe(2);
     expect(plan.proposals.length).toBeGreaterThan(0);
+    // The counter for the same refusal, asserted where the refusal is
+    // constructed: `candidatesRefusedTeamClash` was reachable but never held to
+    // a case, which is one review round away from the counter that could not be
+    // made non-zero at all.
+    expect(plan.meta.candidatesRefusedTeamClash).toBeGreaterThan(0);
 
     const footprint = (proposal) => {
       const row = doctored[proposal.gameId];
@@ -2005,5 +2010,337 @@ describe('the counters count what they are named for', () => {
     expect(meta.recordEditsApplied).toBe(
       meta.recordsAdded + meta.recordsRemoved + meta.recordsRetyped
     );
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* The six defects the second review round found, each with its failing case   */
+/* -------------------------------------------------------------------------- */
+
+describe('the digest covers everything a branch’s answer depends on', () => {
+  /** The same bundle every time, save for the one thing under test. */
+  const bundleWith = (overrides) =>
+    season2026SeasonInputs({
+      schedule,
+      facilityInput,
+      timingInput,
+      calendarInput,
+      constraints: SEASON_2026_CONSTRAINTS,
+      venueComplexes,
+      ...overrides,
+    });
+
+  it('separates two bundles differing only in one game’s kickoff', () => {
+    // **The defect this exists to catch.** The digest covered the record arrays
+    // plus the facility and timing inputs and stopped there, so two bundles
+    // whose *schedules* disagreed digested identically — and the memo, whose
+    // whole staleness check is that digest, served the result derived from one
+    // schedule as the answer for the other. Same class as the run-options
+    // defect the first round fixed, on the other half of the key.
+    const moved = {
+      ...schedule,
+      games: schedule.games.map((game, index) =>
+        index === 0 ? { ...game, startMinutes: game.startMinutes + 15 } : game
+      ),
+    };
+    expect(bundleWith({ schedule: moved }).digest).not.toBe(bundleWith({}).digest);
+  });
+
+  it('separates two bundles differing only in the calendar options or the complexes', () => {
+    // Both reach `materialiseScenario()`'s engines — the margins go into the
+    // availability calendar, the complexes into the rule engine's resources —
+    // so a fingerprint blind to them would call one branch a valid cache of a
+    // branch answering a different question.
+    expect(
+      bundleWith({
+        calendarInput: {
+          ...calendarInput,
+          sunsetMarginMinutes: calendarInput.sunsetMarginMinutes + 5,
+        },
+      }).digest
+    ).not.toBe(bundleWith({}).digest);
+    expect(bundleWith({ venueComplexes: {} }).digest).not.toBe(bundleWith({}).digest);
+  });
+});
+
+describe('an in-place record correction invalidates what was derived before it', () => {
+  it('re-derives after the shared record a branch reads is edited in place', () => {
+    // **The defect this exists to catch.** `inputs.js` documents the in-place
+    // correction as the point of the sharing guarantee — one fix, five branches
+    // — and `scenarioFingerprint()` read the digest snapshotted when the bundle
+    // was built, so the correction moved every branch's answer and invalidated
+    // nothing. `check()` returned [] and `resolve()` served the pre-edit object.
+    //
+    // Sharing is not weakened to fix it: the record arrays are still the
+    // caller's own objects and still carried by reference. The digest is
+    // recomputed when the question is asked instead.
+    const owned = SEASON_2026_CONSTRAINTS.map((record) => ({ ...record }));
+    const bundle = season2026SeasonInputs({
+      schedule,
+      facilityInput,
+      timingInput,
+      calendarInput,
+      constraints: owned,
+      venueComplexes,
+      id: 'in-place-baseline',
+    });
+    const branch = season2026VenueUnavailableScenario({
+      venueId: WITHDRAWN.venueId,
+      baselineId: bundle.id,
+      requestedBy: REQUESTED_BY,
+      at: REQUESTED_AT,
+      dates: [WITHDRAWN.dates[0]],
+    });
+    const memo = new ScenarioMemo();
+    const before = memo.resolve(bundle, branch, runOptions);
+    expect(memo.check(bundle, branch)).toEqual([]);
+
+    // The correction the sharing guarantee exists for: one record, edited once,
+    // in the array five branches read.
+    const target = /** @type {any} */ (
+      bundle.constraints.find((record) => record.type === CONSTRAINT_TYPE.HARD)
+    );
+    expect(target).toBeDefined();
+    target.type = CONSTRAINT_TYPE.SOFT;
+    target.weight = 5;
+
+    expect(codesOf(memo.check(bundle, branch))).toEqual([SCENARIO_REASON.SCENARIO_RESULT_STALE]);
+    expect(memo.resolve(bundle, branch, runOptions)).not.toBe(before);
+    // …and the branch still reads the corrected record rather than a copy of it.
+    expect(bundle.constraints).toBe(owned);
+  });
+});
+
+describe('two overrides of one kind naming one venue are a duplicate, not a composition', () => {
+  const twoAuthors = (dates) =>
+    makeScenario({
+      id: 'withdrawn-twice',
+      name: 'two authors withdraw one venue',
+      baselineId: inputs.id,
+      parentScenarioId: null,
+      rationale: 'the regression for a silently overwritten provenance',
+      requestedBy: REQUESTED_BY,
+      createdAt: REQUESTED_AT,
+      overrides: [
+        {
+          kind: SCENARIO_OVERRIDE_KIND.VENUE_UNAVAILABLE,
+          venueId: WITHDRAWN.venueId,
+          dates: dates[0],
+          by: 'groundskeeper@club.example',
+          at: REQUESTED_AT,
+          reason: 'the drainage works overran',
+        },
+        {
+          kind: SCENARIO_OVERRIDE_KIND.VENUE_UNAVAILABLE,
+          venueId: WITHDRAWN.venueId,
+          dates: dates[1],
+          by: 'registrar@club.example',
+          at: REQUESTED_AT,
+          reason: 'the permit lapsed',
+        },
+      ],
+    });
+
+  it('reports the second withdrawal rather than letting it overwrite the first', () => {
+    // **The defect this exists to catch, and the false claim beside it.** The
+    // code asserted the case was "still caught loudly, by
+    // SCENARIO_OVERRIDE_ID_COLLIDES on the blackout rows it re-adds". It was
+    // not: the second override's removes delete the first's rows before its
+    // adds re-add them, so nothing collided, nothing conflicted, the status
+    // read `allowed`, and the later author's reason silently replaced the
+    // earlier author's on all seven rows. Incident 9 is a lost waiver; this is
+    // a lost reason.
+    const materialised = materialiseScenario(inputs, twoAuthors([null, null]));
+    const conflict = materialised.findings.find(
+      (finding) => finding.code === SCENARIO_REASON.SCENARIO_OVERRIDE_CONFLICT
+    );
+    expect(conflict).toBeDefined();
+    expect(conflict?.severity).toBe(CONSTRAINT_SEVERITY.BLOCKING);
+    expect(conflict?.details.venueId).toBe(WITHDRAWN.venueId);
+    expect(conflict?.details.firstBy).toBe('groundskeeper@club.example');
+    expect(conflict?.details.secondBy).toBe('registrar@club.example');
+
+    // The first author's provenance survives, on every row the withdrawal laid.
+    const blackouts = materialised.records[SCENARIO_RECORD_SET.PERMITS].filter((row) =>
+      String(row.id).startsWith(`${SCENARIO_OVERRIDE_KIND.VENUE_UNAVAILABLE}:`)
+    );
+    expect(blackouts.length).toBeGreaterThan(0);
+    expect([...new Set(blackouts.map((row) => row.note))]).toEqual(['the drainage works overran']);
+    expect(materialised.meta.overridesApplied).toBe(1);
+  });
+
+  it('still composes two withdrawals of one venue on dates that do not overlap', () => {
+    // The constraint on the fix. Last round deliberately stopped a
+    // `venue-unavailable`'s derived removes from conflicting with rows *another
+    // kind* of override wrote, because that is composition. Two withdrawals of
+    // one venue on disjoint dates are composition too — they lay different rows
+    // and neither loses its reason — and must not be swept up with the
+    // duplicate above.
+    const disjoint = materialiseScenario(
+      inputs,
+      twoAuthors([[WITHDRAWN.dates[0]], [WITHDRAWN.dates[1]]])
+    );
+    expect(codesOf(disjoint.findings)).not.toContain(SCENARIO_REASON.SCENARIO_OVERRIDE_CONFLICT);
+    expect(disjoint.meta.overridesApplied).toBe(2);
+    const notes = new Set(
+      disjoint.records[SCENARIO_RECORD_SET.PERMITS]
+        .filter((row) => String(row.id).startsWith(`${SCENARIO_OVERRIDE_KIND.VENUE_UNAVAILABLE}:`))
+        .map((row) => row.note)
+    );
+    expect([...notes].sort()).toEqual(['the drainage works overran', 'the permit lapsed']);
+  });
+});
+
+describe('the quality delta is a comparison, not a measure of how much moved', () => {
+  const swapped = diffScenarios({
+    subject: 'the baseline against the branch, the other way round',
+    left: {
+      label: `scenario "${result.name}"`,
+      schedule: result.schedule,
+      verification: result.verification,
+      engines: result.materialised.engines,
+    },
+    right: {
+      label: inputs.label,
+      schedule: result.baselineSchedule,
+      verification: baselineVerification,
+      engines: baselineEngines,
+    },
+    capacitySubjects: [],
+    weights: RESOLVE_OBJECTIVE_WEIGHTS,
+  });
+
+  it('negates when the two sides are swapped', () => {
+    // **The defect this exists to catch.** The left side was scored against
+    // itself — so its change terms were structurally zero — and the right side
+    // against the left, so the delta carried 60 moved games and 12 shelved
+    // fixtures on top of the violation difference. A number whose magnitude
+    // depends on which side you call the baseline is not a quality comparison,
+    // and this is the property that says so.
+    expect(swapped.quality.delta).toBe(-diff.quality.delta);
+  });
+
+  it('scores each side on its own account, whatever it is compared against', () => {
+    // The same schedule scores the same however it is paired. Under the defect
+    // `quality.right` was a function of the left side as well as the right.
+    expect(swapped.quality.left).toBe(diff.quality.right);
+    expect(swapped.quality.right).toBe(diff.quality.left);
+    expect(controlDiff.quality.left).toBe(diff.quality.left);
+    // …and the control is still measurably the worse season, which is the whole
+    // reason the acceptance run means anything.
+    expect(controlDiff.quality.right).toBeGreaterThan(diff.quality.right);
+  });
+});
+
+describe('the relocation counters are counts something could have made non-zero', () => {
+  it('reports how many candidates an unrelocatable game was actually offered', () => {
+    // **The defect this exists to catch.** `UnrelocatableGame.candidatesConsidered`
+    // was `options.length`, on the one branch that runs only when
+    // `options.length === 0` — structurally always nought, against a run-wide
+    // `meta.candidatesConsidered` in the thousands. `CLAUDE.md` §3 names this
+    // shape by name: a meta-assertion you cannot make fail is not one.
+    expect(result.relocations.unrelocatable.length).toBeGreaterThan(0);
+    for (const game of result.relocations.unrelocatable) {
+      expect(game.candidatesConsidered, game.gameId).toBeGreaterThan(0);
+    }
+    // The run-wide counter is the sum of the per-game ones, so neither can drift
+    // from the other without the reconciliation failing.
+    const perGame = [
+      ...result.relocations.proposals.map((proposal) => proposal.candidatesConsidered),
+      ...result.relocations.unrelocatable.map((game) => game.candidatesConsidered),
+    ];
+    expect(perGame.reduce((sum, count) => sum + count, 0)).toBe(
+      result.relocations.meta.candidatesConsidered
+    );
+  });
+
+  it('counts a reserved slot when it reaches the booking table, not when it arrives', () => {
+    // The first of the two siblings added last round.
+    // `meta.reservedSlotsHonoured = reservedSlots.length` restated its own
+    // input: delete the loops that install those slots as bookings and the
+    // counter would still have claimed they were honoured.
+    const [taken] = result.relocations.proposals;
+    const held = {
+      id: 'ground-the-club-is-holding',
+      kind: 'reservation',
+      label: 'held for the league',
+      date: taken.to.date,
+      venueId: taken.toVenueId,
+      surfaceId: taken.to.surfaceId,
+      startMinutes: taken.to.startMinutes,
+      endMinutes: taken.to.startMinutes + 60,
+      format: AFFECTED_FORMAT,
+      homeSide: 'tbd',
+      awaySide: 'tbd',
+      source: 'the regression for a counter that restated its input',
+    };
+    const plan = proposeRelocations(result.materialised.engines, {
+      displaced: result.displaced,
+      survivors: result.baselineSchedule.games.filter(
+        (game) => !result.displaced.some((d) => d.gameId === String(game.id))
+      ),
+      gamesById,
+      policy,
+      requirement,
+      reservedSlots: [held],
+    });
+    expect(plan.meta.reservedSlotsHonoured).toBe(1);
+    // …and nothing was proposed onto the ground it holds, which is what the
+    // counter is a claim about.
+    expect(
+      plan.proposals.filter(
+        (proposal) =>
+          proposal.to.date === held.date &&
+          proposal.to.surfaceId === held.surfaceId &&
+          proposal.to.startMinutes === held.startMinutes
+      )
+    ).toEqual([]);
+  });
+});
+
+describe('the memo’s staleness gate and its writes agree on scope', () => {
+  it('serves a live entry whose branch has not moved past a stale sibling', () => {
+    // **The defect this exists to catch**, and it was introduced by last
+    // round's own fix. `resolve()` gated on `check()` across *every* entry for
+    // the scenario but overwrote only the key it was asked about, so one stale
+    // entry left for another question forced a miss for ever on a live one and
+    // kept `check()` reporting blocking staleness for a cache whose entries
+    // were all fresh.
+    const owned = SEASON_2026_CONSTRAINTS.map((record) => ({ ...record }));
+    const bundleOf = (records) =>
+      season2026SeasonInputs({
+        schedule,
+        facilityInput,
+        timingInput,
+        calendarInput,
+        constraints: records,
+        venueComplexes,
+        id: 'gate-and-write-baseline',
+      });
+    const bundle = bundleOf(owned);
+    const branch = season2026VenueUnavailableScenario({
+      venueId: WITHDRAWN.venueId,
+      baselineId: bundle.id,
+      requestedBy: REQUESTED_BY,
+      at: REQUESTED_AT,
+      dates: [WITHDRAWN.dates[0]],
+    });
+    const memo = new ScenarioMemo();
+    // One question, cached at the old fingerprint.
+    memo.resolve(bundle, branch, { ...runOptions, relocations: false });
+
+    const moved = bundleOf(
+      owned.map((record, index) =>
+        index === 0 ? { ...record, rationale: `${record.rationale} (corrected)` } : record
+      )
+    );
+    expect(moved.digest).not.toBe(bundle.digest);
+
+    // A second question, derived at the *new* fingerprint. It is live.
+    const first = memo.resolve(moved, branch, runOptions);
+    expect(memo.check(moved, branch)).toEqual([]);
+    expect(memo.resolve(moved, branch, runOptions)).toBe(first);
+    expect(memo.hits).toBe(1);
+    expect(memo.misses).toBe(2);
   });
 });

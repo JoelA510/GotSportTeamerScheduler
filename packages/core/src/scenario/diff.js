@@ -421,6 +421,21 @@ export function diffScenarios(input) {
   // neither**, exactly as `buildChangeReport()` does it: a quality-inclusive
   // score on one side and a quality-free one on the other produces a delta that
   // is entirely an artefact of the mismatch.
+  //
+  // **Each side is its own reference, so the change terms are zero on both.**
+  // Scoring the left against itself and the right against the *left* made the
+  // delta a sum of two different things: on this corpus 1,597,760, of which
+  // 324,800 was the violation difference and the rest was 60 games having moved
+  // and 12 having been shelved. A number that grows because the branch differs
+  // from the baseline is not a measure of whether the branch is worse — it is
+  // the partition above, counted twice and priced. How much moved is
+  // `games.changed`, `games.added` and `games.removed`, three fields away; what
+  // the move *cost* is `constraints.newlyViolated` and this delta.
+  //
+  // The property that makes it honest is asserted in
+  // `tests/scenarioBranching.test.js`: swap the two sides and the delta negates
+  // exactly. It could not, while either side's score was a function of the
+  // other.
   const leftScore = scoreSchedule({
     referenceGames: left.schedule.games,
     games: left.schedule.games,
@@ -428,7 +443,7 @@ export function diffScenarios(input) {
     weights,
   });
   const rightScore = scoreSchedule({
-    referenceGames: left.schedule.games,
+    referenceGames: right.schedule.games,
     games: right.schedule.games,
     verification: measured ? right.verification : null,
     weights,

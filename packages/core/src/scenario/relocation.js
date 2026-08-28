@@ -280,7 +280,6 @@ export function proposeRelocations(engines, input) {
    * one.
    */
   const reservedSlots = input.reservedSlots ?? [];
-  meta.reservedSlotsHonoured = reservedSlots.length;
 
   /**
    * The grid, from the capacity report under the branch's own engines.
@@ -362,6 +361,11 @@ export function proposeRelocations(engines, input) {
     bucket.push(booking);
     bookingsByDate.set(slot.date, bucket);
     commit(slot.date, teamsOf(slot), booking);
+    // **Counted here, where the slot becomes a booking**, rather than off
+    // `reservedSlots.length` where it was only a restatement of the input: a
+    // counter named for what the search *did* must be incremented where the
+    // search does it, or deleting this loop would leave it claiming otherwise.
+    meta.reservedSlotsHonoured += 1;
   }
 
   /** @type {import('./types.js').RelocationProposal[]} */
@@ -409,12 +413,25 @@ export function proposeRelocations(engines, input) {
       return null;
     };
     let refusedForTeamClash = 0;
+    /**
+     * Every candidate slot this game was offered, before any filter.
+     *
+     * `candidatesConsidered` used to be `options.length` — the slots that
+     * *survived* — and on an unrelocatable game that branch runs only when
+     * `options.length === 0`, so the field was structurally nought while the
+     * run-wide counter beside it read in the thousands. `CLAUDE.md` §3 names
+     * that shape: a meta-assertion nothing can make fail is not one. The
+     * per-game counts now sum to `meta.candidatesConsidered`, so neither can
+     * drift from the other without the reconciliation in the test failing.
+     */
+    let consideredForThisGame = 0;
     /** @type {Array<{ surfaceId: string, startMinutes: number, grade: string, driftMinutes: number, codes: string[] }>} */
     const options = [];
 
     for (const surfaceId of policy.surfaceIds) {
       for (const kickoff of grid.get(`${format}|${game.date}|${surfaceId}`) ?? []) {
         meta.candidatesConsidered += 1;
+        consideredForThisGame += 1;
         const answer = checkKickoffAvailability(
           engines.graph,
           engines.table,
@@ -452,12 +469,12 @@ export function proposeRelocations(engines, input) {
       }
     }
 
-    const candidatesConsidered = options.length;
-    if (candidatesConsidered === 0) {
+    const candidatesConsidered = consideredForThisGame;
+    if (options.length === 0) {
       unrelocatable.push({
         gameId: game.gameId,
         label: game.label,
-        reason: `the scenario withdraws the ground it stood on (${game.codes.join(', ')}) and no candidate slot on ${game.date} across ${policy.surfaceIds.length} replacement surface(s) is legal for it${refusedForTeamClash === 0 ? '' : ` (${refusedForTeamClash} otherwise-free slot(s) would have put one of its teams in two places at once)`}; kept visible as TIME TBD rather than dropped (incident 10)`,
+        reason: `the scenario withdraws the ground it stood on (${game.codes.join(', ')}) and none of the ${candidatesConsidered} candidate slot(s) on ${game.date} across ${policy.surfaceIds.length} replacement surface(s) is legal for it${refusedForTeamClash === 0 ? '' : ` (${refusedForTeamClash} otherwise-free slot(s) would have put one of its teams in two places at once)`}; kept visible as TIME TBD rather than dropped (incident 10)`,
         codes: Object.freeze([...game.codes]),
         constraintIds: Object.freeze([...game.constraintIds]),
         candidatesConsidered,
