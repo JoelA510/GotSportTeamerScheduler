@@ -48,11 +48,11 @@ and not yet merged.
 committed. `packages/core/src/feasibility/` (`reasonCodes.js`, `schemas.js`,
 `types.js`, `verdict.js`, `queries.js`, `index.js`) plus
 `tests/feasibilityApi.test.js`; `tests/reasonCodeReachability.test.js` gains the
-sixteenth vocabulary and its driver. Suite **1776 -> 1899**, measured at each
+sixteenth vocabulary and its driver. Suite **1776 -> 1908**, measured at each
 commit rather than added up: 62 new cases with the feature (`a393c60`), 25 more
 from the first pre-PR review round (`ece79b3`), 5 from the second round below,
-9 from the third, 7 from the fourth, 11 from the fifth, 4 from the sixth. All
-six gates green, season fixture green.
+9 from the third, 7 from the fourth, 11 from the fifth, 4 from the sixth, 9 from
+the seventh. All six gates green, season fixture green.
 
 Three queries, one answer shape: `canGameMove()`, `canTeamPlay()`,
 `feasibleKickoffBounds()`. A verdict is three-valued
@@ -331,12 +331,75 @@ and the first of the six rounds that moves published figures.
    shape may seal `infeasible` (or `compromised`) while publishing no evidence
    at that severity**, swept over 3,744 bounds answers under two registries,
    every game's standing and +30 move, every real team's grid and every one of
-   its cells. Its one tolerated residue is earned by an oracle rather than by a
-   count — a `tight` move whose compromise is a scan-level coach-travel finding
-   that no transition owns and that `claimFromFinding()` can name no instance
-   for, re-derived independently from `evaluateCoachTravel()`. And
+   its cells. ~~Its one tolerated residue is earned by an oracle rather than by
+   a count — a `tight` move whose compromise is a scan-level coach-travel
+   finding that no transition owns and that `claimFromFinding()` can name no
+   instance for, re-derived independently from `evaluateCoachTravel()`.~~
+   **Round seven's finding 1 closed that residue and deleted the oracle with
+   it**: the compromise is now published as `FEASIBILITY_EVIDENCE_UNCLAIMED` and
+   the rule holds over the whole corpus with nothing set aside. And
    `FEASIBILITY_NO_CLEAN_POSITION`, stated on 772 cells, is now held to
    publishing at its own hard bound the compromise that explains it.
+
+**The seventh pre-PR review round.** Two findings, both the same class round
+six closed in general: an answer sealing on evidence it does not publish. Both
+are the instances that class left standing, and the round removes the last
+tolerance from the corpus-wide rule.
+
+1. **546 team cells sealed `tight` on a compromise no claim could name.**
+   Moving the carrier fixture onto a date where its coaches have nothing else
+   introduces `TRAVEL_SCAN_VACUOUS` — `compromise`, owned by no transition.
+   `projectTravel()` drops it from the claims, **correctly**:
+   `claimFromFinding()` yields `instanceId: null` / `constraintId: null` and
+   `isSpecificClaim()` refuses it, so publishing it as a claim would manufacture
+   the category-only claim this layer exists to replace. But it still reached
+   `deriveFeasibilityEvidence()` through `travelFindings`, so the tightness was
+   decided by evidence the reader could not see: 519 cells at 12:30 and 27 at
+   18:00, 546 in all. The drop stays and the record is now published as
+   `FEASIBILITY_EVIDENCE_UNCLAIMED` (`compromise`), naming the code, the
+   severity and the layer that decided and claiming nothing about a record.
+   `FeasibilityCandidate` carries its cell's own findings, because a grid that
+   kept only the claims dropped the evidence one call after it was published.
+
+2. **A team clash that decided a cell and published no blocker.**
+   `canTeamPlay()`'s cell blocking is
+   `cell.verdict === 'infeasible' || clash.overlaps === true`, and the second
+   disjunct raised nothing. No team in this corpus plays twice on one date — an
+   acceptance case states that as a fact about the season — so no cell was ever
+   refused on it alone and the corpus rule never met it; it is the same shape as
+   the two defects that were live. The clash now publishes a **blocking claim**
+   naming the standing fixture as its instance, so the evidence lands in the
+   list the verdict is derived from, plus an `info`
+   `FEASIBILITY_TEAM_DOUBLE_BOOKED` finding as provenance on the roll-up — `info`
+   because a team that is already booked is a well-founded *no*, and a
+   `blocking` finding would make the answer's own `status` `rejected`, which is
+   the category error the module docstring names. Proved on a constructed
+   same-day pair built through `buildAttributionContext()` — one extra fixture
+   in the schedule, nothing reached into and altered — and by stripping the
+   claim back out to show round six's rule firing again.
+
+   **What moved, over a sweep of 18,314 answers — 3,744 bounds answers under
+   two registries, every game's standing and +30 move, every real team's grid at
+   12:30 and at 18:00, and all 12,948 of their cells: 12,948 team cells, 43 team
+   roll-ups, and nothing else.** No bounds answer and no move answer changes at
+   all, and no verdict, tightness, status, margin, basis, binding set or
+   boundary minute moves anywhere. Every cell gains its own `findings` (1,464 of
+   them carry the new `FEASIBILITY_EVIDENCE_UNCLAIMED` — 546 `feasible`/`tight`,
+   which are the offending cells, 614 already `infeasible` and 304 already
+   `unknown`, where the same compromise existed and no rule was ever breached);
+   338 cells gain the `FEASIBILITY_TEAM_DOUBLE_BOOKED` claim, every one of them
+   already `infeasible` for an independent reason, which is why the corpus rule
+   never met the defect; 43 roll-ups gain the matching `info` finding. Under the
+   plain registry the bounds verdicts stay 751/1,024/97, the statuses stay 745
+   rejected / 1,127 compromised and the tightness distribution stays
+   **772 / 848 / 199 / 53**. Alder 08/22 18:15/18:15, Alder 11/14 14:50/14:50,
+   Summit 11/14 19:30/19:15, the 08/22 joint clean bound and incident 3's
+   -10 min / `occupancy` are all unchanged.
+
+   Two new reason codes in the frozen severity table, each with a reachability
+   driver entry: the audit's header moves to **325 codes, 315 producible, 10
+   holes**, and its own self-check confirms it. No new export — both codes are
+   members of `FEASIBILITY_REASON`, which the barrel already exports.
 
 Nothing in flight otherwise. 6.1 merged as #351 after seven review rounds
 (11 -> 6 -> 4 -> 2 -> 4 -> 1 -> 0 findings) and one CI failure of its own making:

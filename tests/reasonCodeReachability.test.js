@@ -1,8 +1,8 @@
 /**
  * Repo-wide reachability audit for every frozen reason-code table in
  * `packages/core/src` — the generalisation of the per-module audit
- * `tests/attribution.test.js` already carries. 16 vocabularies, 323 codes, of
- * which 313 are shown to be producible and 10 are named as holes.
+ * `tests/attribution.test.js` already carries. 16 vocabularies, 325 codes, of
+ * which 315 are shown to be producible and 10 are named as holes.
  *
  * **The defect this exists to catch.** Four times now, in four unrelated
  * modules, a reason code has been declared, given a severity, documented, and
@@ -3780,6 +3780,81 @@ harvest(
     dates: ['2026-11-14'],
     kickoffMinutes: 18 * 60,
   })
+);
+
+harvest(
+  'canGameMove(a move that leaves the projected travel scan with nothing to judge)',
+  // `combined_schedule.csv#3`'s coaches have one other commitment on its own
+  // date and none on 2026-10-10, so the projected `evaluateCoachTravel()` run
+  // has no consecutive same-day pair left and raises `TRAVEL_SCAN_VACUOUS`
+  // where the standing run raised none. That finding belongs to no transition,
+  // so `claimFromFinding()` can name no record for it and the claim is refused
+  // — and the compromise is published as `FEASIBILITY_EVIDENCE_UNCLAIMED`
+  // instead of deciding the answer's tightness from nowhere.
+  canGameMove(
+    context,
+    { gameId: 'combined_schedule.csv#3', insteadOfDate: '2026-10-10' },
+    { venueComplexes }
+  )
+);
+
+harvest(
+  'canTeamPlay(a team playing twice on one date)',
+  (() => {
+    // The corpus has no such team, so the pair is constructed — one extra
+    // fixture in the schedule handed to `buildAttributionContext()`, exactly as
+    // the two-format case below does it. The anchor is its team's earliest
+    // fixture, so it is the carrier and its own booking is ignored; the twin
+    // sits on another surface at the same minute, so the only thing refusing
+    // the cell is the team's own diary.
+    const ordered = (teamId) =>
+      schedule.games
+        .filter((game) => game.homeTeamId === teamId || game.awayTeamId === teamId)
+        .sort((a, b) =>
+          a.date === b.date ? a.id.localeCompare(b.id) : a.date.localeCompare(b.date)
+        );
+    const anchor = schedule.games.find((game) => {
+      if (game.homeTeamId === null || game.endMinutes === null) return false;
+      if (schedule.placeholderLabels.includes(game.homeTeamId)) return false;
+      const fixtures = ordered(game.homeTeamId);
+      if (fixtures[0]?.id !== game.id) return false;
+      return new Set(fixtures.map((entry) => entry.format)).size === 1;
+    });
+    const elsewhere = schedule.games.find(
+      (game) => game.date === anchor.date && game.surfaceId !== anchor.surfaceId
+    );
+    const constructed = {
+      ...schedule,
+      games: [
+        ...schedule.games,
+        {
+          ...anchor,
+          id: 'zz-audit-same-day-twin',
+          surfaceId: elsewhere.surfaceId,
+          venueId: elsewhere.venueId,
+        },
+      ],
+    };
+    return canTeamPlay(
+      buildAttributionContext({
+        graph,
+        table: timingTable,
+        calendar,
+        registry,
+        schedule: constructed,
+        verification,
+        venueComplexes,
+        roster,
+      }),
+      {
+        teamId: anchor.homeTeamId,
+        dates: [anchor.date],
+        kickoffMinutes: anchor.startMinutes,
+        surfaceIds: [anchor.surfaceId],
+      },
+      { venueComplexes }
+    );
+  })()
 );
 
 harvest(

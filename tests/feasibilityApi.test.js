@@ -3654,14 +3654,21 @@ describe('feasibility :: round 5, finding 2 — "the registry moved the bound" o
  *   is deliberately *not* folded in — the clean boundary decides no verdict, and
  *   counting it would let a compromise found at another minute stand in for one
  *   that was never found at this one.
- * - **A move** publishes `blockers`.
- * - **A team roll-up** publishes every cell's `blockers`. It carries no
- *   `blockers` field of its own: `seal()` is handed an empty list plus a `state`
- *   carrying the one fact no single blocker can express — *"every cell of the
- *   grid said no"* — and the records behind that fact live in the cells, which
- *   the answer publishes as `candidates`. So the grid is held to the rule
- *   through the evidence it actually shows an operator rather than excused
- *   from it.
+ * - **A move** publishes `blockers`, **plus** any
+ *   `FEASIBILITY_EVIDENCE_UNCLAIMED` finding it carries. That one code and no
+ *   other: it is the module's own name for a severity-bearing record that
+ *   decided the answer and that `isSpecificClaim()` refuses to let become a
+ *   claim, so it is the evidence itself rather than a remark about it. Reading
+ *   the whole `findings` list instead would excuse a `tight` answer on the
+ *   strength of an unrelated `FEASIBILITY_BOUND_UNSTATED`, which is the
+ *   loophole this rule exists to keep shut.
+ * - **A team roll-up** publishes every cell's `blockers` and the same one
+ *   finding code from every cell. It carries no `blockers` field of its own:
+ *   `seal()` is handed an empty list plus a `state` carrying the one fact no
+ *   single blocker can express — *"every cell of the grid said no"* — and the
+ *   records behind that fact live in the cells, which the answer publishes as
+ *   `candidates`. So the grid is held to the rule through the evidence it
+ *   actually shows an operator rather than excused from it.
  *
  * @param {Object} answer - a feasibility answer of any of the three shapes
  * @returns {Array<{ severity: string }>}
@@ -3671,9 +3678,24 @@ function publishedEvidence(answer) {
     return [...answer.latestHard.claims];
   }
   if (answer.question === FEASIBILITY_QUESTION.CAN_TEAM_PLAY) {
-    return answer.candidates.flatMap((candidate) => candidate.blockers);
+    return answer.candidates.flatMap((candidate) => [
+      ...candidate.blockers,
+      ...unclaimedEvidenceOf(candidate),
+    ]);
   }
-  return [...answer.blockers];
+  return [...answer.blockers, ...unclaimedEvidenceOf(answer)];
+}
+
+/**
+ * The evidence an answer could not publish as a claim, in its own vocabulary.
+ *
+ * @param {{ findings?: ReadonlyArray<{ code: string, severity: string }> }} carrier
+ * @returns {Array<{ severity: string }>}
+ */
+function unclaimedEvidenceOf(carrier) {
+  return (carrier.findings ?? []).filter(
+    (finding) => finding.code === FEASIBILITY_REASON.FEASIBILITY_EVIDENCE_UNCLAIMED
+  );
 }
 
 /**
@@ -3713,82 +3735,6 @@ function severitySealedWithoutEvidence(label, answer) {
     };
   }
   return null;
-}
-
-/**
- * **The oracle for the one residue the rule leaves, computed independently of
- * the module under test.**
- *
- * `projectTravel()` compares two `evaluateCoachTravel()` runs and reports the
- * codes whose count grew. A finding no *transition* owns is dropped from the
- * claims, because `claimFromFinding()` would build a claim naming no instance —
- * `TRAVEL_SCAN_VACUOUS` carries `commitmentsExamined` and `peopleExamined` and
- * nothing that identifies a record — and a claim that names a category is the
- * answer this whole layer exists to replace. So the compromise is real, it
- * decides the answer's tightness through `deriveFeasibilityEvidence()`, and it
- * is genuinely unpublishable as a claim.
- *
- * This rebuilds that comparison from `evaluateCoachTravel()` and the schedule's
- * own commitments, so an offence the rule tolerates has to be explained by an
- * independent computation rather than by a count written here. Anything the
- * oracle does not explain fails.
- *
- * @param {string} gameId
- * @param {{ date: string, surfaceId: string, startMinutes: number }} to
- * @returns {boolean} whether moving `gameId` there introduces a non-`info`
- *   travel finding that no transition owns and no claim can name
- */
-function introducesUnpublishableTravelCompromise(gameId, to) {
-  const commitments = context.schedule.commitments;
-  const personIds = new Set(
-    commitments.filter((entry) => entry.gameId === gameId).map((entry) => entry.personId)
-  );
-  if (personIds.size === 0) return false;
-  const standing = context.state.baseline[gameId];
-  const venueId = getSurface(graph, to.surfaceId)?.venueId ?? null;
-  const dates = new Set([standing.date, to.date]);
-  const relevant = commitments.filter(
-    (entry) => personIds.has(entry.personId) && dates.has(entry.date)
-  );
-  const projected = relevant.map((entry) => {
-    if (entry.gameId !== gameId) return { ...entry };
-    const durationMinutes =
-      entry.endMinutes === null ? null : entry.endMinutes - entry.startMinutes;
-    return {
-      ...entry,
-      date: to.date,
-      venueId: venueId ?? entry.venueId,
-      surfaceId: to.surfaceId,
-      startMinutes: to.startMinutes,
-      endMinutes: durationMinutes === null ? null : to.startMinutes + durationMinutes,
-    };
-  });
-  const options = { registry, venueComplexes };
-  const before = evaluateCoachTravel(relevant, options);
-  const after = evaluateCoachTravel(projected, options);
-  /** @type {Record<string, number>} */
-  const budget = {};
-  for (const finding of before.findings) {
-    budget[finding.code] = (budget[finding.code] ?? 0) + 1;
-  }
-  for (const finding of after.findings) {
-    if ((budget[finding.code] ?? 0) > 0) {
-      budget[finding.code] -= 1;
-      continue;
-    }
-    if (finding.severity === CONSTRAINT_SEVERITY.INFO) continue;
-    if (after.transitions.some((entry) => entry.findings.includes(finding))) continue;
-    const asClaim = claimFromFinding(finding, {
-      registry,
-      source: ATTRIBUTION_SOURCE.COACH_TRAVEL,
-      gameId,
-      surfaceId: to.surfaceId,
-      venueId,
-      date: to.date,
-    });
-    if (!isSpecificClaim(asClaim)) return true;
-  }
-  return false;
 }
 
 describe('feasibility :: round 6, finding 1 — an answer publishes the severity it seals on', () => {
@@ -3848,15 +3794,18 @@ describe('feasibility :: round 6, finding 1 — an answer publishes the severity
     expect(severitySealedWithoutEvidence('doctored team', team([blocking]))).toBeNull();
   });
 
-  it('has a residue it tolerates, and that residue is a claim nobody can name', () => {
-    // **Why the compromise arm has an oracle and the blocking arm does not.**
-    // The only travel findings no transition owns are scan-level, and a claim
-    // built from one names no instance — so it fails the module's own
-    // specificity bar and cannot be published as a claim at all. The
+  it('has a compromise that no claim can name, which is why it is published as a finding', () => {
+    // **The premise the round-seven fix rests on, kept as its own case.** The
+    // only travel findings no transition owns are scan-level, and a claim built
+    // from one names no instance — so it fails the module's own specificity bar
+    // and cannot be published as a claim at all. That is why the fix publishes
+    // it as `FEASIBILITY_EVIDENCE_UNCLAIMED` instead of forcing it into
+    // `blockers`, and why the drop in `projectTravel()` stays. The
     // corresponding *blocking* case does not exist: `travelSeverityOf()` cannot
     // make a scan-level code blocking under any constraint type, which round
-    // four proves. So the rule's `infeasible` arm needs no residue and its
-    // `tight` arm has exactly this one.
+    // four proves — which is what makes registering the new code at
+    // `compromise` a statement about the records that can reach it rather than
+    // a guess.
     const vacuous = evaluateCoachTravel(
       [
         {
@@ -3896,8 +3845,15 @@ describe('feasibility :: round 6, finding 1 — an answer publishes the severity
   it('holds over every answer this corpus produces, at both severities', () => {
     /** @type {string[]} */
     const offenders = [];
-    /** Offences the travel oracle explained, and the ones it did not. */
+    /** Offences set aside. The rule keeps no tolerance, so this must stay 0. */
     let tolerated = 0;
+    /**
+     * Cells sealed `tight` whose *only* evidence above `info` is the compromise
+     * no claim can name. This is the population the deleted oracle used to
+     * excuse, counted here so that "zero offences" cannot be the result of the
+     * population quietly disappearing.
+     */
+    let sealedOnUnclaimedEvidence = 0;
     const judged = {
       [FEASIBILITY_QUESTION.KICKOFF_BOUNDS]: { swept: 0, infeasible: 0, tight: 0 },
       [FEASIBILITY_QUESTION.CAN_GAME_MOVE]: { swept: 0, infeasible: 0, tight: 0 },
@@ -3908,11 +3864,8 @@ describe('feasibility :: round 6, finding 1 — an answer publishes the severity
     /**
      * @param {string} label
      * @param {Object} answer
-     * @param {{ gameId: string, to: { date: string, surfaceId: string, startMinutes: number } }|null} [projection] -
-     *   the move this answer is about, where there is one, so a tolerated
-     *   offence can be put to the oracle
      */
-    const rule = (label, answer, projection = null) => {
+    const rule = (label, answer) => {
       const counters = judged[answer.question];
       counters.swept += 1;
       if (answer.verdict === FEASIBILITY_VERDICT.INFEASIBLE) counters.infeasible += 1;
@@ -3924,20 +3877,25 @@ describe('feasibility :: round 6, finding 1 — an answer publishes the severity
       ) {
         rolledUpFromCells += 1;
       }
+      if (
+        answer.tight === FEASIBILITY_TIGHTNESS.TIGHT &&
+        unclaimedEvidenceOf(answer).length > 0 &&
+        !answer.blockers?.some(
+          (record) =>
+            record.severity === CONSTRAINT_SEVERITY.COMPROMISE ||
+            record.severity === CONSTRAINT_SEVERITY.BLOCKING
+        )
+      ) {
+        sealedOnUnclaimedEvidence += 1;
+      }
       const offence = severitySealedWithoutEvidence(label, answer);
       if (offence === null) return;
-      // **The only offence this rule tolerates**, and it has to be earned: a
-      // `tight` move whose compromise an independent re-run of
-      // `evaluateCoachTravel()` shows to be a scan-level finding no claim can
-      // name. Every other offence, at either arm, is a failure.
-      if (
-        offence.arm === 'tight' &&
-        projection !== null &&
-        introducesUnpublishableTravelCompromise(projection.gameId, projection.to)
-      ) {
-        tolerated += 1;
-        return;
-      }
+      // **No offence is tolerated.** The rule shipped with one residue — a
+      // `tight` move whose compromise was a scan-level coach-travel finding no
+      // transition owns — excused by an oracle that re-derived it from
+      // `evaluateCoachTravel()`. That compromise is now published as
+      // `FEASIBILITY_EVIDENCE_UNCLAIMED`, the evidence is where a reader looks,
+      // and the oracle is deleted with the excuse it existed to make.
       offenders.push(offence.message);
     };
 
@@ -3956,21 +3914,14 @@ describe('feasibility :: round 6, finding 1 — an answer publishes the severity
       }
     }
     for (const game of schedule.games) {
-      rule(`standing ${game.id}`, standingAnswer(game), {
-        gameId: game.id,
-        to: { date: game.date, surfaceId: game.surfaceId, startMinutes: game.startMinutes },
-      });
+      rule(`standing ${game.id}`, standingAnswer(game));
       rule(
         `move ${game.id} +30`,
         canGameMove(
           context,
           { gameId: game.id, insteadOfMinutes: game.startMinutes + 30 },
           { venueComplexes }
-        ),
-        {
-          gameId: game.id,
-          to: { date: game.date, surfaceId: game.surfaceId, startMinutes: game.startMinutes + 30 },
-        }
+        )
       );
     }
     const everyDate = [...new Set(schedule.games.map((game) => game.date))].sort();
@@ -3985,25 +3936,13 @@ describe('feasibility :: round 6, finding 1 — an answer publishes the severity
       // publishes verbatim, and excusing them because they arrive nested would
       // be choosing the subject set to avoid the failure.
       for (const candidate of answer.candidates) {
-        rule(
-          `team ${teamId} cell ${candidate.date} ${candidate.surfaceId}`,
-          {
-            question: FEASIBILITY_QUESTION.CAN_GAME_MOVE,
-            verdict: candidate.verdict,
-            tight: candidate.tight,
-            blockers: candidate.blockers,
-          },
-          answer.carrierGameId === null
-            ? null
-            : {
-                gameId: answer.carrierGameId,
-                to: {
-                  date: candidate.date,
-                  surfaceId: candidate.surfaceId,
-                  startMinutes: candidate.kickoffMinutes,
-                },
-              }
-        );
+        rule(`team ${teamId} cell ${candidate.date} ${candidate.surfaceId}`, {
+          question: FEASIBILITY_QUESTION.CAN_GAME_MOVE,
+          verdict: candidate.verdict,
+          tight: candidate.tight,
+          blockers: candidate.blockers,
+          findings: candidate.findings,
+        });
       }
     }
 
@@ -4021,10 +3960,13 @@ describe('feasibility :: round 6, finding 1 — an answer publishes the severity
     // …the structural allowance was used rather than sitting unexercised as an
     // escape hatch nothing walks through…
     expect(rolledUpFromCells).toBeGreaterThan(0);
-    // …and the tolerated residue is real and bounded: the oracle explained
-    // offences, and it is the *only* thing standing between this rule and zero.
-    expect(tolerated).toBeGreaterThan(0);
-    expect(tolerated).toBeLessThan(judged[FEASIBILITY_QUESTION.CAN_GAME_MOVE].tight);
+    // …and the rule now holds with nothing set aside. `tolerated` is kept as a
+    // counter rather than deleted so that a future re-introduction of a
+    // tolerance has to move a number this test already reads, and the count of
+    // cells whose only compromise is the unclaimable one is asserted below, so
+    // "zero offences" cannot come from a population that stopped existing.
+    expect(tolerated).toBe(0);
+    expect(sealedOnUnclaimedEvidence).toBe(519);
   }, 900_000);
 
   it('gives "no clean position" the evidence its own boundary cannot carry', () => {
@@ -4076,4 +4018,336 @@ describe('feasibility :: round 6, finding 1 — an answer publishes the severity
     // sweep that stopped meeting it fails rather than passing quietly.
     expect(stated).toBe(772);
   }, 300_000);
+});
+
+/* -------------------------------------------------------------------------- */
+/* Seventh pre-PR review of 7.1 — the last two answers that sealed on evidence  */
+/* the reader could not see                                                    */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * **The move that makes the projected travel scan vacuous, located
+ * independently of the module under test.**
+ *
+ * `projectTravel()` reports the codes whose count grew between two
+ * `evaluateCoachTravel()` runs. Move a fixture off a coach's only busy day and
+ * onto a day they have nothing else on, and the projected scan has no
+ * consecutive same-day pair left to judge: `TRAVEL_SCAN_VACUOUS` appears where
+ * the standing scan had none. It is `compromise`, it belongs to no transition,
+ * and `claimFromFinding()` can name no record for it — so it decides the answer
+ * and cannot be published as a claim.
+ *
+ * This rebuilds that comparison from `evaluateCoachTravel()` and the schedule's
+ * own commitments, so the subject of the assertions below is chosen by an
+ * independent computation rather than by asking the module whether it emitted
+ * its own finding. The same derivation used to *excuse* an offence in round
+ * six's rule; here it *locates* one, which is the difference the fix makes.
+ *
+ * @returns {{ gameId: string, date: string, code: string }|null}
+ */
+function firstMoveThatEmptiesTheTravelScan() {
+  const dates = [...new Set(schedule.games.map((game) => game.date))].sort();
+  for (const game of schedule.games) {
+    const personIds = new Set(
+      schedule.commitments
+        .filter((entry) => entry.gameId === game.id)
+        .map((entry) => entry.personId)
+    );
+    if (personIds.size === 0) continue;
+    for (const date of dates) {
+      if (date === game.date) continue;
+      const relevant = schedule.commitments.filter(
+        (entry) =>
+          personIds.has(entry.personId) && (entry.date === game.date || entry.date === date)
+      );
+      const projected = relevant.map((entry) =>
+        entry.gameId === game.id ? { ...entry, date } : { ...entry }
+      );
+      const options = { registry, venueComplexes };
+      const before = evaluateCoachTravel(relevant, options);
+      const after = evaluateCoachTravel(projected, options);
+      /** @type {Record<string, number>} */
+      const budget = {};
+      for (const finding of before.findings) {
+        budget[finding.code] = (budget[finding.code] ?? 0) + 1;
+      }
+      for (const finding of after.findings) {
+        if ((budget[finding.code] ?? 0) > 0) {
+          budget[finding.code] -= 1;
+          continue;
+        }
+        if (finding.severity === CONSTRAINT_SEVERITY.INFO) continue;
+        if (after.transitions.some((entry) => entry.findings.includes(finding))) continue;
+        return { gameId: game.id, date, code: finding.code };
+      }
+    }
+  }
+  return null;
+}
+
+describe('feasibility :: round 7, finding 1 — the compromise no claim can name is published', () => {
+  const located = firstMoveThatEmptiesTheTravelScan();
+
+  it('located a move whose introduced compromise belongs to no transition', () => {
+    // Meta-assertion for everything below: a corpus that stopped containing
+    // such a move would make the assertions statements about nothing, and this
+    // says so rather than letting them pass on an empty search.
+    expect(located).not.toBeNull();
+    expect(/** @type {{ code: string }} */ (located).code).toBe(TRAVEL_REASON.TRAVEL_SCAN_VACUOUS);
+  });
+
+  it('publishes it as a finding in this module s own vocabulary, naming what decided', () => {
+    const { gameId, date } = /** @type {{ gameId: string, date: string }} */ (located);
+    const answer = canGameMove(context, { gameId, insteadOfDate: date }, { venueComplexes });
+    const published = answer.findings.filter(
+      (finding) => finding.code === FEASIBILITY_REASON.FEASIBILITY_EVIDENCE_UNCLAIMED
+    );
+    expect(published).toHaveLength(1);
+    // The severity is the frozen table's, never the call site's, and the
+    // record that decided is named in full: which code, at what severity, from
+    // which layer. Without those three the finding would be the shrug it
+    // replaces.
+    expect(published[0].severity).toBe(CONSTRAINT_SEVERITY.COMPROMISE);
+    expect(published[0].severity).toBe(
+      feasibilitySeverityOf(FEASIBILITY_REASON.FEASIBILITY_EVIDENCE_UNCLAIMED)
+    );
+    expect(published[0].details.sourceCode).toBe(TRAVEL_REASON.TRAVEL_SCAN_VACUOUS);
+    expect(published[0].details.sourceSeverity).toBe(CONSTRAINT_SEVERITY.COMPROMISE);
+    expect(published[0].details.source).toBe(ATTRIBUTION_SOURCE.COACH_TRAVEL);
+    expect(published[0].details.gameId).toBe(gameId);
+    expect(published[0].details.date).toBe(date);
+  });
+
+  it('does not smuggle it into the claims, and every claim still names a record', () => {
+    // **The drop stays.** The whole reason this is a finding is that the claim
+    // it would otherwise be names no instance and no constraint, which is the
+    // category-only claim the layer exists to replace. So the fix must not have
+    // quietly relaxed `projectTravel()`.
+    const { gameId, date } = /** @type {{ gameId: string, date: string }} */ (located);
+    const answer = canGameMove(context, { gameId, insteadOfDate: date }, { venueComplexes });
+    expect(answer.blockers.flatMap((claim) => claim.codes)).not.toContain(
+      TRAVEL_REASON.TRAVEL_SCAN_VACUOUS
+    );
+    expect(answer.blockers.filter((claim) => !isSpecificClaim(claim))).toEqual([]);
+    expect(
+      answer.findings.filter(
+        (finding) => finding.code === FEASIBILITY_REASON.FEASIBILITY_CLAIM_CATEGORY_ONLY
+      )
+    ).toEqual([]);
+  });
+
+  it('is what carries the answer past the rule, and the rule fires again without it', () => {
+    // **The positive control, on a real answer rather than a doctored shape.**
+    // This move seals `tight` and every claim it publishes is `info`; the only
+    // thing standing between it and round six's rule is the finding. Removing
+    // that finding reproduces the pre-fix state exactly, and the rule says so.
+    const { gameId, date } = /** @type {{ gameId: string, date: string }} */ (located);
+    const answer = canGameMove(context, { gameId, insteadOfDate: date }, { venueComplexes });
+    expect(answer.verdict).toBe(FEASIBILITY_VERDICT.FEASIBLE);
+    expect(answer.tight).toBe(FEASIBILITY_TIGHTNESS.TIGHT);
+    expect(answer.blockers.filter((claim) => claim.severity !== CONSTRAINT_SEVERITY.INFO)).toEqual(
+      []
+    );
+    expect(severitySealedWithoutEvidence('located move', answer)).toBeNull();
+    const stripped = {
+      ...answer,
+      findings: answer.findings.filter(
+        (finding) => finding.code !== FEASIBILITY_REASON.FEASIBILITY_EVIDENCE_UNCLAIMED
+      ),
+    };
+    expect(severitySealedWithoutEvidence('located move, finding removed', stripped)?.arm).toBe(
+      'tight'
+    );
+  });
+
+  it('reaches the grid, because a cell that dropped its findings would seal on nothing', () => {
+    // The 546 offending cells were `canGameMove()` answers whose findings the
+    // grid threw away, so the compromise was published one call down and lost
+    // one call up. `FeasibilityCandidate` now carries the cell's own findings,
+    // and this is the rule that keeps it doing so.
+    let seen = 0;
+    /** @type {string[]} */
+    const offenders = [];
+    const everyDate = [...new Set(schedule.games.map((game) => game.date))].sort();
+    for (const teamId of realTeams) {
+      const answer = canTeamPlay(
+        context,
+        { teamId, dates: everyDate, kickoffMinutes: 12 * 60 + 30 },
+        { venueComplexes }
+      );
+      for (const candidate of answer.candidates) {
+        const unclaimed = unclaimedEvidenceOf(candidate);
+        if (unclaimed.length === 0) continue;
+        if (candidate.tight !== FEASIBILITY_TIGHTNESS.TIGHT) continue;
+        seen += 1;
+        const at = `${teamId} ${candidate.date} ${candidate.surfaceId}`;
+        const stripped = {
+          question: FEASIBILITY_QUESTION.CAN_GAME_MOVE,
+          verdict: candidate.verdict,
+          tight: candidate.tight,
+          blockers: candidate.blockers,
+          findings: [],
+        };
+        if (severitySealedWithoutEvidence(at, stripped) === null) continue;
+        // This cell is one of the 546: without the carried finding it offends,
+        // and with it it does not. If either half stopped being true the cell
+        // would be reported here.
+        const carried = {
+          question: FEASIBILITY_QUESTION.CAN_GAME_MOVE,
+          verdict: candidate.verdict,
+          tight: candidate.tight,
+          blockers: candidate.blockers,
+          findings: candidate.findings,
+        };
+        const offence = severitySealedWithoutEvidence(at, carried);
+        if (offence !== null) offenders.push(offence.message);
+      }
+      if (seen > 0) break;
+    }
+    expect(offenders).toEqual([]);
+    // Meta-assertion: at least one grid really did carry such a cell.
+    expect(seen).toBeGreaterThan(0);
+  }, 120_000);
+});
+
+describe('feasibility :: round 7, finding 2 — a team clash publishes the fixture it clashed with', () => {
+  /**
+   * Two *timed* fixtures for one team on one date, on two different surfaces.
+   *
+   * The corpus has no such team — the acceptance case above states that as a
+   * fact about the season — so the case is constructed, through the same public
+   * entry point every other answer here uses: an extra fixture in a schedule
+   * handed to `buildAttributionContext()`. Nothing is reached into and altered,
+   * and no internal state is forged.
+   *
+   * The anchor is deliberately its team's **earliest** fixture, so it is the
+   * carrier the grid picks, so `canGameMove()` ignores its own booking and the
+   * surface asked about is free. That is what isolates the clash: the cell is
+   * refused by the team's diary and by nothing else, which is the arm that
+   * published no blocker.
+   */
+  const orderedFixturesOf = (teamId) =>
+    schedule.games
+      .filter((game) => game.homeTeamId === teamId || game.awayTeamId === teamId)
+      .sort((a, b) =>
+        a.date === b.date ? a.id.localeCompare(b.id) : a.date.localeCompare(b.date)
+      );
+  // Timed, single-format, and its team's earliest — the three things the case
+  // needs. Untimed is GAP-14 and makes the overlap `null` rather than `true`
+  // (the acceptance case above is the one that proves *that* path); a team
+  // spanning two formats resolves no footprint at all; and a fixture that is
+  // not the earliest is not the carrier, so its own booking would refuse the
+  // cell before the clash could.
+  const anchor = schedule.games.find((game) => {
+    if (game.homeTeamId === null) return false;
+    if (schedule.placeholderLabels.includes(game.homeTeamId)) return false;
+    if (game.endMinutes === null) return false;
+    const fixtures = orderedFixturesOf(game.homeTeamId);
+    if (fixtures[0]?.id !== game.id) return false;
+    return new Set(fixtures.map((entry) => entry.format)).size === 1;
+  });
+  const elsewhere = schedule.games.find(
+    (game) => game.date === anchor.date && game.surfaceId !== anchor.surfaceId
+  );
+  const twin = {
+    ...anchor,
+    // Sorted after the anchor on purpose: the carrier must stay the anchor, and
+    // the assertion below says so rather than trusting it.
+    id: 'zz-constructed-same-day-twin',
+    surfaceId: elsewhere.surfaceId,
+    venueId: elsewhere.venueId,
+  };
+  const constructedContext = buildAttributionContext({
+    graph,
+    table,
+    calendar,
+    registry,
+    schedule: {
+      ...schedule,
+      name: 'constructed same-day timed pair',
+      games: [...schedule.games, twin],
+    },
+    verification,
+    venueComplexes,
+    roster,
+  });
+  const answer = canTeamPlay(
+    constructedContext,
+    {
+      teamId: anchor.homeTeamId,
+      dates: [anchor.date],
+      kickoffMinutes: anchor.startMinutes,
+      surfaceIds: [anchor.surfaceId],
+    },
+    { venueComplexes }
+  );
+
+  it('built the case it says it built', () => {
+    // Meta-assertions. Every one of these is a premise the assertions below
+    // rest on, and each has been wrong in some earlier draft of some earlier
+    // round: the carrier must be the anchor, the twin must be somewhere else,
+    // the clash must actually have been compared, and the grid must be the one
+    // cell this is about.
+    expect(answer.carrierGameId).toBe(anchor.id);
+    expect(twin.surfaceId).not.toBe(anchor.surfaceId);
+    expect(answer.meta.teamFixturesCompared).toBeGreaterThan(0);
+    expect(answer.candidates).toHaveLength(1);
+  });
+
+  it('refuses the cell and names the standing fixture that refused it', () => {
+    const candidate = answer.candidates[0];
+    expect(candidate.verdict).toBe(FEASIBILITY_VERDICT.INFEASIBLE);
+    const clash = candidate.blockers.filter((claim) =>
+      claim.codes.includes(FEASIBILITY_REASON.FEASIBILITY_TEAM_DOUBLE_BOOKED)
+    );
+    expect(clash).toHaveLength(1);
+    expect(clash[0].severity).toBe(CONSTRAINT_SEVERITY.BLOCKING);
+    expect(clash[0].instanceId).toBe(twin.id);
+    // A claim, not a category label: it names the fixture and says something
+    // computed about it, which is the bar every claim in this layer clears.
+    expect(isSpecificClaim(clash[0])).toBe(true);
+    // …and it is the *only* blocking evidence, which is what makes this the
+    // isolated case rather than a clash riding on somebody else's refusal.
+    expect(
+      candidate.blockers.filter((claim) => claim.severity === CONSTRAINT_SEVERITY.BLOCKING)
+    ).toEqual(clash);
+  });
+
+  it('says so on the answer as well, as provenance and not as a broken answer', () => {
+    const stated = answer.findings.filter(
+      (finding) => finding.code === FEASIBILITY_REASON.FEASIBILITY_TEAM_DOUBLE_BOOKED
+    );
+    expect(stated).toHaveLength(1);
+    expect(stated[0].details.gameId).toBe(twin.id);
+    expect(stated[0].details.teamId).toBe(anchor.homeTeamId);
+    expect(stated[0].details.date).toBe(anchor.date);
+    // **`info`, and the reason matters.** The `findings` channel is about the
+    // answer's own integrity, and this answer is not broken — it is a
+    // well-founded "no". A `blocking` finding here would make `status`
+    // `rejected`, which is the category error the module docstring names, and
+    // it would do it on 43 real roll-ups of this corpus that meet a clash
+    // without being decided by one.
+    expect(stated[0].severity).toBe(CONSTRAINT_SEVERITY.INFO);
+    expect(answer.status).not.toBe(CONSTRAINT_STATUS.REJECTED);
+  });
+
+  it('is what carries the grid past the rule, and the rule fires again without it', () => {
+    // **The pre-fix state, reproduced rather than described.** Round six's rule
+    // reads the cells' `blockers`; with the clash claim removed the grid seals
+    // `infeasible` over nothing but `info`, which is exactly what it did before
+    // this round and exactly what the rule refuses.
+    expect(severitySealedWithoutEvidence('constructed same-day pair', answer)).toBeNull();
+    const stripped = {
+      ...answer,
+      candidates: answer.candidates.map((candidate) => ({
+        ...candidate,
+        blockers: candidate.blockers.filter(
+          (claim) => !claim.codes.includes(FEASIBILITY_REASON.FEASIBILITY_TEAM_DOUBLE_BOOKED)
+        ),
+      })),
+    };
+    expect(severitySealedWithoutEvidence('constructed pair, claim removed', stripped)?.arm).toBe(
+      'infeasible'
+    );
+  });
 });

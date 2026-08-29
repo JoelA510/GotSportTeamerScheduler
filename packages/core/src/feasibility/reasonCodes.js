@@ -203,6 +203,16 @@ export const FEASIBILITY_MARGIN_CONVENTION =
  * None of these is a scheduling verdict. The verdicts belong to the modules the
  * claims come from.
  *
+ * {@link FEASIBILITY_TEAM_DOUBLE_BOOKED} is the one that looks like an
+ * exception and is not. The overlap itself is `bookingsOverlapInTime()`'s
+ * three-valued answer and this module does not re-decide it; what the code adds
+ * is a name for the consequence, because no module below asks that question
+ * about a **team**. `facility/occupancy.js` owns surfaces — two fixtures of one
+ * team on two different pitches at one o'clock is no surface's problem — and the
+ * rule engine's day-level rules are not asked about a hypothesis. So the fact
+ * had nowhere to be published, which is exactly how it came to decide a cell
+ * while appearing nowhere in it.
+ *
  * @readonly
  * @enum {string}
  */
@@ -336,6 +346,39 @@ export const FEASIBILITY_REASON = Object.freeze({
    */
   FEASIBILITY_NO_CLEAN_POSITION: 'FEASIBILITY_NO_CLEAN_POSITION',
 
+  /* -- the subject's own standing fixtures --------------------------------- */
+  /**
+   * The team asked about **already holds a fixture overlapping the window**, so
+   * the position asked about would have it playing twice at once.
+   *
+   * The one check `canTeamPlay()` makes that a per-placement question cannot:
+   * `canGameMove()` judges a slot and knows nothing about the rest of the
+   * team's diary. The overlap is `bookingsOverlapInTime()`'s answer — this code
+   * re-decides nothing — and its `null` remains
+   * {@link FEASIBILITY_FOOTPRINT_UNKNOWN} rather than a "no clash".
+   *
+   * It exists because the fact used to decide a cell and appear nowhere in it:
+   * `blocked` was `cell.verdict === 'infeasible' || clash.overlaps === true` and
+   * the second disjunct published no blocker, so a cell refused for this reason
+   * alone would have sealed `infeasible` over an empty blocking list. No team in
+   * the season corpus plays twice on one date — an acceptance case states that
+   * as a fact about the season — so no cell was ever refused on this alone and
+   * the corpus-wide rule never met it. It is the same shape as the defects that
+   * were live, and a corpus with one such team is all it needs.
+   *
+   * **`info` here, `blocking` where it decides.** This table is the severity of
+   * a *finding*, and a finding is about the **answer** — the three `blocking`
+   * entries below all mean "this answer could not be built". A team that is
+   * already booked is a perfectly good *no*, and a `rejected` status on a
+   * perfectly good no is the category error the module docstring names. So the
+   * finding is provenance, exactly as {@link FEASIBILITY_POSITION_ALREADY_HELD}
+   * is for the sibling cell-level fact, while the force lives in the
+   * `blocking` **claim** this code also names, in `blockers`, where statements
+   * about the subject belong — and it is that claim, never this finding, that
+   * `deriveFeasibilityEvidence()` folds into the verdict.
+   */
+  FEASIBILITY_TEAM_DOUBLE_BOOKED: 'FEASIBILITY_TEAM_DOUBLE_BOOKED',
+
   /* -- the answer's own integrity ------------------------------------------ */
   /**
    * The query examined zero candidates.
@@ -362,6 +405,44 @@ export const FEASIBILITY_REASON = Object.freeze({
    * live grenade in the hand of whoever read it.
    */
   FEASIBILITY_CLAIM_CATEGORY_ONLY: 'FEASIBILITY_CLAIM_CATEGORY_ONLY',
+  /**
+   * A severity-bearing record **decided this answer and could not be published
+   * as a claim**, so it is stated here in this module's own vocabulary instead.
+   *
+   * `compromise`, and it is {@link FEASIBILITY_CLAIM_CATEGORY_ONLY}'s mirror
+   * image rather than a second copy of it. That code fires when a claim naming
+   * only a category got through; this one fires when one was correctly refused
+   * and the evidence would otherwise have vanished with it.
+   *
+   * The live instance is coach travel. `projectTravel()` compares two
+   * `evaluateCoachTravel()` runs and reports the codes whose count grew; a
+   * finding that no *transition* owns is dropped from the claims, because
+   * `claimFromFinding()` builds one with `instanceId: null` and
+   * `constraintId: null` from it — `TRAVEL_SCAN_VACUOUS` carries
+   * `commitmentsExamined` and `peopleExamined` and nothing that identifies a
+   * record — and `isSpecificClaim()` refuses it. **The drop is right.** But the
+   * record still reached `deriveFeasibilityEvidence()`, so on 546 cells of this
+   * corpus's team grids it decided `tight` while every blocker the answer
+   * published was `info`: the tightness was sealed on evidence the reader could
+   * not see.
+   *
+   * So the finding names the code, the severity and the source that decided,
+   * and claims nothing about a record — which is the honest half of what the
+   * refused claim would have said. It is deliberately **not** in
+   * {@link FEASIBILITY_UNKNOWN_BY_CODE}: a scan that examined no transition is a
+   * compromise, not a measurement nobody could take, and turning it into an
+   * unknown would move 546 cells off `feasible` on the strength of a
+   * re-classification rather than of a fact.
+   *
+   * Registered at `compromise` rather than mirroring the record's own severity,
+   * because the only records that can reach it are the scan-level travel codes
+   * and `travelSeverityOf()` cannot make one `blocking` under any constraint
+   * type — which round four proves. A `blocking` one would therefore be a new
+   * fact about the model, and it would fail the corpus-wide
+   * publish-what-you-seal-on rule's `infeasible` arm loudly rather than being
+   * understated here in silence.
+   */
+  FEASIBILITY_EVIDENCE_UNCLAIMED: 'FEASIBILITY_EVIDENCE_UNCLAIMED',
   /**
    * The answer is blocked, and the layer the **minimal blocking set** speaks
    * for is not the layer that blocked it.
@@ -413,9 +494,12 @@ export const FEASIBILITY_REASON_SEVERITY = Object.freeze({
   [FEASIBILITY_REASON.FEASIBILITY_TIGHT]: FEASIBILITY_SEVERITY.INFO,
   [FEASIBILITY_REASON.FEASIBILITY_NO_CLEAN_POSITION]: FEASIBILITY_SEVERITY.COMPROMISE,
 
+  [FEASIBILITY_REASON.FEASIBILITY_TEAM_DOUBLE_BOOKED]: FEASIBILITY_SEVERITY.INFO,
+
   [FEASIBILITY_REASON.FEASIBILITY_QUERY_VACUOUS]: FEASIBILITY_SEVERITY.BLOCKING,
   [FEASIBILITY_REASON.FEASIBILITY_CANDIDATE_DROPPED]: FEASIBILITY_SEVERITY.BLOCKING,
   [FEASIBILITY_REASON.FEASIBILITY_CLAIM_CATEGORY_ONLY]: FEASIBILITY_SEVERITY.BLOCKING,
+  [FEASIBILITY_REASON.FEASIBILITY_EVIDENCE_UNCLAIMED]: FEASIBILITY_SEVERITY.COMPROMISE,
   [FEASIBILITY_REASON.FEASIBILITY_BLOCKED_OUTSIDE_FACILITY]: FEASIBILITY_SEVERITY.INFO,
   [FEASIBILITY_REASON.FEASIBILITY_VERDICT_REACHED]: FEASIBILITY_SEVERITY.INFO,
 });

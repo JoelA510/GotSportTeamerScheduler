@@ -57,6 +57,7 @@ import {
   claimFromFinding,
   claimFromTravelTransition,
   groupFindingsByConstraintKind,
+  makeClaim,
   mergeClaimsByTightness,
 } from '../attribution/claims.js';
 import { explainKickoffTime } from '../attribution/explain.js';
@@ -214,7 +215,7 @@ function tallyByCode(findings) {
  * @param {{ gameId: string, from: Object, to: { date: string, surfaceId: string, startMinutes: number, venueId: string|null } }} move
  * @param {Object|null} venueComplexes
  * @param {import('./types.js').FeasibilityMeta} meta
- * @returns {{ ok: boolean, findings: Array<Object>, claims: Array<import('../attribution/types.js').ConstraintClaim>, peopleCount: number }}
+ * @returns {{ ok: boolean, findings: Array<Object>, claims: Array<import('../attribution/types.js').ConstraintClaim>, unclaimed: Array<Object>, peopleCount: number }}
  */
 function projectTravel(context, move, venueComplexes, meta) {
   const commitments = context.schedule.commitments;
@@ -222,10 +223,10 @@ function projectTravel(context, move, venueComplexes, meta) {
     commitments.filter((entry) => entry.gameId === move.gameId).map((entry) => entry.personId)
   );
   if (personIds.size === 0) {
-    return { ok: true, findings: [], claims: [], peopleCount: 0 };
+    return { ok: true, findings: [], claims: [], unclaimed: [], peopleCount: 0 };
   }
   if (venueComplexes === null) {
-    return { ok: false, findings: [], claims: [], peopleCount: personIds.size };
+    return { ok: false, findings: [], claims: [], unclaimed: [], peopleCount: personIds.size };
   }
 
   const dates = new Set([move.from.date, move.to.date]);
@@ -267,6 +268,8 @@ function projectTravel(context, move, venueComplexes, meta) {
 
   /** @type {Array<import('../attribution/types.js').ConstraintClaim>} */
   const claims = [];
+  /** @type {Array<Object>} */
+  const unclaimed = [];
   for (const finding of introduced) {
     // **Identity, never code.** `evaluateCoachTravel()` returns its transitions'
     // own findings by reference in the flat list, so the owning transition is
@@ -275,7 +278,17 @@ function projectTravel(context, move, venueComplexes, meta) {
     // happened to share its code, and the claim would then name the wrong
     // person's afternoon.
     const transition = after.transitions.find((entry) => entry.findings.includes(finding)) ?? null;
-    if (transition === null) continue;
+    // **Dropped from the claims and returned, rather than dropped.** A finding
+    // no transition owns names no record, so `claimFromFinding()` would build a
+    // claim with `instanceId: null` and `constraintId: null` — the category-only
+    // claim this module refuses. It still counts against the answer, so it is
+    // handed back for the caller to publish in this module's own vocabulary;
+    // returning it and returning nothing are the difference between an
+    // unclaimable compromise and an invisible one.
+    if (transition === null) {
+      unclaimed.push(finding);
+      continue;
+    }
     claims.push(
       claimFromTravelTransition(
         transition,
@@ -284,7 +297,7 @@ function projectTravel(context, move, venueComplexes, meta) {
     );
   }
 
-  return { ok: true, findings: introduced, claims, peopleCount: personIds.size };
+  return { ok: true, findings: introduced, claims, unclaimed, peopleCount: personIds.size };
 }
 
 /**
@@ -679,6 +692,33 @@ export function canGameMove(context, rawQuery, options = {}) {
         codes: [String(finding.code)],
       }))
     );
+    // **And the ones that decide this answer and can never be claims are said
+    // out loud.** `projectTravel()` is right to drop a finding no transition
+    // owns — a claim built from one names no instance and no constraint, which
+    // is the category-only claim `FEASIBILITY_CLAIM_CATEGORY_ONLY` exists to
+    // refuse — but the record reaches `deriveFeasibilityEvidence()` through the
+    // list above all the same. On 546 cells of this corpus's team grids that
+    // made the difference between `clean` and `tight` while every published
+    // blocker was `info`: the tightness was decided by evidence the reader had
+    // no way to see. It is published here in this module's own vocabulary,
+    // naming the code, the severity and the source that decided, and claiming
+    // nothing about a record — the honest half of what the refused claim would
+    // have said.
+    answer.findings.push(
+      ...travel.unclaimed.map((finding) =>
+        makeFeasibilityFinding(
+          FEASIBILITY_REASON.FEASIBILITY_EVIDENCE_UNCLAIMED,
+          `moving game "${query.gameId}" here introduces ${String(finding.code)} at ${String(finding.severity)} ("${String(finding.message)}"); no coach transition owns it, so it names no record and cannot be published as a claim — it is stated here because it decides this answer either way`,
+          {
+            gameId: query.gameId,
+            ...destination,
+            source: ATTRIBUTION_SOURCE.COACH_TRAVEL,
+            sourceCode: String(finding.code),
+            sourceSeverity: String(finding.severity),
+          }
+        )
+      )
+    );
     absorbUnknowns(
       answer.unknowns,
       unknownsFromCodes(
@@ -1022,6 +1062,7 @@ export function canTeamPlay(context, rawQuery, options = {}) {
         date,
         query.kickoffMinutes,
         endMinutes,
+        query.teamId,
         meta
       );
       absorbUnknowns(cellUnknowns, clash.unknowns);
@@ -1029,9 +1070,37 @@ export function canTeamPlay(context, rawQuery, options = {}) {
       // the answer that raised them and arrived here through the merge above.
       meta.unknownsRaised += cellUnknowns.length - cell.unknowns.length;
 
+      // **The clash is published where the cell's other evidence is.** It is
+      // the one blocker this level owns rather than inherits, and it goes in
+      // beside the cell's own through the module's own merge, so `blockers`
+      // keeps its tightest-first contract and the verdict below is derived from
+      // a list an operator can read.
+      const cellBlockers =
+        clash.claims.length === 0
+          ? cell.blockers
+          : /** @type {import('../attribution/types.js').ConstraintClaim[]} */ (
+              mergeClaimsByTightness([cell.blockers, clash.claims])
+            );
       const blocked = cell.verdict === FEASIBILITY_VERDICT.INFEASIBLE || clash.overlaps === true;
       const verdict = deriveFeasibilityVerdict({ blocked, unknowns: cellUnknowns });
       meta.candidatesAnswered += 1;
+
+      for (const claim of clash.claims) {
+        findings.push(
+          makeFeasibilityFinding(
+            FEASIBILITY_REASON.FEASIBILITY_TEAM_DOUBLE_BOOKED,
+            `team "${query.teamId}" already plays fixture "${claim.instanceId}" on ${date}, which overlaps the window asked about, so it cannot also play at ${surfaceId} then`,
+            {
+              teamId: query.teamId,
+              gameId: claim.instanceId,
+              carrierGameId: carrier.id,
+              date,
+              surfaceId,
+              kickoffMinutes: query.kickoffMinutes,
+            }
+          )
+        );
+      }
 
       answer.candidates.push({
         date,
@@ -1043,7 +1112,14 @@ export function canTeamPlay(context, rawQuery, options = {}) {
         marginMinutes: cell.marginMinutes,
         marginBasis: cell.marginBasis,
         unknowns: cellUnknowns,
-        blockers: cell.blockers,
+        blockers: cellBlockers,
+        // **The cell's own findings, carried whole.** `FeasibilityCandidate` is
+        // documented as a candidate *with its own answer*, and dropping the
+        // findings made that false in the one place it mattered: a compromise
+        // that no claim can name is published by `canGameMove()` as a finding,
+        // and a grid that kept only the claims would seal on evidence it had
+        // thrown away one line earlier.
+        findings: cell.findings,
       });
     }
   }
@@ -1191,12 +1267,15 @@ export function canTeamPlay(context, rawQuery, options = {}) {
  * @param {string} date
  * @param {number} startMinutes
  * @param {number|null} endMinutes
+ * @param {string} teamId
  * @param {import('./types.js').FeasibilityMeta} meta
- * @returns {{ overlaps: boolean, unknowns: import('./types.js').FeasibilityUnknown[] }}
+ * @returns {{ overlaps: boolean, unknowns: import('./types.js').FeasibilityUnknown[], claims: import('../attribution/types.js').ConstraintClaim[] }}
  */
-function teamClashAt(teamGames, carrierGameId, date, startMinutes, endMinutes, meta) {
+function teamClashAt(teamGames, carrierGameId, date, startMinutes, endMinutes, teamId, meta) {
   /** @type {import('./types.js').FeasibilityUnknown[]} */
   const unknowns = [];
+  /** @type {import('../attribution/types.js').ConstraintClaim[]} */
+  const claims = [];
   const candidate = { date, startMinutes, endMinutes, surfaceId: 'n/a' };
   let overlaps = false;
   for (const game of teamGames) {
@@ -1209,6 +1288,26 @@ function teamClashAt(teamGames, carrierGameId, date, startMinutes, endMinutes, m
     );
     if (verdict === true) {
       overlaps = true;
+      // **A clash that decides a cell publishes the fixture it clashed with.**
+      // The overlap used to reach `blocked` and nothing else, so a cell refused
+      // for this reason alone sealed `infeasible` over an empty blocking list —
+      // the same shape as the defects rounds five and six closed, latent here
+      // only because no team in this corpus plays twice on one date. The claim
+      // names the standing fixture as its instance, so it is a specific claim
+      // rather than the category label this layer refuses, and the overlap
+      // itself stays `bookingsOverlapInTime()`'s answer: nothing is re-decided.
+      claims.push(
+        makeClaim({
+          source: ATTRIBUTION_SOURCE.FACILITY,
+          kind: FEASIBILITY_REASON.FEASIBILITY_TEAM_DOUBLE_BOOKED,
+          instanceId: game.id,
+          codes: [FEASIBILITY_REASON.FEASIBILITY_TEAM_DOUBLE_BOOKED],
+          severity: CONSTRAINT_SEVERITY.BLOCKING,
+          binding: true,
+          computed: { startMinutes, otherStartMinutes: game.startMinutes },
+          detail: `team "${teamId}" already plays fixture "${game.id}" on ${date}, and that fixture overlaps the window this question asks about; a team cannot be in two places at once and no per-placement check can see this`,
+        })
+      );
       continue;
     }
     if (verdict === null) {
@@ -1222,7 +1321,7 @@ function teamClashAt(teamGames, carrierGameId, date, startMinutes, endMinutes, m
       );
     }
   }
-  return { overlaps, unknowns };
+  return { overlaps, unknowns, claims };
 }
 
 /**

@@ -180,7 +180,15 @@
  * @property {string|null} marginBasis - the `kind` of the bound the margin came
  *   from; `null` exactly when `marginMinutes` is
  * @property {FeasibilityUnknown[]} unknowns
- * @property {import('../attribution/types.js').ConstraintClaim[]} blockers
+ * @property {import('../attribution/types.js').ConstraintClaim[]} blockers - the cell's
+ *   own, plus the one blocker the grid owns rather than inherits: a
+ *   `FEASIBILITY_TEAM_DOUBLE_BOOKED` claim naming the standing fixture this
+ *   window clashes with, which no per-placement check can see
+ * @property {FeasibilityFinding[]} findings - the cell's own answer's findings,
+ *   carried whole. Not decoration: `canGameMove()` publishes a compromise that
+ *   no claim can name — `FEASIBILITY_EVIDENCE_UNCLAIMED` — as a finding, and a
+ *   grid that kept only the claims would seal a cell's tightness on evidence it
+ *   had dropped one line earlier, which is what 546 cells of this corpus did
  */
 
 /**
