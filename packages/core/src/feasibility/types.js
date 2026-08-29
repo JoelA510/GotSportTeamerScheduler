@@ -92,9 +92,19 @@
  * `assertBoundaryResult()`, run by `boundaryOf()` where the boundary is built
  * rather than by the caller that supplies the result. A boundary with no
  * position carries the constraints that explain why it has none, which for a
- * clean boundary nobody probed is nothing at all — and, where a registry refused
- * every minute of the day, is the refusal itself, including the findings no one
- * of the four edges owns.
+ * clean boundary nobody probed is nothing at all — and, where no legal minute
+ * exists, is the refusal itself.
+ *
+ * **And `claims` is every finding that counts, not only the ones an edge owns.**
+ * A finding above `info` that no *applicable* bound of this boundary speaks for
+ * becomes a claim of its own through `claimFromFinding()`, which is
+ * `claimsFromBounds()`'s contract in `attribution/explain.js` rather than a
+ * second one. `latestLegalKickoff()` reports no constraints at all when it finds
+ * no legal minute, so its `blocking` `NO_LEGAL_KICKOFF` is owned by nothing, and
+ * a positioned bound can carry a `compromise` — `LINING_MISMATCH`,
+ * `PERMIT_UNDECLARED`, `OCCUPANCY_FOOTPRINT_UNKNOWN` — that belongs to none of
+ * the four edges. Dropping either is how an answer seals on evidence it does not
+ * publish.
  *
  * @typedef {Object} FeasibilityBoundary
  * @property {string} threshold - a `FEASIBILITY_THRESHOLD` value

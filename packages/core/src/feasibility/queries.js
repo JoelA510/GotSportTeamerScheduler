@@ -1505,8 +1505,7 @@ export function feasibleKickoffBounds(context, rawQuery) {
     hardMinutes,
     FEASIBILITY_THRESHOLD.HARD,
     meta,
-    categoryOnlyClaims,
-    refusedAtAvailabilityBound
+    categoryOnlyClaims
   );
 
   const cleanMinutes = searchBoundary(
@@ -1681,11 +1680,6 @@ export function feasibleKickoffBounds(context, rawQuery) {
  * @param {import('./types.js').FeasibilityMeta} meta
  * @param {Array<Object>} categoryOnlyClaims - collector for claims that fail the
  *   specific-instance test; never expected to receive one
- * @param {ReadonlyArray<{ code: string, severity: string, message: string, details: Record<string, unknown> }>} [refusedBy] -
- *   the findings that refused this boundary's *existence*, when it has no
- *   position because something refused every minute. Only these are published as
- *   claims of their own, and only when there is no position: at a boundary that
- *   exists the constraints of its own minute are the whole answer
  * @returns {import('./types.js').FeasibilityBoundary}
  */
 function boundaryOf(
@@ -1696,8 +1690,7 @@ function boundaryOf(
   kickoffMinutes,
   threshold,
   meta,
-  categoryOnlyClaims,
-  refusedBy = []
+  categoryOnlyClaims
 ) {
   assertBoundaryResult(result, kickoffMinutes, threshold);
   const probesBefore = meta.boundaryProbesRun;
@@ -1734,35 +1727,38 @@ function boundaryOf(
     .map((constraint) =>
       claimFromAvailabilityConstraint(constraint, claimCtx, grouped.byKind[constraint.kind] ?? [])
     );
-  // **What refused a boundary that does not exist, when no bound of its own owns
-  // the code that did it.** `FeasibilityBoundary` says a boundary with no
-  // position carries the constraints explaining its absence, and a registry that
-  // hardens a code no availability constraint kind claims — `LINING_MISMATCH` is
-  // one — refuses every minute of the day while none of the four edges says a
-  // word. Those findings became claims of nobody's, so the answer sealed
-  // `infeasible` on evidence it did not publish. They are restated here through
-  // the same builder `explainKickoffTime()` uses for its own orphans, which is
-  // that function's contract adopted rather than a third one invented.
+  // **Every finding that counts, owned by a bound or not.**
+  // `claimsFromBounds()` in `attribution/explain.js` already states this
+  // contract: the kinds a bound took responsibility for are tracked, and
+  // everything else — bucketed under a kind no *applicable* bound claimed, or
+  // bucketed under nothing at all — becomes a claim in its own right through
+  // `claimFromFinding()`. This is that function's contract adopted whole rather
+  // than a third one invented (`CLAUDE.md` section 3).
   //
-  // Deliberately narrow: only the findings named as the refusal, and only for a
-  // boundary that has no position. A boundary that *exists* keeps reporting the
-  // constraints of its own minute and nothing else, so no answer this corpus
-  // produces moves.
+  // It was adopted narrowly first, for the one case a review had a name for: a
+  // boundary refused at every minute of the day by a code no availability kind
+  // owns. That left the general case standing. `latestLegalKickoff()` returns
+  // `constraints: []` when it finds no legal minute, so its `blocking`
+  // `NO_LEGAL_KICKOFF` was owned by nothing and dropped — 745 of this corpus's
+  // 751 infeasible bounds answers sealed `infeasible` while
+  // `deriveFeasibilityEvidence()` looked at an empty list. And at a boundary
+  // that *does* exist, a `compromise` no edge owns — `LINING_MISMATCH` on
+  // ground lined for another format, `PERMIT_UNDECLARED`, an unknown
+  // footprint — was dropped the same way, on 869 positioned boundaries.
+  //
+  // So the orphan set is the general one: the findings of this boundary's own
+  // minute, at the registry's severities, that no applicable bound of this
+  // boundary speaks for.
   const ownedKinds = new Set(
     (result.constraints ?? [])
       .filter((constraint) => constraint.applicable)
       .map((constraint) => constraint.kind)
   );
-  const orphaned = groupFindingsByConstraintKind(
-    /** @type {ReadonlyArray<import('../attribution/types.js').AttributionFinding>} */ (
-      kickoffMinutes === null ? refusedBy : []
-    )
-  );
-  const refusals = [
-    ...Object.entries(orphaned.byKind)
+  const orphans = [
+    ...Object.entries(grouped.byKind)
       .filter(([kind]) => !ownedKinds.has(kind))
       .flatMap(([, group]) => group),
-    ...orphaned.ungrouped,
+    ...grouped.ungrouped,
   ].map((finding) =>
     claimFromFinding(finding, {
       registry: engines.registry,
@@ -1774,10 +1770,10 @@ function boundaryOf(
     })
   );
   const claims =
-    refusals.length === 0
+    orphans.length === 0
       ? bounds
       : /** @type {import('../attribution/types.js').ConstraintClaim[]} */ (
-          mergeClaimsByTightness([bounds, refusals])
+          mergeClaimsByTightness([bounds, orphans])
         );
   meta.claimsCarried += claims.length;
   // **The bar every claim has to clear, checked here too.** 4.3 runs this from

@@ -48,11 +48,11 @@ and not yet merged.
 committed. `packages/core/src/feasibility/` (`reasonCodes.js`, `schemas.js`,
 `types.js`, `verdict.js`, `queries.js`, `index.js`) plus
 `tests/feasibilityApi.test.js`; `tests/reasonCodeReachability.test.js` gains the
-sixteenth vocabulary and its driver. Suite **1776 -> 1895**, measured at each
+sixteenth vocabulary and its driver. Suite **1776 -> 1899**, measured at each
 commit rather than added up: 62 new cases with the feature (`a393c60`), 25 more
 from the first pre-PR review round (`ece79b3`), 5 from the second round below,
-9 from the third, 7 from the fourth, 11 from the fifth. All six gates green,
-season fixture green.
+9 from the third, 7 from the fourth, 11 from the fifth, 4 from the sixth. All
+six gates green, season fixture green.
 
 Three queries, one answer shape: `canGameMove()`, `canTeamPlay()`,
 `feasibleKickoffBounds()`. A verdict is three-valued
@@ -258,8 +258,9 @@ module read that list as though a probe had produced it.
    hardened by a registry is one, and no availability constraint kind claims it
    — becomes a claim of its own through `claimFromFinding()`, which is
    `explainKickoffTime()`'s contract for its orphans adopted rather than a third
-   one invented. Deliberately narrow: only the findings named as the refusal,
-   and only where there is no position. Reproduced against a HARD record over
+   one invented. Deliberately narrow at the time — only the findings named as
+   the refusal, and only where there is no position — which is the restriction
+   round six removed; see below. Reproduced against a HARD record over
    `LINING_MISMATCH` on `brookside-park/upper-1`, 2026-08-22, 4v4, built through
    `buildSeason2026ConstraintRegistry({ extraConstraints })`.
 2. **"The registry moved the bound" said when it had not.**
@@ -280,6 +281,62 @@ module read that list as though a probe had produced it.
    registry moves the bound gain one (`meta.boundaryProbesRun` +1,
    `constraintsConsulted` +4). No verdict, bound, claim, margin, status or
    finding moves anywhere in the corpus, under either registry.
+
+**The sixth pre-PR review round.** One finding, live on the corpus as it ships,
+and the first of the six rounds that moves published figures.
+
+1. **An answer that sealed a severity it published nothing at.** Round five
+   adopted `claimsFromBounds()`'s orphan contract for one named case; the
+   general case stayed open, and `boundaryOf()` went on building claims from
+   availability **constraint kinds** only. `latestLegalKickoff()` reports
+   `constraints: []` when it finds no legal minute, so its `blocking`
+   `NO_LEGAL_KICKOFF` was owned by nothing and dropped: **745 of the 751**
+   infeasible plain-corpus bounds answers sealed `infeasible` with
+   `latestHard.claims: []`, the verdict riding on the caller's `blocked` flag
+   while `deriveFeasibilityEvidence()` read an empty list. (The other 6 are the
+   09/19 blackout, whose `PERMIT_BLACKOUT` *is* owned by the permit edge.) At a
+   boundary that does exist, a `compromise` no edge owns was dropped the same
+   way on **869** positioned boundaries — `LINING_MISMATCH` x844,
+   `PERMIT_UNDECLARED` x59, `OCCUPANCY_FOOTPRINT_UNKNOWN` x44. The orphan set is
+   now the general one and the narrow `refusedBy` parameter is deleted as
+   redundant.
+
+   **What moved, over the two-registry sweep of 5,234 answers: 3,228 lines, all
+   of them bounds — 1,614 under each registry — and on every one of them
+   `latestHard.claims` plus `meta.claimsCarried` and nothing else.** No move and
+   no team answer changes at all. Under the plain registry the verdicts stay
+   751/1,024/97, the statuses stay 745 rejected / 1,127 compromised, the
+   tightness distribution stays **772 / 848 / 199 / 53**, and no margin, basis,
+   binding set or boundary minute moves anywhere. Alder 08/22 18:15/18:15,
+   Alder 11/14 14:50/14:50, Summit 11/14 19:30/19:15, the 08/22 joint clean
+   bound and incident 3's -10 min / `occupancy` are all unchanged.
+
+   The tightness distribution holds for a reason rather than by luck, and the
+   reason is checkable: all 869 newly-explained positioned boundaries are cells
+   with **no clean position** (772 `feasible`, 97 `unknown`), because a
+   compromise that speaks at the hard bound here is one that speaks at every
+   minute — lining, an undeclared permit and an unknown footprint do not depend
+   on the clock — which is exactly what makes the clean search return null. So
+   `no-clean-position`, which already beats `tight`, goes on beating it. Every
+   population is derivable from the corpus files: `LINING_MISMATCH` appears at a
+   positioned bound **iff** the format is absent from that surface's `lined`
+   list in `facility_geometry.json` (checked over all 1,121 positioned bounds,
+   zero exceptions); all 59 `PERMIT_UNDECLARED` are 2026-08-23, the one Sunday
+   `facility_permits.csv` covers for Alder Park alone; all 44
+   `OCCUPANCY_FOOTPRINT_UNKNOWN` trace to the four `Scrimmage` rows in
+   `combined_schedule.csv`, a format `game_formats.csv` gives no timing row
+   (GAP-14).
+
+   The rule replaces the counts as the thing that fails: **no answer of any
+   shape may seal `infeasible` (or `compromised`) while publishing no evidence
+   at that severity**, swept over 3,744 bounds answers under two registries,
+   every game's standing and +30 move, every real team's grid and every one of
+   its cells. Its one tolerated residue is earned by an oracle rather than by a
+   count — a `tight` move whose compromise is a scan-level coach-travel finding
+   that no transition owns and that `claimFromFinding()` can name no instance
+   for, re-derived independently from `evaluateCoachTravel()`. And
+   `FEASIBILITY_NO_CLEAN_POSITION`, stated on 772 cells, is now held to
+   publishing at its own hard bound the compromise that explains it.
 
 Nothing in flight otherwise. 6.1 merged as #351 after seven review rounds
 (11 -> 6 -> 4 -> 2 -> 4 -> 1 -> 0 findings) and one CI failure of its own making:

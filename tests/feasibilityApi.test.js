@@ -41,6 +41,7 @@ import {
   ATTRIBUTION_SOURCE,
   buildAttributionContext,
   categoryOnlyClaimFindings,
+  claimFromFinding,
   createAttributionMeta,
   explainKickoffTime,
   isSpecificClaim,
@@ -3633,4 +3634,446 @@ describe('feasibility :: round 5, finding 2 — "the registry moved the bound" o
     expect(compared).toBeGreaterThan(0);
     expect([...extras].sort()).toEqual([AVAILABILITY_REASON.LATEST_KICKOFF_BOUND]);
   }, 120_000);
+});
+
+/* -------------------------------------------------------------------------- */
+/* Sixth pre-PR review of 7.1 — an answer publishes the severity it seals on    */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * **The evidence an answer publishes, by shape.**
+ *
+ * Not "everything the answer says". `seal()` derives the verdict and the
+ * tightness from *one* list — the severity-bearing records the answer hands it —
+ * and this returns that list rather than a friendlier superset, because a rule
+ * allowed to look elsewhere for its evidence is a rule that stops noticing when
+ * the evidence is gone.
+ *
+ * - **Bounds** publish `latestHard.claims`: exactly the list
+ *   `feasibleKickoffBounds()` hands `seal()` as `blockers`. `latestClean.claims`
+ *   is deliberately *not* folded in — the clean boundary decides no verdict, and
+ *   counting it would let a compromise found at another minute stand in for one
+ *   that was never found at this one.
+ * - **A move** publishes `blockers`.
+ * - **A team roll-up** publishes every cell's `blockers`. It carries no
+ *   `blockers` field of its own: `seal()` is handed an empty list plus a `state`
+ *   carrying the one fact no single blocker can express — *"every cell of the
+ *   grid said no"* — and the records behind that fact live in the cells, which
+ *   the answer publishes as `candidates`. So the grid is held to the rule
+ *   through the evidence it actually shows an operator rather than excused
+ *   from it.
+ *
+ * @param {Object} answer - a feasibility answer of any of the three shapes
+ * @returns {Array<{ severity: string }>}
+ */
+function publishedEvidence(answer) {
+  if (answer.question === FEASIBILITY_QUESTION.KICKOFF_BOUNDS) {
+    return [...answer.latestHard.claims];
+  }
+  if (answer.question === FEASIBILITY_QUESTION.CAN_TEAM_PLAY) {
+    return answer.candidates.flatMap((candidate) => candidate.blockers);
+  }
+  return [...answer.blockers];
+}
+
+/**
+ * **The rule, as a predicate over one answer.**
+ *
+ * Returns the offence and the arm it fell on, or `null`. A function rather than
+ * inline `expect`s so the same predicate judges a real answer and the doctored
+ * one the positive control builds.
+ *
+ * @param {string} label
+ * @param {Object} answer
+ * @returns {{ arm: 'infeasible'|'tight', message: string }|null}
+ */
+function severitySealedWithoutEvidence(label, answer) {
+  const evidence = publishedEvidence(answer);
+  const severities = JSON.stringify([...new Set(evidence.map((record) => record.severity))].sort());
+  if (
+    answer.verdict === FEASIBILITY_VERDICT.INFEASIBLE &&
+    !evidence.some((record) => record.severity === CONSTRAINT_SEVERITY.BLOCKING)
+  ) {
+    return {
+      arm: 'infeasible',
+      message: `${label}: sealed "infeasible" while publishing no blocking evidence (${evidence.length} record(s), severities ${severities})`,
+    };
+  }
+  if (
+    answer.tight === FEASIBILITY_TIGHTNESS.TIGHT &&
+    !evidence.some(
+      (record) =>
+        record.severity === CONSTRAINT_SEVERITY.COMPROMISE ||
+        record.severity === CONSTRAINT_SEVERITY.BLOCKING
+    )
+  ) {
+    return {
+      arm: 'tight',
+      message: `${label}: sealed "tight" while publishing no compromise evidence (${evidence.length} record(s), severities ${severities})`,
+    };
+  }
+  return null;
+}
+
+/**
+ * **The oracle for the one residue the rule leaves, computed independently of
+ * the module under test.**
+ *
+ * `projectTravel()` compares two `evaluateCoachTravel()` runs and reports the
+ * codes whose count grew. A finding no *transition* owns is dropped from the
+ * claims, because `claimFromFinding()` would build a claim naming no instance —
+ * `TRAVEL_SCAN_VACUOUS` carries `commitmentsExamined` and `peopleExamined` and
+ * nothing that identifies a record — and a claim that names a category is the
+ * answer this whole layer exists to replace. So the compromise is real, it
+ * decides the answer's tightness through `deriveFeasibilityEvidence()`, and it
+ * is genuinely unpublishable as a claim.
+ *
+ * This rebuilds that comparison from `evaluateCoachTravel()` and the schedule's
+ * own commitments, so an offence the rule tolerates has to be explained by an
+ * independent computation rather than by a count written here. Anything the
+ * oracle does not explain fails.
+ *
+ * @param {string} gameId
+ * @param {{ date: string, surfaceId: string, startMinutes: number }} to
+ * @returns {boolean} whether moving `gameId` there introduces a non-`info`
+ *   travel finding that no transition owns and no claim can name
+ */
+function introducesUnpublishableTravelCompromise(gameId, to) {
+  const commitments = context.schedule.commitments;
+  const personIds = new Set(
+    commitments.filter((entry) => entry.gameId === gameId).map((entry) => entry.personId)
+  );
+  if (personIds.size === 0) return false;
+  const standing = context.state.baseline[gameId];
+  const venueId = getSurface(graph, to.surfaceId)?.venueId ?? null;
+  const dates = new Set([standing.date, to.date]);
+  const relevant = commitments.filter(
+    (entry) => personIds.has(entry.personId) && dates.has(entry.date)
+  );
+  const projected = relevant.map((entry) => {
+    if (entry.gameId !== gameId) return { ...entry };
+    const durationMinutes =
+      entry.endMinutes === null ? null : entry.endMinutes - entry.startMinutes;
+    return {
+      ...entry,
+      date: to.date,
+      venueId: venueId ?? entry.venueId,
+      surfaceId: to.surfaceId,
+      startMinutes: to.startMinutes,
+      endMinutes: durationMinutes === null ? null : to.startMinutes + durationMinutes,
+    };
+  });
+  const options = { registry, venueComplexes };
+  const before = evaluateCoachTravel(relevant, options);
+  const after = evaluateCoachTravel(projected, options);
+  /** @type {Record<string, number>} */
+  const budget = {};
+  for (const finding of before.findings) {
+    budget[finding.code] = (budget[finding.code] ?? 0) + 1;
+  }
+  for (const finding of after.findings) {
+    if ((budget[finding.code] ?? 0) > 0) {
+      budget[finding.code] -= 1;
+      continue;
+    }
+    if (finding.severity === CONSTRAINT_SEVERITY.INFO) continue;
+    if (after.transitions.some((entry) => entry.findings.includes(finding))) continue;
+    const asClaim = claimFromFinding(finding, {
+      registry,
+      source: ATTRIBUTION_SOURCE.COACH_TRAVEL,
+      gameId,
+      surfaceId: to.surfaceId,
+      venueId,
+      date: to.date,
+    });
+    if (!isSpecificClaim(asClaim)) return true;
+  }
+  return false;
+}
+
+describe('feasibility :: round 6, finding 1 — an answer publishes the severity it seals on', () => {
+  it('has a predicate that can fail, at each shape s own evidence field', () => {
+    // **The positive control.** The rule below is only worth its sweep if it can
+    // say no, so it is handed the answers it must refuse and the ones it must
+    // accept, doctored at the field each shape's verdict is actually derived
+    // from.
+    const blocking = makeClaim({
+      source: ATTRIBUTION_SOURCE.AVAILABILITY,
+      kind: FACILITY_REASON.LINING_MISMATCH,
+      instanceId: ALDER_2,
+      codes: [FACILITY_REASON.LINING_MISMATCH],
+      severity: CONSTRAINT_SEVERITY.BLOCKING,
+    });
+    const compromise = makeClaim({
+      source: ATTRIBUTION_SOURCE.AVAILABILITY,
+      kind: FACILITY_REASON.LINING_MISMATCH,
+      instanceId: ALDER_2,
+      codes: [FACILITY_REASON.LINING_MISMATCH],
+      severity: CONSTRAINT_SEVERITY.COMPROMISE,
+    });
+    /** @param {Array<Object>} claims */
+    const bounds = (claims) => ({
+      question: FEASIBILITY_QUESTION.KICKOFF_BOUNDS,
+      verdict: FEASIBILITY_VERDICT.INFEASIBLE,
+      tight: null,
+      latestHard: { claims },
+    });
+    expect(severitySealedWithoutEvidence('doctored bounds', bounds([]))?.arm).toBe('infeasible');
+    // A compromise is not a blocking record, so it does not satisfy the arm a
+    // blocking verdict fell on. This is the half a laxer rule would let through.
+    expect(severitySealedWithoutEvidence('doctored bounds', bounds([compromise]))?.arm).toBe(
+      'infeasible'
+    );
+    expect(severitySealedWithoutEvidence('doctored bounds', bounds([blocking]))).toBeNull();
+    /** @param {Array<Object>} blockers */
+    const move = (blockers) => ({
+      question: FEASIBILITY_QUESTION.CAN_GAME_MOVE,
+      verdict: FEASIBILITY_VERDICT.FEASIBLE,
+      tight: FEASIBILITY_TIGHTNESS.TIGHT,
+      blockers,
+    });
+    expect(severitySealedWithoutEvidence('doctored move', move([]))?.arm).toBe('tight');
+    expect(severitySealedWithoutEvidence('doctored move', move([compromise]))).toBeNull();
+    // …and the grid's evidence is allowed to live in its cells, which is the one
+    // structural allowance the rule makes and therefore the one that has to be
+    // shown to work in both directions.
+    /** @param {Array<Object>} cellBlockers */
+    const team = (cellBlockers) => ({
+      question: FEASIBILITY_QUESTION.CAN_TEAM_PLAY,
+      verdict: FEASIBILITY_VERDICT.INFEASIBLE,
+      tight: null,
+      candidates: [{ blockers: cellBlockers }],
+    });
+    expect(severitySealedWithoutEvidence('doctored team', team([]))?.arm).toBe('infeasible');
+    expect(severitySealedWithoutEvidence('doctored team', team([blocking]))).toBeNull();
+  });
+
+  it('has a residue it tolerates, and that residue is a claim nobody can name', () => {
+    // **Why the compromise arm has an oracle and the blocking arm does not.**
+    // The only travel findings no transition owns are scan-level, and a claim
+    // built from one names no instance — so it fails the module's own
+    // specificity bar and cannot be published as a claim at all. The
+    // corresponding *blocking* case does not exist: `travelSeverityOf()` cannot
+    // make a scan-level code blocking under any constraint type, which round
+    // four proves. So the rule's `infeasible` arm needs no residue and its
+    // `tight` arm has exactly this one.
+    const vacuous = evaluateCoachTravel(
+      [
+        {
+          id: 'c1',
+          personId: 'coach-1',
+          date: '2026-08-22',
+          startMinutes: 600,
+          endMinutes: 690,
+          venueId: 'alder-park',
+        },
+      ],
+      { registry, venueComplexes }
+    );
+    const scanLevel = vacuous.findings.filter(
+      (finding) => !vacuous.transitions.some((entry) => entry.findings.includes(finding))
+    );
+    // Meta-assertion: the constructed scan really did produce an unowned
+    // finding, so the assertions below are about something.
+    expect(scanLevel.map((finding) => finding.code)).toEqual([TRAVEL_REASON.TRAVEL_SCAN_VACUOUS]);
+    for (const finding of scanLevel) {
+      expect(finding.severity).toBe(CONSTRAINT_SEVERITY.COMPROMISE);
+      expect(
+        isSpecificClaim(
+          claimFromFinding(finding, {
+            registry,
+            source: ATTRIBUTION_SOURCE.COACH_TRAVEL,
+            gameId: 'g1',
+            surfaceId: ALDER_2,
+            venueId: 'alder-park',
+            date: '2026-08-22',
+          })
+        )
+      ).toBe(false);
+    }
+  });
+
+  it('holds over every answer this corpus produces, at both severities', () => {
+    /** @type {string[]} */
+    const offenders = [];
+    /** Offences the travel oracle explained, and the ones it did not. */
+    let tolerated = 0;
+    const judged = {
+      [FEASIBILITY_QUESTION.KICKOFF_BOUNDS]: { swept: 0, infeasible: 0, tight: 0 },
+      [FEASIBILITY_QUESTION.CAN_GAME_MOVE]: { swept: 0, infeasible: 0, tight: 0 },
+      [FEASIBILITY_QUESTION.CAN_TEAM_PLAY]: { swept: 0, infeasible: 0, tight: 0 },
+    };
+    /** How often a grid's evidence was found only in its cells. */
+    let rolledUpFromCells = 0;
+    /**
+     * @param {string} label
+     * @param {Object} answer
+     * @param {{ gameId: string, to: { date: string, surfaceId: string, startMinutes: number } }|null} [projection] -
+     *   the move this answer is about, where there is one, so a tolerated
+     *   offence can be put to the oracle
+     */
+    const rule = (label, answer, projection = null) => {
+      const counters = judged[answer.question];
+      counters.swept += 1;
+      if (answer.verdict === FEASIBILITY_VERDICT.INFEASIBLE) counters.infeasible += 1;
+      if (answer.tight === FEASIBILITY_TIGHTNESS.TIGHT) counters.tight += 1;
+      if (
+        answer.question === FEASIBILITY_QUESTION.CAN_TEAM_PLAY &&
+        answer.verdict === FEASIBILITY_VERDICT.INFEASIBLE &&
+        publishedEvidence(answer).length > 0
+      ) {
+        rolledUpFromCells += 1;
+      }
+      const offence = severitySealedWithoutEvidence(label, answer);
+      if (offence === null) return;
+      // **The only offence this rule tolerates**, and it has to be earned: a
+      // `tight` move whose compromise an independent re-run of
+      // `evaluateCoachTravel()` shows to be a scan-level finding no claim can
+      // name. Every other offence, at either arm, is a failure.
+      if (
+        offence.arm === 'tight' &&
+        projection !== null &&
+        introducesUnpublishableTravelCompromise(projection.gameId, projection.to)
+      ) {
+        tolerated += 1;
+        return;
+      }
+      offenders.push(offence.message);
+    };
+
+    // **Both registries**, because a registry that hardens a code no
+    // availability kind owns is the arm the shipped season cannot reach, and it
+    // is exactly the arm where a boundary is refused at every minute.
+    for (const [registryLabel, ctx] of /** @type {const} */ ([
+      ['plain', context],
+      ['lining-hard', contextWith(LINING_IS_HARD)],
+    ])) {
+      for (const cell of boundsCorpus()) {
+        rule(
+          `bounds ${registryLabel} ${cell.surfaceId} ${cell.date} ${cell.format}`,
+          feasibleKickoffBounds(ctx, cell)
+        );
+      }
+    }
+    for (const game of schedule.games) {
+      rule(`standing ${game.id}`, standingAnswer(game), {
+        gameId: game.id,
+        to: { date: game.date, surfaceId: game.surfaceId, startMinutes: game.startMinutes },
+      });
+      rule(
+        `move ${game.id} +30`,
+        canGameMove(
+          context,
+          { gameId: game.id, insteadOfMinutes: game.startMinutes + 30 },
+          { venueComplexes }
+        ),
+        {
+          gameId: game.id,
+          to: { date: game.date, surfaceId: game.surfaceId, startMinutes: game.startMinutes + 30 },
+        }
+      );
+    }
+    const everyDate = [...new Set(schedule.games.map((game) => game.date))].sort();
+    for (const teamId of realTeams) {
+      const answer = canTeamPlay(
+        context,
+        { teamId, dates: everyDate, kickoffMinutes: 12 * 60 + 30 },
+        { venueComplexes }
+      );
+      rule(`team ${teamId}`, answer);
+      // **The cells are answers too.** They are `canGameMove()` answers the grid
+      // publishes verbatim, and excusing them because they arrive nested would
+      // be choosing the subject set to avoid the failure.
+      for (const candidate of answer.candidates) {
+        rule(
+          `team ${teamId} cell ${candidate.date} ${candidate.surfaceId}`,
+          {
+            question: FEASIBILITY_QUESTION.CAN_GAME_MOVE,
+            verdict: candidate.verdict,
+            tight: candidate.tight,
+            blockers: candidate.blockers,
+          },
+          answer.carrierGameId === null
+            ? null
+            : {
+                gameId: answer.carrierGameId,
+                to: {
+                  date: candidate.date,
+                  surfaceId: candidate.surfaceId,
+                  startMinutes: candidate.kickoffMinutes,
+                },
+              }
+        );
+      }
+    }
+
+    expect(offenders.slice(0, 5)).toEqual([]);
+    expect(offenders).toHaveLength(0);
+
+    // Meta-assertions. Every arm of the rule was exercised at every shape: a
+    // sweep that met no `infeasible` bounds answer, or no `tight` move, would
+    // pass while judging nothing.
+    for (const question of Object.keys(judged)) {
+      expect(judged[question].swept, `${question} swept`).toBeGreaterThan(0);
+      expect(judged[question].infeasible, `${question} infeasible`).toBeGreaterThan(0);
+      expect(judged[question].tight, `${question} tight`).toBeGreaterThan(0);
+    }
+    // …the structural allowance was used rather than sitting unexercised as an
+    // escape hatch nothing walks through…
+    expect(rolledUpFromCells).toBeGreaterThan(0);
+    // …and the tolerated residue is real and bounded: the oracle explained
+    // offences, and it is the *only* thing standing between this rule and zero.
+    expect(tolerated).toBeGreaterThan(0);
+    expect(tolerated).toBeLessThan(judged[FEASIBILITY_QUESTION.CAN_GAME_MOVE].tight);
+  }, 900_000);
+
+  it('gives "no clean position" the evidence its own boundary cannot carry', () => {
+    // **The asymmetry, decided and then enforced.** A hard boundary that does
+    // not exist is a refusal at a named minute and says so. A *clean* boundary
+    // that does not exist is a statement about a search: `searchBoundary()`
+    // confirmed every candidate it generated and every one of them raised
+    // something above `info`, so there is no single minute whose findings
+    // explain the absence, and quoting one candidate's would describe it in
+    // another minute's words — the thing `assertBoundaryResult()` exists to
+    // forbid. So the clean boundary stays silent, and it is only allowed to
+    // stay silent because the evidence is published where a real minute
+    // carries it: at the *hard* bound, which does exist on every one of these
+    // cells.
+    //
+    // That was not true before this round. `FEASIBILITY_NO_CLEAN_POSITION` was
+    // stated on 772 cells whose hard boundary published nothing above `info`,
+    // because the compromise that made every minute unclean was owned by no
+    // availability kind and was dropped. This is the rule that keeps it true.
+    let stated = 0;
+    /** @type {string[]} */
+    const offenders = [];
+    for (const cell of boundsCorpus()) {
+      const answer = feasibleKickoffBounds(context, cell);
+      if (answer.tight !== FEASIBILITY_TIGHTNESS.NO_CLEAN_POSITION) continue;
+      stated += 1;
+      const at = `${cell.surfaceId} ${cell.date} ${cell.format}`;
+      // The absence is stated, so a real minute must carry the reason.
+      if (answer.latestHard.kickoffMinutes === null) {
+        offenders.push(`${at}: says "no clean position" with no hard bound either`);
+        continue;
+      }
+      const explaining = answer.latestHard.claims.filter(
+        (claim) =>
+          claim.severity === CONSTRAINT_SEVERITY.COMPROMISE ||
+          claim.severity === CONSTRAINT_SEVERITY.BLOCKING
+      );
+      if (explaining.length === 0) {
+        offenders.push(`${at}: says "no clean position" and its hard bound publishes nothing`);
+        continue;
+      }
+      for (const claim of explaining) {
+        if (!isSpecificClaim(claim)) offenders.push(`${at}: explained by a category, not a record`);
+      }
+    }
+    expect(offenders.slice(0, 5)).toEqual([]);
+    expect(offenders).toHaveLength(0);
+    // Meta-assertion: the population is the one the reviews measured, so a
+    // sweep that stopped meeting it fails rather than passing quietly.
+    expect(stated).toBe(772);
+  }, 300_000);
 });
