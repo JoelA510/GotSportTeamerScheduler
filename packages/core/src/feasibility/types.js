@@ -1,0 +1,206 @@
+/**
+ * JSDoc typedefs for the read-only feasibility layer.
+ *
+ * Type-only module: no runtime exports, ending in `export {};` so it stays a
+ * module, exactly like `facility/types.js`, `resolve/types.js` and
+ * `attribution/types.js`.
+ *
+ * The centre of this file is {@link FeasibilityAnswer}, and the three fields
+ * that make it the thing the build plan asked for:
+ *
+ * - `verdict` — three-valued, never two.
+ * - `binding` — a **list** of {@link FeasibilityBound}, because two constraints
+ *   binding at the same minute is not one constraint binding.
+ * - `marginMinutes` — a number with a unit and one stated sign convention,
+ *   copied from the module that computed it.
+ *
+ * @module feasibility/types
+ */
+
+/**
+ * One machine-readable reason. Identical in shape to every other module's
+ * finding, so all twelve merge into one list without a translation layer.
+ *
+ * @typedef {Object} FeasibilityFinding
+ * @property {string} code
+ * @property {string} severity
+ * @property {string} message
+ * @property {Record<string, unknown>} details
+ */
+
+/**
+ * One question the model could not decide, and why.
+ *
+ * A record rather than a flag. The whole point of the three-valued verdict is
+ * that `unknown` carries *what* was unknown: an answer that said `unknown` with
+ * an empty list would be exactly as useless as `false`.
+ *
+ * @typedef {Object} FeasibilityUnknown
+ * @property {string} code - a `FEASIBILITY_REASON` value
+ * @property {string} subject - what could not be decided, in one noun phrase
+ * @property {string} reason - the owner's own words for why
+ * @property {string|null} sourceCode - the owner's reason code, when one raised it
+ * @property {string|null} constraintId - the registry constraint at stake, when there is one
+ * @property {boolean} verdictBearing - could this undecided thing change the
+ *   verdict? Derived, never asserted: a constraint whose type gives its findings
+ *   `info` moves no status anywhere in the model, so leaving it unchecked cannot
+ *   turn a legal position into an illegal one. A non-bearing unknown is still
+ *   reported in full — it is the answer's honesty about what nobody checked —
+ *   and it still compromises the answer's `status`; it just does not pretend to
+ *   be a reason the position might be illegal
+ * @property {Record<string, unknown>} details
+ */
+
+/**
+ * One constraint at a boundary, with what it would raise one minute later.
+ *
+ * `raises` is the operational definition of "binding" and the reason this
+ * module never has to compare limits itself: a constraint binds at a position
+ * when it *speaks* about that position. For a boundary that means one minute
+ * past it — the probe in `feasibility/verdict.js` — and for a placement it means
+ * at it. Two constraints that both speak are both binding, and neither is the
+ * winner.
+ *
+ * @typedef {Object} FeasibilityBound
+ * @property {string} kind - an `AVAILABILITY_CONSTRAINT` value
+ * @property {string} source - an `ATTRIBUTION_SOURCE` value
+ * @property {string|null} instanceId - the specific record: permit id, booking id, date
+ * @property {string|null} constraintId - the registry constraint governing it, when one does
+ * @property {number|null} limitMinutes - the owner's own limit
+ * @property {number|null} slackMinutes - room remaining at the boundary; see the sign convention
+ * @property {Array<{ code: string, severity: string }>} raises - what this
+ *   constraint says about the position: one minute past a boundary, at a placement
+ */
+
+/**
+ * A boundary — the latest or earliest position — at one of the two thresholds.
+ *
+ * @typedef {Object} FeasibilityBoundary
+ * @property {string} threshold - a `FEASIBILITY_THRESHOLD` value
+ * @property {number|null} kickoffMinutes - the boundary itself, null when there is none
+ * @property {number|null} endMinutes
+ * @property {FeasibilityBound[]} binding - every constraint at the boundary; never truncated to one
+ * @property {number|null} marginMinutes - the tightest binding member's own slack
+ * @property {string|null} marginBasis - the `kind` of the bound the margin came from
+ * @property {import('../attribution/types.js').ConstraintClaim[]} claims - tightest first
+ * @property {import('../attribution/types.js').InapplicableConstraint[]} notApplicable
+ * @property {number} candidatesTested
+ */
+
+/**
+ * What a query was asked about.
+ *
+ * @typedef {Object} FeasibilitySubject
+ * @property {string|null} gameId
+ * @property {string|null} teamId
+ * @property {string|null} surfaceId
+ * @property {string|null} venueId
+ * @property {string|null} date
+ * @property {number|null} kickoffMinutes
+ * @property {string|null} format
+ */
+
+/**
+ * **The answer shape. One shape, every query.**
+ *
+ * @typedef {Object} FeasibilityAnswer
+ * @property {string} question - a `FEASIBILITY_QUESTION` value
+ * @property {FeasibilitySubject} subject
+ * @property {string} verdict - a `FEASIBILITY_VERDICT` value; three, never two
+ * @property {boolean|null} tight - feasible but inside a stated margin; `null`
+ *   whenever the verdict is not `feasible`, because "not tight" would be a claim
+ *   about a placement nobody could judge
+ * @property {FeasibilityBound[]} binding - the constraint(s) that decided it
+ * @property {number|null} marginMinutes - see `FEASIBILITY_MARGIN_CONVENTION`
+ * @property {string} marginUnit - always `FEASIBILITY_MARGIN_UNIT`
+ * @property {string|null} marginBasis - the `kind` of the bound the margin came from
+ * @property {import('../attribution/types.js').ConstraintClaim[]} blockers - tightest first
+ * @property {FeasibilityUnknown[]} unknowns - empty exactly when nothing was undecidable
+ * @property {import('../attribution/types.js').MinimalBlockingSet|null} minimalSet
+ * @property {import('../attribution/types.js').InapplicableConstraint[]} notApplicable
+ * @property {FeasibilityFinding[]} findings - about the **answer**, never about the subject
+ * @property {FeasibilityMeta} meta
+ * @property {string} status - the answer's own integrity, not the subject's verdict
+ */
+
+/**
+ * One candidate position inside a multi-position query, with its own answer.
+ *
+ * Every candidate the query set out to judge appears here, including the ones
+ * that could not be judged — incident 10's rule applied to a query.
+ *
+ * @typedef {Object} FeasibilityCandidate
+ * @property {string} date
+ * @property {string} surfaceId
+ * @property {number} kickoffMinutes
+ * @property {string} verdict
+ * @property {boolean|null} tight
+ * @property {FeasibilityBound[]} binding
+ * @property {number|null} marginMinutes
+ * @property {FeasibilityUnknown[]} unknowns
+ * @property {import('../attribution/types.js').ConstraintClaim[]} blockers
+ */
+
+/**
+ * *"Can this team play at 6pm in November?"*
+ *
+ * @typedef {Object} TeamFeasibilityAnswer
+ * @property {string} question
+ * @property {FeasibilitySubject} subject
+ * @property {string} verdict - the roll-up; see `rollUpVerdicts()` for the rule
+ * @property {boolean|null} tight
+ * @property {FeasibilityCandidate[]} candidates - every one asked about, none dropped
+ * @property {Record<string, number>} verdictCounts - candidates per verdict
+ * @property {string|null} carrierGameId - the team's own fixture used as the subject
+ * @property {FeasibilityBound[]} binding
+ * @property {number|null} marginMinutes
+ * @property {string} marginUnit
+ * @property {string|null} marginBasis
+ * @property {FeasibilityUnknown[]} unknowns
+ * @property {FeasibilityFinding[]} findings
+ * @property {FeasibilityMeta} meta
+ * @property {string} status
+ */
+
+/**
+ * *"How late — and how early — can anything kick off here?"*
+ *
+ * @typedef {Object} KickoffBoundsAnswer
+ * @property {string} question
+ * @property {FeasibilitySubject} subject
+ * @property {string} verdict - `feasible` when a hard boundary exists at all
+ * @property {boolean|null} tight - true when the hard boundary is later than the clean one
+ * @property {FeasibilityBoundary} latestHard
+ * @property {FeasibilityBoundary} latestClean
+ * @property {number|null} tightBandMinutes - `latestHard - latestClean`; the width of
+ *   the band in which a kickoff is legal but compromised
+ * @property {FeasibilityBound[]} binding - the hard boundary's binding set
+ * @property {number|null} marginMinutes
+ * @property {string} marginUnit
+ * @property {string|null} marginBasis
+ * @property {FeasibilityUnknown[]} unknowns
+ * @property {number} searchedFromMinutes
+ * @property {number} searchedToMinutes
+ * @property {FeasibilityFinding[]} findings
+ * @property {FeasibilityMeta} meta
+ * @property {string} status
+ */
+
+/**
+ * Counters proving an answer looked at something.
+ *
+ * @typedef {Object} FeasibilityMeta
+ * @property {number} questionsAsked
+ * @property {number} candidatesConsidered
+ * @property {number} candidatesAnswered
+ * @property {number} placementChecksRun
+ * @property {number} boundaryProbesRun
+ * @property {number} constraintsConsulted
+ * @property {number} registryConstraintsTested
+ * @property {number} claimsCarried
+ * @property {number} unknownsRaised
+ * @property {number} travelTransitionsProjected
+ * @property {number} teamFixturesCompared
+ */
+
+export {};

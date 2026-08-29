@@ -39,7 +39,37 @@ merge, no regression to the shipping app (bundle entry hash unchanged throughout
 
 ## 2. In progress
 
-Nothing in flight. 6.1 merged as #351 after seven review rounds
+**Prompt 7.1 — the read-only feasibility API.** Built in the working tree, not
+committed. `packages/core/src/feasibility/` (`reasonCodes.js`, `schemas.js`,
+`types.js`, `verdict.js`, `queries.js`, `index.js`) plus
+`tests/feasibilityApi.test.js`; `tests/reasonCodeReachability.test.js` gains the
+sixteenth vocabulary and its driver. Suite **1776 -> 1836** (60 new cases), all
+six gates green, season fixture green.
+
+Three queries, one answer shape: `canGameMove()`, `canTeamPlay()`,
+`feasibleKickoffBounds()`. A verdict is three-valued
+(`feasible`/`infeasible`/`unknown`) and `deriveFeasibilityVerdict()` is its only
+producer; `binding` is always a **list**, because 08/22 at Alder Park is a
+genuine tie; `marginMinutes` is copied from the owning module's `slackMinutes`
+under one stated sign convention and is `null` — never `0` — when nothing
+measured a bound.
+
+**The second threshold is the new work.** `latestHard` is the last kickoff that
+raises nothing `blocking` (`latestLegalKickoff()`'s own answer, reproduced
+exactly); `latestClean` is the last that raises nothing above `info` at all. The
+gap is `tightBandMinutes`. On this corpus: Alder 08/22 18:15/18:15, Alder 11/14
+14:50/14:50, Summit 11/14 19:30/19:15.
+
+**One design decision worth the review's attention.** Both of the corpus's
+unenforced constraints are `preference`, and `CONSTRAINT_TYPE_SEVERITY` maps a
+preference to `info`, which moves no status in any derivation in this repo. So
+an unenforced *preference* is reported in `unknowns` and compromises the answer's
+`status`, but does not flip the verdict; an unenforced `hard` or `soft` one does.
+The guard is proved by construction rather than by assertion: `coach-maximum-gap`
+retyped to `hard` through `whatIfConstraintType()` — which projects a registry
+and adopts nothing — makes the identical query come back `unknown` naming it.
+
+Nothing in flight otherwise. 6.1 merged as #351 after seven review rounds
 (11 -> 6 -> 4 -> 2 -> 4 -> 1 -> 0 findings) and one CI failure of its own making:
 widening the digest to cover the bundle by construction took it from 6.0 to
 21.2 ms, which pushed a test doing two cold season derivations past vitest's
@@ -230,7 +260,6 @@ control's `quality.right` from 8,305,400 to 1,105,400 against the searched run's
 
 | Prompt | Scope |
 |---|---|
-| 7.1 | Read-only feasibility API — the build plan calls this "the highest day-to-day-value item in the whole sequence" |
 | 7.2 | Fairness and equity metrics |
 | 7.3 | External fixture import with impact analysis |
 

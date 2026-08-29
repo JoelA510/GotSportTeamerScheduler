@@ -1,8 +1,8 @@
 /**
  * Repo-wide reachability audit for every frozen reason-code table in
  * `packages/core/src` — the generalisation of the per-module audit
- * `tests/attribution.test.js` already carries. 15 vocabularies, 300 codes, of
- * which 292 are shown to be producible and 8 are named as holes.
+ * `tests/attribution.test.js` already carries. 16 vocabularies, 317 codes, of
+ * which 308 are shown to be producible and 9 are named as holes.
  *
  * **The defect this exists to catch.** Four times now, in four unrelated
  * modules, a reason code has been declared, given a severity, documented, and
@@ -123,6 +123,12 @@ import {
   makeFinding as makeFacilityFinding,
   season2026SurfaceId,
 } from '@squadlogic/core/facility/index.js';
+import {
+  FEASIBILITY_REASON,
+  canGameMove,
+  canTeamPlay,
+  feasibleKickoffBounds,
+} from '@squadlogic/core/feasibility/index.js';
 import {
   SEASON_2026_ROW_KIND,
   loadCoachRoster,
@@ -279,6 +285,7 @@ const TABLES = Object.freeze({
   AVAILABILITY_REASON,
   CONSTRAINT_REASON,
   FACILITY_REASON,
+  FEASIBILITY_REASON,
   FREEZE_REASON,
   PEOPLE_REASON,
   PUBLICATION_REASON,
@@ -390,6 +397,11 @@ function allow(code, why, reason) {
 
 /** @type {ReadonlyArray<{ code: string, why: string, reason: string }>} */
 const UNREACHABLE = Object.freeze([
+  allow(
+    'FEASIBILITY_CANDIDATE_DROPPED',
+    WHY.NO_PRODUCTION_PATH,
+    'canTeamPlay() answers a grid of dates x surfaces and its loop has no branch that skips a cell, so the answered list and the grid size derived from the query can never disagree today. The guard is deliberately written over the *query* — dates.length x surfaceIds.length — rather than over a counter incremented beside the push, so a continue added to that loop later trips it instead of silently shrinking the answer. Incident 10 is why it is carried rather than deleted.'
+  ),
   allow(
     'ATTRIBUTION_GAME_UNATTRIBUTED',
     WHY.NO_PRODUCTION_PATH,
@@ -3503,6 +3515,171 @@ try {
   // `ChangeBudgetExceeded` and `FrozenGameUnsatisfiable` do.
   harvest('promoteScenario(a blocking finding nobody accepted)', error);
 }
+
+/* -- feasibility ---------------------------------------------------------- */
+
+/**
+ * The read-only feasibility layer, driven through its three public queries.
+ *
+ * Every call below is a plain query object against the season context built
+ * above; nothing is reached into and altered. The one constructed input is a
+ * schedule carrying an extra fixture, which is how a team comes to span two
+ * formats — the corpus has no such team, and the alternative to constructing one
+ * would be a code nothing can produce.
+ */
+const feasibilityScrimmage = schedule.games.find((game) => game.endMinutes === null);
+const feasibilitySelect = schedule.games.find(
+  (game) => game.format === '11v11' && game.surfaceId === 'summit-hs/stadium'
+);
+const feasibilityAlder = schedule.games.find(
+  (game) => game.date === '2026-08-22' && game.surfaceId === 'alder-park/pitch-2'
+);
+
+harvest(
+  'canGameMove(an untimed Scrimmage row)',
+  canGameMove(
+    context,
+    {
+      gameId: feasibilityScrimmage.id,
+      insteadOfMinutes: feasibilityScrimmage.startMinutes + 60,
+    },
+    { venueComplexes }
+  )
+);
+
+harvest(
+  'canGameMove(a weekday the venue has no permit record for)',
+  canGameMove(
+    context,
+    { gameId: feasibilityAlder.id, insteadOfDate: '2026-08-20' },
+    { venueComplexes }
+  )
+);
+
+harvest(
+  'canGameMove(the slot it already holds)',
+  canGameMove(
+    context,
+    { gameId: feasibilityAlder.id, insteadOfMinutes: feasibilityAlder.startMinutes },
+    { venueComplexes }
+  )
+);
+
+harvest(
+  'canGameMove(a game the schedule does not hold)',
+  canGameMove(context, { gameId: 'no-such-game', insteadOfMinutes: 600 }, { venueComplexes })
+);
+
+harvest(
+  'canGameMove(no venue complexes, so travel cannot be projected)',
+  canGameMove(context, {
+    gameId: feasibilityAlder.id,
+    insteadOfMinutes: feasibilityAlder.startMinutes + 60,
+  })
+);
+
+harvest(
+  'canGameMove(onto the date the venue is blacked out)',
+  canGameMove(
+    context,
+    { gameId: feasibilitySelect.id, insteadOfDate: '2026-09-19' },
+    { venueComplexes }
+  )
+);
+
+harvest(
+  'canGameMove(no rule-engine run in the context)',
+  canGameMove(
+    buildAttributionContext({
+      graph,
+      table: timingTable,
+      calendar,
+      registry,
+      schedule,
+    }),
+    { gameId: feasibilityAlder.id, insteadOfMinutes: feasibilityAlder.startMinutes + 60 },
+    { venueComplexes }
+  )
+);
+
+harvest(
+  'feasibleKickoffBounds(the permit close and the daylight limit coincide)',
+  feasibleKickoffBounds(context, {
+    surfaceId: 'alder-park/pitch-2',
+    date: '2026-08-22',
+    format: '11v11',
+    ignoreGameIds: schedule.games
+      .filter((game) => game.date === '2026-08-22' && game.venueId === 'alder-park')
+      .map((game) => game.id),
+  })
+);
+
+harvest(
+  'feasibleKickoffBounds(lit ground where the permit margin sets the clean line)',
+  feasibleKickoffBounds(context, {
+    surfaceId: 'summit-hs/stadium',
+    date: '2026-11-14',
+    format: '11v11',
+    ignoreGameIds: schedule.games
+      .filter((game) => game.date === '2026-11-14' && game.venueId === 'summit-hs')
+      .map((game) => game.id),
+  })
+);
+
+harvest(
+  'feasibleKickoffBounds(the blacked-out date)',
+  feasibleKickoffBounds(context, {
+    surfaceId: 'summit-hs/stadium',
+    date: '2026-09-19',
+    format: '11v11',
+  })
+);
+
+harvest(
+  'feasibleKickoffBounds(a surface the graph does not hold)',
+  feasibleKickoffBounds(context, {
+    surfaceId: 'no-such-venue/no-such-pitch',
+    date: '2026-08-22',
+    format: '11v11',
+  })
+);
+
+harvest(
+  'canTeamPlay(a placeholder label)',
+  canTeamPlay(context, {
+    teamId: schedule.placeholderLabels[0],
+    dates: ['2026-11-14'],
+    kickoffMinutes: 18 * 60,
+  })
+);
+
+harvest(
+  'canTeamPlay(a team spanning two formats)',
+  (() => {
+    const anchor = schedule.games.find((game) => game.format === '9v9' && game.homeTeamId !== null);
+    const constructed = {
+      ...schedule,
+      games: [
+        ...schedule.games,
+        { ...anchor, id: 'audit-second-format', format: '7v7', date: '2026-10-03' },
+      ],
+    };
+    return canTeamPlay(
+      buildAttributionContext({
+        graph,
+        table: timingTable,
+        calendar,
+        registry,
+        schedule: constructed,
+        verification,
+        venueComplexes,
+        roster,
+      }),
+      { teamId: anchor.homeTeamId, dates: ['2026-10-03'], kickoffMinutes: 10 * 60 },
+      { venueComplexes }
+    );
+  })()
+);
 
 /* -------------------------------------------------------------------------- */
 /* The audit                                                                   */

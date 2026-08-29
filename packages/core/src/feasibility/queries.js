@@ -1,0 +1,1397 @@
+/**
+ * **The read-only feasibility API** — Prompt 7.1.
+ *
+ * > *Can this game move to Thursday? Can this team play at 6pm in November?
+ * > What is stopping it?*
+ *
+ * Three questions, one answer shape, and four properties that are the point of
+ * the module rather than decoration on it:
+ *
+ * 1. **Strictly read-only.** Nothing here mutates an input, persists anything,
+ *    or commits a re-solve. The one trial placement the answers need is derived
+ *    inside `checkKickoffAvailability()` / `checkPlacement()` and thrown away
+ *    with the call. `attribution/context.js` freezes every game in the state it
+ *    builds and `applyMove()` — `resolve/`'s only writer — is called from
+ *    nowhere in this package.
+ * 2. **Every answer carries its binding constraint and a margin.** The binding
+ *    *set*, because two constraints binding at the same minute is not one
+ *    constraint binding, and a margin in minutes under one stated sign
+ *    convention (`FEASIBILITY_MARGIN_CONVENTION`).
+ * 3. **Three-valued, never two.** `feasible` / `infeasible` / `unknown`, from
+ *    `deriveFeasibilityVerdict()`, which is the only producer of a verdict.
+ * 4. **A query governed by an unenforced rule cannot be answered.**
+ *    `unenforcedGoverningConstraints()` turns a would-be `feasible` into
+ *    `unknown` naming the constraint. `coach-maximum-gap` is the live instance.
+ *
+ * ## What it composes, and what it adds
+ *
+ * | it needs | it asks |
+ * | --- | --- |
+ * | why this game is here, and what an alternative would break | `attribution/explain.js` — `explainGame()`, `explainKickoffTime()` |
+ * | the smallest set of constraints that make a placement impossible | `attribution/minimal.js` — `minimalBlockingSet()`, certified |
+ * | how late anything may kick off | `availability/kickoff.js` — `latestLegalKickoff()` |
+ * | what a coach's day costs, through the venue-complex model | `waivers/coachTravel.js` — `evaluateCoachTravel()` |
+ * | whether two fixtures overlap in time | `facility/occupancy.js` — `bookingsOverlapInTime()`, whose `null` is carried as `unknown` and never as "no clash" |
+ * | what a softer constraint would change | `constraints/whatIf.js` — through `minimalBlockingSet()`, which projects rather than adopts |
+ *
+ * What it adds is the **second threshold**. The corpus states two 15-minute
+ * numbers with different status — past a bound is `blocking`, inside a stated
+ * comfort margin is `compromise` — so a bounded answer reports both: the last
+ * position that is legal, and the last position that is legal *and* clean. The
+ * band between them is where a schedule is defensible but uncomfortable, and
+ * collapsing it was how an operator ended up deriving it by hand.
+ *
+ * @module feasibility/queries
+ */
+
+import { latestLegalKickoff } from '../availability/kickoff.js';
+import {
+  ATTRIBUTION_REASON,
+  ATTRIBUTION_SEVERITY,
+  ATTRIBUTION_SOURCE,
+  createAttributionMeta,
+} from '../attribution/reasonCodes.js';
+import {
+  categoryOnlyClaimFindings,
+  claimFromAvailabilityConstraint,
+  claimFromTravelTransition,
+  groupFindingsByConstraintKind,
+  mergeClaimsByTightness,
+} from '../attribution/claims.js';
+import { explainKickoffTime } from '../attribution/explain.js';
+import { minimalBlockingSet } from '../attribution/minimal.js';
+import { CONSTRAINT_SEVERITY, CONSTRAINT_STATUS } from '../constraints/reasonCodes.js';
+import { bookingsOverlapInTime } from '../facility/occupancy.js';
+import { getSurface } from '../facility/facilityGraph.js';
+import { formatTimingOrUnknown } from '../timing/formatTiming.js';
+import { evaluateCoachTravel } from '../waivers/coachTravel.js';
+
+import {
+  FEASIBILITY_QUESTION,
+  FEASIBILITY_REASON,
+  FEASIBILITY_THRESHOLD,
+  FEASIBILITY_MARGIN_UNIT,
+  FEASIBILITY_VERDICT,
+  createFeasibilityMeta,
+  deriveFeasibilityStatus,
+  deriveFeasibilityVerdict,
+  makeFeasibilityFinding,
+  mergeFeasibilityMeta,
+} from './reasonCodes.js';
+import {
+  KickoffBoundsQuerySchema,
+  MoveFeasibilityQuerySchema,
+  TeamFeasibilityQuerySchema,
+} from './schemas.js';
+import {
+  absorbUnknowns,
+  bindingAt,
+  boundFindings,
+  makeUnknown,
+  marginFrom,
+  probeKickoff,
+  standingBookings,
+  underRegistry,
+  unenforcedGoverningConstraints,
+  unknownsFromCodes,
+} from './verdict.js';
+
+/**
+ * One claim, as a bound.
+ *
+ * `raises` here is what the constraint *did* say about the position, at the
+ * severity the registry gave it. Nothing is recomputed: the limit, the slack and
+ * the severity are the claim's, which are the owning module's.
+ *
+ * @param {import('../attribution/types.js').ConstraintClaim} claim
+ * @returns {import('./types.js').FeasibilityBound}
+ */
+function boundFromClaim(claim) {
+  return {
+    kind: claim.kind,
+    source: claim.source,
+    instanceId: claim.instanceId,
+    constraintId: claim.constraintId,
+    limitMinutes: claim.limitMinutes,
+    slackMinutes: claim.slackMinutes,
+    raises: claim.codes.map((code) => ({ code, severity: claim.severity })),
+  };
+}
+
+/**
+ * The claims that decided a placement.
+ *
+ * A blocking claim decided it; failing that, the claim(s) the owning machinery
+ * marked `binding`. Both are read off what somebody else reported — this
+ * function chooses between two already-computed lists and never ranks limits.
+ *
+ * Every member at the decisive level is kept, so a tie stays a tie.
+ *
+ * @param {ReadonlyArray<import('../attribution/types.js').ConstraintClaim>} claims
+ * @returns {import('../attribution/types.js').ConstraintClaim[]}
+ */
+function decisiveClaims(claims) {
+  const blocking = claims.filter((claim) => claim.severity === ATTRIBUTION_SEVERITY.BLOCKING);
+  if (blocking.length > 0) return blocking;
+  return claims.filter((claim) => claim.binding === true);
+}
+
+/**
+ * Claim codes as finding-shaped rows, for the unknown table.
+ *
+ * @param {ReadonlyArray<import('../attribution/types.js').ConstraintClaim>} claims
+ * @returns {Array<{ code: string, severity: string, message: string }>}
+ */
+function codeRowsOf(claims) {
+  return claims.flatMap((claim) =>
+    claim.codes.map((code) => ({ code, severity: claim.severity, message: claim.detail || code }))
+  );
+}
+
+/**
+ * The scope context a registry record is judged against, for one position.
+ *
+ * @param {Object} graph
+ * @param {{ date: string, surfaceId: string, venueId: string|null, divisionLabel?: string|null }} where
+ * @returns {import('../constraints/types.js').ScopeContext}
+ */
+function scopeContextOf(graph, where) {
+  const surface = getSurface(
+    /** @type {import('../facility/types.js').FacilityGraph} */ (graph),
+    where.surfaceId
+  );
+  return {
+    date: where.date,
+    venueId: surface?.venueId ?? where.venueId ?? undefined,
+    surfaceId: where.surfaceId,
+    surfaceLineage: surface ? [...surface.lineage] : [where.surfaceId],
+    ...(where.divisionLabel ? { divisionLabel: where.divisionLabel } : {}),
+  };
+}
+
+/**
+ * Count findings by code.
+ *
+ * @param {ReadonlyArray<{ code: string }>} findings
+ * @returns {Record<string, number>}
+ */
+function tallyByCode(findings) {
+  /** @type {Record<string, number>} */
+  const byCode = {};
+  for (const finding of findings) byCode[finding.code] = (byCode[finding.code] ?? 0) + 1;
+  return byCode;
+}
+
+/**
+ * **Coach travel, projected onto a hypothesis and compared with the baseline.**
+ *
+ * Two evaluations of the *same* people over the *same* dates — one as things
+ * stand, one with the game moved — and only the codes whose count **grew** are
+ * reported. Without the comparison, a coach who already has a tight afternoon
+ * would make every proposed move look like the cause of it.
+ *
+ * Both runs go through `evaluateCoachTravel()` with the season's declared venue
+ * complexes. Without them, that evaluator judges every pair of distinct venue
+ * names against the 60-minute drive floor and reports eighteen shortfalls where
+ * one is real (`docs/RULE_ENGINE.md` §9) — so a caller supplies the complexes or
+ * gets `FEASIBILITY_TRAVEL_ABSENT` and an answer that admits it cannot speak
+ * about coaches.
+ *
+ * The projection builds new commitment objects. Nothing on the schedule is
+ * touched, and a commitment whose end is unknown (GAP-14) keeps its `null`
+ * rather than acquiring an invented duration.
+ *
+ * @param {import('../attribution/types.js').AttributionContext} context
+ * @param {{ gameId: string, from: Object, to: { date: string, surfaceId: string, startMinutes: number, venueId: string|null } }} move
+ * @param {Object|null} venueComplexes
+ * @param {import('./types.js').FeasibilityMeta} meta
+ * @returns {{ ok: boolean, findings: Array<Object>, claims: Array<import('../attribution/types.js').ConstraintClaim>, peopleCount: number }}
+ */
+function projectTravel(context, move, venueComplexes, meta) {
+  const commitments = context.schedule.commitments;
+  const personIds = new Set(
+    commitments.filter((entry) => entry.gameId === move.gameId).map((entry) => entry.personId)
+  );
+  if (personIds.size === 0) {
+    return { ok: true, findings: [], claims: [], peopleCount: 0 };
+  }
+  if (venueComplexes === null) {
+    return { ok: false, findings: [], claims: [], peopleCount: personIds.size };
+  }
+
+  const dates = new Set([move.from.date, move.to.date]);
+  const relevant = commitments.filter(
+    (entry) => personIds.has(entry.personId) && dates.has(entry.date)
+  );
+  const projected = relevant.map((entry) => {
+    if (entry.gameId !== move.gameId) return { ...entry };
+    const durationMinutes =
+      entry.endMinutes === null ? null : entry.endMinutes - entry.startMinutes;
+    return {
+      ...entry,
+      date: move.to.date,
+      venueId: move.to.venueId ?? entry.venueId,
+      surfaceId: move.to.surfaceId,
+      startMinutes: move.to.startMinutes,
+      endMinutes: durationMinutes === null ? null : move.to.startMinutes + durationMinutes,
+    };
+  });
+
+  const options = { registry: context.engines.registry, venueComplexes };
+  const before = evaluateCoachTravel(relevant, options);
+  const after = evaluateCoachTravel(projected, options);
+  meta.travelTransitionsProjected += after.meta.transitionsExamined ?? 0;
+
+  const beforeCounts = tallyByCode(before.findings);
+  /** @type {Record<string, number>} */
+  const budget = { ...beforeCounts };
+  /** @type {Array<Object>} */
+  const introduced = [];
+  for (const finding of after.findings) {
+    if ((budget[finding.code] ?? 0) > 0) {
+      budget[finding.code] -= 1;
+      continue;
+    }
+    if (finding.severity === CONSTRAINT_SEVERITY.INFO) continue;
+    introduced.push(finding);
+  }
+
+  /** @type {Array<import('../attribution/types.js').ConstraintClaim>} */
+  const claims = [];
+  for (const finding of introduced) {
+    // **Identity, never code.** `evaluateCoachTravel()` returns its transitions'
+    // own findings by reference in the flat list, so the owning transition is
+    // found exactly. Falling back to a code match would attach a scan-level
+    // finding — one that belongs to no transition — to whichever transition
+    // happened to share its code, and the claim would then name the wrong
+    // person's afternoon.
+    const transition = after.transitions.find((entry) => entry.findings.includes(finding)) ?? null;
+    if (transition === null) continue;
+    claims.push(
+      claimFromTravelTransition(
+        transition,
+        /** @type {import('../attribution/types.js').AttributionFinding} */ (finding)
+      )
+    );
+  }
+
+  return { ok: true, findings: introduced, claims, peopleCount: personIds.size };
+}
+
+/**
+ * The empty answer, so every early return has the same shape as every late one.
+ *
+ * @param {string} question
+ * @param {import('./types.js').FeasibilitySubject} subject
+ * @param {import('./types.js').FeasibilityMeta} meta
+ * @returns {import('./types.js').FeasibilityAnswer}
+ */
+function emptyAnswer(question, subject, meta) {
+  return {
+    question,
+    subject,
+    verdict: FEASIBILITY_VERDICT.UNKNOWN,
+    tight: null,
+    binding: [],
+    marginMinutes: null,
+    marginUnit: FEASIBILITY_MARGIN_UNIT,
+    marginBasis: null,
+    blockers: [],
+    unknowns: [],
+    minimalSet: null,
+    notApplicable: [],
+    findings: [],
+    meta,
+    status: '',
+  };
+}
+
+/**
+ * Seal an answer: derive the verdict once, in the one place that may.
+ *
+ * `tight` is `null` unless the verdict is `feasible`, because "not tight" is a
+ * statement about a placement, and there is no placement to make it about when
+ * the answer is `infeasible` or `unknown`.
+ *
+ * @param {import('./types.js').FeasibilityAnswer} answer
+ * @param {{ blocked: boolean, compromised: boolean }} state
+ * @returns {import('./types.js').FeasibilityAnswer}
+ */
+function seal(answer, state) {
+  const verdict = deriveFeasibilityVerdict({ blocked: state.blocked, unknowns: answer.unknowns });
+  const tight = verdict === FEASIBILITY_VERDICT.FEASIBLE ? state.compromised === true : null;
+  const findings = [...answer.findings];
+
+  // **Every stated unknown reaches the findings list**, once per code, so an
+  // answer's `status` can never read `allowed` while its `unknowns` are
+  // non-empty. This is the seam the two channels meet at: `verdict` is about the
+  // subject and `status` is about the answer, but "there is something I could
+  // not check" is a fact about the answer as well, and an answer that hid it in
+  // a field a caller might not read would be a thin explanation wearing a
+  // complete one's clothes.
+  const already = new Set(findings.map((finding) => finding.code));
+  for (const entry of answer.unknowns) {
+    if (already.has(entry.code)) continue;
+    already.add(entry.code);
+    const sameCode = answer.unknowns.filter((other) => other.code === entry.code);
+    findings.push(
+      makeFeasibilityFinding(
+        entry.code,
+        `${sameCode.length} question(s) this answer depends on could not be decided (${sameCode.map((other) => other.subject).join('; ')}): ${entry.reason}`,
+        {
+          question: answer.question,
+          count: sameCode.length,
+          verdictBearing: sameCode.some((other) => other.verdictBearing !== false),
+          constraintIds: sameCode.map((other) => other.constraintId).filter(Boolean),
+        }
+      )
+    );
+  }
+  if (tight === true) {
+    findings.push(
+      makeFeasibilityFinding(
+        FEASIBILITY_REASON.FEASIBILITY_TIGHT,
+        'this position is legal but sits inside a stated comfort margin; it is feasible and it is not clean',
+        { question: answer.question, marginMinutes: answer.marginMinutes }
+      )
+    );
+  }
+  findings.push(
+    makeFeasibilityFinding(
+      FEASIBILITY_REASON.FEASIBILITY_VERDICT_REACHED,
+      `verdict "${verdict}" from ${answer.meta.candidatesAnswered} candidate answer(s), ${answer.binding.length} binding constraint(s) and ${answer.unknowns.length} stated unknown(s)`,
+      {
+        question: answer.question,
+        verdict,
+        tight,
+        bindingKinds: answer.binding.map((bound) => bound.kind),
+        unknownCodes: answer.unknowns.map((entry) => entry.code),
+        marginMinutes: answer.marginMinutes,
+        marginUnit: answer.marginUnit,
+      }
+    )
+  );
+  answer.meta.unknownsRaised += answer.unknowns.length;
+  return { ...answer, verdict, tight, findings, status: deriveFeasibilityStatus(findings) };
+}
+
+/* -------------------------------------------------------------------------- */
+/* 1. Can this game move?                                                      */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * **"Can this game move to Thursday? To 6pm? To that field?"**
+ *
+ * The whole legality answer is `explainKickoffTime()`'s, which is
+ * `checkPlacement()`'s, which is Phase 1.3's. This adds the verdict, the
+ * unknowns, the binding set, the margin, and — when the answer is no — the
+ * certified minimal blocking set, so the reply is *"no, because these two
+ * constraints, by this many minutes"* rather than *"no"*.
+ *
+ * @param {import('../attribution/types.js').AttributionContext} context
+ * @param {Object} rawQuery - see `MoveFeasibilityQuerySchema`
+ * @param {{ venueComplexes?: Object|null, minimalSet?: boolean }} [options]
+ * @returns {import('./types.js').FeasibilityAnswer}
+ */
+export function canGameMove(context, rawQuery, options = {}) {
+  const query = MoveFeasibilityQuerySchema.parse(rawQuery);
+  const meta = createFeasibilityMeta();
+  const venueComplexes = options.venueComplexes ?? null;
+  const game = context.state.baseline[query.gameId] ?? null;
+
+  meta.questionsAsked += 1;
+  meta.candidatesConsidered += 1;
+
+  /** @type {import('./types.js').FeasibilitySubject} */
+  const subject = {
+    gameId: query.gameId,
+    teamId: null,
+    surfaceId: query.insteadOfSurfaceId ?? game?.surfaceId ?? null,
+    venueId: game?.venueId ?? null,
+    date: query.insteadOfDate ?? game?.date ?? null,
+    kickoffMinutes: query.insteadOfMinutes ?? game?.startMinutes ?? null,
+    format: game?.format ?? null,
+  };
+
+  const answer = emptyAnswer(FEASIBILITY_QUESTION.CAN_GAME_MOVE, subject, meta);
+
+  if (game === null) {
+    answer.unknowns.push(
+      makeUnknown(
+        FEASIBILITY_REASON.FEASIBILITY_SUBJECT_UNKNOWN,
+        `game "${query.gameId}"`,
+        `no game "${query.gameId}" is in this schedule, so there is nothing to move; the run holds ${context.state.gameIds.length} games`,
+        { details: { gameId: query.gameId, gameCount: context.state.gameIds.length } }
+      )
+    );
+    answer.findings.push(
+      makeFeasibilityFinding(
+        FEASIBILITY_REASON.FEASIBILITY_SUBJECT_UNKNOWN,
+        `the question named game "${query.gameId}", which this run does not hold`,
+        { gameId: query.gameId }
+      )
+    );
+    return seal(answer, { blocked: false, compromised: false });
+  }
+
+  const destination = {
+    date: query.insteadOfDate ?? game.date,
+    surfaceId: query.insteadOfSurfaceId ?? game.surfaceId,
+    startMinutes: query.insteadOfMinutes ?? game.startMinutes,
+  };
+  const destinationSurface = getSurface(
+    /** @type {import('../facility/types.js').FacilityGraph} */ (context.engines.graph),
+    destination.surfaceId
+  );
+
+  const time = explainKickoffTime(context, {
+    gameId: query.gameId,
+    insteadOfMinutes: destination.startMinutes,
+    insteadOfSurfaceId: destination.surfaceId,
+    insteadOfDate: destination.date,
+  });
+  mergeMetaFromAttribution(meta, time.meta);
+
+  const noOp = time.findings.some(
+    (finding) => finding.code === ATTRIBUTION_REASON.ATTRIBUTION_ALTERNATIVE_NO_OP
+  );
+  if (noOp) {
+    answer.unknowns.push(
+      makeUnknown(
+        FEASIBILITY_REASON.FEASIBILITY_MOVE_IS_NO_OP,
+        `game "${query.gameId}" moving to the slot it already holds`,
+        'the destination asked about is the position the game already occupies, so the comparison is between a thing and itself and its empty answer means nothing',
+        { details: { ...destination } }
+      )
+    );
+    answer.findings.push(
+      makeFeasibilityFinding(
+        FEASIBILITY_REASON.FEASIBILITY_MOVE_IS_NO_OP,
+        `the destination asked about for game "${query.gameId}" is the slot it already holds`,
+        { gameId: query.gameId, ...destination }
+      )
+    );
+    meta.candidatesAnswered += 1;
+    return seal(answer, { blocked: false, compromised: false });
+  }
+
+  const counterfactual = time.counterfactual;
+  // `claimsCarried` is already fed by `mergeMetaFromAttribution()` above, from
+  // `explainKickoffTime()`'s own `claimsBuilt`. Counting them a second time here
+  // would make the counter that proves this answer looked at something say twice
+  // what it looked at.
+  meta.candidatesAnswered += 1;
+
+  /** @type {import('../attribution/types.js').ConstraintClaim[]} */
+  let blockers = [...counterfactual.claims];
+  let blocked = counterfactual.legal === false;
+  let compromised = counterfactual.placementStatus === CONSTRAINT_STATUS.COMPROMISED;
+
+  /* -- unknowns ---------------------------------------------------------- */
+  absorbUnknowns(
+    answer.unknowns,
+    unknownsFromCodes(
+      codeRowsOf(counterfactual.claims),
+      `game "${query.gameId}" at the destination`
+    )
+  );
+  absorbUnknowns(
+    answer.unknowns,
+    unenforcedGoverningConstraints(
+      context.verification,
+      context.engines.registry,
+      scopeContextOf(context.engines.graph, {
+        date: destination.date,
+        surfaceId: destination.surfaceId,
+        venueId: destinationSurface?.venueId ?? game.venueId,
+        divisionLabel: game.divisionLabel ?? null,
+      }),
+      meta
+    )
+  );
+  if (context.verification === null) {
+    answer.unknowns.push(
+      makeUnknown(
+        FEASIBILITY_REASON.FEASIBILITY_VERIFICATION_ABSENT,
+        'the standing rules over this destination',
+        'no standing-rule-engine run was supplied, so turnover floors, round-robin completeness and hosting balance were not asked about; a facility answer must not be read as a whole one',
+        {}
+      )
+    );
+  }
+
+  /* -- coach travel, through the venue-complex model ---------------------- */
+  const travel = projectTravel(
+    context,
+    {
+      gameId: query.gameId,
+      from: { date: game.date },
+      to: { ...destination, venueId: destinationSurface?.venueId ?? null },
+    },
+    venueComplexes,
+    meta
+  );
+  if (!travel.ok) {
+    answer.unknowns.push(
+      makeUnknown(
+        FEASIBILITY_REASON.FEASIBILITY_TRAVEL_ABSENT,
+        `the day of the ${travel.peopleCount} coach(es) on game "${query.gameId}"`,
+        'no venue complexes were supplied, so coach travel could not be projected onto this move; judging every pair of distinct venue names against the 60-minute floor reports eighteen shortfalls where one is real, so this answer refuses to guess',
+        { details: { peopleCount: travel.peopleCount } }
+      )
+    );
+  } else if (travel.claims.length > 0 || travel.findings.length > 0) {
+    blockers = mergeClaimsByTightness([blockers, travel.claims]);
+    meta.claimsCarried += travel.claims.length;
+    if (travel.findings.some((finding) => finding.severity === CONSTRAINT_SEVERITY.BLOCKING)) {
+      blocked = true;
+    } else if (
+      travel.findings.some((finding) => finding.severity === CONSTRAINT_SEVERITY.COMPROMISE)
+    ) {
+      compromised = true;
+    }
+    absorbUnknowns(
+      answer.unknowns,
+      unknownsFromCodes(
+        travel.findings.map((finding) => ({
+          code: finding.code,
+          severity: finding.severity,
+          message: finding.message,
+        })),
+        `coach travel around game "${query.gameId}"`
+      )
+    );
+  }
+
+  /* -- the binding set and the margin ------------------------------------ */
+  const binding = decisiveClaims(blockers).map(boundFromClaim);
+  const { marginMinutes, marginBasis } = marginFrom(binding);
+  answer.binding = binding;
+  answer.marginMinutes = marginMinutes;
+  answer.marginBasis = marginBasis;
+  answer.blockers = blockers;
+  // The destination's *inapplicable* constraints — "the field is lit, so sunset
+  // does not bound it" — are the difference between a rule that did not apply
+  // and a rule nobody checked, and `explainKickoffTime()` reports them for the
+  // slot the game **has** rather than the one it does not. One more read of the
+  // same function `checkPlacement()` calls, over the same inputs, rather than a
+  // second derivation of the same fact.
+  const destinationProbe = probeKickoff(
+    context.engines,
+    {
+      surfaceId: destination.surfaceId,
+      date: destination.date,
+      kickoffMinutes: destination.startMinutes,
+      format: game.format,
+      ignoreBookingIds: [query.gameId],
+      divisionLabel: game.divisionLabel ?? null,
+    },
+    standingBookings(context.state, destination.date, [query.gameId]),
+    meta
+  );
+  answer.notApplicable = (destinationProbe.result.constraints ?? [])
+    .filter((constraint) => !constraint.applicable)
+    .map((constraint) => ({
+      source: ATTRIBUTION_SOURCE.AVAILABILITY,
+      kind: constraint.kind,
+      reason: String(constraint.detail?.reason ?? 'the machinery that owns it stated no reason'),
+    }));
+  answer.findings.push(
+    ...boundFindings(binding, marginMinutes, {
+      gameId: query.gameId,
+      date: destination.date,
+      surfaceId: destination.surfaceId,
+      kickoffMinutes: destination.startMinutes,
+    })
+  );
+
+  /* -- what is stopping it ------------------------------------------------ */
+  if (blocked && options.minimalSet !== false) {
+    const minimal = minimalBlockingSet(context, { gameId: query.gameId, slot: destination });
+    answer.minimalSet = minimal;
+    mergeMetaFromAttribution(meta, minimal.meta);
+  }
+
+  return seal(answer, { blocked, compromised });
+}
+
+/**
+ * Fold an `attribution/` meta into a feasibility one.
+ *
+ * The two vocabularies overlap on exactly the counters that mean the same thing,
+ * and the fold is written out rather than done by key so a counter added to
+ * either module cannot start silently summing into the other.
+ *
+ * @param {import('./types.js').FeasibilityMeta} target
+ * @param {import('../attribution/types.js').AttributionMeta} source
+ * @returns {import('./types.js').FeasibilityMeta}
+ */
+function mergeMetaFromAttribution(target, source) {
+  target.placementChecksRun += source.placementChecksRun ?? 0;
+  target.constraintsConsulted += source.availabilityConstraintsConsulted ?? 0;
+  target.claimsCarried += source.claimsBuilt ?? 0;
+  target.boundaryProbesRun += source.boundaryQueriesRun ?? 0;
+  return target;
+}
+
+/* -------------------------------------------------------------------------- */
+/* 2. Can this team play at that time?                                         */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * **"Can this team play at 6pm in November?"**
+ *
+ * Asked as a grid: every date crossed with every candidate surface, each cell
+ * carrying its own verdict, binding set and margin. **No cell is ever dropped**
+ * — incident 10's rule applied to a query — and a cell that could not be judged
+ * is `unknown` with a reason rather than absent.
+ *
+ * The hypothesis is carried by one of the team's own fixtures, named on the
+ * answer as `carrierGameId`: a team has no footprint of its own, and inventing a
+ * synthetic fixture would mean inventing a format and therefore a duration. The
+ * carrier is the team's earliest-dated fixture, so the choice is deterministic.
+ *
+ * On top of `canGameMove()`'s answer for each cell, this adds the one check a
+ * per-placement question cannot make: **does this team already have a fixture
+ * overlapping that window?** That is `bookingsOverlapInTime()`'s question, and
+ * its `null` — one of the two fixtures has an unknown footprint — is carried
+ * here as `unknown`. It is never read as `false`, which is the collapse this
+ * repository has made four times.
+ *
+ * @param {import('../attribution/types.js').AttributionContext} context
+ * @param {Object} rawQuery - see `TeamFeasibilityQuerySchema`
+ * @param {{ venueComplexes?: Object|null }} [options]
+ * @returns {import('./types.js').TeamFeasibilityAnswer}
+ */
+export function canTeamPlay(context, rawQuery, options = {}) {
+  const query = TeamFeasibilityQuerySchema.parse(rawQuery);
+  const meta = createFeasibilityMeta();
+  /** @type {import('./types.js').FeasibilityFinding[]} */
+  const findings = [];
+  /** @type {import('./types.js').FeasibilityUnknown[]} */
+  const unknowns = [];
+
+  const schedule = context.schedule;
+  const isPlaceholder = schedule.placeholderLabels.includes(query.teamId);
+  const teamGames = schedule.games.filter(
+    (game) => game.homeTeamId === query.teamId || game.awayTeamId === query.teamId
+  );
+
+  /** @type {import('./types.js').TeamFeasibilityAnswer} */
+  const answer = {
+    question: FEASIBILITY_QUESTION.CAN_TEAM_PLAY,
+    subject: {
+      gameId: null,
+      teamId: query.teamId,
+      surfaceId: null,
+      venueId: null,
+      date: query.dates[0],
+      kickoffMinutes: query.kickoffMinutes,
+      format: query.format,
+    },
+    verdict: FEASIBILITY_VERDICT.UNKNOWN,
+    tight: null,
+    candidates: [],
+    verdictCounts: {},
+    carrierGameId: null,
+    binding: [],
+    marginMinutes: null,
+    marginUnit: FEASIBILITY_MARGIN_UNIT,
+    marginBasis: null,
+    unknowns,
+    findings,
+    meta,
+    status: '',
+  };
+
+  if (isPlaceholder) {
+    unknowns.push(
+      makeUnknown(
+        FEASIBILITY_REASON.FEASIBILITY_SUBJECT_NOT_A_TEAM,
+        `"${query.teamId}"`,
+        `"${query.teamId}" is a placeholder label this schedule declares, not a team; an unnamed fixture has no opponent and no roster, so nothing can be asked on its behalf`,
+        { details: { teamId: query.teamId } }
+      )
+    );
+    findings.push(
+      makeFeasibilityFinding(
+        FEASIBILITY_REASON.FEASIBILITY_SUBJECT_NOT_A_TEAM,
+        `the question named "${query.teamId}", which this schedule lists among its placeholder labels`,
+        { teamId: query.teamId }
+      )
+    );
+    return sealTeam(answer);
+  }
+
+  if (teamGames.length === 0) {
+    unknowns.push(
+      makeUnknown(
+        FEASIBILITY_REASON.FEASIBILITY_SUBJECT_UNKNOWN,
+        `team "${query.teamId}"`,
+        `no fixture in this run names team "${query.teamId}", so there is no format, no venue history and no carrier fixture to ask on its behalf`,
+        { details: { teamId: query.teamId, teamCount: schedule.teamUniverse.length } }
+      )
+    );
+    findings.push(
+      makeFeasibilityFinding(
+        FEASIBILITY_REASON.FEASIBILITY_SUBJECT_UNKNOWN,
+        `the question named team "${query.teamId}", which no fixture in this run mentions`,
+        { teamId: query.teamId }
+      )
+    );
+    return sealTeam(answer);
+  }
+
+  const ordered = [...teamGames].sort((a, b) =>
+    a.date === b.date ? a.id.localeCompare(b.id) : a.date.localeCompare(b.date)
+  );
+  const carrier = ordered[0];
+  answer.carrierGameId = carrier.id;
+
+  const observedFormats = [...new Set(teamGames.map((game) => game.format))];
+  const format = query.format ?? (observedFormats.length === 1 ? observedFormats[0] : null);
+  answer.subject.format = format;
+  if (format === null) {
+    unknowns.push(
+      makeUnknown(
+        FEASIBILITY_REASON.FEASIBILITY_FORMAT_UNRESOLVED,
+        `the format team "${query.teamId}" would play`,
+        `this team's fixtures span ${observedFormats.length} formats (${observedFormats.map((entry) => entry ?? '(none)').join(', ')}) and the question named none, so no footprint can be taken; state a format rather than having one picked`,
+        { details: { teamId: query.teamId, observedFormats: observedFormats.length } }
+      )
+    );
+  }
+
+  const surfaceIds =
+    query.surfaceIds.length > 0
+      ? [...new Set(query.surfaceIds)].sort()
+      : [...new Set(teamGames.map((game) => game.surfaceId))].sort();
+
+  const timing = format === null ? null : formatTimingOrUnknown(context.engines.table, format);
+  const occupancyMinutes = timing?.occupancyMinutes?.scheduled ?? null;
+  const endMinutes = occupancyMinutes === null ? null : query.kickoffMinutes + occupancyMinutes;
+  if (occupancyMinutes === null && format !== null) {
+    absorbUnknowns(
+      unknowns,
+      unknownsFromCodes(
+        /** @type {Array<{ code: string, severity: string, message: string }>} */ (
+          timing?.findings ?? []
+        ),
+        `the footprint of a "${format}" fixture`
+      )
+    );
+  }
+
+  /* -- the grid; every cell answered ------------------------------------- */
+  for (const date of query.dates) {
+    for (const surfaceId of surfaceIds) {
+      meta.candidatesConsidered += 1;
+      const cell = canGameMove(
+        context,
+        {
+          gameId: carrier.id,
+          insteadOfDate: date,
+          insteadOfSurfaceId: surfaceId,
+          insteadOfMinutes: query.kickoffMinutes,
+        },
+        { venueComplexes: options.venueComplexes ?? null, minimalSet: false }
+      );
+      mergeFeasibilityMeta(meta, cell.meta);
+      // `canGameMove()` counts its own single candidate; the grid counts cells.
+      meta.candidatesConsidered -= cell.meta.candidatesConsidered;
+      meta.candidatesAnswered -= cell.meta.candidatesAnswered;
+
+      /** @type {import('./types.js').FeasibilityUnknown[]} */
+      const cellUnknowns = [...cell.unknowns];
+      const clash = teamClashAt(
+        teamGames,
+        carrier.id,
+        date,
+        query.kickoffMinutes,
+        endMinutes,
+        meta
+      );
+      absorbUnknowns(cellUnknowns, clash.unknowns);
+
+      const blocked = cell.verdict === FEASIBILITY_VERDICT.INFEASIBLE || clash.overlaps === true;
+      const verdict = deriveFeasibilityVerdict({ blocked, unknowns: cellUnknowns });
+      meta.candidatesAnswered += 1;
+
+      answer.candidates.push({
+        date,
+        surfaceId,
+        kickoffMinutes: query.kickoffMinutes,
+        verdict,
+        tight: verdict === FEASIBILITY_VERDICT.FEASIBLE ? cell.tight === true : null,
+        binding: cell.binding,
+        marginMinutes: cell.marginMinutes,
+        unknowns: cellUnknowns,
+        blockers: cell.blockers,
+      });
+    }
+  }
+
+  // **The grid size is derived from the query, not from the loop that filled
+  // it.** A counter incremented beside every `push` can never disagree with the
+  // list it counts, which is a guard that cannot fire; this one is computed from
+  // the dates and surfaces the question named, so a `continue` added to the loop
+  // above would trip it. Incident 10's rule: a position that cannot be judged is
+  // reported with a reason, never dropped.
+  const gridSize = query.dates.length * surfaceIds.length;
+  if (answer.candidates.length !== gridSize) {
+    findings.push(
+      makeFeasibilityFinding(
+        FEASIBILITY_REASON.FEASIBILITY_CANDIDATE_DROPPED,
+        `${gridSize} candidate position(s) were asked about (${query.dates.length} date(s) x ${surfaceIds.length} surface(s)) and ${answer.candidates.length} produced an answer`,
+        {
+          teamId: query.teamId,
+          candidatesConsidered: gridSize,
+          candidatesAnswered: answer.candidates.length,
+        }
+      )
+    );
+  }
+  if (gridSize === 0) {
+    findings.push(
+      makeFeasibilityFinding(
+        FEASIBILITY_REASON.FEASIBILITY_QUERY_VACUOUS,
+        `the question about team "${query.teamId}" produced no candidate position at all, so any answer it gave would be a statement about an empty search`,
+        { teamId: query.teamId, dates: query.dates.length, surfaces: surfaceIds.length }
+      )
+    );
+  }
+
+  /* -- the roll-up -------------------------------------------------------- */
+  /** @type {Record<string, number>} */
+  const verdictCounts = {
+    [FEASIBILITY_VERDICT.FEASIBLE]: 0,
+    [FEASIBILITY_VERDICT.INFEASIBLE]: 0,
+    [FEASIBILITY_VERDICT.UNKNOWN]: 0,
+  };
+  for (const candidate of answer.candidates) verdictCounts[candidate.verdict] += 1;
+  answer.verdictCounts = verdictCounts;
+
+  // **The roll-up rule, stated once.** "Can this team play at 6pm?" is answered
+  // yes when *some* position works, because one legal position is all a fixture
+  // needs. It is `unknown` when none is known to work and at least one could not
+  // be judged — an unjudged cell can never be counted as a "no". Only when every
+  // cell was judged and every one of them said no is the roll-up `infeasible`.
+  const feasibleCells = verdictCounts[FEASIBILITY_VERDICT.FEASIBLE];
+  const unknownCells = verdictCounts[FEASIBILITY_VERDICT.UNKNOWN];
+  if (answer.candidates.length === 0) {
+    // Belt and braces against a future edit: a grid with no cells has nothing to
+    // say, and the one thing it must never say is yes. The schema already makes
+    // this unreachable — one date minimum, and the surfaces fall back to the
+    // team's own — which is why the code is registered as such in the reason-code
+    // audit rather than being left to look reachable.
+    unknowns.push(
+      makeUnknown(
+        FEASIBILITY_REASON.FEASIBILITY_QUERY_VACUOUS,
+        `every position team "${query.teamId}" could take on the dates asked about`,
+        'the question produced no candidate position at all, so there is nothing this answer can be true of',
+        { details: { teamId: query.teamId } }
+      )
+    );
+  }
+  const rolled = seal(
+    /** @type {import('./types.js').FeasibilityAnswer} */ ({
+      question: FEASIBILITY_QUESTION.CAN_TEAM_PLAY,
+      subject: answer.subject,
+      verdict: FEASIBILITY_VERDICT.UNKNOWN,
+      tight: null,
+      binding: [],
+      marginMinutes: null,
+      marginUnit: FEASIBILITY_MARGIN_UNIT,
+      marginBasis: null,
+      blockers: [],
+      // **When nothing worked, everything that went unchecked is part of the
+      // answer.** A cell that is feasible carries no unknowns by construction —
+      // an unknown would have made it `unknown` — so a roll-up with a feasible
+      // cell has nothing to carry, while one without has all of it.
+      unknowns:
+        feasibleCells > 0
+          ? []
+          : answer.candidates.reduce(
+              (all, candidate) => absorbUnknowns(all, candidate.unknowns),
+              absorbUnknowns([], unknowns)
+            ),
+      minimalSet: null,
+      notApplicable: [],
+      findings,
+      meta,
+      status: '',
+    }),
+    {
+      blocked: feasibleCells === 0 && unknownCells === 0 && answer.candidates.length > 0,
+      // (see the roll-up rule above; `compromised` is only consulted when the
+      // verdict lands on `feasible`)
+      compromised:
+        feasibleCells > 0 &&
+        answer.candidates
+          .filter((candidate) => candidate.verdict === FEASIBILITY_VERDICT.FEASIBLE)
+          .every((candidate) => candidate.tight === true),
+    }
+  );
+
+  const best =
+    answer.candidates.find((candidate) => candidate.verdict === FEASIBILITY_VERDICT.FEASIBLE) ??
+    answer.candidates.find((candidate) => candidate.verdict === FEASIBILITY_VERDICT.INFEASIBLE) ??
+    null;
+
+  return {
+    ...answer,
+    verdict: rolled.verdict,
+    tight: rolled.tight,
+    binding: best?.binding ?? [],
+    marginMinutes: best?.marginMinutes ?? null,
+    marginBasis: best?.binding?.[0]?.kind ?? null,
+    unknowns: rolled.unknowns,
+    findings: rolled.findings,
+    status: rolled.status,
+  };
+}
+
+/**
+ * Does this team already hold a fixture overlapping that window?
+ *
+ * `bookingsOverlapInTime()` owns the question and answers it in three values:
+ * `true`, `false`, and `null` for *"one of these two has no known end"*. The
+ * `null` is carried out of here as an `unknown` and is never coerced — folding
+ * an unmeasurable overlap into "no clash" is the failure
+ * `docs/BUILD_PLAN_STATUS.md` §4 records four times over.
+ *
+ * @param {ReadonlyArray<Object>} teamGames
+ * @param {string} carrierGameId
+ * @param {string} date
+ * @param {number} startMinutes
+ * @param {number|null} endMinutes
+ * @param {import('./types.js').FeasibilityMeta} meta
+ * @returns {{ overlaps: boolean, unknowns: import('./types.js').FeasibilityUnknown[] }}
+ */
+function teamClashAt(teamGames, carrierGameId, date, startMinutes, endMinutes, meta) {
+  /** @type {import('./types.js').FeasibilityUnknown[]} */
+  const unknowns = [];
+  const candidate = { date, startMinutes, endMinutes, surfaceId: 'n/a' };
+  let overlaps = false;
+  for (const game of teamGames) {
+    if (game.id === carrierGameId) continue;
+    if (game.date !== date) continue;
+    meta.teamFixturesCompared += 1;
+    const verdict = bookingsOverlapInTime(
+      /** @type {import('../facility/types.js').FacilityBooking} */ (candidate),
+      /** @type {import('../facility/types.js').FacilityBooking} */ (game)
+    );
+    if (verdict === true) {
+      overlaps = true;
+      continue;
+    }
+    if (verdict === null) {
+      unknowns.push(
+        makeUnknown(
+          FEASIBILITY_REASON.FEASIBILITY_FOOTPRINT_UNKNOWN,
+          `whether this team's fixture "${game.id}" overlaps the window on ${date}`,
+          'one of the two fixtures has no known end (GAP-14), so the overlap could not be decided; a null from bookingsOverlapInTime() is not a "no clash"',
+          { details: { gameId: game.id, date } }
+        )
+      );
+    }
+  }
+  return { overlaps, unknowns };
+}
+
+/**
+ * Seal a team answer that ended before the grid ran.
+ *
+ * @param {import('./types.js').TeamFeasibilityAnswer} answer
+ * @returns {import('./types.js').TeamFeasibilityAnswer}
+ */
+function sealTeam(answer) {
+  const rolled = seal(
+    /** @type {import('./types.js').FeasibilityAnswer} */ ({
+      question: answer.question,
+      subject: answer.subject,
+      verdict: FEASIBILITY_VERDICT.UNKNOWN,
+      tight: null,
+      binding: [],
+      marginMinutes: null,
+      marginUnit: FEASIBILITY_MARGIN_UNIT,
+      marginBasis: null,
+      blockers: [],
+      unknowns: answer.unknowns,
+      minimalSet: null,
+      notApplicable: [],
+      findings: answer.findings,
+      meta: answer.meta,
+      status: '',
+    }),
+    { blocked: false, compromised: false }
+  );
+  return {
+    ...answer,
+    verdict: rolled.verdict,
+    tight: rolled.tight,
+    findings: rolled.findings,
+    status: rolled.status,
+  };
+}
+
+/* -------------------------------------------------------------------------- */
+/* 3. How late, and how late cleanly?                                          */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * **"How late can anything kick off here — and how late without eating into a
+ * margin?"**
+ *
+ * Two boundaries, because the corpus states two thresholds with different
+ * status:
+ *
+ * - `latestHard` — the last kickoff at which nothing raises a `blocking`
+ *   finding. This is `latestLegalKickoff()`'s answer, taken whole.
+ * - `latestClean` — the last kickoff at which nothing raises a finding above
+ *   `info` at all. Never later than the hard one, and often earlier: on the
+ *   corpus's lit venue the permit's 15-minute comfort margin puts it a quarter
+ *   of an hour back.
+ *
+ * The clean boundary is found by **generating candidate minutes and confirming
+ * every one of them** through `checkKickoffAvailability()`. The candidates are
+ * over-generated on purpose — each applicable limit, less each margin the
+ * calendar declares, less the format's occupancy, plus each standing booking's
+ * start — so this module never has to claim which margin belongs to which
+ * constraint. Confirmation is what makes the answer true; generation only has to
+ * be broad enough to contain it, which
+ * `tests/feasibilityApi.test.js` establishes against a minute-by-minute scan.
+ *
+ * @param {import('../attribution/types.js').AttributionContext} context
+ * @param {Object} rawQuery - see `KickoffBoundsQuerySchema`
+ * @returns {import('./types.js').KickoffBoundsAnswer}
+ */
+export function feasibleKickoffBounds(context, rawQuery) {
+  const query = KickoffBoundsQuerySchema.parse(rawQuery);
+  const meta = createFeasibilityMeta();
+  /** @type {import('./types.js').FeasibilityFinding[]} */
+  const findings = [];
+  /** @type {import('./types.js').FeasibilityUnknown[]} */
+  const unknowns = [];
+  const engines = context.engines;
+
+  meta.questionsAsked += 1;
+  const existingBookings = standingBookings(context.state, query.date, query.ignoreGameIds);
+  const surface = getSurface(
+    /** @type {import('../facility/types.js').FacilityGraph} */ (engines.graph),
+    query.surfaceId
+  );
+
+  const hardResult = latestLegalKickoff(
+    engines.graph,
+    engines.table,
+    engines.calendar,
+    {
+      surfaceId: query.surfaceId,
+      date: query.date,
+      format: query.format,
+      notBeforeMinutes: query.notBeforeMinutes,
+      notAfterMinutes: query.notAfterMinutes,
+      ignoreBookingIds: [...query.ignoreGameIds],
+    },
+    { existingBookings }
+  );
+  meta.boundaryProbesRun += 1;
+  meta.constraintsConsulted += hardResult.constraints.length;
+  meta.candidatesConsidered += 1;
+
+  const at = {
+    surfaceId: query.surfaceId,
+    date: query.date,
+    format: query.format,
+    ignoreBookingIds: query.ignoreGameIds,
+    divisionLabel: null,
+  };
+
+  absorbUnknowns(
+    unknowns,
+    unknownsFromCodes(
+      /** @type {Array<{ code: string, severity: string, message: string }>} */ (
+        hardResult.findings
+      ),
+      `kickoff bounds on ${query.surfaceId} on ${query.date}`
+    )
+  );
+  absorbUnknowns(
+    unknowns,
+    unenforcedGoverningConstraints(
+      context.verification,
+      engines.registry,
+      scopeContextOf(engines.graph, {
+        date: query.date,
+        surfaceId: query.surfaceId,
+        venueId: surface?.venueId ?? null,
+      }),
+      meta
+    )
+  );
+
+  /** @type {Array<Object>} */
+  const categoryOnlyClaims = [];
+  const hard = boundaryOf(
+    engines,
+    at,
+    existingBookings,
+    hardResult,
+    hardResult.kickoffMinutes,
+    FEASIBILITY_THRESHOLD.HARD,
+    meta,
+    categoryOnlyClaims
+  );
+
+  const cleanMinutes = searchCleanBoundary(engines, at, existingBookings, hardResult, meta);
+  const cleanResult =
+    cleanMinutes === null
+      ? hardResult
+      : probeKickoff(engines, { ...at, kickoffMinutes: cleanMinutes }, existingBookings, meta)
+          .result;
+  const clean = boundaryOf(
+    engines,
+    at,
+    existingBookings,
+    cleanResult,
+    cleanMinutes,
+    FEASIBILITY_THRESHOLD.CLEAN,
+    meta,
+    categoryOnlyClaims
+  );
+  meta.candidatesAnswered += 1;
+  findings.push(.../** @type {import('./types.js').FeasibilityFinding[]} */ (categoryOnlyClaims));
+
+  // **Both boundaries report their own bound.** The joint case lives at the
+  // clean threshold on this corpus — Alder's permit close and its daylight limit
+  // coincide on 08/22 — so reporting only the hard boundary's bound would hide
+  // the one tie the season actually contains.
+  findings.push(
+    ...boundFindings(hard.binding, hard.marginMinutes, {
+      surfaceId: query.surfaceId,
+      date: query.date,
+      threshold: FEASIBILITY_THRESHOLD.HARD,
+    }),
+    ...boundFindings(clean.binding, clean.marginMinutes, {
+      surfaceId: query.surfaceId,
+      date: query.date,
+      threshold: FEASIBILITY_THRESHOLD.CLEAN,
+    })
+  );
+
+  // **The vacuity guard, over what the query examined rather than what it
+  // returned.** A surface the graph does not hold makes `latestLegalKickoff()`
+  // return before it evaluates a single edge, and "nothing bounds this" would
+  // then be a statement about an empty search rather than about a venue.
+  if (meta.constraintsConsulted === 0) {
+    findings.push(
+      makeFeasibilityFinding(
+        FEASIBILITY_REASON.FEASIBILITY_QUERY_VACUOUS,
+        `the bounds question about "${query.surfaceId}" on ${query.date} evaluated zero constraints, so any boundary it reported would be a statement about an empty search`,
+        { surfaceId: query.surfaceId, date: query.date, format: query.format }
+      )
+    );
+  }
+
+  const tightBandMinutes =
+    hard.kickoffMinutes === null || clean.kickoffMinutes === null
+      ? null
+      : hard.kickoffMinutes - clean.kickoffMinutes;
+
+  const sealed = seal(
+    /** @type {import('./types.js').FeasibilityAnswer} */ ({
+      question: FEASIBILITY_QUESTION.KICKOFF_BOUNDS,
+      subject: {
+        gameId: null,
+        teamId: null,
+        surfaceId: query.surfaceId,
+        venueId: surface?.venueId ?? null,
+        date: query.date,
+        kickoffMinutes: hard.kickoffMinutes,
+        format: query.format,
+      },
+      verdict: FEASIBILITY_VERDICT.UNKNOWN,
+      tight: null,
+      binding: hard.binding,
+      marginMinutes: hard.marginMinutes,
+      marginUnit: FEASIBILITY_MARGIN_UNIT,
+      marginBasis: hard.marginBasis,
+      blockers: hard.claims,
+      unknowns,
+      minimalSet: null,
+      notApplicable: hard.notApplicable,
+      findings,
+      meta,
+      status: '',
+    }),
+    {
+      blocked: hard.kickoffMinutes === null,
+      compromised: tightBandMinutes !== null && tightBandMinutes > 0,
+    }
+  );
+
+  return {
+    question: FEASIBILITY_QUESTION.KICKOFF_BOUNDS,
+    subject: sealed.subject,
+    verdict: sealed.verdict,
+    tight: sealed.tight,
+    latestHard: hard,
+    latestClean: clean,
+    tightBandMinutes,
+    binding: hard.binding,
+    marginMinutes: hard.marginMinutes,
+    marginUnit: FEASIBILITY_MARGIN_UNIT,
+    marginBasis: hard.marginBasis,
+    unknowns: sealed.unknowns,
+    searchedFromMinutes: hardResult.searchedFromMinutes,
+    searchedToMinutes: hardResult.searchedToMinutes,
+    findings: sealed.findings,
+    meta,
+    status: sealed.status,
+  };
+}
+
+/**
+ * One boundary, with its binding set, its claims and its margin.
+ *
+ * @param {Object} engines
+ * @param {Object} at
+ * @param {ReadonlyArray<Object>} existingBookings
+ * @param {Object} result - the availability answer at the boundary
+ * @param {number|null} kickoffMinutes
+ * @param {string} threshold
+ * @param {import('./types.js').FeasibilityMeta} meta
+ * @param {Array<Object>} categoryOnlyClaims - collector for claims that fail the
+ *   specific-instance test; never expected to receive one
+ * @returns {import('./types.js').FeasibilityBoundary}
+ */
+function boundaryOf(
+  engines,
+  at,
+  existingBookings,
+  result,
+  kickoffMinutes,
+  threshold,
+  meta,
+  categoryOnlyClaims
+) {
+  const probesBefore = meta.boundaryProbesRun;
+  /** @type {import('./types.js').FeasibilityBound[]} */
+  const binding =
+    kickoffMinutes === null
+      ? []
+      : bindingAt(engines, { ...at, kickoffMinutes }, existingBookings, result, threshold, meta);
+  const { marginMinutes, marginBasis } = marginFrom(binding);
+
+  const claimCtx = {
+    registry: engines.registry,
+    gameId: null,
+    surfaceId: at.surfaceId,
+    venueId: result.venueId ?? null,
+    date: at.date,
+  };
+  // **Each bound gets the findings that are about it**, grouped by 4.3's own
+  // table. Handing the builder an empty list instead loses the codes, and a
+  // bound with no codes *and* no measurable numbers — the permit on a blacked-out
+  // date is exactly that — becomes a claim that names a category. The reason-code
+  // audit caught precisely that here, which is what the guard below is for.
+  const grouped = groupFindingsByConstraintKind(
+    /** @type {ReadonlyArray<import('../attribution/types.js').AttributionFinding>} */ (
+      underRegistry(
+        engines,
+        { surfaceId: at.surfaceId, venueId: result.venueId ?? null, date: at.date },
+        result.findings ?? []
+      ).filter((finding) => finding.severity !== CONSTRAINT_SEVERITY.INFO)
+    )
+  );
+  const claims = (result.constraints ?? [])
+    .filter((constraint) => constraint.applicable)
+    .map((constraint) =>
+      claimFromAvailabilityConstraint(constraint, claimCtx, grouped.byKind[constraint.kind] ?? [])
+    );
+  meta.claimsCarried += claims.length;
+  // **The bar every claim has to clear, checked here too.** 4.3 runs this from
+  // every one of its own answers because the one place that did not — the
+  // minimal blocking set — was the one place a category-only claim could have
+  // passed unremarked. A boundary's claims are built by the same public builder,
+  // and are checked by the same public guard rather than trusted because of it.
+  categoryOnlyClaims.push(
+    ...categoryOnlyClaimFindings(
+      claims,
+      { surfaceId: at.surfaceId, date: at.date },
+      createAttributionMeta()
+    )
+  );
+
+  return {
+    threshold,
+    kickoffMinutes,
+    endMinutes: kickoffMinutes === null ? null : (result.endMinutes ?? null),
+    binding,
+    marginMinutes,
+    marginBasis,
+    claims,
+    notApplicable: (result.constraints ?? [])
+      .filter((constraint) => !constraint.applicable)
+      .map((constraint) => ({
+        source: ATTRIBUTION_SOURCE.AVAILABILITY,
+        kind: constraint.kind,
+        reason: String(constraint.detail?.reason ?? 'the machinery that owns it stated no reason'),
+      })),
+    candidatesTested: meta.boundaryProbesRun - probesBefore,
+  };
+}
+
+/**
+ * The latest kickoff at which nothing above `info` is raised.
+ *
+ * Generate broadly, confirm every candidate. The generation uses the calendar's
+ * own declared margins without deciding which constraint each belongs to: every
+ * applicable limit is offered less each margin, and the wrong combinations
+ * simply fail confirmation. That is why this function contains no reasoning
+ * about permits or daylight at all.
+ *
+ * @param {Object} engines
+ * @param {Object} at
+ * @param {ReadonlyArray<Object>} existingBookings
+ * @param {Object} hardResult
+ * @param {import('./types.js').FeasibilityMeta} meta
+ * @returns {number|null}
+ */
+function searchCleanBoundary(engines, at, existingBookings, hardResult, meta) {
+  const ceiling = hardResult.kickoffMinutes;
+  if (ceiling === null) return null;
+  const occupancy = hardResult.occupancyMinutes;
+  if (occupancy === null) return null;
+  const floor = hardResult.searchedFromMinutes;
+  const margins = [
+    0,
+    engines.calendar.permitMarginMinutes ?? 0,
+    engines.calendar.sunsetMarginMinutes ?? 0,
+  ];
+
+  /** @type {number[]} */
+  const raw = [ceiling];
+  for (const constraint of hardResult.constraints ?? []) {
+    if (!constraint.applicable || constraint.limitMinutes === null) continue;
+    for (const margin of margins) raw.push(constraint.limitMinutes - margin - occupancy);
+  }
+  for (const booking of existingBookings) {
+    if (booking.date !== at.date) continue;
+    for (const margin of margins) raw.push(booking.startMinutes - margin - occupancy);
+  }
+
+  const candidates = [...new Set(raw)]
+    .filter((minute) => minute >= floor && minute <= ceiling)
+    .sort((a, b) => b - a);
+
+  for (const kickoffMinutes of candidates) {
+    const probe = probeKickoff(engines, { ...at, kickoffMinutes }, existingBookings, meta);
+    const consequential = probe.findings.filter(
+      (finding) => finding.severity !== CONSTRAINT_SEVERITY.INFO
+    );
+    if (consequential.length === 0) return kickoffMinutes;
+  }
+  return null;
+}
