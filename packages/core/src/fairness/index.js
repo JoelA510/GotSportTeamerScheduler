@@ -76,6 +76,7 @@ export {
   FAIRNESS_METRIC_REGISTRY,
   FAIRNESS_METRIC_UNIT,
   FAIRNESS_SUBJECT_KIND,
+  fairnessMetricOf,
   groupKeyOf,
   measureGroup,
   measureSubject,

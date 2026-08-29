@@ -505,7 +505,18 @@ export function createFairnessMeta() {
   return {
     /** Fixtures handed to the classifier, of every class. */
     fixturesRead: 0,
-    /** Fixtures counted into at least one metric. */
+    /**
+     * Distinct fixtures at least one **requested** metric read — those of a
+     * competition one of them counts. Never simply every fixture naming a
+     * participant: that made it equal to `fixturesRead` on the season corpus,
+     * so the one shortfall it exists to surface was the one it could not show.
+     *
+     * Scope-level, and it stops there: a metric's *own* exclusions — a fixture
+     * naming no opponent, carrying no kickoff, held at no venue — are counted
+     * per subject on each measurement's `evidence`, because which fixtures they
+     * were is a question a measurement can answer and a report-wide counter
+     * cannot.
+     */
     fixturesCounted: 0,
     /** Fixtures excluded as placeholders — not teams, not games. */
     fixturesPlaceholder: 0,

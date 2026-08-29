@@ -3849,10 +3849,17 @@ harvest(
 /**
  * The fairness and equity layer, driven through its public entry points.
  *
- * The season corpus reaches thirteen of its twenty-two codes on its own; the
+ * The season corpus reaches twelve of its twenty-two codes on its own; the
  * rest need a fixture list this season does not contain, and each is built here
  * as **input data** — a plain array of schema-shaped fixtures — rather than by
  * reaching into a returned report.
+ *
+ * `FAIRNESS_GROUP_AMBIGUOUS` used to be one of the twelve and is now one of the
+ * rest. The corpus' only two-label subject, `16GSelect02`, carries `16GS` on one
+ * scrimmage and `U16G` on another and holds no league fixture, and a league
+ * metric's cohort is now drawn from league fixtures only — so the corpus has no
+ * subject holding two keys *of the class a metric reads*, and the code is
+ * driven below from a constructed league list instead.
  */
 const fairnessFixtures = toSeason2026FairnessFixtures(season.combinedGames).fixtures;
 
@@ -3964,6 +3971,31 @@ harvest(
       )
     ).flat(),
     metricIds: [FAIRNESS_METRIC.MEAN_KICKOFF],
+  })
+);
+
+harvest(
+  'fairnessReport(a team whose league fixtures carry two spellings of its division)',
+  fairnessReport({
+    fixtures: [
+      ...Array.from({ length: 4 }, (unused, round) =>
+        fairnessFixture({
+          fixtureId: `amb-${round}`,
+          date: `2026-09-0${round + 1}`,
+          homeSubjectId: `T${round}`,
+          awaySubjectId: `T${round + 4}`,
+        })
+      ),
+      // The same division, spelled the other way, on a league row. Two keys of
+      // the class the metric reads is what makes a subject ambiguous.
+      fairnessFixture({
+        fixtureId: 'amb-relabelled',
+        date: '2026-09-05',
+        division: '10B',
+        homeSubjectId: 'T0',
+        awaySubjectId: 'T1',
+      }),
+    ],
   })
 );
 

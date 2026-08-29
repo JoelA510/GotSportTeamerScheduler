@@ -43,8 +43,8 @@
 import { classifyFairnessFixtures, membershipSplit, participationOf } from './classification.js';
 import {
   FAIRNESS_METRIC_ORDER,
-  FAIRNESS_METRIC_REGISTRY,
   FAIRNESS_SUBJECT_KIND,
+  fairnessMetricOf,
   groupKeyOf,
   measureGroup,
   measureTeams,
@@ -81,9 +81,17 @@ export function fairnessReport(query) {
   /** @type {import('./types.js').FairnessFinding[]} */
   const findings = [];
 
+  // Every requested id is resolved through the registry, so an unregistered one
+  // is refused as what it is. Filtering the declared order by the request used
+  // to drop an unknown id silently, and `metricIds: ['mean-kickof']` then ran
+  // nothing and came back `rejected` with FAIRNESS_NOTHING_JUDGED — a report
+  // telling an operator their season is unjudgeable when they misspelled an
+  // argument. The declared order is preserved rather than the caller's, for the
+  // deterministic rendering FAIRNESS_METRIC_ORDER exists for.
+  const requested = new Set(parsed.metricIds.map((id) => fairnessMetricOf(id).id));
   const metricIds =
-    parsed.metricIds.length > 0
-      ? FAIRNESS_METRIC_ORDER.filter((id) => parsed.metricIds.includes(id))
+    requested.size > 0
+      ? FAIRNESS_METRIC_ORDER.filter((id) => requested.has(id))
       : FAIRNESS_METRIC_ORDER;
 
   const fixtures = /** @type {ReadonlyArray<import('./types.js').FairnessFixture>} */ (
@@ -102,18 +110,24 @@ export function fairnessReport(query) {
   const membership = membershipSplit(participation, parsed.memberSubjectIds);
   findings.push(...membership.findings);
 
-  const teamMeasurements = measureTeams(participation);
+  const teamMeasurements = measureTeams(participation, metricIds);
 
-  /** @type {Map<string, ReadonlySet<string>>} */
-  const divisionsBySubject = new Map();
-  /** @type {Map<string, ReadonlySet<string>>} */
-  const ageGroupsBySubject = new Map();
-  for (const [subjectId, entry] of participation) {
-    divisionsBySubject.set(subjectId, entry.divisions);
-    ageGroupsBySubject.set(subjectId, entry.ageGroups);
-  }
-  const divisionKeyOf = (subjectId) => groupKeyOf(divisionsBySubject.get(subjectId) ?? new Set());
-  const ageGroupKeyOf = (subjectId) => groupKeyOf(ageGroupsBySubject.get(subjectId) ?? new Set());
+  /**
+   * Cohort keys, per set of competitions, built once and reused.
+   *
+   * @type {Map<string, { divisions: Map<string, Set<string>>, ageGroups: Map<string, Set<string>> }>}
+   */
+  const cohortCache = new Map();
+  /** @param {ReadonlyArray<string>} counts */
+  const cohortsFor = (counts) => {
+    const key = [...counts].sort().join('|');
+    let built = cohortCache.get(key);
+    if (built === undefined) {
+      built = cohortKeysBySubject(participation, counts);
+      cohortCache.set(key, built);
+    }
+    return built;
+  };
 
   /** @type {import('./types.js').FairnessPopulation[]} */
   const populations = [];
@@ -122,15 +136,26 @@ export function fairnessReport(query) {
   /** @type {import('./types.js').FairnessMeasurement[]} */
   const measurements = [...teamMeasurements];
 
-  const keyResolver = {
-    [FAIRNESS_BASIS.DIVISION]: divisionKeyOf,
-    [FAIRNESS_BASIS.AGE_GROUP]: ageGroupKeyOf,
-    [FAIRNESS_BASIS.SEASON]: () => ({ key: FAIRNESS_BASIS.SEASON, reasonCode: null }),
-  };
-
   for (const metricId of metricIds) {
-    const metric = FAIRNESS_METRIC_REGISTRY[metricId];
+    const metric = fairnessMetricOf(metricId);
     const forMetric = teamMeasurements.filter((measurement) => measurement.metricId === metricId);
+
+    // The cohort is drawn from the fixtures **this metric counts**, and from no
+    // others. It used to be drawn from every fixture a subject appeared in, so
+    // one friendly spelled `10B` against nine league rows spelled `U10B` made a
+    // team FAIRNESS_GROUP_AMBIGUOUS and dropped it out of the division whose
+    // league season it plays. The league/external/friendly distinction is this
+    // module's headline claim and it has to hold for grouping as well as for
+    // measurement, or a metric is computed over league fixtures and compared
+    // against a population a scrimmage helped assemble.
+    const cohorts = cohortsFor(metric.counts);
+    const divisionKeyOf = (subjectId) => groupKeyOf(cohorts.divisions.get(subjectId) ?? new Set());
+    const ageGroupKeyOf = (subjectId) => groupKeyOf(cohorts.ageGroups.get(subjectId) ?? new Set());
+    const keyResolver = {
+      [FAIRNESS_BASIS.DIVISION]: divisionKeyOf,
+      [FAIRNESS_BASIS.AGE_GROUP]: ageGroupKeyOf,
+      [FAIRNESS_BASIS.SEASON]: () => ({ key: FAIRNESS_BASIS.SEASON, reasonCode: null }),
+    };
 
     for (const basisKind of basesFor(FAIRNESS_SUBJECT_KIND.TEAM)) {
       const built = buildPopulations({
@@ -214,11 +239,23 @@ export function fairnessReport(query) {
       meta.measurementsUnmeasurable += 1;
     }
   }
-  meta.fixturesCounted = new Set(
-    [...participation.values()].flatMap((entry) =>
-      entry.fixtures.map((held) => held.fixture.fixtureId)
-    )
-  ).size;
+  // Distinct fixtures a **requested** metric read: one belonging to a
+  // competition at least one of them counts. It used to be every fixture naming
+  // a participant, which on this corpus is 578 — identical to `fixturesRead`
+  // against a true 567, so the one shortfall the counter was added to surface
+  // (eight external seeding games and three scrimmages, read and counted into
+  // nothing) was the one thing it could not show.
+  const countedFixtureIds = new Set();
+  for (const metricId of metricIds) {
+    const counts = fairnessMetricOf(metricId).counts;
+    for (const entry of participation.values()) {
+      for (const held of entry.fixtures) {
+        if (counts.includes(held.fixture.competition))
+          countedFixtureIds.add(held.fixture.fixtureId);
+      }
+    }
+  }
+  meta.fixturesCounted = countedFixtureIds.size;
   meta.fixturesPlaceholder = classification.placeholderFixtures;
   meta.populationsBuilt = populations.length;
   meta.populationsScored = populations.filter(
@@ -254,6 +291,34 @@ export function fairnessReport(query) {
     findings,
     meta,
   };
+}
+
+/**
+ * **The division and age-group labels a subject carries in one class of fixture.**
+ *
+ * Not `participation.divisions` / `.ageGroups`, which are the labels a subject
+ * carries anywhere: those are the right answer to *"what has this team been
+ * called?"* and the wrong one to *"which league cohort is it judged in?"*.
+ *
+ * @param {Map<string, import('./types.js').FairnessParticipation>} participation
+ * @param {ReadonlyArray<string>} counts - the competitions the metric reads
+ * @returns {{ divisions: Map<string, Set<string>>, ageGroups: Map<string, Set<string>> }}
+ */
+function cohortKeysBySubject(participation, counts) {
+  /** @type {Map<string, Set<string>>} */ const divisions = new Map();
+  /** @type {Map<string, Set<string>>} */ const ageGroups = new Map();
+  for (const [subjectId, entry] of participation) {
+    /** @type {Set<string>} */ const division = new Set();
+    /** @type {Set<string>} */ const ageGroup = new Set();
+    for (const held of entry.fixtures) {
+      if (!counts.includes(held.fixture.competition)) continue;
+      if (held.fixture.division !== null) division.add(held.fixture.division);
+      if (held.fixture.ageGroup !== null) ageGroup.add(held.fixture.ageGroup);
+    }
+    divisions.set(subjectId, division);
+    ageGroups.set(subjectId, ageGroup);
+  }
+  return { divisions, ageGroups };
 }
 
 /**

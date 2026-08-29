@@ -51,10 +51,18 @@
 /**
  * What was read and what was set aside to produce one number.
  *
+ * Every field named `fixtures*` is a count of **fixtures**, and `exclusions` is
+ * a breakdown of `fixturesExcluded` denominated the same way. A group's evidence
+ * aggregates its member subjects, and that tally is denominated in *members*, so
+ * it travels in its own two fields rather than being added to a count of rows it
+ * is not made of.
+ *
  * @typedef {Object} FairnessEvidence
  * @property {number} fixturesCounted - fixtures that contributed to the value
  * @property {number} fixturesExcluded - fixtures read and not counted
  * @property {ReadonlyArray<[string, number]>} exclusions - why, and how many each
+ * @property {number} [membersCounted] - group subjects only: members that supplied a value
+ * @property {number} [membersExcluded] - group subjects only: members that could not
  */
 
 /**
@@ -153,7 +161,7 @@
 /**
  * @typedef {Object} FairnessMeta
  * @property {number} fixturesRead
- * @property {number} fixturesCounted
+ * @property {number} fixturesCounted - distinct fixtures a requested metric read
  * @property {number} fixturesPlaceholder
  * @property {number} subjectsConsidered
  * @property {number} measurementsMeasured

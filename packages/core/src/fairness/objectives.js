@@ -51,7 +51,7 @@
  * @module fairness/objectives
  */
 
-import { FAIRNESS_COMPETITION } from './classification.js';
+import { FAIRNESS_COMPETITION, participationOf } from './classification.js';
 import { median } from './dispersion.js';
 import {
   FAIRNESS_METRIC,
@@ -151,12 +151,25 @@ export const FAIRNESS_OBJECTIVE_REGISTRY = Object.freeze({
  * shared state, and returns a fresh object. Calling it twice with the same input
  * returns the same numbers.
  *
+ * `fixtures` is the **authority**, and this is the second version of that
+ * sentence. The first was only in the docstring: the function took a
+ * `participation` map and never looked at `fixtures` at all, so
+ * `scoreFairnessObjective(leagueOnlyList, config, participationOf(wholeSeason))`
+ * scored the whole season, returned `coverage: 0.871` for a list whose real
+ * coverage is 1, and said nothing about it. A parameter that reads as
+ * load-bearing and is not is how the board waiver was lost, so the fixtures now
+ * decide and the map is **optional corroboration**: supply one and it is checked
+ * against the fixtures, subject by subject and fixture by fixture, and a
+ * mismatch is refused rather than silently preferred.
+ *
  * @param {ReadonlyArray<import('./types.js').FairnessFixture>} fixtures
  * @param {unknown} config - parsed by `FairnessObjectiveConfigSchema`
- * @param {Map<string, import('./types.js').FairnessParticipation>} participation
+ * @param {Map<string, import('./types.js').FairnessParticipation>|null} [supplied]
+ *   an already-built participation map over the same fixtures; omit it and one
+ *   is derived. Never a way to score a population the fixtures do not describe.
  * @returns {import('./types.js').FairnessObjectiveResult}
  */
-export function scoreFairnessObjective(fixtures, config, participation) {
+export function scoreFairnessObjective(fixtures, config, supplied = null) {
   const parsed = FairnessObjectiveConfigSchema.parse(config);
   const definition = FAIRNESS_OBJECTIVE_REGISTRY[parsed.objectiveId];
   if (!definition) {
@@ -165,6 +178,10 @@ export function scoreFairnessObjective(fixtures, config, participation) {
     );
   }
   const metric = FAIRNESS_METRIC_REGISTRY[definition.metricId];
+  const participation = participationOf(fixtures);
+  if (supplied !== null && supplied !== undefined) {
+    assertParticipationMatches(participation, supplied, parsed.objectiveId);
+  }
 
   /** @type {import('./types.js').FairnessFinding[]} */
   const findings = [
@@ -307,6 +324,41 @@ export function scoreFairnessObjective(fixtures, config, participation) {
     terms,
     findings,
   };
+}
+
+/**
+ * **Refuse a participation map these fixtures do not produce.**
+ *
+ * Compared subject by subject and, within a subject, fixture id by fixture id —
+ * not by size, because two maps of 140 subjects over two different seasons are
+ * the same size. A thrown `Error` rather than a finding, matching the refusal
+ * {@link scoreFairnessObjective} already gives an unregistered `objectiveId`:
+ * both are mistakes in the *call*, and neither is a property of a season that a
+ * report could sensibly carry a reason code about.
+ *
+ * @param {Map<string, import('./types.js').FairnessParticipation>} observed
+ * @param {Map<string, import('./types.js').FairnessParticipation>} supplied
+ * @param {string} objectiveId
+ * @returns {void}
+ */
+function assertParticipationMatches(observed, supplied, objectiveId) {
+  /** @param {Map<string, import('./types.js').FairnessParticipation>} map */
+  const shape = (map) =>
+    [...map.keys()]
+      .sort()
+      .map((subjectId) => {
+        const entry = map.get(subjectId);
+        const held = entry === undefined ? [] : entry.fixtures;
+        return `${subjectId}=${held
+          .map((record) => record.fixture.fixtureId)
+          .sort()
+          .join(',')}`;
+      })
+      .join('|');
+  if (shape(observed) === shape(supplied)) return;
+  throw new Error(
+    `fairness: the participation map supplied to ${JSON.stringify(objectiveId)} is not the one these fixtures produce (${observed.size} subject(s) observed, ${supplied.size} supplied); scoring the map instead of the fixtures is how a filtered fixture list is silently scored as a whole season`
+  );
 }
 
 /**

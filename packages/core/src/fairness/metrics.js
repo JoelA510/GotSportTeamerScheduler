@@ -131,8 +131,18 @@ const LEAGUE_ONLY = Object.freeze([FAIRNESS_COMPETITION.LEAGUE]);
 /**
  * One evidence record per measurement: what was read, what was set aside, why.
  *
+ * **Every entry in `exclusions` is a count of fixtures**, and `fixturesExcluded`
+ * is their sum. That is the whole contract, and it is written down because it
+ * was broken: {@link measureGroup} used to fold *"four member teams were
+ * unmeasurable"* into the same total as *"thirty-six fixtures named no
+ * opponent"*, and published `fixturesExcluded: 40` about a division of 36
+ * fixtures. Evidence a reader can check by hand is the point of this module, and
+ * a count larger than the population it is drawn from destroys that. Anything
+ * denominated in something other than fixtures belongs in a field of its own —
+ * see `membersCounted` / `membersExcluded`.
+ *
  * @param {number} counted
- * @param {ReadonlyArray<[string, number]>} exclusions
+ * @param {ReadonlyArray<[string, number]>} exclusions - fixture counts, only
  * @returns {import('./types.js').FairnessEvidence}
  */
 function evidence(counted, exclusions = []) {
@@ -239,6 +249,31 @@ export const FAIRNESS_METRIC_REGISTRY = Object.freeze({
 });
 
 /**
+ * **The metric a caller named, or a refusal naming what it is not.**
+ *
+ * Adopted from `scoreFairnessObjective()`'s treatment of an unregistered
+ * `objectiveId` rather than invented a second time: a metric id nobody declared
+ * is a mistake in the *call*, not a property of the season, and the answer to it
+ * is the same answer that module already gives. It is emphatically not a silent
+ * filter — `metricIds: ['mean-kickof']` used to select nothing, run nothing, and
+ * come back `rejected` with `FAIRNESS_NOTHING_JUDGED`, which tells an operator
+ * their data is unjudgeable when what happened is that they misspelled an
+ * argument.
+ *
+ * @param {string} metricId
+ * @returns {import('./types.js').FairnessMetricDefinition}
+ */
+export function fairnessMetricOf(metricId) {
+  const metric = FAIRNESS_METRIC_REGISTRY[metricId];
+  if (!metric) {
+    throw new Error(
+      `fairness: metric ${JSON.stringify(metricId)} is not a member of FAIRNESS_METRIC; the declared metrics are ${FAIRNESS_METRIC_ORDER.map((id) => JSON.stringify(id)).join(', ')}`
+    );
+  }
+  return metric;
+}
+
+/**
  * Build one measurement, through the guard that keeps the two-state
  * measurability honest.
  *
@@ -289,26 +324,30 @@ export function measureSubject(metric, subjectKind, subjectId, allEntries) {
 }
 
 /**
- * Measure every team subject on every declared metric.
+ * Measure every team subject on the requested metrics.
+ *
+ * `metricIds` defaults to every declared metric and is **read**, not decorative:
+ * a report restricted to one metric must publish measurements about one metric.
+ * It used to measure all four whatever it was asked for, which put 588
+ * measurements and findings about three unrequested metrics into a report that
+ * asked for one — a filter that silently does nothing being worse than no
+ * filter, because the caller cannot tell it did nothing.
  *
  * @param {Map<string, import('./types.js').FairnessParticipation>} participation
+ * @param {ReadonlyArray<string>} [metricIds] - {@link FAIRNESS_METRIC} values
  * @returns {import('./types.js').FairnessMeasurement[]}
  */
-export function measureTeams(participation) {
+export function measureTeams(participation, metricIds = FAIRNESS_METRIC_ORDER) {
+  const metrics = metricIds.map((metricId) => fairnessMetricOf(metricId));
   /** @type {import('./types.js').FairnessMeasurement[]} */
   const measurements = [];
   for (const subjectId of [...participation.keys()].sort()) {
     const entry = /** @type {import('./types.js').FairnessParticipation} */ (
       participation.get(subjectId)
     );
-    for (const metricId of FAIRNESS_METRIC_ORDER) {
+    for (const metric of metrics) {
       measurements.push(
-        measureSubject(
-          FAIRNESS_METRIC_REGISTRY[metricId],
-          FAIRNESS_SUBJECT_KIND.TEAM,
-          subjectId,
-          entry.fixtures
-        )
+        measureSubject(metric, FAIRNESS_SUBJECT_KIND.TEAM, subjectId, entry.fixtures)
       );
     }
   }
@@ -321,10 +360,18 @@ export function measureTeams(participation) {
  * Three answers, never two. `null` with `FAIRNESS_GROUP_UNLABELLED` is a subject
  * the corpus gives no key for — the four Minis sides play in division `BB`,
  * which parses to no age group at all — and `null` with
- * `FAIRNESS_GROUP_AMBIGUOUS` is a subject with two, which in season-2026 is
- * `16GSelect02`, listed as `16GS` on one row and `U16G` on another (GAP-24).
- * Neither is assigned to a cohort by picking one, which is what
- * `buildTeams()` already refuses to do for the same subject.
+ * `FAIRNESS_GROUP_AMBIGUOUS` is a subject with two (GAP-24). Neither is assigned
+ * to a cohort by picking one, which is what `buildTeams()` already refuses to do
+ * for the same subject.
+ *
+ * The keys handed in here are the ones the metric's **own competitions** supply
+ * — see `report.js`. That changes which of the two refusals season-2026
+ * exercises: `16GSelect02` is listed as `16GS` on one row and `U16G` on another,
+ * but both rows are scrimmages and it holds no league fixture, so under a league
+ * metric it is *unlabelled* rather than ambiguous. Two spellings on two
+ * friendlies are not a reason to refuse a team its league division, and this
+ * corpus holds no subject with two league labels; the ambiguous branch is driven
+ * from constructed league input in `tests/reasonCodeReachability.test.js`.
  *
  * @param {ReadonlySet<string>} keys
  * @returns {{ key: string|null, reasonCode: string|null }}
@@ -355,7 +402,7 @@ export function groupKeyOf(keys) {
  * @returns {import('./types.js').FairnessMeasurement}
  */
 export function measureGroup(subjectKind, groupKey, metricId, memberMeasurements) {
-  const metric = FAIRNESS_METRIC_REGISTRY[metricId];
+  const metric = fairnessMetricOf(metricId);
   const usable = memberMeasurements.filter(
     (measurement) => measurement.measurability === FAIRNESS_MEASURABILITY.MEASURED
   );
@@ -365,7 +412,13 @@ export function measureGroup(subjectKind, groupKey, metricId, memberMeasurements
   // different question. Conflating them would leave a three-team division with
   // no published typical kickoff at all.
   const centre = median(usable.map((measurement) => /** @type {number} */ (measurement.value)));
-  const counted = usable.reduce(
+  // Both totals are summed over **every** member, so a group's fixture
+  // accounting is exactly the sum of its members' and a reader can add the rows
+  // up. (An unmeasurable member always counts zero fixtures, so this is the same
+  // arithmetic as summing `counted` over the measurable ones — it is written
+  // this way so the identity is one a test can assert rather than one that
+  // happens to hold.)
+  const counted = memberMeasurements.reduce(
     (total, measurement) => total + measurement.evidence.fixturesCounted,
     0
   );
@@ -382,10 +435,14 @@ export function measureGroup(subjectKind, groupKey, metricId, memberMeasurements
       centre === null ? FAIRNESS_MEASURABILITY.UNMEASURABLE : FAIRNESS_MEASURABILITY.MEASURED,
     value: centre,
     reasonCode: centre === null ? unanimousReasonOf(memberMeasurements) : null,
-    evidence: evidence(counted, [
-      ['member-subject-unmeasurable', memberMeasurements.length - usable.length],
-      ['fixture-not-counted-by-metric', excluded],
-    ]),
+    evidence: {
+      // Fixtures, and only fixtures, in the fixture fields — the member tally
+      // is real evidence and is published under its own name rather than added
+      // to a count of rows it is not denominated in. See `evidence()`.
+      ...evidence(counted, [['fixture-not-counted-by-metric', excluded]]),
+      membersCounted: usable.length,
+      membersExcluded: memberMeasurements.length - usable.length,
+    },
   });
 }
 

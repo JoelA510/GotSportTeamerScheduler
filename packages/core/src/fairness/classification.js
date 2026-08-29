@@ -105,6 +105,26 @@ export const FAIRNESS_COMPETITION_ORDER = Object.freeze([
 ]);
 
 /**
+ * **Is this a competition the module has decided the meaning of?**
+ *
+ * One predicate, and both halves of this file read it. They used not to:
+ * `classifyFairnessFixtures()` tested the enum's **values** and
+ * `participationOf()` tested `competition.toUpperCase()` against its **keys**,
+ * which are two different questions that happen to agree on the three members
+ * declared today. They disagree already — `'LEAGUE'` upper-cases to a key and is
+ * not a value, so the classifier refused it as unclassified while participation
+ * counted it and grew a `LEAGUE` column nobody declared — and a future member
+ * spelled `'cup-tie'`, whose key would be `CUP_TIE`, would part them the other
+ * way round: counted by one half and silently dropped by the other.
+ *
+ * @param {string} competition
+ * @returns {boolean}
+ */
+function isDeclaredCompetition(competition) {
+  return FAIRNESS_COMPETITION_ORDER.includes(competition);
+}
+
+/**
  * How a subject took part in a fixture.
  *
  * `sole` is the state that defuses the Minis trap. A Minis session names one
@@ -182,10 +202,15 @@ export function sideOf(fixture, subjectId) {
  * scopes rather than merging silently.
  *
  * One consequence is kept in view rather than fixed here: within a single scope
- * a subject may still be observed under two labels. `16GSelect02` appears as
- * division `16GS` in one row and `U16G` in another. That subject is
- * **ambiguous** for division grouping and is judged under no division cohort,
- * with `FAIRNESS_GROUP_AMBIGUOUS`; see `metrics.js`.
+ * a subject may still be observed under two labels *of the class a metric
+ * reads*. That subject is **ambiguous** for grouping and is judged under no
+ * cohort, with `FAIRNESS_GROUP_AMBIGUOUS`; see `metrics.js`. Season-2026's one
+ * two-label subject turns out not to be an instance: `16GSelect02` appears as
+ * division `16GS` in one row and `U16G` in another, both rows are scrimmages,
+ * and it holds no league fixture — so a league metric gives it no cohort because
+ * it has no league label, not because it has two. A cohort is drawn from the
+ * fixtures the metric counts (`report.js`), so a friendly's spelling never
+ * decides one.
  *
  * @param {ReadonlyArray<import('./types.js').FairnessFixture>} fixtures
  * @returns {import('./types.js').FairnessClassification}
@@ -205,7 +230,7 @@ export function classifyFairnessFixtures(fixtures) {
 
   for (const fixture of fixtures) {
     scopes.add(fixture.scopeId);
-    if (!Object.hasOwn(byCompetition, fixture.competition)) {
+    if (!isDeclaredCompetition(fixture.competition)) {
       unclassified.set(fixture.competition, (unclassified.get(fixture.competition) ?? 0) + 1);
       continue;
     }
@@ -287,7 +312,7 @@ export function participationOf(fixtures) {
   };
 
   for (const fixture of fixtures) {
-    if (!Object.hasOwn(FAIRNESS_COMPETITION, fixture.competition.toUpperCase())) {
+    if (!isDeclaredCompetition(fixture.competition)) {
       // Unclassified fixtures are refused by classifyFairnessFixtures() before
       // any metric runs; they contribute to no participation record either.
       continue;

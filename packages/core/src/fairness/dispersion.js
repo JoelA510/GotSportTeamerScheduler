@@ -139,9 +139,10 @@ export function medianAbsoluteDeviation(values) {
  *
  * 1. Too few members — nothing else is asked, because a centre computed from
  *    three values is not a centre.
- * 2. A zero scale over **identical** values is {@link FAIRNESS_DISPERSION.UNIFORM}:
- *    a real, measured statement that this population is equal on this metric.
- * 3. A zero scale over **differing** values is
+ * 2. A zero scale over values that are identical **at the precision this module
+ *    publishes them at** is {@link FAIRNESS_DISPERSION.UNIFORM}: a real,
+ *    measured statement that this population is equal on this metric.
+ * 3. A zero scale over values that differ **visibly at that same precision** is
  *    {@link FAIRNESS_DISPERSION.DEGENERATE}: no scale exists, and the observed
  *    distribution is carried on the result so the reader gets the information
  *    the scale could not give them.
@@ -178,13 +179,28 @@ export function describeDispersion(metricId, members) {
   const centre = /** @type {number} */ (median(values));
   const scale = /** @type {number} */ (medianAbsoluteDeviation(values));
   if (scale === 0) {
-    const uniform = values.every((value) => value === values[0]);
+    // Decided **on the distribution this result publishes**, and not on an
+    // exact `===` over the raw doubles. The two are not the same test: a
+    // population of means that differ in the fifteenth decimal place has a
+    // median absolute deviation of exactly zero and values that are not
+    // exactly equal, so an exact test called it `degenerate` while the
+    // `distribution` printed beside it showed a single value. A verdict that
+    // contradicts its own published evidence is unreadable, and choosing which
+    // of the two to trust is not a choice a reader should have to make.
+    //
+    // So there is one tolerance, {@link distributionOf}'s six decimal places,
+    // and it is applied by reading that function's output rather than by a
+    // second constant free to drift from it. It is a deliberate choice and not
+    // a rounding accident: a difference the published distribution *can* show
+    // is still `degenerate`.
+    const distribution = distributionOf(values);
     return {
       ...base,
-      state: uniform ? FAIRNESS_DISPERSION.UNIFORM : FAIRNESS_DISPERSION.DEGENERATE,
+      state:
+        distribution.length === 1 ? FAIRNESS_DISPERSION.UNIFORM : FAIRNESS_DISPERSION.DEGENERATE,
       centre,
       scale,
-      distribution: distributionOf(values),
+      distribution,
     };
   }
 
@@ -203,8 +219,12 @@ export function describeDispersion(metricId, members) {
  * Carried on every dispersion result, and it is the *only* evidence a
  * `degenerate` population can offer. Values are rounded to six decimal places
  * for the key so that a mean of `605.0000000000001` and one of `605` do not read
- * as two distinct values in the report; the rounding affects this summary only
- * and never the scoring.
+ * as two distinct values in the report. That rounding is also the tolerance
+ * {@link describeDispersion} decides `uniform` against `degenerate` on — read
+ * from this function's output rather than restated as a second constant — so the
+ * state a population reports and the distribution it publishes cannot
+ * contradict each other. It never touches the scoring: `centre`, `scale` and
+ * every modified z-score are computed from the raw values.
  *
  * @param {ReadonlyArray<number>} values
  * @returns {ReadonlyArray<[number, number]>}

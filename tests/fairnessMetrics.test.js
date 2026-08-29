@@ -37,6 +37,7 @@ import { describe, it, expect, vi } from 'vitest';
 import {
   FAIRNESS_BASIS,
   FAIRNESS_COMPETITION,
+  FAIRNESS_COMPETITION_ORDER,
   FAIRNESS_DISPERSION,
   FAIRNESS_JUDGEMENT,
   FAIRNESS_MEASURABILITY,
@@ -61,6 +62,7 @@ import {
   describeDispersion,
   deriveFairnessJudgement,
   fairnessReport,
+  groupKeyOf,
   median,
   medianAbsoluteDeviation,
   modifiedZScore,
@@ -913,12 +915,28 @@ describe('fairness :: unmeasurable is not zero and typical is not undecided', ()
     ).toBe(true);
   });
 
-  it('leaves a cohort of two undecided rather than typical — on all 36 division cohorts of this corpus', () => {
+  it('leaves a cohort of two undecided rather than typical — on all 28 division cohorts of this corpus', () => {
     const report = corpusReport();
     const divisionCohorts = report.populations.filter(
       (population) => population.subjectKind === FAIRNESS_SUBJECT_KIND.DIVISION
     );
-    expect(divisionCohorts).toHaveLength(36);
+    // Seven age groups hold divisions in this league, one cohort per metric.
+    // Derived from the report rather than typed in, so the figure below is a
+    // consequence of the corpus and not a number kept in step by hand.
+    const ageGroups = new Set(
+      report.measurements
+        .filter((m) => m.subjectKind === FAIRNESS_SUBJECT_KIND.AGE_GROUP)
+        .map((m) => m.subjectId)
+    );
+    expect(ageGroups.size).toBe(7);
+    expect(divisionCohorts).toHaveLength(FAIRNESS_METRIC_ORDER.length * ageGroups.size);
+    expect(divisionCohorts).toHaveLength(28);
+    // Every one of them is below the floor, which is why none judges anybody.
+    expect(
+      divisionCohorts.every(
+        (population) => population.dispersion.size < MIN_POPULATION_FOR_DISPERSION
+      )
+    ).toBe(true);
     expect(
       divisionCohorts.every(
         (population) => population.dispersion.state === FAIRNESS_DISPERSION.INSUFFICIENT
@@ -937,12 +955,35 @@ describe('fairness :: unmeasurable is not zero and typical is not undecided', ()
     ).toBeGreaterThan(0);
   });
 
-  it('judges no cohort under a division label a subject holds twice, and names the subject', () => {
+  it('judges no cohort under a key a subject holds twice, and none under a key it holds only outside the class', () => {
+    // The rule, at the function that decides it. Three answers, never two.
+    expect(groupKeyOf(new Set(['U09G']))).toEqual({ key: 'U09G', reasonCode: null });
+    expect(groupKeyOf(new Set(['16GS', 'U16G']))).toEqual({
+      key: null,
+      reasonCode: FAIRNESS_REASON.FAIRNESS_GROUP_AMBIGUOUS,
+    });
+    expect(groupKeyOf(new Set())).toEqual({
+      key: null,
+      reasonCode: FAIRNESS_REASON.FAIRNESS_GROUP_UNLABELLED,
+    });
+    expect(FAIRNESS_REASON_SEVERITY[FAIRNESS_REASON.FAIRNESS_GROUP_AMBIGUOUS]).toBe(
+      FAIRNESS_SEVERITY.COMPROMISE
+    );
+
+    // The corpus' one two-label subject, and the provenance of both labels:
+    // `16GSelect02` is spelled `16GS` on one scrimmage and `U16G` on another,
+    // and holds no league fixture at all. Since a league metric's cohort is
+    // drawn from league fixtures, it is not *ambiguous* under one — it has no
+    // league division, which is a different and more accurate answer, and the
+    // report names it rather than dropping it.
+    const participation = participationOf(corpusFixtures().fixtures);
+    const entry = participation.get('16GSelect02');
+    expect([...entry.divisions].sort()).toEqual(['16GS', 'U16G']);
+    expect(
+      entry.fixtures.every((held) => held.fixture.competition === FAIRNESS_COMPETITION.FRIENDLY)
+    ).toBe(true);
+
     const report = corpusReport();
-    const ambiguous = findingsOf(report, FAIRNESS_REASON.FAIRNESS_GROUP_AMBIGUOUS);
-    expect(ambiguous.length).toBeGreaterThan(0);
-    expect(ambiguous[0].details.subjects).toContain('16GSelect02');
-    expect(ambiguous[0].severity).toBe(FAIRNESS_SEVERITY.COMPROMISE);
     const judgements = report.judgements.filter(
       (judgement) =>
         judgement.subjectId === '16GSelect02' && judgement.basis.kind === FAIRNESS_BASIS.DIVISION
@@ -950,6 +991,12 @@ describe('fairness :: unmeasurable is not zero and typical is not undecided', ()
     expect(judgements.length).toBeGreaterThan(0);
     expect(judgements.every((j) => j.judgement === FAIRNESS_JUDGEMENT.UNDECIDED)).toBe(true);
     expect(judgements.every((j) => j.basis.groupKey === null)).toBe(true);
+    const named = findingsOf(report, FAIRNESS_REASON.FAIRNESS_GROUP_UNLABELLED).filter(
+      (finding) => finding.details.basisKind === FAIRNESS_BASIS.DIVISION
+    );
+    expect(named.length).toBeGreaterThan(0);
+    expect(named[0].details.subjects).toContain('16GSelect02');
+    expect(named[0].severity).toBe(FAIRNESS_SEVERITY.COMPROMISE);
   });
 
   it('judges the four Minis sides under no age-group cohort, because BB parses to none', () => {
@@ -960,7 +1007,30 @@ describe('fairness :: unmeasurable is not zero and typical is not undecided', ()
       (finding) => finding.details.subjectKind === FAIRNESS_SUBJECT_KIND.TEAM
     );
     expect(teamLevel.length).toBeGreaterThan(0);
-    expect(teamLevel[0].details.subjects).toEqual(['MinisA', 'MinisB', 'MinisC', 'MinisD']);
+    const minis = ['MinisA', 'MinisB', 'MinisC', 'MinisD'];
+    expect(teamLevel[0].details.subjects).toEqual(expect.arrayContaining(minis));
+    // Twenty-two subjects hold no age-group key for a league metric, and the
+    // four Minis sides are there for a different reason from the other
+    // eighteen: they play nine league fixtures each in division `BB`, which
+    // parses to no age group, where the eighteen hold no league fixture at all
+    // and so hold no league label of any kind.
+    expect(teamLevel[0].details.subjectCount).toBe(22);
+    const participation = participationOf(corpusFixtures().fixtures);
+    for (const id of minis) {
+      expect(participation.get(id).byCompetition.league).toBe(9);
+      expect(
+        participation
+          .get(id)
+          .fixtures.every(
+            (held) => held.fixture.division === 'BB' && held.fixture.ageGroup === null
+          )
+      ).toBe(true);
+    }
+    expect(
+      teamLevel[0].details.subjects.filter(
+        (id) => !minis.includes(id) && participation.get(id).byCompetition.league === 0
+      )
+    ).toHaveLength(18);
     // They are still judged in their own division, which does exist.
     const inDivision = report.judgements.filter(
       (judgement) =>
@@ -1171,32 +1241,55 @@ describe('fairness :: solver objectives', () => {
     expect(result.termsScored).toBe(118);
   });
 
-  it('refuses to rank two scores whose coverage differs', () => {
+  it('refuses to rank two scores whose coverage differs, on the coverage alone', () => {
+    // The two lists agree on every field the guard checks except one. The same
+    // eight teams and the same 28 fixtures, plus — on the right — a ninth team
+    // whose nine fixtures name no opponent: its hosting share is not a
+    // quantity, so it is counted and not scored. Same objective, same weight,
+    // same basis, same `termsScored`, same total. Only `coverage` differs, so
+    // deleting the coverage line from `compareObjectiveScores` would make this
+    // pair comparable and this test fail.
     const full = roundRobin({ teamCount: 8, rounds: 7 });
-    const partial = full.map((held, index) =>
-      index === 0 ? { ...held, awaySubjectId: null } : held
-    );
+    const withUnscoreable = [
+      ...full,
+      ...Array.from({ length: 9 }, (unused, round) =>
+        fixture({
+          fixtureId: `solo-${round}`,
+          date: `2026-10-${String(round + 1).padStart(2, '0')}`,
+          homeSubjectId: 'T9',
+          awaySubjectId: null,
+        })
+      ),
+    ];
     const left = scoreFairnessObjective(
       full,
       { objectiveId: FAIRNESS_OBJECTIVE.HOSTING_BALANCE },
       participationOf(full)
     );
     const right = scoreFairnessObjective(
-      partial,
+      withUnscoreable,
       { objectiveId: FAIRNESS_OBJECTIVE.HOSTING_BALANCE },
-      participationOf(partial)
+      participationOf(withUnscoreable)
     );
-    // Same fixtures but for one absent opponent, and the totals differ.
-    expect(right.score).not.toBe(left.score);
+    expect(left.objectiveId).toBe(right.objectiveId);
+    expect(left.weight).toBe(right.weight);
+    expect(left.basisKind).toBe(right.basisKind);
+    expect(right.termsScored).toBe(left.termsScored);
+    expect(right.score).toBeCloseTo(left.score, 12);
+    // …and the one field that does differ, which is the whole point: a smaller
+    // sum over fewer terms is a shorter sum, not a better schedule.
+    expect(left.coverage).toBe(1);
+    expect(right.coverage).toBeCloseTo(8 / 9, 12);
+
     const comparison = compareObjectiveScores(left, right);
-    if (left.coverage === right.coverage && left.termsScored === right.termsScored) {
-      expect(comparison.comparable).toBe(true);
-    } else {
-      expect(comparison.comparable).toBe(false);
-      expect(comparison.better).toBeNull();
-      expect(comparison.findings[0].code).toBe(FAIRNESS_REASON.FAIRNESS_OBJECTIVE_INCOMPARABLE);
-      expect(comparison.findings[0].severity).toBe(FAIRNESS_SEVERITY.BLOCKING);
-    }
+    expect(comparison.comparable).toBe(false);
+    expect(comparison.better).toBeNull();
+    expect(comparison.delta).toBeNull();
+    expect(comparison.findings[0].code).toBe(FAIRNESS_REASON.FAIRNESS_OBJECTIVE_INCOMPARABLE);
+    expect(comparison.findings[0].severity).toBe(FAIRNESS_SEVERITY.BLOCKING);
+    // The refusal names coverage and nothing else, which is what makes the
+    // guard the thing under test rather than whichever mismatch happened first.
+    expect(comparison.findings[0].details.mismatches).toEqual(['coverage']);
 
     // And two comparable results are ranked, in the declared sense.
     const same = scoreFairnessObjective(
@@ -1324,5 +1417,376 @@ describe('fairness :: structure', () => {
         candidate.metricId === FAIRNESS_METRIC.MEAN_KICKOFF
     );
     expect(divisionValue.value).toBe(population.dispersion.centre);
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* 9. The pre-PR review: nine defects, and the rule each one broke             */
+/* -------------------------------------------------------------------------- */
+
+describe('fairness :: the metricIds filter is a filter', () => {
+  it('publishes nothing about a metric the caller excluded — swept over every subset of one', () => {
+    // Constructed rather than corpus so the sweep can afford to run four
+    // reports: eight teams, seven rounds, every fixture two sided, timed and
+    // located, so all four metrics are live and any leak is visible.
+    const fixtures = roundRobin({ teamCount: 8, rounds: 7 });
+    let swept = 0;
+    for (const metricId of FAIRNESS_METRIC_ORDER) {
+      const report = fairnessReport({ fixtures, metricIds: [metricId] });
+      // Meta-assertion: a report that measured nothing would satisfy every
+      // containment below while looking at an empty set.
+      expect(report.measurements.length).toBeGreaterThan(0);
+      expect([...new Set(report.measurements.map((m) => m.metricId))]).toEqual([metricId]);
+      expect([...new Set(report.populations.map((p) => p.metricId))]).toEqual([metricId]);
+      expect([...new Set(report.judgements.map((j) => j.metricId))]).toEqual([metricId]);
+      // Findings too: a finding about a metric nobody asked about is the
+      // filter doing nothing where it claims to do something.
+      const named = report.findings
+        .map((finding) => finding.details.metricId)
+        .filter((id) => typeof id === 'string');
+      expect(named.length).toBeGreaterThan(0);
+      expect([...new Set(named)]).toEqual([metricId]);
+      swept += 1;
+    }
+    expect(swept).toBe(FAIRNESS_METRIC_ORDER.length);
+
+    // A subset of two behaves the same way, so the rule is about the filter
+    // and not about the number one.
+    const pair = [FAIRNESS_METRIC.GAMES_PLAYED, FAIRNESS_METRIC.VENUE_SPREAD];
+    const report = fairnessReport({ fixtures, metricIds: pair });
+    expect([...new Set(report.measurements.map((m) => m.metricId))].sort()).toEqual(
+      [...pair].sort()
+    );
+  });
+
+  it('reports the metric it keeps exactly as the unfiltered report does', () => {
+    const report = fairnessReport({
+      fixtures: corpusFixtures().fixtures,
+      metricIds: [FAIRNESS_METRIC.MEAN_KICKOFF],
+    });
+    const all = corpusReport();
+    const key = (row) =>
+      `${row.subjectKind}|${row.subjectId}|${row.measurability}|${row.value}|${row.reasonCode}`;
+    const mine = report.measurements.map(key).sort();
+    const theirs = all.measurements
+      .filter((m) => m.metricId === FAIRNESS_METRIC.MEAN_KICKOFF)
+      .map(key)
+      .sort();
+    expect(mine.length).toBeGreaterThan(0);
+    expect(mine).toEqual(theirs);
+    expect(report.flags).toHaveLength(
+      all.flags.filter((flag) => flag.metricId === FAIRNESS_METRIC.MEAN_KICKOFF).length
+    );
+  });
+
+  it('refuses an unregistered metric id instead of reporting an unjudgeable season', () => {
+    const { fixtures } = corpusFixtures();
+    expect(() => fairnessReport({ fixtures, metricIds: ['mean-kickof'] })).toThrow(
+      /is not a member of FAIRNESS_METRIC/
+    );
+    // The same refusal its sibling already gives for an unregistered objective,
+    // rather than a third contract for the same mistake.
+    expect(() =>
+      scoreFairnessObjective(fixtures, { objectiveId: 'hosting-balanc' }, participationOf(fixtures))
+    ).toThrow(/is not a member of FAIRNESS_OBJECTIVE/);
+    // The control: spelled correctly, the same call judges a season, so the
+    // refusal is about the argument and not about the corpus.
+    const spelled = fairnessReport({ fixtures, metricIds: [FAIRNESS_METRIC.MEAN_KICKOFF] });
+    expect(spelled.meta.judgementsMade).toBeGreaterThan(0);
+    expect(findingsOf(spelled, FAIRNESS_REASON.FAIRNESS_NOTHING_JUDGED)).toHaveLength(0);
+  });
+});
+
+describe('fairness :: evidence a reader can check by hand', () => {
+  it('never publishes an excluded-fixture count the fixtures cannot account for', () => {
+    const report = corpusReport();
+    const participation = participationOf(corpusFixtures().fixtures);
+    const teamMeasurement = (subjectId, metricId) =>
+      report.measurements.find(
+        (m) =>
+          m.subjectKind === FAIRNESS_SUBJECT_KIND.TEAM &&
+          m.subjectId === subjectId &&
+          m.metricId === metricId
+      );
+
+    // Rule one, at the team level: a measurement accounts for every fixture the
+    // subject appears in, once, and for none it does not.
+    let teamsChecked = 0;
+    for (const measurement of report.measurements) {
+      if (measurement.subjectKind !== FAIRNESS_SUBJECT_KIND.TEAM) continue;
+      const held = participation.get(measurement.subjectId).fixtures.length;
+      expect(measurement.evidence.fixturesCounted + measurement.evidence.fixturesExcluded).toBe(
+        held
+      );
+      teamsChecked += 1;
+    }
+    expect(teamsChecked).toBe(140 * FAIRNESS_METRIC_ORDER.length);
+
+    // Rule two, at the group level: a group's evidence is the sum of its
+    // members' and nothing else. A member count folded into a fixture count is
+    // what put 40 excluded fixtures on a division of 36.
+    let groupsChecked = 0;
+    for (const measurement of report.measurements) {
+      if (measurement.subjectKind === FAIRNESS_SUBJECT_KIND.TEAM) continue;
+      const basisKind =
+        measurement.subjectKind === FAIRNESS_SUBJECT_KIND.DIVISION
+          ? FAIRNESS_BASIS.DIVISION
+          : FAIRNESS_BASIS.AGE_GROUP;
+      const population = report.populations.find(
+        (candidate) =>
+          candidate.subjectKind === FAIRNESS_SUBJECT_KIND.TEAM &&
+          candidate.basisKind === basisKind &&
+          candidate.groupKey === measurement.subjectId &&
+          candidate.metricId === measurement.metricId
+      );
+      const members = [...population.memberIds, ...population.undecidedMemberIds];
+      expect(members.length).toBeGreaterThan(0);
+      const total = members.reduce((sum, subjectId) => {
+        const member = teamMeasurement(subjectId, measurement.metricId);
+        return sum + member.evidence.fixturesCounted + member.evidence.fixturesExcluded;
+      }, 0);
+      expect(measurement.evidence.fixturesCounted + measurement.evidence.fixturesExcluded).toBe(
+        total
+      );
+      // Every exclusion a measurement publishes is denominated in fixtures, so
+      // the counts sum to the field that claims to be their sum.
+      expect(measurement.evidence.exclusions.reduce((sum, [, count]) => sum + count, 0)).toBe(
+        measurement.evidence.fixturesExcluded
+      );
+      groupsChecked += 1;
+    }
+    expect(groupsChecked).toBeGreaterThan(0);
+
+    // The instance the review found, checked by hand against the corpus.
+    const bb = report.measurements.find(
+      (m) =>
+        m.subjectKind === FAIRNESS_SUBJECT_KIND.DIVISION &&
+        m.subjectId === 'BB' &&
+        m.metricId === FAIRNESS_METRIC.HOSTING_SHARE
+    );
+    expect(corpusFixtures().fixtures.filter((f) => f.division === 'BB')).toHaveLength(36);
+    expect(bb.evidence.fixturesExcluded).toBe(36);
+    // The member accounting is still published — as members, under its own name.
+    expect(bb.evidence.membersExcluded).toBe(4);
+    expect(bb.evidence.membersCounted).toBe(0);
+  });
+
+  it('counts into `fixturesCounted` only the fixtures a requested metric reads', () => {
+    const report = corpusReport();
+    const { fixtures } = corpusFixtures();
+    const leagueFixtures = fixtures.filter(
+      (held) => held.competition === FAIRNESS_COMPETITION.LEAGUE
+    );
+    expect(report.meta.fixturesRead).toBe(578);
+    expect(report.meta.fixturesCounted).toBe(leagueFixtures.length);
+    expect(report.meta.fixturesCounted).toBe(567);
+    // The shortfall the counter exists to show: eight external seeding games
+    // and three scrimmages are read and counted into no metric.
+    expect(report.meta.fixturesRead - report.meta.fixturesCounted).toBe(11);
+
+    // The rule, not the instance: for any requested metric set the counter is
+    // the number of distinct fixtures belonging to a competition one of those
+    // metrics counts.
+    const expected = (metricIds) =>
+      new Set(
+        fixtures
+          .filter((held) =>
+            metricIds.some((metricId) =>
+              FAIRNESS_METRIC_REGISTRY[metricId].counts.includes(held.competition)
+            )
+          )
+          .map((held) => held.fixtureId)
+      ).size;
+    expect(report.meta.fixturesCounted).toBe(expected(FAIRNESS_METRIC_ORDER));
+    const one = fairnessReport({ fixtures, metricIds: [FAIRNESS_METRIC.VENUE_SPREAD] });
+    expect(one.meta.fixturesCounted).toBe(expected([FAIRNESS_METRIC.VENUE_SPREAD]));
+    expect(one.meta.fixturesCounted).toBeLessThan(one.meta.fixturesRead);
+  });
+});
+
+describe('fairness :: an objective scores the fixture list it is given', () => {
+  it('refuses a participation map that is not the one those fixtures produce', () => {
+    const { fixtures } = corpusFixtures();
+    const leagueOnly = fixtures.filter((held) => held.competition === FAIRNESS_COMPETITION.LEAGUE);
+    const config = { objectiveId: FAIRNESS_OBJECTIVE.HOSTING_BALANCE };
+
+    // The defect: a filtered fixture list handed the whole season's map used to
+    // score the whole season and say nothing about it.
+    expect(() => scoreFairnessObjective(leagueOnly, config, participationOf(fixtures))).toThrow(
+      /participation/
+    );
+
+    // Honoured: the fixtures alone decide, and the map is optional corroboration.
+    const derived = scoreFairnessObjective(leagueOnly, config);
+    const matched = scoreFairnessObjective(leagueOnly, config, participationOf(leagueOnly));
+    expect(derived.score).toBe(matched.score);
+    expect(derived.terms).toEqual(matched.terms);
+    expect(derived.termsScored).toBeGreaterThan(0);
+
+    // And the whole-season list is a different quantity, which is the point.
+    const whole = scoreFairnessObjective(fixtures, config);
+    expect(whole.terms.length).toBeGreaterThan(derived.terms.length);
+  });
+});
+
+describe('fairness :: uniform is decided on the tolerance it is published at', () => {
+  it('does not call a population degenerate while its own evidence shows one value', () => {
+    // Three exact values and one a floating-point hair above: the median
+    // absolute deviation is exactly zero, and the published distribution — which
+    // rounds to six decimal places — shows a single value.
+    const noisy = describeDispersion('m', [
+      { subjectId: 'a', value: 605 },
+      { subjectId: 'b', value: 605 },
+      { subjectId: 'c', value: 605 },
+      { subjectId: 'd', value: 605 + 1e-13 },
+    ]);
+    expect(noisy.scale).toBe(0);
+    expect(noisy.distribution).toEqual([[605, 4]]);
+    expect(noisy.state).toBe(FAIRNESS_DISPERSION.UNIFORM);
+
+    // The tolerance is a decision and not an accident: a difference the
+    // published distribution *can* show is still degenerate.
+    const visible = describeDispersion('m', [
+      { subjectId: 'a', value: 605 },
+      { subjectId: 'b', value: 605 },
+      { subjectId: 'c', value: 605 },
+      { subjectId: 'd', value: 605.00001 },
+    ]);
+    expect(visible.distribution).toHaveLength(2);
+    expect(visible.state).toBe(FAIRNESS_DISPERSION.DEGENERATE);
+
+    // The rule, swept over the corpus: no population's state contradicts the
+    // distribution it publishes.
+    const report = corpusReport();
+    const flat = report.populations.filter((population) => population.dispersion.scale === 0);
+    expect(flat.length).toBeGreaterThan(0);
+    let uniform = 0;
+    let degenerate = 0;
+    for (const population of flat) {
+      const single = population.dispersion.distribution.length === 1;
+      expect(population.dispersion.state).toBe(
+        single ? FAIRNESS_DISPERSION.UNIFORM : FAIRNESS_DISPERSION.DEGENERATE
+      );
+      if (single) uniform += 1;
+      else degenerate += 1;
+    }
+    expect(uniform).toBeGreaterThan(0);
+    expect(degenerate).toBeGreaterThan(0);
+  });
+});
+
+describe('fairness :: a league cohort is drawn from league fixtures', () => {
+  it('does not let a friendly’s spelling decide a league metric’s cohort', () => {
+    // Six teams, nine league rounds, every league row spelled `U10B`. One
+    // friendly names T1 under `10B` — the same division, spelled differently,
+    // which is precisely what GAP-24 says a label is free to be.
+    const league = roundRobin({ teamCount: 6, rounds: 9 });
+    const friendly = fixture({
+      fixtureId: 'friendly-1',
+      date: '2026-11-07',
+      competition: FAIRNESS_COMPETITION.FRIENDLY,
+      division: '10B',
+      ageGroup: 'U10',
+      homeSubjectId: 'T1',
+      awaySubjectId: 'T2',
+    });
+    const report = fairnessReport({ fixtures: [...league, friendly] });
+    const judgement = report.judgements.find(
+      (candidate) =>
+        candidate.subjectId === 'T1' &&
+        candidate.basis.kind === FAIRNESS_BASIS.DIVISION &&
+        candidate.metricId === FAIRNESS_METRIC.GAMES_PLAYED
+    );
+    expect(judgement.basis.groupKey).toBe('U10B');
+    expect(judgement.reasonCode).not.toBe(FAIRNESS_REASON.FAIRNESS_GROUP_AMBIGUOUS);
+    expect(findingsOf(report, FAIRNESS_REASON.FAIRNESS_GROUP_AMBIGUOUS)).toHaveLength(0);
+
+    // The positive control, so the case is known to bite: the identical list
+    // with that one row read as league *does* make T1 ambiguous.
+    const polluted = fairnessReport({
+      fixtures: [...league, { ...friendly, competition: FAIRNESS_COMPETITION.LEAGUE }],
+    });
+    const pollutedJudgement = polluted.judgements.find(
+      (candidate) =>
+        candidate.subjectId === 'T1' &&
+        candidate.basis.kind === FAIRNESS_BASIS.DIVISION &&
+        candidate.metricId === FAIRNESS_METRIC.GAMES_PLAYED
+    );
+    expect(pollutedJudgement.basis.groupKey).toBeNull();
+    expect(pollutedJudgement.reasonCode).toBe(FAIRNESS_REASON.FAIRNESS_GROUP_AMBIGUOUS);
+    expect(findingsOf(polluted, FAIRNESS_REASON.FAIRNESS_GROUP_AMBIGUOUS).length).toBeGreaterThan(
+      0
+    );
+  });
+
+  it('gives the corpus’ eighteen non-league participants no league cohort at all', () => {
+    const report = corpusReport();
+    const participation = participationOf(corpusFixtures().fixtures);
+    const outside = [...participation.entries()]
+      .filter(([, entry]) => entry.byCompetition.league === 0)
+      .map(([subjectId]) => subjectId);
+    expect(outside).toHaveLength(18);
+    for (const subjectId of outside) {
+      const judgement = report.judgements.find(
+        (candidate) =>
+          candidate.subjectId === subjectId &&
+          candidate.basis.kind === FAIRNESS_BASIS.DIVISION &&
+          candidate.metricId === FAIRNESS_METRIC.GAMES_PLAYED
+      );
+      expect(judgement.basis.groupKey).toBeNull();
+      expect(judgement.judgement).toBe(FAIRNESS_JUDGEMENT.UNDECIDED);
+    }
+    // …and their labels really do come from outside the league, which is what
+    // used to place them in a league cohort.
+    expect(
+      outside.every((subjectId) =>
+        participation
+          .get(subjectId)
+          .fixtures.every((held) => held.fixture.competition !== FAIRNESS_COMPETITION.LEAGUE)
+      )
+    ).toBe(true);
+  });
+});
+
+describe('fairness :: one enum, read the same way by both halves', () => {
+  it('counts a fixture into a participation record exactly when the classifier counts it', () => {
+    // `LEAGUE` is the case that separated the two: a value-based check rejects
+    // it and a key-based one — `competition.toUpperCase()` against the enum's
+    // own keys — accepts it. A future member spelled `cup-tie` would part them
+    // the other way round.
+    const probes = [
+      'league',
+      'external',
+      'friendly',
+      'LEAGUE',
+      'External',
+      'FRIENDLY',
+      'cup-tie',
+      'CUP_TIE',
+      'tournament',
+    ];
+    let disagreements = [];
+    let accepted = 0;
+    for (const competition of probes) {
+      const held = fixture({ fixtureId: `p-${competition}`, competition });
+      const classification = classifyFairnessFixtures([held]);
+      const classified =
+        Object.values(classification.byCompetition).reduce((sum, count) => sum + count, 0) === 1;
+      const participation = participationOf([held]);
+      const recorded = participation.size > 0;
+      if (classified !== recorded) disagreements.push(competition);
+      if (classified) accepted += 1;
+      // Whatever it decides, a participation record never grows a column the
+      // enum does not declare.
+      for (const entry of participation.values()) {
+        expect(Object.keys(entry.byCompetition)).toEqual([...FAIRNESS_COMPETITION_ORDER]);
+        expect(Object.values(entry.byCompetition).every(Number.isFinite)).toBe(true);
+      }
+    }
+    // Meta-assertions: a sweep that classified nothing, or everything, would
+    // agree with itself while proving nothing.
+    expect(accepted).toBe(3);
+    expect(probes.length - accepted).toBe(6);
+    expect(disagreements).toEqual([]);
   });
 });
