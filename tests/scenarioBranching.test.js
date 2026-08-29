@@ -38,7 +38,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 
 import {
   buildAvailabilityCalendar,
@@ -329,6 +329,17 @@ const unusedVenueId = () => {
 };
 
 /* -------------------------------------------------------------------------- */
+
+// **These tests derive whole seasons, so five seconds is the wrong budget.**
+// Vitest's 5 s default suits a unit test; the memo cases here run two cold
+// derivations over the 679-game corpus back to back, and the slowest sits near
+// 3 s on a developer machine. CI runs roughly 1.4x slower, which took one of
+// them past the default and turned a passing suite red on the runner alone.
+// Raising the ceiling for this file keeps a real hang loud — a wedged
+// derivation still fails, thirty seconds later — without failing tests that are
+// merely doing the work they are supposed to do. Scoped to this file
+// deliberately: the rest of the suite should stay on the strict default.
+vi.setConfig({ testTimeout: 30_000 });
 
 describe('the corpus supports the question being asked', () => {
   it('finds the venue whose withdrawal produces the acceptance test report', () => {
