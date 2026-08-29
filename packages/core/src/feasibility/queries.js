@@ -60,7 +60,7 @@ import {
 } from '../attribution/claims.js';
 import { explainKickoffTime } from '../attribution/explain.js';
 import { minimalBlockingSet } from '../attribution/minimal.js';
-import { CONSTRAINT_SEVERITY, CONSTRAINT_STATUS } from '../constraints/reasonCodes.js';
+import { CONSTRAINT_SEVERITY } from '../constraints/reasonCodes.js';
 import { bookingsOverlapInTime } from '../facility/occupancy.js';
 import { getSurface } from '../facility/facilityGraph.js';
 import { formatTimingOrUnknown } from '../timing/formatTiming.js';
@@ -75,6 +75,7 @@ import {
   FEASIBILITY_VERDICT,
   assertFeasibilityFindings,
   createFeasibilityMeta,
+  deriveFeasibilityEvidence,
   deriveFeasibilityStatus,
   deriveFeasibilityTightness,
   deriveFeasibilityVerdict,
@@ -88,6 +89,7 @@ import {
 } from './schemas.js';
 import {
   absorbUnknowns,
+  assertBoundaryResult,
   bindingAt,
   boundFindings,
   candidateAccountingFindings,
@@ -319,6 +321,16 @@ function emptyAnswer(question, subject, meta) {
  * is one of {@link FEASIBILITY_TIGHTNESS}'s three named values, produced by
  * `deriveFeasibilityTightness()` and never here.
  *
+ * **The evidence the answer publishes reaches its verdict and its tightness
+ * here, and here only.** `deriveFeasibilityEvidence()` folds every claim in
+ * `answer.blockers` through the frozen severity table, so a severity cannot
+ * reach the list an operator reads without reaching the verdict derived beside
+ * it. This ran twice as a fix at a call site before it was written as a rule:
+ * once for `blocking` and once, nearly, for `compromise`. The `state` a caller
+ * passes carries only the facts *no* blocker can express — "every cell of the
+ * grid said no", "this date offers no boundary at all" — and is folded in
+ * beside the published evidence rather than instead of it.
+ *
  * This function reads the meta it is handed and never writes to it: the counter
  * it used to add to is shared with every nested answer that fed into this one,
  * and adding there counted the grid's unknowns once per cell and again in the
@@ -329,10 +341,14 @@ function emptyAnswer(question, subject, meta) {
  * @returns {import('./types.js').FeasibilityAnswer}
  */
 function seal(answer, state) {
-  const verdict = deriveFeasibilityVerdict({ blocked: state.blocked, unknowns: answer.unknowns });
+  const published = deriveFeasibilityEvidence(answer.blockers);
+  const verdict = deriveFeasibilityVerdict({
+    blocked: published.blocked || state.blocked,
+    unknowns: answer.unknowns,
+  });
   const tight = deriveFeasibilityTightness({
     verdict,
-    compromised: state.compromised,
+    compromised: published.compromised || state.compromised,
     cleanBoundaryExists: state.cleanBoundaryExists ?? null,
   });
   const findings = [...answer.findings];
@@ -569,8 +585,19 @@ export function canGameMove(context, rawQuery, options = {}) {
 
   /** @type {import('../attribution/types.js').ConstraintClaim[]} */
   let blockers = [...counterfactual.claims];
-  let blocked = counterfactual.legal === false;
-  let compromised = counterfactual.placementStatus === CONSTRAINT_STATUS.COMPROMISED;
+  // **Nothing decides this answer that the answer does not publish.**
+  // `counterfactual.legal` and `counterfactual.placementStatus` are
+  // `checkPlacement()`'s two flags, and reading them here is what let the
+  // verdict and the tightness disagree with the blockers twice over: the
+  // flags are the *facility* layer's, while `blockers` is the merged list
+  // `explainGame()` folds the rule engine into and coach travel adds to below.
+  // Both facts are published as claims before they are derived from — every
+  // position this corpus's facility layer calls illegal carries a blocking
+  // claim, and every one it calls compromised carries a compromise claim — so
+  // `seal()` derives them off the published list and the two channels of one
+  // answer can no longer contradict each other.
+  /** @type {Array<{ severity: string }>} */
+  const travelFindings = [];
 
   /* -- unknowns ---------------------------------------------------------- */
   absorbUnknowns(
@@ -628,13 +655,14 @@ export function canGameMove(context, rawQuery, options = {}) {
   } else if (travel.claims.length > 0 || travel.findings.length > 0) {
     blockers = mergeClaimsByTightness([blockers, travel.claims]);
     meta.claimsCarried += travel.claims.length;
-    if (travel.findings.some((finding) => finding.severity === CONSTRAINT_SEVERITY.BLOCKING)) {
-      blocked = true;
-    } else if (
-      travel.findings.some((finding) => finding.severity === CONSTRAINT_SEVERITY.COMPROMISE)
-    ) {
-      compromised = true;
-    }
+    // Every introduced travel finding this corpus produces is owned by a
+    // transition and therefore becomes one of the claims merged above, so this
+    // list is the same evidence twice on every path the season exercises. It is
+    // carried anyway, and through the same table rather than through a pair of
+    // severity tests written out here, because `projectTravel()` drops a
+    // finding no transition owns and an unclaimed blocker must not become an
+    // unnoticed one.
+    travelFindings.push(...travel.findings);
     absorbUnknowns(
       answer.unknowns,
       unknownsFromCodes(
@@ -647,21 +675,6 @@ export function canGameMove(context, rawQuery, options = {}) {
       )
     );
   }
-
-  /* -- the verdict, from the evidence the blockers are drawn from --------- */
-  // **One answer may not contradict itself.** `blocked` used to be
-  // `counterfactual.legal`, which is `checkPlacement()`'s facility answer
-  // alone, while `blockers` is the *merged* list — `explainGame()` folds the
-  // rule engine's violation claims into it, and coach travel adds its own
-  // above. For a standing position the two disagreed: four of this corpus's own
-  // fixtures carried a blocking `TRAVEL_COMMITMENTS_OVERLAP` in `blockers` and
-  // sealed as `verdict: feasible`, `tight: clean`, because facility legality
-  // had nothing to say about it.
-  //
-  // So the verdict is derived from the same list the answer reports. A claim
-  // its owner marked `blocking` is a definite no, whichever module raised it,
-  // and `deriveFeasibilityVerdict()` is still the only place a verdict is made.
-  if (blockers.some((claim) => claim.severity === ATTRIBUTION_SEVERITY.BLOCKING)) blocked = true;
 
   /* -- the binding set and the margin ------------------------------------ */
   const binding = decisiveClaims(blockers).map(boundFromClaim);
@@ -706,13 +719,40 @@ export function canGameMove(context, rawQuery, options = {}) {
   );
 
   /* -- what is stopping it ------------------------------------------------ */
-  if (blocked && options.minimalSet !== false) {
+  // The same fold `seal()` runs, run here as well because the minimal blocking
+  // set is only worth asking for when the answer is blocked. One function and
+  // one severity table, at both points.
+  const evidence = deriveFeasibilityEvidence([...blockers, ...travelFindings]);
+  if (evidence.blocked && options.minimalSet !== false) {
     const minimal = minimalBlockingSet(context, { gameId: query.gameId, slot: destination });
     answer.minimalSet = minimal;
     mergeMetaFromAttribution(meta, minimal.meta);
+    // **A denial has to say what it is a denial about.** `minimalBlockingSet()`
+    // is the certified *facility-layer* answer, so a position the rule engine
+    // or coach travel blocked comes back `blocked: false` carrying
+    // `ATTRIBUTION_PLACEMENT_NOT_BLOCKED` — "no set of constraints blocks it"
+    // beside "infeasible", in one answer. Suppressing the call would hide that
+    // a blocked answer has no facility explanation, which is worth saying; so
+    // the information stays and the denial is qualified with the layers that
+    // did block it, read off the claims this answer publishes.
+    if (minimal.blocked === false) {
+      const decided = blockers.filter((claim) => claim.severity === ATTRIBUTION_SEVERITY.BLOCKING);
+      answer.findings.push(
+        makeFeasibilityFinding(
+          FEASIBILITY_REASON.FEASIBILITY_BLOCKED_OUTSIDE_FACILITY,
+          `the facility layer did not block game "${query.gameId}" at this position, so the minimal blocking set is that layer's answer and not this one's; what blocks it is ${[...new Set(decided.map((claim) => claim.source))].sort().join(', ') || 'stated in the blockers'}`,
+          {
+            gameId: query.gameId,
+            ...destination,
+            sources: [...new Set(decided.map((claim) => claim.source))].sort(),
+            codes: [...new Set(decided.flatMap((claim) => claim.codes))].sort(),
+          }
+        )
+      );
+    }
   }
 
-  return finish({ blocked, compromised });
+  return finish(evidence);
 }
 
 /**
@@ -1412,7 +1452,14 @@ export function feasibleKickoffBounds(context, rawQuery) {
     }),
     {
       blocked: hard.kickoffMinutes === null,
-      compromised: tightBandMinutes !== null && tightBandMinutes > 0,
+      // **The band is reported; the tightness is derived.** `tightBandMinutes >
+      // 0` said the same thing on every one of this corpus's 1,872
+      // combinations — a hard bound later than the clean one is a hard bound
+      // with something above `info` speaking at it — but it said it in a second
+      // arithmetic that was free to disagree with the claims the answer
+      // publishes. `seal()` folds those claims through the one severity table
+      // instead, so this shape obeys the same rule as every other.
+      compromised: false,
       // **Whether a clean position exists at all**, which is a different fact
       // from the width of the band and used to be collapsed into it: a null
       // clean boundary makes the band null, which made `compromised` false,
@@ -1447,6 +1494,13 @@ export function feasibleKickoffBounds(context, rawQuery) {
 /**
  * One boundary, with its binding set, its claims and its margin.
  *
+ * The first thing it does is check that the availability result it was handed is
+ * about the position it is building a boundary for — `assertBoundaryResult()`,
+ * which is where `FeasibilityBoundary`'s contract about `claims` and
+ * `notApplicable` is now enforced. It used to be enforced by the clean call
+ * site handing in an empty result, which is one caller remembering rather than
+ * the builder guaranteeing.
+ *
  * @param {Object} engines
  * @param {Object} at
  * @param {ReadonlyArray<Object>} existingBookings
@@ -1468,6 +1522,7 @@ function boundaryOf(
   meta,
   categoryOnlyClaims
 ) {
+  assertBoundaryResult(result, kickoffMinutes, threshold);
   const probesBefore = meta.boundaryProbesRun;
   /** @type {import('./types.js').FeasibilityBound[]} */
   const binding =

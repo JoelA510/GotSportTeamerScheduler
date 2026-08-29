@@ -48,10 +48,10 @@ and not yet merged.
 committed. `packages/core/src/feasibility/` (`reasonCodes.js`, `schemas.js`,
 `types.js`, `verdict.js`, `queries.js`, `index.js`) plus
 `tests/feasibilityApi.test.js`; `tests/reasonCodeReachability.test.js` gains the
-sixteenth vocabulary and its driver. Suite **1776 -> 1868**, measured at each
+sixteenth vocabulary and its driver. Suite **1776 -> 1877**, measured at each
 commit rather than added up: 62 new cases with the feature (`a393c60`), 25 more
-from the first pre-PR review round (`ece79b3`), 5 from the second round below.
-All six gates green, season fixture green.
+from the first pre-PR review round (`ece79b3`), 5 from the second round below,
+9 from the third. All six gates green, season fixture green.
 
 Three queries, one answer shape: `canGameMove()`, `canTeamPlay()`,
 `feasibleKickoffBounds()`. A verdict is three-valued
@@ -134,6 +134,58 @@ this document that did not reconcile.
    describing the hard boundary's constraints under the clean threshold's name.
    1,620 of the 1,872 combinations reach that branch, 869 with a non-empty claim
    list. A boundary that does not exist now carries nothing.
+
+**The third pre-PR review round.** Three findings, all three reproduced against
+the season corpus, and all three the same shape: a guarantee enforced at a call
+site rather than in the thing that produces it.
+
+1. **One derivation, for every severity.** Round two's own fix is finding 1 a
+   severity down. It took `blocked` from the published blockers and left
+   `compromised` on `checkPlacement()`'s facility status, so
+   `combined_schedule.csv#7` and `#18` — and the three `canTeamPlay()` cells
+   over those two positions — sealed `feasible` / `clean` while publishing a
+   compromise-severity `TRAVEL_BETWEEN_VENUES_TOO_SHORT`. A third line about
+   `compromise` would have been the same fix a third time and would have left
+   the next severity uncovered, so the mapping from a severity to what it does
+   is now a frozen table (`FEASIBILITY_SEVERITY_EFFECT`) with one row per member
+   of the enum, `deriveFeasibilityEvidence()` is its only reader, and `seal()` —
+   which every answer of every shape passes through — folds that answer's own
+   `blockers` through it. Nothing decides an answer that the answer does not
+   publish: `legal`, `placementStatus` and the tight band are gone from the
+   derivation, and a control shows each was already carried as a claim before it
+   was derived from. The corpus rule the second round asserted for `blocking` is
+   asserted for every severity, over the same four sweeps, with a meta-assertion
+   per arm *per severity* and a positive control for the row that must move
+   nothing. Eight answers move, all `clean` -> `tight`: the two standing
+   positions, the three grid cells over them, and the three roll-ups those cells
+   are the only feasible member of. Nothing else moves — no verdict, no margin,
+   no basis, no status, on any of the 5,388 answers the corpus produces — and
+   the bounds tightness distribution is unchanged at 772 / 848 / 199 / 53.
+2. **An answer that denied its own verdict.** With `minimalSet` at its default —
+   which is the answer an operator actually gets, and not what the round-two
+   sweep asked for — nine answers came back `infeasible` beside
+   `minimalSet.blocked === false` and `ATTRIBUTION_PLACEMENT_NOT_BLOCKED`: *"no
+   set of constraints blocks it"* printed next to *"infeasible"*. Round one
+   considered suppressing the call and rightly refused, because a blocked answer
+   with no *facility* explanation is worth saying. The information is kept and
+   the denial is now qualified: `FEASIBILITY_BLOCKED_OUTSIDE_FACILITY` names the
+   layers that did block it and the codes they raised, so the answer reads "the
+   facility layer did not block this; the rule engine did". Asserted as a rule
+   over both sweeps — no answer may carry a verdict and a minimal-set claim that
+   disagree without saying which layer decided.
+3. **A declared contract that was wrong.** `FeasibilityBoundary` said `claims`
+   and `notApplicable` are empty when `kickoffMinutes` is null, and the code has
+   never done that: `latestHard` for Summit HS on 2026-09-19 has no kickoff and
+   one claim, `PERMIT_BLACKOUT` naming the permit record, which is the answer to
+   *"why is there no boundary here?"*. The declaration was the wrong half.
+   The contract now states what is actually true — a boundary carries the
+   constraints that spoke about **its own** position, and one with no position
+   may explain its absence but never in another minute's words — and
+   `assertBoundaryResult()` enforces it inside `boundaryOf()`, where the
+   boundary is built, rather than at the one call site that used to remember.
+   Its falsification is round two's finding 4 reconstructed: the hard result of
+   Alder pitch 2 on 08/22 at 9v9, offered as a boundary with no position, is
+   refused.
 
 Nothing in flight otherwise. 6.1 merged as #351 after seven review rounds
 (11 -> 6 -> 4 -> 2 -> 4 -> 1 -> 0 findings) and one CI failure of its own making:

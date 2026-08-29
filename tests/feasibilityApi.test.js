@@ -42,6 +42,7 @@ import {
   buildAttributionContext,
   categoryOnlyClaimFindings,
   createAttributionMeta,
+  explainKickoffTime,
   isSpecificClaim,
   makeClaim,
 } from '@squadlogic/core/attribution/index.js';
@@ -84,17 +85,20 @@ import {
   FEASIBILITY_REASON,
   FEASIBILITY_REASON_SEVERITY,
   FEASIBILITY_SEVERITY,
+  FEASIBILITY_SEVERITY_EFFECT,
   FEASIBILITY_STATUS,
   FEASIBILITY_THRESHOLD,
   FEASIBILITY_TIGHTNESS,
   FEASIBILITY_UNKNOWN_BY_CODE,
   FEASIBILITY_VERDICT,
   FEASIBILITY_VERDICT_ORDER,
+  assertBoundaryResult,
   assertFeasibilityFindings,
   canGameMove,
   canTeamPlay,
   candidateAccountingFindings,
   createFeasibilityMeta,
+  deriveFeasibilityEvidence,
   deriveFeasibilityTightness,
   deriveFeasibilityVerdict,
   feasibilitySeverityOf,
@@ -2227,17 +2231,31 @@ describe('feasibility :: finding 8 — the unknown counter counts each unknown o
 /* -------------------------------------------------------------------------- */
 
 /**
- * The claims on a blocker list that their own owner marked `blocking`.
+ * The claims on a blocker list carrying one severity.
  *
  * Read off the claim rather than re-derived: severity is the owning module's
  * word, and a second opinion here would be free to disagree with the one the
- * answer is carrying.
+ * answer is carrying. Taking the severity as an argument rather than naming one
+ * is the point — round three's rule is asserted at every level, and a helper
+ * that knew only about `blocking` is how the previous round's rule came to
+ * cover only `blocking`.
+ *
+ * @param {ReadonlyArray<{ severity: string, codes: ReadonlyArray<string> }>} blockers
+ * @param {string} severity
+ * @returns {Array<{ severity: string, codes: ReadonlyArray<string> }>}
+ */
+function claimsAtSeverity(blockers, severity) {
+  return blockers.filter((claim) => claim.severity === severity);
+}
+
+/**
+ * The claims on a blocker list that their own owner marked `blocking`.
  *
  * @param {ReadonlyArray<{ severity: string, codes: ReadonlyArray<string> }>} blockers
  * @returns {Array<{ severity: string, codes: ReadonlyArray<string> }>}
  */
 function blockingClaimsIn(blockers) {
-  return blockers.filter((claim) => claim.severity === CONSTRAINT_SEVERITY.BLOCKING);
+  return claimsAtSeverity(blockers, CONSTRAINT_SEVERITY.BLOCKING);
 }
 
 describe('feasibility :: round 2, finding 1 — a blocking blocker is never a feasible answer', () => {
@@ -2284,14 +2302,44 @@ describe('feasibility :: round 2, finding 1 — a blocking blocker is never a fe
     }
   });
 
-  it('holds as a rule over every answer this corpus produces, not just those four', () => {
-    // **The rule, not the instance.** No answer of any shape may report
-    // `feasible` while its own blockers carry something at `blocking`. The
-    // verdict has to be derived from the evidence the blockers are drawn from,
-    // or the two channels of one answer are free to contradict each other.
+  it('holds at every severity a blocker can carry, over every answer this corpus produces', () => {
+    // **The rule, not the instance — and every severity, not one of them.**
+    // Round two derived `blocked` from the published blockers and left
+    // `compromised` on the facility layer's own status, so this same sweep
+    // passed while `combined_schedule.csv#7` and `#18` sealed `feasible` /
+    // `clean` carrying a compromise-severity TRAVEL_BETWEEN_VENUES_TOO_SHORT.
+    // A rule written about one severity is a rule that cannot notice the next
+    // one, so the whole table is asserted here: each severity a published
+    // blocker can carry has one declared effect on the answer that publishes
+    // it, and each is checked over the same four sweeps.
+    /**
+     * @type {Record<string, { says: string,
+     *   holds: (answer: { verdict: string, tight: string|null }) => boolean }>}
+     */
+    const EFFECT = {
+      [CONSTRAINT_SEVERITY.BLOCKING]: {
+        says: 'a blocking blocker makes the verdict infeasible',
+        holds: (answer) => answer.verdict === FEASIBILITY_VERDICT.INFEASIBLE,
+      },
+      [CONSTRAINT_SEVERITY.COMPROMISE]: {
+        says: 'a compromise blocker means the answer is never clean',
+        holds: (answer) => answer.tight !== FEASIBILITY_TIGHTNESS.CLEAN,
+      },
+      [CONSTRAINT_SEVERITY.INFO]: {
+        says: 'an info blocker moves neither the verdict nor the tightness',
+        holds: () => true,
+      },
+    };
+    // Meta-assertion: a severity with no row above is a severity this rule
+    // silently does not cover, which is the defect restated as a test.
+    expect(Object.keys(EFFECT).sort()).toEqual(Object.values(CONSTRAINT_SEVERITY).sort());
+
     /** @type {string[]} */
     const offenders = [];
-    /** @type {Record<string, { checked: number, carrying: number }>} */
+    /**
+     * @type {Record<string, Record<string,
+     *   { checked: number, carrying: number, onlyInfo: number, onlyInfoClean: number }>>}
+     */
     const arms = {};
     /**
      * @param {string} arm
@@ -2300,16 +2348,34 @@ describe('feasibility :: round 2, finding 1 — a blocking blocker is never a fe
      * @param {ReadonlyArray<{ severity: string, codes: ReadonlyArray<string> }>} blockers
      */
     const rule = (arm, label, answer, blockers) => {
-      const tally = (arms[arm] ??= { checked: 0, carrying: 0 });
-      tally.checked += 1;
-      const blocking = blockingClaimsIn(blockers);
-      if (blocking.length === 0) return;
-      tally.carrying += 1;
-      if (answer.verdict !== FEASIBILITY_VERDICT.FEASIBLE) return;
-      offenders.push(
-        `${label}: verdict "${answer.verdict}", tight ${JSON.stringify(answer.tight)}, carrying ` +
-          [...new Set(blocking.flatMap((claim) => claim.codes))].sort().join(', ')
-      );
+      const tally = (arms[arm] ??= {});
+      const above = blockers.filter((claim) => claim.severity !== CONSTRAINT_SEVERITY.INFO);
+      for (const [severity, effect] of Object.entries(EFFECT)) {
+        const seen = (tally[severity] ??= {
+          checked: 0,
+          carrying: 0,
+          onlyInfo: 0,
+          onlyInfoClean: 0,
+        });
+        seen.checked += 1;
+        const carried = claimsAtSeverity(blockers, severity);
+        if (carried.length === 0) continue;
+        seen.carrying += 1;
+        // The positive control for the row that must do nothing: an answer
+        // whose blockers are info and nothing else is exactly the answer that
+        // is allowed to read `clean`. Without it, "info moves nothing" would
+        // be a rule no observation could fail.
+        if (severity === CONSTRAINT_SEVERITY.INFO && above.length === 0) {
+          seen.onlyInfo += 1;
+          if (answer.tight === FEASIBILITY_TIGHTNESS.CLEAN) seen.onlyInfoClean += 1;
+        }
+        if (effect.holds(answer)) continue;
+        offenders.push(
+          `${label}: verdict "${answer.verdict}", tight ${JSON.stringify(answer.tight)}, carrying ` +
+            `${severity} ${[...new Set(carried.flatMap((claim) => claim.codes))].sort().join(', ')} — ` +
+            effect.says
+        );
+      }
     };
 
     for (const game of schedule.games) {
@@ -2359,20 +2425,27 @@ describe('feasibility :: round 2, finding 1 — a blocking blocker is never a fe
     // Meta-assertions. The three arms that judge a *position* must each have
     // actually seen answers carrying a blocking blocker, or the rule above
     // matched zero records and passed silently.
-    expect(arms.standing.checked).toBe(schedule.games.length);
-    expect(arms.moved.checked).toBe(schedule.games.length);
-    expect(arms.teamCell.checked).toBeGreaterThan(1000);
-    expect(arms.bounds.checked).toBe(boundsCorpus().length);
-    expect(arms.standing.carrying).toBeGreaterThan(0);
-    expect(arms.moved.carrying).toBeGreaterThan(0);
-    expect(arms.teamCell.carrying).toBeGreaterThan(0);
-    // The bounds arm carries them too, which is not obvious: `latestHard` is
-    // the last minute at which nothing blocking speaks, so a *bounded* answer
+    expect(arms.standing[CONSTRAINT_SEVERITY.BLOCKING].checked).toBe(schedule.games.length);
+    expect(arms.moved[CONSTRAINT_SEVERITY.BLOCKING].checked).toBe(schedule.games.length);
+    expect(arms.teamCell[CONSTRAINT_SEVERITY.BLOCKING].checked).toBeGreaterThan(1000);
+    expect(arms.bounds[CONSTRAINT_SEVERITY.BLOCKING].checked).toBe(boundsCorpus().length);
+    // **Per arm and per severity.** Every arm must have seen a real answer at
+    // every level, or that cell of the table is a rule matched against nothing.
+    // The bounds arm carrying a *blocking* blocker is not obvious: `latestHard`
+    // is the last minute at which nothing blocking speaks, so a bounded answer
     // never carries one. The six that do are Summit HS on the blacked-out
     // 09/19, where there is no hard bound at all — `PERMIT_BLACKOUT` speaks at
     // every minute, `kickoffMinutes` is null and the verdict is `infeasible`.
     // Exactly the shape the rule is about, arrived at from the other side.
-    expect(arms.bounds.carrying).toBeGreaterThan(0);
+    for (const arm of ['standing', 'moved', 'teamCell', 'bounds']) {
+      for (const severity of Object.keys(EFFECT)) {
+        expect(arms[arm][severity].carrying, `${arm} / ${severity}`).toBeGreaterThan(0);
+      }
+      expect(
+        arms[arm][CONSTRAINT_SEVERITY.INFO].onlyInfoClean,
+        `${arm} / info-only answers that read clean`
+      ).toBeGreaterThan(0);
+    }
   }, 180_000);
 });
 
@@ -2431,5 +2504,374 @@ describe('feasibility :: round 2, finding 4 — a boundary that does not exist c
     // with a clean boundary would never reach the branch this is about.
     expect(withoutClean).toBeGreaterThan(0);
     expect(withClean).toBeGreaterThan(0);
+  }, 120_000);
+});
+
+/* -------------------------------------------------------------------------- */
+/* Third pre-PR review of 7.1 — one derivation, for every severity              */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * One standing position, asked the way `canTeamPlay()`'s grid asks it, with the
+ * minimal blocking set left at its default.
+ *
+ * The default is the point for round three's finding 2: the round-two sweep
+ * passes `minimalSet: false` and therefore never sees the answer an operator
+ * actually gets.
+ *
+ * @param {{ id: string, date: string, surfaceId: string, startMinutes: number }} game
+ * @returns {import('@squadlogic/core/feasibility/types.js').FeasibilityAnswer}
+ */
+function standingAnswer(game) {
+  return canGameMove(
+    context,
+    {
+      gameId: game.id,
+      insteadOfDate: game.date,
+      insteadOfSurfaceId: game.surfaceId,
+      insteadOfMinutes: game.startMinutes,
+    },
+    { venueComplexes, standingPositionIsAnAnswer: true }
+  );
+}
+
+describe('feasibility :: round 3, finding 1 — the derivation reads every severity', () => {
+  it('refuses to call the two standing positions clean while they publish a compromise blocker', () => {
+    // The reviewer's own two. `blocked` was derived from the merged blockers in
+    // round two and `compromised` was left on `checkPlacement()`'s facility
+    // status, so a position carrying a compromise-severity
+    // TRAVEL_BETWEEN_VENUES_TOO_SHORT sealed `feasible` / `clean`: the blockers
+    // said "worse than it looks" and the answer said "there is room here".
+    for (const gameId of ['combined_schedule.csv#7', 'combined_schedule.csv#18']) {
+      const game = schedule.games.find((entry) => entry.id === gameId);
+      // Meta-assertions: a game this corpus no longer holds, or one that
+      // stopped carrying the claim, would make the assertion below a statement
+      // about nothing.
+      expect(game, gameId).toBeDefined();
+      const answer = standingAnswer(/** @type {any} */ (game));
+      const compromise = claimsAtSeverity(answer.blockers, CONSTRAINT_SEVERITY.COMPROMISE);
+      expect(
+        compromise.flatMap((claim) => claim.codes),
+        gameId
+      ).toContain(TRAVEL_REASON.TRAVEL_BETWEEN_VENUES_TOO_SHORT);
+      expect(answer.verdict, gameId).toBe(FEASIBILITY_VERDICT.FEASIBLE);
+      expect(answer.tight, gameId).toBe(FEASIBILITY_TIGHTNESS.TIGHT);
+    }
+  });
+
+  it('reads one frozen table, with a row for every member of the severity enum', () => {
+    // **The reason this is a class rather than an instance.** Round two fixed
+    // `blocking` with a line at a call site; the same defect one severity down
+    // survived it. So the mapping from a severity to what it does is a table,
+    // every member of the enum has a row, and `deriveFeasibilityEvidence()` is
+    // the only reader — a severity added to `CONSTRAINT_SEVERITY` without a row
+    // fails here rather than deciding nothing in silence.
+    expect(Object.isFrozen(FEASIBILITY_SEVERITY_EFFECT)).toBe(true);
+    expect(Object.keys(FEASIBILITY_SEVERITY_EFFECT).sort()).toEqual(
+      Object.values(FEASIBILITY_SEVERITY).sort()
+    );
+    expect(deriveFeasibilityEvidence([])).toEqual({ blocked: false, compromised: false });
+    expect(deriveFeasibilityEvidence([{ severity: FEASIBILITY_SEVERITY.BLOCKING }])).toEqual({
+      blocked: true,
+      compromised: false,
+    });
+    expect(deriveFeasibilityEvidence([{ severity: FEASIBILITY_SEVERITY.COMPROMISE }])).toEqual({
+      blocked: false,
+      compromised: true,
+    });
+    expect(deriveFeasibilityEvidence([{ severity: FEASIBILITY_SEVERITY.INFO }])).toEqual({
+      blocked: false,
+      compromised: false,
+    });
+    // A severity nobody registered decides nothing by default — it throws, in
+    // the same discipline `feasibilitySeverityOf()` refuses an unknown code.
+    expect(() => deriveFeasibilityEvidence([{ severity: 'severe-ish' }])).toThrow(
+      /does not register/
+    );
+    // …and neither shape that makes the collapse free in JavaScript is accepted.
+    expect(() => deriveFeasibilityEvidence(/** @type {any} */ (true))).toThrow(/never a boolean/);
+    // Inherited keys are not rows: a claim whose severity is "toString" is an
+    // unregistered severity like any other.
+    expect(() => deriveFeasibilityEvidence([{ severity: 'toString' }])).toThrow(
+      /does not register/
+    );
+  });
+
+  it('lost nothing the facility layer used to decide on its own', () => {
+    // **The no-weakening control.** The derivation used to read two flags
+    // `checkPlacement()` owns — `legal` and `placementStatus` — and now reads
+    // only the evidence the answer publishes. That is a narrowing, so it has to
+    // be shown to lose nothing: every position the facility layer called
+    // illegal is still `infeasible`, and every one it called compromised is
+    // still not `clean`, because both facts are published as claims before they
+    // are derived from.
+    let illegal = 0;
+    let compromised = 0;
+    for (const game of schedule.games) {
+      const time = explainKickoffTime(context, {
+        gameId: game.id,
+        insteadOfDate: game.date,
+        insteadOfSurfaceId: game.surfaceId,
+        insteadOfMinutes: game.startMinutes,
+      });
+      const facility = time.current;
+      if (facility === null) continue;
+      if (facility.legal !== false && facility.placementStatus !== CONSTRAINT_STATUS.COMPROMISED) {
+        continue;
+      }
+      const answer = standingAnswer(game);
+      if (facility.legal === false) {
+        illegal += 1;
+        expect(answer.verdict, game.id).toBe(FEASIBILITY_VERDICT.INFEASIBLE);
+      }
+      if (facility.placementStatus === CONSTRAINT_STATUS.COMPROMISED) {
+        compromised += 1;
+        expect(answer.tight, game.id).not.toBe(FEASIBILITY_TIGHTNESS.CLEAN);
+      }
+    }
+    // Meta-assertions: both arms saw real positions. A corpus where the
+    // facility layer never refused anything would make this control vacuous.
+    expect(illegal).toBeGreaterThan(0);
+    expect(compromised).toBeGreaterThan(0);
+  }, 120_000);
+});
+
+describe('feasibility :: round 3, finding 2 — an answer never denies its own verdict', () => {
+  it('says which layer blocked the standing positions the facility layer did not', () => {
+    // With `minimalSet` at its default these four came back `infeasible`
+    // alongside `minimalSet.blocked === false` and
+    // ATTRIBUTION_PLACEMENT_NOT_BLOCKED — "no set of constraints blocks it"
+    // printed beside "infeasible". The information is kept, because a blocked
+    // answer with no *facility* explanation is worth saying; what changes is
+    // that the answer now says which layer did decide.
+    for (const n of [534, 548, 564, 575]) {
+      const gameId = `combined_schedule.csv#${n}`;
+      const game = schedule.games.find((entry) => entry.id === gameId);
+      expect(game, gameId).toBeDefined();
+      const answer = standingAnswer(/** @type {any} */ (game));
+      expect(answer.verdict, gameId).toBe(FEASIBILITY_VERDICT.INFEASIBLE);
+      // Meta-assertion: the minimal set is still asked for and still denies,
+      // or the case below is about a shape that no longer occurs.
+      expect(answer.minimalSet, gameId).not.toBeNull();
+      expect(answer.minimalSet.blocked, gameId).toBe(false);
+      const said = answer.findings.filter(
+        (finding) => finding.code === FEASIBILITY_REASON.FEASIBILITY_BLOCKED_OUTSIDE_FACILITY
+      );
+      expect(said, gameId).toHaveLength(1);
+      expect(said[0].details.sources, gameId).toContain(ATTRIBUTION_SOURCE.RULE_ENGINE);
+      expect(said[0].details.codes, gameId).toContain(TRAVEL_REASON.TRAVEL_COMMITMENTS_OVERLAP);
+    }
+  });
+
+  it('holds as a rule: no answer carries a verdict and a minimal-set claim that disagree', () => {
+    /** @type {string[]} */
+    const offenders = [];
+    let denying = 0;
+    let agreeing = 0;
+    let absent = 0;
+    /**
+     * @param {string} label
+     * @param {import('@squadlogic/core/feasibility/types.js').FeasibilityAnswer} answer
+     */
+    const rule = (label, answer) => {
+      if (answer.minimalSet === null) {
+        absent += 1;
+        // A minimal set is only asked for when the answer is blocked, so its
+        // absence must never sit beside an `infeasible` verdict either.
+        if (answer.verdict === FEASIBILITY_VERDICT.INFEASIBLE) {
+          offenders.push(`${label}: infeasible with no minimal set at all`);
+        }
+        return;
+      }
+      if (answer.minimalSet.blocked === true) {
+        agreeing += 1;
+        if (answer.verdict !== FEASIBILITY_VERDICT.INFEASIBLE) {
+          offenders.push(`${label}: minimal set blocks it but the verdict is "${answer.verdict}"`);
+        }
+        // …and an answer whose facility layer *did* block it must not claim
+        // the explanation came from somewhere else.
+        if (
+          answer.findings.some(
+            (finding) => finding.code === FEASIBILITY_REASON.FEASIBILITY_BLOCKED_OUTSIDE_FACILITY
+          )
+        ) {
+          offenders.push(`${label}: the facility layer blocked it and the answer says it did not`);
+        }
+        return;
+      }
+      denying += 1;
+      if (answer.verdict !== FEASIBILITY_VERDICT.INFEASIBLE) {
+        offenders.push(
+          `${label}: minimal set denies blocking beside a verdict of "${answer.verdict}"`
+        );
+        return;
+      }
+      const said = answer.findings.filter(
+        (finding) => finding.code === FEASIBILITY_REASON.FEASIBILITY_BLOCKED_OUTSIDE_FACILITY
+      );
+      if (said.length !== 1) {
+        offenders.push(
+          `${label}: infeasible beside "no set of constraints blocks it", with ${said.length} finding(s) saying which layer did`
+        );
+        return;
+      }
+      const sources = /** @type {string[]} */ (said[0].details.sources ?? []);
+      if (sources.length === 0) {
+        offenders.push(`${label}: named no layer at all`);
+      }
+    };
+
+    for (const game of schedule.games) {
+      rule(`standing ${game.id}`, standingAnswer(game));
+      rule(
+        `move ${game.id} +60`,
+        canGameMove(
+          context,
+          { gameId: game.id, insteadOfMinutes: game.startMinutes + 60 },
+          { venueComplexes }
+        )
+      );
+    }
+
+    expect(offenders).toEqual([]);
+    // Meta-assertions: both arms of the rule were exercised. A sweep that saw
+    // no denying minimal set would never reach the branch this is about, and
+    // one that saw no agreeing set would not have exercised the ordinary case
+    // the denial is measured against.
+    expect(denying).toBeGreaterThan(0);
+    expect(agreeing).toBeGreaterThan(0);
+    expect(absent).toBeGreaterThan(0);
+  }, 120_000);
+});
+
+describe('feasibility :: round 3, finding 3 — a boundary describes its own position', () => {
+  it('keeps the claim that explains why the 09/19 hard boundary does not exist', () => {
+    // **The contract was wrong, not the code.** `types.js` declared that a
+    // boundary with no position carries no claims. It never has: the whole date
+    // is blacked out, so there is no hard bound *and* there is a permit record
+    // that says why. That claim is the answer to "why is there no boundary
+    // here?", and the reachability driver and acceptance 4 both read it as one.
+    const answer = feasibleKickoffBounds(context, {
+      surfaceId: SUMMIT,
+      date: '2026-09-19',
+      format: '11v11',
+    });
+    expect(answer.latestHard.kickoffMinutes).toBeNull();
+    expect(answer.latestHard.binding).toEqual([]);
+    expect(answer.latestHard.marginMinutes).toBeNull();
+    expect(answer.latestHard.claims).toHaveLength(1);
+    expect(answer.latestHard.claims[0].codes).toContain(AVAILABILITY_REASON.PERMIT_BLACKOUT);
+    // …and it is a claim about a real record, not a category, which is the
+    // difference between an explanation and a shrug.
+    expect(isSpecificClaim(answer.latestHard.claims[0])).toBe(true);
+  });
+
+  it('refuses a boundary built from a result about a different minute', () => {
+    // **The falsification.** The rule that replaces the old contract is
+    // enforced where a boundary is built, so it has to be shown to bite. This
+    // is round two's finding 4 reconstructed exactly: Alder pitch 2 on 08/22 at
+    // 9v9 has a hard bound and no clean one, and the clean boundary was once
+    // built from the *hard* result — a position no minute of the day offers,
+    // described in another minute's constraints.
+    const hardResult = latestLegalKickoff(
+      graph,
+      table,
+      calendar,
+      { surfaceId: ALDER_2, date: '2026-08-22', format: '9v9' },
+      { existingBookings: standingBookings(context.state, '2026-08-22', []) }
+    );
+    // Meta-assertion: a result with no position of its own would make the
+    // refusal below true for the wrong reason.
+    expect(hardResult.kickoffMinutes).not.toBeNull();
+    expect(() => assertBoundaryResult(hardResult, null, FEASIBILITY_THRESHOLD.CLEAN)).toThrow(
+      /never in another minute's words/
+    );
+    // The two pairings that are honest both pass: the result about its own
+    // position, and the absence of a result about no position at all.
+    expect(
+      assertBoundaryResult(hardResult, hardResult.kickoffMinutes, FEASIBILITY_THRESHOLD.HARD)
+    ).toBe(hardResult);
+    expect(
+      assertBoundaryResult({ constraints: [], findings: [] }, null, FEASIBILITY_THRESHOLD.CLEAN)
+    ).toEqual({ constraints: [], findings: [] });
+  });
+
+  it('carries the constraints of its own minute, checked against a fresh probe', () => {
+    // The positive half: a positioned boundary's claims are the applicable
+    // constraints at that minute, confirmed by asking `checkKickoffAvailability()`
+    // again rather than by trusting the list.
+    let checked = 0;
+    for (const cell of [
+      { surfaceId: ALDER_2, date: '2026-08-22', format: '11v11' },
+      { surfaceId: SUMMIT, date: '2026-11-14', format: '11v11' },
+      { surfaceId: ALDER_2, date: '2026-11-14', format: '11v11' },
+    ]) {
+      const answer = feasibleKickoffBounds(context, cell);
+      for (const boundary of [answer.latestHard, answer.latestClean]) {
+        if (boundary.kickoffMinutes === null) continue;
+        checked += 1;
+        const probe = probeKickoff(
+          { graph, table, calendar, registry },
+          {
+            surfaceId: cell.surfaceId,
+            date: cell.date,
+            kickoffMinutes: boundary.kickoffMinutes,
+            format: cell.format,
+            ignoreBookingIds: [],
+          },
+          standingBookings(context.state, cell.date, []),
+          createFeasibilityMeta()
+        );
+        const expected = probe.result.constraints
+          .filter((constraint) => constraint.applicable)
+          .map((constraint) => constraint.kind)
+          .sort();
+        expect(
+          boundary.claims.map((claim) => claim.kind).sort(),
+          `${cell.surfaceId} ${cell.date} ${boundary.threshold}`
+        ).toEqual(expected);
+      }
+    }
+    // Meta-assertion: the loop reached positioned boundaries at all.
+    expect(checked).toBeGreaterThan(3);
+  });
+
+  it('holds over the corpus: a boundary with no position binds nothing and explains itself', () => {
+    let explained = 0;
+    let silent = 0;
+    let positioned = 0;
+    for (const cell of boundsCorpus()) {
+      const answer = feasibleKickoffBounds(context, cell);
+      const label = `${cell.surfaceId} ${cell.date} ${cell.format}`;
+      for (const boundary of [answer.latestHard, answer.latestClean]) {
+        if (boundary.kickoffMinutes !== null) {
+          positioned += 1;
+          continue;
+        }
+        // No position, so nothing binds at one and no margin is measurable.
+        expect(boundary.binding, `${label} ${boundary.threshold}`).toEqual([]);
+        expect(boundary.marginMinutes, `${label} ${boundary.threshold}`).toBeNull();
+        expect(boundary.marginBasis, `${label} ${boundary.threshold}`).toBeNull();
+        expect(boundary.endMinutes, `${label} ${boundary.threshold}`).toBeNull();
+        if (boundary.claims.length === 0) {
+          silent += 1;
+          expect(boundary.notApplicable, `${label} ${boundary.threshold}`).toEqual([]);
+          continue;
+        }
+        explained += 1;
+        // Whatever it carries is an explanation of the absence: a real record,
+        // with the codes that spoke, never a bare category.
+        for (const claim of boundary.claims) {
+          expect(isSpecificClaim(claim), `${label} ${boundary.threshold}`).toBe(true);
+          expect(claim.codes.length, `${label} ${boundary.threshold}`).toBeGreaterThan(0);
+        }
+      }
+    }
+    // Meta-assertions: all three arms were exercised. A sweep that never saw a
+    // boundary explaining its own absence would be asserting the old contract
+    // by accident.
+    expect(explained).toBeGreaterThan(0);
+    expect(silent).toBeGreaterThan(0);
+    expect(positioned).toBeGreaterThan(0);
   }, 120_000);
 });

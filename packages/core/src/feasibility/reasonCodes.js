@@ -347,6 +347,27 @@ export const FEASIBILITY_REASON = Object.freeze({
    * live grenade in the hand of whoever read it.
    */
   FEASIBILITY_CLAIM_CATEGORY_ONLY: 'FEASIBILITY_CLAIM_CATEGORY_ONLY',
+  /**
+   * The answer is blocked, and the layer the **minimal blocking set** speaks
+   * for is not the layer that blocked it.
+   *
+   * `info`, and it is provenance rather than a defect: the blockers already
+   * name the constraint that decided, the margin is already reported, and
+   * nothing went unmeasured. What it fixes is a contradiction on the *surface*
+   * of the answer. `minimalBlockingSet()` is `attribution/`'s certified
+   * facility-layer answer, so when the rule engine or coach travel is what
+   * blocked a position it comes back `blocked: false` carrying
+   * `ATTRIBUTION_PLACEMENT_NOT_BLOCKED` — *"no set of constraints blocks it"*
+   * printed beside *"infeasible"*, in one answer, to an operator this layer
+   * exists to stop misleading.
+   *
+   * Suppressing the call was considered and refused: that a blocked position
+   * has no *facility* explanation is worth saying. So the information stays and
+   * the denial is qualified — this finding names the layers that did block it
+   * and the codes they raised, so the answer reads "the facility layer did not
+   * block this; the rule engine did" rather than a bare denial.
+   */
+  FEASIBILITY_BLOCKED_OUTSIDE_FACILITY: 'FEASIBILITY_BLOCKED_OUTSIDE_FACILITY',
   /** The verdict, as provenance, with the counts behind it. `info`. */
   FEASIBILITY_VERDICT_REACHED: 'FEASIBILITY_VERDICT_REACHED',
 });
@@ -379,6 +400,7 @@ export const FEASIBILITY_REASON_SEVERITY = Object.freeze({
   [FEASIBILITY_REASON.FEASIBILITY_QUERY_VACUOUS]: FEASIBILITY_SEVERITY.BLOCKING,
   [FEASIBILITY_REASON.FEASIBILITY_CANDIDATE_DROPPED]: FEASIBILITY_SEVERITY.BLOCKING,
   [FEASIBILITY_REASON.FEASIBILITY_CLAIM_CATEGORY_ONLY]: FEASIBILITY_SEVERITY.BLOCKING,
+  [FEASIBILITY_REASON.FEASIBILITY_BLOCKED_OUTSIDE_FACILITY]: FEASIBILITY_SEVERITY.INFO,
   [FEASIBILITY_REASON.FEASIBILITY_VERDICT_REACHED]: FEASIBILITY_SEVERITY.INFO,
 });
 
@@ -477,6 +499,71 @@ export function deriveFeasibilityStatus(findings) {
   return deriveConstraintStatus(
     /** @type {ReadonlyArray<import('../constraints/types.js').ConstraintFinding>} */ (findings)
   );
+}
+
+/**
+ * **What a severity does to the answer that publishes it. One row per member of
+ * the severity enum, and the derivation reads the row rather than naming a
+ * severity.**
+ *
+ * The class of defect this closes has now been reported twice. First `blocked`
+ * was `checkPlacement()`'s facility legality while `blockers` was the *merged*
+ * list, so four fixtures carrying a blocking `TRAVEL_COMMITMENTS_OVERLAP`
+ * sealed `feasible` / `clean`. That was fixed by adding a line about
+ * `blocking` — and `compromised` was left on the facility layer's own status,
+ * so `combined_schedule.csv#7` and `#18` went on sealing `clean` while
+ * publishing a compromise-severity `TRAVEL_BETWEEN_VENUES_TOO_SHORT`. A third
+ * line about `compromise` would have been the same fix a third time, and the
+ * next severity added to `CONSTRAINT_SEVERITY` would have needed a fourth.
+ *
+ * So the mapping is a table. Every severity has an entry; the entry names which
+ * flag of the derivation it raises, or `null` for the one that raises none; and
+ * {@link deriveFeasibilityEvidence} is the only reader. A severity with no row
+ * throws rather than being ignored, exactly as {@link feasibilitySeverityOf}
+ * throws on an unregistered code, and for the same reason: the alternative is a
+ * severity that silently decides nothing.
+ *
+ * @type {Readonly<Record<string, string|null>>}
+ */
+export const FEASIBILITY_SEVERITY_EFFECT = Object.freeze({
+  /** A definite no. Nothing further can make the position legal. */
+  [FEASIBILITY_SEVERITY.BLOCKING]: 'blocked',
+  /** Legal and worse than it looks: the position is never `clean`. */
+  [FEASIBILITY_SEVERITY.COMPROMISE]: 'compromised',
+  /** Provenance. It is reported and it decides nothing. */
+  [FEASIBILITY_SEVERITY.INFO]: null,
+});
+
+/**
+ * **The evidence an answer publishes, folded into the two flags that decide it.**
+ *
+ * Takes the answer's own severity-bearing records — its `blockers`, first and
+ * foremost — and returns what {@link deriveFeasibilityVerdict} and
+ * {@link deriveFeasibilityTightness} need. It is the one place a severity is
+ * turned into a consequence, so the property "every severity that appears in a
+ * published blocker reaches the derivation" is mechanical rather than a habit
+ * kept at four call sites.
+ *
+ * @param {ReadonlyArray<{ severity: string }>} evidence
+ * @returns {{ blocked: boolean, compromised: boolean }}
+ */
+export function deriveFeasibilityEvidence(evidence) {
+  if (!Array.isArray(evidence)) {
+    throw new Error(
+      'feasibility: evidence must be an array of severity-bearing records, never a boolean'
+    );
+  }
+  const derived = { blocked: false, compromised: false };
+  for (const record of evidence) {
+    if (!Object.hasOwn(FEASIBILITY_SEVERITY_EFFECT, record.severity)) {
+      throw new Error(
+        `feasibility: evidence carries severity ${JSON.stringify(record.severity)}, which the effect table does not register; a severity nobody decided the meaning of must not decide an answer by default`
+      );
+    }
+    const effect = FEASIBILITY_SEVERITY_EFFECT[record.severity];
+    if (effect !== null) derived[effect] = true;
+  }
+  return derived;
 }
 
 /**

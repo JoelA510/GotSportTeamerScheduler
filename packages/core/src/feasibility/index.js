@@ -65,6 +65,7 @@ export {
   FEASIBILITY_REASON,
   FEASIBILITY_REASON_SEVERITY,
   FEASIBILITY_SEVERITY,
+  FEASIBILITY_SEVERITY_EFFECT,
   FEASIBILITY_STATUS,
   FEASIBILITY_THRESHOLD,
   FEASIBILITY_TIGHTNESS,
@@ -73,6 +74,7 @@ export {
   FEASIBILITY_VERDICT_ORDER,
   assertFeasibilityFindings,
   createFeasibilityMeta,
+  deriveFeasibilityEvidence,
   deriveFeasibilityStatus,
   deriveFeasibilityTightness,
   deriveFeasibilityVerdict,
@@ -89,6 +91,7 @@ export {
 
 export {
   absorbUnknowns,
+  assertBoundaryResult,
   bindingAt,
   boundFindings,
   candidateAccountingFindings,

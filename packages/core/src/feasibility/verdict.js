@@ -305,6 +305,42 @@ function blockingOnly(findings) {
 }
 
 /**
+ * **A boundary describes its own position, and nobody else's.**
+ *
+ * The rule `types.js` states about {@link import('./types.js').FeasibilityBoundary}
+ * `claims` and `notApplicable`, enforced where a boundary is *built* rather than
+ * where one is consumed.
+ *
+ * The rule it enforces is deliberately not *"a boundary with no position carries
+ * nothing"*, which is what the contract said and the code has never done: the
+ * hard boundary on a blacked-out date has no position **and** one claim —
+ * `PERMIT_BLACKOUT`, naming the permit record — and that claim is the answer to
+ * *"why is there no boundary here?"*. Deleting it to satisfy the sentence would
+ * trade an explanation for a shrug. What must never happen is the thing that
+ * did: the clean boundary was once built from the *hard* result, so a position
+ * no minute of the day offered was described in another minute's constraints.
+ *
+ * So a boundary is checked against the position its own availability result is
+ * about. A result that states no kickoff at all — the empty one a caller builds
+ * when there is no clean boundary to probe — reads as `null` and matches a
+ * boundary that has none.
+ *
+ * @param {Object} result - a `checkKickoffAvailability()` or `latestLegalKickoff()` answer
+ * @param {number|null} kickoffMinutes - the boundary's own position
+ * @param {string} threshold - a `FEASIBILITY_THRESHOLD` value, named in the failure
+ * @returns {Object} the same result
+ */
+export function assertBoundaryResult(result, kickoffMinutes, threshold) {
+  const describes = result?.kickoffMinutes ?? null;
+  if (describes !== kickoffMinutes) {
+    throw new Error(
+      `feasibility: the "${threshold}" boundary is at ${JSON.stringify(kickoffMinutes)} but the availability result it was built from is about ${JSON.stringify(describes)}; a boundary carries the constraints that spoke about its own position, and one that has no position may say why it has none but never in another minute's words`
+    );
+  }
+  return result;
+}
+
+/**
  * Which constraints bind at a position, by probing one minute later.
  *
  * `threshold` decides what counts as speaking: at the hard threshold a

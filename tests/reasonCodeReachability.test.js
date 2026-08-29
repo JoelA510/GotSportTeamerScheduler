@@ -1,8 +1,8 @@
 /**
  * Repo-wide reachability audit for every frozen reason-code table in
  * `packages/core/src` — the generalisation of the per-module audit
- * `tests/attribution.test.js` already carries. 16 vocabularies, 321 codes, of
- * which 311 are shown to be producible and 10 are named as holes.
+ * `tests/attribution.test.js` already carries. 16 vocabularies, 322 codes, of
+ * which 312 are shown to be producible and 10 are named as holes.
  *
  * **The defect this exists to catch.** Four times now, in four unrelated
  * modules, a reason code has been declared, given a severity, documented, and
@@ -3570,6 +3570,27 @@ harvest(
     { gameId: feasibilityAlder.id, insteadOfMinutes: feasibilityAlder.startMinutes },
     { venueComplexes }
   )
+);
+
+harvest(
+  'canGameMove(a standing position the facility layer did not block)',
+  (() => {
+    // The rule engine blocks this fixture where it stands, and the facility
+    // layer does not — so `minimalBlockingSet()` comes back `blocked: false`
+    // and the answer has to say which layer did decide. Asked with the minimal
+    // set left at its default, which is the answer an operator actually gets.
+    const blockedElsewhere = schedule.games.find((game) => game.id === 'combined_schedule.csv#534');
+    return canGameMove(
+      context,
+      {
+        gameId: blockedElsewhere.id,
+        insteadOfDate: blockedElsewhere.date,
+        insteadOfSurfaceId: blockedElsewhere.surfaceId,
+        insteadOfMinutes: blockedElsewhere.startMinutes,
+      },
+      { venueComplexes, standingPositionIsAnAnswer: true }
+    );
+  })()
 );
 
 harvest(

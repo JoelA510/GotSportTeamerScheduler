@@ -75,18 +75,38 @@
 /**
  * A boundary — the latest or earliest position — at one of the two thresholds.
  *
+ * **`claims` and `notApplicable` are about this boundary's own position, and
+ * never about another one.** That is the whole rule, and it is narrower than the
+ * one this typedef used to state. It said they are *empty* when `kickoffMinutes`
+ * is null — "a boundary that does not exist has no position for a constraint to
+ * have spoken about" — and the code has never done that: `latestHard` for Summit
+ * HS on 2026-09-19 has no kickoff and one claim, `PERMIT_BLACKOUT` naming the
+ * permit record, which is the answer to *"why is there no boundary here?"*. The
+ * declaration was the thing that was wrong. Deleting the claim to satisfy it
+ * would trade the explanation for a shrug, and the bounds sweep in
+ * `tests/feasibilityApi.test.js` reads it precisely as an explanation.
+ *
+ * What must never happen is what did: the clean boundary was once built from the
+ * *hard* result, describing a position no minute of the day offered in another
+ * minute's constraints. So the rule is stated as the guard that enforces it —
+ * `assertBoundaryResult()`, run by `boundaryOf()` where the boundary is built
+ * rather than by the caller that supplies the result. A boundary with no
+ * position carries the constraints that explain why it has none, which for a
+ * clean boundary nobody probed is nothing at all.
+ *
  * @typedef {Object} FeasibilityBoundary
  * @property {string} threshold - a `FEASIBILITY_THRESHOLD` value
  * @property {number|null} kickoffMinutes - the boundary itself, null when there is none
  * @property {number|null} endMinutes
- * @property {FeasibilityBound[]} binding - every constraint at the boundary; never truncated to one
+ * @property {FeasibilityBound[]} binding - every constraint at the boundary; never truncated
+ *   to one, and empty when there is no position to bind at
  * @property {number|null} marginMinutes - the tightest binding member's own slack
  * @property {string|null} marginBasis - the `kind` of the bound the margin came from
- * @property {import('../attribution/types.js').ConstraintClaim[]} claims - tightest first;
- *   empty when `kickoffMinutes` is null, because a boundary that does not exist has
- *   no position for a constraint to have spoken about
+ * @property {import('../attribution/types.js').ConstraintClaim[]} claims - tightest first,
+ *   from the availability answer about this boundary's own position; when there is no
+ *   position they are what explains its absence
  * @property {import('../attribution/types.js').InapplicableConstraint[]} notApplicable -
- *   empty when `kickoffMinutes` is null, for the same reason
+ *   from the same answer, for the same reason
  * @property {number} candidatesTested
  */
 
