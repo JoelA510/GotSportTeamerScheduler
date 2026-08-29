@@ -34,9 +34,19 @@ merge, no regression to the shipping app (bundle entry hash unchanged throughout
 | 4.2 | Change minimisation as an objective, change budget, dry run by default | #347 |
 | 4.3 | `attribution/` — the binding constraint behind every decision | #348 |
 | 5.1 | `reserve/` — unnamed fixtures, reservations, unplaced games, capacity | #349 |
+| 6.1 | `scenario/` — branch a season without duplicating it; overrides, ancestry, shared record sets, digest-keyed memo | #351 |
 | 6.2 | `publication/` — snapshots, four-bucket parity, change notices, sync registry; reason-code reachability audit | #350 |
 
 ## 2. In progress
+
+Nothing in flight. 6.1 merged as #351 after seven review rounds
+(11 -> 6 -> 4 -> 2 -> 4 -> 1 -> 0 findings) and one CI failure of its own making:
+widening the digest to cover the bundle by construction took it from 6.0 to
+21.2 ms, which pushed a test doing two cold season derivations past vitest's
+5 s default on the slower runner. Fixed at the file level rather than at the
+one test that tipped over first, since seven others there were above 700 ms.
+
+### Historical - 6.1's first review round, kept for the pattern
 
 **Prompt 6.1 — scenario branching.** Built (`28d8d2a`); the pre-PR
 `/code-review` returned **11 findings**; the fix pass has landed (`bfaae0f`)
@@ -220,7 +230,6 @@ control's `quality.right` from 8,305,400 to 1,105,400 against the searched run's
 
 | Prompt | Scope |
 |---|---|
-| 6.1 | fixes landed; re-run `/code-review`, PR, merge |
 | 7.1 | Read-only feasibility API — the build plan calls this "the highest day-to-day-value item in the whole sequence" |
 | 7.2 | Fairness and equity metrics |
 | 7.3 | External fixture import with impact analysis |
