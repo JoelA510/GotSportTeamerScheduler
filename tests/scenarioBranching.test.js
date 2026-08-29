@@ -3641,6 +3641,106 @@ describe('a refusal reads baseline membership off the baseline, not off the last
     expect(refused?.message).not.toContain(`"${first.id}"`);
   });
 
+  it('reports the retype that stands when the later retype follows the withdrawal', () => {
+    // **The defect.** The refusal resolved which retype it was reporting from
+    // inside the override loop, so it could only see the retypes queued
+    // *before* the withdrawal it refuses. Composed the other way round —
+    // retype, withdraw, retype — it named the first ancestor's `soft` while
+    // the registry ended up carrying the last link's `preference`. That is the
+    // same "reports a type the record does not have" misreport the sibling
+    // case above exists to stop; it survived the `find` → `findLast` switch
+    // because the switch fixed *which* entry was chosen without fixing *when*
+    // the choice was made.
+    const RETYPED = untouchedHardConstraint(registry.constraints);
+    expect(RETYPED).toBeDefined();
+    const constraintId = /** @type {any} */ (RETYPED).id;
+    const LATER_REASON = 'on reflection it is only a preference';
+
+    /** @param {string} id @param {string|null} parent @param {string} type @param {number} weight @param {string} reason */
+    const retyper = (id, parent, type, weight, reason) =>
+      link(id, parent, [
+        {
+          kind: SCENARIO_OVERRIDE_KIND.RETYPE,
+          recordSet: SCENARIO_RECORD_SET.CONSTRAINTS,
+          recordId: constraintId,
+          type,
+          weight,
+          by: 'board@club.example',
+          at: REQUESTED_AT,
+          reason,
+        },
+      ]);
+
+    const softens = retyper(
+      'chain-softens-before-the-strike',
+      null,
+      CONSTRAINT_TYPE.SOFT,
+      5,
+      'what does this rule cost as a soft constraint?'
+    );
+    const strikesOut = link('chain-strikes-out-between', softens.id, [
+      {
+        kind: SCENARIO_OVERRIDE_KIND.REMOVE,
+        recordSet: SCENARIO_RECORD_SET.CONSTRAINTS,
+        recordId: constraintId,
+        by: 'registrar@club.example',
+        at: REQUESTED_AT,
+        reason: 'the rule was struck out',
+      },
+    ]);
+    const prefers = retyper(
+      'chain-prefers-after-the-strike',
+      strikesOut.id,
+      CONSTRAINT_TYPE.PREFERENCE,
+      2,
+      LATER_REASON
+    );
+
+    const materialised = materialiseScenario(inputs, prefers, {
+      ancestry: [softens, strikesOut],
+    });
+
+    // Meta-assertion: read off the branch under test, not asserted about it.
+    // The withdrawal is refused, so both retypes land, and the registry this
+    // branch actually consults ends up carrying the *last* one — which is what
+    // makes naming the first a report of a type the record does not have.
+    const record = materialised.engines.registry.byId[constraintId];
+    expect(record).toBeDefined();
+    expect(record.type).toBe(CONSTRAINT_TYPE.PREFERENCE);
+    expect(record.history).toHaveLength(2);
+    expect(record.history[1].from).toBe(CONSTRAINT_TYPE.SOFT);
+    expect(record.history[1].note).toBe(LATER_REASON);
+    expect(materialised.meta.recordsRemoved).toBe(0);
+    expect(materialised.meta.recordsRetyped).toBe(2);
+
+    const refused = materialised.findings.find(
+      (entry) => entry.code === SCENARIO_REASON.SCENARIO_OVERRIDE_RETYPE_WITHDRAWN
+    );
+    expect(refused).toBeDefined();
+    expect(refused?.severity).toBe(CONSTRAINT_SEVERITY.BLOCKING);
+    expect(refused?.details.retypedBy).toBe(prefers.id);
+    expect(refused?.details.retypeType).toBe(CONSTRAINT_TYPE.PREFERENCE);
+    expect(refused?.details.retypeReason).toBe(LATER_REASON);
+    expect(refused?.details.authoredBy).toBe(strikesOut.id);
+    expect(refused?.message).toContain(`"${prefers.id}"`);
+    expect(refused?.message).not.toContain(`"${softens.id}"`);
+    // The refusal keeps its place in the run: it is reported where the
+    // withdrawal was refused — after the first retype was applied and before
+    // the last one was — rather than appended once the loop has finished.
+    const codes = codesOf(materialised.findings);
+    const applied = materialised.findings
+      .map((entry, at) => ({ entry, at }))
+      .filter(
+        ({ entry }) =>
+          entry.code === SCENARIO_REASON.SCENARIO_OVERRIDE_APPLIED &&
+          entry.details.operation === SCENARIO_OVERRIDE_KIND.RETYPE
+      );
+    expect(applied).toHaveLength(2);
+    const seat = codes.indexOf(SCENARIO_REASON.SCENARIO_OVERRIDE_RETYPE_WITHDRAWN);
+    expect(seat).toBeGreaterThan(applied[0].at);
+    expect(seat).toBeLessThan(applied[1].at);
+  });
+
   it('still blames the baseline, and the sole retype, when there is no chain', () => {
     // The negative control for all three: one author, no ancestry, and the
     // wording and the attribution are the ones the earlier suites assert.

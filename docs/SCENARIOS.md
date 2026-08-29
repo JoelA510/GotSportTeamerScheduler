@@ -134,10 +134,14 @@ not exist" are two different seasons rather than one refining the other, so the
 author is told to remove one of the two instead of being handed whichever the
 ordering favoured. Reachable only across authors: two edits of one record id
 written by one scenario are `SCENARIO_OVERRIDE_CONFLICT` first. The refusal
-names the **last** retype queued for the record in `retypedBy` / `retypeType`,
-because the retypes are applied in order and that is the hardness the branch
-ends up carrying; with two ancestors retyping one constraint, naming the first
-reported a type the record does not have.
+names the **last** retype the composed list holds for the record in `retypedBy`
+/ `retypeType`, because the retypes are applied in order and that is the
+hardness the branch ends up carrying; with two ancestors retyping one
+constraint, naming the first reported a type the record does not have. Which
+one that is cannot be known while the overrides are still being applied — a
+retype composed *after* the withdrawal is still one of them — so the withdrawal
+is refused where it stands, in order with every other refusal, and the finding
+it reserves there is worded once the whole list has been applied.
 
 **And a refusal names whose edit made it so.** Now that ancestor-versus-
 descendant edits of one record id reach `add` and `remove` rather than the

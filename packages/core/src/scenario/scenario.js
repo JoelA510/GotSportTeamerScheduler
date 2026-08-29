@@ -465,6 +465,24 @@ export function materialiseScenario(inputs, scenario, options = {}) {
   /** @type {Array<{ recordId: string, type: string, weight: number|null, override: import('./types.js').ScenarioOverride }>} */
   const retypes = [];
   /**
+   * Withdrawals refused because a retype of the same constraint is queued, each
+   * holding the slot its finding took in `findings`.
+   *
+   * The refusal is decided and reported **where the withdrawal is** — the
+   * `continue` that leaves the retype standing and skips the withdrawal runs in
+   * order with every other refusal in the loop, and the finding keeps its place
+   * among them. **Which** retype the branch ends up carrying is the part that is
+   * not knowable there: {@link retypes} is applied in order after the registry
+   * is built, so a retype composed *after* the withdrawal is still one of them,
+   * and resolving it mid-loop could only ever see the ones queued so far. That
+   * reported the first ancestor's hardness for a retype/withdraw/retype chain —
+   * a type the record does not end up having. The wording and details are
+   * completed once the loop is over and `retypes` is final.
+   *
+   * @type {Array<{ slot: number, author: string, recordSet: string, recordId: string, reason: string }>}
+   */
+  const withdrawnRetypes = [];
+  /**
    * Which venues a `venue-unavailable` has already been written for, **per
    * scenario that wrote one**.
    *
@@ -692,32 +710,26 @@ export function materialiseScenario(inputs, scenario, options = {}) {
         // an `applied` finding standing for an edit that never landed, which is
         // the same misdirection the two messages above just stopped doing.
         //
-        // **The last one queued, not the first.** The retypes are applied in
-        // order after the registry is built, so with two ancestors retyping one
-        // constraint the second is the hardness the branch actually carries.
-        // Naming the first sent the operator to argue with a decision nothing
-        // was holding, and reported a type the record does not end up having.
-        const queued =
-          edit.recordSet === SCENARIO_RECORD_SET.CONSTRAINTS
-            ? retypes.findLast((entry) => entry.recordId === edit.recordId)
-            : undefined;
-        if (queued !== undefined) {
-          const retypedBy = authorOf.get(queued.override) ?? scenario.id;
-          findings.push(
-            makeScenarioFinding(
-              SCENARIO_REASON.SCENARIO_OVERRIDE_RETYPE_WITHDRAWN,
-              `override "${override.reason}" withdraws constraint "${edit.recordId}", which "${retypedBy}" retypes to "${queued.type}" ("${queued.override.reason}"); a hardness change is written into the record's own history, so there is nowhere to write it once the record is gone, and "this rule is a preference" and "this rule does not exist" are two different seasons rather than one refined by the other — the withdrawal is refused, and one of the two edits has to go`,
-              {
-                scenarioId: scenario.id,
-                authoredBy: author,
-                recordSet: edit.recordSet,
-                recordId: edit.recordId,
-                retypedBy,
-                retypeReason: queued.override.reason,
-                retypeType: queued.type,
-              }
-            )
-          );
+        // **Refused here; worded afterwards.** Whether to refuse is a question
+        // about this moment — a retype is queued against the record — and it is
+        // answered here so the skip stays in order with the refusals above. Which
+        // retype to name is a question about the finished list, and it is
+        // answered by {@link withdrawnRetypes} once the loop has run.
+        if (
+          edit.recordSet === SCENARIO_RECORD_SET.CONSTRAINTS &&
+          retypes.some((entry) => entry.recordId === edit.recordId)
+        ) {
+          withdrawnRetypes.push({
+            slot: findings.length,
+            author,
+            recordSet: edit.recordSet,
+            recordId: /** @type {string} */ (edit.recordId),
+            reason: override.reason,
+          });
+          // The slot is reserved rather than appended to later, so the finding
+          // sits where the refusal happened. It is filled immediately after the
+          // loop, before anything reads `findings`.
+          findings.push(null);
           continue;
         }
         bucket.splice(index, 1);
@@ -788,6 +800,31 @@ export function materialiseScenario(inputs, scenario, options = {}) {
     // finding's own details, which reads as a bug in the materialiser rather
     // than as one `venue-unavailable` doing what it is for.
     if (appliedThisOverride > 0) meta.overridesApplied += 1;
+  }
+
+  // **The last one queued, not the first — and `retypes` is only complete now.**
+  // The retypes are applied in order after the registry is built, so the last
+  // entry for a constraint is the hardness the branch actually carries. Naming
+  // any other sends the operator to argue with a decision nothing is holding,
+  // and reports a type the record does not end up having. Each finding is
+  // written back into the slot its refusal reserved, so answering the question
+  // late does not move the answer among the findings.
+  for (const refusal of withdrawnRetypes) {
+    const queued = retypes.findLast((entry) => entry.recordId === refusal.recordId);
+    const retypedBy = authorOf.get(queued.override) ?? scenario.id;
+    findings[refusal.slot] = makeScenarioFinding(
+      SCENARIO_REASON.SCENARIO_OVERRIDE_RETYPE_WITHDRAWN,
+      `override "${refusal.reason}" withdraws constraint "${refusal.recordId}", which "${retypedBy}" retypes to "${queued.type}" ("${queued.override.reason}"); a hardness change is written into the record's own history, so there is nowhere to write it once the record is gone, and "this rule is a preference" and "this rule does not exist" are two different seasons rather than one refined by the other — the withdrawal is refused, and one of the two edits has to go`,
+      {
+        scenarioId: scenario.id,
+        authoredBy: refusal.author,
+        recordSet: refusal.recordSet,
+        recordId: refusal.recordId,
+        retypedBy,
+        retypeReason: queued.override.reason,
+        retypeType: queued.type,
+      }
+    );
   }
 
   /** @type {Record<string, ReadonlyArray<Object>>} */
