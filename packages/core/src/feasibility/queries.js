@@ -57,7 +57,6 @@ import {
   claimFromFinding,
   claimFromTravelTransition,
   groupFindingsByConstraintKind,
-  makeClaim,
   mergeClaimsByTightness,
 } from '../attribution/claims.js';
 import { explainKickoffTime } from '../attribution/explain.js';
@@ -1062,7 +1061,6 @@ export function canTeamPlay(context, rawQuery, options = {}) {
         date,
         query.kickoffMinutes,
         endMinutes,
-        query.teamId,
         meta
       );
       absorbUnknowns(cellUnknowns, clash.unknowns);
@@ -1070,37 +1068,9 @@ export function canTeamPlay(context, rawQuery, options = {}) {
       // the answer that raised them and arrived here through the merge above.
       meta.unknownsRaised += cellUnknowns.length - cell.unknowns.length;
 
-      // **The clash is published where the cell's other evidence is.** It is
-      // the one blocker this level owns rather than inherits, and it goes in
-      // beside the cell's own through the module's own merge, so `blockers`
-      // keeps its tightest-first contract and the verdict below is derived from
-      // a list an operator can read.
-      const cellBlockers =
-        clash.claims.length === 0
-          ? cell.blockers
-          : /** @type {import('../attribution/types.js').ConstraintClaim[]} */ (
-              mergeClaimsByTightness([cell.blockers, clash.claims])
-            );
       const blocked = cell.verdict === FEASIBILITY_VERDICT.INFEASIBLE || clash.overlaps === true;
       const verdict = deriveFeasibilityVerdict({ blocked, unknowns: cellUnknowns });
       meta.candidatesAnswered += 1;
-
-      for (const claim of clash.claims) {
-        findings.push(
-          makeFeasibilityFinding(
-            FEASIBILITY_REASON.FEASIBILITY_TEAM_DOUBLE_BOOKED,
-            `team "${query.teamId}" already plays fixture "${claim.instanceId}" on ${date}, which overlaps the window asked about, so it cannot also play at ${surfaceId} then`,
-            {
-              teamId: query.teamId,
-              gameId: claim.instanceId,
-              carrierGameId: carrier.id,
-              date,
-              surfaceId,
-              kickoffMinutes: query.kickoffMinutes,
-            }
-          )
-        );
-      }
 
       answer.candidates.push({
         date,
@@ -1112,7 +1082,7 @@ export function canTeamPlay(context, rawQuery, options = {}) {
         marginMinutes: cell.marginMinutes,
         marginBasis: cell.marginBasis,
         unknowns: cellUnknowns,
-        blockers: cellBlockers,
+        blockers: cell.blockers,
         // **The cell's own findings, carried whole.** `FeasibilityCandidate` is
         // documented as a candidate *with its own answer*, and dropping the
         // findings made that false in the one place it mattered: a compromise
@@ -1267,15 +1237,12 @@ export function canTeamPlay(context, rawQuery, options = {}) {
  * @param {string} date
  * @param {number} startMinutes
  * @param {number|null} endMinutes
- * @param {string} teamId
  * @param {import('./types.js').FeasibilityMeta} meta
- * @returns {{ overlaps: boolean, unknowns: import('./types.js').FeasibilityUnknown[], claims: import('../attribution/types.js').ConstraintClaim[] }}
+ * @returns {{ overlaps: boolean, unknowns: import('./types.js').FeasibilityUnknown[] }}
  */
-function teamClashAt(teamGames, carrierGameId, date, startMinutes, endMinutes, teamId, meta) {
+function teamClashAt(teamGames, carrierGameId, date, startMinutes, endMinutes, meta) {
   /** @type {import('./types.js').FeasibilityUnknown[]} */
   const unknowns = [];
-  /** @type {import('../attribution/types.js').ConstraintClaim[]} */
-  const claims = [];
   const candidate = { date, startMinutes, endMinutes, surfaceId: 'n/a' };
   let overlaps = false;
   for (const game of teamGames) {
@@ -1287,27 +1254,29 @@ function teamClashAt(teamGames, carrierGameId, date, startMinutes, endMinutes, t
       /** @type {import('../facility/types.js').FacilityBooking} */ (game)
     );
     if (verdict === true) {
+      // **KNOWN GAP — a cell refused *only* by this clash publishes no
+      // blocker.** The overlap reaches `blocked` in `canTeamPlay()` and nothing
+      // else, so such a cell would seal `infeasible` over a blocking list that
+      // names nothing — the shape rounds five and six closed elsewhere.
+      //
+      // It is **unreachable on the season-2026 corpus**: every one of the 338
+      // cells that meets a clash here is already `infeasible` for an
+      // independent reason, and an acceptance case states that no team in this
+      // season plays twice on one date. That is why the corpus-wide
+      // publish-what-you-seal-on rule has never met it.
+      //
+      // A fix was written in round seven and **withdrawn** in round eight: it
+      // published a `FEASIBILITY_TEAM_DOUBLE_BOOKED` claim from here, and that
+      // claim introduced four defects on paths this corpus *does* reach — a
+      // refused candidate still carrying the cell's `binding`/`marginMinutes`,
+      // a claim sourced to the facility layer that does not own the fact, a
+      // `slackMinutes: null` that sorted the only blocking claim behind three
+      // `info` ones, and a roll-up finding emitted per (date, surface) although
+      // this function ignores surface. Trading an unreachable gap for four
+      // reachable defects is a bad trade. See `docs/BUILD_PLAN_STATUS.md`,
+      // "the withdrawn team-clash blocker", before writing the fix again: it
+      // needs a claim this layer can honestly own and a per-clash roll-up.
       overlaps = true;
-      // **A clash that decides a cell publishes the fixture it clashed with.**
-      // The overlap used to reach `blocked` and nothing else, so a cell refused
-      // for this reason alone sealed `infeasible` over an empty blocking list —
-      // the same shape as the defects rounds five and six closed, latent here
-      // only because no team in this corpus plays twice on one date. The claim
-      // names the standing fixture as its instance, so it is a specific claim
-      // rather than the category label this layer refuses, and the overlap
-      // itself stays `bookingsOverlapInTime()`'s answer: nothing is re-decided.
-      claims.push(
-        makeClaim({
-          source: ATTRIBUTION_SOURCE.FACILITY,
-          kind: FEASIBILITY_REASON.FEASIBILITY_TEAM_DOUBLE_BOOKED,
-          instanceId: game.id,
-          codes: [FEASIBILITY_REASON.FEASIBILITY_TEAM_DOUBLE_BOOKED],
-          severity: CONSTRAINT_SEVERITY.BLOCKING,
-          binding: true,
-          computed: { startMinutes, otherStartMinutes: game.startMinutes },
-          detail: `team "${teamId}" already plays fixture "${game.id}" on ${date}, and that fixture overlaps the window this question asks about; a team cannot be in two places at once and no per-placement check can see this`,
-        })
-      );
       continue;
     }
     if (verdict === null) {
@@ -1321,7 +1290,7 @@ function teamClashAt(teamGames, carrierGameId, date, startMinutes, endMinutes, t
       );
     }
   }
-  return { overlaps, unknowns, claims };
+  return { overlaps, unknowns };
 }
 
 /**

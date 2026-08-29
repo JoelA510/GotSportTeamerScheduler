@@ -640,11 +640,25 @@ describe('feasibility :: acceptance 3 — "can it move to 12:30?" answers "no, b
   const subject = schedule.games.find(
     (game) => game.date === '2026-08-22' && game.format === '11v11' && game.startMinutes === 12 * 60
   );
-  const answer = canGameMove(
-    context,
-    { gameId: subject.id, insteadOfMinutes: 12 * 60 + 30 },
-    { venueComplexes }
-  );
+  /**
+   * **Asked for by a test, never built in the `describe` body.**
+   *
+   * A `describe` body runs at *collection*. Dereferencing `subject` there fails
+   * the whole file with a `TypeError` before a single `expect()` runs, so
+   * `expect(subject).toBeDefined()` below — the assertion whose entire job is to
+   * report "this corpus no longer holds the fixture the incident is about" —
+   * could never be reached to report it, and the run printed "Tests no tests"
+   * instead. `tests/scenarioBranching.test.js` carries the same remedy for the
+   * same defect.
+   *
+   * @returns {import('@squadlogic/core/feasibility/types.js').FeasibilityAnswer}
+   */
+  const answerOf = () =>
+    canGameMove(
+      context,
+      { gameId: /** @type {any} */ (subject).id, insteadOfMinutes: 12 * 60 + 30 },
+      { venueComplexes }
+    );
 
   it('finds the corpus fixture the incident is about', () => {
     expect(subject).toBeDefined();
@@ -660,6 +674,7 @@ describe('feasibility :: acceptance 3 — "can it move to 12:30?" answers "no, b
   });
 
   it('is infeasible, and the margin is the ten minutes the incident log records', () => {
+    const answer = answerOf();
     expect(answer.verdict).toBe(FEASIBILITY_VERDICT.INFEASIBLE);
     expect(answer.marginUnit).toBe(FEASIBILITY_MARGIN_UNIT);
     expect(answer.marginMinutes).toBe(-10);
@@ -674,6 +689,7 @@ describe('feasibility :: acceptance 3 — "can it move to 12:30?" answers "no, b
   });
 
   it('names the constraint and the code, not a category', () => {
+    const answer = answerOf();
     expect(answer.binding).toHaveLength(1);
     expect(answer.binding[0].constraintId).toBe(SEASON_2026_CONSTRAINT_ID.FIELD_OVERLAP_ADJACENCY);
     expect(answer.binding[0].raises.map((entry) => entry.code)).toEqual([
@@ -687,6 +703,7 @@ describe('feasibility :: acceptance 3 — "can it move to 12:30?" answers "no, b
   });
 
   it('says what is stopping it, as a certified minimal set rather than the registry', () => {
+    const answer = answerOf();
     expect(answer.minimalSet).not.toBeNull();
     expect(answer.minimalSet.certified).toBe(true);
     expect(answer.minimalSet.constraintIds).toEqual([
@@ -720,13 +737,30 @@ describe('feasibility :: acceptance 4 — the 09/19 blackout', () => {
   const subject = schedule.games.find(
     (game) => game.surfaceId === SUMMIT && game.format === '11v11'
   );
-  const answer = canGameMove(
-    context,
-    { gameId: subject.id, insteadOfDate: '2026-09-19', insteadOfSurfaceId: SUMMIT },
-    { venueComplexes }
-  );
+  /**
+   * Lazy for the reason acceptance 3's is: dereferencing the lookup in the
+   * `describe` body fails the file at collection instead of failing the
+   * assertion that says the corpus stopped carrying the fixture.
+   *
+   * @returns {import('@squadlogic/core/feasibility/types.js').FeasibilityAnswer}
+   */
+  const answerOf = () =>
+    canGameMove(
+      context,
+      {
+        gameId: /** @type {any} */ (subject).id,
+        insteadOfDate: '2026-09-19',
+        insteadOfSurfaceId: SUMMIT,
+      },
+      { venueComplexes }
+    );
 
   it('refuses the move and names the permit record', () => {
+    // Meta-assertion, and it can now be reached: the two cases below are about
+    // this fixture, and a corpus without an 11v11 on Summit would make them
+    // statements about nothing.
+    expect(subject).toBeDefined();
+    const answer = answerOf();
     expect(answer.verdict).toBe(FEASIBILITY_VERDICT.INFEASIBLE);
     expect(answer.binding.map((bound) => bound.kind)).toEqual([AVAILABILITY_CONSTRAINT.PERMIT]);
     expect(answer.binding[0].raises.map((entry) => entry.code)).toEqual([
@@ -738,6 +772,7 @@ describe('feasibility :: acceptance 4 — the 09/19 blackout', () => {
   it('reports the margin as unavailable rather than as zero', () => {
     // A blackout has no limit to measure against. `0` would read as "exactly at
     // the edge", which is a confident number about a bound nobody could measure.
+    const answer = answerOf();
     expect(answer.marginMinutes).toBeNull();
     expect(answer.marginBasis).toBeNull();
     expect(answer.findings.map((finding) => finding.code)).toContain(
@@ -1094,22 +1129,28 @@ describe('feasibility :: acceptance 9 — "can this team play at 6pm in November
   const teamId = schedule.teamUniverse.find((id) =>
     schedule.games.some((game) => game.homeTeamId === id && game.format === '9v9')
   );
-  const answer = canTeamPlay(
-    context,
-    { teamId, dates: november, kickoffMinutes: 18 * 60 },
-    { venueComplexes }
-  );
+  /**
+   * Lazy for the reason acceptance 3's is: a corpus with no 9v9 home fixture
+   * would put `undefined` through `canTeamPlay()`'s query schema in the
+   * `describe` body and fail the file at collection, so
+   * `expect(teamId).toBeDefined()` below could never report it.
+   *
+   * @returns {import('@squadlogic/core/feasibility/types.js').TeamFeasibilityAnswer}
+   */
+  const answerOf = () =>
+    canTeamPlay(context, { teamId, dates: november, kickoffMinutes: 18 * 60 }, { venueComplexes });
 
   it('is asked about a real November, on real ground', () => {
     expect(november.length).toBeGreaterThan(0);
     expect(teamId).toBeDefined();
-    expect(answer.carrierGameId).not.toBeNull();
+    expect(answerOf().carrierGameId).not.toBeNull();
   });
 
   it('answers no, because November sunset is hours before six', () => {
     // Every one of the dates has a sunset earlier than a 6pm kickoff plus a 9v9
     // footprint, so the whole grid is illegal — and the answer names sunset
     // rather than shrugging.
+    const answer = answerOf();
     expect(answer.verdict).toBe(FEASIBILITY_VERDICT.INFEASIBLE);
     expect(answer.verdictCounts[FEASIBILITY_VERDICT.FEASIBLE]).toBe(0);
     for (const candidate of answer.candidates) {
@@ -1124,6 +1165,7 @@ describe('feasibility :: acceptance 9 — "can this team play at 6pm in November
   it('drops no candidate: every date crossed with every surface is answered', () => {
     // Incident 10's rule applied to a query. The expected count is derived from
     // the inputs rather than written down.
+    const answer = answerOf();
     const surfaces = new Set(
       schedule.games
         .filter((game) => game.homeTeamId === teamId || game.awayTeamId === teamId)
@@ -4208,146 +4250,4 @@ describe('feasibility :: round 7, finding 1 — the compromise no claim can name
     // Meta-assertion: at least one grid really did carry such a cell.
     expect(seen).toBeGreaterThan(0);
   }, 120_000);
-});
-
-describe('feasibility :: round 7, finding 2 — a team clash publishes the fixture it clashed with', () => {
-  /**
-   * Two *timed* fixtures for one team on one date, on two different surfaces.
-   *
-   * The corpus has no such team — the acceptance case above states that as a
-   * fact about the season — so the case is constructed, through the same public
-   * entry point every other answer here uses: an extra fixture in a schedule
-   * handed to `buildAttributionContext()`. Nothing is reached into and altered,
-   * and no internal state is forged.
-   *
-   * The anchor is deliberately its team's **earliest** fixture, so it is the
-   * carrier the grid picks, so `canGameMove()` ignores its own booking and the
-   * surface asked about is free. That is what isolates the clash: the cell is
-   * refused by the team's diary and by nothing else, which is the arm that
-   * published no blocker.
-   */
-  const orderedFixturesOf = (teamId) =>
-    schedule.games
-      .filter((game) => game.homeTeamId === teamId || game.awayTeamId === teamId)
-      .sort((a, b) =>
-        a.date === b.date ? a.id.localeCompare(b.id) : a.date.localeCompare(b.date)
-      );
-  // Timed, single-format, and its team's earliest — the three things the case
-  // needs. Untimed is GAP-14 and makes the overlap `null` rather than `true`
-  // (the acceptance case above is the one that proves *that* path); a team
-  // spanning two formats resolves no footprint at all; and a fixture that is
-  // not the earliest is not the carrier, so its own booking would refuse the
-  // cell before the clash could.
-  const anchor = schedule.games.find((game) => {
-    if (game.homeTeamId === null) return false;
-    if (schedule.placeholderLabels.includes(game.homeTeamId)) return false;
-    if (game.endMinutes === null) return false;
-    const fixtures = orderedFixturesOf(game.homeTeamId);
-    if (fixtures[0]?.id !== game.id) return false;
-    return new Set(fixtures.map((entry) => entry.format)).size === 1;
-  });
-  const elsewhere = schedule.games.find(
-    (game) => game.date === anchor.date && game.surfaceId !== anchor.surfaceId
-  );
-  const twin = {
-    ...anchor,
-    // Sorted after the anchor on purpose: the carrier must stay the anchor, and
-    // the assertion below says so rather than trusting it.
-    id: 'zz-constructed-same-day-twin',
-    surfaceId: elsewhere.surfaceId,
-    venueId: elsewhere.venueId,
-  };
-  const constructedContext = buildAttributionContext({
-    graph,
-    table,
-    calendar,
-    registry,
-    schedule: {
-      ...schedule,
-      name: 'constructed same-day timed pair',
-      games: [...schedule.games, twin],
-    },
-    verification,
-    venueComplexes,
-    roster,
-  });
-  const answer = canTeamPlay(
-    constructedContext,
-    {
-      teamId: anchor.homeTeamId,
-      dates: [anchor.date],
-      kickoffMinutes: anchor.startMinutes,
-      surfaceIds: [anchor.surfaceId],
-    },
-    { venueComplexes }
-  );
-
-  it('built the case it says it built', () => {
-    // Meta-assertions. Every one of these is a premise the assertions below
-    // rest on, and each has been wrong in some earlier draft of some earlier
-    // round: the carrier must be the anchor, the twin must be somewhere else,
-    // the clash must actually have been compared, and the grid must be the one
-    // cell this is about.
-    expect(answer.carrierGameId).toBe(anchor.id);
-    expect(twin.surfaceId).not.toBe(anchor.surfaceId);
-    expect(answer.meta.teamFixturesCompared).toBeGreaterThan(0);
-    expect(answer.candidates).toHaveLength(1);
-  });
-
-  it('refuses the cell and names the standing fixture that refused it', () => {
-    const candidate = answer.candidates[0];
-    expect(candidate.verdict).toBe(FEASIBILITY_VERDICT.INFEASIBLE);
-    const clash = candidate.blockers.filter((claim) =>
-      claim.codes.includes(FEASIBILITY_REASON.FEASIBILITY_TEAM_DOUBLE_BOOKED)
-    );
-    expect(clash).toHaveLength(1);
-    expect(clash[0].severity).toBe(CONSTRAINT_SEVERITY.BLOCKING);
-    expect(clash[0].instanceId).toBe(twin.id);
-    // A claim, not a category label: it names the fixture and says something
-    // computed about it, which is the bar every claim in this layer clears.
-    expect(isSpecificClaim(clash[0])).toBe(true);
-    // …and it is the *only* blocking evidence, which is what makes this the
-    // isolated case rather than a clash riding on somebody else's refusal.
-    expect(
-      candidate.blockers.filter((claim) => claim.severity === CONSTRAINT_SEVERITY.BLOCKING)
-    ).toEqual(clash);
-  });
-
-  it('says so on the answer as well, as provenance and not as a broken answer', () => {
-    const stated = answer.findings.filter(
-      (finding) => finding.code === FEASIBILITY_REASON.FEASIBILITY_TEAM_DOUBLE_BOOKED
-    );
-    expect(stated).toHaveLength(1);
-    expect(stated[0].details.gameId).toBe(twin.id);
-    expect(stated[0].details.teamId).toBe(anchor.homeTeamId);
-    expect(stated[0].details.date).toBe(anchor.date);
-    // **`info`, and the reason matters.** The `findings` channel is about the
-    // answer's own integrity, and this answer is not broken — it is a
-    // well-founded "no". A `blocking` finding here would make `status`
-    // `rejected`, which is the category error the module docstring names, and
-    // it would do it on 43 real roll-ups of this corpus that meet a clash
-    // without being decided by one.
-    expect(stated[0].severity).toBe(CONSTRAINT_SEVERITY.INFO);
-    expect(answer.status).not.toBe(CONSTRAINT_STATUS.REJECTED);
-  });
-
-  it('is what carries the grid past the rule, and the rule fires again without it', () => {
-    // **The pre-fix state, reproduced rather than described.** Round six's rule
-    // reads the cells' `blockers`; with the clash claim removed the grid seals
-    // `infeasible` over nothing but `info`, which is exactly what it did before
-    // this round and exactly what the rule refuses.
-    expect(severitySealedWithoutEvidence('constructed same-day pair', answer)).toBeNull();
-    const stripped = {
-      ...answer,
-      candidates: answer.candidates.map((candidate) => ({
-        ...candidate,
-        blockers: candidate.blockers.filter(
-          (claim) => !claim.codes.includes(FEASIBILITY_REASON.FEASIBILITY_TEAM_DOUBLE_BOOKED)
-        ),
-      })),
-    };
-    expect(severitySealedWithoutEvidence('constructed pair, claim removed', stripped)?.arm).toBe(
-      'infeasible'
-    );
-  });
 });

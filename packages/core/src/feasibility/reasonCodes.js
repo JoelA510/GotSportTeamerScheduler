@@ -203,16 +203,6 @@ export const FEASIBILITY_MARGIN_CONVENTION =
  * None of these is a scheduling verdict. The verdicts belong to the modules the
  * claims come from.
  *
- * {@link FEASIBILITY_TEAM_DOUBLE_BOOKED} is the one that looks like an
- * exception and is not. The overlap itself is `bookingsOverlapInTime()`'s
- * three-valued answer and this module does not re-decide it; what the code adds
- * is a name for the consequence, because no module below asks that question
- * about a **team**. `facility/occupancy.js` owns surfaces — two fixtures of one
- * team on two different pitches at one o'clock is no surface's problem — and the
- * rule engine's day-level rules are not asked about a hypothesis. So the fact
- * had nowhere to be published, which is exactly how it came to decide a cell
- * while appearing nowhere in it.
- *
  * @readonly
  * @enum {string}
  */
@@ -346,39 +336,6 @@ export const FEASIBILITY_REASON = Object.freeze({
    */
   FEASIBILITY_NO_CLEAN_POSITION: 'FEASIBILITY_NO_CLEAN_POSITION',
 
-  /* -- the subject's own standing fixtures --------------------------------- */
-  /**
-   * The team asked about **already holds a fixture overlapping the window**, so
-   * the position asked about would have it playing twice at once.
-   *
-   * The one check `canTeamPlay()` makes that a per-placement question cannot:
-   * `canGameMove()` judges a slot and knows nothing about the rest of the
-   * team's diary. The overlap is `bookingsOverlapInTime()`'s answer — this code
-   * re-decides nothing — and its `null` remains
-   * {@link FEASIBILITY_FOOTPRINT_UNKNOWN} rather than a "no clash".
-   *
-   * It exists because the fact used to decide a cell and appear nowhere in it:
-   * `blocked` was `cell.verdict === 'infeasible' || clash.overlaps === true` and
-   * the second disjunct published no blocker, so a cell refused for this reason
-   * alone would have sealed `infeasible` over an empty blocking list. No team in
-   * the season corpus plays twice on one date — an acceptance case states that
-   * as a fact about the season — so no cell was ever refused on this alone and
-   * the corpus-wide rule never met it. It is the same shape as the defects that
-   * were live, and a corpus with one such team is all it needs.
-   *
-   * **`info` here, `blocking` where it decides.** This table is the severity of
-   * a *finding*, and a finding is about the **answer** — the three `blocking`
-   * entries below all mean "this answer could not be built". A team that is
-   * already booked is a perfectly good *no*, and a `rejected` status on a
-   * perfectly good no is the category error the module docstring names. So the
-   * finding is provenance, exactly as {@link FEASIBILITY_POSITION_ALREADY_HELD}
-   * is for the sibling cell-level fact, while the force lives in the
-   * `blocking` **claim** this code also names, in `blockers`, where statements
-   * about the subject belong — and it is that claim, never this finding, that
-   * `deriveFeasibilityEvidence()` folds into the verdict.
-   */
-  FEASIBILITY_TEAM_DOUBLE_BOOKED: 'FEASIBILITY_TEAM_DOUBLE_BOOKED',
-
   /* -- the answer's own integrity ------------------------------------------ */
   /**
    * The query examined zero candidates.
@@ -493,8 +450,6 @@ export const FEASIBILITY_REASON_SEVERITY = Object.freeze({
   [FEASIBILITY_REASON.FEASIBILITY_MARGIN_UNAVAILABLE]: FEASIBILITY_SEVERITY.INFO,
   [FEASIBILITY_REASON.FEASIBILITY_TIGHT]: FEASIBILITY_SEVERITY.INFO,
   [FEASIBILITY_REASON.FEASIBILITY_NO_CLEAN_POSITION]: FEASIBILITY_SEVERITY.COMPROMISE,
-
-  [FEASIBILITY_REASON.FEASIBILITY_TEAM_DOUBLE_BOOKED]: FEASIBILITY_SEVERITY.INFO,
 
   [FEASIBILITY_REASON.FEASIBILITY_QUERY_VACUOUS]: FEASIBILITY_SEVERITY.BLOCKING,
   [FEASIBILITY_REASON.FEASIBILITY_CANDIDATE_DROPPED]: FEASIBILITY_SEVERITY.BLOCKING,

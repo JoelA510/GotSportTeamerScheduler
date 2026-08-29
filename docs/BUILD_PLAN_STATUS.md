@@ -48,11 +48,12 @@ and not yet merged.
 committed. `packages/core/src/feasibility/` (`reasonCodes.js`, `schemas.js`,
 `types.js`, `verdict.js`, `queries.js`, `index.js`) plus
 `tests/feasibilityApi.test.js`; `tests/reasonCodeReachability.test.js` gains the
-sixteenth vocabulary and its driver. Suite **1776 -> 1908**, measured at each
+sixteenth vocabulary and its driver. Suite **1776 -> 1904**, measured at each
 commit rather than added up: 62 new cases with the feature (`a393c60`), 25 more
 from the first pre-PR review round (`ece79b3`), 5 from the second round below,
 9 from the third, 7 from the fourth, 11 from the fifth, 4 from the sixth, 9 from
-the seventh. All six gates green, season fixture green.
+the seventh, **-4 in the eighth**, which withdrew the seventh's second finding
+and the four cases that proved it. All six gates green, season fixture green.
 
 Three queries, one answer shape: `canGameMove()`, `canTeamPlay()`,
 `feasibleKickoffBounds()`. A verdict is three-valued
@@ -361,45 +362,89 @@ tolerance from the corpus-wide rule.
    `FeasibilityCandidate` carries its cell's own findings, because a grid that
    kept only the claims dropped the evidence one call after it was published.
 
-2. **A team clash that decided a cell and published no blocker.**
-   `canTeamPlay()`'s cell blocking is
+2. **A team clash that decides a cell publishes no blocker — fixed here, and
+   withdrawn in the eighth round.** `canTeamPlay()`'s cell blocking is
    `cell.verdict === 'infeasible' || clash.overlaps === true`, and the second
-   disjunct raised nothing. No team in this corpus plays twice on one date — an
-   acceptance case states that as a fact about the season — so no cell was ever
-   refused on it alone and the corpus rule never met it; it is the same shape as
-   the two defects that were live. The clash now publishes a **blocking claim**
-   naming the standing fixture as its instance, so the evidence lands in the
-   list the verdict is derived from, plus an `info`
-   `FEASIBILITY_TEAM_DOUBLE_BOOKED` finding as provenance on the roll-up — `info`
-   because a team that is already booked is a well-founded *no*, and a
-   `blocking` finding would make the answer's own `status` `rejected`, which is
-   the category error the module docstring names. Proved on a constructed
-   same-day pair built through `buildAttributionContext()` — one extra fixture
-   in the schedule, nothing reached into and altered — and by stripping the
-   claim back out to show round six's rule firing again.
+   disjunct raises nothing, so a cell refused **solely** by the team's own
+   standing fixture would seal `infeasible` over a blocking list that names
+   nothing. This round published a `FEASIBILITY_TEAM_DOUBLE_BOOKED` blocking
+   claim from the clash and an `info` finding as provenance on the roll-up. The
+   eighth round took both back out; see **the withdrawn team-clash blocker**
+   below for the gap as it now stands.
 
    **What moved, over a sweep of 18,314 answers — 3,744 bounds answers under
    two registries, every game's standing and +30 move, every real team's grid at
-   12:30 and at 18:00, and all 12,948 of their cells: 12,948 team cells, 43 team
-   roll-ups, and nothing else.** No bounds answer and no move answer changes at
-   all, and no verdict, tightness, status, margin, basis, binding set or
+   12:30 and at 18:00, and all 12,948 of their cells: 12,948 team cells, and
+   nothing else.** No bounds answer, no move answer and no team roll-up changes
+   at all, and no verdict, tightness, status, margin, basis, binding set or
    boundary minute moves anywhere. Every cell gains its own `findings` (1,464 of
    them carry the new `FEASIBILITY_EVIDENCE_UNCLAIMED` — 546 `feasible`/`tight`,
    which are the offending cells, 614 already `infeasible` and 304 already
-   `unknown`, where the same compromise existed and no rule was ever breached);
-   338 cells gain the `FEASIBILITY_TEAM_DOUBLE_BOOKED` claim, every one of them
-   already `infeasible` for an independent reason, which is why the corpus rule
-   never met the defect; 43 roll-ups gain the matching `info` finding. Under the
-   plain registry the bounds verdicts stay 751/1,024/97, the statuses stay 745
-   rejected / 1,127 compromised and the tightness distribution stays
+   `unknown`, where the same compromise existed and no rule was ever breached).
+   Under the plain registry the bounds verdicts stay 751/1,024/97, the statuses
+   stay 745 rejected / 1,127 compromised and the tightness distribution stays
    **772 / 848 / 199 / 53**. Alder 08/22 18:15/18:15, Alder 11/14 14:50/14:50,
    Summit 11/14 19:30/19:15, the 08/22 joint clean bound and incident 3's
    -10 min / `occupancy` are all unchanged.
 
-   Two new reason codes in the frozen severity table, each with a reachability
-   driver entry: the audit's header moves to **325 codes, 315 producible, 10
-   holes**, and its own self-check confirms it. No new export — both codes are
-   members of `FEASIBILITY_REASON`, which the barrel already exports.
+   One new reason code in the frozen severity table, with a reachability driver
+   entry: the audit's header moves to **324 codes, 314 producible, 10 holes**,
+   and its own self-check confirms it. No new export — the code is a member of
+   `FEASIBILITY_REASON`, which the barrel already exports.
+
+**The eighth pre-PR review round — the withdrawn team-clash blocker.** A scope
+reduction, not a feature round. The seventh round's second finding is reverted
+whole: the `FEASIBILITY_TEAM_DOUBLE_BOOKED` code, its severity-table and
+reachability entries, `teamClashAt()`'s claim list, the merge into the cell's
+`blockers`, the roll-up provenance finding, and the four cases that proved them.
+The first finding stands untouched.
+
+**The gap this leaves open, stated so the next reader finds it rather than
+rediscovers it.** A cell blocked **solely** by the subject team's own standing
+fixture publishes no blocker: `clash.overlaps === true` reaches `blocked` and
+nothing else, so such a cell would seal `infeasible` over a blocking list that
+names nothing — the shape rounds five and six closed elsewhere. It is
+**unreachable on the season-2026 corpus**: every one of the 338 cells that meets
+a clash is already `infeasible` for an independent reason, and an acceptance
+case states that no team in this season plays twice on one date. That is why the
+corpus-wide publish-what-you-seal-on rule has never met it, and why it is a gap
+rather than a live defect. It is **not** a reachability-audit hole: a hole is a
+*declared* code with no production path, and this code is no longer declared —
+the audit's ten holes are unchanged.
+
+**Why the fix was withdrawn.** It closed an unreachable gap and opened four
+defects on paths this corpus does reach:
+
+1. A candidate refused only by the clash claim still carried the cell's
+   `binding`, `marginMinutes` and `marginBasis` — `verdict: "infeasible"` beside
+   `binding: [{ kind: "occupancy", slackMinutes: 25 }]` and `marginMinutes: 25`.
+   `decisiveClaims()` was never re-run over the merged list, and the roll-up
+   copied those numbers through `best`.
+2. The claim was sourced `ATTRIBUTION_SOURCE.FACILITY`, the exact layer its own
+   docstring said does not own the fact, so `blockingEvidenceOf()` would name
+   "facility" for something `minimalBlockingSet()` reports `blocked: false` on.
+3. The claim carried `slackMinutes: null`, so `tightnessKey()` sorted the cell's
+   only `blocking` claim behind three `info` ones: `blockers[0]` on an
+   infeasible cell was an `info` occupancy claim, against the tightest-first
+   contract the change itself asserted.
+4. The roll-up finding was emitted per (date, surface) although `teamClashAt()`
+   ignores surface, so one clashing fixture yielded dates x surfaces duplicates.
+   This one was **live**, on the 43 roll-ups that gained provenance; the 1x1
+   acceptance grid hid it.
+
+Writing the fix again needs a claim this layer can honestly own — its own
+source, a real `slackMinutes`, and the candidate's margin and binding recomputed
+from the merged list — plus one finding per clashing fixture rather than one per
+cell. The clash site in `queries.js` carries the same note.
+
+**Also in this round, and unrelated to the revert.** Three `describe` bodies in
+`tests/feasibilityApi.test.js` (acceptance 3, 4 and 9) dereferenced a corpus
+`find()` at *collection* time, so a corpus that stopped carrying the fixture
+failed the whole file with a `TypeError` before any `expect()` ran and the
+meta-assertion that exists to report exactly that could never be reached — the
+defect `tests/scenarioBranching.test.js` already carries a fix for, where it
+printed "Tests no tests". The selection is now built by a function the tests
+call, and acceptance 4 gains the `toBeDefined()` it was missing.
 
 Nothing in flight otherwise. 6.1 merged as #351 after seven review rounds
 (11 -> 6 -> 4 -> 2 -> 4 -> 1 -> 0 findings) and one CI failure of its own making:
