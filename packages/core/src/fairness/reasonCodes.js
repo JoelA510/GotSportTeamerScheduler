@@ -472,8 +472,16 @@ export function dispersionFinding(dispersion, basis) {
   }
   if (code === null) return null;
   const where = `${dispersion.metricId} over ${basis.kind} ${JSON.stringify(basis.groupKey)}`;
+  // `uniform` is decided on the six-decimal-place tolerance the distribution is
+  // published at, not on an exact `===` over the raw doubles — see
+  // `describeDispersion()`. So the message says *one published value* and prints
+  // the published one. Saying "the identical value" and printing the raw median
+  // produced "all 4 members hold the identical value 605.0000000000001", which
+  // is a sentence disproved by the number inside it.
+  const published =
+    dispersion.distribution.length === 1 ? dispersion.distribution[0][0] : dispersion.centre;
   const messages = {
-    [FAIRNESS_REASON.FAIRNESS_POPULATION_UNIFORM]: `${where}: all ${dispersion.size} members hold the identical value ${dispersion.centre}, so this population is equal on this metric and nobody in it is an outlier`,
+    [FAIRNESS_REASON.FAIRNESS_POPULATION_UNIFORM]: `${where}: all ${dispersion.size} members hold one value, ${published}, at the six decimal places this report publishes values to — their median absolute deviation is exactly zero — so this population is equal on this metric at that precision and nobody in it is an outlier`,
     [FAIRNESS_REASON.FAIRNESS_DISPERSION_DEGENERATE]: `${where}: the median absolute deviation is 0 while the values differ, so no deviation here is scoreable; the observed distribution is published in details.distribution instead`,
     [FAIRNESS_REASON.FAIRNESS_POPULATION_TOO_SMALL]: `${where}: ${dispersion.size} measurable member(s) is fewer than the ${dispersion.minimumSize} a centre and a scale can be established from, so no member was judged`,
   };

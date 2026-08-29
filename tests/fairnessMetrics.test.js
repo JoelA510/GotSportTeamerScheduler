@@ -61,6 +61,7 @@ import {
   classifyFairnessFixtures,
   describeDispersion,
   deriveFairnessJudgement,
+  countedFixturesOf,
   fairnessReport,
   groupKeyOf,
   median,
@@ -817,6 +818,9 @@ describe('fairness :: unmeasurable is not zero and typical is not undecided', ()
       }
     }
     // Both directions of the collapse are refused.
+    // Nine one-sided Minis rows: the ids are what make the count checkable,
+    // so the fixture states them rather than asserting a bare 9.
+    const NINE_ONE_SIDED = Array.from({ length: 9 }, (_, i) => `minis-a-${i + 1}`);
     expect(() =>
       assertFairnessMeasurement({
         metricId: FAIRNESS_METRIC.HOSTING_SHARE,
@@ -826,7 +830,13 @@ describe('fairness :: unmeasurable is not zero and typical is not undecided', ()
         measurability: FAIRNESS_MEASURABILITY.UNMEASURABLE,
         value: 0,
         reasonCode: FAIRNESS_REASON.FAIRNESS_DENOMINATOR_EMPTY,
-        evidence: { fixturesCounted: 0, fixturesExcluded: 9, exclusions: [] },
+        evidence: {
+          fixturesCounted: 0,
+          fixturesExcluded: 9,
+          exclusions: [],
+          countedFixtureIds: [],
+          excludedFixtureIds: NINE_ONE_SIDED,
+        },
       })
     ).toThrow(/folding an unmeasurable subject into a number/);
     expect(() =>
@@ -838,7 +848,13 @@ describe('fairness :: unmeasurable is not zero and typical is not undecided', ()
         measurability: FAIRNESS_MEASURABILITY.MEASURED,
         value: null,
         reasonCode: null,
-        evidence: { fixturesCounted: 0, fixturesExcluded: 9, exclusions: [] },
+        evidence: {
+          fixturesCounted: 0,
+          fixturesExcluded: 9,
+          exclusions: [],
+          countedFixtureIds: [],
+          excludedFixtureIds: NINE_ONE_SIDED,
+        },
       })
     ).toThrow(/a measurement with no number is unmeasurable/);
   });
@@ -1498,7 +1514,7 @@ describe('fairness :: the metricIds filter is a filter', () => {
 });
 
 describe('fairness :: evidence a reader can check by hand', () => {
-  it('never publishes an excluded-fixture count the fixtures cannot account for', () => {
+  it('never publishes a fixture count larger than the fixtures it is drawn from', () => {
     const report = corpusReport();
     const participation = participationOf(corpusFixtures().fixtures);
     const teamMeasurement = (subjectId, metricId) =>
@@ -1522,10 +1538,16 @@ describe('fairness :: evidence a reader can check by hand', () => {
     }
     expect(teamsChecked).toBe(140 * FAIRNESS_METRIC_ORDER.length);
 
-    // Rule two, at the group level: a group's evidence is the sum of its
-    // members' and nothing else. A member count folded into a fixture count is
-    // what put 40 excluded fixtures on a division of 36.
+    // Rule two, at the group level: a group's fixture evidence is drawn from the
+    // distinct fixtures its members hold — a **union**, never a sum. A two-sided
+    // fixture is one fixture however many of the group's teams played in it, and
+    // the sum-of-members identity the last round asserted is what published 72
+    // counted fixtures about a division of 36. The denominator below comes from
+    // `participationOf()`, which no defect in `measureGroup()` can corrupt.
     let groupsChecked = 0;
+    let naiveSumWouldExceed = 0;
+    /** @type {string[]} */
+    const oneToOne = [];
     for (const measurement of report.measurements) {
       if (measurement.subjectKind === FAIRNESS_SUBJECT_KIND.TEAM) continue;
       const basisKind =
@@ -1541,23 +1563,101 @@ describe('fairness :: evidence a reader can check by hand', () => {
       );
       const members = [...population.memberIds, ...population.undecidedMemberIds];
       expect(members.length).toBeGreaterThan(0);
-      const total = members.reduce((sum, subjectId) => {
-        const member = teamMeasurement(subjectId, measurement.metricId);
-        return sum + member.evidence.fixturesCounted + member.evidence.fixturesExcluded;
-      }, 0);
+      const held = new Set(
+        members.flatMap((subjectId) =>
+          participation.get(subjectId).fixtures.map((entry) => entry.fixture.fixtureId)
+        )
+      );
+      expect(held.size).toBeGreaterThan(0);
+      // Every fixture the members hold is accounted for exactly once, as
+      // counted or as excluded, and neither number is larger than the set it is
+      // drawn from.
       expect(measurement.evidence.fixturesCounted + measurement.evidence.fixturesExcluded).toBe(
-        total
+        held.size
       );
       // Every exclusion a measurement publishes is denominated in fixtures, so
       // the counts sum to the field that claims to be their sum.
       expect(measurement.evidence.exclusions.reduce((sum, [, count]) => sum + count, 0)).toBe(
         measurement.evidence.fixturesExcluded
       );
+      const naive = members.reduce((sum, subjectId) => {
+        const member = teamMeasurement(subjectId, measurement.metricId);
+        return sum + member.evidence.fixturesCounted + member.evidence.fixturesExcluded;
+      }, 0);
+      if (naive > held.size) naiveSumWouldExceed += 1;
+      else oneToOne.push(`${measurement.subjectId}/${measurement.metricId}`);
       groupsChecked += 1;
     }
-    expect(groupsChecked).toBeGreaterThan(0);
+    // Meta-assertions on the sweep's own population. Fifteen divisions and seven
+    // age groups at four metrics each, and on 84 of the 88 the old identity is
+    // not merely satisfied a different way — it is **false**, by a factor of up
+    // to two. The four it still holds on are exactly division `BB`, whose
+    // fixtures name no opponent so that each is held by one member: the 1:1 case
+    // the last round chose as its pinned example, which is why the rule it wrote
+    // down could not catch the rule it broke.
+    expect(groupsChecked).toBe(88);
+    expect(groupsChecked).toBe(report.measurements.length - 140 * FAIRNESS_METRIC_ORDER.length);
+    expect(naiveSumWouldExceed).toBe(84);
+    expect(oneToOne.sort()).toEqual(
+      FAIRNESS_METRIC_ORDER.map((metricId) => `BB/${metricId}`).sort()
+    );
 
-    // The instance the review found, checked by hand against the corpus.
+    // Rule three, over **every** measurement of every kind: a published count is
+    // the size of the id set published beside it, and both sets are drawn from
+    // the fixtures the subject actually holds. This is the contract in its
+    // general form — no evidence count exceeds the population it is drawn from.
+    let swept = 0;
+    for (const measurement of report.measurements) {
+      const drawnFrom =
+        measurement.subjectKind === FAIRNESS_SUBJECT_KIND.TEAM
+          ? new Set(
+              participation
+                .get(measurement.subjectId)
+                .fixtures.map((entry) => entry.fixture.fixtureId)
+            )
+          : new Set(
+              report.populations
+                .filter(
+                  (candidate) =>
+                    candidate.subjectKind === FAIRNESS_SUBJECT_KIND.TEAM &&
+                    candidate.groupKey === measurement.subjectId &&
+                    candidate.metricId === measurement.metricId
+                )
+                .flatMap((candidate) => [...candidate.memberIds, ...candidate.undecidedMemberIds])
+                .flatMap((subjectId) =>
+                  participation.get(subjectId).fixtures.map((entry) => entry.fixture.fixtureId)
+                )
+            );
+      const counted = measurement.evidence.countedFixtureIds;
+      const excluded = measurement.evidence.excludedFixtureIds;
+      expect(measurement.evidence.fixturesCounted).toBe(new Set(counted).size);
+      expect(measurement.evidence.fixturesExcluded).toBe(new Set(excluded).size);
+      expect(counted.filter((id) => excluded.includes(id))).toEqual([]);
+      expect([...counted, ...excluded].filter((id) => !drawnFrom.has(id))).toEqual([]);
+      expect(measurement.evidence.fixturesCounted).toBeLessThanOrEqual(drawnFrom.size);
+      expect(measurement.evidence.fixturesExcluded).toBeLessThanOrEqual(drawnFrom.size);
+      swept += 1;
+    }
+    expect(swept).toBe(648);
+    expect(swept).toBe(report.measurements.length);
+
+    // The pinned example, at a ratio that is **not** 1:1 and checked by hand
+    // against the corpus: division `U05B` is eight teams playing nine league
+    // fixtures each, which is 36 fixtures and not 72.
+    const u05b = report.measurements.find(
+      (m) =>
+        m.subjectKind === FAIRNESS_SUBJECT_KIND.DIVISION &&
+        m.subjectId === 'U05B' &&
+        m.metricId === FAIRNESS_METRIC.GAMES_PLAYED
+    );
+    expect(corpusFixtures().fixtures.filter((f) => f.division === 'U05B')).toHaveLength(36);
+    expect(u05b.evidence.membersCounted).toBe(8);
+    expect(u05b.evidence.membersCounted * 9).toBe(72);
+    expect(u05b.evidence.fixturesCounted).toBe(36);
+    expect(u05b.evidence.countedFixtureIds).toHaveLength(36);
+
+    // The earlier instance the review found, still pinned: 36 excluded on a
+    // division of 36, with the member tally published as members.
     const bb = report.measurements.find(
       (m) =>
         m.subjectKind === FAIRNESS_SUBJECT_KIND.DIVISION &&
@@ -1584,23 +1684,68 @@ describe('fairness :: evidence a reader can check by hand', () => {
     // and three scrimmages are read and counted into no metric.
     expect(report.meta.fixturesRead - report.meta.fixturesCounted).toBe(11);
 
-    // The rule, not the instance: for any requested metric set the counter is
-    // the number of distinct fixtures belonging to a competition one of those
-    // metrics counts.
-    const expected = (metricIds) =>
+    // The rule, not the instance: for a given set of metrics the counter is the
+    // number of distinct fixtures belonging to a competition one of them counts.
+    const expected = (metrics) =>
       new Set(
         fixtures
-          .filter((held) =>
-            metricIds.some((metricId) =>
-              FAIRNESS_METRIC_REGISTRY[metricId].counts.includes(held.competition)
-            )
-          )
+          .filter((held) => metrics.some((metric) => metric.counts.includes(held.competition)))
           .map((held) => held.fixtureId)
       ).size;
-    expect(report.meta.fixturesCounted).toBe(expected(FAIRNESS_METRIC_ORDER));
+    const registered = (metricIds) => metricIds.map((id) => FAIRNESS_METRIC_REGISTRY[id]);
+    expect(report.meta.fixturesCounted).toBe(expected(registered(FAIRNESS_METRIC_ORDER)));
+
+    // …and the premise that makes the report-level check above a weak one,
+    // asserted so that it cannot go on being weak in silence. **Every declared
+    // metric counts the same competitions**, so `expected(any subset)` equals
+    // `expected(all)` by construction: comparing one subset of the registry
+    // against another compares a set with itself and passes against an
+    // implementation that ignores `metricIds` entirely, which is what the check
+    // written here last round did. The day a metric counts something else this
+    // line fails and demands a report-level case with sets that genuinely
+    // differ.
+    const competitionSets = new Set(
+      FAIRNESS_METRIC_ORDER.map((metricId) =>
+        [...FAIRNESS_METRIC_REGISTRY[metricId].counts].sort().join('|')
+      )
+    );
+    expect([...competitionSets]).toEqual([FAIRNESS_COMPETITION.LEAGUE]);
     const one = fairnessReport({ fixtures, metricIds: [FAIRNESS_METRIC.VENUE_SPREAD] });
-    expect(one.meta.fixturesCounted).toBe(expected([FAIRNESS_METRIC.VENUE_SPREAD]));
+    expect(one.meta.fixturesCounted).toBe(report.meta.fixturesCounted);
     expect(one.meta.fixturesCounted).toBeLessThan(one.meta.fixturesRead);
+
+    // So the rule is asserted where it can fail: at `countedFixturesOf()`, the
+    // function `fairnessReport()` computes the counter with, driven with metric
+    // definitions whose competitions differ. Deleting the `metric.counts` test
+    // from it — counting every fixture a participant holds — makes all four of
+    // these fail, and the report-level lines above pass unchanged.
+    const participation = participationOf(fixtures);
+    const reading = (...counts) => [
+      { ...FAIRNESS_METRIC_REGISTRY[FAIRNESS_METRIC.GAMES_PLAYED], counts },
+    ];
+    expect(countedFixturesOf(participation, reading(FAIRNESS_COMPETITION.LEAGUE))).toHaveLength(
+      567
+    );
+    expect(countedFixturesOf(participation, reading(FAIRNESS_COMPETITION.EXTERNAL))).toHaveLength(
+      8
+    );
+    expect(countedFixturesOf(participation, reading(FAIRNESS_COMPETITION.FRIENDLY))).toHaveLength(
+      3
+    );
+    expect(countedFixturesOf(participation, reading())).toHaveLength(0);
+    // Two metrics reading different competitions: the union, and distinct — a
+    // fixture read by both is one fixture.
+    expect(
+      countedFixturesOf(participation, [
+        ...reading(FAIRNESS_COMPETITION.EXTERNAL),
+        ...reading(FAIRNESS_COMPETITION.EXTERNAL, FAIRNESS_COMPETITION.FRIENDLY),
+      ])
+    ).toHaveLength(11);
+    // Meta-assertion: the four figures above are four *different* answers over
+    // one participation map, so a function that ignored its metrics could not
+    // produce them; and they are the corpus' own competition split.
+    expect(new Set([567, 8, 3, 0, 11]).size).toBe(5);
+    expect(report.fixturesByCompetition).toEqual({ league: 567, external: 8, friendly: 3 });
   });
 });
 

@@ -76,6 +76,7 @@ export {
   FAIRNESS_METRIC_REGISTRY,
   FAIRNESS_METRIC_UNIT,
   FAIRNESS_SUBJECT_KIND,
+  cohortKeysBySubject,
   fairnessMetricOf,
   groupKeyOf,
   measureGroup,
@@ -130,6 +131,7 @@ export {
 export {
   NAMED_SUBJECT_CAP,
   assertFairnessExercised,
+  countedFixturesOf,
   fairnessReport,
   summariseUnmeasured,
 } from './report.js';

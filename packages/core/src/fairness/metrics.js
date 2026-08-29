@@ -129,29 +129,73 @@ export const FAIRNESS_METRIC_UNIT = Object.freeze({
 const LEAGUE_ONLY = Object.freeze([FAIRNESS_COMPETITION.LEAGUE]);
 
 /**
+ * The distinct fixture ids of a list, sorted. **One fixture is one fixture**,
+ * however many of the subjects a measurement is about happened to play in it.
+ *
+ * @param {ReadonlyArray<string>} fixtureIds
+ * @returns {ReadonlyArray<string>}
+ */
+function distinctIds(fixtureIds) {
+  return Object.freeze([...new Set(fixtureIds)].sort());
+}
+
+/** The fixture ids of a list of counted entries. */
+const idsOf = (entries) => entries.map((entry) => entry.fixture.fixtureId);
+
+/**
  * One evidence record per measurement: what was read, what was set aside, why.
  *
- * **Every entry in `exclusions` is a count of fixtures**, and `fixturesExcluded`
- * is their sum. That is the whole contract, and it is written down because it
- * was broken: {@link measureGroup} used to fold *"four member teams were
- * unmeasurable"* into the same total as *"thirty-six fixtures named no
- * opponent"*, and published `fixturesExcluded: 40` about a division of 36
- * fixtures. Evidence a reader can check by hand is the point of this module, and
- * a count larger than the population it is drawn from destroys that. Anything
- * denominated in something other than fixtures belongs in a field of its own —
- * see `membersCounted` / `membersExcluded`.
+ * **Every `fixtures*` number is the size of a set of distinct fixtures**, and
+ * the set itself is published beside it: `fixturesCounted` is
+ * `countedFixtureIds.length` and `fixturesExcluded` is
+ * `excludedFixtureIds.length`, always, at every subject kind. The `exclusions`
+ * breakdown is denominated the same way and its counts sum to
+ * `fixturesExcluded`, because each id lands in exactly one bucket.
  *
- * @param {number} counted
- * @param {ReadonlyArray<[string, number]>} exclusions - fixture counts, only
+ * That is the whole contract, and it is written down because it has now been
+ * broken twice, both times in the same direction — a count larger than the
+ * population it is drawn from:
+ *
+ * 1. {@link measureGroup} folded *"four member teams were unmeasurable"* into
+ *    the same total as *"thirty-six fixtures named no opponent"* and published
+ *    `fixturesExcluded: 40` about a division of 36 fixtures. Anything
+ *    denominated in something other than fixtures now travels in a field of its
+ *    own — see `membersCounted` / `membersExcluded`.
+ * 2. {@link measureGroup} then **summed** its members' counts, so a two-sided
+ *    league fixture was counted once for its home side and again for its away
+ *    side: division `U05B` published 72 counted fixtures over the 36 it
+ *    actually holds, `U06B` 108 for 54, `U07B` 126 for 63. The one division the
+ *    test of the day pinned, `BB`, is the single division whose fixtures name no
+ *    opponent — a 1:1 ratio that hid the general case. Hence the id sets: a
+ *    union cannot double-count, and a reader can check the number by counting
+ *    the rows it names.
+ *
+ * Evidence a reader can check by hand is the point of this module.
+ *
+ * @param {ReadonlyArray<string>} countedFixtureIds
+ * @param {ReadonlyArray<[string, ReadonlyArray<string>]>} exclusions - fixture ids, only
  * @returns {import('./types.js').FairnessEvidence}
  */
-function evidence(counted, exclusions = []) {
+function evidence(countedFixtureIds, exclusions = []) {
+  const counted = distinctIds(countedFixtureIds);
+  // Each excluded id is attributed to the first bucket that names it, so the
+  // breakdown sums to the total rather than over-counting a shared row. A
+  // fixture the metric counted is never also an exclusion.
+  const seen = new Set(counted);
+  /** @type {Array<[string, number]>} */ const buckets = [];
+  /** @type {string[]} */ const excluded = [];
+  for (const [reason, ids] of exclusions) {
+    const fresh = [...new Set(ids)].filter((id) => !seen.has(id));
+    for (const id of fresh) seen.add(id);
+    excluded.push(...fresh);
+    buckets.push([reason, fresh.length]);
+  }
   return Object.freeze({
-    fixturesCounted: counted,
-    fixturesExcluded: exclusions.reduce((total, [, count]) => total + count, 0),
-    exclusions: Object.freeze(
-      /** @type {Array<[string, number]>} */ (exclusions).filter(([, count]) => count > 0)
-    ),
+    fixturesCounted: counted.length,
+    fixturesExcluded: excluded.length,
+    countedFixtureIds: counted,
+    excludedFixtureIds: distinctIds(excluded),
+    exclusions: Object.freeze(buckets.filter(([, count]) => count > 0)),
   });
 }
 
@@ -171,7 +215,7 @@ export const FAIRNESS_METRIC_REGISTRY = Object.freeze({
     label: 'league fixtures played',
     counts: LEAGUE_ONLY,
     measure(entries) {
-      return { value: entries.length, reasonCode: null, evidence: evidence(entries.length) };
+      return { value: entries.length, reasonCode: null, evidence: evidence(idsOf(entries)) };
     },
   }),
 
@@ -182,19 +226,19 @@ export const FAIRNESS_METRIC_REGISTRY = Object.freeze({
     counts: LEAGUE_ONLY,
     measure(entries) {
       const twoSided = entries.filter((entry) => isTwoSided(entry.fixture));
-      const oneSided = entries.length - twoSided.length;
+      const oneSided = entries.filter((entry) => !isTwoSided(entry.fixture));
       if (twoSided.length === 0) {
         return {
           value: null,
           reasonCode: FAIRNESS_REASON.FAIRNESS_DENOMINATOR_EMPTY,
-          evidence: evidence(0, [['fixture-names-no-opponent', oneSided]]),
+          evidence: evidence([], [['fixture-names-no-opponent', idsOf(oneSided)]]),
         };
       }
       const hosted = twoSided.filter((entry) => entry.side === FAIRNESS_SIDE.HOME).length;
       return {
         value: hosted / twoSided.length,
         reasonCode: null,
-        evidence: evidence(twoSided.length, [['fixture-names-no-opponent', oneSided]]),
+        evidence: evidence(idsOf(twoSided), [['fixture-names-no-opponent', idsOf(oneSided)]]),
       };
     },
   }),
@@ -206,19 +250,19 @@ export const FAIRNESS_METRIC_REGISTRY = Object.freeze({
     counts: LEAGUE_ONLY,
     measure(entries) {
       const timed = entries.filter((entry) => Number.isFinite(entry.fixture.kickoffMinutes));
-      const untimed = entries.length - timed.length;
+      const untimed = entries.filter((entry) => !Number.isFinite(entry.fixture.kickoffMinutes));
       if (timed.length === 0) {
         return {
           value: null,
           reasonCode: FAIRNESS_REASON.FAIRNESS_VALUE_UNAVAILABLE,
-          evidence: evidence(0, [['fixture-has-no-kickoff', untimed]]),
+          evidence: evidence([], [['fixture-has-no-kickoff', idsOf(untimed)]]),
         };
       }
       const total = timed.reduce((sum, entry) => sum + entry.fixture.kickoffMinutes, 0);
       return {
         value: total / timed.length,
         reasonCode: null,
-        evidence: evidence(timed.length, [['fixture-has-no-kickoff', untimed]]),
+        evidence: evidence(idsOf(timed), [['fixture-has-no-kickoff', idsOf(untimed)]]),
       };
     },
   }),
@@ -230,23 +274,48 @@ export const FAIRNESS_METRIC_REGISTRY = Object.freeze({
     counts: LEAGUE_ONLY,
     measure(entries) {
       const located = entries.filter((entry) => entry.fixture.venueId !== null);
-      const unlocated = entries.length - located.length;
+      const unlocated = entries.filter((entry) => entry.fixture.venueId === null);
       if (located.length === 0) {
         return {
           value: null,
           reasonCode: FAIRNESS_REASON.FAIRNESS_VALUE_UNAVAILABLE,
-          evidence: evidence(0, [['fixture-has-no-venue', unlocated]]),
+          evidence: evidence([], [['fixture-has-no-venue', idsOf(unlocated)]]),
         };
       }
       const venues = new Set(located.map((entry) => entry.fixture.venueId));
       return {
         value: venues.size,
         reasonCode: null,
-        evidence: evidence(located.length, [['fixture-has-no-venue', unlocated]]),
+        evidence: evidence(idsOf(located), [['fixture-has-no-venue', idsOf(unlocated)]]),
       };
     },
   }),
 });
+
+/**
+ * One measurement's evidence, plus the fixtures of a competition the metric
+ * does not count and therefore never saw.
+ *
+ * @param {import('./types.js').FairnessEvidence} base
+ * @param {ReadonlyArray<string>} setAsideFixtureIds - disjoint from `base` by construction
+ * @returns {import('./types.js').FairnessEvidence}
+ */
+function withSetAside(base, setAsideFixtureIds) {
+  const setAside = distinctIds(setAsideFixtureIds);
+  const excluded = distinctIds([...base.excludedFixtureIds, ...setAside]);
+  return Object.freeze({
+    fixturesCounted: base.fixturesCounted,
+    fixturesExcluded: excluded.length,
+    countedFixtureIds: base.countedFixtureIds,
+    excludedFixtureIds: excluded,
+    exclusions: Object.freeze(
+      /** @type {Array<[string, number]>} */ ([
+        ...base.exclusions,
+        ['fixture-of-another-competition', setAside.length],
+      ]).filter(([, count]) => count > 0)
+    ),
+  });
+}
 
 /**
  * **The metric a caller named, or a refusal naming what it is not.**
@@ -285,7 +354,7 @@ export function fairnessMetricOf(metricId) {
  */
 export function measureSubject(metric, subjectKind, subjectId, allEntries) {
   const counted = allEntries.filter((entry) => metric.counts.includes(entry.fixture.competition));
-  const setAside = allEntries.length - counted.length;
+  const setAside = allEntries.filter((entry) => !metric.counts.includes(entry.fixture.competition));
 
   if (counted.length === 0) {
     return assertFairnessMeasurement({
@@ -296,7 +365,7 @@ export function measureSubject(metric, subjectKind, subjectId, allEntries) {
       measurability: FAIRNESS_MEASURABILITY.UNMEASURABLE,
       value: null,
       reasonCode: FAIRNESS_REASON.FAIRNESS_SUBJECT_OUTSIDE_CLASS,
-      evidence: evidence(0, [['fixture-of-another-competition', setAside]]),
+      evidence: evidence([], [['fixture-of-another-competition', idsOf(setAside)]]),
     });
   }
 
@@ -310,16 +379,11 @@ export function measureSubject(metric, subjectKind, subjectId, allEntries) {
       result.value === null ? FAIRNESS_MEASURABILITY.UNMEASURABLE : FAIRNESS_MEASURABILITY.MEASURED,
     value: result.value,
     reasonCode: result.reasonCode,
-    evidence: {
-      ...result.evidence,
-      fixturesExcluded: result.evidence.fixturesExcluded + setAside,
-      exclusions: Object.freeze(
-        /** @type {Array<[string, number]>} */ ([
-          ...result.evidence.exclusions,
-          ['fixture-of-another-competition', setAside],
-        ]).filter(([, count]) => count > 0)
-      ),
-    },
+    // The metric's own exclusions, plus the fixtures of another competition it
+    // never saw. The two sets are disjoint — the metric was only ever handed
+    // fixtures of the competitions it counts — so the union's size is the sum,
+    // and the id sets stay the published evidence for both numbers.
+    evidence: withSetAside(result.evidence, idsOf(setAside)),
   });
 }
 
@@ -364,14 +428,23 @@ export function measureTeams(participation, metricIds = FAIRNESS_METRIC_ORDER) {
  * to a cohort by picking one, which is what `buildTeams()` already refuses to do
  * for the same subject.
  *
- * The keys handed in here are the ones the metric's **own competitions** supply
- * — see `report.js`. That changes which of the two refusals season-2026
- * exercises: `16GSelect02` is listed as `16GS` on one row and `U16G` on another,
- * but both rows are scrimmages and it holds no league fixture, so under a league
- * metric it is *unlabelled* rather than ambiguous. Two spellings on two
- * friendlies are not a reason to refuse a team its league division, and this
- * corpus holds no subject with two league labels; the ambiguous branch is driven
- * from constructed league input in `tests/reasonCodeReachability.test.js`.
+ * The keys handed in here are the ones the metric's **own competitions** supply,
+ * because both callers build them with {@link cohortKeysBySubject} —
+ * `fairnessReport()` and `scoreFairnessObjective()` alike. That sentence was
+ * true of the report and false of the objective for one commit, which is the
+ * worst of the three states: the objective kept grouping on every label a
+ * subject carried anywhere while this docstring said otherwise, so one friendly
+ * spelled `10B` against league rows spelled `U10B` made a team
+ * `FAIRNESS_GROUP_AMBIGUOUS` in the objective and `U10B` in the report — two
+ * answers about one subject, with a comment asserting they agreed.
+ *
+ * It also changes which of the two refusals season-2026 exercises:
+ * `16GSelect02` is listed as `16GS` on one row and `U16G` on another, but both
+ * rows are scrimmages and it holds no league fixture, so under a league metric
+ * it is *unlabelled* rather than ambiguous. Two spellings on two friendlies are
+ * not a reason to refuse a team its league division, and this corpus holds no
+ * subject with two league labels; the ambiguous branch is driven from
+ * constructed league input in `tests/reasonCodeReachability.test.js`.
  *
  * @param {ReadonlySet<string>} keys
  * @returns {{ key: string|null, reasonCode: string|null }}
@@ -382,6 +455,39 @@ export function groupKeyOf(keys) {
     return { key: null, reasonCode: FAIRNESS_REASON.FAIRNESS_GROUP_UNLABELLED };
   }
   return { key: null, reasonCode: FAIRNESS_REASON.FAIRNESS_GROUP_AMBIGUOUS };
+}
+
+/**
+ * **The division and age-group labels a subject carries in one class of fixture.**
+ *
+ * Not `participation.divisions` / `.ageGroups`, which are the labels a subject
+ * carries anywhere: those are the right answer to *"what has this team been
+ * called?"* and the wrong one to *"which league cohort is it judged in?"*.
+ *
+ * It lives here, beside {@link groupKeyOf}, rather than in either of its
+ * callers, because both entry points must answer that question the same way and
+ * the one commit in which only `report.js` held a copy is the one in which they
+ * did not.
+ *
+ * @param {Map<string, import('./types.js').FairnessParticipation>} participation
+ * @param {ReadonlyArray<string>} counts - the competitions the metric reads
+ * @returns {{ divisions: Map<string, Set<string>>, ageGroups: Map<string, Set<string>> }}
+ */
+export function cohortKeysBySubject(participation, counts) {
+  /** @type {Map<string, Set<string>>} */ const divisions = new Map();
+  /** @type {Map<string, Set<string>>} */ const ageGroups = new Map();
+  for (const [subjectId, entry] of participation) {
+    /** @type {Set<string>} */ const division = new Set();
+    /** @type {Set<string>} */ const ageGroup = new Set();
+    for (const held of entry.fixtures) {
+      if (!counts.includes(held.fixture.competition)) continue;
+      if (held.fixture.division !== null) division.add(held.fixture.division);
+      if (held.fixture.ageGroup !== null) ageGroup.add(held.fixture.ageGroup);
+    }
+    divisions.set(subjectId, division);
+    ageGroups.set(subjectId, ageGroup);
+  }
+  return { divisions, ageGroups };
 }
 
 /**
@@ -412,19 +518,24 @@ export function measureGroup(subjectKind, groupKey, metricId, memberMeasurements
   // different question. Conflating them would leave a three-team division with
   // no published typical kickoff at all.
   const centre = median(usable.map((measurement) => /** @type {number} */ (measurement.value)));
-  // Both totals are summed over **every** member, so a group's fixture
-  // accounting is exactly the sum of its members' and a reader can add the rows
-  // up. (An unmeasurable member always counts zero fixtures, so this is the same
-  // arithmetic as summing `counted` over the measurable ones — it is written
-  // this way so the identity is one a test can assert rather than one that
-  // happens to hold.)
-  const counted = memberMeasurements.reduce(
-    (total, measurement) => total + measurement.evidence.fixturesCounted,
-    0
+  // **Distinct fixtures the group's members were measured over**, over **every**
+  // member — a union and not a sum. A two-sided league fixture is one fixture
+  // and is named by both of the teams that played it, so summing counted a
+  // division of 36 fixtures as 72 and said so in a field denominated in
+  // fixtures. An unmeasurable member contributes no counted fixture, so the
+  // union over every member is the same set as the union over the measurable
+  // ones — written over every member so the identity is one a test can assert
+  // rather than one that happens to hold.
+  const counted = distinctIds(
+    memberMeasurements.flatMap((measurement) => measurement.evidence.countedFixtureIds)
   );
-  const excluded = memberMeasurements.reduce(
-    (total, measurement) => total + measurement.evidence.fixturesExcluded,
-    0
+  // A fixture one member could not be measured on and another was is a fixture
+  // this group was measured over; it is counted, and it is not also excluded.
+  const countedSet = new Set(counted);
+  const excluded = distinctIds(
+    memberMeasurements
+      .flatMap((measurement) => measurement.evidence.excludedFixtureIds)
+      .filter((fixtureId) => !countedSet.has(fixtureId))
   );
   return assertFairnessMeasurement({
     metricId,

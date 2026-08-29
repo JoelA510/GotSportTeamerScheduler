@@ -51,15 +51,19 @@
 /**
  * What was read and what was set aside to produce one number.
  *
- * Every field named `fixtures*` is a count of **fixtures**, and `exclusions` is
- * a breakdown of `fixturesExcluded` denominated the same way. A group's evidence
- * aggregates its member subjects, and that tally is denominated in *members*, so
- * it travels in its own two fields rather than being added to a count of rows it
- * is not made of.
+ * Every field named `fixtures*` is a count of **distinct fixtures** — the size
+ * of the id set published beside it — and `exclusions` is a breakdown of
+ * `fixturesExcluded` denominated the same way. A group's fixture evidence is the
+ * **union** over its members, never the sum: a two-sided fixture is one fixture
+ * however many of the group's teams played in it. Its member tally is
+ * denominated in *members*, so it travels in its own two fields rather than
+ * being added to a count of rows it is not made of.
  *
  * @typedef {Object} FairnessEvidence
- * @property {number} fixturesCounted - fixtures that contributed to the value
- * @property {number} fixturesExcluded - fixtures read and not counted
+ * @property {number} fixturesCounted - distinct fixtures that contributed to the value
+ * @property {number} fixturesExcluded - distinct fixtures read and not counted
+ * @property {ReadonlyArray<string>} countedFixtureIds - the counted set; its length is `fixturesCounted`
+ * @property {ReadonlyArray<string>} excludedFixtureIds - the excluded set; its length is `fixturesExcluded`
  * @property {ReadonlyArray<[string, number]>} exclusions - why, and how many each
  * @property {number} [membersCounted] - group subjects only: members that supplied a value
  * @property {number} [membersExcluded] - group subjects only: members that could not

@@ -51,12 +51,17 @@
  * @module fairness/objectives
  */
 
-import { FAIRNESS_COMPETITION, participationOf } from './classification.js';
+import {
+  FAIRNESS_COMPETITION,
+  classifyFairnessFixtures,
+  participationOf,
+} from './classification.js';
 import { median } from './dispersion.js';
 import {
   FAIRNESS_METRIC,
   FAIRNESS_METRIC_REGISTRY,
   FAIRNESS_SUBJECT_KIND,
+  cohortKeysBySubject,
   groupKeyOf,
   measureSubject,
 } from './metrics.js';
@@ -162,6 +167,13 @@ export const FAIRNESS_OBJECTIVE_REGISTRY = Object.freeze({
  * against the fixtures, subject by subject and fixture by fixture, and a
  * mismatch is refused rather than silently preferred.
  *
+ * The fixture list is **classified** first, by the same
+ * `classifyFairnessFixtures()` the report path runs, and its findings travel on
+ * the result: a list this module cannot decide the meaning of scores nothing and
+ * says so, rather than scoring whatever survived a silent filter. The cohort
+ * keys come from `cohortKeysBySubject()`, the same helper the report uses, so a
+ * subject is in one cohort and not two.
+ *
  * @param {ReadonlyArray<import('./types.js').FairnessFixture>} fixtures
  * @param {unknown} config - parsed by `FairnessObjectiveConfigSchema`
  * @param {Map<string, import('./types.js').FairnessParticipation>|null} [supplied]
@@ -178,10 +190,20 @@ export function scoreFairnessObjective(fixtures, config, supplied = null) {
     );
   }
   const metric = FAIRNESS_METRIC_REGISTRY[definition.metricId];
-  const participation = participationOf(fixtures);
+  const observed = participationOf(fixtures);
   if (supplied !== null && supplied !== undefined) {
-    assertParticipationMatches(participation, supplied, parsed.objectiveId);
+    assertParticipationMatches(observed, supplied, parsed.objectiveId);
   }
+  // The same classification the report path runs, and the same consequence. It
+  // used not to run here at all, so a list carrying one `competition:
+  // 'tournament'` row came back `coverage: 1`, `status: 'allowed'`, no finding
+  // and that row's opponent silently absent from the population — while
+  // `fairnessReport()` refused the identical list with a blocking
+  // FAIRNESS_FIXTURE_UNCLASSIFIED. Two entry points giving two answers about one
+  // fixture list is the shape this module exists to prevent, and the objective
+  // is the half a solver would consume.
+  const classification = classifyFairnessFixtures(fixtures);
+  const participation = classification.usable ? observed : new Map();
 
   /** @type {import('./types.js').FairnessFinding[]} */
   const findings = [
@@ -190,7 +212,18 @@ export function scoreFairnessObjective(fixtures, config, supplied = null) {
       `${parsed.objectiveId} is a scoring function only: nothing in this repository consumes it, no solver stage reads it, and no schedule in this corpus was produced under it`,
       { objectiveId: parsed.objectiveId, metricId: definition.metricId }
     ),
+    ...classification.findings,
   ];
+
+  // The cohort is drawn from the fixtures **this objective's metric counts**,
+  // through the same helper `fairnessReport()` uses, so the two paths cannot
+  // put one subject in two cohorts. Grouping on `entry.divisions` /
+  // `entry.ageGroups` — every label a subject carries anywhere — is what made a
+  // team with one friendly spelled `10B` against league rows spelled `U10B`
+  // FAIRNESS_GROUP_AMBIGUOUS here and `U10B` in the report; through
+  // `compareObjectiveScores()`'s coverage guard it also made two schedules
+  // permanently incomparable on a scrimmage's spelling.
+  const cohorts = cohortKeysBySubject(participation, metric.counts);
 
   /** @type {Map<string, import('./types.js').FairnessMeasurement>} */
   const measured = new Map();
@@ -209,7 +242,9 @@ export function scoreFairnessObjective(fixtures, config, supplied = null) {
       parsed.basisKind === FAIRNESS_BASIS.SEASON
         ? { key: FAIRNESS_BASIS.SEASON, reasonCode: null }
         : groupKeyOf(
-            parsed.basisKind === FAIRNESS_BASIS.AGE_GROUP ? entry.ageGroups : entry.divisions
+            (parsed.basisKind === FAIRNESS_BASIS.AGE_GROUP
+              ? cohorts.ageGroups.get(subjectId)
+              : cohorts.divisions.get(subjectId)) ?? new Set()
           )
     );
   }

@@ -737,9 +737,13 @@ Follow-ups raised during the build and deliberately not absorbed:
   `scopeId` and a fixture list spanning two is refused with a blocking
   `FAIRNESS_SCOPE_MIXED`, because two clubs using `U10B` would otherwise form one
   comparison population whose arithmetic would be impeccable and whose meaning
-  would be nothing. Within a scope the residue is still live: `16GSelect02` is
-  observed as both `16GS` and `U16G`, and is judged under no division cohort
-  (`FAIRNESS_GROUP_AMBIGUOUS`) rather than assigned to one.
+  would be nothing. Within a scope the residue is still live, though the corpus
+  no longer shows it: `16GSelect02` carries both `16GS` and `U16G`, but both
+  labels sit on scrimmages and it holds no league fixture, so under a
+  league-only metric it has no league label at all and is reported
+  `FAIRNESS_GROUP_UNLABELLED` rather than `FAIRNESS_GROUP_AMBIGUOUS`. The
+  ambiguity branch is kept live by a constructed driver, since a team that
+  plays a league season under two spellings is the case it exists for.
 - **Promote two widened publication codes to first-class** —
   `NOTICE_PARITY_VACUOUS` / `NOTICE_LABEL_AMBIGUOUS`, currently distinguished only
   by `details.reason`.

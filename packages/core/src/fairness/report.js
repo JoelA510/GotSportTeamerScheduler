@@ -44,6 +44,7 @@ import { classifyFairnessFixtures, membershipSplit, participationOf } from './cl
 import {
   FAIRNESS_METRIC_ORDER,
   FAIRNESS_SUBJECT_KIND,
+  cohortKeysBySubject,
   fairnessMetricOf,
   groupKeyOf,
   measureGroup,
@@ -239,23 +240,10 @@ export function fairnessReport(query) {
       meta.measurementsUnmeasurable += 1;
     }
   }
-  // Distinct fixtures a **requested** metric read: one belonging to a
-  // competition at least one of them counts. It used to be every fixture naming
-  // a participant, which on this corpus is 578 — identical to `fixturesRead`
-  // against a true 567, so the one shortfall the counter was added to surface
-  // (eight external seeding games and three scrimmages, read and counted into
-  // nothing) was the one thing it could not show.
-  const countedFixtureIds = new Set();
-  for (const metricId of metricIds) {
-    const counts = fairnessMetricOf(metricId).counts;
-    for (const entry of participation.values()) {
-      for (const held of entry.fixtures) {
-        if (counts.includes(held.fixture.competition))
-          countedFixtureIds.add(held.fixture.fixtureId);
-      }
-    }
-  }
-  meta.fixturesCounted = countedFixtureIds.size;
+  meta.fixturesCounted = countedFixturesOf(
+    participation,
+    metricIds.map((metricId) => fairnessMetricOf(metricId))
+  ).length;
   meta.fixturesPlaceholder = classification.placeholderFixtures;
   meta.populationsBuilt = populations.length;
   meta.populationsScored = populations.filter(
@@ -294,31 +282,42 @@ export function fairnessReport(query) {
 }
 
 /**
- * **The division and age-group labels a subject carries in one class of fixture.**
+ * **The distinct fixtures a given set of metrics reads.**
  *
- * Not `participation.divisions` / `.ageGroups`, which are the labels a subject
- * carries anywhere: those are the right answer to *"what has this team been
- * called?"* and the wrong one to *"which league cohort is it judged in?"*.
+ * One belonging to a competition at least one of them counts. `meta.fixturesCounted`
+ * is this list's length, and it used to be every fixture naming a participant —
+ * which on the season corpus is 578, identical to `fixturesRead` against a true
+ * 567, so the one shortfall the counter was added to surface (eight external
+ * seeding games and three scrimmages, read and counted into nothing) was the one
+ * thing it could not show.
+ *
+ * It takes **metric definitions** rather than metric ids, and that is the point
+ * of it being a function at all. Every metric in today's registry counts
+ * `league` and only `league`, so no subset of the registry can make this answer
+ * differ from any other subset's, and a test that compares one registry subset
+ * against another compares a set with itself — which is exactly what the check
+ * written for this counter did. Taking definitions lets a test hand it
+ * competitions that genuinely differ, so an implementation that ignores its
+ * second argument fails. `fairnessReport()` resolves the caller's ids through
+ * `fairnessMetricOf()`, which still refuses an unregistered one.
  *
  * @param {Map<string, import('./types.js').FairnessParticipation>} participation
- * @param {ReadonlyArray<string>} counts - the competitions the metric reads
- * @returns {{ divisions: Map<string, Set<string>>, ageGroups: Map<string, Set<string>> }}
+ * @param {ReadonlyArray<import('./types.js').FairnessMetricDefinition>} metrics
+ * @returns {ReadonlyArray<string>} distinct fixture ids, sorted
  */
-function cohortKeysBySubject(participation, counts) {
-  /** @type {Map<string, Set<string>>} */ const divisions = new Map();
-  /** @type {Map<string, Set<string>>} */ const ageGroups = new Map();
-  for (const [subjectId, entry] of participation) {
-    /** @type {Set<string>} */ const division = new Set();
-    /** @type {Set<string>} */ const ageGroup = new Set();
-    for (const held of entry.fixtures) {
-      if (!counts.includes(held.fixture.competition)) continue;
-      if (held.fixture.division !== null) division.add(held.fixture.division);
-      if (held.fixture.ageGroup !== null) ageGroup.add(held.fixture.ageGroup);
+export function countedFixturesOf(participation, metrics) {
+  /** @type {Set<string>} */
+  const counted = new Set();
+  for (const metric of metrics) {
+    for (const entry of participation.values()) {
+      for (const held of entry.fixtures) {
+        if (metric.counts.includes(held.fixture.competition)) {
+          counted.add(held.fixture.fixtureId);
+        }
+      }
     }
-    divisions.set(subjectId, division);
-    ageGroups.set(subjectId, ageGroup);
   }
-  return { divisions, ageGroups };
+  return Object.freeze([...counted].sort());
 }
 
 /**
