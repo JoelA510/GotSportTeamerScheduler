@@ -52,7 +52,9 @@ import {
   CONSTRAINT_TYPE,
   CONSTRAINT_TYPE_SEVERITY,
   SEASON_2026_CONSTRAINT_ID,
+  baseSeverityOf,
   buildSeason2026ConstraintRegistry,
+  effectiveSeverityTable,
   whatIfConstraintType,
 } from '@squadlogic/core/constraints/index.js';
 import {
@@ -77,7 +79,12 @@ import {
   buildFormatTimingTableFromSeason2026,
   formatTimingOrUnknown,
 } from '@squadlogic/core/timing/index.js';
-import { TRAVEL_REASON } from '@squadlogic/core/waivers/index.js';
+import {
+  TRAVEL_REASON,
+  TRAVEL_REASON_SEVERITY,
+  evaluateCoachTravel,
+  travelSeverityOf,
+} from '@squadlogic/core/waivers/index.js';
 
 import {
   FEASIBILITY_MARGIN_UNIT,
@@ -94,6 +101,7 @@ import {
   FEASIBILITY_VERDICT_ORDER,
   assertBoundaryResult,
   assertFeasibilityFindings,
+  blockingEvidenceOf,
   canGameMove,
   canTeamPlay,
   candidateAccountingFindings,
@@ -2874,4 +2882,381 @@ describe('feasibility :: round 3, finding 3 — a boundary describes its own pos
     expect(silent).toBeGreaterThan(0);
     expect(positioned).toBeGreaterThan(0);
   }, 120_000);
+});
+
+/* -------------------------------------------------------------------------- */
+/* Fourth pre-PR review of 7.1 — one severity view, and a finding that names    */
+/* its source                                                                   */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * **A HARD registry record over a base-`compromise` availability code.**
+ *
+ * `PERMIT_MARGIN_TIGHT` is `compromise` in `availability/reasonCodes.js` — the
+ * permit's fifteen minutes are a comfort — and re-severitying exactly that kind
+ * of code is the registry's entire purpose (GAP-12). A club that wrote the
+ * comfort margin into its permit as a condition rather than a courtesy holds
+ * this record, so it is the registry used as designed and not a contrivance.
+ *
+ * Built through `buildSeason2026ConstraintRegistry({ extraConstraints })`, which
+ * is the adapter's own public door, and validated by `ConstraintRecordSchema`
+ * like every other record.
+ */
+const PERMIT_MARGIN_IS_HARD = Object.freeze({
+  id: 'permit-margin-hard-2026',
+  policy: 'permit-margin',
+  name: 'The permit comfort margin is a condition of the permit here',
+  type: CONSTRAINT_TYPE.HARD,
+  scope: { kind: 'global' },
+  parameters: { marginMinutes: 15 },
+  restrictiveDirection: 'higher',
+  rationale:
+    'A club whose permit states the fifteen minutes as a condition rather than a courtesy holds this record; the code is the same one, at a hardness the registry decides.',
+  source: {
+    setBy: 'pre-PR review, round four',
+    setAt: null,
+    reference: 'the review finding about two severity views in one answer',
+    note: 'a constructed record, carried by no season corpus and dated by nothing',
+  },
+  effectiveFrom: null,
+  effectiveTo: null,
+  enforcement: 'reason-codes',
+  reasonCodes: [AVAILABILITY_REASON.PERMIT_MARGIN_TIGHT],
+  weight: null,
+  waivable: false,
+  history: [],
+});
+
+/** The same world, under a registry that holds one more record. Built once. */
+let promotedContextMemo = null;
+function promotedContext() {
+  if (promotedContextMemo !== null) return promotedContextMemo;
+  const promotedRegistry = buildSeason2026ConstraintRegistry({
+    extraConstraints: [PERMIT_MARGIN_IS_HARD],
+  });
+  const promotedVerification = runRuleEngine(schedule, {
+    registry: promotedRegistry,
+    resources: { graph, timingTable: table, calendar, venueComplexes },
+  });
+  promotedContextMemo = deepFreeze(
+    buildAttributionContext({
+      graph,
+      table,
+      calendar,
+      registry: promotedRegistry,
+      schedule,
+      verification: promotedVerification,
+      venueComplexes,
+      roster,
+    })
+  );
+  return promotedContextMemo;
+}
+
+describe('feasibility :: round 4, finding 1 — the bound is chosen under the view it is judged under', () => {
+  it('really does promote the code, so everything below is about a live re-severity', () => {
+    // **The meta-assertion the whole block rests on.** If the registry did not
+    // move `PERMIT_MARGIN_TIGHT` from `compromise` to `blocking`, every
+    // assertion after this would be a statement about the ordinary corpus
+    // wearing a second registry's name.
+    const where = {
+      date: '2026-08-22',
+      venueId: 'brookside-park',
+      surfaceId: 'brookside-park/upper-1',
+      surfaceLineage: ['brookside-park/upper-1'],
+    };
+    expect(baseSeverityOf(AVAILABILITY_REASON.PERMIT_MARGIN_TIGHT)).toBe(
+      CONSTRAINT_SEVERITY.COMPROMISE
+    );
+    // Nothing in the shipped season governs it, which is why this is latent.
+    expect(
+      effectiveSeverityTable(registry, where).severityByCode[
+        AVAILABILITY_REASON.PERMIT_MARGIN_TIGHT
+      ]
+    ).toBeUndefined();
+    expect(
+      effectiveSeverityTable(promotedContext().engines.registry, where).severityByCode[
+        AVAILABILITY_REASON.PERMIT_MARGIN_TIGHT
+      ]
+    ).toBe(CONSTRAINT_SEVERITY.BLOCKING);
+  });
+
+  it('never names a boundary it calls infeasible, under either registry', () => {
+    /** @type {string[]} */
+    const offenders = [];
+    let promotedInfeasible = 0;
+    let promotedNamed = 0;
+    let plainNamed = 0;
+    for (const [label, ctx] of /** @type {const} */ ([
+      ['plain', context],
+      ['promoted', promotedContext()],
+    ])) {
+      for (const cell of boundsCorpus()) {
+        const answer = feasibleKickoffBounds(ctx, cell);
+        const at = `${label} ${cell.surfaceId} ${cell.date} ${cell.format}`;
+        if (label === 'promoted' && answer.verdict === FEASIBILITY_VERDICT.INFEASIBLE) {
+          promotedInfeasible += 1;
+        }
+        if (answer.latestHard.kickoffMinutes !== null) {
+          if (label === 'promoted') promotedNamed += 1;
+          else plainNamed += 1;
+        }
+        if (answer.verdict !== FEASIBILITY_VERDICT.INFEASIBLE) continue;
+        if (answer.latestHard.kickoffMinutes !== null) {
+          offenders.push(
+            `${at}: infeasible while naming minute ${answer.latestHard.kickoffMinutes}, bound by ${answer.binding.map((bound) => bound.kind).join(', ') || 'nothing'}, margin ${JSON.stringify(answer.marginMinutes)}`
+          );
+          continue;
+        }
+        // …and an answer with no boundary names none of its parts either.
+        if (answer.binding.length > 0 || answer.marginMinutes !== null) {
+          offenders.push(`${at}: no boundary, yet it reports a binding set or a margin`);
+        }
+      }
+    }
+    expect(offenders.slice(0, 5)).toEqual([]);
+    expect(offenders).toHaveLength(0);
+    // Meta-assertions: both registries answered real questions, and the
+    // promoted one really did reach the infeasible arm this rule is about.
+    expect(plainNamed).toBeGreaterThan(0);
+    expect(promotedNamed).toBeGreaterThan(0);
+    expect(promotedInfeasible).toBeGreaterThan(0);
+  }, 300_000);
+
+  it('moves the hard bound to the latest minute the registry actually allows', () => {
+    // The oracle: a minute-by-minute scan at the *hard* threshold, under the
+    // promoted registry, so the search is checked against brute force exactly
+    // as the clean boundary already is.
+    const ctx = promotedContext();
+    const cell = { surfaceId: 'brookside-park/upper-1', date: '2026-08-22', format: '4v4' };
+    const answer = feasibleKickoffBounds(ctx, cell);
+    const bookings = standingBookings(ctx.state, cell.date, []);
+    /** @type {number|null} */
+    let scanned = null;
+    for (let minute = answer.searchedToMinutes; minute >= answer.searchedFromMinutes; minute -= 1) {
+      const probe = probeKickoff(
+        ctx.engines,
+        { ...cell, kickoffMinutes: minute, ignoreBookingIds: [] },
+        bookings,
+        createFeasibilityMeta()
+      );
+      if (probe.findings.every((finding) => finding.severity !== CONSTRAINT_SEVERITY.BLOCKING)) {
+        scanned = minute;
+        break;
+      }
+    }
+    // Meta-assertions: the scan found a minute, and it is *not* the minute the
+    // registry-blind search offers — so the two really do disagree here.
+    expect(scanned).not.toBeNull();
+    const blind = latestLegalKickoff(
+      graph,
+      table,
+      calendar,
+      { surfaceId: cell.surfaceId, date: cell.date, format: cell.format },
+      { existingBookings: bookings }
+    );
+    expect(blind.kickoffMinutes).not.toBe(scanned);
+    expect(answer.latestHard.kickoffMinutes).toBe(scanned);
+    // Not `feasible`: the added record is a `hard` constraint no rule in the run
+    // enforces, so rule 4 holds the answer open as `unknown` naming it. What
+    // matters here is that it is not `infeasible` beside a named bound, which is
+    // the contradiction, and that the bound it names is the scanned one.
+    expect(answer.verdict).not.toBe(FEASIBILITY_VERDICT.INFEASIBLE);
+    expect(
+      answer.unknowns
+        .filter((entry) => entry.verdictBearing === true)
+        .map((entry) => entry.constraintId)
+    ).toContain(PERMIT_MARGIN_IS_HARD.id);
+  });
+
+  it('says out loud that the registry, not availability, chose the bound', () => {
+    const answer = feasibleKickoffBounds(promotedContext(), {
+      surfaceId: 'brookside-park/upper-1',
+      date: '2026-08-22',
+      format: '4v4',
+    });
+    const said = answer.findings.filter(
+      (finding) => finding.code === FEASIBILITY_REASON.FEASIBILITY_BOUND_UNDER_REGISTRY
+    );
+    expect(said).toHaveLength(1);
+    expect(said[0].details.codes).toContain(AVAILABILITY_REASON.PERMIT_MARGIN_TIGHT);
+    expect(said[0].details.availabilityKickoffMinutes).not.toBe(answer.latestHard.kickoffMinutes);
+    // …and the ordinary corpus never says it, because nothing there disagrees.
+    const plain = feasibleKickoffBounds(context, {
+      surfaceId: ALDER_2,
+      date: '2026-08-22',
+      format: '11v11',
+    });
+    expect(
+      plain.findings.filter(
+        (finding) => finding.code === FEASIBILITY_REASON.FEASIBILITY_BOUND_UNDER_REGISTRY
+      )
+    ).toEqual([]);
+  });
+});
+
+describe('feasibility :: round 4, finding 2 — a denial names the layer that decided it', () => {
+  it('names every blocking record in the list the verdict was derived from', () => {
+    // **The unit the corpus cannot reach.** `blockingEvidenceOf()` is handed
+    // the same shape `deriveFeasibilityEvidence()` reads, including a
+    // coach-travel record no transition owns — the case the `travelFindings`
+    // list exists for and the message used to be unable to describe.
+    const claim = makeClaim({
+      source: ATTRIBUTION_SOURCE.RULE_ENGINE,
+      kind: 'coach-travel-between-venues',
+      instanceId: 'coach-1',
+      constraintIds: [],
+      codes: [TRAVEL_REASON.TRAVEL_COMMITMENTS_OVERLAP],
+      severity: CONSTRAINT_SEVERITY.BLOCKING,
+      binding: true,
+      limitMinutes: null,
+      slackMinutes: null,
+      computed: {},
+      detail: 'two commitments overlap',
+      entities: [{ kind: 'person', id: 'coach-1' }],
+    });
+    const unowned = {
+      source: ATTRIBUTION_SOURCE.COACH_TRAVEL,
+      severity: CONSTRAINT_SEVERITY.BLOCKING,
+      codes: [TRAVEL_REASON.TRAVEL_SCAN_VACUOUS],
+    };
+    expect(blockingEvidenceOf([claim, unowned])).toEqual({
+      sources: [ATTRIBUTION_SOURCE.COACH_TRAVEL, ATTRIBUTION_SOURCE.RULE_ENGINE].sort(),
+      codes: [TRAVEL_REASON.TRAVEL_COMMITMENTS_OVERLAP, TRAVEL_REASON.TRAVEL_SCAN_VACUOUS].sort(),
+    });
+    // The negative control: nothing below `blocking` is a reason the answer is
+    // blocked, so nothing below `blocking` is named as one.
+    expect(
+      blockingEvidenceOf([
+        {
+          source: ATTRIBUTION_SOURCE.COACH_TRAVEL,
+          severity: CONSTRAINT_SEVERITY.COMPROMISE,
+          codes: ['X'],
+        },
+        { source: ATTRIBUTION_SOURCE.FACILITY, severity: CONSTRAINT_SEVERITY.INFO, codes: ['Y'] },
+      ])
+    ).toEqual({ sources: [], codes: [] });
+  });
+
+  it('never emits the denial without naming a source, on any answer this corpus produces', () => {
+    let said = 0;
+    /** @type {string[]} */
+    const offenders = [];
+    /**
+     * @param {string} label
+     * @param {import('@squadlogic/core/feasibility/types.js').FeasibilityAnswer} answer
+     */
+    const rule = (label, answer) => {
+      for (const finding of answer.findings) {
+        if (finding.code !== FEASIBILITY_REASON.FEASIBILITY_BLOCKED_OUTSIDE_FACILITY) continue;
+        said += 1;
+        const sources = /** @type {string[]} */ (finding.details.sources ?? []);
+        const codes = /** @type {string[]} */ (finding.details.codes ?? []);
+        if (sources.length === 0) offenders.push(`${label}: named no layer`);
+        if (codes.length === 0) offenders.push(`${label}: named no code`);
+        // The message is decoration, but it must not decorate with a sentence
+        // the answer cannot back: "stated in the blockers" was printed where
+        // the blockers stated nothing.
+        for (const source of sources) {
+          if (!finding.message.includes(source)) {
+            offenders.push(`${label}: message omits the source "${source}"`);
+          }
+        }
+        if (/stated in the blockers/.test(finding.message)) {
+          offenders.push(`${label}: message defers to blockers that name nothing`);
+        }
+      }
+    };
+    for (const game of schedule.games) {
+      rule(`standing ${game.id}`, standingAnswer(game));
+      rule(
+        `move ${game.id} +60`,
+        canGameMove(
+          context,
+          { gameId: game.id, insteadOfMinutes: game.startMinutes + 60 },
+          { venueComplexes }
+        )
+      );
+    }
+    expect(offenders).toEqual([]);
+    // Meta-assertion: the sweep actually met the finding.
+    expect(said).toBeGreaterThan(0);
+  }, 180_000);
+
+  it('states plainly which travel findings the end-to-end case needs, and that none exists', () => {
+    // **Why the unit above is a unit.** `projectTravel()` drops a finding no
+    // transition owns, so a *blocking* unowned travel finding is what would
+    // reach the message through `canGameMove()`. Today the only unowned
+    // findings are scan-level, and no scan-level travel code can be blocking
+    // under any constraint type — so the end-to-end case cannot be constructed
+    // honestly and this is a guard rather than a live path. If that ever
+    // changes, this fails and the message has to be re-checked against a real
+    // one instead of against the unit.
+    // The scan-level set is read off the evaluator rather than typed here, so a
+    // scan-level code added later joins this check instead of escaping it.
+    const vacuous = evaluateCoachTravel(
+      [
+        {
+          id: 'c1',
+          personId: 'coach-1',
+          date: '2026-08-22',
+          startMinutes: 600,
+          endMinutes: 690,
+          venueId: 'alder-park',
+        },
+      ],
+      { registry, venueComplexes }
+    );
+    const scanLevel = vacuous.findings.filter(
+      (finding) => !vacuous.transitions.some((entry) => entry.findings.includes(finding))
+    );
+    expect(scanLevel.map((finding) => finding.code)).toEqual([TRAVEL_REASON.TRAVEL_SCAN_VACUOUS]);
+    // No constraint type can make a scan-level code blocking: `travelSeverityOf()`
+    // reads a record's type only for the two *gap* codes, and neither of those
+    // is scan-level. That is what makes the end-to-end case unconstructible.
+    for (const finding of scanLevel) {
+      expect(TRAVEL_REASON_SEVERITY[finding.code]).not.toBe(CONSTRAINT_SEVERITY.BLOCKING);
+      for (const type of Object.values(CONSTRAINT_TYPE)) {
+        const record = {
+          ...registry.byId[SEASON_2026_CONSTRAINT_ID.COACH_TRAVEL_BETWEEN_VENUES],
+          type,
+        };
+        expect(
+          travelSeverityOf(finding.code, record),
+          `${finding.code} under a ${type} record`
+        ).not.toBe(CONSTRAINT_SEVERITY.BLOCKING);
+      }
+    }
+
+    const overlapping = evaluateCoachTravel(
+      [
+        {
+          id: 'c1',
+          personId: 'coach-1',
+          date: '2026-08-22',
+          startMinutes: 600,
+          endMinutes: 720,
+          venueId: 'alder-park',
+        },
+        {
+          id: 'c2',
+          personId: 'coach-1',
+          date: '2026-08-22',
+          startMinutes: 660,
+          endMinutes: 780,
+          venueId: 'summit-hs',
+        },
+      ],
+      { registry, venueComplexes }
+    );
+    const blocking = overlapping.findings.filter(
+      (finding) => finding.severity === CONSTRAINT_SEVERITY.BLOCKING
+    );
+    expect(blocking.map((finding) => finding.code)).toEqual([
+      TRAVEL_REASON.TRAVEL_COMMITMENTS_OVERLAP,
+    ]);
+    for (const finding of blocking) {
+      expect(overlapping.transitions.some((entry) => entry.findings.includes(finding))).toBe(true);
+    }
+  });
 });

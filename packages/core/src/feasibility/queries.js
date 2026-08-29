@@ -91,11 +91,13 @@ import {
   absorbUnknowns,
   assertBoundaryResult,
   bindingAt,
+  blockingEvidenceOf,
   boundFindings,
   candidateAccountingFindings,
   makeUnknown,
   marginFrom,
   probeKickoff,
+  speaksAt,
   standingBookings,
   underRegistry,
   unenforcedGoverningConstraints,
@@ -596,7 +598,7 @@ export function canGameMove(context, rawQuery, options = {}) {
   // claim, and every one it calls compromised carries a compromise claim — so
   // `seal()` derives them off the published list and the two channels of one
   // answer can no longer contradict each other.
-  /** @type {Array<{ severity: string }>} */
+  /** @type {Array<{ severity: string, source: string, codes: string[] }>} */
   const travelFindings = [];
 
   /* -- unknowns ---------------------------------------------------------- */
@@ -662,7 +664,20 @@ export function canGameMove(context, rawQuery, options = {}) {
     // severity tests written out here, because `projectTravel()` drops a
     // finding no transition owns and an unclaimed blocker must not become an
     // unnoticed one.
-    travelFindings.push(...travel.findings);
+    //
+    // Each is carried as a **source-bearing record**, in the shape a claim
+    // publishes, so the list that decides the verdict is also a list the answer
+    // can name its sources from. Carrying bare findings here is what let
+    // `FEASIBILITY_BLOCKED_OUTSIDE_FACILITY` say "what blocks it is stated in
+    // the blockers" about something the blockers do not state: the fold read
+    // this list and the sentence read only `blockers`.
+    travelFindings.push(
+      ...travel.findings.map((finding) => ({
+        severity: String(finding.severity),
+        source: ATTRIBUTION_SOURCE.COACH_TRAVEL,
+        codes: [String(finding.code)],
+      }))
+    );
     absorbUnknowns(
       answer.unknowns,
       unknownsFromCodes(
@@ -722,7 +737,8 @@ export function canGameMove(context, rawQuery, options = {}) {
   // The same fold `seal()` runs, run here as well because the minimal blocking
   // set is only worth asking for when the answer is blocked. One function and
   // one severity table, at both points.
-  const evidence = deriveFeasibilityEvidence([...blockers, ...travelFindings]);
+  const decisive = [...blockers, ...travelFindings];
+  const evidence = deriveFeasibilityEvidence(decisive);
   if (evidence.blocked && options.minimalSet !== false) {
     const minimal = minimalBlockingSet(context, { gameId: query.gameId, slot: destination });
     answer.minimalSet = minimal;
@@ -736,16 +752,24 @@ export function canGameMove(context, rawQuery, options = {}) {
     // the information stays and the denial is qualified with the layers that
     // did block it, read off the claims this answer publishes.
     if (minimal.blocked === false) {
-      const decided = blockers.filter((claim) => claim.severity === ATTRIBUTION_SEVERITY.BLOCKING);
+      // **Named from the list the verdict was derived from, not from a subset
+      // of it.** `blockingEvidenceOf()` reads `decisive`, which is what
+      // `deriveFeasibilityEvidence()` above read, so this finding cannot be
+      // reached with nothing to name: `evidence.blocked` is true exactly when
+      // that list holds a `blocking` record, and every such record carries a
+      // source and its codes. The old sentence's "stated in the blockers"
+      // fallback described a case the blockers could not describe, and is gone
+      // with the case.
+      const decided = blockingEvidenceOf(decisive);
       answer.findings.push(
         makeFeasibilityFinding(
           FEASIBILITY_REASON.FEASIBILITY_BLOCKED_OUTSIDE_FACILITY,
-          `the facility layer did not block game "${query.gameId}" at this position, so the minimal blocking set is that layer's answer and not this one's; what blocks it is ${[...new Set(decided.map((claim) => claim.source))].sort().join(', ') || 'stated in the blockers'}`,
+          `the facility layer did not block game "${query.gameId}" at this position, so the minimal blocking set is that layer's answer and not this one's; what blocks it is ${decided.sources.join(', ')} (${decided.codes.join(', ')})`,
           {
             gameId: query.gameId,
             ...destination,
-            sources: [...new Set(decided.map((claim) => claim.source))].sort(),
-            codes: [...new Set(decided.flatMap((claim) => claim.codes))].sort(),
+            sources: decided.sources,
+            codes: decided.codes,
           }
         )
       );
@@ -1249,7 +1273,14 @@ function sealTeam(answer) {
  * status:
  *
  * - `latestHard` — the last kickoff at which nothing raises a `blocking`
- *   finding. This is `latestLegalKickoff()`'s answer, taken whole.
+ *   finding. `latestLegalKickoff()`'s answer, **confirmed under the registry**:
+ *   that function selects on `availability/`'s own frozen severities, this
+ *   module judges everything under the registry's, and where a registry record
+ *   makes a base-`compromise` code hard the bound moves down to the latest
+ *   minute the registry allows and `FEASIBILITY_BOUND_UNDER_REGISTRY` says so.
+ *   On a registry that governs no availability code more harshly than its base
+ *   — the season corpus — the confirmation changes nothing and the answer is
+ *   `latestLegalKickoff()`'s, whole.
  * - `latestClean` — the last kickoff at which nothing raises a finding above
  *   `info` at all. Never later than the hard one, and often earlier: on the
  *   corpus's lit venue the permit's 15-minute comfort margin puts it a quarter
@@ -1333,20 +1364,113 @@ export function feasibleKickoffBounds(context, rawQuery) {
     )
   );
 
+  // **The bound is chosen under the severities it is judged under.**
+  // `latestLegalKickoff()` selects on `availability/`'s frozen table, and
+  // `boundaryOf()` builds the claims that decide this answer's verdict from the
+  // *registry's* view of the same minute. A registry that makes a
+  // base-`compromise` availability code hard — which is what a registry is for
+  // — therefore produced a boundary chosen under one view and refused under the
+  // other: 217 of this corpus's 1,872 bounds combinations came back
+  // `infeasible` while naming a latest legal kickoff, a margin and a binding
+  // set, which is the self-contradiction round three removed re-entering from
+  // the selection side.
+  //
+  // So availability's answer is *confirmed* under the registry, and where the
+  // registry refuses it the same generate-and-confirm search the clean boundary
+  // uses continues downward from it. The confirmation costs nothing on ground
+  // where the two views agree — `hardResult.findings` are the minute's own, and
+  // `underRegistry()` is the lookup `boundaryOf()` runs on them anyway — so no
+  // answer this corpus produces moves.
+  //
+  // The search only ever proposes minutes at or below availability's own, so
+  // this module can be more conservative than `availability/kickoff.js` and
+  // never less. A registry that *softens* a base-`blocking` code leaves the
+  // hard bound where availability put it, which under-reports the ground
+  // available rather than over-reporting it, and is the direction a read-only
+  // answer should err in.
+  const availabilityMinutes = hardResult.kickoffMinutes;
+  const refusedAtAvailabilityBound =
+    availabilityMinutes === null
+      ? []
+      : speaksAt(
+          FEASIBILITY_THRESHOLD.HARD,
+          underRegistry(
+            engines,
+            {
+              surfaceId: query.surfaceId,
+              venueId: hardResult.venueId ?? surface?.venueId ?? null,
+              date: query.date,
+            },
+            hardResult.findings ?? []
+          )
+        );
+  const hardMinutes =
+    refusedAtAvailabilityBound.length === 0
+      ? availabilityMinutes
+      : searchBoundary(
+          engines,
+          at,
+          existingBookings,
+          hardResult,
+          availabilityMinutes,
+          FEASIBILITY_THRESHOLD.HARD,
+          meta
+        );
+  // A boundary describes its own position, so a bound the registry moved is
+  // described by a fresh probe of the minute it moved to — never in the words
+  // of the minute availability offered. `assertBoundaryResult()` enforces it.
+  const hardBoundaryResult =
+    hardMinutes === availabilityMinutes
+      ? hardResult
+      : hardMinutes === null
+        ? {
+            constraints: [],
+            findings: [],
+            endMinutes: null,
+            kickoffMinutes: null,
+            venueId: surface?.venueId ?? null,
+          }
+        : probeKickoff(engines, { ...at, kickoffMinutes: hardMinutes }, existingBookings, meta)
+            .result;
+  if (refusedAtAvailabilityBound.length > 0) {
+    findings.push(
+      makeFeasibilityFinding(
+        FEASIBILITY_REASON.FEASIBILITY_BOUND_UNDER_REGISTRY,
+        `availability's own latest legal kickoff here is minute ${availabilityMinutes}; under this registry ${refusedAtAvailabilityBound.map((finding) => finding.code).join(', ')} counts as blocking there, so the hard bound this answer reports is ${JSON.stringify(hardMinutes)}`,
+        {
+          surfaceId: query.surfaceId,
+          date: query.date,
+          format: query.format,
+          availabilityKickoffMinutes: availabilityMinutes,
+          kickoffMinutes: hardMinutes,
+          codes: [...new Set(refusedAtAvailabilityBound.map((finding) => finding.code))].sort(),
+        }
+      )
+    );
+  }
+
   /** @type {Array<Object>} */
   const categoryOnlyClaims = [];
   const hard = boundaryOf(
     engines,
     at,
     existingBookings,
-    hardResult,
-    hardResult.kickoffMinutes,
+    hardBoundaryResult,
+    hardMinutes,
     FEASIBILITY_THRESHOLD.HARD,
     meta,
     categoryOnlyClaims
   );
 
-  const cleanMinutes = searchCleanBoundary(engines, at, existingBookings, hardResult, meta);
+  const cleanMinutes = searchBoundary(
+    engines,
+    at,
+    existingBookings,
+    hardResult,
+    hardMinutes,
+    FEASIBILITY_THRESHOLD.CLEAN,
+    meta
+  );
   // **A boundary that does not exist has nothing to describe.** Handing
   // `hardResult` to the clean boundary walked the *hard* result a second time:
   // it counted every one of its claims again in `meta.claimsCarried` — the
@@ -1591,7 +1715,8 @@ function boundaryOf(
 }
 
 /**
- * The latest kickoff at which nothing above `info` is raised.
+ * The latest kickoff at or below `ceiling` at which nothing speaks at
+ * `threshold`.
  *
  * Generate broadly, confirm every candidate. The generation uses the calendar's
  * own declared margins without deciding which constraint each belongs to: every
@@ -1599,15 +1724,25 @@ function boundaryOf(
  * simply fail confirmation. That is why this function contains no reasoning
  * about permits or daylight at all.
  *
+ * **One searcher, both thresholds.** It used to serve the clean boundary alone
+ * while the hard one came from `latestLegalKickoff()`, which selects on
+ * `availability/`'s base severities — so a registry that hardened a
+ * base-`compromise` code moved the *judgment* of the hard bound without moving
+ * its *selection*. Confirmation here goes through `probeKickoff()`, whose
+ * findings are always the registry's view, and `speaksAt()` is the one place a
+ * threshold becomes a severity test. Selection and judgment therefore read one
+ * table by construction rather than by coincidence.
+ *
  * @param {Object} engines
  * @param {Object} at
  * @param {ReadonlyArray<Object>} existingBookings
- * @param {Object} hardResult
+ * @param {Object} hardResult - the day's own shape: occupancy, floor, limits
+ * @param {number|null} ceiling - the latest minute worth confirming
+ * @param {string} threshold - a `FEASIBILITY_THRESHOLD` value
  * @param {import('./types.js').FeasibilityMeta} meta
  * @returns {number|null}
  */
-function searchCleanBoundary(engines, at, existingBookings, hardResult, meta) {
-  const ceiling = hardResult.kickoffMinutes;
+function searchBoundary(engines, at, existingBookings, hardResult, ceiling, threshold, meta) {
   if (ceiling === null) return null;
   const occupancy = hardResult.occupancyMinutes;
   if (occupancy === null) return null;
@@ -1635,10 +1770,7 @@ function searchCleanBoundary(engines, at, existingBookings, hardResult, meta) {
 
   for (const kickoffMinutes of candidates) {
     const probe = probeKickoff(engines, { ...at, kickoffMinutes }, existingBookings, meta);
-    const consequential = probe.findings.filter(
-      (finding) => finding.severity !== CONSTRAINT_SEVERITY.INFO
-    );
-    if (consequential.length === 0) return kickoffMinutes;
+    if (speaksAt(threshold, probe.findings).length === 0) return kickoffMinutes;
   }
   return null;
 }

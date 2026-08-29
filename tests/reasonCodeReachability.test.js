@@ -1,8 +1,8 @@
 /**
  * Repo-wide reachability audit for every frozen reason-code table in
  * `packages/core/src` — the generalisation of the per-module audit
- * `tests/attribution.test.js` already carries. 16 vocabularies, 322 codes, of
- * which 312 are shown to be producible and 10 are named as holes.
+ * `tests/attribution.test.js` already carries. 16 vocabularies, 323 codes, of
+ * which 313 are shown to be producible and 10 are named as holes.
  *
  * **The defect this exists to catch.** Four times now, in four unrelated
  * modules, a reason code has been declared, given a severity, documented, and
@@ -3652,6 +3652,52 @@ harvest(
       .filter((game) => game.date === '2026-11-14' && game.venueId === 'summit-hs')
       .map((game) => game.id),
   })
+);
+
+harvest(
+  'feasibleKickoffBounds(a registry that hardens a base-compromise availability code)',
+  // `PERMIT_MARGIN_TIGHT` is `compromise` in `availability/reasonCodes.js`;
+  // `latestLegalKickoff()` selects the hard bound on that table while this
+  // module judges it on the registry's. A club whose permit states the comfort
+  // margin as a condition holds the record below, the two views then differ,
+  // and the answer says which one chose the bound it reports.
+  feasibleKickoffBounds(
+    buildAttributionContext({
+      graph,
+      table: timingTable,
+      calendar,
+      registry: buildSeason2026ConstraintRegistry({
+        extraConstraints: [
+          {
+            id: 'permit-margin-hard-reachability',
+            policy: 'permit-margin',
+            name: 'The permit comfort margin is a condition of the permit here',
+            type: CONSTRAINT_TYPE.HARD,
+            scope: { kind: CONSTRAINT_SCOPE_KIND.GLOBAL },
+            parameters: { marginMinutes: 15 },
+            restrictiveDirection: 'higher',
+            rationale:
+              'A permit that states its fifteen minutes as a condition rather than a courtesy makes the same code hard; the registry is where that hardness lives.',
+            source: {
+              setBy: 'this audit',
+              setAt: null,
+              reference: 'a constructed record, carried by no corpus',
+              note: 'constructed input, dated by nothing',
+            },
+            effectiveFrom: null,
+            effectiveTo: null,
+            enforcement: CONSTRAINT_ENFORCEMENT.REASON_CODES,
+            reasonCodes: [AVAILABILITY_REASON.PERMIT_MARGIN_TIGHT],
+            weight: null,
+            waivable: false,
+            history: [],
+          },
+        ],
+      }),
+      schedule,
+    }),
+    { surfaceId: 'brookside-park/upper-1', date: '2026-08-22', format: '4v4' }
+  )
 );
 
 harvest(

@@ -305,6 +305,67 @@ function blockingOnly(findings) {
 }
 
 /**
+ * **What counts as *speaking* at a threshold.**
+ *
+ * One function, so the severity view that *selects* a boundary is the same one
+ * that *judges* it. It was not: `latestLegalKickoff()` picks the hard bound off
+ * `availability/`'s own base severities while `boundaryOf()` re-severities the
+ * same minute through the registry, and a registry that makes a base-`compromise`
+ * availability code hard — which is the registry's entire purpose — then produced
+ * an answer naming a latest legal kickoff and calling the position infeasible in
+ * the same breath. 217 of this corpus's 1,872 bounds combinations did exactly
+ * that under one such record.
+ *
+ * At {@link FEASIBILITY_THRESHOLD.HARD} a finding speaks when it is `blocking`;
+ * at {@link FEASIBILITY_THRESHOLD.CLEAN}, when it is anything above `info`. The
+ * findings handed in are always the registry's view of them —
+ * {@link probeKickoff} and {@link underRegistry} produce no other kind — so
+ * "selected under the same severities it is judged under" is a property of the
+ * call graph rather than a habit kept at three call sites.
+ *
+ * @param {string} threshold - a `FEASIBILITY_THRESHOLD` value
+ * @param {ReadonlyArray<{ severity: string }>} findings
+ * @returns {Array<Object>} the members that speak at that threshold
+ */
+export function speaksAt(threshold, findings) {
+  return threshold === FEASIBILITY_THRESHOLD.HARD
+    ? blockingOnly(findings)
+    : consequential(findings);
+}
+
+/**
+ * **Who blocked it, read off the very list the verdict was derived from.**
+ *
+ * `deriveFeasibilityEvidence()` folds a list of severity-bearing records into
+ * `blocked`; this names the records that made it so. The two read the same list
+ * on purpose: `FEASIBILITY_BLOCKED_OUTSIDE_FACILITY` used to name its sources
+ * from `blockers` alone while the verdict was derived from `blockers` *and* the
+ * travel findings no transition owns, so a blocker arriving by the second route
+ * produced the sentence *"what blocks it is stated in the blockers"* — about
+ * something the blockers do not state. Deriving both from one list is what makes
+ * that unsayable rather than merely unobserved.
+ *
+ * Every record must carry its own `source` and `codes`; nothing is inferred from
+ * a code prefix here, because provenance is the one thing this finding exists to
+ * report.
+ *
+ * @param {ReadonlyArray<{ severity: string, source: string, codes: ReadonlyArray<string> }>} evidence
+ * @returns {{ sources: string[], codes: string[] }}
+ */
+export function blockingEvidenceOf(evidence) {
+  /** @type {Set<string>} */
+  const sources = new Set();
+  /** @type {Set<string>} */
+  const codes = new Set();
+  for (const record of evidence) {
+    if (record.severity !== CONSTRAINT_SEVERITY.BLOCKING) continue;
+    sources.add(record.source);
+    for (const code of record.codes ?? []) codes.add(code);
+  }
+  return { sources: [...sources].sort(), codes: [...codes].sort() };
+}
+
+/**
  * **A boundary describes its own position, and nobody else's.**
  *
  * The rule `types.js` states about {@link import('./types.js').FeasibilityBoundary}
@@ -324,6 +385,17 @@ function blockingOnly(findings) {
  * about. A result that states no kickoff at all — the empty one a caller builds
  * when there is no clean boundary to probe — reads as `null` and matches a
  * boundary that has none.
+ *
+ * **What it does and does not currently guarantee, so nobody reads more into it
+ * than is there.** For the *clean* boundary it is a real check: the position is
+ * found by `searchBoundary()` and the result is a separate probe, so a search
+ * and a probe that disagreed would be caught. For the *hard* boundary it is
+ * tautological — `feasibleKickoffBounds()` derives the position and the result
+ * from the same call in every branch (availability's own answer, a probe at the
+ * minute the registry moved the bound to, or the empty result when there is
+ * none), so the two cannot differ. It is kept there as a guard against a future
+ * caller that pairs them by hand, which is the mistake it was written for, not
+ * because it is presently falsifiable on that path.
  *
  * @param {Object} result - a `checkKickoffAvailability()` or `latestLegalKickoff()` answer
  * @param {number|null} kickoffMinutes - the boundary's own position
@@ -366,10 +438,7 @@ export function bindingAt(engines, at, existingBookings, boundaryResult, thresho
     existingBookings,
     meta
   );
-  const speaking =
-    threshold === FEASIBILITY_THRESHOLD.HARD
-      ? blockingOnly(probe.findings)
-      : consequential(probe.findings);
+  const speaking = speaksAt(threshold, probe.findings);
   const grouped = groupFindingsByConstraintKind(
     /** @type {ReadonlyArray<import('../attribution/types.js').AttributionFinding>} */ (speaking)
   );

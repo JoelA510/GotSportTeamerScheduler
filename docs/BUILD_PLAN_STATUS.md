@@ -48,10 +48,10 @@ and not yet merged.
 committed. `packages/core/src/feasibility/` (`reasonCodes.js`, `schemas.js`,
 `types.js`, `verdict.js`, `queries.js`, `index.js`) plus
 `tests/feasibilityApi.test.js`; `tests/reasonCodeReachability.test.js` gains the
-sixteenth vocabulary and its driver. Suite **1776 -> 1877**, measured at each
+sixteenth vocabulary and its driver. Suite **1776 -> 1884**, measured at each
 commit rather than added up: 62 new cases with the feature (`a393c60`), 25 more
 from the first pre-PR review round (`ece79b3`), 5 from the second round below,
-9 from the third. All six gates green, season fixture green.
+9 from the third, 7 from the fourth. All six gates green, season fixture green.
 
 Three queries, one answer shape: `canGameMove()`, `canTeamPlay()`,
 `feasibleKickoffBounds()`. A verdict is three-valued
@@ -62,8 +62,10 @@ under one stated sign convention and is `null` — never `0` — when nothing
 measured a bound.
 
 **The second threshold is the new work.** `latestHard` is the last kickoff that
-raises nothing `blocking` (`latestLegalKickoff()`'s own answer, reproduced
-exactly); `latestClean` is the last that raises nothing above `info` at all. The
+raises nothing `blocking` (`latestLegalKickoff()`'s own answer, confirmed under
+the registry — see round four's finding 1; on this corpus the confirmation
+changes nothing and the answer is reproduced exactly); `latestClean` is the last
+that raises nothing above `info` at all. The
 gap is `tightBandMinutes`. On this corpus: Alder 08/22 18:15/18:15, Alder 11/14
 14:50/14:50, Summit 11/14 19:30/19:15.
 
@@ -186,6 +188,52 @@ site rather than in the thing that produces it.
    Its falsification is round two's finding 4 reconstructed: the hard result of
    Alder pitch 2 on 08/22 at 9v9, offered as a boundary with no position, is
    refused.
+
+**The fourth pre-PR review round.** Two findings, and the change from the first
+three rounds is that **neither fires on the corpus as it ships**. Both are about
+internal consistency, and both are shown against constructed input through
+public entry points rather than against the season.
+
+1. **Two severity views in one answer.** Round three's own fix arriving from the
+   other side. `feasibleKickoffBounds()` derives the verdict from `hard.claims`,
+   which `boundaryOf()` re-severities through the registry, while
+   `latestLegalKickoff()` *selects* the hard bound on `availability/`'s own
+   frozen table. Add one HARD registry record over a base-`compromise`
+   availability code — `PERMIT_MARGIN_TIGHT`, which is what a registry is for —
+   and **217 of the 1,872** bounds combinations come back `infeasible` while
+   naming a latest legal kickoff, a binding set and a margin. The same probe on
+   `fd676cf` gives 0, so round three introduced it. The bound is now **chosen
+   under the view it is judged under**: availability's answer is confirmed
+   through `underRegistry()` and, where the registry refuses it, the same
+   generate-and-confirm search the clean boundary already used continues
+   downward, with `speaksAt()` as the one place a threshold becomes a severity
+   test for the selection, the binding probe and both boundaries. The search
+   only ever proposes minutes at or below availability's own, so this module can
+   be more conservative than `availability/kickoff.js` and never less. A moved
+   bound says so: `FEASIBILITY_BOUND_UNDER_REGISTRY` (`info`) names the minute
+   availability offered, the minute reported instead and the codes that
+   differed. `latestLegalKickoff()`'s contract is untouched. The rule — no
+   answer may name a boundary it calls infeasible — is asserted over both
+   registries, 3,744 answers, with the moved bound checked against a
+   minute-by-minute scan at the hard threshold.
+2. **A finding that named no source.** `FEASIBILITY_BLOCKED_OUTSIDE_FACILITY`
+   read its `sources`/`codes` off `blockers` while the verdict was folded from
+   `blockers` *plus* the travel findings no transition owns, so a blocker
+   arriving by the second route printed *"what blocks it is stated in the
+   blockers"* — about something the blockers do not state. The list is kept,
+   because it is the only thing that stops an unclaimed travel blocker becoming
+   an unnoticed one, and the message now describes it: unowned travel findings
+   are carried as source-bearing records and `blockingEvidenceOf()` names the
+   blocking members of **the same list** `deriveFeasibilityEvidence()` read, so
+   the finding cannot be reached with nothing to name. The end-to-end case is
+   **not constructible today and is not claimed to be**: the only unowned travel
+   findings are scan-level, and no scan-level travel code can be `blocking`
+   under any constraint type. That is asserted from the evaluator's own output
+   rather than asserted about it, so a scan-level blocking code added later
+   fails the test instead of quietly re-opening the hole. Nine corpus answers
+   change, all of them the same message gaining the codes in brackets; no
+   verdict, margin, boundary, status or `details` field moves anywhere in the
+   corpus.
 
 Nothing in flight otherwise. 6.1 merged as #351 after seven review rounds
 (11 -> 6 -> 4 -> 2 -> 4 -> 1 -> 0 findings) and one CI failure of its own making:

@@ -296,6 +296,21 @@ export const FEASIBILITY_REASON = Object.freeze({
    */
   FEASIBILITY_BOUND_JOINT: 'FEASIBILITY_BOUND_JOINT',
   /**
+   * The registry moved a bound that `availability/kickoff.js` had chosen.
+   *
+   * `info`, and it is provenance for a *disagreement* rather than a defect.
+   * `latestLegalKickoff()` selects the latest minute at which nothing raises a
+   * finding that is `blocking` **in `availability/`'s own frozen table**; every
+   * other severity question this module asks goes through the registry, which
+   * may make a base-`compromise` code hard (`PERMIT_MARGIN_TIGHT` under a club
+   * whose permit states the comfort margin as a condition) or a base-`blocking`
+   * one softer. Where the two views differ, this module reports the bound the
+   * registry allows — the view it judges under — and this finding names the
+   * minute availability offered, the minute reported instead, and the codes that
+   * made the difference, so the disagreement is legible rather than silent.
+   */
+  FEASIBILITY_BOUND_UNDER_REGISTRY: 'FEASIBILITY_BOUND_UNDER_REGISTRY',
+  /**
    * Nothing this run holds bounds the thing asked about, so the boundary is the
    * top of the searched range rather than a limit anybody stated.
    *
@@ -392,6 +407,7 @@ export const FEASIBILITY_REASON_SEVERITY = Object.freeze({
   [FEASIBILITY_REASON.FEASIBILITY_FORMAT_UNCARRIED]: FEASIBILITY_SEVERITY.COMPROMISE,
 
   [FEASIBILITY_REASON.FEASIBILITY_BOUND_JOINT]: FEASIBILITY_SEVERITY.INFO,
+  [FEASIBILITY_REASON.FEASIBILITY_BOUND_UNDER_REGISTRY]: FEASIBILITY_SEVERITY.INFO,
   [FEASIBILITY_REASON.FEASIBILITY_BOUND_UNSTATED]: FEASIBILITY_SEVERITY.COMPROMISE,
   [FEASIBILITY_REASON.FEASIBILITY_MARGIN_UNAVAILABLE]: FEASIBILITY_SEVERITY.INFO,
   [FEASIBILITY_REASON.FEASIBILITY_TIGHT]: FEASIBILITY_SEVERITY.INFO,
