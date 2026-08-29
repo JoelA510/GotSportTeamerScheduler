@@ -3260,3 +3260,377 @@ describe('feasibility :: round 4, finding 2 — a denial names the layer that de
     }
   });
 });
+
+/* -------------------------------------------------------------------------- */
+/* Fifth pre-PR review of 7.1 — a refusal that publishes what refused it, and   */
+/* a finding that speaks only when the bound moved                             */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * **A HARD registry record over a base-`compromise` facility code.**
+ *
+ * `LINING_MISMATCH` is `compromise` in `facility/reasonCodes.js` — playable with
+ * portable goals, and the schedule should say so — and a club that will not put
+ * a 4v4 game on ground lined for something else holds exactly this record. It is
+ * the registry used as designed (GAP-12), and it refuses **every** minute of the
+ * day rather than moving the bound down, which is the arm the season corpus
+ * cannot reach.
+ *
+ * Built through `buildSeason2026ConstraintRegistry({ extraConstraints })`, the
+ * adapter's own public door, and validated by `ConstraintRecordSchema`.
+ */
+const LINING_IS_HARD = Object.freeze({
+  id: 'lining-mismatch-hard-2026',
+  policy: 'surface-lining',
+  name: 'This club does not play on ground lined for another format',
+  type: CONSTRAINT_TYPE.HARD,
+  scope: { kind: 'global' },
+  parameters: {},
+  restrictiveDirection: 'higher',
+  rationale:
+    'A club that refuses portable-goal arrangements holds this record; the code is the same one, at a hardness the registry decides.',
+  source: {
+    setBy: 'pre-PR review, round five',
+    setAt: null,
+    reference: 'the review finding about an infeasible answer that explains nothing',
+    note: 'a constructed record, carried by no season corpus and dated by nothing',
+  },
+  effectiveFrom: null,
+  effectiveTo: null,
+  enforcement: 'reason-codes',
+  reasonCodes: [FACILITY_REASON.LINING_MISMATCH],
+  weight: null,
+  waivable: false,
+  history: [],
+});
+
+/**
+ * **A HARD registry record over a code no probe can raise.**
+ *
+ * `LATEST_KICKOFF_BOUND` is `latestLegalKickoff()`'s own provenance finding: it
+ * is synthesised *after* a minute is accepted, and `checkKickoffAvailability()`
+ * — the function every confirmation in this module goes through — never emits
+ * it. A registry that governs it is a registry governing a code that appears in
+ * one of the two lists and can never appear in the other, which is what makes it
+ * the falsifier for a comparison across lists of different kinds.
+ */
+const LATEST_BOUND_IS_HARD = Object.freeze({
+  id: 'latest-kickoff-bound-hard-2026',
+  policy: 'latest-kickoff-bound',
+  name: 'The derived latest-kickoff bound is a condition here',
+  type: CONSTRAINT_TYPE.HARD,
+  scope: { kind: 'global' },
+  parameters: {},
+  restrictiveDirection: 'higher',
+  rationale:
+    'A registry may name any reason code; this one names the search summary, which is the case that proves selection and judgement read one list.',
+  source: {
+    setBy: 'pre-PR review, round five',
+    setAt: null,
+    reference: 'the review finding about "the registry moved the bound" when it did not',
+    note: 'a constructed record, carried by no season corpus and dated by nothing',
+  },
+  effectiveFrom: null,
+  effectiveTo: null,
+  enforcement: 'reason-codes',
+  reasonCodes: [AVAILABILITY_REASON.LATEST_KICKOFF_BOUND],
+  weight: null,
+  waivable: false,
+  history: [],
+});
+
+/** @type {Map<string, Object>} */
+const extraContextMemo = new Map();
+
+/**
+ * The same world, under a registry that holds one more record. Built once each.
+ *
+ * @param {Object} record - a `ConstraintRecord`
+ * @returns {Object} a frozen `AttributionContext`
+ */
+function contextWith(record) {
+  const memo = extraContextMemo.get(record.id);
+  if (memo) return memo;
+  const extraRegistry = buildSeason2026ConstraintRegistry({ extraConstraints: [record] });
+  const built = deepFreeze(
+    buildAttributionContext({
+      graph,
+      table,
+      calendar,
+      registry: extraRegistry,
+      schedule,
+      verification: runRuleEngine(schedule, {
+        registry: extraRegistry,
+        resources: { graph, timingTable: table, calendar, venueComplexes },
+      }),
+      venueComplexes,
+      roster,
+    })
+  );
+  extraContextMemo.set(record.id, built);
+  return built;
+}
+
+/** The cell both round-five findings were reproduced on. */
+const ROUND_FIVE_CELL = Object.freeze({
+  surfaceId: 'brookside-park/upper-1',
+  date: '2026-08-22',
+  format: '4v4',
+});
+
+/**
+ * Availability's own latest legal kickoff for a bounds cell, registry-blind.
+ *
+ * @param {{ surfaceId: string, date: string, format: string }} cell
+ * @returns {Object} a `latestLegalKickoff()` result
+ */
+function blindBoundOf(cell) {
+  return latestLegalKickoff(
+    graph,
+    table,
+    calendar,
+    { surfaceId: cell.surfaceId, date: cell.date, format: cell.format },
+    { existingBookings: standingBookings(context.state, cell.date, []) }
+  );
+}
+
+describe('feasibility :: round 5, finding 1 — a bound refused everywhere publishes the refusal', () => {
+  it('really does promote the code, so everything below is about a live re-severity', () => {
+    const where = {
+      date: ROUND_FIVE_CELL.date,
+      venueId: 'brookside-park',
+      surfaceId: ROUND_FIVE_CELL.surfaceId,
+      surfaceLineage: [ROUND_FIVE_CELL.surfaceId],
+    };
+    expect(baseSeverityOf(FACILITY_REASON.LINING_MISMATCH)).toBe(CONSTRAINT_SEVERITY.COMPROMISE);
+    // Nothing in the shipped season governs it, which is why this is latent.
+    expect(
+      effectiveSeverityTable(registry, where).severityByCode[FACILITY_REASON.LINING_MISMATCH]
+    ).toBeUndefined();
+    expect(
+      effectiveSeverityTable(contextWith(LINING_IS_HARD).engines.registry, where).severityByCode[
+        FACILITY_REASON.LINING_MISMATCH
+      ]
+    ).toBe(CONSTRAINT_SEVERITY.BLOCKING);
+  });
+
+  it('reaches the arm where the search finds no legal minute at all', () => {
+    // The registry refuses a minute availability itself offers, and refuses
+    // every minute below it too — so this is the substitution branch and not
+    // the moved-bound one round four is about.
+    expect(blindBoundOf(ROUND_FIVE_CELL).kickoffMinutes).not.toBeNull();
+    const answer = feasibleKickoffBounds(contextWith(LINING_IS_HARD), ROUND_FIVE_CELL);
+    expect(answer.latestHard.kickoffMinutes).toBeNull();
+    expect(answer.verdict).toBe(FEASIBILITY_VERDICT.INFEASIBLE);
+    // …and it still names none of the parts of a boundary it does not have.
+    expect(answer.binding).toEqual([]);
+    expect(answer.marginMinutes).toBeNull();
+    expect(answer.marginBasis).toBeNull();
+  });
+
+  it('publishes what refused it, rather than an empty result', () => {
+    const answer = feasibleKickoffBounds(contextWith(LINING_IS_HARD), ROUND_FIVE_CELL);
+    const boundary = answer.latestHard;
+    // The evidence the answer publishes is what the verdict is derived from.
+    expect(deriveFeasibilityEvidence(boundary.claims).blocked).toBe(true);
+    expect(boundary.claims.flatMap((claim) => claim.codes)).toContain(
+      FACILITY_REASON.LINING_MISMATCH
+    );
+    for (const claim of boundary.claims) {
+      expect(isSpecificClaim(claim)).toBe(true);
+      expect(claim.codes.length + Object.keys(claim.computed).length).toBeGreaterThan(0);
+    }
+  });
+
+  it('takes that evidence from the refusal that happened, not from somewhere else', () => {
+    const ctx = contextWith(LINING_IS_HARD);
+    const answer = feasibleKickoffBounds(ctx, ROUND_FIVE_CELL);
+    // The refusal happened at availability's own bound, and a fresh probe of
+    // that minute is where every published part of this boundary comes from.
+    const refusedAt = /** @type {number} */ (blindBoundOf(ROUND_FIVE_CELL).kickoffMinutes);
+    const probe = probeKickoff(
+      ctx.engines,
+      { ...ROUND_FIVE_CELL, kickoffMinutes: refusedAt, ignoreBookingIds: [] },
+      standingBookings(ctx.state, ROUND_FIVE_CELL.date, []),
+      createFeasibilityMeta()
+    );
+    // Meta-assertion: the probe examined constraints, so the comparisons below
+    // are between two populated lists rather than between two empty ones.
+    expect(probe.result.constraints.length).toBeGreaterThan(0);
+    expect(answer.latestHard.notApplicable.map((entry) => entry.kind).sort()).toEqual(
+      probe.result.constraints
+        .filter((constraint) => !constraint.applicable)
+        .map((constraint) => constraint.kind)
+        .sort()
+    );
+    const applicableKinds = probe.result.constraints
+      .filter((constraint) => constraint.applicable)
+      .map((constraint) => constraint.kind);
+    expect(applicableKinds.length).toBeGreaterThan(0);
+    for (const kind of applicableKinds) {
+      expect(answer.latestHard.claims.map((claim) => claim.kind)).toContain(kind);
+    }
+  });
+
+  it('is the treatment the blackout already had, on the same two properties', () => {
+    // The path this one was inconsistent with: Summit HS on 09/19 has no hard
+    // boundary either, and has always published the permit record that explains
+    // it. Both arms are now checked by one rule rather than one of them by
+    // precedent.
+    for (const [label, answer] of /** @type {const} */ ([
+      [
+        'blackout',
+        feasibleKickoffBounds(context, {
+          surfaceId: SUMMIT,
+          date: '2026-09-19',
+          format: '11v11',
+        }),
+      ],
+      ['registry refusal', feasibleKickoffBounds(contextWith(LINING_IS_HARD), ROUND_FIVE_CELL)],
+    ])) {
+      expect(answer.latestHard.kickoffMinutes, label).toBeNull();
+      expect(answer.verdict, label).toBe(FEASIBILITY_VERDICT.INFEASIBLE);
+      expect(answer.latestHard.claims.length, label).toBeGreaterThan(0);
+      expect(deriveFeasibilityEvidence(answer.latestHard.claims).blocked, label).toBe(true);
+    }
+  });
+
+  it('holds wherever that registry refuses a whole day, not on one cell', () => {
+    const ctx = contextWith(LINING_IS_HARD);
+    /** @type {string[]} */
+    const offenders = [];
+    let refusedEverywhere = 0;
+    for (const cell of boundsCorpus()) {
+      const answer = feasibleKickoffBounds(ctx, cell);
+      const said = answer.findings.filter(
+        (finding) => finding.code === FEASIBILITY_REASON.FEASIBILITY_BOUND_UNDER_REGISTRY
+      );
+      if (said.length === 0 || said[0].details.kickoffMinutes !== null) continue;
+      refusedEverywhere += 1;
+      const at = `${cell.surfaceId} ${cell.date} ${cell.format}`;
+      if (answer.latestHard.claims.length === 0) {
+        offenders.push(`${at}: refused by the registry and publishes no claim at all`);
+        continue;
+      }
+      if (!deriveFeasibilityEvidence(answer.latestHard.claims).blocked) {
+        offenders.push(`${at}: publishes claims, none of which blocks anything`);
+      }
+    }
+    expect(offenders.slice(0, 5)).toEqual([]);
+    expect(offenders).toHaveLength(0);
+    // Meta-assertion: the arm was reached, so the rule above judged something.
+    expect(refusedEverywhere).toBeGreaterThan(0);
+  }, 120_000);
+});
+
+describe('feasibility :: round 5, finding 2 — "the registry moved the bound" only when it moved', () => {
+  it('really does promote a code, and it is one no probe can raise', () => {
+    const where = {
+      date: ROUND_FIVE_CELL.date,
+      venueId: 'brookside-park',
+      surfaceId: ROUND_FIVE_CELL.surfaceId,
+      surfaceLineage: [ROUND_FIVE_CELL.surfaceId],
+    };
+    expect(baseSeverityOf(AVAILABILITY_REASON.LATEST_KICKOFF_BOUND)).toBe(CONSTRAINT_SEVERITY.INFO);
+    expect(
+      effectiveSeverityTable(registry, where).severityByCode[
+        AVAILABILITY_REASON.LATEST_KICKOFF_BOUND
+      ]
+    ).toBeUndefined();
+    expect(
+      effectiveSeverityTable(contextWith(LATEST_BOUND_IS_HARD).engines.registry, where)
+        .severityByCode[AVAILABILITY_REASON.LATEST_KICKOFF_BOUND]
+    ).toBe(CONSTRAINT_SEVERITY.BLOCKING);
+  });
+
+  it('does not say the bound moved when the search re-accepts the same minute', () => {
+    const ctx = contextWith(LATEST_BOUND_IS_HARD);
+    const answer = feasibleKickoffBounds(ctx, ROUND_FIVE_CELL);
+    const blind = blindBoundOf(ROUND_FIVE_CELL);
+    // The registry hardens a code the confirmation cannot raise, so the minute
+    // availability offered is confirmed and the bound is exactly availability's.
+    expect(answer.latestHard.kickoffMinutes).toBe(blind.kickoffMinutes);
+    expect(
+      answer.findings.filter(
+        (finding) => finding.code === FEASIBILITY_REASON.FEASIBILITY_BOUND_UNDER_REGISTRY
+      )
+    ).toEqual([]);
+  });
+
+  it('still says it where the bound genuinely moved — the positive control', () => {
+    const answer = feasibleKickoffBounds(promotedContext(), ROUND_FIVE_CELL);
+    const said = answer.findings.filter(
+      (finding) => finding.code === FEASIBILITY_REASON.FEASIBILITY_BOUND_UNDER_REGISTRY
+    );
+    expect(said).toHaveLength(1);
+    expect(said[0].details.availabilityKickoffMinutes).not.toBe(said[0].details.kickoffMinutes);
+  });
+
+  it('never says it while reporting the minute availability offered, under any of four registries', () => {
+    /** @type {string[]} */
+    const offenders = [];
+    let said = 0;
+    for (const [label, ctx] of /** @type {const} */ ([
+      ['plain', context],
+      ['permit-margin-hard', promotedContext()],
+      ['lining-hard', contextWith(LINING_IS_HARD)],
+      ['latest-bound-hard', contextWith(LATEST_BOUND_IS_HARD)],
+    ])) {
+      for (const cell of boundsCorpus()) {
+        const answer = feasibleKickoffBounds(ctx, cell);
+        for (const finding of answer.findings) {
+          if (finding.code !== FEASIBILITY_REASON.FEASIBILITY_BOUND_UNDER_REGISTRY) continue;
+          said += 1;
+          if (finding.details.availabilityKickoffMinutes === finding.details.kickoffMinutes) {
+            offenders.push(
+              `${label} ${cell.surfaceId} ${cell.date} ${cell.format}: said the bound moved to the minute it already was (${JSON.stringify(finding.details.kickoffMinutes)})`
+            );
+          }
+        }
+      }
+    }
+    expect(offenders.slice(0, 5)).toEqual([]);
+    expect(offenders).toHaveLength(0);
+    // Meta-assertion: the finding was emitted somewhere, so the rule judged it.
+    expect(said).toBeGreaterThan(0);
+  }, 300_000);
+
+  it('reads the refusal off a probe, whose findings are a subset of the searcher own', () => {
+    // **The control that makes the two lists comparable.** Everything
+    // `checkKickoffAvailability()` says about a minute is carried by
+    // `latestLegalKickoff()` about the minute it accepted; the reverse is false,
+    // and `LATEST_KICKOFF_BOUND` is why. So a refusal read off the searcher's
+    // list can name a code the confirmation can never see, and a refusal read
+    // off a probe cannot.
+    /** @type {string[]} */
+    const offenders = [];
+    let compared = 0;
+    /** @type {Set<string>} */
+    const extras = new Set();
+    for (const cell of boundsCorpus()) {
+      const blind = blindBoundOf(cell);
+      if (blind.kickoffMinutes === null) continue;
+      compared += 1;
+      const probe = probeKickoff(
+        context.engines,
+        { ...cell, kickoffMinutes: blind.kickoffMinutes, ignoreBookingIds: [] },
+        standingBookings(context.state, cell.date, []),
+        createFeasibilityMeta()
+      );
+      const searcherCodes = new Set(blind.findings.map((finding) => finding.code));
+      const probeCodes = new Set(probe.result.findings.map((finding) => finding.code));
+      for (const code of probeCodes) {
+        if (!searcherCodes.has(code)) {
+          offenders.push(`${cell.surfaceId} ${cell.date} ${cell.format}: probe-only code ${code}`);
+        }
+      }
+      for (const code of searcherCodes) if (!probeCodes.has(code)) extras.add(code);
+    }
+    expect(offenders.slice(0, 5)).toEqual([]);
+    expect(offenders).toHaveLength(0);
+    // Meta-assertions: real cells were compared, and the two lists really do
+    // differ — a subset check between identical lists would prove nothing.
+    expect(compared).toBeGreaterThan(0);
+    expect([...extras].sort()).toEqual([AVAILABILITY_REASON.LATEST_KICKOFF_BOUND]);
+  }, 120_000);
+});

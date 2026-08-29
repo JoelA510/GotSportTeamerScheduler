@@ -54,6 +54,7 @@ import {
 import {
   categoryOnlyClaimFindings,
   claimFromAvailabilityConstraint,
+  claimFromFinding,
   claimFromTravelTransition,
   groupFindingsByConstraintKind,
   mergeClaimsByTightness,
@@ -1378,9 +1379,9 @@ export function feasibleKickoffBounds(context, rawQuery) {
   // So availability's answer is *confirmed* under the registry, and where the
   // registry refuses it the same generate-and-confirm search the clean boundary
   // uses continues downward from it. The confirmation costs nothing on ground
-  // where the two views agree — `hardResult.findings` are the minute's own, and
-  // `underRegistry()` is the lookup `boundaryOf()` runs on them anyway — so no
-  // answer this corpus produces moves.
+  // where the two views agree — the gate below is `underRegistry()`, the same
+  // lookup `boundaryOf()` runs anyway — so no answer this corpus produces
+  // moves.
   //
   // The search only ever proposes minutes at or below availability's own, so
   // this module can be more conservative than `availability/kickoff.js` and
@@ -1389,21 +1390,50 @@ export function feasibleKickoffBounds(context, rawQuery) {
   // available rather than over-reporting it, and is the direction a read-only
   // answer should err in.
   const availabilityMinutes = hardResult.kickoffMinutes;
+  // **The refusal is read off the list the confirmation reads, not off the
+  // searcher's.** `latestLegalKickoff()` returns the accepted minute's own
+  // findings *plus* summaries of its own search — `LATEST_KICKOFF_BOUND` is
+  // one, synthesised after a minute is accepted and raised by
+  // `checkKickoffAvailability()` never. A registry that governs such a code made
+  // this comparison report a bound the registry had moved when the search
+  // re-accepted the identical minute, with `availabilityKickoffMinutes` equal to
+  // `kickoffMinutes` in the finding that said so. So the decision is taken on a
+  // fresh probe of availability's own bound: the same function
+  // `searchBoundary()` confirms every candidate through, judged by the same
+  // `speaksAt()`, so selection and judgment read one list in fact.
+  //
+  // The probe is only taken where a refusal is possible at all. Everything a
+  // probe says about a minute is carried by the search that accepted that
+  // minute — the searcher pushes `attempt.findings` whole — so a registry that
+  // refuses nothing in the searcher's larger list refuses nothing in the
+  // probe's smaller one, and the season corpus, which governs no availability
+  // code more harshly than its base, pays for no probe at all. The containment
+  // is asserted over the corpus in `tests/feasibilityApi.test.js` rather than
+  // assumed here.
+  const refusalPossible =
+    availabilityMinutes !== null &&
+    speaksAt(
+      FEASIBILITY_THRESHOLD.HARD,
+      underRegistry(
+        engines,
+        {
+          surfaceId: query.surfaceId,
+          venueId: hardResult.venueId ?? surface?.venueId ?? null,
+          date: query.date,
+        },
+        hardResult.findings ?? []
+      )
+    ).length > 0;
+  const boundProbe = refusalPossible
+    ? probeKickoff(
+        engines,
+        { ...at, kickoffMinutes: /** @type {number} */ (availabilityMinutes) },
+        existingBookings,
+        meta
+      )
+    : null;
   const refusedAtAvailabilityBound =
-    availabilityMinutes === null
-      ? []
-      : speaksAt(
-          FEASIBILITY_THRESHOLD.HARD,
-          underRegistry(
-            engines,
-            {
-              surfaceId: query.surfaceId,
-              venueId: hardResult.venueId ?? surface?.venueId ?? null,
-              date: query.date,
-            },
-            hardResult.findings ?? []
-          )
-        );
+    boundProbe === null ? [] : speaksAt(FEASIBILITY_THRESHOLD.HARD, boundProbe.findings);
   const hardMinutes =
     refusedAtAvailabilityBound.length === 0
       ? availabilityMinutes
@@ -1419,20 +1449,36 @@ export function feasibleKickoffBounds(context, rawQuery) {
   // A boundary describes its own position, so a bound the registry moved is
   // described by a fresh probe of the minute it moved to — never in the words
   // of the minute availability offered. `assertBoundaryResult()` enforces it.
+  //
+  // **And a bound the registry refused everywhere describes the refusal.** This
+  // branch used to substitute `{ constraints: [], findings: [] }`, so the answer
+  // sealed `infeasible` while publishing an empty binding set, no claims and no
+  // inapplicable constraints: the verdict rode on the caller's `blocked` flag
+  // while `deriveFeasibilityEvidence()` saw nothing, about a position the
+  // registry had a great deal to say about. The blackout path has always done
+  // the opposite — Summit HS on 2026-09-19 has no boundary and publishes
+  // `PERMIT_BLACKOUT` — so this is the same treatment rather than a second one.
+  // The evidence is the refusal's own probe with the position taken off it,
+  // because there is no position: nothing is invented, and nothing that spoke
+  // is discarded.
   const hardBoundaryResult =
     hardMinutes === availabilityMinutes
       ? hardResult
       : hardMinutes === null
         ? {
-            constraints: [],
-            findings: [],
+            .../** @type {{ result: Object }} */ (boundProbe).result,
             endMinutes: null,
             kickoffMinutes: null,
-            venueId: surface?.venueId ?? null,
           }
         : probeKickoff(engines, { ...at, kickoffMinutes: hardMinutes }, existingBookings, meta)
             .result;
-  if (refusedAtAvailabilityBound.length > 0) {
+  // **Emitted from the comparison it asserts.** The sentence is *"the bound this
+  // answer reports is not the one availability offered"*, so it is said when
+  // those two minutes differ rather than when a refusal was found. The two are
+  // the same condition — the search's first candidate is availability's own
+  // minute and the refusal is exactly what rejects it — and stating it this way
+  // means the finding cannot outlive that being true.
+  if (refusedAtAvailabilityBound.length > 0 && hardMinutes !== availabilityMinutes) {
     findings.push(
       makeFeasibilityFinding(
         FEASIBILITY_REASON.FEASIBILITY_BOUND_UNDER_REGISTRY,
@@ -1459,7 +1505,8 @@ export function feasibleKickoffBounds(context, rawQuery) {
     hardMinutes,
     FEASIBILITY_THRESHOLD.HARD,
     meta,
-    categoryOnlyClaims
+    categoryOnlyClaims,
+    refusedAtAvailabilityBound
   );
 
   const cleanMinutes = searchBoundary(
@@ -1634,6 +1681,11 @@ export function feasibleKickoffBounds(context, rawQuery) {
  * @param {import('./types.js').FeasibilityMeta} meta
  * @param {Array<Object>} categoryOnlyClaims - collector for claims that fail the
  *   specific-instance test; never expected to receive one
+ * @param {ReadonlyArray<{ code: string, severity: string, message: string, details: Record<string, unknown> }>} [refusedBy] -
+ *   the findings that refused this boundary's *existence*, when it has no
+ *   position because something refused every minute. Only these are published as
+ *   claims of their own, and only when there is no position: at a boundary that
+ *   exists the constraints of its own minute are the whole answer
  * @returns {import('./types.js').FeasibilityBoundary}
  */
 function boundaryOf(
@@ -1644,7 +1696,8 @@ function boundaryOf(
   kickoffMinutes,
   threshold,
   meta,
-  categoryOnlyClaims
+  categoryOnlyClaims,
+  refusedBy = []
 ) {
   assertBoundaryResult(result, kickoffMinutes, threshold);
   const probesBefore = meta.boundaryProbesRun;
@@ -1676,11 +1729,56 @@ function boundaryOf(
       ).filter((finding) => finding.severity !== CONSTRAINT_SEVERITY.INFO)
     )
   );
-  const claims = (result.constraints ?? [])
+  const bounds = (result.constraints ?? [])
     .filter((constraint) => constraint.applicable)
     .map((constraint) =>
       claimFromAvailabilityConstraint(constraint, claimCtx, grouped.byKind[constraint.kind] ?? [])
     );
+  // **What refused a boundary that does not exist, when no bound of its own owns
+  // the code that did it.** `FeasibilityBoundary` says a boundary with no
+  // position carries the constraints explaining its absence, and a registry that
+  // hardens a code no availability constraint kind claims — `LINING_MISMATCH` is
+  // one — refuses every minute of the day while none of the four edges says a
+  // word. Those findings became claims of nobody's, so the answer sealed
+  // `infeasible` on evidence it did not publish. They are restated here through
+  // the same builder `explainKickoffTime()` uses for its own orphans, which is
+  // that function's contract adopted rather than a third one invented.
+  //
+  // Deliberately narrow: only the findings named as the refusal, and only for a
+  // boundary that has no position. A boundary that *exists* keeps reporting the
+  // constraints of its own minute and nothing else, so no answer this corpus
+  // produces moves.
+  const ownedKinds = new Set(
+    (result.constraints ?? [])
+      .filter((constraint) => constraint.applicable)
+      .map((constraint) => constraint.kind)
+  );
+  const orphaned = groupFindingsByConstraintKind(
+    /** @type {ReadonlyArray<import('../attribution/types.js').AttributionFinding>} */ (
+      kickoffMinutes === null ? refusedBy : []
+    )
+  );
+  const refusals = [
+    ...Object.entries(orphaned.byKind)
+      .filter(([kind]) => !ownedKinds.has(kind))
+      .flatMap(([, group]) => group),
+    ...orphaned.ungrouped,
+  ].map((finding) =>
+    claimFromFinding(finding, {
+      registry: engines.registry,
+      source: ATTRIBUTION_SOURCE.AVAILABILITY,
+      gameId: null,
+      surfaceId: at.surfaceId,
+      venueId: result.venueId ?? null,
+      date: at.date,
+    })
+  );
+  const claims =
+    refusals.length === 0
+      ? bounds
+      : /** @type {import('../attribution/types.js').ConstraintClaim[]} */ (
+          mergeClaimsByTightness([bounds, refusals])
+        );
   meta.claimsCarried += claims.length;
   // **The bar every claim has to clear, checked here too.** 4.3 runs this from
   // every one of its own answers because the one place that did not — the

@@ -92,7 +92,9 @@
  * `assertBoundaryResult()`, run by `boundaryOf()` where the boundary is built
  * rather than by the caller that supplies the result. A boundary with no
  * position carries the constraints that explain why it has none, which for a
- * clean boundary nobody probed is nothing at all.
+ * clean boundary nobody probed is nothing at all — and, where a registry refused
+ * every minute of the day, is the refusal itself, including the findings no one
+ * of the four edges owns.
  *
  * @typedef {Object} FeasibilityBoundary
  * @property {string} threshold - a `FEASIBILITY_THRESHOLD` value

@@ -392,8 +392,10 @@ export function blockingEvidenceOf(evidence) {
  * and a probe that disagreed would be caught. For the *hard* boundary it is
  * tautological — `feasibleKickoffBounds()` derives the position and the result
  * from the same call in every branch (availability's own answer, a probe at the
- * minute the registry moved the bound to, or the empty result when there is
- * none), so the two cannot differ. It is kept there as a guard against a future
+ * minute the registry moved the bound to, or — where the registry refused every
+ * minute — the probe of that refusal with its position taken off, which is
+ * `null` on both sides by construction), so the two cannot differ. It is kept
+ * there as a guard against a future
  * caller that pairs them by hand, which is the mistake it was written for, not
  * because it is presently falsifiable on that path.
  *

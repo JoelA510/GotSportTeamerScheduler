@@ -48,10 +48,11 @@ and not yet merged.
 committed. `packages/core/src/feasibility/` (`reasonCodes.js`, `schemas.js`,
 `types.js`, `verdict.js`, `queries.js`, `index.js`) plus
 `tests/feasibilityApi.test.js`; `tests/reasonCodeReachability.test.js` gains the
-sixteenth vocabulary and its driver. Suite **1776 -> 1884**, measured at each
+sixteenth vocabulary and its driver. Suite **1776 -> 1895**, measured at each
 commit rather than added up: 62 new cases with the feature (`a393c60`), 25 more
 from the first pre-PR review round (`ece79b3`), 5 from the second round below,
-9 from the third, 7 from the fourth. All six gates green, season fixture green.
+9 from the third, 7 from the fourth, 11 from the fifth. All six gates green,
+season fixture green.
 
 Three queries, one answer shape: `canGameMove()`, `canTeamPlay()`,
 `feasibleKickoffBounds()`. A verdict is three-valued
@@ -234,6 +235,51 @@ public entry points rather than against the season.
    change, all of them the same message gaining the codes in brackets; no
    verdict, margin, boundary, status or `details` field moves anywhere in the
    corpus.
+
+**The fifth pre-PR review round.** Two findings, neither of which fires on the
+corpus as it ships, and both about one root: `latestLegalKickoff()` returns the
+accepted minute's own findings **plus** summaries of its own search, and this
+module read that list as though a probe had produced it.
+
+1. **An infeasible answer that explained nothing.** Where the registry refuses
+   availability's bound and the downward search finds no legal minute,
+   `hardBoundaryResult` was a hand-built `{ constraints: [], findings: [] }`, so
+   the answer sealed `infeasible` while publishing `blockers: []`,
+   `latestHard.claims: []`, `latestHard.notApplicable: []` and `binding: []` —
+   the verdict riding on the caller's `blocked` flag while
+   `deriveFeasibilityEvidence()` saw nothing. The blackout path (Summit HS,
+   2026-09-19) publishes `PERMIT_BLACKOUT` in exactly that situation, so the
+   module contradicted itself, and `FeasibilityBoundary` — widened one round ago
+   to say a boundary with no position carries the constraints explaining its
+   absence — declared the behaviour the code did not have. The boundary is now
+   built from the refusal's own probe with its position taken off, so the
+   constraints in force and the inapplicable ones are the refusal's; and a
+   refusing finding that **no** applicable bound owns — `LINING_MISMATCH`
+   hardened by a registry is one, and no availability constraint kind claims it
+   — becomes a claim of its own through `claimFromFinding()`, which is
+   `explainKickoffTime()`'s contract for its orphans adopted rather than a third
+   one invented. Deliberately narrow: only the findings named as the refusal,
+   and only where there is no position. Reproduced against a HARD record over
+   `LINING_MISMATCH` on `brookside-park/upper-1`, 2026-08-22, 4v4, built through
+   `buildSeason2026ConstraintRegistry({ extraConstraints })`.
+2. **"The registry moved the bound" said when it had not.**
+   `refusedAtAvailabilityBound` was computed from `hardResult.findings`, which
+   carries `latestLegalKickoff()`'s own `LATEST_KICKOFF_BOUND` —
+   synthesised after a minute is accepted and raised by
+   `checkKickoffAvailability()` never. Under a HARD record over that code the
+   search re-accepted the identical minute and
+   `FEASIBILITY_BOUND_UNDER_REGISTRY` was still emitted, with
+   `details.availabilityKickoffMinutes === details.kickoffMinutes` — the
+   inequality round four's own test asserts. The refusal is now read off a fresh
+   `probeKickoff()` of availability's bound, which is the list every candidate is
+   confirmed against, and the finding is emitted from the comparison it asserts
+   (`hardMinutes !== availabilityMinutes`). The probe is gated on the searcher's
+   larger list, which is sound because everything a probe says about a minute is
+   carried by the search that accepted it — asserted over the corpus rather than
+   assumed — so the season pays for no probe and only the 217 cells where a
+   registry moves the bound gain one (`meta.boundaryProbesRun` +1,
+   `constraintsConsulted` +4). No verdict, bound, claim, margin, status or
+   finding moves anywhere in the corpus, under either registry.
 
 Nothing in flight otherwise. 6.1 merged as #351 after seven review rounds
 (11 -> 6 -> 4 -> 2 -> 4 -> 1 -> 0 findings) and one CI failure of its own making:
