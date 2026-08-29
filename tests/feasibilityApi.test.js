@@ -76,6 +76,7 @@ import {
   buildFormatTimingTableFromSeason2026,
   formatTimingOrUnknown,
 } from '@squadlogic/core/timing/index.js';
+import { TRAVEL_REASON } from '@squadlogic/core/waivers/index.js';
 
 import {
   FEASIBILITY_MARGIN_UNIT,
@@ -2219,4 +2220,216 @@ describe('feasibility :: finding 8 — the unknown counter counts each unknown o
     );
     expect(twice.meta).toEqual(once.meta);
   });
+});
+
+/* -------------------------------------------------------------------------- */
+/* Second pre-PR review of 7.1 — the first round's own fixes, reviewed          */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The claims on a blocker list that their own owner marked `blocking`.
+ *
+ * Read off the claim rather than re-derived: severity is the owning module's
+ * word, and a second opinion here would be free to disagree with the one the
+ * answer is carrying.
+ *
+ * @param {ReadonlyArray<{ severity: string, codes: ReadonlyArray<string> }>} blockers
+ * @returns {Array<{ severity: string, codes: ReadonlyArray<string> }>}
+ */
+function blockingClaimsIn(blockers) {
+  return blockers.filter((claim) => claim.severity === CONSTRAINT_SEVERITY.BLOCKING);
+}
+
+describe('feasibility :: round 2, finding 1 — a blocking blocker is never a feasible answer', () => {
+  /**
+   * One standing position, asked the way `canTeamPlay()`'s grid asks it:
+   * *"is this position legal"*, answered from the standing schedule rather
+   * than refused as a comparison between a thing and itself.
+   *
+   * @param {{ id: string, date: string, surfaceId: string, startMinutes: number }} game
+   */
+  const standing = (game) =>
+    canGameMove(
+      context,
+      {
+        gameId: game.id,
+        insteadOfDate: game.date,
+        insteadOfSurfaceId: game.surfaceId,
+        insteadOfMinutes: game.startMinutes,
+      },
+      { venueComplexes, minimalSet: false, standingPositionIsAnAnswer: true }
+    );
+
+  it('refuses the four standing positions that sealed as feasible while blocked', () => {
+    // The reviewer's own four. `explainGame()` merges the rule engine's
+    // violation claims into `claims` and takes `legal` from facility legality
+    // alone, so a position carrying a blocking `TRAVEL_COMMITMENTS_OVERLAP`
+    // sealed as `feasible` / `clean`: the blockers said no and the verdict
+    // said yes, from one answer.
+    const relayed = [534, 548, 564, 575].map((n) => `combined_schedule.csv#${n}`);
+    for (const gameId of relayed) {
+      const game = schedule.games.find((entry) => entry.id === gameId);
+      // Meta-assertions: a game this corpus no longer holds, or one that
+      // stopped carrying the claim, would make the verdict assertion below a
+      // statement about nothing.
+      expect(game, gameId).toBeDefined();
+      const answer = standing(/** @type {any} */ (game));
+      const blocking = blockingClaimsIn(answer.blockers);
+      expect(
+        blocking.flatMap((claim) => claim.codes),
+        gameId
+      ).toContain(TRAVEL_REASON.TRAVEL_COMMITMENTS_OVERLAP);
+      expect(answer.verdict, gameId).toBe(FEASIBILITY_VERDICT.INFEASIBLE);
+      expect(answer.tight, gameId).toBeNull();
+    }
+  });
+
+  it('holds as a rule over every answer this corpus produces, not just those four', () => {
+    // **The rule, not the instance.** No answer of any shape may report
+    // `feasible` while its own blockers carry something at `blocking`. The
+    // verdict has to be derived from the evidence the blockers are drawn from,
+    // or the two channels of one answer are free to contradict each other.
+    /** @type {string[]} */
+    const offenders = [];
+    /** @type {Record<string, { checked: number, carrying: number }>} */
+    const arms = {};
+    /**
+     * @param {string} arm
+     * @param {string} label
+     * @param {{ verdict: string, tight: string|null }} answer
+     * @param {ReadonlyArray<{ severity: string, codes: ReadonlyArray<string> }>} blockers
+     */
+    const rule = (arm, label, answer, blockers) => {
+      const tally = (arms[arm] ??= { checked: 0, carrying: 0 });
+      tally.checked += 1;
+      const blocking = blockingClaimsIn(blockers);
+      if (blocking.length === 0) return;
+      tally.carrying += 1;
+      if (answer.verdict !== FEASIBILITY_VERDICT.FEASIBLE) return;
+      offenders.push(
+        `${label}: verdict "${answer.verdict}", tight ${JSON.stringify(answer.tight)}, carrying ` +
+          [...new Set(blocking.flatMap((claim) => claim.codes))].sort().join(', ')
+      );
+    };
+
+    for (const game of schedule.games) {
+      const held = standing(game);
+      rule('standing', `standing ${game.id}`, held, held.blockers);
+      const moved = canGameMove(
+        context,
+        { gameId: game.id, insteadOfMinutes: game.startMinutes + 60 },
+        { venueComplexes, minimalSet: false }
+      );
+      rule('moved', `move ${game.id} +60`, moved, moved.blockers);
+      for (const teamId of [game.homeTeamId, game.awayTeamId]) {
+        if (teamId === null || schedule.placeholderLabels.includes(teamId)) continue;
+        const team = canTeamPlay(
+          context,
+          {
+            teamId,
+            dates: [game.date],
+            kickoffMinutes: game.startMinutes,
+            surfaceIds: [game.surfaceId],
+          },
+          { venueComplexes }
+        );
+        for (const candidate of team.candidates) {
+          rule(
+            'teamCell',
+            `team ${teamId} ${candidate.date} ${candidate.surfaceId}`,
+            candidate,
+            candidate.blockers
+          );
+        }
+      }
+    }
+    for (const cell of boundsCorpus()) {
+      const answer = feasibleKickoffBounds(context, cell);
+      // A bounds answer's blockers are its hard boundary's claims — the list
+      // `seal()` is handed; the public shape names them on the boundary.
+      rule(
+        'bounds',
+        `bounds ${cell.surfaceId} ${cell.date} ${cell.format}`,
+        answer,
+        answer.latestHard.claims
+      );
+    }
+
+    expect(offenders).toEqual([]);
+    // Meta-assertions. The three arms that judge a *position* must each have
+    // actually seen answers carrying a blocking blocker, or the rule above
+    // matched zero records and passed silently.
+    expect(arms.standing.checked).toBe(schedule.games.length);
+    expect(arms.moved.checked).toBe(schedule.games.length);
+    expect(arms.teamCell.checked).toBeGreaterThan(1000);
+    expect(arms.bounds.checked).toBe(boundsCorpus().length);
+    expect(arms.standing.carrying).toBeGreaterThan(0);
+    expect(arms.moved.carrying).toBeGreaterThan(0);
+    expect(arms.teamCell.carrying).toBeGreaterThan(0);
+    // The bounds arm carries them too, which is not obvious: `latestHard` is
+    // the last minute at which nothing blocking speaks, so a *bounded* answer
+    // never carries one. The six that do are Summit HS on the blacked-out
+    // 09/19, where there is no hard bound at all — `PERMIT_BLACKOUT` speaks at
+    // every minute, `kickoffMinutes` is null and the verdict is `infeasible`.
+    // Exactly the shape the rule is about, arrived at from the other side.
+    expect(arms.bounds.carrying).toBeGreaterThan(0);
+  }, 180_000);
+});
+
+describe('feasibility :: round 2, finding 4 — a boundary that does not exist carries nothing', () => {
+  it('does not walk the hard result a second time when there is no clean boundary', () => {
+    const answer = feasibleKickoffBounds(context, {
+      surfaceId: ALDER_2,
+      date: '2026-08-22',
+      format: '9v9',
+    });
+    // Meta-assertions: this must still be the cell the defect is about — a
+    // real hard bound, no clean one, and a non-empty claim list at the hard
+    // bound for a duplicate to be visible in.
+    expect(answer.latestHard.kickoffMinutes).not.toBeNull();
+    expect(answer.latestClean.kickoffMinutes).toBeNull();
+    expect(answer.latestHard.claims.length).toBeGreaterThan(0);
+    // There is no clean boundary, so nothing is carried under its name…
+    expect(answer.latestClean.claims).toEqual([]);
+    expect(answer.latestClean.notApplicable).toEqual([]);
+    // …and the counter that proves this answer looked at something counts the
+    // hard boundary's claims once rather than twice.
+    expect(answer.meta.claimsCarried).toBe(answer.latestHard.claims.length);
+  });
+
+  it('still carries both boundaries where both exist', () => {
+    const answer = feasibleKickoffBounds(context, {
+      surfaceId: ALDER_2,
+      date: '2026-08-22',
+      format: '11v11',
+    });
+    expect(answer.latestClean.kickoffMinutes).not.toBeNull();
+    expect(answer.latestClean.claims.length).toBeGreaterThan(0);
+    expect(answer.meta.claimsCarried).toBe(
+      answer.latestHard.claims.length + answer.latestClean.claims.length
+    );
+  });
+
+  it('holds over the corpus, so no cell counts one claim as two', () => {
+    let withoutClean = 0;
+    let withClean = 0;
+    for (const cell of boundsCorpus()) {
+      const answer = feasibleKickoffBounds(context, cell);
+      const label = `${cell.surfaceId} ${cell.date} ${cell.format}`;
+      if (answer.latestClean.kickoffMinutes === null) {
+        withoutClean += 1;
+        expect(answer.latestClean.claims, label).toEqual([]);
+        expect(answer.meta.claimsCarried, label).toBe(answer.latestHard.claims.length);
+        continue;
+      }
+      withClean += 1;
+      expect(answer.meta.claimsCarried, label).toBe(
+        answer.latestHard.claims.length + answer.latestClean.claims.length
+      );
+    }
+    // Meta-assertions: both arms were exercised. A sweep that saw only cells
+    // with a clean boundary would never reach the branch this is about.
+    expect(withoutClean).toBeGreaterThan(0);
+    expect(withClean).toBeGreaterThan(0);
+  }, 120_000);
 });

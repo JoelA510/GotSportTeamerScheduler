@@ -11,8 +11,13 @@ Last updated at the pause described in §4.
 
 ## 1. Delivered
 
-Nineteen PRs merged. Test suite **848 → 1720**, season fixture green at every
-merge, no regression to the shipping app (bundle entry hash unchanged throughout).
+Eighteen PRs merged (#334-#351; the table's twenty rows share three prompts
+across #334). Test suite **848 → 1776**, season fixture green at every merge, no
+regression to the shipping app (bundle entry hash unchanged throughout). Both
+figures are measured rather than remembered: 848 at `cd31924`, the merge before
+#334, and 1776 at `955eb32`, with everything through #351 in. The 1,720 this
+line used to claim was the working tree at the time of writing, with 6.1 built
+and not yet merged.
 
 | Prompt | What landed | PR |
 |---|---|---|
@@ -43,9 +48,10 @@ merge, no regression to the shipping app (bundle entry hash unchanged throughout
 committed. `packages/core/src/feasibility/` (`reasonCodes.js`, `schemas.js`,
 `types.js`, `verdict.js`, `queries.js`, `index.js`) plus
 `tests/feasibilityApi.test.js`; `tests/reasonCodeReachability.test.js` gains the
-sixteenth vocabulary and its driver. Suite **1776 -> 1863** (60 new cases, plus
-26 from the pre-PR review round below), all six gates green, season fixture
-green.
+sixteenth vocabulary and its driver. Suite **1776 -> 1868**, measured at each
+commit rather than added up: 62 new cases with the feature (`a393c60`), 25 more
+from the first pre-PR review round (`ece79b3`), 5 from the second round below.
+All six gates green, season fixture green.
 
 Three queries, one answer shape: `canGameMove()`, `canTeamPlay()`,
 `feasibleKickoffBounds()`. A verdict is three-valued
@@ -77,7 +83,7 @@ The guard is proved by construction rather than by assertion: `coach-maximum-gap
 retyped to `hard` through `whatIfConstraintType()` — which projects a registry
 and adopts nothing — makes the identical query come back `unknown` naming it.
 
-**The pre-PR review round.** Eight findings, seven of them reproduced against
+**The first pre-PR review round.** Eight findings, seven of them reproduced against
 the season corpus and one (`ATTRIBUTION_CLAIM_CATEGORY_ONLY` forwarded raw into a
 feasibility `findings` list) latent rather than live. Three were fixed as classes
 rather than as instances: `tight` became the named enum above; every finding now
@@ -85,8 +91,12 @@ leaves through `assertFeasibilityFindings()` in `seal()`, so the module cannot
 emit a code whose severity it cannot look up; and `candidateAccountingFindings()`
 runs from `seal()` on every answer shape, which makes
 `FeasibilityMeta.candidatesAnswered === candidatesConsidered` an invariant rather
-than a docstring — and moves `FEASIBILITY_CANDIDATE_DROPPED` off the reachability
-audit's hole list. The other five: the margin's `marginBasis` now names the bound
+than a docstring. ~~And moves `FEASIBILITY_CANDIDATE_DROPPED` off the
+reachability audit's hole list.~~ **That last clause was false and round two's
+finding 2 corrected it**: the code was credited as reachable because the audit
+driver called `candidateAccountingFindings()` with a meta built by hand. No
+query emits it, and it is back on the hole list with a stated reason. The other
+five: the margin's `marginBasis` now names the bound
 the number was copied from rather than `binding[0]`; a team asked about the slot
 it already holds is answered from the standing schedule instead of refused as a
 no-op; `subject.venueId` is the destination surface's venue rather than the
@@ -94,6 +104,36 @@ origin's; `canTeamPlay()`'s `format` chooses the carrier fixture, so it is
 honoured by every cell or refused with `FEASIBILITY_FORMAT_UNCARRIED`; and
 `seal()` no longer writes to a shared meta, which had `unknownsRaised` counting a
 grid's unknowns once per cell and again in the roll-up.
+
+**The second pre-PR review round.** Four findings, three of them reproduced
+against the season corpus and one — round one's own fix, reviewed — a claim in
+this document that did not reconcile.
+
+1. **A blocked slot sealed as feasible and clean.** The standing-position path
+   round one added took `blockers` from `explainGame()`, which merges the rule
+   engine's violation claims, and `blocked` from facility legality alone. Four
+   corpus fixtures (`combined_schedule.csv#534`, `#548`, `#564`, `#575`) carried
+   a blocking `TRAVEL_COMMITMENTS_OVERLAP` and reported `feasible` / `clean`.
+   The verdict is now derived from the list the answer reports, and the rule —
+   no answer may report `feasible` while carrying a blocking blocker — is
+   asserted over four sweeps of the corpus with a per-sweep meta-assertion that
+   each actually saw one.
+2. **`FEASIBILITY_CANDIDATE_DROPPED` was declared reachable on test-authored
+   input**, and is back on the audit's hole list with a stated reason. Both its
+   emitters stand behind an invariant established one line earlier; making it
+   fire would mean introducing the drop it exists to catch. The direct-call test
+   stays in `tests/feasibilityApi.test.js` as a falsifiability proof for the
+   guard, which is what it honestly is. The audit's header now checks the split
+   between its two kinds of hole as well as the totals — that sentence said
+   "Five" while six entries claimed it, unchecked.
+3. **This document's arithmetic.** Corrected above, by measuring the suite at
+   each commit rather than by adding up the deltas: the numbers were wrong in
+   both directions.
+4. **`feasibleKickoffBounds()` walked the hard result twice** when no clean
+   boundary exists, counting every claim again in `meta.claimsCarried` and
+   describing the hard boundary's constraints under the clean threshold's name.
+   1,620 of the 1,872 combinations reach that branch, 869 with a non-empty claim
+   list. A boundary that does not exist now carries nothing.
 
 Nothing in flight otherwise. 6.1 merged as #351 after seven review rounds
 (11 -> 6 -> 4 -> 2 -> 4 -> 1 -> 0 findings) and one CI failure of its own making:

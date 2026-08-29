@@ -648,6 +648,21 @@ export function canGameMove(context, rawQuery, options = {}) {
     );
   }
 
+  /* -- the verdict, from the evidence the blockers are drawn from --------- */
+  // **One answer may not contradict itself.** `blocked` used to be
+  // `counterfactual.legal`, which is `checkPlacement()`'s facility answer
+  // alone, while `blockers` is the *merged* list — `explainGame()` folds the
+  // rule engine's violation claims into it, and coach travel adds its own
+  // above. For a standing position the two disagreed: four of this corpus's own
+  // fixtures carried a blocking `TRAVEL_COMMITMENTS_OVERLAP` in `blockers` and
+  // sealed as `verdict: feasible`, `tight: clean`, because facility legality
+  // had nothing to say about it.
+  //
+  // So the verdict is derived from the same list the answer reports. A claim
+  // its owner marked `blocking` is a definite no, whichever module raised it,
+  // and `deriveFeasibilityVerdict()` is still the only place a verdict is made.
+  if (blockers.some((claim) => claim.severity === ATTRIBUTION_SEVERITY.BLOCKING)) blocked = true;
+
   /* -- the binding set and the margin ------------------------------------ */
   const binding = decisiveClaims(blockers).map(boundFromClaim);
   const { marginMinutes, marginBasis } = marginFrom(binding);
@@ -1292,9 +1307,17 @@ export function feasibleKickoffBounds(context, rawQuery) {
   );
 
   const cleanMinutes = searchCleanBoundary(engines, at, existingBookings, hardResult, meta);
+  // **A boundary that does not exist has nothing to describe.** Handing
+  // `hardResult` to the clean boundary walked the *hard* result a second time:
+  // it counted every one of its claims again in `meta.claimsCarried` — the
+  // counter that says how much this answer looked at — and would have raised a
+  // second copy of any category-only finding for the same cell. It also
+  // reported the hard boundary's constraints under the clean threshold's name,
+  // about a position no minute of the day offers. 1,620 of this corpus's 1,872
+  // combinations reach here, 869 of them with a non-empty claim list.
   const cleanResult =
     cleanMinutes === null
-      ? hardResult
+      ? { constraints: [], findings: [], endMinutes: null, venueId: surface?.venueId ?? null }
       : probeKickoff(engines, { ...at, kickoffMinutes: cleanMinutes }, existingBookings, meta)
           .result;
   const clean = boundaryOf(

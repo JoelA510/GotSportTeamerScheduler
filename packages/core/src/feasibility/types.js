@@ -82,8 +82,11 @@
  * @property {FeasibilityBound[]} binding - every constraint at the boundary; never truncated to one
  * @property {number|null} marginMinutes - the tightest binding member's own slack
  * @property {string|null} marginBasis - the `kind` of the bound the margin came from
- * @property {import('../attribution/types.js').ConstraintClaim[]} claims - tightest first
- * @property {import('../attribution/types.js').InapplicableConstraint[]} notApplicable
+ * @property {import('../attribution/types.js').ConstraintClaim[]} claims - tightest first;
+ *   empty when `kickoffMinutes` is null, because a boundary that does not exist has
+ *   no position for a constraint to have spoken about
+ * @property {import('../attribution/types.js').InapplicableConstraint[]} notApplicable -
+ *   empty when `kickoffMinutes` is null, for the same reason
  * @property {number} candidatesTested
  */
 

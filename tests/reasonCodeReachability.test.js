@@ -2,7 +2,7 @@
  * Repo-wide reachability audit for every frozen reason-code table in
  * `packages/core/src` — the generalisation of the per-module audit
  * `tests/attribution.test.js` already carries. 16 vocabularies, 321 codes, of
- * which 312 are shown to be producible and 9 are named as holes.
+ * which 311 are shown to be producible and 10 are named as holes.
  *
  * **The defect this exists to catch.** Four times now, in four unrelated
  * modules, a reason code has been declared, given a severity, documented, and
@@ -54,11 +54,13 @@
  *   coverage down with it, and the audit would then read as a defect in the
  *   module rather than in this file. The labels passed to {@link harvest} exist
  *   so the failure names the call that used to work.
- * - Five declared codes cannot be produced through any entry point at all, and
+ * - Seven declared codes cannot be produced through any entry point at all, and
  *   three more only by calling an exported helper the pipeline itself never
  *   calls that way. Each is named in {@link UNREACHABLE} with what stands in
  *   the way, and that list — not this file's machinery — is the finding worth
- *   reading.
+ *   reading. That split is read back and checked below too: it said "Five"
+ *   while six entries claimed it, which is the drift the checked sentence
+ *   above exists to stop and this one was not covered by.
  *
  * One apparent exception to the input-only rule is deliberate. Two of the
  * resolve scenarios register a *stage* that writes without asking, because that
@@ -127,8 +129,6 @@ import {
   FEASIBILITY_REASON,
   canGameMove,
   canTeamPlay,
-  candidateAccountingFindings,
-  createFeasibilityMeta,
   feasibleKickoffBounds,
 } from '@squadlogic/core/feasibility/index.js';
 import {
@@ -399,6 +399,11 @@ function allow(code, why, reason) {
 
 /** @type {ReadonlyArray<{ code: string, why: string, reason: string }>} */
 const UNREACHABLE = Object.freeze([
+  allow(
+    'FEASIBILITY_CANDIDATE_DROPPED',
+    WHY.NO_PRODUCTION_PATH,
+    'Both emitters stand behind an invariant the calling code establishes one line earlier. candidateAccountingFindings() runs from seal(), and every path in queries.js that increments candidatesConsidered increments candidatesAnswered before it seals — the unknown-game early return included, which is the defect the guard was added for; canTeamPlay()’s own grid guard compares a list its loop pushes to exactly once per cell against a grid size derived from the query. Making it fire would mean introducing the drop it exists to catch. It was briefly credited here on the strength of a direct call to candidateAccountingFindings() with a fabricated meta, which is the forged-state shape CLAUDE.md §3 names: the guard is real and falsifiable, and tests/feasibilityApi.test.js proves it by handing it an unbalanced ledger, but no public query emits it and the sweep there asserts that no answer of any shape carries it.'
+  ),
   allow(
     'FEASIBILITY_CLAIM_CATEGORY_ONLY',
     WHY.NO_PRODUCTION_PATH,
@@ -3657,13 +3662,15 @@ harvest(
   })
 );
 
-harvest(
-  'candidateAccountingFindings(a ledger that does not balance)',
-  candidateAccountingFindings(
-    { ...createFeasibilityMeta(), candidatesConsidered: 2, candidatesAnswered: 1 },
-    { question: 'audit' }
-  )
-);
+// `candidateAccountingFindings()` is deliberately **not** driven here. It was,
+// with a meta built by hand carrying `candidatesConsidered: 2` and
+// `candidatesAnswered: 1` — a ledger no query can produce — and this audit then
+// reported `FEASIBILITY_CANDIDATE_DROPPED` as reachable because a test had
+// called a helper with a state the production path establishes against one line
+// earlier. That is the shape this file exists to catch, so the code is on the
+// hole list above instead. The guard's own falsifiability is proved where it
+// belongs, in `tests/feasibilityApi.test.js`, which hands it that ledger and
+// shows it says so.
 
 harvest(
   'canTeamPlay(the slot the team already holds)',
@@ -3790,6 +3797,31 @@ describe('reason codes :: the audit itself', () => {
     expect(codes).toBe(DECLARED.size);
     expect(producible).toBe(emitted.size);
     expect(holes).toBe(UNREACHABLE.length);
+
+    // **The other sentence, which was not checked and had drifted.** It stated
+    // the split between the two kinds of hole in words — "Five … and three
+    // more" — while six entries claimed the first kind. An unchecked count
+    // beside a checked one is the checked one lending it credit, so it is read
+    // back here too.
+    // Lower-cased on both sides, because one of the two numbers opens the
+    // sentence and the other does not.
+    const WORDS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'];
+    const split = header.match(
+      /(\w+) declared codes cannot be produced through any entry point at all,\s+and\s+(\w+) more only by calling an exported helper/
+    );
+    // Meta-assertion, as above: a sentence this failed to find proves nothing.
+    expect(split).not.toBeNull();
+    const [stated, alsoStated] = /** @type {RegExpMatchArray} */ (split)
+      .slice(1)
+      .map((word) => word.toLowerCase());
+    expect(WORDS).toContain(stated);
+    expect(WORDS).toContain(alsoStated);
+    expect(WORDS.indexOf(stated)).toBe(
+      UNREACHABLE.filter((entry) => entry.why === WHY.NO_PRODUCTION_PATH).length
+    );
+    expect(WORDS.indexOf(alsoStated)).toBe(
+      UNREACHABLE.filter((entry) => entry.why === WHY.NOT_CONSTRUCTED).length
+    );
   });
 
   it('drove enough production paths for a shortfall to mean something', () => {
