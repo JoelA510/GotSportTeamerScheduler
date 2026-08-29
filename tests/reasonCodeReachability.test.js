@@ -1,8 +1,8 @@
 /**
  * Repo-wide reachability audit for every frozen reason-code table in
  * `packages/core/src` — the generalisation of the per-module audit
- * `tests/attribution.test.js` already carries. 15 vocabularies, 300 codes, of
- * which 292 are shown to be producible and 8 are named as holes.
+ * `tests/attribution.test.js` already carries. 16 vocabularies, 324 codes, of
+ * which 314 are shown to be producible and 10 are named as holes.
  *
  * **The defect this exists to catch.** Four times now, in four unrelated
  * modules, a reason code has been declared, given a severity, documented, and
@@ -54,11 +54,13 @@
  *   coverage down with it, and the audit would then read as a defect in the
  *   module rather than in this file. The labels passed to {@link harvest} exist
  *   so the failure names the call that used to work.
- * - Five declared codes cannot be produced through any entry point at all, and
+ * - Seven declared codes cannot be produced through any entry point at all, and
  *   three more only by calling an exported helper the pipeline itself never
  *   calls that way. Each is named in {@link UNREACHABLE} with what stands in
  *   the way, and that list — not this file's machinery — is the finding worth
- *   reading.
+ *   reading. That split is read back and checked below too: it said "Five"
+ *   while six entries claimed it, which is the drift the checked sentence
+ *   above exists to stop and this one was not covered by.
  *
  * One apparent exception to the input-only rule is deliberate. Two of the
  * resolve scenarios register a *stage* that writes without asking, because that
@@ -123,6 +125,12 @@ import {
   makeFinding as makeFacilityFinding,
   season2026SurfaceId,
 } from '@squadlogic/core/facility/index.js';
+import {
+  FEASIBILITY_REASON,
+  canGameMove,
+  canTeamPlay,
+  feasibleKickoffBounds,
+} from '@squadlogic/core/feasibility/index.js';
 import {
   SEASON_2026_ROW_KIND,
   loadCoachRoster,
@@ -279,6 +287,7 @@ const TABLES = Object.freeze({
   AVAILABILITY_REASON,
   CONSTRAINT_REASON,
   FACILITY_REASON,
+  FEASIBILITY_REASON,
   FREEZE_REASON,
   PEOPLE_REASON,
   PUBLICATION_REASON,
@@ -390,6 +399,16 @@ function allow(code, why, reason) {
 
 /** @type {ReadonlyArray<{ code: string, why: string, reason: string }>} */
 const UNREACHABLE = Object.freeze([
+  allow(
+    'FEASIBILITY_CANDIDATE_DROPPED',
+    WHY.NO_PRODUCTION_PATH,
+    'Both emitters stand behind an invariant the calling code establishes one line earlier. candidateAccountingFindings() runs from seal(), and every path in queries.js that increments candidatesConsidered increments candidatesAnswered before it seals — the unknown-game early return included, which is the defect the guard was added for; canTeamPlay()’s own grid guard compares a list its loop pushes to exactly once per cell against a grid size derived from the query. Making it fire would mean introducing the drop it exists to catch. It was briefly credited here on the strength of a direct call to candidateAccountingFindings() with a fabricated meta, which is the forged-state shape CLAUDE.md §3 names: the guard is real and falsifiable, and tests/feasibilityApi.test.js proves it by handing it an unbalanced ledger, but no public query emits it and the sweep there asserts that no answer of any shape carries it.'
+  ),
+  allow(
+    'FEASIBILITY_CLAIM_CATEGORY_ONLY',
+    WHY.NO_PRODUCTION_PATH,
+    'This module\u2019s restatement of ATTRIBUTION_CLAIM_CATEGORY_ONLY, and it inherits that code\u2019s hole exactly: feasibleKickoffBounds() runs 4.3\u2019s own guard over the claims each boundary builds, and no claim built from an availability constraint can fail isSpecificClaim() \u2014 every one names its permit or booking instance and carries the finding codes that spoke. It is translated rather than forwarded so that, if the guard ever does fire, the answer carries a code this module can look a severity up for instead of one that makes feasibilitySeverityOf() throw in the reader\u2019s hand.'
+  ),
   allow(
     'ATTRIBUTION_GAME_UNATTRIBUTED',
     WHY.NO_PRODUCTION_PATH,
@@ -3504,6 +3523,309 @@ try {
   harvest('promoteScenario(a blocking finding nobody accepted)', error);
 }
 
+/* -- feasibility ---------------------------------------------------------- */
+
+/**
+ * The read-only feasibility layer, driven through its three public queries.
+ *
+ * Every call below is a plain query object against the season context built
+ * above; nothing is reached into and altered. The one constructed input is a
+ * schedule carrying an extra fixture, which is how a team comes to span two
+ * formats — the corpus has no such team, and the alternative to constructing one
+ * would be a code nothing can produce.
+ */
+const feasibilityScrimmage = schedule.games.find((game) => game.endMinutes === null);
+const feasibilitySelect = schedule.games.find(
+  (game) => game.format === '11v11' && game.surfaceId === 'summit-hs/stadium'
+);
+const feasibilityAlder = schedule.games.find(
+  (game) => game.date === '2026-08-22' && game.surfaceId === 'alder-park/pitch-2'
+);
+
+harvest(
+  'canGameMove(an untimed Scrimmage row)',
+  canGameMove(
+    context,
+    {
+      gameId: feasibilityScrimmage.id,
+      insteadOfMinutes: feasibilityScrimmage.startMinutes + 60,
+    },
+    { venueComplexes }
+  )
+);
+
+harvest(
+  'canGameMove(a weekday the venue has no permit record for)',
+  canGameMove(
+    context,
+    { gameId: feasibilityAlder.id, insteadOfDate: '2026-08-20' },
+    { venueComplexes }
+  )
+);
+
+harvest(
+  'canGameMove(the slot it already holds)',
+  canGameMove(
+    context,
+    { gameId: feasibilityAlder.id, insteadOfMinutes: feasibilityAlder.startMinutes },
+    { venueComplexes }
+  )
+);
+
+harvest(
+  'canGameMove(a standing position the facility layer did not block)',
+  (() => {
+    // The rule engine blocks this fixture where it stands, and the facility
+    // layer does not — so `minimalBlockingSet()` comes back `blocked: false`
+    // and the answer has to say which layer did decide. Asked with the minimal
+    // set left at its default, which is the answer an operator actually gets.
+    const blockedElsewhere = schedule.games.find((game) => game.id === 'combined_schedule.csv#534');
+    return canGameMove(
+      context,
+      {
+        gameId: blockedElsewhere.id,
+        insteadOfDate: blockedElsewhere.date,
+        insteadOfSurfaceId: blockedElsewhere.surfaceId,
+        insteadOfMinutes: blockedElsewhere.startMinutes,
+      },
+      { venueComplexes, standingPositionIsAnAnswer: true }
+    );
+  })()
+);
+
+harvest(
+  'canGameMove(a game the schedule does not hold)',
+  canGameMove(context, { gameId: 'no-such-game', insteadOfMinutes: 600 }, { venueComplexes })
+);
+
+harvest(
+  'canGameMove(no venue complexes, so travel cannot be projected)',
+  canGameMove(context, {
+    gameId: feasibilityAlder.id,
+    insteadOfMinutes: feasibilityAlder.startMinutes + 60,
+  })
+);
+
+harvest(
+  'canGameMove(onto the date the venue is blacked out)',
+  canGameMove(
+    context,
+    { gameId: feasibilitySelect.id, insteadOfDate: '2026-09-19' },
+    { venueComplexes }
+  )
+);
+
+harvest(
+  'canGameMove(no rule-engine run in the context)',
+  canGameMove(
+    buildAttributionContext({
+      graph,
+      table: timingTable,
+      calendar,
+      registry,
+      schedule,
+    }),
+    { gameId: feasibilityAlder.id, insteadOfMinutes: feasibilityAlder.startMinutes + 60 },
+    { venueComplexes }
+  )
+);
+
+harvest(
+  'feasibleKickoffBounds(the permit close and the daylight limit coincide)',
+  feasibleKickoffBounds(context, {
+    surfaceId: 'alder-park/pitch-2',
+    date: '2026-08-22',
+    format: '11v11',
+    ignoreGameIds: schedule.games
+      .filter((game) => game.date === '2026-08-22' && game.venueId === 'alder-park')
+      .map((game) => game.id),
+  })
+);
+
+harvest(
+  'feasibleKickoffBounds(lit ground where the permit margin sets the clean line)',
+  feasibleKickoffBounds(context, {
+    surfaceId: 'summit-hs/stadium',
+    date: '2026-11-14',
+    format: '11v11',
+    ignoreGameIds: schedule.games
+      .filter((game) => game.date === '2026-11-14' && game.venueId === 'summit-hs')
+      .map((game) => game.id),
+  })
+);
+
+harvest(
+  'feasibleKickoffBounds(a registry that hardens a base-compromise availability code)',
+  // `PERMIT_MARGIN_TIGHT` is `compromise` in `availability/reasonCodes.js`;
+  // `latestLegalKickoff()` selects the hard bound on that table while this
+  // module judges it on the registry's. A club whose permit states the comfort
+  // margin as a condition holds the record below, the two views then differ,
+  // and the answer says which one chose the bound it reports.
+  feasibleKickoffBounds(
+    buildAttributionContext({
+      graph,
+      table: timingTable,
+      calendar,
+      registry: buildSeason2026ConstraintRegistry({
+        extraConstraints: [
+          {
+            id: 'permit-margin-hard-reachability',
+            policy: 'permit-margin',
+            name: 'The permit comfort margin is a condition of the permit here',
+            type: CONSTRAINT_TYPE.HARD,
+            scope: { kind: CONSTRAINT_SCOPE_KIND.GLOBAL },
+            parameters: { marginMinutes: 15 },
+            restrictiveDirection: 'higher',
+            rationale:
+              'A permit that states its fifteen minutes as a condition rather than a courtesy makes the same code hard; the registry is where that hardness lives.',
+            source: {
+              setBy: 'this audit',
+              setAt: null,
+              reference: 'a constructed record, carried by no corpus',
+              note: 'constructed input, dated by nothing',
+            },
+            effectiveFrom: null,
+            effectiveTo: null,
+            enforcement: CONSTRAINT_ENFORCEMENT.REASON_CODES,
+            reasonCodes: [AVAILABILITY_REASON.PERMIT_MARGIN_TIGHT],
+            weight: null,
+            waivable: false,
+            history: [],
+          },
+        ],
+      }),
+      schedule,
+    }),
+    { surfaceId: 'brookside-park/upper-1', date: '2026-08-22', format: '4v4' }
+  )
+);
+
+harvest(
+  'feasibleKickoffBounds(the blacked-out date)',
+  feasibleKickoffBounds(context, {
+    surfaceId: 'summit-hs/stadium',
+    date: '2026-09-19',
+    format: '11v11',
+  })
+);
+
+harvest(
+  'feasibleKickoffBounds(a surface the graph does not hold)',
+  feasibleKickoffBounds(context, {
+    surfaceId: 'no-such-venue/no-such-pitch',
+    date: '2026-08-22',
+    format: '11v11',
+  })
+);
+
+harvest(
+  'feasibleKickoffBounds(ground with a hard bound and nothing clean beneath it)',
+  feasibleKickoffBounds(context, {
+    surfaceId: 'alder-park/pitch-2',
+    date: '2026-08-22',
+    // The pitch is not lined for 9v9, so a `compromise` speaks at every legal
+    // minute of the day: the bound is real and no clean position exists at all.
+    format: '9v9',
+  })
+);
+
+// `candidateAccountingFindings()` is deliberately **not** driven here. It was,
+// with a meta built by hand carrying `candidatesConsidered: 2` and
+// `candidatesAnswered: 1` — a ledger no query can produce — and this audit then
+// reported `FEASIBILITY_CANDIDATE_DROPPED` as reachable because a test had
+// called a helper with a state the production path establishes against one line
+// earlier. That is the shape this file exists to catch, so the code is on the
+// hole list above instead. The guard's own falsifiability is proved where it
+// belongs, in `tests/feasibilityApi.test.js`, which hands it that ledger and
+// shows it says so.
+
+harvest(
+  'canTeamPlay(the slot the team already holds)',
+  (() => {
+    const held = schedule.games.find((game) => game.homeTeamId !== null);
+    return canTeamPlay(
+      context,
+      {
+        teamId: held.homeTeamId,
+        dates: [held.date],
+        kickoffMinutes: held.startMinutes,
+        surfaceIds: [held.surfaceId],
+      },
+      { venueComplexes }
+    );
+  })()
+);
+
+harvest(
+  'canTeamPlay(a format no fixture of the team plays)',
+  (() => {
+    const anchor = schedule.games.find((game) => game.format === '9v9' && game.homeTeamId !== null);
+    return canTeamPlay(
+      context,
+      {
+        teamId: anchor.homeTeamId,
+        dates: ['2026-11-14'],
+        kickoffMinutes: 10 * 60,
+        format: 'Minis',
+      },
+      { venueComplexes }
+    );
+  })()
+);
+
+harvest(
+  'canTeamPlay(a placeholder label)',
+  canTeamPlay(context, {
+    teamId: schedule.placeholderLabels[0],
+    dates: ['2026-11-14'],
+    kickoffMinutes: 18 * 60,
+  })
+);
+
+harvest(
+  'canGameMove(a move that leaves the projected travel scan with nothing to judge)',
+  // `combined_schedule.csv#3`'s coaches have one other commitment on its own
+  // date and none on 2026-10-10, so the projected `evaluateCoachTravel()` run
+  // has no consecutive same-day pair left and raises `TRAVEL_SCAN_VACUOUS`
+  // where the standing run raised none. That finding belongs to no transition,
+  // so `claimFromFinding()` can name no record for it and the claim is refused
+  // — and the compromise is published as `FEASIBILITY_EVIDENCE_UNCLAIMED`
+  // instead of deciding the answer's tightness from nowhere.
+  canGameMove(
+    context,
+    { gameId: 'combined_schedule.csv#3', insteadOfDate: '2026-10-10' },
+    { venueComplexes }
+  )
+);
+
+harvest(
+  'canTeamPlay(a team spanning two formats)',
+  (() => {
+    const anchor = schedule.games.find((game) => game.format === '9v9' && game.homeTeamId !== null);
+    const constructed = {
+      ...schedule,
+      games: [
+        ...schedule.games,
+        { ...anchor, id: 'audit-second-format', format: '7v7', date: '2026-10-03' },
+      ],
+    };
+    return canTeamPlay(
+      buildAttributionContext({
+        graph,
+        table: timingTable,
+        calendar,
+        registry,
+        schedule: constructed,
+        verification,
+        venueComplexes,
+        roster,
+      }),
+      { teamId: anchor.homeTeamId, dates: ['2026-10-03'], kickoffMinutes: 10 * 60 },
+      { venueComplexes }
+    );
+  })()
+);
+
 /* -------------------------------------------------------------------------- */
 /* The audit                                                                   */
 /* -------------------------------------------------------------------------- */
@@ -3558,6 +3880,31 @@ describe('reason codes :: the audit itself', () => {
     expect(codes).toBe(DECLARED.size);
     expect(producible).toBe(emitted.size);
     expect(holes).toBe(UNREACHABLE.length);
+
+    // **The other sentence, which was not checked and had drifted.** It stated
+    // the split between the two kinds of hole in words — "Five … and three
+    // more" — while six entries claimed the first kind. An unchecked count
+    // beside a checked one is the checked one lending it credit, so it is read
+    // back here too.
+    // Lower-cased on both sides, because one of the two numbers opens the
+    // sentence and the other does not.
+    const WORDS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'];
+    const split = header.match(
+      /(\w+) declared codes cannot be produced through any entry point at all,\s+and\s+(\w+) more only by calling an exported helper/
+    );
+    // Meta-assertion, as above: a sentence this failed to find proves nothing.
+    expect(split).not.toBeNull();
+    const [stated, alsoStated] = /** @type {RegExpMatchArray} */ (split)
+      .slice(1)
+      .map((word) => word.toLowerCase());
+    expect(WORDS).toContain(stated);
+    expect(WORDS).toContain(alsoStated);
+    expect(WORDS.indexOf(stated)).toBe(
+      UNREACHABLE.filter((entry) => entry.why === WHY.NO_PRODUCTION_PATH).length
+    );
+    expect(WORDS.indexOf(alsoStated)).toBe(
+      UNREACHABLE.filter((entry) => entry.why === WHY.NOT_CONSTRUCTED).length
+    );
   });
 
   it('drove enough production paths for a shortfall to mean something', () => {
