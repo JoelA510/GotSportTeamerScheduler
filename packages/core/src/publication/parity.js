@@ -133,9 +133,23 @@ function groupByKey(rows, keyFields) {
  * **The comparator.** Partition two row sets into the four buckets.
  *
  * Pure: no findings, no counters beyond what it returns, no opinion about
- * severity. {@link checkParity} is the layer that judges. Kept separate and
- * exported because Phase 6.1's scenario diff is this same comparison over two
- * derived schedules, and the repository is not acquiring a second one.
+ * severity. {@link checkParity} is the layer that judges.
+ *
+ * **What Phase 6.1 did with this, and what it did not.** `scenario/diff.js`
+ * compares two derived schedules and adopts this function's *shape* — enumerated
+ * from both sides, every subject in exactly one bucket, totals reconciled
+ * against both inputs, the reconciliation exported so a test can make it fail —
+ * without calling it. The reason is the vocabulary: this comparator's subjects
+ * are {@link import('./types.js').ParityRow}s, whose fields are
+ * `outputGeneration.js`'s **export columns**, and routing schedule games through
+ * that adapter would make a scenario diff depend on the column set the club
+ * happens to publish. It would also inherit machinery a schedule does not need —
+ * key ambiguity, input-order pairing and mapping rules all exist because a
+ * re-imported export has no reliable identity, whereas a game id is unique by
+ * construction. What the two do share is the one thing that could have drifted:
+ * `resolve/state.js` `slotChangedFields()` is the single computation of a
+ * schedule slot's changed fields, and `tests/scenarioBranching.test.js` asserts
+ * there is no second one. See `docs/SCENARIOS.md` §7.
  *
  * Rows sharing one key are paired in input order and the surplus falls into
  * `added` or `removed`; the ambiguity is reported rather than resolved, because

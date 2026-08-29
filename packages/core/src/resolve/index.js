@@ -100,6 +100,7 @@ export {
   isSlotAdmissible,
   mayMove,
   pinGames,
+  slotChangedFields,
   slotKey,
   slotOf,
   stageCounters,
@@ -134,7 +135,7 @@ export {
   scoreSchedule,
 } from './objective.js';
 
-export { buildChangeReport } from './report.js';
+export { buildChangeReport, violationTally } from './report.js';
 
 export { ChangeBudgetExceeded, commitResolve } from './commit.js';
 

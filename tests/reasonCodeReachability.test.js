@@ -1,8 +1,8 @@
 /**
  * Repo-wide reachability audit for every frozen reason-code table in
  * `packages/core/src` — the generalisation of the per-module audit
- * `tests/attribution.test.js` already carries. Fourteen vocabularies, 280
- * codes, of which 272 are shown to be producible and eight are named as holes.
+ * `tests/attribution.test.js` already carries. 15 vocabularies, 300 codes, of
+ * which 292 are shown to be producible and 8 are named as holes.
  *
  * **The defect this exists to catch.** Four times now, in four unrelated
  * modules, a reason code has been declared, given a severity, documented, and
@@ -89,6 +89,7 @@ import {
   AVAILABILITY_REASON,
   buildAvailabilityCalendar,
   buildAvailabilityCalendarFromSeason2026,
+  toAvailabilityCalendarInput,
   checkKickoffAvailability,
   latestLegalKickoff,
   resolveLighting,
@@ -100,6 +101,7 @@ import {
   CONSTRAINT_REASON,
   CONSTRAINT_SCOPE_KIND,
   CONSTRAINT_TYPE,
+  SEASON_2026_CONSTRAINTS,
   buildConstraintRegistry,
   buildSeason2026ConstraintRegistry,
   effectiveSeverityTable,
@@ -113,6 +115,7 @@ import {
   buildFacilityGraph,
   buildFacilityGraphFromSeason2026,
   buildSeason2026VenueComplexMap,
+  toSeason2026FacilityGraphInput,
   checkBooking,
   checkEquipment,
   checkLining,
@@ -220,11 +223,31 @@ import {
   TIMING_REASON,
   buildFormatTimingTable,
   buildFormatTimingTableFromSeason2026,
+  toFormatTimingInput,
   checkFixtureTiming,
   computeGameWindows,
   earliestKickoffWithWarmup,
   warmupWindowAvailability,
 } from '@squadlogic/core/timing/index.js';
+import {
+  SCENARIO_OVERRIDE_KIND,
+  SCENARIO_REASON,
+  SCENARIO_RECORD_SET,
+  ScenarioMemo,
+  diffAgainstBaselineScenario,
+  makeScenarioFinding,
+  materialiseScenario,
+  diffScenarios,
+  diffSchedules,
+  makeScenario,
+  promoteScenario,
+  runScenario,
+  scheduleDiffPartitionFindings,
+  season2026CapacitySubjects,
+  season2026RelocationPolicy,
+  season2026SeasonInputs,
+  season2026VenueUnavailableScenario,
+} from '@squadlogic/core/scenario/index.js';
 import {
   TRAVEL_REASON,
   WAIVER_REASON,
@@ -263,6 +286,7 @@ const TABLES = Object.freeze({
   RESOLVE_REASON,
   RULE_REASON,
   RULE_VIOLATION_REASON,
+  SCENARIO_REASON,
   TIMING_REASON,
   TRAVEL_REASON,
   WAIVER_REASON,
@@ -3124,6 +3148,363 @@ harvest(
 );
 
 /* -------------------------------------------------------------------------- */
+/* scenario/ — branching a baseline, diffing branches, promoting one           */
+/* -------------------------------------------------------------------------- */
+
+/** The corpus as one immutable baseline bundle of *inputs*. */
+const scenarioInputs = season2026SeasonInputs({
+  schedule,
+  facilityInput: toSeason2026FacilityGraphInput(geometry),
+  timingInput: toFormatTimingInput(loadGameFormats()),
+  calendarInput: toAvailabilityCalendarInput(
+    loadFacilityPermits({ seasonYear: SEASON_YEAR }),
+    sunsets
+  ),
+  constraints: SEASON_2026_CONSTRAINTS,
+  venueComplexes,
+});
+
+/** The venue whose whole use is one format, so the branch has one clear subject. */
+const scenarioVenueId = [
+  ...new Set(
+    schedule.games
+      .map((game) => game.venueId)
+      .filter(
+        (venueId) =>
+          new Set(
+            schedule.games.filter((game) => game.venueId === venueId).map((game) => game.format)
+          ).size === 1
+      )
+  ),
+]
+  .map((venueId) => ({
+    venueId,
+    games: schedule.games.filter((game) => game.venueId === venueId).length,
+    format: schedule.games.find((game) => game.venueId === venueId)?.format,
+  }))
+  .sort((a, b) => b.games - a.games)[0];
+
+const scenarioBranch = season2026VenueUnavailableScenario({
+  venueId: scenarioVenueId.venueId,
+  baselineId: scenarioInputs.id,
+  requestedBy: 'audit@club.example',
+  at: '2026-08-01T09:00:00',
+});
+
+const scenarioPolicy = season2026RelocationPolicy({
+  graph,
+  table: timingTable,
+  format: /** @type {string} */ (scenarioVenueId.format),
+  excludeVenueIds: [scenarioVenueId.venueId],
+  games: schedule.games,
+});
+
+const scenarioRunOptions = {
+  baselineEngines: engines,
+  baselineVerification: verification,
+  relocationPolicy: scenarioPolicy,
+  requirement: {
+    slots: 1,
+    label: 'at least one game a date',
+    source: 'the reason-code audit, not a club policy',
+  },
+};
+
+const scenarioResult = harvest(
+  'runScenario(withdraw a whole venue, with the relocation proposer running)',
+  runScenario(scenarioInputs, scenarioBranch, scenarioRunOptions)
+);
+
+harvest(
+  'runScenario(the negative control: the proposer switched off)',
+  runScenario(scenarioInputs, scenarioBranch, { ...scenarioRunOptions, relocations: false })
+);
+
+/** A branch that withdraws ground the schedule never stands on. */
+const unusedVenueId = Object.values(graph.venues)
+  .map((venue) => venue.id)
+  .find((venueId) => !schedule.games.some((game) => game.venueId === venueId));
+harvest(
+  'runScenario(an override for a venue the schedule never uses)',
+  runScenario(
+    scenarioInputs,
+    makeScenario({
+      id: 'audit-vacuous',
+      name: 'without ground nobody uses',
+      baselineId: scenarioInputs.id,
+      rationale: 'the audit\u2019s vacuity case',
+      requestedBy: 'audit@club.example',
+      createdAt: '2026-08-01T09:00:00',
+      overrides: [
+        {
+          kind: SCENARIO_OVERRIDE_KIND.ADD,
+          recordSet: SCENARIO_RECORD_SET.PERMITS,
+          record: {
+            id: 'audit-vacuous-blackout',
+            venueId: unusedVenueId ?? 'no-such-venue',
+            scopeKind: 'weekday-default',
+            weekday: 'SAT',
+            date: null,
+            hasPermit: false,
+            openMinutes: null,
+            closeMinutes: null,
+            lit: null,
+            lightsOffMinutes: null,
+            note: 'ground the schedule never stands on',
+            source: 'audit',
+          },
+          by: 'audit@club.example',
+          at: '2026-08-01T09:00:00',
+          reason: 'withdraw ground the schedule never stands on',
+        },
+      ],
+    }),
+    scenarioRunOptions
+  )
+);
+
+/** Two overrides touching one record id, and one naming a record nobody holds. */
+const scenarioOverride = (overrides = {}) => ({
+  kind: SCENARIO_OVERRIDE_KIND.REMOVE,
+  recordSet: SCENARIO_RECORD_SET.PERMITS,
+  recordId: String(scenarioInputs.permits[0].id),
+  by: 'audit@club.example',
+  at: '2026-08-01T09:00:00',
+  reason: 'the audit needs a second edit on one record',
+  ...overrides,
+});
+harvest(
+  'materialiseScenario(two overrides on one record, and an add that collides)',
+  materialiseScenario(
+    scenarioInputs,
+    makeScenario({
+      id: 'audit-conflicted',
+      name: 'two edits, one record',
+      baselineId: scenarioInputs.id,
+      rationale: 'the audit\u2019s conflict case',
+      requestedBy: 'audit@club.example',
+      createdAt: '2026-08-01T09:00:00',
+      overrides: [
+        scenarioOverride(),
+        scenarioOverride({ reason: 'and again' }),
+        scenarioOverride({ recordId: 'no-such-permit-row', reason: 'a record nobody holds' }),
+        scenarioOverride({
+          kind: SCENARIO_OVERRIDE_KIND.ADD,
+          recordId: null,
+          record: { ...scenarioInputs.permits[1] },
+          reason: 'an id the baseline already holds',
+        }),
+      ],
+    })
+  )
+);
+
+/**
+ * An ancestor's retype and a descendant's remove of one constraint. Two edits
+ * of one record id written by *one* author are the conflict above, so this
+ * refusal is only reachable down a chain.
+ */
+const scenarioRetyped = SEASON_2026_CONSTRAINTS.find(
+  (record) => record.type === CONSTRAINT_TYPE.HARD
+);
+const scenarioRetypeAncestor = makeScenario({
+  id: 'audit-softens',
+  name: 'soften one rule',
+  baselineId: scenarioInputs.id,
+  rationale: 'the audit\u2019s retype case',
+  requestedBy: 'audit@club.example',
+  createdAt: '2026-08-01T09:00:00',
+  overrides: [
+    {
+      kind: SCENARIO_OVERRIDE_KIND.RETYPE,
+      recordSet: SCENARIO_RECORD_SET.CONSTRAINTS,
+      recordId: scenarioRetyped.id,
+      type: CONSTRAINT_TYPE.SOFT,
+      weight: 5,
+      by: 'audit@club.example',
+      at: '2026-08-01T09:00:00',
+      reason: 'what does this rule cost as a preference?',
+    },
+  ],
+});
+harvest(
+  'materialiseScenario(a descendant withdraws the constraint its ancestor retypes)',
+  materialiseScenario(
+    scenarioInputs,
+    makeScenario({
+      id: 'audit-strikes-out',
+      name: 'strike the rule out entirely',
+      baselineId: scenarioInputs.id,
+      parentScenarioId: scenarioRetypeAncestor.id,
+      rationale: 'the audit\u2019s retype-then-withdraw case',
+      requestedBy: 'audit@club.example',
+      createdAt: '2026-08-01T09:00:00',
+      overrides: [
+        {
+          kind: SCENARIO_OVERRIDE_KIND.REMOVE,
+          recordSet: SCENARIO_RECORD_SET.CONSTRAINTS,
+          recordId: scenarioRetyped.id,
+          by: 'audit@club.example',
+          at: '2026-08-01T09:00:00',
+          reason: 'the rule was struck out',
+        },
+      ],
+    }),
+    { ancestry: [scenarioRetypeAncestor] }
+  )
+);
+
+harvest(
+  'materialiseScenario(a branch of a branch)',
+  materialiseScenario(
+    scenarioInputs,
+    season2026VenueUnavailableScenario({
+      venueId: scenarioVenueId.venueId,
+      baselineId: scenarioInputs.id,
+      requestedBy: 'audit@club.example',
+      at: '2026-08-01T09:00:00',
+      id: 'audit-child',
+      parentScenarioId: scenarioBranch.id,
+      dates: [schedule.games.find((game) => game.venueId === scenarioVenueId.venueId).date],
+    }),
+    { ancestry: [scenarioBranch] }
+  )
+);
+
+/** The memo, read after its baseline moved underneath it. */
+const scenarioMemo = new ScenarioMemo();
+scenarioMemo.resolve(scenarioInputs, scenarioBranch, scenarioRunOptions);
+
+/** A branch of a branch, cached, and then checked without the ancestry it names. */
+const scenarioChild = season2026VenueUnavailableScenario({
+  venueId: scenarioVenueId.venueId,
+  baselineId: scenarioInputs.id,
+  requestedBy: 'audit@club.example',
+  at: '2026-08-01T09:00:00',
+  id: 'audit-unresolved-child',
+  parentScenarioId: scenarioBranch.id,
+  dates: [schedule.games.find((game) => game.venueId === scenarioVenueId.venueId).date],
+});
+scenarioMemo.resolve(scenarioInputs, scenarioChild, {
+  ...scenarioRunOptions,
+  ancestry: [scenarioBranch],
+});
+harvest(
+  'ScenarioMemo.check(a branch of a branch, without the ancestry it names)',
+  scenarioMemo.check(scenarioInputs, scenarioChild)
+);
+harvest(
+  'ScenarioMemo.check(a cached result whose fingerprint has moved)',
+  scenarioMemo.check(
+    season2026SeasonInputs({
+      schedule,
+      facilityInput: toSeason2026FacilityGraphInput(geometry),
+      timingInput: toFormatTimingInput(loadGameFormats()),
+      calendarInput: toAvailabilityCalendarInput(
+        loadFacilityPermits({ seasonYear: SEASON_YEAR }),
+        sunsets
+      ),
+      constraints: SEASON_2026_CONSTRAINTS.map((record) => ({
+        ...record,
+        rationale: `${record.rationale} (edited after the branch was derived)`,
+      })),
+      venueComplexes,
+    }),
+    scenarioBranch
+  )
+);
+
+/** The diff, with a stated capacity subject and without one. */
+const scenarioDiff = harvest(
+  'diffAgainstBaselineScenario(with a stated capacity subject)',
+  diffAgainstBaselineScenario(scenarioResult, {
+    baselineEngines: engines,
+    baselineVerification: verification,
+    capacitySubjects: season2026CapacitySubjects({
+      graph,
+      table: timingTable,
+      format: /** @type {string} */ (scenarioVenueId.format),
+      dates: [
+        ...new Set(
+          schedule.games
+            .filter((game) => game.venueId === scenarioVenueId.venueId)
+            .map((game) => game.date)
+        ),
+      ].sort(),
+      surfaceIds: [
+        ...scenarioPolicy.surfaceIds,
+        ...new Set(
+          schedule.games
+            .filter((game) => game.venueId === scenarioVenueId.venueId)
+            .map((game) => game.surfaceId)
+        ),
+      ],
+      requirement: {
+        slots: 1,
+        label: 'at least one game a date',
+        source: 'the reason-code audit',
+      },
+      games: schedule.games,
+    }),
+  })
+);
+
+harvest(
+  'diffScenarios(no capacity subject, and neither side measured)',
+  diffScenarios({
+    subject: 'two branches nobody ran the rule engine over',
+    left: { label: 'left', schedule, verification: null },
+    right: { label: 'right', schedule: scenarioResult.schedule, verification: null },
+    weights: RESOLVE_OBJECTIVE_WEIGHTS,
+  })
+);
+
+harvest(
+  'scheduleDiffPartitionFindings(a partition that accounts for the wrong number of games)',
+  scheduleDiffPartitionFindings(
+    diffSchedules({ left: schedule.games, right: scenarioResult.schedule.games }),
+    { leftCount: schedule.games.length + 1, rightCount: scenarioResult.schedule.games.length + 1 }
+  )
+);
+
+harvest(
+  'promoteScenario(the branch becomes primary, with the diff recorded)',
+  promoteScenario({
+    result: scenarioResult,
+    diff: scenarioDiff,
+    promotionId: 'audit-promotion',
+    promotedAt: '2026-08-05T12:00:00',
+    promotedBy: 'audit@club.example',
+    rationale: 'the audit promotes the branch it just derived',
+  })
+);
+
+try {
+  promoteScenario({
+    result: {
+      ...scenarioResult,
+      findings: [
+        ...scenarioResult.findings,
+        makeScenarioFinding(
+          SCENARIO_REASON.SCENARIO_OVERRIDE_CONFLICT,
+          'a blocking finding the caller did not accept',
+          {}
+        ),
+      ],
+    },
+    diff: scenarioDiff,
+    promotionId: 'audit-promotion-refused',
+    promotedAt: '2026-08-05T12:00:00',
+    promotedBy: 'audit@club.example',
+    rationale: 'the audit\u2019s refusal case',
+  });
+} catch (error) {
+  // The refusal carries its finding on the error, exactly as
+  // `ChangeBudgetExceeded` and `FrozenGameUnsatisfiable` do.
+  harvest('promoteScenario(a blocking finding nobody accepted)', error);
+}
+
+/* -------------------------------------------------------------------------- */
 /* The audit                                                                   */
 /* -------------------------------------------------------------------------- */
 
@@ -3153,6 +3534,30 @@ describe('reason codes :: the audit itself', () => {
         (name) => !foundNames.has(name)
       )
     ).toEqual([]);
+  });
+
+  it('states its own shape in the header, and the header is read back to check it', () => {
+    // **Prose that drifts is prose nobody can trust.** The header's count has
+    // been wrong since well before the code that made it wrong was noticed:
+    // three commits added codes and none of them touched the sentence. It is
+    // parsed back out of this file rather than restated here, so the next code
+    // added fails this test instead of quietly ageing the docstring.
+    const header = readFileSync(fileURLToPath(import.meta.url), 'utf8')
+      .slice(0, 4000)
+      .replace(/\n\s*\*\s?/g, ' ');
+    const claim = header.match(
+      /(\d+) vocabularies, (\d+) codes, of which (\d+) are shown to be producible and (\d+) are named as holes/
+    );
+    // Meta-assertion: a header this failed to parse would make every
+    // comparison below vacuous.
+    expect(claim).not.toBeNull();
+    const [vocabularies, codes, producible, holes] = /** @type {RegExpMatchArray} */ (claim)
+      .slice(1)
+      .map(Number);
+    expect(vocabularies).toBe(Object.keys(TABLES).length);
+    expect(codes).toBe(DECLARED.size);
+    expect(producible).toBe(emitted.size);
+    expect(holes).toBe(UNREACHABLE.length);
   });
 
   it('drove enough production paths for a shortfall to mean something', () => {

@@ -1485,6 +1485,17 @@ Upper/Lower", "Bret Harte", "San Lorenzo", "Creekside", "Proctor", "Canyon") and
 2026 dates. **Inferred:** that fixture came from one club's real availability spreadsheet and was
 transcribed rather than generalized.
 
+**Not to be unified with `packages/core/src/scenario/`.** Prompt 6.1 added a module that models
+**schedule branches** — "what would the season look like without venue X" — as an id, a baseline, a
+list of record-set overrides and a rationale, with the schedule and the diff re-derived on demand.
+The SQL table above models something else: **field-availability profiles**, which fields a club may
+use in a given configuration, keyed to the import path and the UI pages above. The two share an
+English word and nothing else. `scenario/` is in memory only, creates no migration, reads
+`field_availability_scenarios` nowhere, and a structural test in
+[`tests/scenarioBranching.test.js`](../tests/scenarioBranching.test.js) asserts the name appears in
+that package only as prose explaining this paragraph. Nothing in the SQL table reads `scenario/`
+either — it is still orphaned, exactly as described above. See [`SCENARIOS.md`](SCENARIOS.md) §9.
+
 ### 6.14 Smaller reuse hazards
 
 - **Division identity is a free-text label.** The engine joins on `Team.division` (a name), not
@@ -1528,6 +1539,7 @@ transcribed rather than generalized.
 | DB baseline              | `supabase/migrations/20260331000000_definitive_schema.sql`            |
 | Game persistence RPC     | `supabase/migrations/20260503030000_repair_game_persistence_rpc.sql`  |
 | Field availability       | `supabase/migrations/20260522120000_field_availability_phase1.sql`    |
+| Schedule scenarios       | `packages/core/src/scenario/index.js`                                 |
 | Edge Functions           | `supabase/functions/*/index.ts`, shared code in `_shared/`            |
 | Regression corpus        | `fixtures/season-2026/README.md`                                      |
 | Prior architecture notes | `docs/architecture/`, `docs/LESSONS_LEARNED.md`                       |
