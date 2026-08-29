@@ -40,6 +40,8 @@ import {
 import {
   ATTRIBUTION_SOURCE,
   buildAttributionContext,
+  categoryOnlyClaimFindings,
+  createAttributionMeta,
   isSpecificClaim,
   makeClaim,
 } from '@squadlogic/core/attribution/index.js';
@@ -56,6 +58,7 @@ import {
   FACILITY_REASON,
   buildFacilityGraphFromSeason2026,
   buildSeason2026VenueComplexMap,
+  getSurface,
   season2026SurfaceId,
 } from '@squadlogic/core/facility/index.js';
 import {
@@ -82,12 +85,16 @@ import {
   FEASIBILITY_SEVERITY,
   FEASIBILITY_STATUS,
   FEASIBILITY_THRESHOLD,
+  FEASIBILITY_TIGHTNESS,
   FEASIBILITY_UNKNOWN_BY_CODE,
   FEASIBILITY_VERDICT,
   FEASIBILITY_VERDICT_ORDER,
+  assertFeasibilityFindings,
   canGameMove,
   canTeamPlay,
+  candidateAccountingFindings,
   createFeasibilityMeta,
+  deriveFeasibilityTightness,
   deriveFeasibilityVerdict,
   feasibilitySeverityOf,
   feasibleKickoffBounds,
@@ -440,7 +447,7 @@ describe('feasibility :: acceptance 1 — the latest 11v11 kickoff, derived from
     );
     expect(answer.latestClean.kickoffMinutes).toBe(19 * 60 + 15);
     expect(answer.tightBandMinutes).toBe(calendar.permitMarginMinutes);
-    expect(answer.tight).toBe(true);
+    expect(answer.tight).toBe(FEASIBILITY_TIGHTNESS.TIGHT);
 
     // Sunset is *carried as inapplicable with its reason*, which is the
     // difference between a rule that did not apply and a rule nobody checked.
@@ -861,7 +868,13 @@ describe('feasibility :: acceptance 5 — GAP-14 propagates as unknown, never as
       )
     );
     expect(footprintUnknowns.length).toBeGreaterThan(0);
-    expect(footprintUnknowns[0].reason).toMatch(/not a "no clash"/);
+    // The clash's own `null`, named rather than taken by position: the cell also
+    // carries a footprint unknown from the placement check, and "the first one
+    // in the list" would be an assertion about ordering rather than about the
+    // overlap this case exists to prove.
+    const fromTheClash = footprintUnknowns.filter((entry) => /not a "no clash"/.test(entry.reason));
+    expect(fromTheClash.length).toBeGreaterThan(0);
+    expect(fromTheClash[0].details.gameId).toBe('constructed-untimed-pair');
     for (const candidate of answer.candidates) {
       expect(candidate.verdict).not.toBe(FEASIBILITY_VERDICT.FEASIBLE);
     }
@@ -1487,5 +1500,723 @@ describe('feasibility :: the hard boundary is availability/kickoff.js own answer
     });
     expect(answer.latestHard.threshold).toBe(FEASIBILITY_THRESHOLD.HARD);
     expect(answer.latestClean.threshold).toBe(FEASIBILITY_THRESHOLD.CLEAN);
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* Pre-PR review of 7.1 — eight defects, each with its own falsification        */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The whole corpus as a grid of bounds questions.
+ *
+ * 24 surfaces the schedule actually uses x 13 scheduled dates x the 6 formats
+ * `game_formats.csv` declares. Derived from the corpus, never typed in, so a
+ * re-dated or re-surfaced fixture moves the population rather than the
+ * expectation.
+ *
+ * @returns {Array<{ surfaceId: string, date: string, format: string }>}
+ */
+function boundsCorpus() {
+  const surfaces = [...new Set(schedule.games.map((game) => game.surfaceId))].sort();
+  const dates = [...new Set(schedule.games.map((game) => game.date))].sort();
+  /** @type {Array<{ surfaceId: string, date: string, format: string }>} */
+  const out = [];
+  for (const surfaceId of surfaces) {
+    for (const date of dates) {
+      for (const format of [...table.formatNames].sort()) out.push({ surfaceId, date, format });
+    }
+  }
+  return out;
+}
+
+/** Every real team the schedule names, placeholders excluded. */
+const realTeams = schedule.teamUniverse.filter(
+  (teamId) => !schedule.placeholderLabels.includes(teamId)
+);
+
+describe('feasibility :: finding 1 — "no clean position exists" is not "not tight"', () => {
+  const NINE = '9v9';
+
+  it('has a hard bound and no clean one at all on Alder pitch 2, 08/22, 9v9', () => {
+    const answer = feasibleKickoffBounds(context, {
+      surfaceId: ALDER_2,
+      date: '2026-08-22',
+      format: NINE,
+    });
+    expect(answer.latestHard.kickoffMinutes).toBe(18 * 60 + 40);
+    expect(answer.latestClean.kickoffMinutes).toBeNull();
+    expect(answer.tightBandMinutes).toBeNull();
+    expect(answer.verdict).toBe(FEASIBILITY_VERDICT.FEASIBLE);
+  });
+
+  it('and the minute-by-minute oracle agrees, so the state is a fact about the ground', () => {
+    // Without this the fix below would be dressing up a search that simply
+    // missed the answer. The pitch is not lined for 9v9, so `LINING_MISMATCH`
+    // — a `compromise` — speaks at every legal minute of the day and there is
+    // genuinely nothing clean to report.
+    const answer = feasibleKickoffBounds(context, {
+      surfaceId: ALDER_2,
+      date: '2026-08-22',
+      format: NINE,
+    });
+    const bookings = standingBookings(context.state, '2026-08-22', []);
+    let scanned = null;
+    let examined = 0;
+    for (let minute = answer.searchedToMinutes; minute >= answer.searchedFromMinutes; minute -= 1) {
+      examined += 1;
+      const probe = probeKickoff(
+        context.engines,
+        {
+          surfaceId: ALDER_2,
+          date: '2026-08-22',
+          kickoffMinutes: minute,
+          format: NINE,
+          ignoreBookingIds: [],
+        },
+        bookings,
+        createFeasibilityMeta()
+      );
+      if (probe.findings.every((finding) => finding.severity === CONSTRAINT_SEVERITY.INFO)) {
+        scanned = minute;
+        break;
+      }
+    }
+    expect(examined).toBeGreaterThan(0);
+    expect(scanned).toBeNull();
+  });
+
+  it('says so in a value that cannot be read as "there is room here"', () => {
+    const answer = feasibleKickoffBounds(context, {
+      surfaceId: ALDER_2,
+      date: '2026-08-22',
+      format: NINE,
+    });
+    expect(answer.tight).toBe(FEASIBILITY_TIGHTNESS.NO_CLEAN_POSITION);
+    expect(answer.findings.map((finding) => finding.code)).toContain(
+      FEASIBILITY_REASON.FEASIBILITY_NO_CLEAN_POSITION
+    );
+    expect(answer.status).not.toBe(FEASIBILITY_STATUS.ALLOWED);
+  });
+
+  it('holds as a rule over the whole corpus, not just that one cell', () => {
+    // **The rule, not the instance.** Every bounds answer with a hard bound
+    // and no clean one must say `no-clean-position`; every one with both must
+    // say `tight` or `clean` according to the band; and none may report a
+    // tightness while its verdict is not `feasible`.
+    let noClean = 0;
+    let banded = 0;
+    let judged = 0;
+    for (const cell of boundsCorpus()) {
+      const answer = feasibleKickoffBounds(context, cell);
+      const label = `${cell.surfaceId} ${cell.date} ${cell.format}`;
+      if (answer.verdict !== FEASIBILITY_VERDICT.FEASIBLE) {
+        expect(answer.tight, label).toBeNull();
+        continue;
+      }
+      judged += 1;
+      if (answer.latestClean.kickoffMinutes === null) {
+        noClean += 1;
+        expect(answer.tight, label).toBe(FEASIBILITY_TIGHTNESS.NO_CLEAN_POSITION);
+        continue;
+      }
+      banded += 1;
+      expect(answer.tight, label).toBe(
+        answer.tightBandMinutes > 0 ? FEASIBILITY_TIGHTNESS.TIGHT : FEASIBILITY_TIGHTNESS.CLEAN
+      );
+    }
+    // Meta-assertions: both arms of the rule were exercised, and the
+    // population is the one the review measured — 772 of the corpus's
+    // surface-date-format combinations reach a hard bound with nothing clean
+    // beneath it, and every one of them used to read as "not tight".
+    expect(judged).toBeGreaterThan(0);
+    expect(banded).toBeGreaterThan(0);
+    expect(noClean).toBe(772);
+  }, 120_000);
+
+  it('is a named value from a frozen table, so `if (answer.tight)` cannot decide it', () => {
+    expect(Object.isFrozen(FEASIBILITY_TIGHTNESS)).toBe(true);
+    expect(Object.values(FEASIBILITY_TIGHTNESS).sort()).toEqual([
+      'clean',
+      'no-clean-position',
+      'tight',
+    ]);
+    for (const value of Object.values(FEASIBILITY_TIGHTNESS)) expect(typeof value).toBe('string');
+    // The producer refuses both shapes that make the collapse free, exactly as
+    // `deriveFeasibilityVerdict()` refuses them for `blocked`.
+    expect(() =>
+      deriveFeasibilityTightness({
+        verdict: FEASIBILITY_VERDICT.FEASIBLE,
+        compromised: /** @type {any} */ (null),
+        cleanBoundaryExists: true,
+      })
+    ).toThrow(/must be a boolean/);
+    expect(() =>
+      deriveFeasibilityTightness({
+        verdict: FEASIBILITY_VERDICT.FEASIBLE,
+        compromised: false,
+        cleanBoundaryExists: /** @type {any} */ (undefined),
+      })
+    ).toThrow(/boolean or an explicit null/);
+    // …and "nothing clean anywhere" beats "inside a stated margin", rather than
+    // the two being alternatives.
+    expect(
+      deriveFeasibilityTightness({
+        verdict: FEASIBILITY_VERDICT.FEASIBLE,
+        compromised: false,
+        cleanBoundaryExists: false,
+      })
+    ).toBe(FEASIBILITY_TIGHTNESS.NO_CLEAN_POSITION);
+    expect(
+      deriveFeasibilityTightness({
+        verdict: FEASIBILITY_VERDICT.INFEASIBLE,
+        compromised: true,
+        cleanBoundaryExists: false,
+      })
+    ).toBeNull();
+  });
+});
+
+describe('feasibility :: finding 2 — a margin’s basis names the bound it came from', () => {
+  it('names the bound whose slack the margin is, not whichever was claimed first', () => {
+    // The corpus's own instance: three constraints bind, the first claimed is
+    // 5 minutes short and the tightest is 55 minutes short, and the answer used
+    // to report the 55 under the first one's name.
+    const answer = canTeamPlay(
+      context,
+      {
+        teamId: '06GMicro01',
+        dates: [...new Set(schedule.games.map((game) => game.date))].sort(),
+        kickoffMinutes: 12 * 60 + 30,
+      },
+      { venueComplexes }
+    );
+    expect(answer.binding.length).toBeGreaterThan(1);
+    const named = answer.binding.filter((bound) => bound.kind === answer.marginBasis);
+    expect(named).toHaveLength(1);
+    expect(named[0].slackMinutes).toBe(answer.marginMinutes);
+    expect(answer.marginBasis).not.toBe(answer.binding[0].kind);
+  });
+
+  it('never reports a basis without a margin, on any answer shape', () => {
+    // **The rule.** A basis is the name of the bound the number came from, so
+    // one without the other is a claim with no source. Checked over every
+    // shape rather than over the one that had the defect.
+    let checked = 0;
+    let withBasis = 0;
+    let withoutBasis = 0;
+    /** @param {{ marginMinutes: number|null, marginBasis: string|null, binding: ReadonlyArray<{ kind: string, slackMinutes: number|null }> }} answer @param {string} label */
+    const assertBasis = (answer, label) => {
+      checked += 1;
+      expect(answer.marginBasis === null, label).toBe(answer.marginMinutes === null);
+      if (answer.marginBasis === null) {
+        withoutBasis += 1;
+        return;
+      }
+      withBasis += 1;
+      const source = answer.binding.filter((bound) => bound.kind === answer.marginBasis);
+      expect(source.length, label).toBeGreaterThan(0);
+      expect(source[0].slackMinutes, label).toBe(answer.marginMinutes);
+    };
+
+    const dates = [...new Set(schedule.games.map((game) => game.date))].sort();
+    for (const teamId of realTeams) {
+      const answer = canTeamPlay(
+        context,
+        { teamId, dates, kickoffMinutes: 18 * 60 },
+        {
+          venueComplexes,
+        }
+      );
+      assertBasis(answer, `canTeamPlay ${teamId}`);
+      for (const candidate of answer.candidates) {
+        assertBasis(candidate, `candidate ${teamId} ${candidate.date} ${candidate.surfaceId}`);
+      }
+    }
+    for (const game of schedule.games.slice(0, 60)) {
+      assertBasis(
+        canGameMove(
+          context,
+          { gameId: game.id, insteadOfMinutes: game.startMinutes + 30 },
+          { venueComplexes }
+        ),
+        `canGameMove ${game.id}`
+      );
+    }
+    for (const cell of boundsCorpus().filter((entry) => entry.format === '11v11')) {
+      const answer = feasibleKickoffBounds(context, cell);
+      assertBasis(answer, `bounds ${cell.surfaceId} ${cell.date}`);
+      assertBasis(answer.latestHard, `hard ${cell.surfaceId} ${cell.date}`);
+      assertBasis(answer.latestClean, `clean ${cell.surfaceId} ${cell.date}`);
+    }
+    // Meta-assertions: the sweep ran, and it saw both a stated basis and an
+    // unmeasured one — a rule checked only against nulls proves nothing.
+    expect(checked).toBeGreaterThan(1000);
+    expect(withBasis).toBeGreaterThan(0);
+    expect(withoutBasis).toBeGreaterThan(0);
+  }, 120_000);
+});
+
+describe('feasibility :: finding 3 — a team asked about the slot it already holds', () => {
+  const carrierOf = (/** @type {string} */ teamId) =>
+    [...schedule.games]
+      .filter((game) => game.homeTeamId === teamId || game.awayTeamId === teamId)
+      .sort((a, b) =>
+        a.date === b.date ? a.id.localeCompare(b.id) : a.date.localeCompare(b.date)
+      )[0];
+
+  it('answers it from the standing schedule rather than shrugging', () => {
+    const teamId = realTeams.find((id) => carrierOf(id) !== undefined);
+    const carrier = carrierOf(/** @type {string} */ (teamId));
+    const answer = canTeamPlay(
+      context,
+      {
+        teamId,
+        dates: [carrier.date],
+        kickoffMinutes: carrier.startMinutes,
+        surfaceIds: [carrier.surfaceId],
+      },
+      { venueComplexes }
+    );
+    expect(answer.candidates).toHaveLength(1);
+    const cell = answer.candidates[0];
+    expect(cell.unknowns.map((entry) => entry.code)).not.toContain(
+      FEASIBILITY_REASON.FEASIBILITY_MOVE_IS_NO_OP
+    );
+    expect(cell.verdict).toBe(FEASIBILITY_VERDICT.FEASIBLE);
+    expect(answer.verdict).toBe(FEASIBILITY_VERDICT.FEASIBLE);
+    expect(answer.findings.map((finding) => finding.code)).toContain(
+      FEASIBILITY_REASON.FEASIBILITY_POSITION_ALREADY_HELD
+    );
+  });
+
+  it('holds for every team the schedule names', () => {
+    let asked = 0;
+    let measurable = 0;
+    let feasible = 0;
+    let unmeasurable = 0;
+    for (const teamId of realTeams) {
+      const carrier = carrierOf(teamId);
+      if (carrier === undefined) continue;
+      asked += 1;
+      const answer = canTeamPlay(
+        context,
+        {
+          teamId,
+          dates: [carrier.date],
+          kickoffMinutes: carrier.startMinutes,
+          surfaceIds: [carrier.surfaceId],
+        },
+        { venueComplexes }
+      );
+      const cell = answer.candidates[0];
+      expect(
+        cell.unknowns.map((entry) => entry.code),
+        teamId
+      ).not.toContain(FEASIBILITY_REASON.FEASIBILITY_MOVE_IS_NO_OP);
+      // **The one honest exception, stated rather than absorbed.** A carrier
+      // whose format has no declared timing has no footprint (GAP-14), and
+      // acceptance 5 requires that such a fixture is never called feasible
+      // anywhere. Those five teams keep that answer here; every other team
+      // plainly can play where it already plays.
+      if (
+        (formatTimingOrUnknown(table, carrier.format).occupancyMinutes?.scheduled ?? null) === null
+      ) {
+        unmeasurable += 1;
+        expect(cell.verdict, teamId).not.toBe(FEASIBILITY_VERDICT.FEASIBLE);
+        continue;
+      }
+      measurable += 1;
+      if (cell.verdict === FEASIBILITY_VERDICT.FEASIBLE) feasible += 1;
+    }
+    expect(asked).toBeGreaterThan(100);
+    expect(unmeasurable).toBeGreaterThan(0);
+    expect(measurable).toBeGreaterThan(100);
+    expect(feasible).toBe(measurable);
+  }, 120_000);
+
+  it('still refuses the move question, which really is a thing compared with itself', () => {
+    // The distinction the fix rests on: *"can this game move to where it is?"*
+    // is vacuous and stays vacuous. Only the team question — *"can this team
+    // play where it plays?"* — has an answer, and it is the standing one.
+    const game = schedule.games[0];
+    const answer = canGameMove(
+      context,
+      { gameId: game.id, insteadOfMinutes: game.startMinutes },
+      { venueComplexes }
+    );
+    expect(answer.verdict).toBe(FEASIBILITY_VERDICT.UNKNOWN);
+    expect(answer.unknowns.map((entry) => entry.code)).toContain(
+      FEASIBILITY_REASON.FEASIBILITY_MOVE_IS_NO_OP
+    );
+  });
+});
+
+describe('feasibility :: finding 4 — the subject names where the game would be', () => {
+  it('pairs the destination surface with the destination venue', () => {
+    const game = schedule.games.find(
+      (entry) => entry.venueId === 'summit-hs' && entry.format === '11v11'
+    );
+    const answer = canGameMove(
+      context,
+      { gameId: game.id, insteadOfSurfaceId: 'riverbend/turf' },
+      { venueComplexes }
+    );
+    expect(answer.subject.surfaceId).toBe('riverbend/turf');
+    expect(answer.subject.venueId).toBe('riverbend');
+    expect(answer.subject.venueId).not.toBe(game.venueId);
+  });
+
+  it('holds for every move this corpus can be asked about', () => {
+    // The rule: the subject's venue is the venue of the subject's surface, on
+    // every answer, or `null` when the graph does not hold that surface.
+    const destinations = [ALDER_2, SUMMIT, 'riverbend/turf', 'no-such-venue/no-such-pitch'];
+    let checked = 0;
+    let moved = 0;
+    for (const game of schedule.games.slice(0, 40)) {
+      for (const surfaceId of destinations) {
+        const answer = canGameMove(
+          context,
+          { gameId: game.id, insteadOfSurfaceId: surfaceId },
+          {
+            venueComplexes,
+          }
+        );
+        checked += 1;
+        const expected = getSurface(graph, answer.subject.surfaceId)?.venueId ?? null;
+        expect(answer.subject.venueId, `${game.id} -> ${surfaceId}`).toBe(expected);
+        if (answer.subject.venueId !== game.venueId) moved += 1;
+      }
+    }
+    expect(checked).toBeGreaterThan(0);
+    expect(moved).toBeGreaterThan(0);
+  }, 120_000);
+});
+
+describe('feasibility :: finding 5 — the format a team question names is the format it judges', () => {
+  const nineOnly = realTeams.find((teamId) => {
+    const games = schedule.games.filter(
+      (game) => game.homeTeamId === teamId || game.awayTeamId === teamId
+    );
+    return games.length > 0 && games.every((game) => game.format === '9v9');
+  });
+
+  it('finds a single-format team, so the case below is not vacuous', () => {
+    expect(nineOnly).toBeDefined();
+  });
+
+  it('refuses a format no fixture of the team can carry, rather than judging another one', () => {
+    const answer = canTeamPlay(
+      context,
+      { teamId: nineOnly, dates: ['2026-11-14'], kickoffMinutes: 14 * 60, format: '11v11' },
+      { venueComplexes }
+    );
+    expect(answer.carrierGameId).toBeNull();
+    expect(answer.verdict).toBe(FEASIBILITY_VERDICT.UNKNOWN);
+    expect(answer.unknowns.map((entry) => entry.code)).toContain(
+      FEASIBILITY_REASON.FEASIBILITY_FORMAT_UNCARRIED
+    );
+    // The defect in one line: the same query used to come back with a grid
+    // judged as 9v9 under an 11v11 label.
+    expect(answer.candidates).toHaveLength(0);
+  });
+
+  it('carries a named format on a fixture that plays it, when the team spans two', () => {
+    // The corpus has no two-format team, so one is constructed as an *input* —
+    // an extra fixture in the schedule — rather than reached into.
+    const anchor = schedule.games.find((game) => game.format === '9v9' && game.homeTeamId !== null);
+    const constructed = buildAttributionContext({
+      graph,
+      table,
+      calendar,
+      registry,
+      schedule: {
+        ...schedule,
+        games: [
+          ...schedule.games,
+          { ...anchor, id: 'review-second-format', format: '7v7', date: '2026-10-03' },
+        ],
+      },
+      verification,
+      venueComplexes,
+      roster,
+    });
+    const ambiguous = canTeamPlay(
+      constructed,
+      { teamId: anchor.homeTeamId, dates: ['2026-10-03'], kickoffMinutes: 10 * 60 },
+      { venueComplexes }
+    );
+    expect(ambiguous.subject.format).toBeNull();
+    expect(ambiguous.unknowns.map((entry) => entry.code)).toContain(
+      FEASIBILITY_REASON.FEASIBILITY_FORMAT_UNRESOLVED
+    );
+
+    const named = canTeamPlay(
+      constructed,
+      {
+        teamId: anchor.homeTeamId,
+        dates: ['2026-10-03'],
+        kickoffMinutes: 10 * 60,
+        format: '7v7',
+      },
+      { venueComplexes }
+    );
+    expect(named.subject.format).toBe('7v7');
+    expect(named.carrierGameId).toBe('review-second-format');
+    expect(named.unknowns.map((entry) => entry.code)).not.toContain(
+      FEASIBILITY_REASON.FEASIBILITY_FORMAT_UNRESOLVED
+    );
+  });
+
+  it('never reports a format the grid was not judged with', () => {
+    // The rule the field has to earn: a stated `subject.format` is the format
+    // of the carrier fixture every cell was judged through.
+    const byId = new Map(schedule.games.map((game) => [game.id, game]));
+    let stated = 0;
+    let refused = 0;
+    for (const teamId of realTeams.slice(0, 60)) {
+      for (const format of [null, '9v9', '11v11', '7v7']) {
+        const answer = canTeamPlay(
+          context,
+          { teamId, dates: ['2026-11-14'], kickoffMinutes: 10 * 60, format },
+          { venueComplexes }
+        );
+        const label = `${teamId} ${String(format)}`;
+        if (answer.carrierGameId === null) {
+          refused += 1;
+          expect(answer.verdict, label).toBe(FEASIBILITY_VERDICT.UNKNOWN);
+          continue;
+        }
+        stated += 1;
+        expect(byId.get(answer.carrierGameId).format, label).toBe(
+          answer.subject.format ?? byId.get(answer.carrierGameId).format
+        );
+        if (answer.subject.format !== null) {
+          expect(byId.get(answer.carrierGameId).format, label).toBe(answer.subject.format);
+        }
+      }
+    }
+    expect(stated).toBeGreaterThan(0);
+    expect(refused).toBeGreaterThan(0);
+  }, 120_000);
+});
+
+describe('feasibility :: finding 6 — the module cannot emit a finding it cannot look up', () => {
+  it('has a foreign code that would detonate, which is what the class guard is for', () => {
+    // The positive control, built from 4.3's own guard over 4.3's own
+    // category-only claim. This finding is what used to be pushed straight into
+    // a feasibility answer's `findings`.
+    const foreign = categoryOnlyClaimFindings(
+      [makeClaim({ source: ATTRIBUTION_SOURCE.AVAILABILITY, kind: 'sunset' })],
+      { surfaceId: ALDER_2, date: '2026-08-22' },
+      createAttributionMeta()
+    );
+    expect(foreign).toHaveLength(1);
+    expect(foreign[0].code).toBe('ATTRIBUTION_CLAIM_CATEGORY_ONLY');
+    expect(() => feasibilitySeverityOf(foreign[0].code)).toThrow(/no registered severity/);
+    expect(() => assertFeasibilityFindings(foreign, 'a constructed answer')).toThrow(
+      /no registered severity/
+    );
+    // …and a registered code carrying the wrong severity is refused too, so the
+    // guard is about the table rather than about the key.
+    expect(() =>
+      assertFeasibilityFindings([
+        {
+          code: FEASIBILITY_REASON.FEASIBILITY_TIGHT,
+          severity: FEASIBILITY_SEVERITY.BLOCKING,
+          message: 'mislabelled',
+          details: {},
+        },
+      ])
+    ).toThrow(/frozen table registers it/);
+  });
+
+  it('translates the category-only guard into its own vocabulary', () => {
+    expect(Object.keys(FEASIBILITY_REASON_SEVERITY)).toContain(
+      FEASIBILITY_REASON.FEASIBILITY_CLAIM_CATEGORY_ONLY
+    );
+    expect(feasibilitySeverityOf(FEASIBILITY_REASON.FEASIBILITY_CLAIM_CATEGORY_ONLY)).toBe(
+      FEASIBILITY_SEVERITY.BLOCKING
+    );
+  });
+
+  it('looks up every finding of every answer this corpus produces', () => {
+    // **The class, over real output.** Not a list of codes written here: every
+    // finding of every answer of all three shapes is resolved against the
+    // frozen table, and the severity it carries must be the one registered.
+    let findings = 0;
+    /** @type {Set<string>} */
+    const codes = new Set();
+    /** @param {{ findings: ReadonlyArray<import('@squadlogic/core/feasibility/types.js').FeasibilityFinding> }} answer */
+    const audit = (answer) => {
+      assertFeasibilityFindings(answer.findings);
+      findings += answer.findings.length;
+      for (const finding of answer.findings) codes.add(finding.code);
+    };
+    for (const cell of boundsCorpus()) audit(feasibleKickoffBounds(context, cell));
+    for (const game of schedule.games.slice(0, 40)) {
+      audit(
+        canGameMove(
+          context,
+          { gameId: game.id, insteadOfMinutes: game.startMinutes + 30 },
+          { venueComplexes }
+        )
+      );
+    }
+    audit(canGameMove(context, { gameId: 'no-such-game' }, { venueComplexes }));
+    for (const teamId of realTeams.slice(0, 20)) {
+      audit(
+        canTeamPlay(
+          context,
+          { teamId, dates: ['2026-11-14'], kickoffMinutes: 18 * 60 },
+          {
+            venueComplexes,
+          }
+        )
+      );
+    }
+    // Meta-assertions: an audit over an empty list, or over one code, would
+    // pass while proving nothing.
+    expect(findings).toBeGreaterThan(5000);
+    expect(codes.size).toBeGreaterThanOrEqual(6);
+  }, 120_000);
+});
+
+describe('feasibility :: finding 7 — every candidate considered is a candidate answered', () => {
+  it('accounts for the candidate even when the subject is not in the run', () => {
+    const answer = canGameMove(context, { gameId: 'no-such-game' }, { venueComplexes });
+    expect(answer.meta.candidatesConsidered).toBe(1);
+    expect(answer.meta.candidatesAnswered).toBe(answer.meta.candidatesConsidered);
+    expect(answer.findings.map((finding) => finding.code)).not.toContain(
+      FEASIBILITY_REASON.FEASIBILITY_CANDIDATE_DROPPED
+    );
+    // A good answer to a bad question is not a broken answer.
+    expect(answer.verdict).toBe(FEASIBILITY_VERDICT.UNKNOWN);
+    expect(answer.status).not.toBe(FEASIBILITY_STATUS.REJECTED);
+  });
+
+  it('has a guard that can fail, shown by constructing the ledger it reads', () => {
+    // **Constructed rather than asserted.** The production guard is this
+    // function, called from `seal()`; here it is handed a ledger that does not
+    // balance and is shown to say so.
+    const balanced = createFeasibilityMeta();
+    balanced.candidatesConsidered = 3;
+    balanced.candidatesAnswered = 3;
+    expect(candidateAccountingFindings(balanced, { question: 'test' })).toEqual([]);
+
+    const short = createFeasibilityMeta();
+    short.candidatesConsidered = 3;
+    short.candidatesAnswered = 2;
+    const raised = candidateAccountingFindings(short, { question: 'test' });
+    expect(raised).toHaveLength(1);
+    expect(raised[0].code).toBe(FEASIBILITY_REASON.FEASIBILITY_CANDIDATE_DROPPED);
+    expect(raised[0].severity).toBe(FEASIBILITY_SEVERITY.BLOCKING);
+    expect(raised[0].details.candidatesConsidered).toBe(3);
+    expect(raised[0].details.candidatesAnswered).toBe(2);
+  });
+
+  it('balances on every answer of every shape', () => {
+    let checked = 0;
+    /** @param {{ meta: { candidatesConsidered: number, candidatesAnswered: number }, findings: ReadonlyArray<{ code: string }> }} answer @param {string} label */
+    const balances = (answer, label) => {
+      checked += 1;
+      expect(answer.meta.candidatesAnswered, label).toBe(answer.meta.candidatesConsidered);
+      expect(
+        answer.findings.map((finding) => finding.code),
+        label
+      ).not.toContain(FEASIBILITY_REASON.FEASIBILITY_CANDIDATE_DROPPED);
+    };
+    for (const cell of boundsCorpus().filter((entry) => entry.format === '9v9')) {
+      balances(feasibleKickoffBounds(context, cell), `bounds ${cell.surfaceId} ${cell.date}`);
+    }
+    for (const game of schedule.games.slice(0, 40)) {
+      balances(
+        canGameMove(
+          context,
+          { gameId: game.id, insteadOfMinutes: game.startMinutes + 30 },
+          { venueComplexes }
+        ),
+        `move ${game.id}`
+      );
+    }
+    balances(
+      canGameMove(context, { gameId: 'no-such-game' }, { venueComplexes }),
+      'move of a game nothing holds'
+    );
+    for (const teamId of [...realTeams.slice(0, 20), schedule.placeholderLabels[0]]) {
+      balances(
+        canTeamPlay(
+          context,
+          { teamId, dates: ['2026-11-14'], kickoffMinutes: 18 * 60 },
+          {
+            venueComplexes,
+          }
+        ),
+        `team ${teamId}`
+      );
+    }
+    expect(checked).toBeGreaterThan(100);
+  }, 120_000);
+});
+
+describe('feasibility :: finding 8 — the unknown counter counts each unknown once', () => {
+  const november = [...new Set(schedule.games.map((game) => game.date))]
+    .filter((date) => date.startsWith(`${SEASON_YEAR}-11-`))
+    .sort();
+  const nineTeam = schedule.teamUniverse.find((id) =>
+    schedule.games.some((game) => game.homeTeamId === id && game.format === '9v9')
+  );
+
+  it('counts the grid’s unknowns once, not once per cell and again in the roll-up', () => {
+    const answer = canTeamPlay(
+      context,
+      { teamId: nineTeam, dates: november, kickoffMinutes: 18 * 60 },
+      { venueComplexes }
+    );
+    const perCell = answer.candidates.reduce(
+      (total, candidate) => total + candidate.unknowns.length,
+      0
+    );
+    // Meta-assertions first: a roll-up carrying no unknowns, or cells carrying
+    // none, would make the comparison below true of nothing.
+    expect(perCell).toBeGreaterThan(0);
+    expect(answer.unknowns.length).toBeGreaterThan(0);
+    expect(answer.meta.unknownsRaised).toBe(perCell);
+    expect(answer.meta.unknownsRaised).not.toBe(perCell + answer.unknowns.length);
+  });
+
+  it('counts a single-answer query’s unknowns exactly once', () => {
+    const move = canGameMove(
+      context,
+      { gameId: schedule.games[0].id, insteadOfMinutes: schedule.games[0].startMinutes + 30 },
+      { venueComplexes }
+    );
+    expect(move.unknowns.length).toBeGreaterThan(0);
+    expect(move.meta.unknownsRaised).toBe(move.unknowns.length);
+
+    const bounds = feasibleKickoffBounds(context, {
+      surfaceId: ALDER_2,
+      date: '2026-08-22',
+      format: '11v11',
+    });
+    expect(bounds.unknowns.length).toBeGreaterThan(0);
+    expect(bounds.meta.unknownsRaised).toBe(bounds.unknowns.length);
+  });
+
+  it('does not write into the counters of the answer it is handed', () => {
+    // The same query twice must produce the same ledger; a seal that added to
+    // the meta it was given would make the second run disagree with the first
+    // as soon as anything reused a meta.
+    const once = canTeamPlay(
+      context,
+      { teamId: nineTeam, dates: november, kickoffMinutes: 18 * 60 },
+      { venueComplexes }
+    );
+    const twice = canTeamPlay(
+      context,
+      { teamId: nineTeam, dates: november, kickoffMinutes: 18 * 60 },
+      { venueComplexes }
+    );
+    expect(twice.meta).toEqual(once.meta);
   });
 });

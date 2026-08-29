@@ -406,6 +406,41 @@ export function marginFrom(binding) {
 }
 
 /**
+ * **The candidate ledger: considered must equal answered.**
+ *
+ * `types.js` states the invariant on `FeasibilityMeta.candidatesAnswered` — *"must
+ * equal the line above"* — and until this function existed nothing checked it.
+ * The `canTeamPlay()` grid had a guard of its own, over the grid size derived
+ * from the query, but that guard is about one query shape; the unknown-game
+ * early return in `canGameMove()` counted a candidate as considered, answered
+ * none, and said nothing, because no shape-independent check existed to notice.
+ *
+ * So this runs from `seal()`, which every answer of every shape passes through,
+ * and it is the reason the invariant is now a property of the module rather
+ * than of one loop. It takes a meta rather than a list on purpose: a counter
+ * incremented beside the `push` it counts can never disagree with it, and the
+ * two numbers here are incremented at genuinely different places.
+ *
+ * @param {import('./types.js').FeasibilityMeta} meta
+ * @param {Record<string, unknown>} where
+ * @returns {import('./types.js').FeasibilityFinding[]}
+ */
+export function candidateAccountingFindings(meta, where) {
+  if (meta.candidatesAnswered === meta.candidatesConsidered) return [];
+  return [
+    makeFeasibilityFinding(
+      FEASIBILITY_REASON.FEASIBILITY_CANDIDATE_DROPPED,
+      `${meta.candidatesConsidered} candidate position(s) were considered and ${meta.candidatesAnswered} produced an answer; a position that cannot be judged is reported with a reason, never dropped`,
+      {
+        ...where,
+        candidatesConsidered: meta.candidatesConsidered,
+        candidatesAnswered: meta.candidatesAnswered,
+      }
+    ),
+  ];
+}
+
+/**
  * The findings a binding set implies about the answer that carries it.
  *
  * @param {ReadonlyArray<import('./types.js').FeasibilityBound>} binding

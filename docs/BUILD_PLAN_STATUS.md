@@ -43,8 +43,9 @@ merge, no regression to the shipping app (bundle entry hash unchanged throughout
 committed. `packages/core/src/feasibility/` (`reasonCodes.js`, `schemas.js`,
 `types.js`, `verdict.js`, `queries.js`, `index.js`) plus
 `tests/feasibilityApi.test.js`; `tests/reasonCodeReachability.test.js` gains the
-sixteenth vocabulary and its driver. Suite **1776 -> 1836** (60 new cases), all
-six gates green, season fixture green.
+sixteenth vocabulary and its driver. Suite **1776 -> 1863** (60 new cases, plus
+26 from the pre-PR review round below), all six gates green, season fixture
+green.
 
 Three queries, one answer shape: `canGameMove()`, `canTeamPlay()`,
 `feasibleKickoffBounds()`. A verdict is three-valued
@@ -60,6 +61,13 @@ exactly); `latestClean` is the last that raises nothing above `info` at all. The
 gap is `tightBandMinutes`. On this corpus: Alder 08/22 18:15/18:15, Alder 11/14
 14:50/14:50, Summit 11/14 19:30/19:15.
 
+`tight` is **three-valued and named** — `clean` / `tight` / `no-clean-position`,
+from `FEASIBILITY_TIGHTNESS`, `null` when the verdict is not `feasible` — for the
+reason the verdict is: as a boolean, `false` meant both "there is room here" and
+"no clean position exists at all", and 772 of the corpus's 1,872
+surface-date-format combinations reported the second while reading as the first.
+`deriveFeasibilityTightness()` is its only producer.
+
 **One design decision worth the review's attention.** Both of the corpus's
 unenforced constraints are `preference`, and `CONSTRAINT_TYPE_SEVERITY` maps a
 preference to `info`, which moves no status in any derivation in this repo. So
@@ -68,6 +76,24 @@ an unenforced *preference* is reported in `unknowns` and compromises the answer'
 The guard is proved by construction rather than by assertion: `coach-maximum-gap`
 retyped to `hard` through `whatIfConstraintType()` — which projects a registry
 and adopts nothing — makes the identical query come back `unknown` naming it.
+
+**The pre-PR review round.** Eight findings, seven of them reproduced against
+the season corpus and one (`ATTRIBUTION_CLAIM_CATEGORY_ONLY` forwarded raw into a
+feasibility `findings` list) latent rather than live. Three were fixed as classes
+rather than as instances: `tight` became the named enum above; every finding now
+leaves through `assertFeasibilityFindings()` in `seal()`, so the module cannot
+emit a code whose severity it cannot look up; and `candidateAccountingFindings()`
+runs from `seal()` on every answer shape, which makes
+`FeasibilityMeta.candidatesAnswered === candidatesConsidered` an invariant rather
+than a docstring — and moves `FEASIBILITY_CANDIDATE_DROPPED` off the reachability
+audit's hole list. The other five: the margin's `marginBasis` now names the bound
+the number was copied from rather than `binding[0]`; a team asked about the slot
+it already holds is answered from the standing schedule instead of refused as a
+no-op; `subject.venueId` is the destination surface's venue rather than the
+origin's; `canTeamPlay()`'s `format` chooses the carrier fixture, so it is
+honoured by every cell or refused with `FEASIBILITY_FORMAT_UNCARRIED`; and
+`seal()` no longer writes to a shared meta, which had `unknownsRaised` counting a
+grid's unknowns once per cell and again in the roll-up.
 
 Nothing in flight otherwise. 6.1 merged as #351 after seven review rounds
 (11 -> 6 -> 4 -> 2 -> 4 -> 1 -> 0 findings) and one CI failure of its own making:

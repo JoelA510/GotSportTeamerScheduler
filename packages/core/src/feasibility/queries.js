@@ -71,9 +71,12 @@ import {
   FEASIBILITY_REASON,
   FEASIBILITY_THRESHOLD,
   FEASIBILITY_MARGIN_UNIT,
+  FEASIBILITY_TIGHTNESS,
   FEASIBILITY_VERDICT,
+  assertFeasibilityFindings,
   createFeasibilityMeta,
   deriveFeasibilityStatus,
+  deriveFeasibilityTightness,
   deriveFeasibilityVerdict,
   makeFeasibilityFinding,
   mergeFeasibilityMeta,
@@ -87,6 +90,7 @@ import {
   absorbUnknowns,
   bindingAt,
   boundFindings,
+  candidateAccountingFindings,
   makeUnknown,
   marginFrom,
   probeKickoff,
@@ -311,15 +315,26 @@ function emptyAnswer(question, subject, meta) {
  *
  * `tight` is `null` unless the verdict is `feasible`, because "not tight" is a
  * statement about a placement, and there is no placement to make it about when
- * the answer is `infeasible` or `unknown`.
+ * the answer is `infeasible` or `unknown`. Where the verdict *is* `feasible` it
+ * is one of {@link FEASIBILITY_TIGHTNESS}'s three named values, produced by
+ * `deriveFeasibilityTightness()` and never here.
+ *
+ * This function reads the meta it is handed and never writes to it: the counter
+ * it used to add to is shared with every nested answer that fed into this one,
+ * and adding there counted the grid's unknowns once per cell and again in the
+ * roll-up. Each level now counts what it raised, where it raised it.
  *
  * @param {import('./types.js').FeasibilityAnswer} answer
- * @param {{ blocked: boolean, compromised: boolean }} state
+ * @param {{ blocked: boolean, compromised: boolean, cleanBoundaryExists?: boolean|null }} state
  * @returns {import('./types.js').FeasibilityAnswer}
  */
 function seal(answer, state) {
   const verdict = deriveFeasibilityVerdict({ blocked: state.blocked, unknowns: answer.unknowns });
-  const tight = verdict === FEASIBILITY_VERDICT.FEASIBLE ? state.compromised === true : null;
+  const tight = deriveFeasibilityTightness({
+    verdict,
+    compromised: state.compromised,
+    cleanBoundaryExists: state.cleanBoundaryExists ?? null,
+  });
   const findings = [...answer.findings];
 
   // **Every stated unknown reaches the findings list**, once per code, so an
@@ -347,7 +362,7 @@ function seal(answer, state) {
       )
     );
   }
-  if (tight === true) {
+  if (tight === FEASIBILITY_TIGHTNESS.TIGHT) {
     findings.push(
       makeFeasibilityFinding(
         FEASIBILITY_REASON.FEASIBILITY_TIGHT,
@@ -356,6 +371,21 @@ function seal(answer, state) {
       )
     );
   }
+  if (tight === FEASIBILITY_TIGHTNESS.NO_CLEAN_POSITION) {
+    findings.push(
+      makeFeasibilityFinding(
+        FEASIBILITY_REASON.FEASIBILITY_NO_CLEAN_POSITION,
+        'this bound is legal and there is no clean position beneath it at all: every kickoff it admits raises something above info, so there is no uncompromised time to move to',
+        { question: answer.question, marginMinutes: answer.marginMinutes }
+      )
+    );
+  }
+  // **The candidate ledger, on every shape.** `types.js` requires
+  // `candidatesAnswered` to equal `candidatesConsidered`; this is where that
+  // stops being a docstring. It runs from `seal()` rather than from any one
+  // query so a future early return cannot escape it the way the unknown-game
+  // one did.
+  findings.push(...candidateAccountingFindings(answer.meta, { question: answer.question }));
   findings.push(
     makeFeasibilityFinding(
       FEASIBILITY_REASON.FEASIBILITY_VERDICT_REACHED,
@@ -371,7 +401,12 @@ function seal(answer, state) {
       }
     )
   );
-  answer.meta.unknownsRaised += answer.unknowns.length;
+  // **Nothing leaves here carrying a code this module cannot look up.** A
+  // finding forwarded in from another module keeps that module's vocabulary,
+  // and `feasibilitySeverityOf()` throws on it — at the call site of whoever
+  // reads the answer rather than here, which is the worst place for it to
+  // happen. One funnel, checked once, over every answer of every shape.
+  assertFeasibilityFindings(findings, `the "${answer.question}" answer`);
   return { ...answer, verdict, tight, findings, status: deriveFeasibilityStatus(findings) };
 }
 
@@ -390,7 +425,12 @@ function seal(answer, state) {
  *
  * @param {import('../attribution/types.js').AttributionContext} context
  * @param {Object} rawQuery - see `MoveFeasibilityQuerySchema`
- * @param {{ venueComplexes?: Object|null, minimalSet?: boolean }} [options]
+ * @param {{ venueComplexes?: Object|null, minimalSet?: boolean, standingPositionIsAnAnswer?: boolean }} [options] -
+ *   `standingPositionIsAnAnswer` says the caller is asking whether the position
+ *   is legal rather than whether the game may move to it, so naming the slot the
+ *   game already holds is answered from the standing schedule instead of being
+ *   refused as a comparison between a thing and itself. `canTeamPlay()` is the
+ *   caller that needs it; the move question does not.
  * @returns {import('./types.js').FeasibilityAnswer}
  */
 export function canGameMove(context, rawQuery, options = {}) {
@@ -402,18 +442,44 @@ export function canGameMove(context, rawQuery, options = {}) {
   meta.questionsAsked += 1;
   meta.candidatesConsidered += 1;
 
+  // **One surface, resolved once.** The subject describes the position the
+  // question is about, which is the *destination* — so its venue is the
+  // destination surface's venue. Reading it off the game instead paired a
+  // riverbend pitch with `summit-hs`, in the field an operator reads first.
+  const destinationSurfaceId = query.insteadOfSurfaceId ?? game?.surfaceId ?? null;
+  const destinationSurface =
+    destinationSurfaceId === null
+      ? null
+      : getSurface(
+          /** @type {import('../facility/types.js').FacilityGraph} */ (context.engines.graph),
+          destinationSurfaceId
+        );
+
   /** @type {import('./types.js').FeasibilitySubject} */
   const subject = {
     gameId: query.gameId,
     teamId: null,
-    surfaceId: query.insteadOfSurfaceId ?? game?.surfaceId ?? null,
-    venueId: game?.venueId ?? null,
+    surfaceId: destinationSurfaceId,
+    venueId: destinationSurface?.venueId ?? null,
     date: query.insteadOfDate ?? game?.date ?? null,
     kickoffMinutes: query.insteadOfMinutes ?? game?.startMinutes ?? null,
     format: game?.format ?? null,
   };
 
   const answer = emptyAnswer(FEASIBILITY_QUESTION.CAN_GAME_MOVE, subject, meta);
+
+  /**
+   * Seal this answer, counting the unknowns it raised **once**, here, where
+   * they were raised. `seal()` used to add them to a meta it did not own, which
+   * counted a grid cell's unknowns again in the roll-up that absorbed them.
+   *
+   * @param {{ blocked: boolean, compromised: boolean }} state
+   * @returns {import('./types.js').FeasibilityAnswer}
+   */
+  const finish = (state) => {
+    meta.unknownsRaised += answer.unknowns.length;
+    return seal(answer, state);
+  };
 
   if (game === null) {
     answer.unknowns.push(
@@ -431,18 +497,20 @@ export function canGameMove(context, rawQuery, options = {}) {
         { gameId: query.gameId }
       )
     );
-    return seal(answer, { blocked: false, compromised: false });
+    // **The candidate was answered — with `unknown`, and with a reason.** That
+    // is what a three-valued verdict is for, and it is the difference between
+    // a good answer to a bad question and a dropped candidate. Leaving the
+    // counter behind made the ledger `types.js` requires read 1 considered / 0
+    // answered on every such call, with nothing saying so.
+    meta.candidatesAnswered += 1;
+    return finish({ blocked: false, compromised: false });
   }
 
   const destination = {
     date: query.insteadOfDate ?? game.date,
-    surfaceId: query.insteadOfSurfaceId ?? game.surfaceId,
+    surfaceId: /** @type {string} */ (destinationSurfaceId),
     startMinutes: query.insteadOfMinutes ?? game.startMinutes,
   };
-  const destinationSurface = getSurface(
-    /** @type {import('../facility/types.js').FacilityGraph} */ (context.engines.graph),
-    destination.surfaceId
-  );
 
   const time = explainKickoffTime(context, {
     gameId: query.gameId,
@@ -455,7 +523,15 @@ export function canGameMove(context, rawQuery, options = {}) {
   const noOp = time.findings.some(
     (finding) => finding.code === ATTRIBUTION_REASON.ATTRIBUTION_ALTERNATIVE_NO_OP
   );
-  if (noOp) {
+  // **A no-op is vacuous for the move question and not for the team one.**
+  // *"Can this game move to the slot it is in?"* compares a thing with itself.
+  // *"Can this team play where it already plays?"* does not — it has an obvious
+  // true answer, and the standing schedule is where that answer lives. So the
+  // caller says which question it is asking, and only the second reads
+  // `time.current`: the game at the position it holds, as `explainGame()`
+  // already judged it. Nothing is re-derived and no hypothesis is invented.
+  const standingPosition = noOp && options.standingPositionIsAnAnswer === true;
+  if (noOp && !standingPosition) {
     answer.unknowns.push(
       makeUnknown(
         FEASIBILITY_REASON.FEASIBILITY_MOVE_IS_NO_OP,
@@ -472,10 +548,19 @@ export function canGameMove(context, rawQuery, options = {}) {
       )
     );
     meta.candidatesAnswered += 1;
-    return seal(answer, { blocked: false, compromised: false });
+    return finish({ blocked: false, compromised: false });
+  }
+  if (standingPosition) {
+    answer.findings.push(
+      makeFeasibilityFinding(
+        FEASIBILITY_REASON.FEASIBILITY_POSITION_ALREADY_HELD,
+        `the position asked about is the one game "${query.gameId}" already holds, so this answer is the standing schedule's own rather than a hypothesis`,
+        { gameId: query.gameId, ...destination }
+      )
+    );
   }
 
-  const counterfactual = time.counterfactual;
+  const counterfactual = standingPosition ? time.current : time.counterfactual;
   // `claimsCarried` is already fed by `mergeMetaFromAttribution()` above, from
   // `explainKickoffTime()`'s own `claimsBuilt`. Counting them a second time here
   // would make the counter that proves this answer looked at something say twice
@@ -612,7 +697,7 @@ export function canGameMove(context, rawQuery, options = {}) {
     mergeMetaFromAttribution(meta, minimal.meta);
   }
 
-  return seal(answer, { blocked, compromised });
+  return finish({ blocked, compromised });
 }
 
 /**
@@ -742,12 +827,6 @@ export function canTeamPlay(context, rawQuery, options = {}) {
     return sealTeam(answer);
   }
 
-  const ordered = [...teamGames].sort((a, b) =>
-    a.date === b.date ? a.id.localeCompare(b.id) : a.date.localeCompare(b.date)
-  );
-  const carrier = ordered[0];
-  answer.carrierGameId = carrier.id;
-
   const observedFormats = [...new Set(teamGames.map((game) => game.format))];
   const format = query.format ?? (observedFormats.length === 1 ? observedFormats[0] : null);
   answer.subject.format = format;
@@ -760,6 +839,38 @@ export function canTeamPlay(context, rawQuery, options = {}) {
         { details: { teamId: query.teamId, observedFormats: observedFormats.length } }
       )
     );
+  }
+
+  const ordered = [...teamGames].sort((a, b) =>
+    a.date === b.date ? a.id.localeCompare(b.id) : a.date.localeCompare(b.date)
+  );
+  // **The carrier carries the format, because the carrier is what the grid is
+  // judged through.** Every cell is a `canGameMove()` of this fixture, and
+  // `checkPlacement()` reads that fixture's own format — so a `format` on the
+  // query that did not choose the carrier was reported on the subject, used to
+  // size the clash window, and silently ignored by every cell. A field that
+  // reads as load-bearing and is not is how incident 9's waiver got lost, so it
+  // is honoured here and refused below when nothing can carry it.
+  const carriers = format === null ? ordered : ordered.filter((game) => game.format === format);
+  const carrier = carriers[0] ?? null;
+  answer.carrierGameId = carrier?.id ?? null;
+  if (carrier === null) {
+    unknowns.push(
+      makeUnknown(
+        FEASIBILITY_REASON.FEASIBILITY_FORMAT_UNCARRIED,
+        `a "${format}" fixture for team "${query.teamId}"`,
+        `no fixture of team "${query.teamId}" plays "${format}" (it plays ${observedFormats.map((entry) => entry ?? '(none)').join(', ')}), so nothing can carry the hypothesis; a team has no footprint of its own and inventing a fixture would be inventing the duration this answer turns on`,
+        { details: { teamId: query.teamId, format, observedFormats: observedFormats.length } }
+      )
+    );
+    findings.push(
+      makeFeasibilityFinding(
+        FEASIBILITY_REASON.FEASIBILITY_FORMAT_UNCARRIED,
+        `the question named format "${format}" for team "${query.teamId}", which none of its ${teamGames.length} fixture(s) plays`,
+        { teamId: query.teamId, format, fixtures: teamGames.length }
+      )
+    );
+    return sealTeam(answer);
   }
 
   const surfaceIds =
@@ -794,12 +905,34 @@ export function canTeamPlay(context, rawQuery, options = {}) {
           insteadOfSurfaceId: surfaceId,
           insteadOfMinutes: query.kickoffMinutes,
         },
-        { venueComplexes: options.venueComplexes ?? null, minimalSet: false }
+        {
+          venueComplexes: options.venueComplexes ?? null,
+          minimalSet: false,
+          standingPositionIsAnAnswer: true,
+        }
       );
       mergeFeasibilityMeta(meta, cell.meta);
       // `canGameMove()` counts its own single candidate; the grid counts cells.
       meta.candidatesConsidered -= cell.meta.candidatesConsidered;
       meta.candidatesAnswered -= cell.meta.candidatesAnswered;
+
+      // The one cell that can coincide with the carrier's own position says so
+      // on the answer as well as inside itself, because "this is where the team
+      // already plays" is the reason that cell reads differently from its
+      // neighbours and a reader has no other way to see it.
+      if (
+        cell.findings.some(
+          (finding) => finding.code === FEASIBILITY_REASON.FEASIBILITY_POSITION_ALREADY_HELD
+        )
+      ) {
+        findings.push(
+          makeFeasibilityFinding(
+            FEASIBILITY_REASON.FEASIBILITY_POSITION_ALREADY_HELD,
+            `team "${query.teamId}" already plays on ${date} at ${surfaceId} at this kickoff, through fixture "${carrier.id}", so that cell is answered from the standing schedule`,
+            { teamId: query.teamId, gameId: carrier.id, date, surfaceId }
+          )
+        );
+      }
 
       /** @type {import('./types.js').FeasibilityUnknown[]} */
       const cellUnknowns = [...cell.unknowns];
@@ -812,6 +945,9 @@ export function canTeamPlay(context, rawQuery, options = {}) {
         meta
       );
       absorbUnknowns(cellUnknowns, clash.unknowns);
+      // Only what *this* level added: the cell's own unknowns were counted by
+      // the answer that raised them and arrived here through the merge above.
+      meta.unknownsRaised += cellUnknowns.length - cell.unknowns.length;
 
       const blocked = cell.verdict === FEASIBILITY_VERDICT.INFEASIBLE || clash.overlaps === true;
       const verdict = deriveFeasibilityVerdict({ blocked, unknowns: cellUnknowns });
@@ -822,9 +958,10 @@ export function canTeamPlay(context, rawQuery, options = {}) {
         surfaceId,
         kickoffMinutes: query.kickoffMinutes,
         verdict,
-        tight: verdict === FEASIBILITY_VERDICT.FEASIBLE ? cell.tight === true : null,
+        tight: verdict === FEASIBILITY_VERDICT.FEASIBLE ? cell.tight : null,
         binding: cell.binding,
         marginMinutes: cell.marginMinutes,
+        marginBasis: cell.marginBasis,
         unknowns: cellUnknowns,
         blockers: cell.blockers,
       });
@@ -893,6 +1030,11 @@ export function canTeamPlay(context, rawQuery, options = {}) {
       )
     );
   }
+  // The unknowns this level raised itself — a placeholder subject, an
+  // unresolvable format, a vacuous grid. The cells' own were counted in the
+  // loop; the roll-up below merely *absorbs* those, and counting an absorbed
+  // list again is what made this counter read 20 where 16 were raised.
+  meta.unknownsRaised += unknowns.length;
   const rolled = seal(
     /** @type {import('./types.js').FeasibilityAnswer} */ ({
       question: FEASIBILITY_QUESTION.CAN_TEAM_PLAY,
@@ -929,7 +1071,7 @@ export function canTeamPlay(context, rawQuery, options = {}) {
         feasibleCells > 0 &&
         answer.candidates
           .filter((candidate) => candidate.verdict === FEASIBILITY_VERDICT.FEASIBLE)
-          .every((candidate) => candidate.tight === true),
+          .every((candidate) => candidate.tight === FEASIBILITY_TIGHTNESS.TIGHT),
     }
   );
 
@@ -944,7 +1086,11 @@ export function canTeamPlay(context, rawQuery, options = {}) {
     tight: rolled.tight,
     binding: best?.binding ?? [],
     marginMinutes: best?.marginMinutes ?? null,
-    marginBasis: best?.binding?.[0]?.kind ?? null,
+    // **The basis is the candidate's own**, copied beside the number it names.
+    // `binding[0]` is claim order, not tightness order, so it named a different
+    // constraint whenever two bound at once — and named one at all when the
+    // margin was `null`, which is a source for a number that does not exist.
+    marginBasis: best?.marginBasis ?? null,
     unknowns: rolled.unknowns,
     findings: rolled.findings,
     status: rolled.status,
@@ -1006,6 +1152,7 @@ function teamClashAt(teamGames, carrierGameId, date, startMinutes, endMinutes, m
  * @returns {import('./types.js').TeamFeasibilityAnswer}
  */
 function sealTeam(answer) {
+  answer.meta.unknownsRaised += answer.unknowns.length;
   const rolled = seal(
     /** @type {import('./types.js').FeasibilityAnswer} */ ({
       question: answer.question,
@@ -1161,7 +1308,20 @@ export function feasibleKickoffBounds(context, rawQuery) {
     categoryOnlyClaims
   );
   meta.candidatesAnswered += 1;
-  findings.push(.../** @type {import('./types.js').FeasibilityFinding[]} */ (categoryOnlyClaims));
+  // **Translated, never forwarded.** 4.3's guard speaks 4.3's vocabulary, and a
+  // finding carrying `ATTRIBUTION_CLAIM_CATEGORY_ONLY` is one this module cannot
+  // look up a severity for — `feasibilitySeverityOf()` throws on it, in the hand
+  // of whoever read the answer. The finding is restated under this module's own
+  // code, with the original kept in `details.sourceCode` so nothing is lost.
+  findings.push(
+    ...categoryOnlyClaims.map((finding) =>
+      makeFeasibilityFinding(
+        FEASIBILITY_REASON.FEASIBILITY_CLAIM_CATEGORY_ONLY,
+        String(finding.message),
+        { ...finding.details, sourceCode: finding.code }
+      )
+    )
+  );
 
   // **Both boundaries report their own bound.** The joint case lives at the
   // clean threshold on this corpus — Alder's permit close and its daylight limit
@@ -1199,6 +1359,8 @@ export function feasibleKickoffBounds(context, rawQuery) {
       ? null
       : hard.kickoffMinutes - clean.kickoffMinutes;
 
+  meta.unknownsRaised += unknowns.length;
+
   const sealed = seal(
     /** @type {import('./types.js').FeasibilityAnswer} */ ({
       question: FEASIBILITY_QUESTION.KICKOFF_BOUNDS,
@@ -1228,6 +1390,13 @@ export function feasibleKickoffBounds(context, rawQuery) {
     {
       blocked: hard.kickoffMinutes === null,
       compromised: tightBandMinutes !== null && tightBandMinutes > 0,
+      // **Whether a clean position exists at all**, which is a different fact
+      // from the width of the band and used to be collapsed into it: a null
+      // clean boundary makes the band null, which made `compromised` false,
+      // which reported "not tight" about ground where every legal kickoff is
+      // compromised. 772 of this corpus's surface-date-format combinations said
+      // exactly that.
+      cleanBoundaryExists: clean.kickoffMinutes !== null,
     }
   );
 

@@ -1,8 +1,8 @@
 /**
  * Repo-wide reachability audit for every frozen reason-code table in
  * `packages/core/src` — the generalisation of the per-module audit
- * `tests/attribution.test.js` already carries. 16 vocabularies, 317 codes, of
- * which 308 are shown to be producible and 9 are named as holes.
+ * `tests/attribution.test.js` already carries. 16 vocabularies, 321 codes, of
+ * which 312 are shown to be producible and 9 are named as holes.
  *
  * **The defect this exists to catch.** Four times now, in four unrelated
  * modules, a reason code has been declared, given a severity, documented, and
@@ -127,6 +127,8 @@ import {
   FEASIBILITY_REASON,
   canGameMove,
   canTeamPlay,
+  candidateAccountingFindings,
+  createFeasibilityMeta,
   feasibleKickoffBounds,
 } from '@squadlogic/core/feasibility/index.js';
 import {
@@ -398,9 +400,9 @@ function allow(code, why, reason) {
 /** @type {ReadonlyArray<{ code: string, why: string, reason: string }>} */
 const UNREACHABLE = Object.freeze([
   allow(
-    'FEASIBILITY_CANDIDATE_DROPPED',
+    'FEASIBILITY_CLAIM_CATEGORY_ONLY',
     WHY.NO_PRODUCTION_PATH,
-    'canTeamPlay() answers a grid of dates x surfaces and its loop has no branch that skips a cell, so the answered list and the grid size derived from the query can never disagree today. The guard is deliberately written over the *query* — dates.length x surfaceIds.length — rather than over a counter incremented beside the push, so a continue added to that loop later trips it instead of silently shrinking the answer. Incident 10 is why it is carried rather than deleted.'
+    'This module\u2019s restatement of ATTRIBUTION_CLAIM_CATEGORY_ONLY, and it inherits that code\u2019s hole exactly: feasibleKickoffBounds() runs 4.3\u2019s own guard over the claims each boundary builds, and no claim built from an availability constraint can fail isSpecificClaim() \u2014 every one names its permit or booking instance and carries the finding codes that spoke. It is translated rather than forwarded so that, if the guard ever does fire, the answer carries a code this module can look a severity up for instead of one that makes feasibilitySeverityOf() throw in the reader\u2019s hand.'
   ),
   allow(
     'ATTRIBUTION_GAME_UNATTRIBUTED',
@@ -3642,6 +3644,59 @@ harvest(
     date: '2026-08-22',
     format: '11v11',
   })
+);
+
+harvest(
+  'feasibleKickoffBounds(ground with a hard bound and nothing clean beneath it)',
+  feasibleKickoffBounds(context, {
+    surfaceId: 'alder-park/pitch-2',
+    date: '2026-08-22',
+    // The pitch is not lined for 9v9, so a `compromise` speaks at every legal
+    // minute of the day: the bound is real and no clean position exists at all.
+    format: '9v9',
+  })
+);
+
+harvest(
+  'candidateAccountingFindings(a ledger that does not balance)',
+  candidateAccountingFindings(
+    { ...createFeasibilityMeta(), candidatesConsidered: 2, candidatesAnswered: 1 },
+    { question: 'audit' }
+  )
+);
+
+harvest(
+  'canTeamPlay(the slot the team already holds)',
+  (() => {
+    const held = schedule.games.find((game) => game.homeTeamId !== null);
+    return canTeamPlay(
+      context,
+      {
+        teamId: held.homeTeamId,
+        dates: [held.date],
+        kickoffMinutes: held.startMinutes,
+        surfaceIds: [held.surfaceId],
+      },
+      { venueComplexes }
+    );
+  })()
+);
+
+harvest(
+  'canTeamPlay(a format no fixture of the team plays)',
+  (() => {
+    const anchor = schedule.games.find((game) => game.format === '9v9' && game.homeTeamId !== null);
+    return canTeamPlay(
+      context,
+      {
+        teamId: anchor.homeTeamId,
+        dates: ['2026-11-14'],
+        kickoffMinutes: 10 * 60,
+        format: 'Minis',
+      },
+      { venueComplexes }
+    );
+  })()
 );
 
 harvest(

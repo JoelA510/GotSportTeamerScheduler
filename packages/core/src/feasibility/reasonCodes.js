@@ -90,6 +90,39 @@ export const FEASIBILITY_VERDICT_ORDER = Object.freeze([
 ]);
 
 /**
+ * **How much room a feasible position has**, in the same three-valued
+ * discipline {@link FEASIBILITY_VERDICT} uses, and for the same reason.
+ *
+ * `tight` began life as a boolean, and a boolean could only say "inside a
+ * stated comfort margin" or "not". That second value was doing two jobs: it
+ * meant *"there is room here"* and it also meant *"no clean position exists at
+ * all, so every legal kickoff on this ground is compromised"* — which is not
+ * "not tight", it is worse than tight. 772 surface-date-format combinations of
+ * the season corpus reported the second while reading as the first, which is
+ * exactly the false confidence this module exists to replace.
+ *
+ * So the third state is named rather than folded into `false`, and the values
+ * are strings from a frozen enum rather than booleans: `if (answer.tight)` is
+ * now wrong in a way that shows up, and every consumer has to compare against a
+ * member. `null` remains "there is no placement to say this about", which is
+ * every answer whose verdict is not `feasible`.
+ *
+ * @readonly
+ * @enum {string}
+ */
+export const FEASIBILITY_TIGHTNESS = Object.freeze({
+  /** Legal, and nothing above `info` speaks about it. */
+  CLEAN: 'clean',
+  /** Legal, inside a stated comfort margin, and a clean position does exist. */
+  TIGHT: 'tight',
+  /**
+   * Legal, and there is **no** clean position at all: every kickoff this bound
+   * admits raises something above `info`. Strictly worse than {@link TIGHT}.
+   */
+  NO_CLEAN_POSITION: 'no-clean-position',
+});
+
+/**
  * The questions this module answers.
  *
  * @readonly
@@ -234,6 +267,25 @@ export const FEASIBILITY_REASON = Object.freeze({
    * means nothing, so it is not reported as a yes.
    */
   FEASIBILITY_MOVE_IS_NO_OP: 'FEASIBILITY_MOVE_IS_NO_OP',
+  /**
+   * The position asked about is one the subject **already holds**, and the
+   * answer is the standing schedule's own rather than a hypothesis.
+   *
+   * `info`. *"Can this team play where it already plays?"* is not vacuous the
+   * way *"can this game move to the slot it is in?"* is: it has an obvious true
+   * answer, and refusing it as undecidable is a shrug where a fact was
+   * available.
+   */
+  FEASIBILITY_POSITION_ALREADY_HELD: 'FEASIBILITY_POSITION_ALREADY_HELD',
+  /**
+   * A format was named that no fixture of this subject plays, so nothing can
+   * carry the hypothesis.
+   *
+   * `compromise`. A team has no footprint of its own; the carrier fixture is
+   * what gives the question a duration, and inventing one would be inventing
+   * the answer.
+   */
+  FEASIBILITY_FORMAT_UNCARRIED: 'FEASIBILITY_FORMAT_UNCARRIED',
 
   /* -- the bound ------------------------------------------------------------ */
   /**
@@ -257,6 +309,17 @@ export const FEASIBILITY_REASON = Object.freeze({
   FEASIBILITY_MARGIN_UNAVAILABLE: 'FEASIBILITY_MARGIN_UNAVAILABLE',
   /** The subject is feasible but inside a stated comfort margin. `info`. */
   FEASIBILITY_TIGHT: 'FEASIBILITY_TIGHT',
+  /**
+   * The subject is legal and **no clean position exists at all** — every
+   * kickoff the bound admits raises something above `info`.
+   *
+   * `compromise`, one step above {@link FEASIBILITY_TIGHT}'s `info`, and the
+   * difference is the point. A tight position is a real position with a clean
+   * one still available beside it; this says the whole date offers nothing but
+   * compromised positions, so an answer that hands an operator one is a
+   * compromised answer in the same way `FEASIBILITY_BOUND_UNSTATED` is.
+   */
+  FEASIBILITY_NO_CLEAN_POSITION: 'FEASIBILITY_NO_CLEAN_POSITION',
 
   /* -- the answer's own integrity ------------------------------------------ */
   /**
@@ -274,6 +337,16 @@ export const FEASIBILITY_REASON = Object.freeze({
    * list.
    */
   FEASIBILITY_CANDIDATE_DROPPED: 'FEASIBILITY_CANDIDATE_DROPPED',
+  /**
+   * A claim this answer carries names a constraint *category* and no instance.
+   *
+   * `blocking`, and it is 4.3's `ATTRIBUTION_CLAIM_CATEGORY_ONLY` restated in
+   * this module's own vocabulary rather than forwarded in 4.3's. A finding
+   * carrying a foreign code is a finding whose severity this module cannot look
+   * up, and `feasibilitySeverityOf()` throws on one — so the answer would be a
+   * live grenade in the hand of whoever read it.
+   */
+  FEASIBILITY_CLAIM_CATEGORY_ONLY: 'FEASIBILITY_CLAIM_CATEGORY_ONLY',
   /** The verdict, as provenance, with the counts behind it. `info`. */
   FEASIBILITY_VERDICT_REACHED: 'FEASIBILITY_VERDICT_REACHED',
 });
@@ -294,14 +367,18 @@ export const FEASIBILITY_REASON_SEVERITY = Object.freeze({
   [FEASIBILITY_REASON.FEASIBILITY_SUBJECT_UNKNOWN]: FEASIBILITY_SEVERITY.COMPROMISE,
   [FEASIBILITY_REASON.FEASIBILITY_FORMAT_UNRESOLVED]: FEASIBILITY_SEVERITY.COMPROMISE,
   [FEASIBILITY_REASON.FEASIBILITY_MOVE_IS_NO_OP]: FEASIBILITY_SEVERITY.COMPROMISE,
+  [FEASIBILITY_REASON.FEASIBILITY_POSITION_ALREADY_HELD]: FEASIBILITY_SEVERITY.INFO,
+  [FEASIBILITY_REASON.FEASIBILITY_FORMAT_UNCARRIED]: FEASIBILITY_SEVERITY.COMPROMISE,
 
   [FEASIBILITY_REASON.FEASIBILITY_BOUND_JOINT]: FEASIBILITY_SEVERITY.INFO,
   [FEASIBILITY_REASON.FEASIBILITY_BOUND_UNSTATED]: FEASIBILITY_SEVERITY.COMPROMISE,
   [FEASIBILITY_REASON.FEASIBILITY_MARGIN_UNAVAILABLE]: FEASIBILITY_SEVERITY.INFO,
   [FEASIBILITY_REASON.FEASIBILITY_TIGHT]: FEASIBILITY_SEVERITY.INFO,
+  [FEASIBILITY_REASON.FEASIBILITY_NO_CLEAN_POSITION]: FEASIBILITY_SEVERITY.COMPROMISE,
 
   [FEASIBILITY_REASON.FEASIBILITY_QUERY_VACUOUS]: FEASIBILITY_SEVERITY.BLOCKING,
   [FEASIBILITY_REASON.FEASIBILITY_CANDIDATE_DROPPED]: FEASIBILITY_SEVERITY.BLOCKING,
+  [FEASIBILITY_REASON.FEASIBILITY_CLAIM_CATEGORY_ONLY]: FEASIBILITY_SEVERITY.BLOCKING,
   [FEASIBILITY_REASON.FEASIBILITY_VERDICT_REACHED]: FEASIBILITY_SEVERITY.INFO,
 });
 
@@ -344,6 +421,38 @@ export function feasibilitySeverityOf(code) {
     throw new Error(`feasibility: reason code "${code}" has no registered severity`);
   }
   return severity;
+}
+
+/**
+ * **Every finding this module emits, checked against the table that owns it.**
+ *
+ * The class guard behind {@link feasibilitySeverityOf}. A finding is only a
+ * feasibility finding if its code is registered *and* its severity is the one
+ * registered for it — so a foreign finding forwarded in from another module,
+ * which is how `ATTRIBUTION_CLAIM_CATEGORY_ONLY` once reached a caller, cannot
+ * leave this package pretending to be one of ours. Throwing here rather than
+ * defaulting is the same choice {@link feasibilitySeverityOf} makes and for the
+ * same reason: the alternative is an answer that detonates in the hand of
+ * whoever reads it, at a call site that did nothing wrong.
+ *
+ * Run over the composed list of **every** sealed answer, so the property is
+ * "this module cannot emit an unregistered finding" rather than "these codes
+ * happen to be registered".
+ *
+ * @param {ReadonlyArray<import('./types.js').FeasibilityFinding>} findings
+ * @param {string} [question] - named in the failure, so it says which answer
+ * @returns {ReadonlyArray<import('./types.js').FeasibilityFinding>} the same list
+ */
+export function assertFeasibilityFindings(findings, question = 'an answer') {
+  for (const finding of findings) {
+    const severity = feasibilitySeverityOf(finding.code);
+    if (finding.severity !== severity) {
+      throw new Error(
+        `feasibility: ${question} carries "${finding.code}" at severity ${JSON.stringify(finding.severity)}, but the frozen table registers it as "${severity}"`
+      );
+    }
+  }
+  return findings;
 }
 
 /**
@@ -427,6 +536,47 @@ export function deriveFeasibilityVerdict(input) {
   if (input.blocked === true) return FEASIBILITY_VERDICT.INFEASIBLE;
   if (input.unknowns.some(bearsOnVerdict)) return FEASIBILITY_VERDICT.UNKNOWN;
   return FEASIBILITY_VERDICT.FEASIBLE;
+}
+
+/**
+ * **The only place a tightness is produced**, exactly as
+ * {@link deriveFeasibilityVerdict} is the only place a verdict is.
+ *
+ * The order of the three tests is the whole design:
+ *
+ * 1. A verdict that is not `feasible` has **no placement** to make a statement
+ *    about, so the answer is `null` — the same rule the boolean carried.
+ * 2. **No clean position at all wins over "inside a margin".** They are not
+ *    alternatives: when nothing on this ground is clean there is no band to be
+ *    inside, so the compromised flag is `false` and the old boolean reported
+ *    `false` — "there is room" — about a date offering none.
+ * 3. Only then does the stated comfort margin decide between `tight` and
+ *    `clean`.
+ *
+ * `compromised` must be a real boolean and `cleanBoundaryExists` must be a real
+ * boolean or an explicit `null`, for the reason `blocked` must be one: a
+ * nullable flag read for truthiness is how an unmeasured value becomes a
+ * confident answer. `null` there means *"this question has no second threshold"*
+ * — a placement question names one position and searches nothing — and never
+ * *"nobody looked"*.
+ *
+ * @param {{ verdict: string, compromised: boolean, cleanBoundaryExists: boolean|null }} input
+ * @returns {string|null} a {@link FEASIBILITY_TIGHTNESS} value, or null
+ */
+export function deriveFeasibilityTightness(input) {
+  if (typeof input.compromised !== 'boolean') {
+    throw new Error(
+      `feasibility: "compromised" must be a boolean, not ${JSON.stringify(input.compromised)}`
+    );
+  }
+  if (input.cleanBoundaryExists !== null && typeof input.cleanBoundaryExists !== 'boolean') {
+    throw new Error(
+      `feasibility: "cleanBoundaryExists" must be a boolean or an explicit null, not ${JSON.stringify(input.cleanBoundaryExists)}; null means "this question has no second threshold", never "nobody looked"`
+    );
+  }
+  if (input.verdict !== FEASIBILITY_VERDICT.FEASIBLE) return null;
+  if (input.cleanBoundaryExists === false) return FEASIBILITY_TIGHTNESS.NO_CLEAN_POSITION;
+  return input.compromised ? FEASIBILITY_TIGHTNESS.TIGHT : FEASIBILITY_TIGHTNESS.CLEAN;
 }
 
 /**

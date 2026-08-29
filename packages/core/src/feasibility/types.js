@@ -107,13 +107,18 @@
  * @property {string} question - a `FEASIBILITY_QUESTION` value
  * @property {FeasibilitySubject} subject
  * @property {string} verdict - a `FEASIBILITY_VERDICT` value; three, never two
- * @property {boolean|null} tight - feasible but inside a stated margin; `null`
- *   whenever the verdict is not `feasible`, because "not tight" would be a claim
- *   about a placement nobody could judge
+ * @property {string|null} tight - a `FEASIBILITY_TIGHTNESS` value: `clean`,
+ *   `tight`, or `no-clean-position`. `null` whenever the verdict is not
+ *   `feasible`, because "not tight" would be a claim about a placement nobody
+ *   could judge. A named value rather than a boolean because `false` was doing
+ *   two jobs — "there is room" and "nothing here is clean at all" — and the
+ *   second is worse than tight rather than better
  * @property {FeasibilityBound[]} binding - the constraint(s) that decided it
  * @property {number|null} marginMinutes - see `FEASIBILITY_MARGIN_CONVENTION`
  * @property {string} marginUnit - always `FEASIBILITY_MARGIN_UNIT`
- * @property {string|null} marginBasis - the `kind` of the bound the margin came from
+ * @property {string|null} marginBasis - the `kind` of the bound the margin was
+ *   copied from, never merely the first member of `binding`; `null` exactly when
+ *   `marginMinutes` is
  * @property {import('../attribution/types.js').ConstraintClaim[]} blockers - tightest first
  * @property {FeasibilityUnknown[]} unknowns - empty exactly when nothing was undecidable
  * @property {import('../attribution/types.js').MinimalBlockingSet|null} minimalSet
@@ -134,9 +139,11 @@
  * @property {string} surfaceId
  * @property {number} kickoffMinutes
  * @property {string} verdict
- * @property {boolean|null} tight
+ * @property {string|null} tight - a `FEASIBILITY_TIGHTNESS` value, or null
  * @property {FeasibilityBound[]} binding
  * @property {number|null} marginMinutes
+ * @property {string|null} marginBasis - the `kind` of the bound the margin came
+ *   from; `null` exactly when `marginMinutes` is
  * @property {FeasibilityUnknown[]} unknowns
  * @property {import('../attribution/types.js').ConstraintClaim[]} blockers
  */
@@ -148,7 +155,7 @@
  * @property {string} question
  * @property {FeasibilitySubject} subject
  * @property {string} verdict - the roll-up; see `rollUpVerdicts()` for the rule
- * @property {boolean|null} tight
+ * @property {string|null} tight - a `FEASIBILITY_TIGHTNESS` value, or null
  * @property {FeasibilityCandidate[]} candidates - every one asked about, none dropped
  * @property {Record<string, number>} verdictCounts - candidates per verdict
  * @property {string|null} carrierGameId - the team's own fixture used as the subject
@@ -169,7 +176,9 @@
  * @property {string} question
  * @property {FeasibilitySubject} subject
  * @property {string} verdict - `feasible` when a hard boundary exists at all
- * @property {boolean|null} tight - true when the hard boundary is later than the clean one
+ * @property {string|null} tight - a `FEASIBILITY_TIGHTNESS` value: `tight` when
+ *   the hard boundary is later than the clean one, `no-clean-position` when
+ *   there is no clean boundary at all, `clean` when the two coincide
  * @property {FeasibilityBoundary} latestHard
  * @property {FeasibilityBoundary} latestClean
  * @property {number|null} tightBandMinutes - `latestHard - latestClean`; the width of
@@ -192,13 +201,15 @@
  * @typedef {Object} FeasibilityMeta
  * @property {number} questionsAsked
  * @property {number} candidatesConsidered
- * @property {number} candidatesAnswered
+ * @property {number} candidatesAnswered - must equal the line above; `seal()`
+ *   raises `FEASIBILITY_CANDIDATE_DROPPED` on every answer where it does not,
+ *   which is what makes this an invariant rather than a docstring
  * @property {number} placementChecksRun
  * @property {number} boundaryProbesRun
  * @property {number} constraintsConsulted
  * @property {number} registryConstraintsTested
  * @property {number} claimsCarried
- * @property {number} unknownsRaised
+ * @property {number} unknownsRaised - counted once, where each was raised
  * @property {number} travelTransitionsProjected
  * @property {number} teamFixturesCompared
  */
