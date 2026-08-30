@@ -2770,51 +2770,187 @@ describe('fairness :: the objective answers about the same list as the report', 
   });
 });
 
-describe('fairness :: a guard sits where its comparison is', () => {
-  // Round 5. The threshold check was added above the early returns, so it
-  // rejected rows on paths that never compare against it. `undecided()`
-  // legitimately writes `threshold: null` for a subject with no group key, and
-  // re-deriving from such a row is an ordinary thing for a caller to do.
-  const noComparison = [
-    {
-      why: 'unmeasurable',
-      measurability: FAIRNESS_MEASURABILITY.UNMEASURABLE,
-      dispersion: FAIRNESS_DISPERSION.USABLE,
-      score: null,
-    },
-    {
-      why: 'uniform',
-      measurability: FAIRNESS_MEASURABILITY.MEASURED,
-      dispersion: FAIRNESS_DISPERSION.UNIFORM,
-      score: null,
-    },
-    {
-      why: 'insufficient',
-      measurability: FAIRNESS_MEASURABILITY.MEASURED,
-      dispersion: FAIRNESS_DISPERSION.INSUFFICIENT,
-      score: null,
-    },
-    {
-      why: 'degenerate',
-      measurability: FAIRNESS_MEASURABILITY.MEASURED,
-      dispersion: FAIRNESS_DISPERSION.DEGENERATE,
-      score: null,
-    },
-    {
-      why: 'no score',
-      measurability: FAIRNESS_MEASURABILITY.MEASURED,
-      dispersion: FAIRNESS_DISPERSION.USABLE,
-      score: null,
-    },
-  ];
+/* -------------------------------------------------------------------------- */
+/* 15. A guard sits where its comparison is                                    */
+/* -------------------------------------------------------------------------- */
 
-  it('answers rather than throws for a row whose threshold no comparison reads', () => {
-    for (const row of noComparison) {
-      expect(() => deriveFairnessJudgement({ ...row, threshold: null }), row.why).not.toThrow();
+describe('fairness :: a guard sits where its comparison is', () => {
+  // Round 5 moved the threshold check below the early returns and justified the
+  // move by `undecided()`: a subject with no cohort gets `threshold: null`, and
+  // re-deriving such a row, the reasoning went, must answer rather than throw.
+  // The reasoning was wrong, and the two tests below are the claim the move
+  // *does* support and the limit it does not cross, each proved against state
+  // this module actually emits rather than state a test typed out.
+  //
+  // `describeDispersion()` stamps `threshold: OUTLIER_SCORE_THRESHOLD` on every
+  // result it builds, and `undecided()` copies the state and the threshold off
+  // the same dispersion or writes `null` for both. A row pairing a real
+  // dispersion state with an absent threshold is therefore not a row this
+  // module emits — the only arrival that produces one is a record that lost the
+  // key in transit.
+
+  /** @param {number} value @param {number} index */
+  const memberOf = (value, index) => ({ subjectId: `s${index}`, value });
+
+  it('refuses a re-derived undecided() row at the dispersion, not at the threshold', () => {
+    const report = corpusReport();
+    // The rows `undecided()` builds for a subject with no key on this basis —
+    // the four Minis sides and their kin, judged against no cohort at all.
+    const keyless = report.judgements.filter((judgement) => judgement.dispersionState === null);
+    const thresholdless = report.judgements.filter((judgement) => judgement.threshold === null);
+    // Meta-assertion: the corpus really contains rows of this shape, so the
+    // equality below is not a statement about two empty lists.
+    expect(keyless.length).toBeGreaterThan(0);
+    // The finding, and it is stated without a figure because the corpus decides
+    // the size, not this test: **the two sets are one set.** `undecided()` reads
+    // its state and its threshold off the same absent dispersion, so no row ever
+    // loses one without the other — which means the pairing round 5's test
+    // forged, a real dispersion state beside an absent threshold, is emitted by
+    // no judgement of this corpus. A row that broke the pairing would appear in
+    // one list and not the other and fail here.
+    expect(thresholdless).toEqual(keyless);
+    // The same of the populations those judgements were scored against, with
+    // the corpus's own declared count as the meta-assertion: every one carries
+    // the threshold `describeDispersion()` stamps on it, whatever its state.
+    expect(report.populations).toHaveLength(124);
+    expect(
+      report.populations.every(
+        (population) => population.dispersion.threshold === OUTLIER_SCORE_THRESHOLD
+      )
+    ).toBe(true);
+
+    // So re-deriving one of these rows still throws, and it throws one guard
+    // *above* the threshold. The move did not reach this path.
+    const row = keyless[0];
+    /** @returns {string} */
+    const refusalFor = () => {
+      try {
+        deriveFairnessJudgement(
+          /** @type {any} */ ({
+            measurability: FAIRNESS_MEASURABILITY.MEASURED,
+            dispersion: row.dispersionState,
+            score: row.score,
+            threshold: row.threshold,
+          })
+        );
+      } catch (error) {
+        return /** @type {Error} */ (error).message;
+      }
+      throw new Error('expected a refusal');
+    };
+    expect(refusalFor()).toMatch(/dispersion null is not a member of FAIRNESS_DISPERSION/);
+    // …and the message does not mention the threshold at all, which is the whole
+    // distinction. Asserting only that it throws would have passed for the wrong
+    // reason under either placement of the guard.
+    expect(refusalFor()).not.toMatch(/threshold/);
+    // The control, so the refusal above is about the dispersion and not about
+    // the call: the same row under a state the enum knows answers, null
+    // threshold and all. That is what the guard's placement buys, and it is
+    // reached by a record whose state survived and whose threshold did not —
+    // never by an `undecided()` row, which loses both together.
+    expect(
+      deriveFairnessJudgement(
+        /** @type {any} */ ({
+          measurability: FAIRNESS_MEASURABILITY.MEASURED,
+          dispersion: FAIRNESS_DISPERSION.INSUFFICIENT,
+          score: row.score,
+          threshold: row.threshold,
+        })
+      )
+    ).toBe(FAIRNESS_JUDGEMENT.UNDECIDED);
+  });
+
+  it('answers a threshold lost in transit on the four paths no comparison reads', () => {
+    // Built by `describeDispersion()`, so the four states below are the
+    // module's own and not four strings this test chose.
+    const populations = {
+      uniform: describeDispersion('m', [605, 605, 605, 605].map(memberOf)),
+      insufficient: describeDispersion('m', [605, 610, 620].map(memberOf)),
+      degenerate: describeDispersion('m', [1, 1, 1, 1, 9].map(memberOf)),
+      usable: describeDispersion('m', [1, 2, 3, 10].map(memberOf)),
+    };
+    expect(
+      Object.fromEntries(
+        Object.entries(populations).map(([name, population]) => [name, population.state])
+      )
+    ).toEqual({
+      uniform: FAIRNESS_DISPERSION.UNIFORM,
+      insufficient: FAIRNESS_DISPERSION.INSUFFICIENT,
+      degenerate: FAIRNESS_DISPERSION.DEGENERATE,
+      usable: FAIRNESS_DISPERSION.USABLE,
+    });
+    // The premise round 5's test had backwards, stated the right way round:
+    // every one of the four carries the threshold, including the three that
+    // will never be compared against it.
+    expect(Object.values(populations).map((population) => population.threshold)).toEqual([
+      OUTLIER_SCORE_THRESHOLD,
+      OUTLIER_SCORE_THRESHOLD,
+      OUTLIER_SCORE_THRESHOLD,
+      OUTLIER_SCORE_THRESHOLD,
+    ]);
+
+    const rows = [
+      {
+        why: 'unmeasurable',
+        measurability: FAIRNESS_MEASURABILITY.UNMEASURABLE,
+        dispersion: populations.usable.state,
+        score: null,
+      },
+      {
+        why: 'uniform',
+        measurability: FAIRNESS_MEASURABILITY.MEASURED,
+        dispersion: populations.uniform.state,
+        score: null,
+      },
+      {
+        why: 'insufficient',
+        measurability: FAIRNESS_MEASURABILITY.MEASURED,
+        dispersion: populations.insufficient.state,
+        score: null,
+      },
+      {
+        why: 'degenerate',
+        measurability: FAIRNESS_MEASURABILITY.MEASURED,
+        dispersion: populations.degenerate.state,
+        score: null,
+      },
+      {
+        why: 'no score',
+        measurability: FAIRNESS_MEASURABILITY.MEASURED,
+        dispersion: populations.usable.state,
+        score: null,
+      },
+    ];
+
+    // The wrong-passing implementation, constructed: the pre-round-5 order,
+    // whose only difference was that it read the threshold before the returns.
+    // Delegating with a real threshold afterwards is faithful, because none of
+    // the four paths below reads one.
+    /** @param {any} input */
+    const guardedAbove = (input) => {
+      if (!Number.isFinite(input.threshold)) {
+        throw new Error(`fairness: threshold ${input.threshold} is not a finite number`);
+      }
+      return deriveFairnessJudgement({ ...input, threshold: OUTLIER_SCORE_THRESHOLD });
+    };
+
+    /** @type {string[]} */
+    const answers = [];
+    for (const { why, ...row } of rows) {
+      // Constructed by round-tripping, not by hand: the trip is what drops the
+      // key, and the post-trip object is what the guard sees. Asserted, so a
+      // serialiser that preserved `undefined` would fail here rather than
+      // quietly turning the rest of this test into a claim about a shape.
+      const trip = JSON.parse(JSON.stringify({ ...row, threshold: undefined }));
+      expect(Object.hasOwn(trip, 'threshold'), why).toBe(false);
+      expect(() => deriveFairnessJudgement(trip), why).not.toThrow();
+      // …and the pre-round-5 order refuses every one of them: a comparison that
+      // never happens is not a comparison against nothing.
+      expect(() => guardedAbove(trip), why).toThrow(/threshold/);
+      answers.push(deriveFairnessJudgement(trip));
     }
-    // Meta-assertion: the sweep must actually exercise both returns it claims
-    // to cover, or "nothing threw" would be a statement about an empty set.
-    const answers = noComparison.map((row) => deriveFairnessJudgement({ ...row, threshold: null }));
+    // Meta-assertion: the sweep exercised both returns it claims to cover, on
+    // all five rows, or "nothing threw" would be a statement about an empty set.
     expect(answers).toHaveLength(5);
     expect(new Set(answers)).toEqual(
       new Set([FAIRNESS_JUDGEMENT.UNDECIDED, FAIRNESS_JUDGEMENT.TYPICAL])
@@ -2839,5 +2975,130 @@ describe('fairness :: a guard sits where its comparison is', () => {
     expect(deriveFairnessJudgement({ ...comparing, threshold: 3.5 })).toBe(
       FAIRNESS_JUDGEMENT.OUTLIER
     );
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* 16. A refused value is printed with its type intact                         */
+/* -------------------------------------------------------------------------- */
+
+describe('fairness :: a refused value is printed with its type intact', () => {
+  // Round 5 wrapped four refusal messages in `String()` so that `NaN` and
+  // `Infinity` stopped printing as `null`. It fixed that and broke the other
+  // half. `String('3.5')` is `3.5`, so the refusal of a string reads exactly
+  // like the number that would have been accepted; `String('')` and `String([])`
+  // are both empty, so the message names no value at all; `String({})` is
+  // `[object Object]`. A refusal that cannot be told from an acceptance, or that
+  // prints nothing, costs a reader the debugging session it exists to save.
+
+  const comparing = {
+    measurability: FAIRNESS_MEASURABILITY.MEASURED,
+    dispersion: FAIRNESS_DISPERSION.USABLE,
+    score: 47.2,
+  };
+  /** @param {number} value @param {number} index */
+  const memberOf = (value, index) => ({ subjectId: `s${index}`, value });
+  const usable = () => describeDispersion('m', [1, 2, 3, 10].map(memberOf));
+
+  it('tells a string, an empty string, an array and an object from a number', () => {
+    // The first wrong-passing implementation, constructed: `String(value)`, at
+    // all four sites. Under it these four refusals are unreadable…
+    expect(String('3.5')).toBe(String(3.5));
+    expect(String('')).toBe('');
+    expect(String([])).toBe('');
+    expect(String({})).toBe('[object Object]');
+
+    // …and here they are, each naming what it was actually handed.
+    expect(() =>
+      deriveFairnessJudgement(/** @type {any} */ ({ ...comparing, threshold: '3.5' }))
+    ).toThrow(/threshold "3\.5" is not a finite number/);
+    expect(() =>
+      deriveFairnessJudgement(/** @type {any} */ ({ ...comparing, threshold: '' }))
+    ).toThrow(/threshold "" is not a finite number/);
+    expect(() =>
+      deriveFairnessJudgement(/** @type {any} */ ({ ...comparing, threshold: [] }))
+    ).toThrow(/threshold \[\] is not a finite number/);
+    expect(() =>
+      deriveFairnessJudgement(/** @type {any} */ ({ ...comparing, threshold: {} }))
+    ).toThrow(/threshold \{\} is not a finite number/);
+  });
+
+  it('still prints NaN and Infinity as themselves, and null as null', () => {
+    // The second wrong-passing implementation, constructed: plain
+    // `JSON.stringify`, which is the fix for the first defect and a
+    // reintroduction of the one round 5 removed — it renders both non-finite
+    // numbers as the word `null`, which is a different refusal this same guard
+    // also raises.
+    expect(JSON.stringify(NaN)).toBe('null');
+    expect(JSON.stringify(Infinity)).toBe('null');
+
+    /** @param {any} threshold */
+    const messageFor = (threshold) => {
+      try {
+        deriveFairnessJudgement(/** @type {any} */ ({ ...comparing, threshold }));
+      } catch (error) {
+        return /** @type {Error} */ (error).message;
+      }
+      throw new Error('expected a refusal');
+    };
+    expect(messageFor(NaN)).toMatch(/threshold NaN is not a finite number/);
+    expect(messageFor(Infinity)).toMatch(/threshold Infinity is not a finite number/);
+    expect(messageFor(-Infinity)).toMatch(/threshold -Infinity is not a finite number/);
+    expect(messageFor(null)).toMatch(/threshold null is not a finite number/);
+    // Four values, four distinct messages: the renderer collapses none of them
+    // onto another. Under `JSON.stringify` alone the first three would be one
+    // message; under `String()` alone `null` and `NaN` are already distinct, so
+    // this line alone does not carry the finding — the test above does.
+    expect(
+      new Set([messageFor(NaN), messageFor(Infinity), messageFor(-Infinity), messageFor(null)]).size
+    ).toBe(4);
+    // An absent key still says so rather than printing nothing, which is the
+    // arrival section 15 answers on the other four paths.
+    expect(JSON.stringify(undefined)).toBeUndefined();
+    expect(messageFor(undefined)).toMatch(/threshold undefined is not a finite number/);
+  });
+
+  it('does not let the renderer throw in place of the refusal', () => {
+    // `JSON.stringify` refuses a BigInt outright. A renderer that throws inside
+    // a `throw` replaces the diagnostic with a TypeError from a line the reader
+    // never asked about — the third wrong-passing implementation, and the
+    // reason the renderer is one function rather than four expressions.
+    expect(() => JSON.stringify(BigInt(10))).toThrow(TypeError);
+    expect(() =>
+      deriveFairnessJudgement(/** @type {any} */ ({ ...comparing, threshold: BigInt(10) }))
+    ).toThrow(/threshold 10 is not a finite number/);
+  });
+
+  it('names the value at all four sites, not only the threshold', () => {
+    // The score, one guard above the threshold.
+    expect(() =>
+      deriveFairnessJudgement(
+        /** @type {any} */ ({ ...comparing, score: '3.5', threshold: OUTLIER_SCORE_THRESHOLD })
+      )
+    ).toThrow(/score "3\.5" is not finite/);
+    expect(() =>
+      deriveFairnessJudgement(
+        /** @type {any} */ ({ ...comparing, score: Infinity, threshold: OUTLIER_SCORE_THRESHOLD })
+      )
+    ).toThrow(/score Infinity is not finite/);
+
+    // …and the two in `modifiedZScore()`, which read a population rather than a
+    // judgement input. The dispersion is `describeDispersion()`'s own, with one
+    // field replaced, so the refusal is about that field.
+    expect(() => modifiedZScore(700, /** @type {any} */ ({ ...usable(), centre: '5' }))).toThrow(
+      /its centre is "5"/
+    );
+    expect(() => modifiedZScore(700, /** @type {any} */ ({ ...usable(), scale: '5' }))).toThrow(
+      /its scale is "5"/
+    );
+    // The non-finite numbers those two sites were wrapped for still print as
+    // themselves.
+    expect(() => modifiedZScore(700, { ...usable(), centre: null })).toThrow(/its centre is null/);
+    expect(() => modifiedZScore(700, { ...usable(), scale: 0 })).toThrow(/its scale is 0/);
+    expect(() => modifiedZScore(700, { ...usable(), centre: NaN })).toThrow(/its centre is NaN/);
+
+    // The control: the same population untouched scores, so each refusal above
+    // is about the one field it names and not about the call.
+    expect(modifiedZScore(700, usable())).toBeCloseTo(0.6745 * (700 - 2.5), 10);
   });
 });

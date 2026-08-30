@@ -312,6 +312,39 @@ export function fairnessSeverityOf(code) {
 }
 
 /**
+ * **Render a value a guard refused, without losing what kind of value it was.**
+ *
+ * The four numeric guards in this layer all print the thing they rejected, and
+ * the two obvious ways to do it are each wrong in one direction:
+ *
+ * - A bare template slot or `String(value)` renders `'3.5'` as `3.5`, so the
+ *   refusal of a string reads exactly like the number that would have been
+ *   accepted, and renders `''` and `[]` as nothing at all, so the message names
+ *   no value.
+ * - `JSON.stringify` alone renders `NaN` and `Infinity` as the word `null`,
+ *   which is a *different* value this same guard also refuses — and it throws
+ *   outright on a `BigInt`, which would replace the diagnostic with a
+ *   `TypeError` raised from inside a `throw`.
+ *
+ * So: numbers by `String`, which prints every non-finite one as itself, and
+ * everything else by `JSON.stringify`, which keeps quotes, brackets and braces.
+ * The two fallbacks cover the values `JSON.stringify` declines to return a
+ * string for — `undefined` and symbols — and the ones it refuses outright.
+ *
+ * @param {unknown} value
+ * @returns {string}
+ */
+export function describeRefusedValue(value) {
+  if (typeof value === 'number') return String(value);
+  try {
+    const json = JSON.stringify(value);
+    return json === undefined ? String(value) : json;
+  } catch {
+    return String(value);
+  }
+}
+
+/**
  * Build a fairness finding. `severity` is looked up, never passed in.
  *
  * @param {string} code - a {@link FAIRNESS_REASON} value
@@ -428,11 +461,25 @@ export function assertFairnessMeasurement(measurement) {
  * `score` must be a finite number or an explicit `null`. An `Infinity` arriving
  * here throws rather than comparing greater than every threshold, because an
  * infinite modified z-score is what a zero scale produces and it means "no
- * scale", not "infinitely unfair". `threshold` must be a finite number for the
- * same reason and it is checked the same way: the comparison it is one side of
- * answers `typical` when it is absent.
+ * scale", not "infinitely unfair".
  *
- * @param {{ measurability: string, dispersion: string, score: number|null, threshold: number }} input
+ * `threshold` must be a finite number for the same reason, but it is **not**
+ * checked the same way. Its check sits below the four early returns, at the one
+ * line that reads it, because those four answer without ever comparing against
+ * it: an absent threshold makes `Math.abs(47.2) > undefined` evaluate `false`
+ * and returns `typical`, a clean bill of health from a comparison that could
+ * not have found anything. So the parameter is optional here, and a record that
+ * lost the key in transit is still answerable from what it carries — on those
+ * four paths only.
+ *
+ * That placement does **not** make a re-derived `undecided()` row work, and
+ * nothing here claims it does. `undecided()` reads its state and its threshold
+ * off the same absent dispersion, so a row with `threshold: null` carries
+ * `dispersionState: null` beside it and is refused one guard earlier, by the
+ * membership check. Such a row does not carry a `measurability` for a caller to
+ * supply either. Re-deriving one is not an operation this function offers.
+ *
+ * @param {{ measurability: string, dispersion: string, score: number|null, threshold?: number|null }} input
  * @returns {string} a {@link FAIRNESS_JUDGEMENT} value
  */
 export function deriveFairnessJudgement(input) {
@@ -450,7 +497,7 @@ export function deriveFairnessJudgement(input) {
   }
   if (input.score !== null && !Number.isFinite(input.score)) {
     throw new Error(
-      `fairness: score ${String(input.score)} is not finite; an infinite deviation is a scale of zero wearing a number, and it means "no scale", never "infinitely unfair"`
+      `fairness: score ${describeRefusedValue(input.score)} is not finite; an infinite deviation is a scale of zero wearing a number, and it means "no scale", never "infinitely unfair"`
     );
   }
   if (input.measurability === FAIRNESS_MEASURABILITY.UNMEASURABLE) {
@@ -459,16 +506,21 @@ export function deriveFairnessJudgement(input) {
   if (input.dispersion === FAIRNESS_DISPERSION.UNIFORM) return FAIRNESS_JUDGEMENT.TYPICAL;
   if (input.dispersion !== FAIRNESS_DISPERSION.USABLE) return FAIRNESS_JUDGEMENT.UNDECIDED;
   if (input.score === null) return FAIRNESS_JUDGEMENT.UNDECIDED;
-  // The fourth input, checked like the other three — but **here**, below the
-  // returns that never reach the comparison. `undecided()` legitimately writes
-  // `threshold: null` for a subject with no group key, and re-deriving from
-  // such a row must answer, not throw. Past this line a comparison is about to
-  // happen, and `Math.abs(47.2) > undefined` is `false`: an absent threshold
-  // returned `typical`, a clean bill of health from a comparison that could
-  // not have found anything.
+  // The fourth input, checked below the four returns that never reach the
+  // comparison, because this is the only line that reads it. Past here a
+  // comparison is about to happen, and `Math.abs(47.2) > undefined` is `false`:
+  // an absent threshold returned `typical`, a clean bill of health from a
+  // comparison that could not have found anything.
+  //
+  // The arrival this placement serves is narrow and real: a record that lost
+  // the key in transit — a JSON round trip drops an absent `threshold` — on one
+  // of the four paths above, which answer from what such a record still
+  // carries. It does **not** make a re-derived `undecided()` row work; that row
+  // has `dispersionState: null` too and the membership guard above refuses it
+  // first. Both halves are proved in tests/fairnessMetrics.test.js, section 15.
   if (!Number.isFinite(input.threshold)) {
     throw new Error(
-      `fairness: threshold ${String(input.threshold)} is not a finite number; the judgement about to be returned is a comparison against it, and a comparison against nothing answers "typical"`
+      `fairness: threshold ${describeRefusedValue(input.threshold)} is not a finite number; the judgement about to be returned is a comparison against it, and a comparison against nothing answers "typical"`
     );
   }
   return Math.abs(input.score) > input.threshold

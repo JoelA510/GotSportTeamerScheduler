@@ -52,7 +52,7 @@
  * @module fairness/dispersion
  */
 
-import { FAIRNESS_DISPERSION } from './reasonCodes.js';
+import { FAIRNESS_DISPERSION, describeRefusedValue } from './reasonCodes.js';
 
 /**
  * The consistency constant that puts a modified z-score on the same scale as an
@@ -265,12 +265,12 @@ export function modifiedZScore(value, dispersion) {
   const { centre, scale } = dispersion;
   if (!Number.isFinite(centre)) {
     throw new Error(
-      `fairness: population ${JSON.stringify(dispersion.metricId)} calls itself "${FAIRNESS_DISPERSION.USABLE}" while its centre is ${String(centre)}; a deviation is measured from a centre, and measuring it from an absent one measures it from zero and publishes the result as a score`
+      `fairness: population ${JSON.stringify(dispersion.metricId)} calls itself "${FAIRNESS_DISPERSION.USABLE}" while its centre is ${describeRefusedValue(centre)}; a deviation is measured from a centre, and measuring it from an absent one measures it from zero and publishes the result as a score`
     );
   }
   if (!Number.isFinite(scale) || scale === 0) {
     throw new Error(
-      `fairness: population ${JSON.stringify(dispersion.metricId)} calls itself "${FAIRNESS_DISPERSION.USABLE}" while its scale is ${String(scale)}; a scale of zero or of nothing is what the other three dispersion states exist to report, and dividing by it is the infinity deriveFairnessJudgement() refuses`
+      `fairness: population ${JSON.stringify(dispersion.metricId)} calls itself "${FAIRNESS_DISPERSION.USABLE}" while its scale is ${describeRefusedValue(scale)}; a scale of zero or of nothing is what the other three dispersion states exist to report, and dividing by it is the infinity deriveFairnessJudgement() refuses`
     );
   }
   return (MAD_CONSISTENCY_CONSTANT * (value - centre)) / scale;

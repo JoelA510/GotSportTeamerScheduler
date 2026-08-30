@@ -123,6 +123,7 @@ export {
   createFairnessMeta,
   deriveFairnessJudgement,
   deriveFairnessStatus,
+  describeRefusedValue,
   dispersionFinding,
   fairnessSeverityOf,
   makeFairnessFinding,
