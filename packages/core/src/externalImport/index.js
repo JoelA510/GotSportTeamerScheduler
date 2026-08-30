@@ -100,6 +100,7 @@ export {
 } from './schemas.js';
 
 export {
+  EXTERNAL_LOOKUP_SIDE,
   EXTERNAL_MAPPING_DURABILITY,
   EXTERNAL_MAPPING_KIND,
   MAPPING_DOCUMENT_VERSION,
@@ -116,6 +117,7 @@ export {
 
 export {
   EXTERNAL_COMPARED_FIELD,
+  EXTERNAL_FIELD_PRESENCE,
   EXTERNAL_KEY_FIELD,
   acceptanceDomainOf,
   classifyExternalImport,
@@ -134,6 +136,7 @@ export {
 export {
   AVOID_WINDOW_ADMISSION_FIELDS,
   AVOID_WINDOW_DOCUMENT_VERSION,
+  EXTERNAL_AVOID_EXCLUSION,
   avoidWindowKey,
   avoidWindowsAdmit,
   buildAvoidWindows,

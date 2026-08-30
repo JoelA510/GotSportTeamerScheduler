@@ -193,8 +193,10 @@ export const EXTERNAL_IMPORT_REASON = Object.freeze({
   EXTERNAL_ROW_UNDECIDABLE: 'EXTERNAL_ROW_UNDECIDABLE',
   /** One row's match key names more than one of our fixtures. */
   EXTERNAL_ROW_KEY_AMBIGUOUS: 'EXTERNAL_ROW_KEY_AMBIGUOUS',
-  /** A field one side does not carry. Not compared, and not called equal. */
+  /** A field **neither** side carries. Not compared, and not called equal. */
   EXTERNAL_FIELD_UNCOMPARED: 'EXTERNAL_FIELD_UNCOMPARED',
+  /** A field exactly one side carries. Says which side, and is not agreement. */
+  EXTERNAL_FIELD_ONE_SIDED: 'EXTERNAL_FIELD_ONE_SIDED',
   /** The publication states no venue at all, so the row cannot be judged. */
   EXTERNAL_ROW_VENUE_UNSTATED: 'EXTERNAL_ROW_VENUE_UNSTATED',
   /** Zero rows were handed to the classifier. */
@@ -273,6 +275,7 @@ export const EXTERNAL_IMPORT_REASON_SEVERITY = Object.freeze({
   [EXTERNAL_IMPORT_REASON.EXTERNAL_ROW_UNDECIDABLE]: EXTERNAL_IMPORT_SEVERITY.BLOCKING,
   [EXTERNAL_IMPORT_REASON.EXTERNAL_ROW_KEY_AMBIGUOUS]: EXTERNAL_IMPORT_SEVERITY.BLOCKING,
   [EXTERNAL_IMPORT_REASON.EXTERNAL_FIELD_UNCOMPARED]: EXTERNAL_IMPORT_SEVERITY.COMPROMISE,
+  [EXTERNAL_IMPORT_REASON.EXTERNAL_FIELD_ONE_SIDED]: EXTERNAL_IMPORT_SEVERITY.COMPROMISE,
   [EXTERNAL_IMPORT_REASON.EXTERNAL_ROW_VENUE_UNSTATED]: EXTERNAL_IMPORT_SEVERITY.BLOCKING,
   [EXTERNAL_IMPORT_REASON.EXTERNAL_IMPORT_NO_ROWS_READ]: EXTERNAL_IMPORT_SEVERITY.BLOCKING,
   [EXTERNAL_IMPORT_REASON.EXTERNAL_IMPORT_NOTHING_CLASSIFIED]: EXTERNAL_IMPORT_SEVERITY.BLOCKING,
@@ -470,9 +473,13 @@ export function createExternalImportMeta() {
   return {
     /** Mapping records declared in the registry handed to this run. */
     mappingRecordsDeclared: 0,
-    /** Distinct records that resolved at least one label in this run. */
+    /**
+     * Distinct records that resolved a label **the imported publication
+     * brought**. Our own side is {@link standingRecordsExercised}: a record
+     * only we consulted has not been exercised by the artifact under judgement.
+     */
     mappingRecordsExercised: 0,
-    /** Label lookups performed, of every outcome. */
+    /** Label lookups performed **on the imported publication's labels**. */
     labelLookups: 0,
     /** Lookups that produced one target. */
     labelsResolved: 0,
@@ -495,6 +502,14 @@ export function createExternalImportMeta() {
     labelsUnclaimedOptional: 0,
     /** Lookups more than one record claimed, disagreeing. */
     labelsAmbiguous: 0,
+    /**
+     * Lookups made while canonicalising **the fixtures we hold**, so that both
+     * sides of a key go through one function without our side's hundred-odd
+     * labels landing in the counters above. See `EXTERNAL_LOOKUP_SIDE`.
+     */
+    standingLabelLookups: 0,
+    /** Distinct records that fired on our side. Never proof the import used one. */
+    standingRecordsExercised: 0,
 
     /** External rows handed to the classifier. */
     rowsRead: 0,
@@ -507,8 +522,20 @@ export function createExternalImportMeta() {
     rowsUndecidable: 0,
     /** Field comparisons actually performed (both sides carried the field). */
     fieldComparisons: 0,
-    /** Field/row pairs skipped because one side does not carry the field. */
+    /** Field/row pairs skipped because **neither** side carries the field. */
     fieldsUncompared: 0,
+    /**
+     * Field/row pairs where exactly **one** side carries the field.
+     *
+     * Counted apart from {@link fieldsUncompared} for the reason
+     * {@link labelsUnclaimedOptional} is counted apart from
+     * {@link labelsUnresolved}: a field neither artifact states cannot hide a
+     * disagreement, and a field one artifact states and the other does not is
+     * precisely a row that has **not** been shown to agree. One counter over
+     * both is a counter that cannot tell "there was nothing to compare" from
+     * "they published something we do not hold".
+     */
+    fieldsOneSided: 0,
 
     /** Acceptance sets evaluated. */
     acceptanceSetsExamined: 0,

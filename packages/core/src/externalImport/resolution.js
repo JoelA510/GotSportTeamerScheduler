@@ -33,8 +33,11 @@
  *
  * The evidence is still published. An undecidable row carries every difference
  * that *could* be computed, in `differences`, with the fields that could not in
- * `uncomparedFields`. The reader sees what would have been said and why it was
- * not said.
+ * `uncomparedFields` — and of those, the ones exactly one side stated in
+ * `oneSidedFields`, because *"neither of us records it"* and *"they publish
+ * something we do not hold"* are different facts. See
+ * {@link EXTERNAL_FIELD_PRESENCE}. The reader sees what would have been said and
+ * why it was not said.
  *
  * ## Never silently drop a row
  *
@@ -60,6 +63,7 @@ import {
   nameResolutionFinding,
 } from './reasonCodes.js';
 import {
+  EXTERNAL_LOOKUP_SIDE,
   EXTERNAL_MAPPING_KIND,
   createMappingUsage,
   mappingUsageFindings,
@@ -98,6 +102,95 @@ export const EXTERNAL_COMPARED_FIELD = Object.freeze({
   format: Object.freeze({ ours: 'format', minutes: false, fromVenue: false }),
   division: Object.freeze({ ours: 'division', minutes: false, fromVenue: false }),
 });
+
+/**
+ * **Which side of a comparison carried the field**, and what each situation is
+ * called in the report.
+ *
+ * ## One class or two? Two.
+ *
+ * The previous round collapsed three situations into one word. "Uncompared" was
+ * emitted whenever either side held `null`, and its message asserted that *"the
+ * imported artifact carries no value for it there"* — which is a statement about
+ * their side made from a branch that fires for ours just as readily. On the
+ * corpus's own `format`/`division` query every one of the sixteen skips is
+ * **ours**, and the sentence was wrong about all sixteen.
+ *
+ * They are two classes, not one, because they license different conclusions:
+ *
+ * - {@link NEITHER} — no artifact asserts anything about the field. Nothing can
+ *   be hidden by not comparing it, so a row that is otherwise equal really is
+ *   equal as far as this field can speak. It is worth reporting only because the
+ *   caller *asked* for a comparison that could not be made.
+ * - {@link OURS_ONLY} / {@link THEIRS_ONLY} — one artifact states a value and
+ *   the other does not. That is not a difference with a magnitude, and it is
+ *   emphatically not agreement: "we hold no value" and "we agree" are different
+ *   facts, and a row carrying a division we do not hold must not be summarised
+ *   as one that *"already agrees with what we hold"*.
+ *
+ * The two one-sided members are kept apart rather than folded into a single
+ * `ONE_SIDED`, for the same reason again: the repair differs. Their value
+ * missing is a gap in the publication; ours missing is a gap in our own record.
+ *
+ * @readonly
+ * @enum {string}
+ */
+export const EXTERNAL_FIELD_PRESENCE = Object.freeze({
+  /** Both sides carried it, so it was compared. */
+  BOTH: 'both-sides',
+  /** Neither side carried it. */
+  NEITHER: 'neither-side',
+  /** Only the fixture we hold carried it. */
+  OURS_ONLY: 'the-fixtures-we-hold-only',
+  /** Only the imported publication carried it. */
+  THEIRS_ONLY: 'the-imported-publication-only',
+});
+
+/**
+ * How each non-comparing presence is reported: its code, and the clause that
+ * says what actually happened.
+ *
+ * A table rather than three `if`s in the message builder, for the reason
+ * {@link EXTERNAL_KEY_FIELD} and `EXTERNAL_NAME_RESOLUTION_REASON` are tables:
+ * a sentence written next to the branch that produces it is a sentence that
+ * describes the branch, and this whole class of defect is a message asserting
+ * a cause that came from where it sat rather than from what happened.
+ *
+ * @type {Readonly<Record<string, { code: string, clause: string }>>}
+ */
+const FIELD_PRESENCE_REPORT = Object.freeze({
+  [EXTERNAL_FIELD_PRESENCE.NEITHER]: Object.freeze({
+    code: EXTERNAL_IMPORT_REASON.EXTERNAL_FIELD_UNCOMPARED,
+    clause:
+      'neither the imported publication nor the fixture we hold carries a value for it, so there was nothing to compare',
+  }),
+  [EXTERNAL_FIELD_PRESENCE.OURS_ONLY]: Object.freeze({
+    code: EXTERNAL_IMPORT_REASON.EXTERNAL_FIELD_ONE_SIDED,
+    clause:
+      'the fixture we hold carries a value for it and the imported publication does not, so the row is not shown to agree on it and is not shown to differ either',
+  }),
+  [EXTERNAL_FIELD_PRESENCE.THEIRS_ONLY]: Object.freeze({
+    code: EXTERNAL_IMPORT_REASON.EXTERNAL_FIELD_ONE_SIDED,
+    clause:
+      'the imported publication carries a value for it and we hold none, so the row is not shown to agree on it — "we have no value" is not "we agree"',
+  }),
+});
+
+/**
+ * Which side carried the field, from the two values and nothing else.
+ *
+ * @param {unknown} ours
+ * @param {unknown} theirs
+ * @returns {string} an {@link EXTERNAL_FIELD_PRESENCE} value
+ */
+function presenceOf(ours, theirs) {
+  const haveOurs = ours !== null && ours !== undefined;
+  const haveTheirs = theirs !== null && theirs !== undefined;
+  if (haveOurs && haveTheirs) return EXTERNAL_FIELD_PRESENCE.BOTH;
+  if (haveOurs) return EXTERNAL_FIELD_PRESENCE.OURS_ONLY;
+  if (haveTheirs) return EXTERNAL_FIELD_PRESENCE.THEIRS_ONLY;
+  return EXTERNAL_FIELD_PRESENCE.NEITHER;
+}
 
 /**
  * Render a key component. `null` is rendered as a distinct token rather than as
@@ -139,33 +232,36 @@ function joinKey(keyFields, components) {
  * matching when used as documented. Whatever this function does, it now does to
  * both sides, so a record that renames one renames the other.
  *
- * `recordUnclaimed` is the one asymmetry and it is about the **ledger**, never
- * about the value. `usage` counts what the *imported publication* asked of the
- * registry; our own fixtures are the thing being compared against, not part of
- * that artifact, and recording a `labelsUnclaimedOptional` for each of the
- * hundred-odd standing labels no external record was ever meant to claim is
- * precisely the noise `createExternalImportMeta()` splits that counter out to
- * avoid. A record that *does* fire on our side is recorded either way, so
- * nothing that exercised the registry goes uncounted.
+ * `side` is the one asymmetry and it is about the **ledger**, never about the
+ * value: the same lookup returns the same component whichever side asked for it.
+ * `usage` counts what the *imported publication* asked of the registry; our own
+ * fixtures are the thing being compared against, not part of that artifact.
+ *
+ * The previous round removed our side's `labelsUnclaimedOptional` noise by not
+ * recording our lookups at all *unless they resolved* — which is the half that
+ * broke it. A resolved lookup of ours landed in `usedRecordIds`, so a registry
+ * whose records only our own fixtures touch reported as exercised and
+ * `EXTERNAL_MAPPING_REGISTRY_UNEXERCISED` — blocking, incident 4's shape — went
+ * quiet. Both sides are recorded now, each under its own
+ * {@link import('./mapping.js').EXTERNAL_LOOKUP_SIDE}: the noise stays out of
+ * the import's counters because an `ours` lookup touches none of them, and the
+ * blocking finding comes back because `usedRecordIds` again means only what the
+ * publication asked for.
  *
  * @param {import('./types.js').ExternalMappingRegistry} registry
  * @param {ReturnType<typeof createMappingUsage>} usage
  * @param {unknown} raw
- * @param {{ recordUnclaimed: boolean }} options
+ * @param {{ side: string }} options - an `EXTERNAL_LOOKUP_SIDE` value
  * @returns {unknown}
  */
-function participantComponent(registry, usage, raw, { recordUnclaimed }) {
+function participantComponent(registry, usage, raw, { side }) {
   if (raw === null || raw === undefined) return raw;
-  const resolved = resolveExternalName(
-    registry,
-    EXTERNAL_MAPPING_KIND.PARTICIPANT,
-    /** @type {string} */ (raw)
+  const resolved = recordMappingUse(
+    usage,
+    resolveExternalName(registry, EXTERNAL_MAPPING_KIND.PARTICIPANT, /** @type {string} */ (raw)),
+    { side, optional: true }
   );
-  if (resolved.state === EXTERNAL_NAME_RESOLUTION.RESOLVED) {
-    recordMappingUse(usage, resolved);
-    return resolved.subjectId;
-  }
-  if (recordUnclaimed) recordMappingUse(usage, resolved, { optional: true });
+  if (resolved.state === EXTERNAL_NAME_RESOLUTION.RESOLVED) return resolved.subjectId;
   return raw;
 }
 
@@ -211,7 +307,7 @@ export function classifyExternalImport(rawQuery, registry) {
         const spec = EXTERNAL_KEY_FIELD[field];
         const raw = fixture[spec.ours];
         if (!spec.participant) return raw;
-        return participantComponent(registry, usage, raw, { recordUnclaimed: false });
+        return participantComponent(registry, usage, raw, { side: EXTERNAL_LOOKUP_SIDE.OURS });
       })
     );
     if (!standingByKey.has(key)) standingByKey.set(key, []);
@@ -222,8 +318,16 @@ export function classifyExternalImport(rawQuery, registry) {
   const findings = [];
   /** @type {import('./types.js').ExternalRowResolution[]} */
   const rows = [];
-  /** @type {Map<string, string[]>} */
-  const uncomparedByField = new Map();
+  /**
+   * Row ids per `${field}|${presence}` — the group a finding is emitted for.
+   *
+   * Keyed on the presence as well as the field so the message is chosen by what
+   * was observed rather than by which loop wrote it, and so two rows that
+   * skipped one field for opposite reasons cannot share a sentence.
+   *
+   * @type {Map<string, string[]>}
+   */
+  const skippedByFieldAndPresence = new Map();
 
   meta.rowsRead = query.rows.length;
 
@@ -244,7 +348,9 @@ export function classifyExternalImport(rawQuery, registry) {
       const spec = EXTERNAL_KEY_FIELD[field];
       const raw = row[spec.theirs];
       if (!spec.participant) return raw;
-      return participantComponent(registry, usage, raw, { recordUnclaimed: true });
+      return participantComponent(registry, usage, raw, {
+        side: EXTERNAL_LOOKUP_SIDE.IMPORTED,
+      });
     });
 
     const matchKey = joinKey(keyFields, theirComponents);
@@ -264,6 +370,8 @@ export function classifyExternalImport(rawQuery, registry) {
     const compared = [];
     /** @type {string[]} */
     const uncompared = [];
+    /** @type {string[]} */
+    const oneSided = [];
 
     if (fixture !== null) {
       for (const field of comparedFields) {
@@ -279,16 +387,27 @@ export function classifyExternalImport(rawQuery, registry) {
         } else {
           theirs = row[field];
         }
-        // Uncompared is a fact about the **pair**, not about their side of it.
-        // Testing only `theirs` meant a null of ours was compared against a
+        // Comparability is a fact about the **pair**, not about their side of
+        // it. Testing only `theirs` meant a null of ours was compared against a
         // real value and reported as a difference (`ours: null`), which put a
         // row nothing can honestly accept into the acceptance domain and made
         // the sweep answer a bigger question than the corpus poses.
-        if (ours === null || ours === undefined || theirs === null || theirs === undefined) {
+        //
+        // Which side was missing is carried rather than discarded: it decides
+        // the code and the sentence, and it is what stops a row that carries a
+        // value we do not hold being summarised as one that already agrees.
+        const presence = presenceOf(ours, theirs);
+        if (presence !== EXTERNAL_FIELD_PRESENCE.BOTH) {
           uncompared.push(field);
-          meta.fieldsUncompared += 1;
-          if (!uncomparedByField.has(field)) uncomparedByField.set(field, []);
-          /** @type {string[]} */ (uncomparedByField.get(field)).push(row.rowId);
+          if (presence === EXTERNAL_FIELD_PRESENCE.NEITHER) {
+            meta.fieldsUncompared += 1;
+          } else {
+            oneSided.push(field);
+            meta.fieldsOneSided += 1;
+          }
+          const groupKey = `${field}|${presence}`;
+          if (!skippedByFieldAndPresence.has(groupKey)) skippedByFieldAndPresence.set(groupKey, []);
+          /** @type {string[]} */ (skippedByFieldAndPresence.get(groupKey)).push(row.rowId);
           continue;
         }
         compared.push(field);
@@ -363,6 +482,7 @@ export function classifyExternalImport(rawQuery, registry) {
       differences,
       comparedFields: compared,
       uncomparedFields: uncompared,
+      oneSidedFields: oneSided,
       acceptable,
     });
   }
@@ -382,20 +502,43 @@ export function classifyExternalImport(rawQuery, registry) {
   meta.labelsUnresolved = usage.unresolved;
   meta.labelsUnclaimedOptional = usage.unclaimedOptional;
   meta.labelsAmbiguous = usage.ambiguous;
+  meta.standingLabelLookups = usage.ourLookups;
+  meta.standingRecordsExercised = usage.ourRecordIds.size;
   meta.mappingRecordsExercised = usage.usedRecordIds.size;
 
   /* -- bucket-level findings for the two decided-and-found classes --------- */
 
   if (meta.rowsMatchedIdentical > 0) {
+    // "Nothing differing across `comparedFields`" is a claim about fields that
+    // were compared. Where one of them was skipped on these very rows, saying
+    // it anyway is the same defect as the message below it used to carry, so
+    // the sentence names what was actually compared and what was not.
+    const identical = rows.filter((row) => row.rowClass === EXTERNAL_ROW_CLASS.MATCHED_IDENTICAL);
+    const comparedHere = [...new Set(identical.flatMap((row) => row.comparedFields))].sort();
+    const skippedHere = [...new Set(identical.flatMap((row) => row.uncomparedFields))].sort();
+    const oneSidedHere = [...new Set(identical.flatMap((row) => row.oneSidedFields))].sort();
+    const neitherHere = skippedHere.filter((field) => !oneSidedHere.includes(field));
+    const caveats = [
+      oneSidedHere.length > 0
+        ? `${oneSidedHere.join(', ')} is carried by one side only on some of them, which is not agreement`
+        : null,
+      neitherHere.length > 0
+        ? `${neitherHere.join(', ')} is carried by neither side on some of them`
+        : null,
+    ].filter((clause) => clause !== null);
     findings.push(
       makeExternalImportFinding(
         EXTERNAL_IMPORT_REASON.EXTERNAL_ROW_MATCHED,
-        `${meta.rowsMatchedIdentical} of ${meta.rowsRead} imported row(s) match a fixture we hold on ${keyFields.join(' + ')} with nothing differing across ${comparedFields.join(', ')}`,
+        `${meta.rowsMatchedIdentical} of ${meta.rowsRead} imported row(s) match a fixture we hold on ${keyFields.join(' + ')} with nothing differing across ${comparedHere.length > 0 ? comparedHere.join(', ') : 'no field at all'}${caveats.length > 0 ? `; ${caveats.join('; ')}` : ''}`,
         {
           count: meta.rowsMatchedIdentical,
           rowIds: byClass[EXTERNAL_ROW_CLASS.MATCHED_IDENTICAL],
           keyFields,
           comparedFields,
+          fieldsComparedOnTheseRows: comparedHere,
+          fieldsSkippedOnTheseRows: skippedHere,
+          fieldsOneSidedOnTheseRows: oneSidedHere,
+          fieldsNeitherSideCarriesOnTheseRows: neitherHere,
         }
       )
     );
@@ -494,21 +637,29 @@ export function classifyExternalImport(rawQuery, registry) {
           decidedBy: row.reasonCode,
           differencesObserved: row.differences.map((difference) => difference.field),
           uncomparedFields: row.uncomparedFields,
+          oneSidedFields: row.oneSidedFields,
         }
       )
     );
   }
 
-  /* -- fields that could not be compared, per field with its rows ---------- */
+  /* -- fields that could not be compared, per field and per cause ---------- */
 
-  for (const [field, rowIds] of [...uncomparedByField.entries()].sort(([a], [b]) =>
+  // One finding per (field, presence) rather than per field: the code and the
+  // sentence are both looked up from what was observed, so neither can assert a
+  // cause that came from the branch it sits in.
+  for (const [groupKey, rowIds] of [...skippedByFieldAndPresence.entries()].sort(([a], [b]) =>
     a.localeCompare(b)
   )) {
+    const separator = groupKey.indexOf('|');
+    const field = groupKey.slice(0, separator);
+    const presence = groupKey.slice(separator + 1);
+    const report = FIELD_PRESENCE_REPORT[presence];
     findings.push(
       makeExternalImportFinding(
-        EXTERNAL_IMPORT_REASON.EXTERNAL_FIELD_UNCOMPARED,
-        `${field} could not be compared on ${rowIds.length} row(s): the imported artifact carries no value for it there, so it is left out of the comparison rather than compared against null`,
-        { field, count: rowIds.length, rowIds }
+        report.code,
+        `${field} could not be compared on ${rowIds.length} row(s): ${report.clause}`,
+        { field, presence, count: rowIds.length, rowIds }
       )
     );
   }

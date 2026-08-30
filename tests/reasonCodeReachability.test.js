@@ -1,8 +1,8 @@
 /**
  * Repo-wide reachability audit for every frozen reason-code table in
  * `packages/core/src` — the generalisation of the per-module audit
- * `tests/attribution.test.js` already carries. 18 vocabularies, 386 codes, of
- * which 375 are shown to be producible and 11 are named as holes.
+ * `tests/attribution.test.js` already carries. 18 vocabularies, 387 codes, of
+ * which 376 are shown to be producible and 11 are named as holes.
  *
  * **The defect this exists to catch.** Four times now, in four unrelated
  * modules, a reason code has been declared, given a severity, documented, and
@@ -4272,8 +4272,25 @@ harvest(
   })
 );
 
+// `format` is null on every published row and on every fixture below, so no
+// artifact states it: that is `EXTERNAL_FIELD_UNCOMPARED`, the *neither* side of
+// the presence split. The driver above reaches its sibling
+// `EXTERNAL_FIELD_ONE_SIDED`, where our fixtures do carry a format and the
+// league's file has no such column.
 harvest(
-  'classifyExternalImport(a row nothing of ours matches, a duplicated key, and uncompared fields)',
+  'classifyExternalImport(a field neither artifact carries)',
+  classifyExternalImport(
+    {
+      ...externalQuery,
+      comparedFields: ['kickoffMinutes', 'format'],
+      standing: externalQuery.standing.map((fixture) => ({ ...fixture, format: null })),
+    },
+    externalRegistry
+  )
+);
+
+harvest(
+  'classifyExternalImport(a row nothing of ours matches, a duplicated key, and one-sided fields)',
   classifyExternalImport(
     {
       ...externalQuery,

@@ -503,6 +503,134 @@ function planFindings(graph, timingTable, fixtures) {
 }
 
 /**
+ * **Why one accepted row moved no fixture.**
+ *
+ * Five things make a set move nothing, and the sentence that used to report them
+ * named two. A set whose rows were **refused** moved nothing because none of it
+ * could be applied, which is the opposite of a no-op; a row whose fixture is
+ * outside `query.dates` moved nothing because the projection never saw it; a row
+ * that carries a value we do not hold moved nothing and is not agreement either.
+ * Calling any of those *"differ only on fields this module records"* or
+ * *"already agree with what we hold"* tells an operator the import was a no-op
+ * when it was refused, out of scope, or one-sided.
+ *
+ * So each accepted row is put in exactly one bucket **by what was observed** —
+ * the projection's own findings, the fixture ids the projection actually held,
+ * and the row's own differences and one-sided fields — and the clause is looked
+ * up from the bucket. No clause is written next to the branch that produces it.
+ *
+ * {@link UNEXPLAINED} is the honest floor rather than a decoration: two accepted
+ * rows naming one fixture leave only the last of them projected, and a message
+ * that has to name a cause would name the wrong one. It says so instead.
+ *
+ * @readonly
+ * @enum {string}
+ */
+const NOTHING_PROJECTED_CAUSE = Object.freeze({
+  /** Undecidable, unmatched, or named by no row of this classification. */
+  REFUSED: 'refused',
+  /** Its fixture is not in the projection's date scope. */
+  OUT_OF_SCOPE: 'outside-the-projection-scope',
+  /** It differs only on fields this module records and does not move. */
+  RECORDED_ONLY: 'recorded-not-moved',
+  /** It states a value we do not hold, or we hold one it does not state. */
+  ONE_SIDED: 'one-sided-field',
+  /** Nothing differs and nothing is one-sided. The only true no-op. */
+  AGREES: 'agrees',
+  /** Applied, in scope, with a difference this module moves — and it did not. */
+  UNEXPLAINED: 'unexplained',
+});
+
+/**
+ * The clause each cause contributes, in the order they are said.
+ *
+ * @type {Readonly<Record<string, string>>}
+ */
+const NOTHING_PROJECTED_CLAUSE = Object.freeze({
+  [NOTHING_PROJECTED_CAUSE.REFUSED]: 'could not be applied at all',
+  [NOTHING_PROJECTED_CAUSE.OUT_OF_SCOPE]:
+    'name a fixture outside the dates this projection covers, so nothing of theirs was projected either way',
+  [NOTHING_PROJECTED_CAUSE.RECORDED_ONLY]:
+    'differ only on fields this module records rather than moves',
+  [NOTHING_PROJECTED_CAUSE.ONE_SIDED]:
+    'carry a value we do not hold, or are held against one they do not state, which is not agreement',
+  [NOTHING_PROJECTED_CAUSE.AGREES]: 'already agree with what we hold',
+  [NOTHING_PROJECTED_CAUSE.UNEXPLAINED]:
+    'moved nothing for a reason this analysis cannot name, which is reported rather than attributed to one of the causes above',
+});
+
+/** @type {ReadonlyArray<string>} */
+const NOTHING_PROJECTED_CAUSE_ORDER = Object.freeze([
+  NOTHING_PROJECTED_CAUSE.REFUSED,
+  NOTHING_PROJECTED_CAUSE.OUT_OF_SCOPE,
+  NOTHING_PROJECTED_CAUSE.RECORDED_ONLY,
+  NOTHING_PROJECTED_CAUSE.ONE_SIDED,
+  NOTHING_PROJECTED_CAUSE.AGREES,
+  NOTHING_PROJECTED_CAUSE.UNEXPLAINED,
+]);
+
+/** The compared fields a projection actually applies to a fixture. */
+const PROJECTED_FIELDS = Object.freeze(['kickoffMinutes', 'venueId', 'surfaceId']);
+
+/**
+ * Sort every accepted row into exactly one {@link NOTHING_PROJECTED_CAUSE}.
+ *
+ * @param {Object} input
+ * @param {ReadonlyArray<string>} input.acceptedRowIds
+ * @param {ReadonlyArray<string>} input.rejectedRowIds
+ * @param {import('./types.js').ExternalImportResolution} input.resolution
+ * @param {Set<string>} input.projectedFixtureIds - the fixtures the projection held
+ * @returns {Record<string, string[]>} row ids per cause, each sorted
+ */
+function explainNothingProjected({
+  acceptedRowIds,
+  rejectedRowIds,
+  resolution,
+  projectedFixtureIds,
+}) {
+  /** @type {Record<string, string[]>} */
+  const buckets = {};
+  for (const cause of NOTHING_PROJECTED_CAUSE_ORDER) buckets[cause] = [];
+  const rejected = new Set(rejectedRowIds);
+
+  for (const rowId of acceptedRowIds) {
+    if (rejected.has(rowId)) {
+      buckets[NOTHING_PROJECTED_CAUSE.REFUSED].push(rowId);
+      continue;
+    }
+    const row = resolution.rows.find((candidate) => candidate.rowId === rowId);
+    // A row that is neither rejected nor held by this classification cannot
+    // happen — `projectAcceptance()` rejects an unknown row id — but guessing
+    // a cause for it would be the defect this table exists to close.
+    if (row === undefined || row.fixtureId === null) {
+      buckets[NOTHING_PROJECTED_CAUSE.UNEXPLAINED].push(rowId);
+      continue;
+    }
+    if (!projectedFixtureIds.has(row.fixtureId)) {
+      buckets[NOTHING_PROJECTED_CAUSE.OUT_OF_SCOPE].push(rowId);
+      continue;
+    }
+    const fields = row.differences.map((difference) => difference.field);
+    if (fields.some((field) => PROJECTED_FIELDS.includes(field))) {
+      buckets[NOTHING_PROJECTED_CAUSE.UNEXPLAINED].push(rowId);
+      continue;
+    }
+    if (fields.length > 0) {
+      buckets[NOTHING_PROJECTED_CAUSE.RECORDED_ONLY].push(rowId);
+      continue;
+    }
+    if (row.oneSidedFields.length > 0) {
+      buckets[NOTHING_PROJECTED_CAUSE.ONE_SIDED].push(rowId);
+      continue;
+    }
+    buckets[NOTHING_PROJECTED_CAUSE.AGREES].push(rowId);
+  }
+
+  for (const cause of NOTHING_PROJECTED_CAUSE_ORDER) buckets[cause].sort();
+  return buckets;
+}
+
+/**
  * **Analyse one acceptance set.**
  *
  * @param {Object} input
@@ -630,42 +758,38 @@ export function analyseImportImpact({ subject, resolution, standing, query, grap
   const findings = [...projection.findings, ...introduced, ...resolvedAway, ...preexisting];
 
   if (acceptedRowIds.length > 0 && projection.moved.length === 0) {
-    // Three different things make a set move nothing, and calling all of them
-    // "already agrees" states something false about two of them. A set whose
-    // rows were **refused** — undecidable, unmatched, or named by nobody — moved
-    // nothing because none of it could be applied, which is the opposite of a
-    // no-op, and an operator told the import "already agrees" would file it as
-    // done. The third is a row that matched and differs only on `format` or
-    // `division`, which this module records and deliberately does not project.
     const rejectedRowIds = projection.findings
       .filter(
         (finding) => finding.code === EXTERNAL_IMPORT_REASON.EXTERNAL_ACCEPTANCE_ROW_NOT_ACCEPTABLE
       )
       .map((finding) => /** @type {string} */ (finding.details.rowId))
       .sort();
-    const rejected = new Set(rejectedRowIds);
-    const applied = acceptedRowIds.filter((rowId) => !rejected.has(rowId));
-    const agreeingRowIds = applied
-      .filter(
-        (rowId) =>
-          (resolution.rows.find((row) => row.rowId === rowId)?.differences ?? []).length === 0
-      )
-      .sort();
-    const unprojectedRowIds = applied.filter((rowId) => !agreeingRowIds.includes(rowId)).sort();
-    const said = [
-      rejectedRowIds.length > 0
-        ? `${rejectedRowIds.length} could not be applied at all (${rejectedRowIds.join(', ')})`
-        : null,
-      agreeingRowIds.length > 0 ? `${agreeingRowIds.length} already agree with what we hold` : null,
-      unprojectedRowIds.length > 0
-        ? `${unprojectedRowIds.length} differ only on fields this module records rather than moves (${unprojectedRowIds.join(', ')})`
-        : null,
-    ].filter((clause) => clause !== null);
+    const buckets = explainNothingProjected({
+      acceptedRowIds,
+      rejectedRowIds,
+      resolution,
+      projectedFixtureIds: new Set(projection.fixtures.map((fixture) => fixture.fixtureId)),
+    });
+    const said = NOTHING_PROJECTED_CAUSE_ORDER.map((cause) => {
+      const rowIds = buckets[cause];
+      if (rowIds.length === 0) return null;
+      return `${rowIds.length} ${NOTHING_PROJECTED_CLAUSE[cause]} (${rowIds.join(', ')})`;
+    }).filter((clause) => clause !== null);
     findings.push(
       makeExternalImportFinding(
         EXTERNAL_IMPORT_REASON.EXTERNAL_IMPACT_NOTHING_PROJECTED,
         `accepting ${acceptedRowIds.length} row(s) moved no fixture: ${said.join('; ')}. This verdict is therefore about a change that does not exist, and says nothing about whether the rows were applied`,
-        { setKey, acceptedRowIds, rejectedRowIds, agreeingRowIds, unprojectedRowIds }
+        {
+          setKey,
+          acceptedRowIds,
+          dates,
+          rejectedRowIds: buckets[NOTHING_PROJECTED_CAUSE.REFUSED],
+          outOfScopeRowIds: buckets[NOTHING_PROJECTED_CAUSE.OUT_OF_SCOPE],
+          unprojectedRowIds: buckets[NOTHING_PROJECTED_CAUSE.RECORDED_ONLY],
+          oneSidedRowIds: buckets[NOTHING_PROJECTED_CAUSE.ONE_SIDED],
+          agreeingRowIds: buckets[NOTHING_PROJECTED_CAUSE.AGREES],
+          unexplainedRowIds: buckets[NOTHING_PROJECTED_CAUSE.UNEXPLAINED],
+        }
       )
     );
   }

@@ -28,6 +28,8 @@
  * @property {number} labelsUnresolved
  * @property {number} labelsUnclaimedOptional
  * @property {number} labelsAmbiguous
+ * @property {number} standingLabelLookups
+ * @property {number} standingRecordsExercised
  * @property {number} rowsRead
  * @property {number} rowsClassified
  * @property {number} rowsMatchedIdentical
@@ -36,6 +38,7 @@
  * @property {number} rowsUndecidable
  * @property {number} fieldComparisons
  * @property {number} fieldsUncompared
+ * @property {number} fieldsOneSided
  * @property {number} acceptanceSetsExamined
  * @property {number} fixturesProjected
  * @property {number} bookingPairsCompared
@@ -129,7 +132,8 @@
  * @property {ExternalNameResolution|null} venue - null when the row states none
  * @property {ExternalFieldDifference[]} differences
  * @property {string[]} comparedFields - fields both sides carried
- * @property {string[]} uncomparedFields - fields one side does not carry
+ * @property {string[]} uncomparedFields - every field left out of the comparison
+ * @property {string[]} oneSidedFields - those of them exactly one side carried
  * @property {boolean} acceptable - may this row be named in an acceptance set?
  */
 
@@ -223,7 +227,11 @@
  * @property {string} subject
  * @property {Object} document - an `AvoidWindowDocumentSchema` value
  * @property {AvoidWindow[]} windows
- * @property {string[]} unmappedSurfaceIds
+ * @property {Array<{ surfaceId: string, reason: string }>} excludedSurfaces - every scope surface that produced no window, with its `EXTERNAL_AVOID_EXCLUSION` cause
+ * @property {string[]} excludedSurfaceIds - all of them, whatever the cause
+ * @property {string[]} unmappedSurfaceIds - no record claims them: write one
+ * @property {string[]} ambiguousSurfaceIds - two records claim them: delete one
+ * @property {string[]} unknownSurfaceIds - named, but not in the facility graph
  * @property {ExternalImportFinding[]} findings
  * @property {string} status
  * @property {ExternalImportMeta} meta

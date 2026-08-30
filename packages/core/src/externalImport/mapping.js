@@ -93,6 +93,32 @@ export const EXTERNAL_MAPPING_KIND = Object.freeze({
 });
 
 /**
+ * **Which artifact a label lookup was made about.**
+ *
+ * The ledger's question is *"did the imported publication use this record"*, so
+ * a lookup has to say whose label it was resolving. Both sides go through the
+ * same resolver — that is the fix for a key that used to be computed two
+ * different ways — but they are not the same evidence: canonicalising our own
+ * fixture's `homeLabel` through the registry tells you nothing about whether the
+ * publication we are judging ever mentioned that record.
+ *
+ * Folding the two together silences
+ * {@link import('./reasonCodes.js').EXTERNAL_IMPORT_REASON.EXTERNAL_MAPPING_REGISTRY_UNEXERCISED},
+ * which is blocking and is incident 4's shape; keeping our side out of the
+ * ledger entirely loses the ability to say *why* a record looks unexercised.
+ * So it is counted, apart, and named.
+ *
+ * @readonly
+ * @enum {string}
+ */
+export const EXTERNAL_LOOKUP_SIDE = Object.freeze({
+  /** A label the foreign artifact carries. The ledger's subject. */
+  IMPORTED: 'imported-publication',
+  /** A label from the schedule we hold, canonicalised for comparison. */
+  OURS: 'the-fixtures-we-hold',
+});
+
+/**
  * Where a registry lives. One member, on purpose: adding a second is the change
  * that has to be reviewed, not a field that quietly gains values.
  *
@@ -448,16 +474,26 @@ export function reverseResolveSurface(registry, surfaceId) {
  * other's usage. This is the caller's ledger, and the caller folds it into its
  * own findings.
  *
- * @returns {{ usedRecordIds: Set<string>, lookups: number, resolved: number, unresolved: number, unclaimedOptional: number, ambiguous: number }}
+ * The two record sets are the two sides of {@link EXTERNAL_LOOKUP_SIDE}, kept
+ * apart rather than unioned: `usedRecordIds` answers *"did the publication use
+ * this record"*, which is the only question {@link mappingUsageFindings} is
+ * entitled to answer, and `ourRecordIds` exists so a record that fired only
+ * while canonicalising our own fixtures can be **said** to have done so instead
+ * of appearing to have fired for the import.
+ *
+ * @returns {{ usedRecordIds: Set<string>, ourRecordIds: Set<string>, lookups: number, resolved: number, unresolved: number, unclaimedOptional: number, ambiguous: number, ourLookups: number, ourResolved: number }}
  */
 export function createMappingUsage() {
   return {
     usedRecordIds: new Set(),
+    ourRecordIds: new Set(),
     lookups: 0,
     resolved: 0,
     unresolved: 0,
     unclaimedOptional: 0,
     ambiguous: 0,
+    ourLookups: 0,
+    ourResolved: 0,
   };
 }
 
@@ -472,12 +508,30 @@ export function createMappingUsage() {
  * the season corpus report sixteen unresolved labels for a run in which every
  * required lookup resolved.
  *
+ * `side` says whose label this was. The default is
+ * {@link EXTERNAL_LOOKUP_SIDE.IMPORTED}, because every caller outside
+ * `resolution.js`'s standing index is reading a foreign artifact. An `ours`
+ * lookup touches **only** the two `our*` counters: it is not an unresolved
+ * label, not an unclaimed-optional one, and not evidence that the publication
+ * exercised anything. Counting it as any of those is what silenced
+ * `EXTERNAL_MAPPING_REGISTRY_UNEXERCISED` and what would put a
+ * `labelsUnclaimedOptional` on each of the hundred-odd standing labels no
+ * external record was ever meant to claim.
+ *
  * @param {ReturnType<typeof createMappingUsage>} usage
  * @param {import('./types.js').ExternalNameResolution} resolution
- * @param {{ optional?: boolean }} [options]
+ * @param {{ optional?: boolean, side?: string }} [options]
  * @returns {import('./types.js').ExternalNameResolution} the same resolution
  */
 export function recordMappingUse(usage, resolution, options = {}) {
+  if (options.side === EXTERNAL_LOOKUP_SIDE.OURS) {
+    usage.ourLookups += 1;
+    if (resolution.state === EXTERNAL_NAME_RESOLUTION.RESOLVED) {
+      usage.ourResolved += 1;
+      if (resolution.record !== null) usage.ourRecordIds.add(resolution.record.id);
+    }
+    return resolution;
+  }
   usage.lookups += 1;
   if (resolution.state === EXTERNAL_NAME_RESOLUTION.RESOLVED) {
     usage.resolved += 1;
@@ -505,6 +559,12 @@ export function recordMappingUse(usage, resolution, options = {}) {
  * grounds this particular publication does not use; a registry where *nothing*
  * fired is either pointed at the wrong party or has gone stale wholesale.
  *
+ * **Both questions are asked of the imported side only.** A record consulted
+ * while canonicalising our own fixtures has not been exercised *by the
+ * publication*, and counting it as though it had is how this blocking finding
+ * came to be silenced by a registry the import never touched. What our side did
+ * is not discarded, though — it is what the message says instead of guessing.
+ *
  * @param {import('./types.js').ExternalMappingRegistry} registry
  * @param {ReturnType<typeof createMappingUsage>} usage
  * @returns {{ findings: import('./types.js').ExternalImportFinding[], unexercised: import('./types.js').ExternalMappingRecord[] }}
@@ -515,29 +575,43 @@ export function mappingUsageFindings(registry, usage) {
   const unexercised = registry.records.filter((record) => !usage.usedRecordIds.has(record.id));
 
   if (registry.records.length > 0 && usage.usedRecordIds.size === 0) {
+    // Both halves of this sentence are read off the ledger rather than assumed
+    // from which branch produced it: a run in which our own side did fire a
+    // record says so, because "the import used nothing" and "nothing at all
+    // happened" are different reports and only one of them is true here.
+    const alsoOurs =
+      usage.ourRecordIds.size > 0
+        ? `; ${usage.ourRecordIds.size} of them did resolve a label of ours over ${usage.ourLookups} lookup(s) while canonicalising the fixtures we hold, which is not the publication using them`
+        : '';
     findings.push(
       makeExternalImportFinding(
         EXTERNAL_IMPORT_REASON.EXTERNAL_MAPPING_REGISTRY_UNEXERCISED,
-        `not one of registry ${registry.registryId}'s ${registry.records.length} records resolved a label in this run, over ${usage.lookups} lookup(s); a mapping that matched nothing has not checked anything`,
+        `not one of registry ${registry.registryId}'s ${registry.records.length} records resolved a label the imported publication brought, over ${usage.lookups} lookup(s) of its labels${alsoOurs}; a mapping that matched nothing has not checked anything`,
         {
           registryId: registry.registryId,
           recordCount: registry.records.length,
           lookups: usage.lookups,
+          ourLookups: usage.ourLookups,
+          recordsExercisedByOurSide: usage.ourRecordIds.size,
         }
       )
     );
   }
 
   for (const record of unexercised) {
+    const firedOnOurSide = usage.ourRecordIds.has(record.id);
     findings.push(
       makeExternalImportFinding(
         EXTERNAL_IMPORT_REASON.EXTERNAL_MAPPING_RECORD_UNEXERCISED,
-        `mapping record ${record.id} (${JSON.stringify(record.externalLabel)} -> ${targetOf(record)}) did not fire in this run`,
+        firedOnOurSide
+          ? `mapping record ${record.id} (${JSON.stringify(record.externalLabel)} -> ${targetOf(record)}) fired only while canonicalising the fixtures we hold; no row of the imported publication asked for it`
+          : `mapping record ${record.id} (${JSON.stringify(record.externalLabel)} -> ${targetOf(record)}) did not fire in this run, on either side`,
         {
           recordId: record.id,
           externalLabel: record.externalLabel,
           target: targetOf(record),
           provenance: record.provenance,
+          firedOnOurSide,
         }
       )
     );

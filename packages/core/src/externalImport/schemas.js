@@ -134,8 +134,10 @@ export const MappingDocumentSchema = z
  * Every field is required and explicitly nullable where null is a real answer.
  * `format` and `division` are nullable because
  * `external_fixtures_published.csv` has no such columns at all — and a null here
- * makes those fields **uncompared** and says so, rather than comparing them
- * against ours and calling every row different.
+ * leaves those fields out of the comparison and says **which side** was missing,
+ * rather than comparing them against ours and calling every row different. See
+ * `resolution.js#EXTERNAL_FIELD_PRESENCE`: a field only one artifact states is
+ * reported apart from one neither states, because the first is not agreement.
  */
 export const ExternalFixtureRowSchema = z
   .object({

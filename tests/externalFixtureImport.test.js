@@ -46,11 +46,13 @@ import {
   ACCEPTANCE_SWEEP_CAP,
   AVOID_WINDOW_ADMISSION_FIELDS,
   AvoidWindowDocumentSchema,
+  EXTERNAL_FIELD_PRESENCE,
   EXTERNAL_IMPACT_VERDICT,
   EXTERNAL_IMPORT_REASON,
   EXTERNAL_IMPORT_REASON_SEVERITY,
   EXTERNAL_IMPORT_SEVERITY,
   EXTERNAL_IMPORT_STATUS,
+  EXTERNAL_LOOKUP_SIDE,
   EXTERNAL_MAPPING_DURABILITY,
   EXTERNAL_MAPPING_KIND,
   EXTERNAL_NAME_RESOLUTION,
@@ -68,12 +70,15 @@ import {
   buildExternalMappingRegistry,
   checkAvoidWindowRoundTrip,
   classifyExternalImport,
+  createMappingUsage,
   deriveExternalImpactVerdict,
   externalImportSeverityOf,
   impactOfSet,
+  mappingUsageFindings,
   normaliseExternalLabel,
   readAvoidWindowDocument,
   readExternalMappingRegistry,
+  recordMappingUse,
   resolveExternalName,
   reverseResolveSurface,
   season2026ExternalImportQuery,
@@ -550,13 +555,23 @@ describe('acceptance 2 — the corpus classification', () => {
   it('leaves a field one side does not carry uncompared, rather than calling it different', () => {
     const query = { ...corpusQuery(), comparedFields: ['kickoffMinutes', 'format', 'division'] };
     const resolution = classifyExternalImport(query, corpusRegistry());
-    // `external_fixtures_published.csv` has no Format or Division column at all.
-    expect(resolution.meta.fieldsUncompared).toBe(resolution.meta.rowsRead * 2);
-    expect(codesOf(resolution.findings)).toContain(
+    // `external_fixtures_published.csv` has no Format or Division column at
+    // all, and every one of our fixtures carries both — so all sixteen skips
+    // are **ours only**, and none of them is a field neither side has.
+    expect(resolution.meta.fieldsOneSided).toBe(resolution.meta.rowsRead * 2);
+    expect(resolution.meta.fieldsUncompared).toBe(0);
+    expect(codesOf(resolution.findings)).toContain(EXTERNAL_IMPORT_REASON.EXTERNAL_FIELD_ONE_SIDED);
+    expect(codesOf(resolution.findings)).not.toContain(
       EXTERNAL_IMPORT_REASON.EXTERNAL_FIELD_UNCOMPARED
     );
+    for (const finding of resolution.findings.filter(
+      (candidate) => candidate.code === EXTERNAL_IMPORT_REASON.EXTERNAL_FIELD_ONE_SIDED
+    )) {
+      expect(finding.details.presence).toBe(EXTERNAL_FIELD_PRESENCE.OURS_ONLY);
+    }
     for (const row of resolution.rows) {
       expect(row.uncomparedFields.sort()).toEqual(['division', 'format']);
+      expect(row.oneSidedFields.sort()).toEqual(['division', 'format']);
       for (const difference of row.differences) expect(difference.field).toBe('kickoffMinutes');
     }
   });
@@ -1249,6 +1264,7 @@ describe('acceptance 8 — the avoid-windows export, and incident 3', () => {
       graph: corpusGraph(),
     });
     expect(exported.unmappedSurfaceIds).toEqual([orphan]);
+    expect(exported.unknownSurfaceIds).toEqual([]);
     expect(codesOf(exported.findings)).toContain(
       EXTERNAL_IMPORT_REASON.EXTERNAL_AVOID_LABEL_UNMAPPED
     );
@@ -1297,6 +1313,10 @@ describe('acceptance 8 — the avoid-windows export, and incident 3', () => {
       EXTERNAL_IMPORT_REASON.EXTERNAL_AVOID_LABEL_AMBIGUOUS
     );
     expect(exported.document.windows).toEqual([]);
+    // Two records claim it, so the repair is to delete one — not to write one,
+    // which is what `unmappedSurfaceIds` asks for.
+    expect(exported.ambiguousSurfaceIds).toEqual([surfaceId]);
+    expect(exported.unmappedSurfaceIds).toEqual([]);
   });
 });
 
@@ -1769,9 +1789,11 @@ describe('acceptance 12 — what the fifty-six tests above did not ask', () => {
     expect(row.differences.map((difference) => difference.field)).not.toContain('division');
     expect(row.rowClass).toBe(EXTERNAL_ROW_CLASS.MATCHED_IDENTICAL);
     expect(acceptanceDomainOf(resolution)).toEqual([]);
-    expect(codesOf(resolution.findings)).toContain(
-      EXTERNAL_IMPORT_REASON.EXTERNAL_FIELD_UNCOMPARED
-    );
+    // …and it is one-sided rather than merely uncompared: they publish a
+    // division and we hold none, which the report must not spell the same way
+    // as a field neither artifact carries. See acceptance 13 test 2.
+    expect(row.oneSidedFields).toContain('division');
+    expect(codesOf(resolution.findings)).toContain(EXTERNAL_IMPORT_REASON.EXTERNAL_FIELD_ONE_SIDED);
   });
 
   it('5 — sixteen sets that cover two of sixteen are not exhaustive', () => {
@@ -1975,7 +1997,12 @@ describe('acceptance 12 — what the fifty-six tests above did not ask', () => {
     );
     expect(exported.status).toBe(EXTERNAL_IMPORT_STATUS.REJECTED);
     expect(exported.document.windows).toEqual([]);
-    expect(exported.unmappedSurfaceIds).toEqual([ghost]);
+    // Reported in the list for its own cause: a record already names this
+    // surface, so it is not one of the records still to be written. See
+    // acceptance 13 test 4.
+    expect(exported.unknownSurfaceIds).toEqual([ghost]);
+    expect(exported.unmappedSurfaceIds).toEqual([]);
+    expect(exported.excludedSurfaceIds).toEqual([ghost]);
   });
 
   it('8 — "nothing projected" says what happened, and does not claim agreement', () => {
@@ -2048,6 +2075,419 @@ describe('acceptance 12 — what the fifty-six tests above did not ask', () => {
       expect(impactOfSet(sweep, [...result.acceptedRowIds].reverse())).toBe(result);
     }
     expect(impactOfSet(sweep, ['a-row-this-sweep-never-saw'])).toBeNull();
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* Second review round: the ledger's sides, and messages that name a cause     */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Every label the imported publication carries, normalised. The **subject set**
+ * for "a label only our own fixtures use", enumerated from the rows rather than
+ * from anything a defect in the ledger would also corrupt.
+ *
+ * @returns {Set<string>}
+ */
+function importedParticipantLabels() {
+  return new Set(
+    corpusQuery()
+      .rows.flatMap((row) => [row.homeLabel, row.awayLabel])
+      .filter((label) => label !== null)
+      .map((label) => normaliseExternalLabel(/** @type {string} */ (label)))
+  );
+}
+
+/** A label the fixtures we hold carry and no imported row does. */
+function standingOnlyLabel() {
+  const imported = importedParticipantLabels();
+  return corpusQuery()
+    .standing.flatMap((fixture) => [fixture.homeLabel, fixture.awayLabel])
+    .filter((label) => label !== null)
+    .find((label) => !imported.has(normaliseExternalLabel(/** @type {string} */ (label))));
+}
+
+/**
+ * A registry holding exactly one participant record for `label`.
+ *
+ * @param {string} label
+ * @returns {import('@squadlogic/core/externalImport/types.js').ExternalMappingRegistry}
+ */
+function oneParticipantRegistry(label) {
+  return buildExternalMappingRegistry({
+    registryId: 'one-participant',
+    label: 'a single participant record and nothing else',
+    party: 'external seeding league',
+    records: [
+      {
+        id: 'the-only-record',
+        kind: EXTERNAL_MAPPING_KIND.PARTICIPANT,
+        externalLabel: label,
+        venueId: null,
+        surfaceId: null,
+        subjectId: 'season-2026/participant/the-one-the-record-names',
+        provenance: 'constructed for tests/externalFixtureImport.test.js',
+      },
+    ],
+  });
+}
+
+describe('acceptance 13 — the second review round', () => {
+  it('1 — a record only our own fixtures fired is unexercised; one the import fired is not', () => {
+    const ourLabel = standingOnlyLabel();
+    // Meta-assertion: a label the import also carries would make the whole
+    // test pass against a ledger that cannot tell the two sides apart.
+    expect(ourLabel).toBeDefined();
+    expect(importedParticipantLabels().has(normaliseExternalLabel(ourLabel))).toBe(false);
+
+    const registry = oneParticipantRegistry(ourLabel);
+    const ours = corpusQuery().standing.find(
+      (fixture) => fixture.homeLabel === ourLabel || fixture.awayLabel === ourLabel
+    );
+    expect(ours).toBeDefined();
+
+    // One imported row, resolving nothing: this registry holds no venue record,
+    // so the row is undecidable and no lookup of the *publication's* reaches a
+    // record. The standing side, however, does fire the record.
+    const onlyOurSide = classifyExternalImport(
+      {
+        subject: 'a registry only our own fixtures exercise',
+        rows: [corpusQuery().rows[0]],
+        standing: corpusQuery().standing,
+        keyFields: ['date', 'home', 'away'],
+        comparedFields: ['kickoffMinutes'],
+      },
+      registry
+    );
+
+    // The ledger saw it fire — on our side. Without this the assertions below
+    // would hold of a run in which the record was never consulted at all.
+    expect(onlyOurSide.meta.standingRecordsExercised).toBe(1);
+    expect(onlyOurSide.meta.standingLabelLookups).toBeGreaterThan(0);
+
+    // …and it is still unexercised, because the ledger's question is whether
+    // the imported publication used the record.
+    expect(onlyOurSide.meta.mappingRecordsExercised).toBe(0);
+    expect(onlyOurSide.unexercisedRecords.map((record) => record.id)).toEqual(['the-only-record']);
+    expect(codesOf(onlyOurSide.findings)).toContain(
+      EXTERNAL_IMPORT_REASON.EXTERNAL_MAPPING_REGISTRY_UNEXERCISED
+    );
+    expect(codesOf(onlyOurSide.findings)).toContain(
+      EXTERNAL_IMPORT_REASON.EXTERNAL_MAPPING_RECORD_UNEXERCISED
+    );
+    expect(onlyOurSide.status).toBe(EXTERNAL_IMPORT_STATUS.REJECTED);
+
+    // The other direction, on the same registry: an imported row that really
+    // does carry the label exercises it, and neither finding fires.
+    const theirSide = classifyExternalImport(
+      {
+        subject: 'a registry the imported publication exercises',
+        rows: [{ ...corpusQuery().rows[0], homeLabel: ourLabel, venueLabel: null }],
+        standing: corpusQuery().standing,
+        keyFields: ['date', 'home', 'away'],
+        comparedFields: ['kickoffMinutes'],
+      },
+      registry
+    );
+    expect(theirSide.meta.mappingRecordsExercised).toBe(1);
+    expect(theirSide.unexercisedRecords).toEqual([]);
+    expect(codesOf(theirSide.findings)).not.toContain(
+      EXTERNAL_IMPORT_REASON.EXTERNAL_MAPPING_REGISTRY_UNEXERCISED
+    );
+    expect(codesOf(theirSide.findings)).not.toContain(
+      EXTERNAL_IMPORT_REASON.EXTERNAL_MAPPING_RECORD_UNEXERCISED
+    );
+
+    // **The implementation that would pass this wrongly, built and rejected.**
+    // A ledger that folds our-side lookups into the import's is exactly what
+    // the previous round shipped; here it is, one call, and it reports the
+    // record as exercised against the same registry and the same lookup.
+    const folded = createMappingUsage();
+    recordMappingUse(
+      folded,
+      resolveExternalName(registry, EXTERNAL_MAPPING_KIND.PARTICIPANT, ourLabel),
+      { side: EXTERNAL_LOOKUP_SIDE.IMPORTED, optional: true }
+    );
+    expect(mappingUsageFindings(registry, folded).unexercised).toEqual([]);
+    const attributed = createMappingUsage();
+    recordMappingUse(
+      attributed,
+      resolveExternalName(registry, EXTERNAL_MAPPING_KIND.PARTICIPANT, ourLabel),
+      { side: EXTERNAL_LOOKUP_SIDE.OURS }
+    );
+    expect(mappingUsageFindings(registry, attributed).unexercised.map((r) => r.id)).toEqual([
+      'the-only-record',
+    ]);
+  });
+
+  it('2 — a field one side carries names that side; a field neither carries says so', () => {
+    const identical = corpusResolution().rows.find(
+      (row) => row.rowClass === EXTERNAL_ROW_CLASS.MATCHED_IDENTICAL
+    );
+    expect(identical).toBeDefined();
+    const ours = corpusQuery().standing.find(
+      (fixture) => fixture.fixtureId === identical.fixtureId
+    );
+    const theirs = corpusQuery().rows.find((row) => row.rowId === identical.rowId);
+    expect(ours).toBeDefined();
+    expect(theirs).toBeDefined();
+    expect(ours.format).toBe('11v11');
+
+    /**
+     * @param {string|null} ourFormat
+     * @param {string|null} theirFormat
+     */
+    const run = (ourFormat, theirFormat) =>
+      classifyExternalImport(
+        {
+          subject: `ours ${String(ourFormat)} against theirs ${String(theirFormat)}`,
+          rows: [{ ...theirs, format: theirFormat }],
+          standing: [{ ...ours, format: ourFormat }],
+          keyFields: ['date', 'home', 'away'],
+          comparedFields: ['kickoffMinutes', 'format'],
+        },
+        corpusRegistry()
+      );
+
+    // **Only they carry it.** The published artifact states a format; we hold
+    // none. The finding must say so, and must not say we agree.
+    const theirsOnly = run(null, '9v9');
+    expect(theirsOnly.rows[0].oneSidedFields).toEqual(['format']);
+    expect(theirsOnly.rows[0].uncomparedFields).toEqual(['format']);
+    expect(theirsOnly.meta.fieldsOneSided).toBe(1);
+    const theirsOnlyFinding = theirsOnly.findings.find(
+      (finding) => finding.code === EXTERNAL_IMPORT_REASON.EXTERNAL_FIELD_ONE_SIDED
+    );
+    expect(theirsOnlyFinding).toBeDefined();
+    expect(theirsOnlyFinding.details.presence).toBe(EXTERNAL_FIELD_PRESENCE.THEIRS_ONLY);
+    expect(theirsOnlyFinding.message).toMatch(/imported/);
+    expect(theirsOnlyFinding.message).not.toMatch(/carries no value/);
+    expect(codesOf(theirsOnly.findings)).not.toContain(
+      EXTERNAL_IMPORT_REASON.EXTERNAL_FIELD_UNCOMPARED
+    );
+
+    // **Only we carry it.** The mirror image, and it must not be described in
+    // the same words as the case above.
+    const oursOnly = run('11v11', null);
+    expect(oursOnly.rows[0].oneSidedFields).toEqual(['format']);
+    const oursOnlyFinding = oursOnly.findings.find(
+      (finding) => finding.code === EXTERNAL_IMPORT_REASON.EXTERNAL_FIELD_ONE_SIDED
+    );
+    expect(oursOnlyFinding).toBeDefined();
+    expect(oursOnlyFinding.details.presence).toBe(EXTERNAL_FIELD_PRESENCE.OURS_ONLY);
+    expect(oursOnlyFinding.message).not.toBe(theirsOnlyFinding.message);
+
+    // **Neither carries it**, which is the only case the old sentence was true
+    // of, and it keeps the old code.
+    const neither = run(null, null);
+    expect(neither.rows[0].oneSidedFields).toEqual([]);
+    expect(neither.rows[0].uncomparedFields).toEqual(['format']);
+    expect(neither.meta.fieldsOneSided).toBe(0);
+    expect(neither.meta.fieldsUncompared).toBe(1);
+    const neitherFinding = neither.findings.find(
+      (finding) => finding.code === EXTERNAL_IMPORT_REASON.EXTERNAL_FIELD_UNCOMPARED
+    );
+    expect(neitherFinding).toBeDefined();
+    expect(neitherFinding.details.presence).toBe(EXTERNAL_FIELD_PRESENCE.NEITHER);
+    expect(neitherFinding.message).toMatch(/[Nn]either/);
+
+    // **The implementation that would pass this wrongly**: one message for all
+    // three. The three messages are pairwise different, so a single sentence
+    // covering the three situations fails here.
+    const messages = new Set([
+      theirsOnlyFinding.message,
+      oursOnlyFinding.message,
+      neitherFinding.message,
+    ]);
+    expect(messages.size).toBe(3);
+  });
+
+  it('3 — "nothing projected" names the cause that applied, per row', () => {
+    const differing = corpusResolution().rows.find(
+      (row) => row.rowClass === EXTERNAL_ROW_CLASS.MATCHED_DIFFERING
+    );
+    expect(differing).toBeDefined();
+    const itsFixture = corpusQuery().standing.find(
+      (fixture) => fixture.fixtureId === differing.fixtureId
+    );
+    expect(itsFixture).toBeDefined();
+    const elsewhere = corpusQuery()
+      .standing.map((fixture) => fixture.date)
+      .find((date) => date !== itsFixture.date);
+    // Meta-assertion: a scope that still contained the fixture would move it,
+    // and there would be no "nothing projected" finding to read.
+    expect(elsewhere).toBeDefined();
+
+    // **Out of scope.** The row differs on the clock and would move a fixture;
+    // the projection simply never saw that fixture.
+    const outOfScope = analyseImportImpact({
+      subject: 'a differing row whose fixture is outside the projection',
+      resolution: corpusResolution(),
+      standing: corpusQuery().standing,
+      query: { acceptedRowIds: [differing.rowId], dates: [elsewhere] },
+      graph: corpusGraph(),
+      timingTable: corpusTiming(),
+    });
+    const scoped = outOfScope.findings.find(
+      (finding) => finding.code === EXTERNAL_IMPORT_REASON.EXTERNAL_IMPACT_NOTHING_PROJECTED
+    );
+    expect(scoped).toBeDefined();
+    expect(scoped.message).not.toMatch(/records rather than moves/);
+    expect(scoped.message).not.toMatch(/already agree/);
+    expect(detailList(scoped.details, 'outOfScopeRowIds')).toEqual([differing.rowId]);
+    expect(scoped.details.unprojectedRowIds).toEqual([]);
+    expect(scoped.details.agreeingRowIds).toEqual([]);
+
+    // **Differs only on a field this module records.** Same row, in scope,
+    // with the clock agreed and the format disagreeing.
+    const recordedOnly = classifyExternalImport(
+      {
+        subject: 'a row that differs only on the format',
+        rows: [{ ...corpusQuery().rows.find((row) => row.rowId === differing.rowId) }].map(
+          (row) => ({ ...row, kickoffMinutes: itsFixture.kickoffMinutes, format: '9v9' })
+        ),
+        standing: corpusQuery().standing,
+        keyFields: ['date', 'home', 'away'],
+        comparedFields: ['kickoffMinutes', 'format'],
+      },
+      corpusRegistry()
+    );
+    expect(recordedOnly.rows[0].rowClass).toBe(EXTERNAL_ROW_CLASS.MATCHED_DIFFERING);
+    expect(recordedOnly.rows[0].differences.map((d) => d.field)).toEqual(['format']);
+    const recorded = analyseImportImpact({
+      subject: 'accepting a format disagreement',
+      resolution: recordedOnly,
+      standing: corpusQuery().standing,
+      query: { acceptedRowIds: [recordedOnly.rows[0].rowId] },
+      graph: corpusGraph(),
+      timingTable: corpusTiming(),
+    });
+    const recordedFinding = recorded.findings.find(
+      (finding) => finding.code === EXTERNAL_IMPORT_REASON.EXTERNAL_IMPACT_NOTHING_PROJECTED
+    );
+    expect(recordedFinding).toBeDefined();
+    expect(detailList(recordedFinding.details, 'unprojectedRowIds')).toEqual([
+      recordedOnly.rows[0].rowId,
+    ]);
+    expect(recordedFinding.details.outOfScopeRowIds).toEqual([]);
+    expect(recordedFinding.message).toMatch(/records rather than moves/);
+
+    // **We hold no value for what they publish.** Not a difference, and not
+    // agreement either — the third thing the message used to call agreement.
+    const identical = corpusResolution().rows.find(
+      (row) => row.rowClass === EXTERNAL_ROW_CLASS.MATCHED_IDENTICAL
+    );
+    const ours = corpusQuery().standing.find(
+      (fixture) => fixture.fixtureId === identical.fixtureId
+    );
+    const theirs = corpusQuery().rows.find((row) => row.rowId === identical.rowId);
+    const oneSided = classifyExternalImport(
+      {
+        subject: 'a division they publish and we do not hold',
+        rows: [{ ...theirs, division: 'Seeding' }],
+        standing: corpusQuery().standing.map((fixture) =>
+          fixture.fixtureId === ours.fixtureId ? { ...fixture, division: null } : fixture
+        ),
+        keyFields: ['date', 'home', 'away'],
+        comparedFields: ['kickoffMinutes', 'division'],
+      },
+      corpusRegistry()
+    );
+    expect(oneSided.rows[0].rowClass).toBe(EXTERNAL_ROW_CLASS.MATCHED_IDENTICAL);
+    expect(oneSided.rows[0].oneSidedFields).toEqual(['division']);
+    const oneSidedImpact = analyseImportImpact({
+      subject: 'accepting a row that carries a value we do not hold',
+      resolution: oneSided,
+      standing: corpusQuery().standing.map((fixture) =>
+        fixture.fixtureId === ours.fixtureId ? { ...fixture, division: null } : fixture
+      ),
+      query: { acceptedRowIds: [oneSided.rows[0].rowId] },
+      graph: corpusGraph(),
+      timingTable: corpusTiming(),
+    });
+    const oneSidedFinding = oneSidedImpact.findings.find(
+      (finding) => finding.code === EXTERNAL_IMPORT_REASON.EXTERNAL_IMPACT_NOTHING_PROJECTED
+    );
+    expect(oneSidedFinding).toBeDefined();
+    expect(oneSidedFinding.message).not.toMatch(/already agree/);
+    expect(detailList(oneSidedFinding.details, 'oneSidedRowIds')).toEqual([oneSided.rows[0].rowId]);
+    expect(oneSidedFinding.details.agreeingRowIds).toEqual([]);
+
+    // **The implementation that would pass this wrongly**: one clause for every
+    // unmoved row. The three runs above put their row in three different
+    // buckets, and each asserts the other two are empty, so a message with a
+    // single bucket cannot satisfy all three.
+    expect(scoped.details.outOfScopeRowIds).not.toEqual(recordedFinding.details.outOfScopeRowIds);
+    expect(recordedFinding.details.unprojectedRowIds).not.toEqual(
+      oneSidedFinding.details.unprojectedRowIds
+    );
+  });
+
+  it('4 — a surface with no external name and one the graph lacks are two lists', () => {
+    const orphan = season2026SurfaceId('Brookside Park', 'Upper 1');
+    const ghost = 'alder-park/pitch-9';
+    const ghostRegistry = buildExternalMappingRegistry(
+      {
+        registryId: 'ghost',
+        label: 'a record naming ground the graph does not have',
+        party: 'external seeding league',
+        records: [
+          {
+            id: 'ghost-pitch',
+            kind: EXTERNAL_MAPPING_KIND.VENUE,
+            externalLabel: 'Alder Park (Pitch 9)',
+            venueId: season2026VenueId('Alder Park'),
+            surfaceId: ghost,
+            subjectId: null,
+            provenance: 'constructed for tests/externalFixtureImport.test.js',
+          },
+        ],
+      },
+      { graph: corpusGraph() }
+    );
+
+    /**
+     * @param {import('@squadlogic/core/externalImport/types.js').ExternalMappingRegistry} registry
+     * @param {string[]} surfaceIds
+     */
+    const exportFor = (registry, surfaceIds) =>
+      buildAvoidWindows({
+        query: {
+          subject: 'two causes, two lists',
+          documentId: 'two-lists',
+          generatedFor: 'external seeding league',
+          dates: ['2026-08-22'],
+          surfaceIds,
+          excludeFixtureIds: [],
+        },
+        registry,
+        standing: toSeason2026StandingFixtures(corpusGames()),
+        graph: corpusGraph(),
+      });
+
+    // A surface no record claims: a mapping record has to be **written**.
+    const unnamed = exportFor(corpusRegistry(), [orphan]);
+    expect(unnamed.unmappedSurfaceIds).toEqual([orphan]);
+    expect(unnamed.unknownSurfaceIds).toEqual([]);
+    expect(unnamed.ambiguousSurfaceIds).toEqual([]);
+    expect(unnamed.excludedSurfaceIds).toEqual([orphan]);
+
+    // A surface a record already claims, which the facility graph does not
+    // hold: writing another record would change nothing.
+    const unknown = exportFor(ghostRegistry, [ghost]);
+    expect(unknown.unmappedSurfaceIds).toEqual([]);
+    expect(unknown.unknownSurfaceIds).toEqual([ghost]);
+    expect(unknown.ambiguousSurfaceIds).toEqual([]);
+    expect(unknown.excludedSurfaceIds).toEqual([ghost]);
+    expect(codesOf(unknown.findings)).toContain(
+      EXTERNAL_IMPORT_REASON.EXTERNAL_AVOID_SURFACE_UNKNOWN
+    );
+
+    // **The implementation that would pass this wrongly**: one list for both.
+    // The two runs above disagree about which list holds their surface, so a
+    // single list cannot be right about both.
+    expect(unnamed.unmappedSurfaceIds).not.toEqual(unknown.unmappedSurfaceIds);
+    expect(unnamed.unknownSurfaceIds).not.toEqual(unknown.unknownSurfaceIds);
   });
 });
 

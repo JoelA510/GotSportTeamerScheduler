@@ -80,6 +80,34 @@ import { AvoidWindowDocumentSchema, AvoidWindowQuerySchema } from './schemas.js'
 export const AVOID_WINDOW_DOCUMENT_VERSION = 1;
 
 /**
+ * **Why a surface in the requested scope produced no window.**
+ *
+ * Three causes, three lists, because a caller reads them to decide what to do
+ * next and the three want opposite actions:
+ *
+ * - {@link UNMAPPED} — no record claims it, so somebody must **write** one;
+ * - {@link AMBIGUOUS} — two records claim it, so somebody must **delete** one;
+ * - {@link SURFACE_UNKNOWN} — a record already names it and the facility graph
+ *   does not hold it, so writing another record changes nothing and the repair
+ *   is to the record's target or to the graph.
+ *
+ * They were one array. A caller using it to decide which mapping records to
+ * write was told to write one that already exists, which is worse than no list:
+ * the record it asks for is the one whose target is wrong.
+ *
+ * @readonly
+ * @enum {string}
+ */
+export const EXTERNAL_AVOID_EXCLUSION = Object.freeze({
+  /** No mapping record gives this surface an external name. */
+  UNMAPPED: 'no-external-label',
+  /** Two external labels claim it, and picking one would decide silently. */
+  AMBIGUOUS: 'two-external-labels',
+  /** It has a name, and the facility graph does not hold the ground. */
+  SURFACE_UNKNOWN: 'not-in-the-facility-graph',
+});
+
+/**
  * **The fields {@link avoidWindowsAdmit} matches a proposal on**, and therefore
  * the fields a window must still carry after it has crossed the document
  * boundary and come back through {@link readAvoidWindowDocument}.
@@ -154,7 +182,7 @@ export function buildAvoidWindows({ query, registry, standing, graph }) {
 
   const dates = [...new Set(parsed.dates)].sort();
   const surfaceIds = [...new Set(parsed.surfaceIds)].sort();
-  const excluded = new Set(parsed.excludeFixtureIds);
+  const excludedFixtures = new Set(parsed.excludeFixtureIds);
 
   if (dates.length === 0 || surfaceIds.length === 0) {
     findings.push(
@@ -168,8 +196,14 @@ export function buildAvoidWindows({ query, registry, standing, graph }) {
 
   /** @type {import('./types.js').AvoidWindow[]} */
   const windows = [];
-  /** @type {string[]} */
-  const unmappedSurfaceIds = [];
+  /**
+   * One entry per surface that produced no window, carrying the cause that
+   * actually applied. The three published lists are derived from it, so they
+   * cannot drift apart from each other or from the findings.
+   *
+   * @type {Array<{ surfaceId: string, reason: string }>}
+   */
+  const excluded = [];
   /** @type {Map<string, number>} */
   const overlapCounts = new Map();
 
@@ -183,11 +217,14 @@ export function buildAvoidWindows({ query, registry, standing, graph }) {
   for (const surfaceId of surfaceIds) {
     const label = reverseResolveSurface(registry, surfaceId);
     if (label.state !== EXTERNAL_NAME_RESOLUTION.RESOLVED) {
-      unmappedSurfaceIds.push(surfaceId);
-      const code =
-        label.state === EXTERNAL_NAME_RESOLUTION.AMBIGUOUS
-          ? EXTERNAL_IMPORT_REASON.EXTERNAL_AVOID_LABEL_AMBIGUOUS
-          : EXTERNAL_IMPORT_REASON.EXTERNAL_AVOID_LABEL_UNMAPPED;
+      const ambiguous = label.state === EXTERNAL_NAME_RESOLUTION.AMBIGUOUS;
+      excluded.push({
+        surfaceId,
+        reason: ambiguous ? EXTERNAL_AVOID_EXCLUSION.AMBIGUOUS : EXTERNAL_AVOID_EXCLUSION.UNMAPPED,
+      });
+      const code = ambiguous
+        ? EXTERNAL_IMPORT_REASON.EXTERNAL_AVOID_LABEL_AMBIGUOUS
+        : EXTERNAL_IMPORT_REASON.EXTERNAL_AVOID_LABEL_UNMAPPED;
       findings.push(
         makeExternalImportFinding(
           code,
@@ -212,9 +249,11 @@ export function buildAvoidWindows({ query, registry, standing, graph }) {
     // it throws out of `requireSurface()`, and an export that dies on one bad
     // record tells the operator nothing about the other surfaces in scope. The
     // occupancy footprint is unknowable here, so no window is produced and the
-    // reason is published, exactly as it is for a surface with no external name.
+    // reason is published — but **not** in the same list as a surface with no
+    // external name, because that list is read as "the records still to write"
+    // and this surface's record already exists.
     if (!getSurface(graph, surfaceId)) {
-      unmappedSurfaceIds.push(surfaceId);
+      excluded.push({ surfaceId, reason: EXTERNAL_AVOID_EXCLUSION.SURFACE_UNKNOWN });
       findings.push(
         makeExternalImportFinding(
           EXTERNAL_IMPORT_REASON.EXTERNAL_AVOID_SURFACE_UNKNOWN,
@@ -235,7 +274,7 @@ export function buildAvoidWindows({ query, registry, standing, graph }) {
       const fixtures = (byDate.get(date) ?? []).filter(
         (fixture) =>
           cone.has(/** @type {any} */ (fixture).surfaceId) &&
-          !excluded.has(/** @type {any} */ (fixture).fixtureId)
+          !excludedFixtures.has(/** @type {any} */ (fixture).fixtureId)
       );
       for (const fixture of fixtures) {
         const source = /** @type {any} */ (fixture);
@@ -317,7 +356,7 @@ export function buildAvoidWindows({ query, registry, standing, graph }) {
           dates,
           surfaceIds,
           standingFixtures: standing.length,
-          excludedFixtures: excluded.size,
+          excludedFixtures: excludedFixtures.size,
         }
       )
     );
@@ -347,11 +386,22 @@ export function buildAvoidWindows({ query, registry, standing, graph }) {
 
   assertExternalImportFindings(findings, `avoid-window export ${parsed.documentId}`);
 
+  /**
+   * @param {string} reason
+   * @returns {string[]}
+   */
+  const idsFor = (reason) =>
+    excluded.filter((entry) => entry.reason === reason).map((entry) => entry.surfaceId);
+
   return {
     subject: parsed.subject,
     document,
     windows,
-    unmappedSurfaceIds,
+    excludedSurfaces: excluded,
+    excludedSurfaceIds: excluded.map((entry) => entry.surfaceId),
+    unmappedSurfaceIds: idsFor(EXTERNAL_AVOID_EXCLUSION.UNMAPPED),
+    ambiguousSurfaceIds: idsFor(EXTERNAL_AVOID_EXCLUSION.AMBIGUOUS),
+    unknownSurfaceIds: idsFor(EXTERNAL_AVOID_EXCLUSION.SURFACE_UNKNOWN),
     findings,
     status: deriveExternalImportStatus(findings),
     meta,

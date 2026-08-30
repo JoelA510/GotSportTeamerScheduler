@@ -120,8 +120,11 @@ export function season2026ExternalMappingInput(options = {}) {
  * where nothing could report whether it happened — the same reason
  * `season2026ExternalParityRows()` gives for keeping it raw.
  *
- * `format` and `division` are `null` because the file has no such columns, which
- * makes them **uncompared** and says so, rather than compared against null.
+ * `format` and `division` are `null` because the file has no such columns. Asked
+ * for, they come back **one-sided** — `EXTERNAL_FIELD_ONE_SIDED`, naming our
+ * side as the one that carries them — rather than compared against null. They
+ * are not `EXTERNAL_FIELD_UNCOMPARED`, which is the narrower fact that neither
+ * artifact states the field at all.
  *
  * @param {ReadonlyArray<import('../../fixtures/season2026Parsers.js').Season2026ExternalFixture>} fixtures
  * @param {string} [sourceLabel]
@@ -175,9 +178,9 @@ export function toSeason2026StandingFixtures(games) {
  * `comparedFields` is `kickoffMinutes` + `venueId` + `surfaceId`: the three the
  * external file can honestly be compared on. `format` and `division` are left
  * out of the *request* as well as being null on every row, so the report says
- * `EXTERNAL_FIELD_UNCOMPARED` about nothing it was not asked to compare — the
- * narrower subject is stated rather than assumed, exactly as
- * `SEASON_2026_EXTERNAL_COMPARED_FIELDS` states it for parity.
+ * nothing about a field it was not asked to compare — the narrower subject is
+ * stated rather than assumed, exactly as `SEASON_2026_EXTERNAL_COMPARED_FIELDS`
+ * states it for parity.
  *
  * @param {Object} input
  * @param {ReadonlyArray<import('../../fixtures/season2026Parsers.js').Season2026ExternalFixture>} input.externalFixtures
