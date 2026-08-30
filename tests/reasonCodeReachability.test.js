@@ -1,8 +1,8 @@
 /**
  * Repo-wide reachability audit for every frozen reason-code table in
  * `packages/core/src` — the generalisation of the per-module audit
- * `tests/attribution.test.js` already carries. 18 vocabularies, 387 codes, of
- * which 376 are shown to be producible and 11 are named as holes.
+ * `tests/attribution.test.js` already carries. 18 vocabularies, 389 codes, of
+ * which 378 are shown to be producible and 11 are named as holes.
  *
  * **The defect this exists to catch.** Four times now, in four unrelated
  * modules, a reason code has been declared, given a severity, documented, and
@@ -4252,6 +4252,10 @@ const externalReduced = buildExternalMappingRegistry(
   }),
   { graph }
 );
+// It also reaches `EXTERNAL_FIELD_UNTRANSLATED`: those four rows state a ground
+// this registry cannot translate, which is a gap in our records rather than a
+// value the publication omits, and is told apart from `EXTERNAL_FIELD_ONE_SIDED`
+// for that reason.
 const externalUnresolved = harvest(
   'classifyExternalImport(a registry missing one venue record)',
   classifyExternalImport(externalQuery, externalReduced)
@@ -4689,6 +4693,9 @@ harvest(
     graph,
   })
 );
+// Also `EXTERNAL_AVOID_SURFACE_IDLE`: the pitch is mapped and in the graph, and
+// excluding the external fixtures leaves nothing occupying it or its overlap
+// cone that day, which is the third way a scope surface produces no window.
 harvest(
   'buildAvoidWindows(a scope that yields nothing)',
   buildAvoidWindows({

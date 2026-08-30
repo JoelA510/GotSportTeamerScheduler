@@ -46,6 +46,7 @@ import {
   ACCEPTANCE_SWEEP_CAP,
   AVOID_WINDOW_ADMISSION_FIELDS,
   AvoidWindowDocumentSchema,
+  EXTERNAL_AVOID_EXCLUSION,
   EXTERNAL_FIELD_PRESENCE,
   EXTERNAL_IMPACT_VERDICT,
   EXTERNAL_IMPORT_REASON,
@@ -89,6 +90,7 @@ import {
 } from '@squadlogic/core/externalImport/index.js';
 import {
   buildFacilityGraphFromSeason2026,
+  conflictingSurfacesOf,
   season2026SurfaceId,
   season2026VenueId,
 } from '@squadlogic/core/facility/index.js';
@@ -2488,6 +2490,609 @@ describe('acceptance 13 — the second review round', () => {
     // single list cannot be right about both.
     expect(unnamed.unmappedSurfaceIds).not.toEqual(unknown.unmappedSurfaceIds);
     expect(unnamed.unknownSurfaceIds).not.toEqual(unknown.unknownSurfaceIds);
+  });
+});
+
+describe('acceptance 14 — the third review round', () => {
+  /**
+   * The corpus registry with the Pitch 3 record deleted — acceptance 3's
+   * construction, reused because it is the one corpus arrangement in which the
+   * publication states a ground our own records cannot translate.
+   *
+   * @returns {import('@squadlogic/core/externalImport/types.js').ExternalMappingRegistry}
+   */
+  function reducedRegistry() {
+    const kept = SEASON_2026_EXTERNAL_MAPPING_RECORDS.filter(
+      (record) => record.surfaceId !== season2026SurfaceId('Alder Park', 'Pitch 3')
+    );
+    // Meta-assertion: a filter that removed nothing would leave every label
+    // resolvable and the whole test would assert about an empty set.
+    expect(kept.length).toBe(SEASON_2026_EXTERNAL_MAPPING_RECORDS.length - 1);
+    return buildExternalMappingRegistry(season2026ExternalMappingInput({ records: kept }), {
+      graph: corpusGraph(),
+    });
+  }
+
+  it('1 — a ground we cannot translate is a gap in our records, not one in theirs', () => {
+    const resolution = classifyExternalImport(corpusQuery(), reducedRegistry());
+    const untranslatable = resolution.rows.filter(
+      (row) => row.venue !== null && row.venue.state !== EXTERNAL_NAME_RESOLUTION.RESOLVED
+    );
+    // Meta-assertion: with no such row every claim below would be vacuous.
+    expect(untranslatable.length).toBeGreaterThan(0);
+
+    for (const row of untranslatable) {
+      // The publication does state a ground on these rows. That much is read
+      // off the row rather than inferred from the lookup that failed on it.
+      expect(row.venue.label).toContain('Pitch 3');
+      // Not compared — which was always true and is not the claim at issue.
+      expect(row.uncomparedFields).toContain('venueId');
+      expect(row.uncomparedFields).toContain('surfaceId');
+      // …and not one-sided, because "one-sided" asserts the other artifact
+      // carries nothing, and this one carries a label we could not read.
+      expect(row.oneSidedFields).toEqual([]);
+      expect([...row.untranslatedFields].sort()).toEqual(['surfaceId', 'venueId']);
+      expect(row.fieldPresence.venueId).toBe(EXTERNAL_FIELD_PRESENCE.THEIRS_UNTRANSLATED);
+      expect(row.fieldPresence.surfaceId).toBe(EXTERNAL_FIELD_PRESENCE.THEIRS_UNTRANSLATED);
+    }
+    expect(resolution.meta.fieldsOneSided).toBe(0);
+    expect(resolution.meta.fieldsUntranslated).toBe(untranslatable.length * 2);
+
+    const codes = codesOf(resolution.findings);
+    expect(codes).toContain(EXTERNAL_IMPORT_REASON.EXTERNAL_FIELD_UNTRANSLATED);
+    expect(codes).not.toContain(EXTERNAL_IMPORT_REASON.EXTERNAL_FIELD_ONE_SIDED);
+    const untranslatedFindings = resolution.findings.filter(
+      (finding) => finding.code === EXTERNAL_IMPORT_REASON.EXTERNAL_FIELD_UNTRANSLATED
+    );
+    expect(untranslatedFindings.length).toBeGreaterThan(0);
+    for (const finding of untranslatedFindings) {
+      expect(finding.details.presence).toBe(EXTERNAL_FIELD_PRESENCE.THEIRS_UNTRANSLATED);
+      // The sentence that was wrong: it said the publication carries nothing.
+      expect(finding.message).not.toMatch(/the imported publication does not/);
+      // The repair is on our side, and the sentence says which side.
+      expect(finding.message).toMatch(/mapping record/);
+    }
+
+    // **The implementation that would pass this wrongly**: call every skipped
+    // venue-derived field untranslated. A row that states no venue at all
+    // really does carry no value there, and must keep the one-sided reading —
+    // `schemas.js` tells the two apart at the boundary for exactly this reason.
+    const unstated = classifyExternalImport(
+      {
+        ...corpusQuery(),
+        rows: corpusQuery().rows.map((row, index) =>
+          index === 0 ? { ...row, venueLabel: null } : row
+        ),
+      },
+      corpusRegistry()
+    );
+    const silent = unstated.rows[0];
+    expect(silent.venue).toBeNull();
+    expect(silent.untranslatedFields).toEqual([]);
+    expect([...silent.oneSidedFields].sort()).toEqual(['surfaceId', 'venueId']);
+    expect(silent.fieldPresence.venueId).toBe(EXTERNAL_FIELD_PRESENCE.OURS_ONLY);
+    expect(codesOf(unstated.findings)).toContain(EXTERNAL_IMPORT_REASON.EXTERNAL_FIELD_ONE_SIDED);
+    expect(codesOf(unstated.findings)).not.toContain(
+      EXTERNAL_IMPORT_REASON.EXTERNAL_FIELD_UNTRANSLATED
+    );
+  });
+
+  it('2 — a field one-sided on one row and neither-sided on another is reported as both', () => {
+    const identical = corpusResolution().rows.filter(
+      (row) => row.rowClass === EXTERNAL_ROW_CLASS.MATCHED_IDENTICAL
+    );
+    // Meta-assertion: one identical row could not exhibit the disagreement
+    // between rows that this test is about.
+    expect(identical.length).toBeGreaterThan(1);
+    const ourFixtures = corpusQuery().standing.filter((fixture) =>
+      identical.some((row) => row.fixtureId === fixture.fixtureId)
+    );
+    expect(ourFixtures.length).toBe(identical.length);
+    // Meta-assertion: the corpus carries a format on all of them, so blanking
+    // exactly one is what creates the split the union arithmetic loses.
+    expect(ourFixtures.every((fixture) => fixture.format !== null)).toBe(true);
+
+    const blanked = identical[0].fixtureId;
+    const standing = corpusQuery().standing.map((fixture) =>
+      fixture.fixtureId === blanked ? { ...fixture, format: null } : fixture
+    );
+    const resolution = classifyExternalImport(
+      { ...corpusQuery(), standing, comparedFields: ['kickoffMinutes', 'format'] },
+      corpusRegistry()
+    );
+    const here = resolution.rows.filter(
+      (row) => row.rowClass === EXTERNAL_ROW_CLASS.MATCHED_IDENTICAL
+    );
+    const neitherRows = here.filter(
+      (row) => row.fieldPresence.format === EXTERNAL_FIELD_PRESENCE.NEITHER
+    );
+    const oneSidedRows = here.filter((row) => row.oneSidedFields.includes('format'));
+    // Meta-assertions: both kinds have to be present on the same bucket, or the
+    // subtraction this test rejects would give the right answer by accident.
+    expect(neitherRows.length).toBeGreaterThan(0);
+    expect(oneSidedRows.length).toBeGreaterThan(0);
+
+    const matched = resolution.findings.find(
+      (finding) => finding.code === EXTERNAL_IMPORT_REASON.EXTERNAL_ROW_MATCHED
+    );
+    expect(matched).toBeDefined();
+    expect(detailList(matched.details, 'fieldsOneSidedOnTheseRows')).toEqual(['format']);
+    expect(detailList(matched.details, 'fieldsNeitherSideCarriesOnTheseRows')).toEqual(['format']);
+    expect(matched.message).toMatch(/one side only on some of them/);
+    expect(matched.message).toMatch(/neither side on some of them/);
+
+    // **The implementation that would pass this wrongly**: report every skipped
+    // field under both headings. On the corpus's own four identical rows every
+    // format skip is ours-only, and the neither list must come back empty.
+    const oneSidedOnly = classifyExternalImport(
+      { ...corpusQuery(), comparedFields: ['kickoffMinutes', 'format'] },
+      corpusRegistry()
+    );
+    const clean = oneSidedOnly.findings.find(
+      (finding) => finding.code === EXTERNAL_IMPORT_REASON.EXTERNAL_ROW_MATCHED
+    );
+    expect(clean).toBeDefined();
+    expect(detailList(clean.details, 'fieldsOneSidedOnTheseRows')).toEqual(['format']);
+    expect(clean.details.fieldsNeitherSideCarriesOnTheseRows).toEqual([]);
+    expect(clean.message).not.toMatch(/neither side on some of them/);
+  });
+
+  it('3 — a mapped, in-graph pitch that produced no window is excluded, with its cause', () => {
+    const standing = toSeason2026StandingFixtures(corpusGames());
+    const busy = season2026SurfaceId('Alder Park', 'Pitch 3');
+    const idle = season2026SurfaceId('Alder Park', 'Pitch 2');
+    const busyCone = new Set(conflictingSurfacesOf(corpusGraph(), busy));
+    const idleCone = new Set(conflictingSurfacesOf(corpusGraph(), idle));
+    // Derived from the corpus: a date on which nothing occupies the one pitch
+    // or any ground overlapping it, while the other is in use. Both are mapped
+    // and both are in the facility graph, so neither of the two guards fires.
+    const date = [...new Set(standing.map((fixture) => fixture.date))]
+      .sort()
+      .find(
+        (candidate) =>
+          standing.every(
+            (fixture) => fixture.date !== candidate || !idleCone.has(fixture.surfaceId)
+          ) &&
+          standing.some((fixture) => fixture.date === candidate && busyCone.has(fixture.surfaceId))
+      );
+    // Meta-assertion: no such date and this test would be asserting about a
+    // scope in which nothing was idle.
+    expect(date).toBeDefined();
+
+    const exported = buildAvoidWindows({
+      query: {
+        subject: 'one pitch in use and one the club held nothing on',
+        documentId: 'idle-1',
+        generatedFor: 'external seeding league',
+        dates: [date],
+        surfaceIds: [idle, busy],
+        excludeFixtureIds: [],
+      },
+      registry: corpusRegistry(),
+      standing,
+      graph: corpusGraph(),
+    });
+
+    expect(exported.windows.length).toBeGreaterThan(0);
+    expect([...new Set(exported.windows.map((window) => window.surfaceId))]).toEqual([busy]);
+    expect(exported.excludedSurfaceIds).toEqual([idle]);
+    expect(exported.excludedSurfaces).toEqual([
+      { surfaceId: idle, reason: EXTERNAL_AVOID_EXCLUSION.NO_OCCUPANCY },
+    ]);
+    expect(exported.idleSurfaceIds).toEqual([idle]);
+    // The three lists the operator reads as "records to write / delete / chase"
+    // stay empty: this surface's record exists and names ground the graph holds.
+    expect(exported.unmappedSurfaceIds).toEqual([]);
+    expect(exported.ambiguousSurfaceIds).toEqual([]);
+    expect(exported.unknownSurfaceIds).toEqual([]);
+    const idleFinding = exported.findings.find(
+      (finding) => finding.code === EXTERNAL_IMPORT_REASON.EXTERNAL_AVOID_SURFACE_IDLE
+    );
+    expect(idleFinding).toBeDefined();
+    expect(idleFinding.details.surfaceId).toBe(idle);
+    expect(idleFinding.details.dates).toEqual([date]);
+
+    // **The implementation that would pass this wrongly**: put every scope
+    // surface in the list. The corpus's own export produced a window for both
+    // of its surfaces and must exclude neither.
+    const weekend = buildAvoidWindows({
+      query: {
+        subject: 'avoid windows for the seeding weekend',
+        documentId: 'season-2026/avoid/idle-control',
+        generatedFor: 'external seeding league',
+        dates: ['2026-08-22', '2026-08-23'],
+        surfaceIds: [idle, busy],
+        excludeFixtureIds: externalFixtureIds(),
+      },
+      registry: corpusRegistry(),
+      standing,
+      graph: corpusGraph(),
+    });
+    expect(weekend.excludedSurfaces).toEqual([]);
+    expect(codesOf(weekend.findings)).not.toContain(
+      EXTERNAL_IMPORT_REASON.EXTERNAL_AVOID_SURFACE_IDLE
+    );
+
+    // …and the second one that would: call every empty surface idle, whatever
+    // stopped it. A surface with no external name is still `no-external-label`,
+    // because the repair is to write a record and not to shrug at a quiet date.
+    const orphan = buildAvoidWindows({
+      query: {
+        subject: 'a pitch the league has no name for',
+        documentId: 'orphan-idle-control',
+        generatedFor: 'external seeding league',
+        dates: [date],
+        surfaceIds: [season2026SurfaceId('Brookside Park', 'Upper 1')],
+        excludeFixtureIds: [],
+      },
+      registry: corpusRegistry(),
+      standing,
+      graph: corpusGraph(),
+    });
+    expect(orphan.excludedSurfaces.map((entry) => entry.reason)).toEqual([
+      EXTERNAL_AVOID_EXCLUSION.UNMAPPED,
+    ]);
+    expect(orphan.idleSurfaceIds).toEqual([]);
+  });
+
+  it('3b — every scope surface is in exactly one of "produced a window" and "excluded"', () => {
+    // The shape, not the instance. `excludedSurfaces` is documented as *every*
+    // scope surface that produced no window; the guarantee is only worth what
+    // the producer fills, so the partition is checked over every export this
+    // file builds — including the ones whose scope is empty or unmapped.
+    const standing = toSeason2026StandingFixtures(corpusGames());
+    /** @type {Array<{ label: string, scope: string[], exported: any }>} */
+    const cases = [];
+    const build = (label, surfaceIds, dates, registry) => {
+      const exported = buildAvoidWindows({
+        query: {
+          subject: label,
+          documentId: `partition/${label.replace(/\s+/g, '-')}`,
+          generatedFor: 'external seeding league',
+          dates,
+          surfaceIds,
+          excludeFixtureIds: [],
+        },
+        registry,
+        standing,
+        graph: corpusGraph(),
+      });
+      cases.push({ label, scope: [...new Set(surfaceIds)].sort(), exported });
+      return exported;
+    };
+    build(
+      'the seeding weekend',
+      [season2026SurfaceId('Alder Park', 'Pitch 2'), season2026SurfaceId('Alder Park', 'Pitch 3')],
+      ['2026-08-22', '2026-08-23'],
+      corpusRegistry()
+    );
+    build(
+      'a pitch with no external name',
+      [season2026SurfaceId('Brookside Park', 'Upper 1')],
+      ['2026-08-22'],
+      corpusRegistry()
+    );
+    build('an empty scope', [], [], corpusRegistry());
+    build(
+      'a mapped pitch nothing occupied',
+      [season2026SurfaceId('Alder Park', 'Pitch 2'), season2026SurfaceId('Alder Park', 'Pitch 3')],
+      ['2026-10-10'],
+      corpusRegistry()
+    );
+    build(
+      'a pitch two labels claim',
+      [season2026SurfaceId('Alder Park', 'Pitch 2')],
+      ['2026-08-22'],
+      buildExternalMappingRegistry(
+        season2026ExternalMappingInput({
+          records: [
+            ...SEASON_2026_EXTERNAL_MAPPING_RECORDS,
+            {
+              id: 'renamed',
+              kind: EXTERNAL_MAPPING_KIND.VENUE,
+              externalLabel: 'Alder Park (Championship Pitch)',
+              venueId: season2026VenueId('Alder Park'),
+              surfaceId: season2026SurfaceId('Alder Park', 'Pitch 2'),
+              subjectId: null,
+              provenance: 'constructed for tests/externalFixtureImport.test.js',
+            },
+          ],
+        }),
+        { graph: corpusGraph() }
+      )
+    );
+    // Meta-assertion: a `build` that silently produced nothing would make the
+    // loop below iterate over an empty list and pass.
+    expect(cases.length).toBe(5);
+    expect(cases.some(({ scope }) => scope.length > 0)).toBe(true);
+
+    for (const { label, scope, exported } of cases) {
+      const produced = new Set(exported.windows.map((window) => window.surfaceId));
+      const excluded = exported.excludedSurfaces.map((entry) => entry.surfaceId);
+      expect(`${label}: ${[...new Set(excluded)].sort().join(',')}`).toBe(
+        `${label}: ${scope.filter((id) => !produced.has(id)).join(',')}`
+      );
+      expect(excluded.filter((id) => produced.has(id))).toEqual([]);
+      // Every entry carries a declared cause, never a bare id.
+      for (const entry of exported.excludedSurfaces) {
+        expect(Object.values(EXTERNAL_AVOID_EXCLUSION)).toContain(entry.reason);
+      }
+    }
+  });
+
+  it('4 — a row that is two things is named under both, and no clause says "only"', () => {
+    const identical = corpusResolution().rows.find(
+      (row) => row.rowClass === EXTERNAL_ROW_CLASS.MATCHED_IDENTICAL
+    );
+    expect(identical).toBeDefined();
+    const ours = corpusQuery().standing.find(
+      (fixture) => fixture.fixtureId === identical.fixtureId
+    );
+    const theirs = corpusQuery().rows.find((row) => row.rowId === identical.rowId);
+    expect(ours.format).toBe('11v11');
+    const standing = corpusQuery().standing.map((fixture) =>
+      fixture.fixtureId === ours.fixtureId ? { ...fixture, division: null } : fixture
+    );
+
+    /**
+     * @param {string|null} theirFormat
+     * @param {string|null} theirDivision
+     */
+    const analyse = (theirFormat, theirDivision) => {
+      const resolution = classifyExternalImport(
+        {
+          subject: `format ${String(theirFormat)}, division ${String(theirDivision)}`,
+          rows: [{ ...theirs, format: theirFormat, division: theirDivision }],
+          standing,
+          keyFields: ['date', 'home', 'away'],
+          comparedFields: ['kickoffMinutes', 'format', 'division'],
+        },
+        corpusRegistry()
+      );
+      const impact = analyseImportImpact({
+        subject: 'accepting it',
+        resolution,
+        standing,
+        query: { acceptedRowIds: [resolution.rows[0].rowId] },
+        graph: corpusGraph(),
+        timingTable: corpusTiming(),
+      });
+      const finding = impact.findings.find(
+        (candidate) => candidate.code === EXTERNAL_IMPORT_REASON.EXTERNAL_IMPACT_NOTHING_PROJECTED
+      );
+      expect(finding).toBeDefined();
+      return { rowId: resolution.rows[0].rowId, row: resolution.rows[0], finding };
+    };
+
+    // **Both at once.** The format disagrees — a field this module records and
+    // does not move — and the division is carried by them and not by us.
+    const both = analyse('9v9', 'Seeding');
+    expect(both.row.differences.map((difference) => difference.field)).toEqual(['format']);
+    expect(both.row.oneSidedFields).toEqual(['division']);
+    expect(detailList(both.finding.details, 'unprojectedRowIds')).toEqual([both.rowId]);
+    expect(detailList(both.finding.details, 'oneSidedRowIds')).toEqual([both.rowId]);
+    expect(detailList(both.finding.details, 'rowsUnderMoreThanOneCause')).toEqual([both.rowId]);
+    expect(both.finding.message).toMatch(/records rather than moves/);
+    expect(both.finding.message).toMatch(/which is not agreement/);
+    // The word that was the false claim. A row that is also one-sided did not
+    // differ *only* on a recorded field, and the clause no longer says it did.
+    expect(both.finding.message).not.toMatch(/differ only on fields/);
+    expect(both.finding.message).toMatch(/more than one cause/);
+
+    // **The implementation that would pass this wrongly**: name every unmoved
+    // row under every cause. Each of the two halves alone lands in one bucket.
+    const recordedOnly = analyse('9v9', null);
+    expect(recordedOnly.row.oneSidedFields).toEqual([]);
+    expect(detailList(recordedOnly.finding.details, 'unprojectedRowIds')).toEqual([
+      recordedOnly.rowId,
+    ]);
+    expect(recordedOnly.finding.details.oneSidedRowIds).toEqual([]);
+    expect(recordedOnly.finding.details.rowsUnderMoreThanOneCause).toEqual([]);
+
+    const oneSidedOnly = analyse(ours.format, 'Seeding');
+    expect(oneSidedOnly.row.differences).toEqual([]);
+    expect(detailList(oneSidedOnly.finding.details, 'oneSidedRowIds')).toEqual([
+      oneSidedOnly.rowId,
+    ]);
+    expect(oneSidedOnly.finding.details.unprojectedRowIds).toEqual([]);
+    expect(oneSidedOnly.finding.details.agreeingRowIds).toEqual([]);
+    expect(oneSidedOnly.finding.details.rowsUnderMoreThanOneCause).toEqual([]);
+
+    // …and a row that is neither still reaches `agrees`, so the multi-membership
+    // did not simply swallow the exclusive case.
+    const agrees = analyse(ours.format, null);
+    expect(detailList(agrees.finding.details, 'agreeingRowIds')).toEqual([agrees.rowId]);
+    expect(agrees.finding.details.unprojectedRowIds).toEqual([]);
+    expect(agrees.finding.details.oneSidedRowIds).toEqual([]);
+  });
+
+  it('4b — every accepted row that moved nothing is named under at least one cause', () => {
+    // The shape behind finding 4: the buckets no longer partition, so "they add
+    // up" is not available as a check. What must still hold is coverage — a row
+    // in no bucket is a row the sentence does not account for at all.
+    const identical = corpusResolution().rows.filter(
+      (row) => row.rowClass === EXTERNAL_ROW_CLASS.MATCHED_IDENTICAL
+    );
+    expect(identical.length).toBeGreaterThan(0);
+    const impact = analyseImportImpact({
+      subject: 'accepting every row that already agrees',
+      resolution: corpusResolution(),
+      standing: corpusQuery().standing,
+      query: { acceptedRowIds: identical.map((row) => row.rowId) },
+      graph: corpusGraph(),
+      timingTable: corpusTiming(),
+    });
+    const finding = impact.findings.find(
+      (candidate) => candidate.code === EXTERNAL_IMPORT_REASON.EXTERNAL_IMPACT_NOTHING_PROJECTED
+    );
+    expect(finding).toBeDefined();
+    const named = new Set(
+      [
+        'rejectedRowIds',
+        'outOfScopeRowIds',
+        'unprojectedRowIds',
+        'oneSidedRowIds',
+        'agreeingRowIds',
+        'unexplainedRowIds',
+      ].flatMap((key) => /** @type {string[]} */ (finding.details[key]))
+    );
+    expect([...named].sort()).toEqual(identical.map((row) => row.rowId).sort());
+  });
+
+  it('5 — every presence a comparison can observe has its own code and sentence', () => {
+    // The enforcement, rather than the instance. A fifth presence added to the
+    // enum with no report row, or two sharing a sentence, fails here — which is
+    // the shape of every finding this round and the last one produced.
+    const identical = corpusResolution().rows.find(
+      (row) => row.rowClass === EXTERNAL_ROW_CLASS.MATCHED_IDENTICAL
+    );
+    const ours = corpusQuery().standing.find(
+      (fixture) => fixture.fixtureId === identical.fixtureId
+    );
+    const theirs = corpusQuery().rows.find((row) => row.rowId === identical.rowId);
+
+    /**
+     * @param {Object} input
+     * @param {string|null} input.ourFormat
+     * @param {string|null} input.theirFormat
+     * @param {boolean} [input.translatable]
+     */
+    const run = ({ ourFormat, theirFormat, translatable = true }) =>
+      classifyExternalImport(
+        {
+          subject: 'one presence at a time',
+          rows: [{ ...theirs, format: theirFormat }],
+          standing: [{ ...ours, format: ourFormat }],
+          keyFields: ['date', 'home', 'away'],
+          comparedFields: ['kickoffMinutes', 'format', 'venueId'],
+        },
+        translatable ? corpusRegistry() : reducedRegistryFor(theirs.venueLabel)
+      );
+
+    /** A registry that claims every label except the one passed in. */
+    function reducedRegistryFor(label) {
+      const kept = SEASON_2026_EXTERNAL_MAPPING_RECORDS.filter(
+        (record) => record.externalLabel !== label
+      );
+      expect(kept.length).toBe(SEASON_2026_EXTERNAL_MAPPING_RECORDS.length - 1);
+      return buildExternalMappingRegistry(season2026ExternalMappingInput({ records: kept }), {
+        graph: corpusGraph(),
+      });
+    }
+
+    /** @type {Map<string, string>} */
+    const sentences = new Map();
+    const observe = (resolution) => {
+      for (const row of resolution.rows) {
+        for (const [field, presence] of Object.entries(row.fieldPresence)) {
+          if (presence === EXTERNAL_FIELD_PRESENCE.BOTH) {
+            sentences.set(presence, 'compared');
+            continue;
+          }
+          const finding = resolution.findings.find(
+            (candidate) =>
+              candidate.details.field === field && candidate.details.presence === presence
+          );
+          // Every non-comparing presence must publish a finding; one that does
+          // not is a fact observed and never reported.
+          expect(finding).toBeDefined();
+          sentences.set(presence, finding.message.slice(finding.message.indexOf(': ') + 2));
+        }
+      }
+    };
+    observe(run({ ourFormat: '11v11', theirFormat: '9v9' }));
+    observe(run({ ourFormat: '11v11', theirFormat: null }));
+    observe(run({ ourFormat: null, theirFormat: '9v9' }));
+    observe(run({ ourFormat: null, theirFormat: null }));
+    observe(run({ ourFormat: '11v11', theirFormat: '9v9', translatable: false }));
+
+    // Every declared presence was reached by a constructed input…
+    expect([...sentences.keys()].sort()).toEqual(Object.values(EXTERNAL_FIELD_PRESENCE).sort());
+    // …and no two of them are reported in the same words.
+    expect(new Set(sentences.values()).size).toBe(sentences.size);
+  });
+
+  it('5b — every declared avoid-window exclusion cause is produced by some export', () => {
+    const standing = toSeason2026StandingFixtures(corpusGames());
+    const build = (documentId, surfaceIds, dates, registry) =>
+      buildAvoidWindows({
+        query: {
+          subject: documentId,
+          documentId,
+          generatedFor: 'external seeding league',
+          dates,
+          surfaceIds,
+          excludeFixtureIds: [],
+        },
+        registry,
+        standing,
+        graph: corpusGraph(),
+      });
+
+    const ghost = 'alder-park/pitch-9';
+    const ghostRegistry = buildExternalMappingRegistry(
+      {
+        registryId: 'ghost',
+        label: 'a record naming ground the graph does not have',
+        party: 'external seeding league',
+        records: [
+          {
+            id: 'ghost-pitch',
+            kind: EXTERNAL_MAPPING_KIND.VENUE,
+            externalLabel: 'Alder Park (Pitch 9)',
+            venueId: season2026VenueId('Alder Park'),
+            surfaceId: ghost,
+            subjectId: null,
+            provenance: 'constructed for tests/externalFixtureImport.test.js',
+          },
+        ],
+      },
+      { graph: corpusGraph() }
+    );
+    const twoLabels = buildExternalMappingRegistry(
+      season2026ExternalMappingInput({
+        records: [
+          ...SEASON_2026_EXTERNAL_MAPPING_RECORDS,
+          {
+            id: 'renamed',
+            kind: EXTERNAL_MAPPING_KIND.VENUE,
+            externalLabel: 'Alder Park (Championship Pitch)',
+            venueId: season2026VenueId('Alder Park'),
+            surfaceId: season2026SurfaceId('Alder Park', 'Pitch 2'),
+            subjectId: null,
+            provenance: 'constructed for tests/externalFixtureImport.test.js',
+          },
+        ],
+      }),
+      { graph: corpusGraph() }
+    );
+
+    const seen = new Set(
+      [
+        build(
+          'unmapped-1',
+          [season2026SurfaceId('Brookside Park', 'Upper 1')],
+          ['2026-08-22'],
+          corpusRegistry()
+        ),
+        build(
+          'ambiguous-2',
+          [season2026SurfaceId('Alder Park', 'Pitch 2')],
+          ['2026-08-22'],
+          twoLabels
+        ),
+        build('ghost-2', [ghost], ['2026-08-22'], ghostRegistry),
+        build(
+          'idle-2',
+          [season2026SurfaceId('Alder Park', 'Pitch 2')],
+          ['2026-10-10'],
+          corpusRegistry()
+        ),
+      ].flatMap((exported) => exported.excludedSurfaces.map((entry) => entry.reason))
+    );
+    // Meta-assertion: an empty set would satisfy nothing below by accident.
+    expect(seen.size).toBeGreaterThan(0);
+    expect([...seen].sort()).toEqual(Object.values(EXTERNAL_AVOID_EXCLUSION).sort());
   });
 });
 

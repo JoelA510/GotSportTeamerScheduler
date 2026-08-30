@@ -105,6 +105,18 @@ export const EXTERNAL_AVOID_EXCLUSION = Object.freeze({
   AMBIGUOUS: 'two-external-labels',
   /** It has a name, and the facility graph does not hold the ground. */
   SURFACE_UNKNOWN: 'not-in-the-facility-graph',
+  /**
+   * Mapped, in the graph, and nothing occupied it or ground overlapping it on
+   * any requested date.
+   *
+   * The three causes above are what the two *guards* at the top of the surface
+   * loop catch, and for one round `excludedSurfaces` held only those while its
+   * typedef promised *"every scope surface that produced no window"*. A
+   * pitch the club simply had nothing on produced no window and appeared
+   * nowhere — neither in the document, which is right, nor in the account of
+   * what the document leaves out, which is not. This is that case, named.
+   */
+  NO_OCCUPANCY: 'nothing-occupied-it-on-the-requested-dates',
 });
 
 /**
@@ -198,8 +210,10 @@ export function buildAvoidWindows({ query, registry, standing, graph }) {
   const windows = [];
   /**
    * One entry per surface that produced no window, carrying the cause that
-   * actually applied. The three published lists are derived from it, so they
-   * cannot drift apart from each other or from the findings.
+   * actually applied. The four published lists are derived from it, so they
+   * cannot drift apart from each other or from the findings, and the partition
+   * check below makes sure it holds every such surface and not only the ones a
+   * guard happened to catch.
    *
    * @type {Array<{ surfaceId: string, reason: string }>}
    */
@@ -269,6 +283,7 @@ export function buildAvoidWindows({ query, registry, standing, graph }) {
       continue;
     }
     const cone = new Set(conflictingSurfacesOf(graph, surfaceId));
+    const windowsBefore = windows.length;
     for (const date of dates) {
       meta.avoidScopeCells += 1;
       const fixtures = (byDate.get(date) ?? []).filter(
@@ -322,6 +337,48 @@ export function buildAvoidWindows({ query, registry, standing, graph }) {
         });
       }
     }
+
+    // The third way a scope surface produces nothing, and the one the two
+    // guards above cannot see. Reported at `info` rather than passed over: a
+    // recipient reads a pitch's absence from this document as *"they hold
+    // nothing there"*, which is a claim about our schedule and not silence, and
+    // the operator who asked for the surface is owed the difference between
+    // "we looked and it was free" and "we never got that far".
+    if (windows.length === windowsBefore) {
+      excluded.push({ surfaceId, reason: EXTERNAL_AVOID_EXCLUSION.NO_OCCUPANCY });
+      findings.push(
+        makeExternalImportFinding(
+          EXTERNAL_IMPORT_REASON.EXTERNAL_AVOID_SURFACE_IDLE,
+          `${surfaceId} is published to the recipient as ${JSON.stringify(externalLabel)} and no fixture occupied it, or ground overlapping it, on any of the ${dates.length} date(s) in scope, so the document carries no window for it; that is a statement about our schedule rather than a gap in the export`,
+          {
+            surfaceId,
+            externalLabel,
+            dates,
+            standingFixtures: standing.length,
+            excludedFixtures: excludedFixtures.size,
+          }
+        )
+      );
+    }
+  }
+
+  /* -- the partition, checked rather than promised -------------------------- */
+
+  // `excludedSurfaces` is documented as **every** scope surface that produced no
+  // window, and a documented set is worth exactly what its producer fills. The
+  // promise is therefore asserted here rather than restated: every surface the
+  // caller asked about is in one of the two sets and never in both. A cause
+  // added to `EXTERNAL_AVOID_EXCLUSION` with no branch that pushes it, or a new
+  // `continue` in the loop above that forgets to, stops the export dead instead
+  // of shipping a document whose account of its own omissions is short.
+  const producedWindows = new Set(windows.map((window) => window.surfaceId));
+  const excludedIds = new Set(excluded.map((entry) => entry.surfaceId));
+  const unaccounted = surfaceIds.filter((id) => !producedWindows.has(id) && !excludedIds.has(id));
+  const countedTwice = surfaceIds.filter((id) => producedWindows.has(id) && excludedIds.has(id));
+  if (unaccounted.length > 0 || countedTwice.length > 0) {
+    throw new Error(
+      `externalImport: the avoid-window export for ${parsed.documentId} cannot account for every scope surface; ${unaccounted.length} produced no window and are named in no exclusion (${unaccounted.join(', ') || 'none'}), and ${countedTwice.length} are in both (${countedTwice.join(', ') || 'none'})`
+    );
   }
 
   windows.sort(
@@ -402,6 +459,7 @@ export function buildAvoidWindows({ query, registry, standing, graph }) {
     unmappedSurfaceIds: idsFor(EXTERNAL_AVOID_EXCLUSION.UNMAPPED),
     ambiguousSurfaceIds: idsFor(EXTERNAL_AVOID_EXCLUSION.AMBIGUOUS),
     unknownSurfaceIds: idsFor(EXTERNAL_AVOID_EXCLUSION.SURFACE_UNKNOWN),
+    idleSurfaceIds: idsFor(EXTERNAL_AVOID_EXCLUSION.NO_OCCUPANCY),
     findings,
     status: deriveExternalImportStatus(findings),
     meta,

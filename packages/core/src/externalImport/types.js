@@ -39,6 +39,7 @@
  * @property {number} fieldComparisons
  * @property {number} fieldsUncompared
  * @property {number} fieldsOneSided
+ * @property {number} fieldsUntranslated
  * @property {number} acceptanceSetsExamined
  * @property {number} fixturesProjected
  * @property {number} bookingPairsCompared
@@ -134,6 +135,8 @@
  * @property {string[]} comparedFields - fields both sides carried
  * @property {string[]} uncomparedFields - every field left out of the comparison
  * @property {string[]} oneSidedFields - those of them exactly one side carried
+ * @property {string[]} untranslatedFields - those the publication stated in a vocabulary no mapping record translates
+ * @property {Readonly<Record<string, string>>} fieldPresence - the `EXTERNAL_FIELD_PRESENCE` observed per requested field, on **this** row; the four lists above are derived from it
  * @property {boolean} acceptable - may this row be named in an acceptance set?
  */
 
@@ -227,11 +230,12 @@
  * @property {string} subject
  * @property {Object} document - an `AvoidWindowDocumentSchema` value
  * @property {AvoidWindow[]} windows
- * @property {Array<{ surfaceId: string, reason: string }>} excludedSurfaces - every scope surface that produced no window, with its `EXTERNAL_AVOID_EXCLUSION` cause
+ * @property {Array<{ surfaceId: string, reason: string }>} excludedSurfaces - every scope surface that produced no window, with its `EXTERNAL_AVOID_EXCLUSION` cause; `buildAvoidWindows()` asserts this partitions the scope against the surfaces that did produce one, so the promise is checked and not merely written here
  * @property {string[]} excludedSurfaceIds - all of them, whatever the cause
  * @property {string[]} unmappedSurfaceIds - no record claims them: write one
  * @property {string[]} ambiguousSurfaceIds - two records claim them: delete one
  * @property {string[]} unknownSurfaceIds - named, but not in the facility graph
+ * @property {string[]} idleSurfaceIds - mapped and in the graph; nothing occupied them or ground overlapping them on the requested dates
  * @property {ExternalImportFinding[]} findings
  * @property {string} status
  * @property {ExternalImportMeta} meta

@@ -197,6 +197,12 @@ export const EXTERNAL_IMPORT_REASON = Object.freeze({
   EXTERNAL_FIELD_UNCOMPARED: 'EXTERNAL_FIELD_UNCOMPARED',
   /** A field exactly one side carries. Says which side, and is not agreement. */
   EXTERNAL_FIELD_ONE_SIDED: 'EXTERNAL_FIELD_ONE_SIDED',
+  /**
+   * A field the publication **does** state, in a vocabulary no mapping record
+   * translates. Told apart from {@link EXTERNAL_FIELD_ONE_SIDED} because the
+   * repair is on our side: write the record, not chase their file.
+   */
+  EXTERNAL_FIELD_UNTRANSLATED: 'EXTERNAL_FIELD_UNTRANSLATED',
   /** The publication states no venue at all, so the row cannot be judged. */
   EXTERNAL_ROW_VENUE_UNSTATED: 'EXTERNAL_ROW_VENUE_UNSTATED',
   /** Zero rows were handed to the classifier. */
@@ -249,6 +255,13 @@ export const EXTERNAL_IMPORT_REASON = Object.freeze({
   EXTERNAL_AVOID_SCOPE_EMPTY: 'EXTERNAL_AVOID_SCOPE_EMPTY',
   /** A non-empty scope produced no window at all. */
   EXTERNAL_AVOID_NONE_EXPORTED: 'EXTERNAL_AVOID_NONE_EXPORTED',
+  /**
+   * A scope surface that is mapped, is in the facility graph, and still
+   * produced no window: nothing occupied it or ground overlapping it on any
+   * requested date. Reported because the recipient reads its absence from the
+   * document as *"they hold nothing there"*, which is a claim and not silence.
+   */
+  EXTERNAL_AVOID_SURFACE_IDLE: 'EXTERNAL_AVOID_SURFACE_IDLE',
   /** Reading the document back did not reproduce the windows it was built from. */
   EXTERNAL_AVOID_ROUNDTRIP_DIVERGED: 'EXTERNAL_AVOID_ROUNDTRIP_DIVERGED',
 });
@@ -276,6 +289,7 @@ export const EXTERNAL_IMPORT_REASON_SEVERITY = Object.freeze({
   [EXTERNAL_IMPORT_REASON.EXTERNAL_ROW_KEY_AMBIGUOUS]: EXTERNAL_IMPORT_SEVERITY.BLOCKING,
   [EXTERNAL_IMPORT_REASON.EXTERNAL_FIELD_UNCOMPARED]: EXTERNAL_IMPORT_SEVERITY.COMPROMISE,
   [EXTERNAL_IMPORT_REASON.EXTERNAL_FIELD_ONE_SIDED]: EXTERNAL_IMPORT_SEVERITY.COMPROMISE,
+  [EXTERNAL_IMPORT_REASON.EXTERNAL_FIELD_UNTRANSLATED]: EXTERNAL_IMPORT_SEVERITY.COMPROMISE,
   [EXTERNAL_IMPORT_REASON.EXTERNAL_ROW_VENUE_UNSTATED]: EXTERNAL_IMPORT_SEVERITY.BLOCKING,
   [EXTERNAL_IMPORT_REASON.EXTERNAL_IMPORT_NO_ROWS_READ]: EXTERNAL_IMPORT_SEVERITY.BLOCKING,
   [EXTERNAL_IMPORT_REASON.EXTERNAL_IMPORT_NOTHING_CLASSIFIED]: EXTERNAL_IMPORT_SEVERITY.BLOCKING,
@@ -302,6 +316,7 @@ export const EXTERNAL_IMPORT_REASON_SEVERITY = Object.freeze({
   [EXTERNAL_IMPORT_REASON.EXTERNAL_AVOID_WINDOW_FROM_OVERLAP]: EXTERNAL_IMPORT_SEVERITY.INFO,
   [EXTERNAL_IMPORT_REASON.EXTERNAL_AVOID_SCOPE_EMPTY]: EXTERNAL_IMPORT_SEVERITY.BLOCKING,
   [EXTERNAL_IMPORT_REASON.EXTERNAL_AVOID_NONE_EXPORTED]: EXTERNAL_IMPORT_SEVERITY.BLOCKING,
+  [EXTERNAL_IMPORT_REASON.EXTERNAL_AVOID_SURFACE_IDLE]: EXTERNAL_IMPORT_SEVERITY.INFO,
   [EXTERNAL_IMPORT_REASON.EXTERNAL_AVOID_ROUNDTRIP_DIVERGED]: EXTERNAL_IMPORT_SEVERITY.BLOCKING,
 });
 
@@ -536,6 +551,17 @@ export function createExternalImportMeta() {
      * "they published something we do not hold".
      */
     fieldsOneSided: 0,
+    /**
+     * Field/row pairs where the imported publication **states** the field and
+     * our mapping records cannot translate what it states.
+     *
+     * Counted apart from {@link fieldsOneSided} because a lookup failure is an
+     * observation about our registry, never about their artifact. Folded
+     * together, a publication naming a ground we have no record for reported
+     * as one whose venue column was blank, and the operator was pointed at the
+     * wrong side of the exchange.
+     */
+    fieldsUntranslated: 0,
 
     /** Acceptance sets evaluated. */
     acceptanceSetsExamined: 0,

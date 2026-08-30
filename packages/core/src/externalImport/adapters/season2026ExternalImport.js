@@ -124,7 +124,9 @@ export function season2026ExternalMappingInput(options = {}) {
  * for, they come back **one-sided** — `EXTERNAL_FIELD_ONE_SIDED`, naming our
  * side as the one that carries them — rather than compared against null. They
  * are not `EXTERNAL_FIELD_UNCOMPARED`, which is the narrower fact that neither
- * artifact states the field at all.
+ * artifact states the field at all, and they are not
+ * `EXTERNAL_FIELD_UNTRANSLATED` either: the league's file is silent about
+ * format, where its venue column speaks in a vocabulary we have to translate.
  *
  * @param {ReadonlyArray<import('../../fixtures/season2026Parsers.js').Season2026ExternalFixture>} fixtures
  * @param {string} [sourceLabel]

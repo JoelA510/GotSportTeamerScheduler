@@ -34,10 +34,13 @@
  * The evidence is still published. An undecidable row carries every difference
  * that *could* be computed, in `differences`, with the fields that could not in
  * `uncomparedFields` — and of those, the ones exactly one side stated in
- * `oneSidedFields`, because *"neither of us records it"* and *"they publish
- * something we do not hold"* are different facts. See
- * {@link EXTERNAL_FIELD_PRESENCE}. The reader sees what would have been said and
- * why it was not said.
+ * `oneSidedFields` and the ones the publication stated in words we could not
+ * read in `untranslatedFields`, because *"neither of us records it"*, *"they
+ * publish something we do not hold"* and *"they name a ground our records do not
+ * claim"* are three different facts with three different repairs. All four lists
+ * are derived from one per-row record, `fieldPresence`, so no two of them can
+ * disagree about the same row. See {@link EXTERNAL_FIELD_PRESENCE}. The reader
+ * sees what would have been said and why it was not said.
  *
  * ## Never silently drop a row
  *
@@ -107,16 +110,17 @@ export const EXTERNAL_COMPARED_FIELD = Object.freeze({
  * **Which side of a comparison carried the field**, and what each situation is
  * called in the report.
  *
- * ## One class or two? Two.
+ * ## One class, or four? Four.
  *
- * The previous round collapsed three situations into one word. "Uncompared" was
- * emitted whenever either side held `null`, and its message asserted that *"the
- * imported artifact carries no value for it there"* — which is a statement about
- * their side made from a branch that fires for ours just as readily. On the
- * corpus's own `format`/`division` query every one of the sixteen skips is
- * **ours**, and the sentence was wrong about all sixteen.
+ * An early round collapsed every non-comparing situation into one word.
+ * "Uncompared" was emitted whenever either side held `null`, and its message
+ * asserted that *"the imported artifact carries no value for it there"* — which
+ * is a statement about their side made from a branch that fires for ours just as
+ * readily. On the corpus's own `format`/`division` query every one of the
+ * sixteen skips is **ours**, and the sentence was wrong about all sixteen.
  *
- * They are two classes, not one, because they license different conclusions:
+ * They are separate classes because they license different conclusions and name
+ * different repairs:
  *
  * - {@link NEITHER} — no artifact asserts anything about the field. Nothing can
  *   be hidden by not comparing it, so a row that is otherwise equal really is
@@ -127,10 +131,17 @@ export const EXTERNAL_COMPARED_FIELD = Object.freeze({
  *   emphatically not agreement: "we hold no value" and "we agree" are different
  *   facts, and a row carrying a division we do not hold must not be summarised
  *   as one that *"already agrees with what we hold"*.
+ * - {@link THEIRS_UNTRANSLATED} — they state it and we could not read what they
+ *   stated. Nothing is missing from the publication; a record is missing from
+ *   our registry.
  *
  * The two one-sided members are kept apart rather than folded into a single
  * `ONE_SIDED`, for the same reason again: the repair differs. Their value
  * missing is a gap in the publication; ours missing is a gap in our own record.
+ * `THEIRS_UNTRANSLATED` is kept out of both for the same reason a third time,
+ * and because it is the one of the four that is not a fact about the field's
+ * *value* at all — it is a fact about our vocabulary, which is why the value
+ * that reaches {@link presenceOf} can never be allowed to speak for it.
  *
  * @readonly
  * @enum {string}
@@ -144,52 +155,155 @@ export const EXTERNAL_FIELD_PRESENCE = Object.freeze({
   OURS_ONLY: 'the-fixtures-we-hold-only',
   /** Only the imported publication carried it. */
   THEIRS_ONLY: 'the-imported-publication-only',
+  /**
+   * The imported publication carried it, in a vocabulary our mapping records
+   * could not translate.
+   *
+   * Kept apart from {@link THEIRS_ONLY} and emphatically from
+   * {@link OURS_ONLY}, because the previous round's version had no such member
+   * and a *failed venue lookup* therefore arrived at {@link presenceOf} as
+   * `theirs = null` — indistinguishable from a publication that stated no
+   * ground at all. Every row naming a pitch our registry does not claim was
+   * then reported `OURS_ONLY`, under a sentence saying *"the imported
+   * publication does not"* carry a value for it. It does. What is missing is
+   * our record of what the label means, and that is where the repair goes.
+   */
+  THEIRS_UNTRANSLATED: 'the-imported-publication-in-words-we-cannot-translate',
 });
 
 /**
- * How each non-comparing presence is reported: its code, and the clause that
- * says what actually happened.
+ * How each non-comparing presence is reported: its code, the clause that says
+ * what actually happened, and the counter it increments.
  *
- * A table rather than three `if`s in the message builder, for the reason
+ * A table rather than a run of `if`s in the message builder, for the reason
  * {@link EXTERNAL_KEY_FIELD} and `EXTERNAL_NAME_RESOLUTION_REASON` are tables:
  * a sentence written next to the branch that produces it is a sentence that
  * describes the branch, and this whole class of defect is a message asserting
  * a cause that came from where it sat rather than from what happened.
  *
- * @type {Readonly<Record<string, { code: string, clause: string }>>}
+ * `counter` is here rather than in a chain beside the observation for the same
+ * reason one step further on. A presence added to the enum with no row in this
+ * table now fails loudly at the moment it is observed — see the throw in
+ * {@link classifyExternalImport} — instead of falling down an `else` and being
+ * counted as whichever neighbour the chain ended on.
+ *
+ * @type {Readonly<Record<string, { code: string, clause: string, counter: string }>>}
  */
 const FIELD_PRESENCE_REPORT = Object.freeze({
   [EXTERNAL_FIELD_PRESENCE.NEITHER]: Object.freeze({
     code: EXTERNAL_IMPORT_REASON.EXTERNAL_FIELD_UNCOMPARED,
     clause:
       'neither the imported publication nor the fixture we hold carries a value for it, so there was nothing to compare',
+    counter: 'fieldsUncompared',
   }),
   [EXTERNAL_FIELD_PRESENCE.OURS_ONLY]: Object.freeze({
     code: EXTERNAL_IMPORT_REASON.EXTERNAL_FIELD_ONE_SIDED,
     clause:
       'the fixture we hold carries a value for it and the imported publication does not, so the row is not shown to agree on it and is not shown to differ either',
+    counter: 'fieldsOneSided',
   }),
   [EXTERNAL_FIELD_PRESENCE.THEIRS_ONLY]: Object.freeze({
     code: EXTERNAL_IMPORT_REASON.EXTERNAL_FIELD_ONE_SIDED,
     clause:
       'the imported publication carries a value for it and we hold none, so the row is not shown to agree on it — "we have no value" is not "we agree"',
+    counter: 'fieldsOneSided',
+  }),
+  [EXTERNAL_FIELD_PRESENCE.THEIRS_UNTRANSLATED]: Object.freeze({
+    code: EXTERNAL_IMPORT_REASON.EXTERNAL_FIELD_UNTRANSLATED,
+    clause:
+      'the imported publication states a ground for it and no mapping record says what that label names, so the value is missing from our reading of the publication rather than from the publication; the repair is to write a mapping record on our side',
+    counter: 'fieldsUntranslated',
   }),
 });
 
 /**
- * Which side carried the field, from the two values and nothing else.
+ * **What the imported publication said about one field**, as two facts that are
+ * carried separately rather than collapsed into one nullable value.
+ *
+ * `stated` is a fact about *their* artifact: did the row assert anything here?
+ * `translated` is a fact about *ours*: could our mapping records read what it
+ * asserted? A venue-derived field takes its value from a lookup, and a lookup
+ * that fails yields no value for a reason that has nothing to do with the
+ * publication. Returning a bare `null` for both cases is what let a failed
+ * lookup be classified as an absent value; the two facts are therefore kept in
+ * separate fields all the way to {@link presenceOf}, where no arrangement of
+ * arguments can turn one into the other.
+ *
+ * @typedef {Object} TheirFieldValue
+ * @property {boolean} stated - the publication asserts something here
+ * @property {boolean} translated - and we could read what it asserts
+ * @property {unknown} value - the translated value; meaningless unless both
+ */
+
+/**
+ * Read one field off the imported row, through the venue lookup where the field
+ * is derived from it.
+ *
+ * @param {Record<string, unknown>} row
+ * @param {import('./types.js').ExternalNameResolution|null} venue
+ * @param {string} field
+ * @param {{ fromVenue: boolean }} spec
+ * @returns {TheirFieldValue}
+ */
+function theirValueOf(row, venue, field, spec) {
+  if (!spec.fromVenue) {
+    const value = row[field];
+    return { stated: value !== null && value !== undefined, translated: true, value };
+  }
+  if (venue === null) {
+    // The publication states no venue at all. Nothing failed; there is nothing
+    // there. `schemas.js` tells this apart from an absent `venueLabel` at the
+    // boundary precisely so this branch means one thing.
+    return { stated: false, translated: true, value: null };
+  }
+  if (venue.state !== EXTERNAL_NAME_RESOLUTION.RESOLVED) {
+    // A ground **is** stated. We cannot say which of ours it is.
+    return { stated: true, translated: false, value: null };
+  }
+  const value = venue[field === 'venueId' ? 'venueId' : 'surfaceId'];
+  return { stated: value !== null && value !== undefined, translated: true, value };
+}
+
+/**
+ * Which side carried the field, from what was observed of each and nothing else.
  *
  * @param {unknown} ours
- * @param {unknown} theirs
+ * @param {TheirFieldValue} theirs
  * @returns {string} an {@link EXTERNAL_FIELD_PRESENCE} value
  */
 function presenceOf(ours, theirs) {
   const haveOurs = ours !== null && ours !== undefined;
-  const haveTheirs = theirs !== null && theirs !== undefined;
-  if (haveOurs && haveTheirs) return EXTERNAL_FIELD_PRESENCE.BOTH;
+  if (!theirs.translated) return EXTERNAL_FIELD_PRESENCE.THEIRS_UNTRANSLATED;
+  if (haveOurs && theirs.stated) return EXTERNAL_FIELD_PRESENCE.BOTH;
   if (haveOurs) return EXTERNAL_FIELD_PRESENCE.OURS_ONLY;
-  if (haveTheirs) return EXTERNAL_FIELD_PRESENCE.THEIRS_ONLY;
+  if (theirs.stated) return EXTERNAL_FIELD_PRESENCE.THEIRS_ONLY;
   return EXTERNAL_FIELD_PRESENCE.NEITHER;
+}
+
+/**
+ * The fields of a per-row presence record whose presence satisfies `predicate`,
+ * in the order the comparison asked for them.
+ *
+ * Every published list of fields is derived through this, from the row's own
+ * record, so no two of them can disagree and none of them is computed by
+ * subtracting one union from another.
+ *
+ * @param {Record<string, string>} fieldPresence
+ * @param {(presence: string) => boolean} predicate
+ * @returns {string[]}
+ */
+function fieldsWherePresence(fieldPresence, predicate) {
+  return Object.entries(fieldPresence)
+    .filter(([, presence]) => predicate(presence))
+    .map(([field]) => field);
+}
+
+/** Presences in which exactly one artifact carried the field. */
+function isOneSided(presence) {
+  return (
+    presence === EXTERNAL_FIELD_PRESENCE.OURS_ONLY ||
+    presence === EXTERNAL_FIELD_PRESENCE.THEIRS_ONLY
+  );
 }
 
 /**
@@ -366,27 +480,29 @@ export function classifyExternalImport(rawQuery, registry) {
 
     /** @type {import('./types.js').ExternalFieldDifference[]} */
     const differences = [];
-    /** @type {string[]} */
-    const compared = [];
-    /** @type {string[]} */
-    const uncompared = [];
-    /** @type {string[]} */
-    const oneSided = [];
+    /**
+     * What was observed about each requested field **on this row**.
+     *
+     * The single fact, recorded once, from which every published list of fields
+     * is derived. The lists used to be accumulated independently and then
+     * reconciled by set arithmetic at bucket level, which is how a field that
+     * was one-sided on one row and neither-sided on another disappeared from
+     * both accounts: subtracting a union from a union cannot represent a field
+     * that is two different things on two different rows.
+     *
+     * @type {Record<string, string>}
+     */
+    const fieldPresence = {};
 
     if (fixture !== null) {
       for (const field of comparedFields) {
         const spec = EXTERNAL_COMPARED_FIELD[field];
         const ours = fixture[spec.ours];
-        /** @type {unknown} */
-        let theirs;
-        if (spec.fromVenue) {
-          theirs =
-            venue !== null && venue.state === EXTERNAL_NAME_RESOLUTION.RESOLVED
-              ? venue[field === 'venueId' ? 'venueId' : 'surfaceId']
-              : null;
-        } else {
-          theirs = row[field];
-        }
+        // Their side arrives as two separate facts — did they state it, and
+        // could we translate what they stated — so a venue lookup that failed
+        // cannot present itself as a publication that said nothing. See
+        // {@link theirValueOf}.
+        const theirs = theirValueOf(row, venue, field, spec);
         // Comparability is a fact about the **pair**, not about their side of
         // it. Testing only `theirs` meant a null of ours was compared against a
         // real value and reported as a difference (`ours: null`), which put a
@@ -397,33 +513,54 @@ export function classifyExternalImport(rawQuery, registry) {
         // the code and the sentence, and it is what stops a row that carries a
         // value we do not hold being summarised as one that already agrees.
         const presence = presenceOf(ours, theirs);
+        fieldPresence[field] = presence;
         if (presence !== EXTERNAL_FIELD_PRESENCE.BOTH) {
-          uncompared.push(field);
-          if (presence === EXTERNAL_FIELD_PRESENCE.NEITHER) {
-            meta.fieldsUncompared += 1;
-          } else {
-            oneSided.push(field);
-            meta.fieldsOneSided += 1;
+          const report = FIELD_PRESENCE_REPORT[presence];
+          // An observed presence with no row in the table has no code, no
+          // sentence and no counter. Guessing one is the defect; saying so is
+          // the fix, and it fires here rather than at the message builder so
+          // the run stops at the observation that cannot be reported.
+          if (report === undefined) {
+            throw new Error(
+              `externalImport: ${JSON.stringify(presence)} was observed for ${JSON.stringify(field)} and FIELD_PRESENCE_REPORT has no row for it; every non-comparing presence must declare its code, clause and counter`
+            );
           }
+          meta[report.counter] += 1;
           const groupKey = `${field}|${presence}`;
           if (!skippedByFieldAndPresence.has(groupKey)) skippedByFieldAndPresence.set(groupKey, []);
           /** @type {string[]} */ (skippedByFieldAndPresence.get(groupKey)).push(row.rowId);
           continue;
         }
-        compared.push(field);
         meta.fieldComparisons += 1;
-        if (ours === theirs) continue;
+        if (ours === theirs.value) continue;
         differences.push({
           field,
           ours,
-          theirs,
+          theirs: theirs.value,
           deltaMinutes:
-            spec.minutes && typeof ours === 'number' && typeof theirs === 'number'
-              ? theirs - ours
+            spec.minutes && typeof ours === 'number' && typeof theirs.value === 'number'
+              ? theirs.value - ours
               : null,
         });
       }
     }
+
+    // Derived, never accumulated in parallel: three lists built by three pushes
+    // are three chances to disagree, and the reader of any one of them is owed
+    // the same fact the other two were built from.
+    const compared = fieldsWherePresence(
+      fieldPresence,
+      (presence) => presence === EXTERNAL_FIELD_PRESENCE.BOTH
+    );
+    const uncompared = fieldsWherePresence(
+      fieldPresence,
+      (presence) => presence !== EXTERNAL_FIELD_PRESENCE.BOTH
+    );
+    const oneSided = fieldsWherePresence(fieldPresence, isOneSided);
+    const untranslated = fieldsWherePresence(
+      fieldPresence,
+      (presence) => presence === EXTERNAL_FIELD_PRESENCE.THEIRS_UNTRANSLATED
+    );
 
     /** @type {string} */
     let rowClass;
@@ -483,6 +620,8 @@ export function classifyExternalImport(rawQuery, registry) {
       comparedFields: compared,
       uncomparedFields: uncompared,
       oneSidedFields: oneSided,
+      untranslatedFields: untranslated,
+      fieldPresence: Object.freeze(fieldPresence),
       acceptable,
     });
   }
@@ -514,10 +653,23 @@ export function classifyExternalImport(rawQuery, registry) {
     // it anyway is the same defect as the message below it used to carry, so
     // the sentence names what was actually compared and what was not.
     const identical = rows.filter((row) => row.rowClass === EXTERNAL_ROW_CLASS.MATCHED_IDENTICAL);
-    const comparedHere = [...new Set(identical.flatMap((row) => row.comparedFields))].sort();
-    const skippedHere = [...new Set(identical.flatMap((row) => row.uncomparedFields))].sort();
-    const oneSidedHere = [...new Set(identical.flatMap((row) => row.oneSidedFields))].sort();
-    const neitherHere = skippedHere.filter((field) => !oneSidedHere.includes(field));
+    // Each list is *"the fields observed to be P on at least one of these
+    // rows"*, read off the per-row record. The version this replaces derived
+    // the neither-side list by subtracting the union of one-sided fields from
+    // the union of skipped fields — and a field that is one-sided on one row
+    // and neither-sided on another is in both unions, so it cancelled and was
+    // reported under neither heading. A union is not a row: the only place the
+    // per-row fact survives is the per-row record, so every one of these is
+    // asked of the rows individually.
+    /** @param {(presence: string) => boolean} predicate */
+    const fieldsHere = (predicate) =>
+      [
+        ...new Set(identical.flatMap((row) => fieldsWherePresence(row.fieldPresence, predicate))),
+      ].sort();
+    const comparedHere = fieldsHere((presence) => presence === EXTERNAL_FIELD_PRESENCE.BOTH);
+    const skippedHere = fieldsHere((presence) => presence !== EXTERNAL_FIELD_PRESENCE.BOTH);
+    const oneSidedHere = fieldsHere(isOneSided);
+    const neitherHere = fieldsHere((presence) => presence === EXTERNAL_FIELD_PRESENCE.NEITHER);
     const caveats = [
       oneSidedHere.length > 0
         ? `${oneSidedHere.join(', ')} is carried by one side only on some of them, which is not agreement`
