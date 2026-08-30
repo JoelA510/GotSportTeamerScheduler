@@ -717,11 +717,108 @@ self-check confirms it. The one new hole is
 and a scale by construction. Its falsifiability is proved by a direct call in
 `tests/fairnessMetrics.test.js`, which is what it honestly is.
 
+**Prompt 7.3 — external fixture import with impact analysis.** Built in the
+working tree, not committed. `packages/core/src/externalImport/`
+(`reasonCodes.js`, `schemas.js`, `types.js`, `mapping.js`, `resolution.js`,
+`impact.js`, `avoidWindows.js`, `adapters/season2026ExternalImport.js`,
+`index.js`) plus `tests/externalFixtureImport.test.js` (56 cases);
+`tests/reasonCodeReachability.test.js` gains the eighteenth vocabulary and its
+driver. Suite **1980 -> 2037**, measured at `87dfd22` before and after rather
+than added up. All six gates green, season fixture green (34/34), bundle entry
+hash unchanged (`index-DDtWSyk-.js`).
+
+Three parts: a mapping registry with an explicit persistence seam, a four-class
+resolution with pre-commit impact analysis over **acceptance sets**, and an
+avoid-windows round-trip export.
+
+**The mapping refuses rather than guesses, and the refusal is the feature.**
+There is one normalisation, `normaliseExternalLabel()`, and it removes no word:
+trim, collapse whitespace, case-fold. `parseExternalFixtures()` in the corpus
+loader carries `/^(.*?)\s*\((?:Back\s+)?(.*?)\)$/` — a regex that **drops the
+word `Back`** — and `publication/adapters/season2026Publication.js` deliberately
+records that split as its mapping rules. A parity report can afford that,
+because a bad split shows up as a difference; an import cannot, because its
+answer is *"move that fixture"*. So `SEASON_2026_EXTERNAL_MAPPING_RECORDS` is
+written out, two records with provenance each, on the same footing as
+`SEASON_2026_VENUE_COMPLEXES`. The test builds the decoration-stripping
+resolver, shows it agrees on both Alder labels, and shows it merges
+`Maplewood Back` with `Maplewood Front` — two venues in `facility_geometry.json`
+each holding a `Field 1`.
+
+**Four classes, not three.** `matched-identical` / `matched-differing` /
+`unmatched` / `undecidable`, and `deriveExternalImportStatus()` never lets the
+report's status stand in for a row's class. On the corpus: 8 rows, 4 identical
+(08/23), 4 differing at exactly **+30 minutes** (08/22), 0 unmatched, 0
+undecidable. Deleting the Pitch 3 mapping record moves the four Pitch 3 rows to
+`undecidable` — not to `matched-identical` — while still publishing the clock
+differences that *could* be computed.
+
+**The impact verdict belongs to an acceptance set, and this is the finding.**
+Four differing rows means sixteen ways to accept them, and on this corpus they
+do not agree:
+
+- accepting the **10:00 -> 10:30** move on a pitch without its 12:00 partner
+  leaves a **0-minute** gap against `game_formats.csv`'s 20-minute turnover
+  floor, and a 90-minute cadence inside a 120-minute block;
+- accepting the **12:00 -> 12:30** move puts a fixture running to 14:00 on top
+  of the 13:50 9v9 on the overlapping pitch — **incident 3, ten minutes, to the
+  minute**, on Pitch 1A/1B against Pitch 2 and 4A/4B against Pitch 3.
+
+So of the sixteen sets, **exactly one is safe and it is the empty one.**
+Accepting all four is *not* clean: it still carries four spatial overlaps, which
+is precisely why the club negotiated the external times 30 minutes earlier
+rather than accepting the publication. `EXTERNAL_ACCEPTANCE_SUBSET_UNSAFE`
+therefore does not fire on the corpus as it ships; it fires on the
+**counterfactual** — the same import judged against the 11v11 layer alone, where
+the full set is safe and **7 of the 16** proper subsets are not, and where an
+"evaluate the import as a whole" analysis is shown to be wrong about all seven.
+
+**Three-valued at every level.** `EXTERNAL_NAME_RESOLUTION`
+(`resolved`/`unresolved`/`ambiguous`), `EXTERNAL_ROW_CLASS` (four), and
+`EXTERNAL_IMPACT_VERDICT` (`safe`/`unsafe`/`undetermined`), the last with
+`deriveExternalImpactVerdict()` as its only producer and `undetermined` winning
+over `unsafe` because `unsafe` reads as a complete account and would not be one.
+`bookingsOverlapInTime()`'s `null` is carried as `undetermined` and never as "no
+clash". A **standing** undecidable pair — the two untimed `Scrimmage` rows at
+Summit HS on 08/22 (GAP-14) — is counted and named in each result's scope
+finding but does not move a verdict, on the same rule that a pre-existing clash
+does not: otherwise every set on this corpus, including the empty one, would be
+`undetermined`.
+
+**The export would have prevented incident 3.** An avoid window published for
+`Alder Park (Back Pitch 2)` is not the list of things booked on Pitch 2; it is
+everything booked in that pitch's `conflictingSurfacesOf()` cone, with each
+window saying whether it is `own-surface` or `overlapping-surface`. On the
+seeding weekend all 8 exported windows come from pitches the league has no name
+for. The document refuses the league's own published 12:30 (blocked by the
+13:50/14:55 windows, overlap 10 minutes) and admits the agreed 12:00; the naive
+document — own-surface windows only — admits both, which is the answer that
+produced the incident. The round trip is an identity, and reading it back
+through a registry that lost a record fails loudly with
+`EXTERNAL_AVOID_ROUNDTRIP_DIVERGED` rather than returning fewer windows.
+
+**The persistence decision: an in-memory registry with a declared seam, and no
+store.** Stated on the record (`durability: 'in-memory'`), in the module docs,
+and as `EXTERNAL_MAPPING_NOT_PERSISTED` at `info` on every registry build.
+`serialiseExternalMappingRegistry()` / `readExternalMappingRegistry()` move a
+registry through a JSON document with no `Date`, no `Map` and no function,
+validated by `MappingDocumentSchema` in both directions, and the round trip is
+asserted **byte-identically** rather than by deep-equal — a lossy transform
+passes the second and cannot pass the first. Reading re-runs every construction
+check rather than trusting a document this module wrote. The reason for
+deferring the store is GAP-30 rather than consistency with earlier phases: a
+module whose whole job is to *detect* a difference between two artifacts must
+not be built on a store that **creates** one. There is no SQL migration and no
+storage adapter.
+
+Thirty-five new reason codes in a frozen severity table; the reachability audit
+moves to **18 vocabularies, 383 codes, 372 producible, 11 holes**, and its own
+self-check confirms it. **No new hole** — every one of the 35 is driven from a
+public entry point.
+
 ## 3. Remaining
 
-| Prompt | Scope |
-|---|---|
-| 7.3 | External fixture import with impact analysis |
+Nothing. 7.3 was the last prompt in the build plan.
 
 Follow-ups raised during the build and deliberately not absorbed:
 
@@ -750,7 +847,20 @@ Follow-ups raised during the build and deliberately not absorbed:
 - **Nothing is persisted.** Every module built here is in-memory. GAP-29's stored
   half stays open, and `z.coerce.date()` in `SlotSchema`/`AssignmentSchema`
   (GAP-30) must be closed before publication snapshots can be persisted safely —
-  otherwise the parity checker would cause the divergence it detects.
+  otherwise the parity checker would cause the divergence it detects. 7.3's
+  `externalImport/mapping.js` is the first module to build the **seam** a store
+  would use — `serialiseExternalMappingRegistry()` /
+  `readExternalMappingRegistry()`, byte-identical round trip asserted — so
+  closing GAP-30 and wiring one store is now a bounded piece of work rather than
+  a design question. Nothing wires it, and every registry says so.
+- **The impact analysis consults two layers, and names the five it does not.**
+  `EXTERNAL_IMPACT_LAYERS_NOT_CONSULTED` — permits and blackouts, sunset and
+  lighting, coach travel and personal timelines, the constraint registry and rule
+  engine, warm-up occupancy — is published on every result at `info`. None of
+  them changes an answer on this corpus (the moves are 30 minutes inside a
+  7:00-to-20:00 permit, ten hours before sunset, and no coach is committed
+  elsewhere on those two dates), which is a fact about the corpus rather than a
+  property of the module.
 - **Nothing is wired into the shipping app.** The week-indexed `gameScheduling.js`
   is untouched by design; it now *refuses* a freeze argument rather than ignoring
   one, so the gap is loud rather than silent.
