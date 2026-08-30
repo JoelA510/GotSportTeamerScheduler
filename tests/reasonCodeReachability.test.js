@@ -1,8 +1,8 @@
 /**
  * Repo-wide reachability audit for every frozen reason-code table in
  * `packages/core/src` — the generalisation of the per-module audit
- * `tests/attribution.test.js` already carries. 18 vocabularies, 383 codes, of
- * which 372 are shown to be producible and 11 are named as holes.
+ * `tests/attribution.test.js` already carries. 18 vocabularies, 386 codes, of
+ * which 375 are shown to be producible and 11 are named as holes.
  *
  * **The defect this exists to catch.** Four times now, in four unrelated
  * modules, a reason code has been declared, given a severity, documented, and
@@ -4311,6 +4311,23 @@ harvest(
   classifyExternalImport({ ...externalQuery, rows: [] }, externalRegistry)
 );
 
+// A publication that states no venue at all on one row. `ExternalFixtureRowSchema`
+// distinguishes an absent `venueLabel` from a null one precisely so this can be
+// told apart from a caller who forgot, and the null one is a row that cannot be
+// judged: the key is (date, home, away) and does not carry the ground.
+harvest(
+  'classifyExternalImport(a row whose publication states no venue)',
+  classifyExternalImport(
+    {
+      ...externalQuery,
+      rows: externalQuery.rows.map((row, index) =>
+        index === 0 ? { ...row, venueLabel: null } : row
+      ),
+    },
+    externalRegistry
+  )
+);
+
 harvest(
   'analyseImportImpact(accepting rows that already agree, over a scope of one fixture)',
   analyseImportImpact({
@@ -4388,6 +4405,52 @@ harvest(
     resolution: untimedResolution,
     standing: untimedFixtures.slice(0, 2),
     query: { acceptedRowIds: ['scrimmage-move#0'] },
+    graph,
+    timingTable,
+  })
+);
+
+// A projection that puts two fixtures on one surface where the earlier one's
+// format has no `game_formats.csv` row: neither the turnover floor nor the
+// declared block can be applied to the pair, and the analysis says which checks
+// went unrun rather than letting "nothing introduced" read as "nothing to find".
+// The second scrimmage is relocated to Alder so the pair does not already exist
+// in the standing plan — an unchecked pair both plans carry is pre-existing and
+// is restated under another code, which would credit this one to an echo.
+const relocatedScrimmage = {
+  ...untimedFixtures[1],
+  venueId: season2026VenueId('Alder Park'),
+  surfaceId: season2026SurfaceId('Alder Park', 'Pitch 2'),
+};
+const relocationResolution = classifyExternalImport(
+  {
+    subject: 'a scrimmage moved onto ground another scrimmage already holds',
+    rows: [
+      {
+        rowId: 'relocate#0',
+        sourceLabel: 'constructed',
+        date: relocatedScrimmage.date,
+        kickoffMinutes: relocatedScrimmage.kickoffMinutes,
+        venueLabel: 'Summit (Stadium)',
+        homeLabel: relocatedScrimmage.homeLabel,
+        awayLabel: relocatedScrimmage.awayLabel,
+        format: null,
+        division: null,
+      },
+    ],
+    standing: [untimedFixtures[0], relocatedScrimmage],
+    keyFields: ['date', 'home', 'away'],
+    comparedFields: ['kickoffMinutes', 'venueId', 'surfaceId'],
+  },
+  untimedRegistry
+);
+harvest(
+  'analyseImportImpact(a pair whose spacing checks cannot run)',
+  analyseImportImpact({
+    subject: 'a scrimmage moved onto ground another scrimmage already holds',
+    resolution: relocationResolution,
+    standing: [untimedFixtures[0], relocatedScrimmage],
+    query: { acceptedRowIds: ['relocate#0'] },
     graph,
     timingTable,
   })
@@ -4551,6 +4614,44 @@ harvest(
       excludeFixtureIds: [],
     },
     registry: untimedRegistry,
+    standing: externalStanding,
+    graph,
+  })
+);
+// A scope surface a record claims but the facility graph does not hold. The
+// registry keeps such a record (reporting EXTERNAL_MAPPING_TARGET_UNKNOWN), so
+// the label reverse-resolves and the export reaches `conflictingSurfacesOf()`,
+// which used to throw `requireSurface()` out of the whole export.
+harvest(
+  'buildAvoidWindows(a scope surface the facility graph does not hold)',
+  buildAvoidWindows({
+    query: {
+      subject: 'a pitch the club does not have',
+      documentId: 'ghost-1',
+      generatedFor: 'external seeding league',
+      dates: ['2026-08-22'],
+      surfaceIds: ['alder-park/pitch-9'],
+      excludeFixtureIds: [],
+    },
+    registry: buildExternalMappingRegistry(
+      {
+        registryId: 'ghost-scope',
+        label: 'a record naming ground the graph does not have',
+        party: 'external seeding league',
+        records: [
+          {
+            id: 'ghost-pitch',
+            kind: EXTERNAL_MAPPING_KIND.VENUE,
+            externalLabel: 'Alder Park (Pitch 9)',
+            venueId: season2026VenueId('Alder Park'),
+            surfaceId: 'alder-park/pitch-9',
+            subjectId: null,
+            provenance: 'constructed for tests/reasonCodeReachability.test.js',
+          },
+        ],
+      },
+      { graph }
+    ),
     standing: externalStanding,
     graph,
   })

@@ -132,6 +132,7 @@ export {
 } from './impact.js';
 
 export {
+  AVOID_WINDOW_ADMISSION_FIELDS,
   AVOID_WINDOW_DOCUMENT_VERSION,
   avoidWindowKey,
   avoidWindowsAdmit,

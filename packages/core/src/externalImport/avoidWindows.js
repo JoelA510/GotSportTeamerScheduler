@@ -80,6 +80,31 @@ import { AvoidWindowDocumentSchema, AvoidWindowQuerySchema } from './schemas.js'
 export const AVOID_WINDOW_DOCUMENT_VERSION = 1;
 
 /**
+ * **The fields {@link avoidWindowsAdmit} matches a proposal on**, and therefore
+ * the fields a window must still carry after it has crossed the document
+ * boundary and come back through {@link readAvoidWindowDocument}.
+ *
+ * It is a frozen list rather than four names remembered in three places because
+ * of what happens when one of them is dropped: `avoidWindowsAdmit()` matches on
+ * equality, so a window missing `externalLabel` matches *no* proposal and the
+ * document answers `safe` to everything — a document whose entire purpose is to
+ * refuse the league's 12:30 admitting it, with no error and no finding. A
+ * membership comparison of window keys cannot see that; only asking the
+ * read-back document the question the original was built to answer can.
+ * `tests/externalFixtureImport.test.js` asserts every read-back window carries
+ * all four, and proves the list is load bearing by deleting each in turn and
+ * showing the 12:30 stops being refused.
+ *
+ * @type {ReadonlyArray<string>}
+ */
+export const AVOID_WINDOW_ADMISSION_FIELDS = Object.freeze([
+  'date',
+  'externalLabel',
+  'startMinutes',
+  'endMinutes',
+]);
+
+/**
  * Rendered for the document, so `TIME TBD` never becomes a fabricated clock.
  * `naiveDateTime()` from `reserve/publication.js` is the one GAP-30-safe
  * renderer in this repository and is reused rather than restated.
@@ -89,12 +114,20 @@ const OPEN_ENDED = null;
 /**
  * A stable identity for one window, used by the round-trip check.
  *
- * @param {{ date: string, surfaceId: string, startMinutes: number, endMinutes: number|null, sourceFixtureIds: ReadonlyArray<string> }} window
+ * `externalLabel` is part of the identity and not merely `surfaceId`, because
+ * the label is the half of a window the *recipient* reads and the half
+ * {@link avoidWindowsAdmit} matches on. A key built from our surface id alone
+ * calls two windows the same when they name different ground to the party the
+ * document is for — which is how a document that came back having lost its
+ * labels once passed the round-trip check while admitting everything.
+ *
+ * @param {{ date: string, externalLabel: string, surfaceId: string, startMinutes: number, endMinutes: number|null, sourceFixtureIds: ReadonlyArray<string> }} window
  * @returns {string}
  */
 export function avoidWindowKey(window) {
   return [
     window.date,
+    window.externalLabel,
     window.surfaceId,
     window.startMinutes,
     window.endMinutes === null ? 'open' : window.endMinutes,
@@ -173,6 +206,29 @@ export function buildAvoidWindows({ query, registry, standing, graph }) {
     }
 
     const externalLabel = /** @type {string} */ (label.candidateTargets[0]);
+    // A record may name ground the graph does not hold — `readExternalMappingRegistry()`
+    // reports that as `EXTERNAL_MAPPING_TARGET_UNKNOWN` and keeps the record, so
+    // the label still reverse-resolves. Asking `conflictingSurfacesOf()` about
+    // it throws out of `requireSurface()`, and an export that dies on one bad
+    // record tells the operator nothing about the other surfaces in scope. The
+    // occupancy footprint is unknowable here, so no window is produced and the
+    // reason is published, exactly as it is for a surface with no external name.
+    if (!getSurface(graph, surfaceId)) {
+      unmappedSurfaceIds.push(surfaceId);
+      findings.push(
+        makeExternalImportFinding(
+          EXTERNAL_IMPORT_REASON.EXTERNAL_AVOID_SURFACE_UNKNOWN,
+          `${surfaceId} is claimed by the external label ${JSON.stringify(externalLabel)} but the facility graph does not hold it, so its occupancy footprint cannot be computed and no window is exported for it; the export reports this rather than failing whole`,
+          {
+            surfaceId,
+            externalLabel,
+            recordIds: label.candidateRecordIds,
+            surfaceCount: graph.surfaceIds.length,
+          }
+        )
+      );
+      continue;
+    }
     const cone = new Set(conflictingSurfacesOf(graph, surfaceId));
     for (const date of dates) {
       meta.avoidScopeCells += 1;
@@ -312,7 +368,7 @@ export function buildAvoidWindows({ query, registry, standing, graph }) {
  *
  * @param {unknown} rawDocument
  * @param {import('./types.js').ExternalMappingRegistry} registry
- * @returns {{ windows: Array<{ date: string, surfaceId: string, venueId: string|null, startMinutes: number, endMinutes: number|null, origin: string, sourceFixtureIds: string[], sourceSurfaceIds: string[] }>, findings: import('./types.js').ExternalImportFinding[], status: string, meta: import('./types.js').ExternalImportMeta }}
+ * @returns {{ windows: Array<{ date: string, externalLabel: string, surfaceId: string, venueId: string|null, startMinutes: number, endMinutes: number|null, origin: string, sourceFixtureIds: string[], sourceSurfaceIds: string[] }>, findings: import('./types.js').ExternalImportFinding[], status: string, meta: import('./types.js').ExternalImportMeta }}
  */
 export function readAvoidWindowDocument(rawDocument, registry) {
   const document = /** @type {any} */ (AvoidWindowDocumentSchema.parse(rawDocument));
@@ -321,7 +377,7 @@ export function readAvoidWindowDocument(rawDocument, registry) {
   const usage = createMappingUsage();
   /** @type {import('./types.js').ExternalImportFinding[]} */
   const findings = [];
-  /** @type {Array<{ date: string, surfaceId: string, venueId: string|null, startMinutes: number, endMinutes: number|null, origin: string, sourceFixtureIds: string[], sourceSurfaceIds: string[] }>} */
+  /** @type {Array<{ date: string, externalLabel: string, surfaceId: string, venueId: string|null, startMinutes: number, endMinutes: number|null, origin: string, sourceFixtureIds: string[], sourceSurfaceIds: string[] }>} */
   const windows = [];
 
   for (const window of document.windows) {
@@ -352,6 +408,11 @@ export function readAvoidWindowDocument(rawDocument, registry) {
     meta.avoidWindowsReadBack += 1;
     windows.push({
       date: window.date,
+      // Carried, not dropped. `avoidWindowsAdmit()` matches a proposal on the
+      // label, so a read-back window without one matches nothing and answers
+      // `safe` to every proposal — the document's own refusal, lost in the act
+      // of reading it. See {@link AVOID_WINDOW_ADMISSION_FIELDS}.
+      externalLabel: window.externalLabel,
       surfaceId: /** @type {string} */ (resolved.surfaceId),
       venueId: resolved.venueId,
       startMinutes: window.startMinutes,

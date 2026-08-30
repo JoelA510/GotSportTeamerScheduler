@@ -24,6 +24,13 @@
  * minutes" about a row that might be describing a different pitch is a partial
  * judgement wearing a whole one's clothes.
  *
+ * A row that states **no** venue is the same fact arriving one step earlier, and
+ * it is `EXTERNAL_ROW_VENUE_UNSTATED` rather than a fourth spelling of the same
+ * thing. `schemas.js` says why the two are told apart at the boundary at all:
+ * `venueLabel` absent means the caller forgot, `venueLabel: null` means the
+ * publication states no venue — and the second is a row that has not been
+ * judged, not a row that agrees.
+ *
  * The evidence is still published. An undecidable row carries every difference
  * that *could* be computed, in `differences`, with the fields that could not in
  * `uncomparedFields`. The reader sees what would have been said and why it was
@@ -117,6 +124,52 @@ function joinKey(keyFields, components) {
 }
 
 /**
+ * **One participant key component, and the only place either side computes one.**
+ *
+ * A participant label goes through the registry when a record claims it, so a
+ * league that renames a team is handled by writing a record rather than by
+ * loosening the comparison; where no record claims it the label itself is the
+ * identity, which is what the season corpus needs because both artifacts spell
+ * every side the same way.
+ *
+ * The two sides **must** run the same function. They did not: the imported row
+ * was canonicalised to a record's `subjectId` while our fixture kept its raw
+ * `homeLabel`, so writing the very record this comment recommends turned a
+ * `matched-identical` row into `unmatched` — a mapping kind that corrupts
+ * matching when used as documented. Whatever this function does, it now does to
+ * both sides, so a record that renames one renames the other.
+ *
+ * `recordUnclaimed` is the one asymmetry and it is about the **ledger**, never
+ * about the value. `usage` counts what the *imported publication* asked of the
+ * registry; our own fixtures are the thing being compared against, not part of
+ * that artifact, and recording a `labelsUnclaimedOptional` for each of the
+ * hundred-odd standing labels no external record was ever meant to claim is
+ * precisely the noise `createExternalImportMeta()` splits that counter out to
+ * avoid. A record that *does* fire on our side is recorded either way, so
+ * nothing that exercised the registry goes uncounted.
+ *
+ * @param {import('./types.js').ExternalMappingRegistry} registry
+ * @param {ReturnType<typeof createMappingUsage>} usage
+ * @param {unknown} raw
+ * @param {{ recordUnclaimed: boolean }} options
+ * @returns {unknown}
+ */
+function participantComponent(registry, usage, raw, { recordUnclaimed }) {
+  if (raw === null || raw === undefined) return raw;
+  const resolved = resolveExternalName(
+    registry,
+    EXTERNAL_MAPPING_KIND.PARTICIPANT,
+    /** @type {string} */ (raw)
+  );
+  if (resolved.state === EXTERNAL_NAME_RESOLUTION.RESOLVED) {
+    recordMappingUse(usage, resolved);
+    return resolved.subjectId;
+  }
+  if (recordUnclaimed) recordMappingUse(usage, resolved, { optional: true });
+  return raw;
+}
+
+/**
  * **Classify one publication against the fixtures we hold.**
  *
  * @param {Object} rawQuery - see `ExternalImportQuerySchema`
@@ -154,7 +207,12 @@ export function classifyExternalImport(rawQuery, registry) {
   for (const fixture of query.standing) {
     const key = joinKey(
       keyFields,
-      keyFields.map((field) => fixture[EXTERNAL_KEY_FIELD[field].ours])
+      keyFields.map((field) => {
+        const spec = EXTERNAL_KEY_FIELD[field];
+        const raw = fixture[spec.ours];
+        if (!spec.participant) return raw;
+        return participantComponent(registry, usage, raw, { recordUnclaimed: false });
+      })
     );
     if (!standingByKey.has(key)) standingByKey.set(key, []);
     /** @type {any[]} */ (standingByKey.get(key)).push(fixture);
@@ -179,21 +237,14 @@ export function classifyExternalImport(rawQuery, registry) {
       );
     }
 
-    // Their key components. A participant label goes through the registry when
-    // a record claims it, so a league that renames a team is handled by writing
-    // a record rather than by loosening the comparison; where no record claims
-    // it the label itself is the identity, which is what the season corpus needs
-    // because both artifacts spell every side the same way.
+    // Their key components, through `participantComponent()` — the same function
+    // the standing index above is built with, which is the whole of the fix for
+    // a key that used to be computed two different ways.
     const theirComponents = keyFields.map((field) => {
       const spec = EXTERNAL_KEY_FIELD[field];
       const raw = row[spec.theirs];
-      if (!spec.participant || raw === null) return raw;
-      const resolved = recordMappingUse(
-        usage,
-        resolveExternalName(registry, EXTERNAL_MAPPING_KIND.PARTICIPANT, raw),
-        { optional: true }
-      );
-      return resolved.state === EXTERNAL_NAME_RESOLUTION.RESOLVED ? resolved.subjectId : raw;
+      if (!spec.participant) return raw;
+      return participantComponent(registry, usage, raw, { recordUnclaimed: true });
     });
 
     const matchKey = joinKey(keyFields, theirComponents);
@@ -228,7 +279,12 @@ export function classifyExternalImport(rawQuery, registry) {
         } else {
           theirs = row[field];
         }
-        if (theirs === null || theirs === undefined) {
+        // Uncompared is a fact about the **pair**, not about their side of it.
+        // Testing only `theirs` meant a null of ours was compared against a
+        // real value and reported as a difference (`ours: null`), which put a
+        // row nothing can honestly accept into the acceptance domain and made
+        // the sweep answer a bigger question than the corpus poses.
+        if (ours === null || ours === undefined || theirs === null || theirs === undefined) {
           uncompared.push(field);
           meta.fieldsUncompared += 1;
           if (!uncomparedByField.has(field)) uncomparedByField.set(field, []);
@@ -261,7 +317,20 @@ export function classifyExternalImport(rawQuery, registry) {
     } else if (candidates.length > 1) {
       rowClass = EXTERNAL_ROW_CLASS.UNDECIDABLE;
       reasonCode = EXTERNAL_IMPORT_REASON.EXTERNAL_ROW_KEY_AMBIGUOUS;
-    } else if (venue !== null && venue.state !== EXTERNAL_NAME_RESOLUTION.RESOLVED) {
+    } else if (venue === null) {
+      // `schemas.js` states this outright: `venueLabel` absent and
+      // `venueLabel: null` mean opposite things, and the second "is a row that
+      // must be classified `undecidable` rather than silently compared on the
+      // fields that did arrive". The guard below tested only a venue that had
+      // been looked up, so a row stating no venue at all skipped it and came
+      // back `matched-identical` and `acceptable` — the one arrangement that
+      // makes an unjudgeable row acceptable. The reasoning is the same one the
+      // unresolved case gets: the key is (date, home, away) and does not carry
+      // the ground, so without a venue "the same two teams on the same date" is
+      // not known to be the same fixture.
+      rowClass = EXTERNAL_ROW_CLASS.UNDECIDABLE;
+      reasonCode = EXTERNAL_IMPORT_REASON.EXTERNAL_ROW_VENUE_UNSTATED;
+    } else if (venue.state !== EXTERNAL_NAME_RESOLUTION.RESOLVED) {
       rowClass = EXTERNAL_ROW_CLASS.UNDECIDABLE;
       reasonCode =
         venue.state === EXTERNAL_NAME_RESOLUTION.AMBIGUOUS
@@ -381,6 +450,19 @@ export function classifyExternalImport(rawQuery, registry) {
           `imported row ${row.rowId} (${row.matchKey}) names ${row.candidateFixtureIds.length} of our fixtures, so no comparison can be attributed to one of them`,
           {
             rowId: row.rowId,
+            matchKey: row.matchKey,
+            candidateFixtureIds: row.candidateFixtureIds,
+          }
+        )
+      );
+    } else if (row.reasonCode === EXTERNAL_IMPORT_REASON.EXTERNAL_ROW_VENUE_UNSTATED) {
+      findings.push(
+        makeExternalImportFinding(
+          EXTERNAL_IMPORT_REASON.EXTERNAL_ROW_VENUE_UNSTATED,
+          `imported row ${row.rowId} (${row.matchKey}) states no venue at all, so the ground cannot be checked and "the same two teams on the same date" is not known to be the same fixture; it is reported rather than compared on the fields that did arrive`,
+          {
+            rowId: row.rowId,
+            sourceLabel: row.sourceLabel,
             matchKey: row.matchKey,
             candidateFixtureIds: row.candidateFixtureIds,
           }

@@ -44,6 +44,7 @@ import { describe, it, expect, vi } from 'vitest';
 
 import {
   ACCEPTANCE_SWEEP_CAP,
+  AVOID_WINDOW_ADMISSION_FIELDS,
   AvoidWindowDocumentSchema,
   EXTERNAL_IMPACT_VERDICT,
   EXTERNAL_IMPORT_REASON,
@@ -61,6 +62,7 @@ import {
   acceptanceDomainOf,
   acceptanceSetKey,
   analyseImportImpact,
+  avoidWindowKey,
   avoidWindowsAdmit,
   buildAvoidWindows,
   buildExternalMappingRegistry,
@@ -179,6 +181,21 @@ function corpusSweep() {
 /** Every code in a findings list. */
 function codesOf(findings) {
   return findings.map((finding) => finding.code);
+}
+
+/**
+ * One list out of a finding's `details`, sorted, as a copy.
+ *
+ * `details` is `Record<string, unknown>` by design — it holds flat primitives,
+ * ids and counts, and the type checker cannot know which. Copied rather than
+ * sorted in place, so an assertion never reorders the finding it is reading.
+ *
+ * @param {Record<string, unknown>} details
+ * @param {string} key
+ * @returns {string[]}
+ */
+function detailList(details, key) {
+  return [.../** @type {string[]} */ (details[key])].sort();
 }
 
 /** The corpus's own external-fixture row ids, which the export excludes. */
@@ -702,9 +719,30 @@ describe('acceptance 5 — the impact of accepting, on the corpus', () => {
     const none = impactOfSet(corpusSweep(), []);
     expect(none.verdict).toBe(EXTERNAL_IMPACT_VERDICT.SAFE);
     expect(none.introduced).toEqual([]);
-    expect(none.preexisting).toEqual([]);
     expect(none.moved).toEqual([]);
     expect(none.meta.bookingPairsCompared).toBeGreaterThan(0);
+
+    // No clash and no shortfall — but the plan does carry one pair that could
+    // not be *checked*: the two untimed Summit `Scrimmage` rows (GAP-14), whose
+    // format `game_formats.csv` has no row for. That is reported rather than
+    // read as clean, and it is named here from the corpus rather than allowed to
+    // hide inside an `toEqual([])` that would also pass if a real clash went
+    // unreported. `preexisting` findings are restated under one code, so the
+    // pair is identified by the details the restatement carries.
+    const untimed = toSeason2026StandingFixtures(corpusGames())
+      .filter((fixture) => fixture.endMinutes === null && fixture.date === '2026-08-22')
+      .map((fixture) => fixture.fixtureId)
+      .sort();
+    expect(untimed).toHaveLength(2);
+    expect(
+      none.preexisting.map((finding) =>
+        [finding.details.bookingAId, finding.details.bookingBId].sort().join('~')
+      )
+    ).toEqual([untimed.join('~')]);
+    for (const finding of none.preexisting) {
+      expect(detailList(finding.details, 'checksUnrun')).toEqual(['cadence', 'turnover']);
+      expect(finding.severity).toBe(EXTERNAL_IMPORT_SEVERITY.INFO);
+    }
   });
 
   it('a lone 10:00 -> 10:30 move leaves a 0-minute gap against a 20-minute floor', () => {
@@ -1481,6 +1519,535 @@ describe('acceptance 11 — every meta-assertion can fail, and here is the input
     expect(() =>
       classifyExternalImport({ ...corpusQuery(), comparedFields: ['kickoff'] }, corpusRegistry())
     ).toThrow(/not a compared field/);
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* Pre-PR review: nine defects the fifty-six tests above did not see           */
+/* -------------------------------------------------------------------------- */
+
+describe('acceptance 12 — what the fifty-six tests above did not ask', () => {
+  /**
+   * The same export acceptance 8 and 9 build, under the same cache key.
+   *
+   * Rebuilt here rather than reached for across a `describe` boundary, exactly
+   * as acceptance 9 does, so this block runs on its own with `-t`.
+   */
+  function corpusExport() {
+    if (cache.export === undefined) {
+      cache.export = buildAvoidWindows({
+        query: {
+          subject: 'avoid windows for the seeding weekend',
+          documentId: 'season-2026/avoid/seeding-weekend',
+          generatedFor: 'external seeding league',
+          dates: ['2026-08-22', '2026-08-23'],
+          surfaceIds: [
+            season2026SurfaceId('Alder Park', 'Pitch 2'),
+            season2026SurfaceId('Alder Park', 'Pitch 3'),
+          ],
+          excludeFixtureIds: externalFixtureIds(),
+        },
+        registry: corpusRegistry(),
+        standing: toSeason2026StandingFixtures(corpusGames()),
+        graph: corpusGraph(),
+      });
+    }
+    return cache.export;
+  }
+
+  /**
+   * The two proposals incident 3 turns on, both derived from the corpus: the
+   * league's published 12:30 on `Alder Park (Back Pitch 2)`, which the document
+   * exists to refuse, and the 12:00 the club agreed, which it must admit.
+   */
+  function incidentProposals() {
+    const timing = getFormatTiming(corpusTiming(), '11v11');
+    const externalLabel = 'Alder Park (Back Pitch 2)';
+    const published = corpusExternal().find(
+      (fixture) =>
+        fixture.externalVenueLabel === externalLabel &&
+        fixture.date === '2026-08-22' &&
+        fixture.kickoffMinutes === 750
+    );
+    const agreed = corpusGames().find(
+      (game) =>
+        game.date === '2026-08-22' && game.field === 'Pitch 2' && game.kickoffMinutes === 720
+    );
+    // Meta-assertion: proposals built from `undefined` would make every verdict
+    // below an answer about nothing.
+    expect(published).toBeDefined();
+    expect(agreed).toBeDefined();
+    return {
+      refused: {
+        date: '2026-08-22',
+        externalLabel,
+        startMinutes: published.kickoffMinutes,
+        endMinutes: published.kickoffMinutes + timing.occupancyMinutes.scheduled,
+      },
+      admitted: {
+        date: '2026-08-22',
+        externalLabel,
+        startMinutes: agreed.kickoffMinutes,
+        endMinutes: agreed.kickoffMinutes + timing.occupancyMinutes.scheduled,
+      },
+    };
+  }
+
+  it('1 — the read-back document still refuses what the document it came from refused', () => {
+    const exported = corpusExport();
+    const readBack = readAvoidWindowDocument(exported.document, corpusRegistry());
+    // Meta-assertion: a read-back that yielded nothing would make every verdict
+    // below `safe` by vacuity, which is the defect rather than the control.
+    expect(readBack.windows).toHaveLength(exported.windows.length);
+    expect(readBack.windows.length).toBeGreaterThan(0);
+
+    const { refused, admitted } = incidentProposals();
+
+    // Equivalence of **behaviour**, not of membership. The round-trip check
+    // above compares key sets, and a document that came back having lost the
+    // one field the admission test matches on passes that comparison while
+    // admitting everything. So the question asked here is the document's own:
+    // does the read-back still refuse the league's 12:30 and admit the 12:00?
+    expect(avoidWindowsAdmit(exported.document.windows, refused).verdict).toBe(
+      EXTERNAL_IMPACT_VERDICT.UNSAFE
+    );
+    expect(avoidWindowsAdmit(readBack.windows, refused).verdict).toBe(
+      EXTERNAL_IMPACT_VERDICT.UNSAFE
+    );
+    expect(avoidWindowsAdmit(exported.document.windows, admitted).verdict).toBe(
+      EXTERNAL_IMPACT_VERDICT.SAFE
+    );
+    expect(avoidWindowsAdmit(readBack.windows, admitted).verdict).toBe(
+      EXTERNAL_IMPACT_VERDICT.SAFE
+    );
+  });
+
+  it('1 — every field the admission test matches on survives the read, and each one is load bearing', () => {
+    const exported = corpusExport();
+    const readBack = readAvoidWindowDocument(exported.document, corpusRegistry());
+    const { refused } = incidentProposals();
+
+    // The general rule the defect breaks: a window that crosses the document
+    // boundary must come back carrying every field `avoidWindowsAdmit()` reads,
+    // or the reader's verdict is about a window it cannot recognise.
+    expect(AVOID_WINDOW_ADMISSION_FIELDS.length).toBeGreaterThan(0);
+    for (const window of readBack.windows) {
+      for (const field of AVOID_WINDOW_ADMISSION_FIELDS) {
+        expect(window).toHaveProperty(field);
+      }
+    }
+
+    // And the positive control that makes the loop above worth running: drop
+    // any one of those fields and the 12:30 stops being refused. A field that
+    // could be deleted without changing the verdict would not belong on the
+    // list, and a list nothing depends on is not a rule.
+    for (const field of AVOID_WINDOW_ADMISSION_FIELDS) {
+      const damaged = readBack.windows.map((window) => {
+        const copy = { ...window };
+        delete copy[field];
+        return copy;
+      });
+      expect(avoidWindowsAdmit(damaged, refused).verdict).not.toBe(EXTERNAL_IMPACT_VERDICT.UNSAFE);
+    }
+
+    // The round-trip key carries the label too, so a document read back under a
+    // different external name is a divergence rather than a match on surface id.
+    const [first] = exported.windows;
+    expect(avoidWindowKey(first)).not.toBe(
+      avoidWindowKey({ ...first, externalLabel: `${first.externalLabel} (renamed)` })
+    );
+  });
+
+  it('2 — a row that states no venue is undecidable, not identical', () => {
+    const identical = corpusResolution().rows.find(
+      (row) => row.rowClass === EXTERNAL_ROW_CLASS.MATCHED_IDENTICAL
+    );
+    expect(identical).toBeDefined();
+    const query = {
+      ...corpusQuery(),
+      rows: corpusQuery().rows.map((row) =>
+        row.rowId === identical.rowId ? { ...row, venueLabel: null } : row
+      ),
+    };
+    const resolution = classifyExternalImport(query, corpusRegistry());
+    const row = resolution.rows.find((candidate) => candidate.rowId === identical.rowId);
+    // Meta-assertion: a row this failed to find would pass every check below.
+    expect(row).toBeDefined();
+
+    // `schemas.js` states the contract outright — "`venueLabel` absent and
+    // `venueLabel: null` mean opposite things ... the second is a row that must
+    // be classified `undecidable`" — and declared is not enforced until
+    // something fails when it is not.
+    expect(row.rowClass).toBe(EXTERNAL_ROW_CLASS.UNDECIDABLE);
+    expect(row.acceptable).toBe(false);
+    expect(row.reasonCode).toBe(EXTERNAL_IMPORT_REASON.EXTERNAL_ROW_VENUE_UNSTATED);
+    expect(codesOf(resolution.findings)).toContain(
+      EXTERNAL_IMPORT_REASON.EXTERNAL_ROW_VENUE_UNSTATED
+    );
+    expect(resolution.meta.rowsUndecidable).toBe(1);
+    // The evidence it could compute is still published, exactly as it is for
+    // the unresolved-label case.
+    expect(row.uncomparedFields).toContain('venueId');
+    expect(row.uncomparedFields).toContain('surfaceId');
+    // And it is not in the acceptance domain, so nothing can accept it.
+    expect(acceptanceDomainOf(resolution)).not.toContain(row.rowId);
+  });
+
+  it('3 — a participant record does not break the matching it exists to preserve', () => {
+    const before = corpusResolution();
+    const sample = corpusQuery().rows[0];
+    // Meta-assertion: a label neither artifact carries would leave the record
+    // unexercised and prove nothing about matching.
+    expect(sample.homeLabel).toBeTruthy();
+
+    const registry = buildExternalMappingRegistry(
+      season2026ExternalMappingInput({
+        records: [
+          ...SEASON_2026_EXTERNAL_MAPPING_RECORDS,
+          {
+            id: 'a-participant-both-artifacts-spell-the-same-way',
+            kind: EXTERNAL_MAPPING_KIND.PARTICIPANT,
+            externalLabel: sample.homeLabel,
+            venueId: null,
+            surfaceId: null,
+            subjectId: 'season-2026/participant/the-one-the-record-names',
+            provenance: 'constructed for tests/externalFixtureImport.test.js',
+          },
+        ],
+      }),
+      { graph: corpusGraph() }
+    );
+    const after = classifyExternalImport(corpusQuery(), registry);
+
+    // The record fired: without this the assertion below would hold of a
+    // registry whose participant record was never consulted.
+    expect(after.unexercisedRecords).toEqual([]);
+    expect(after.meta.mappingRecordsExercised).toBe(
+      SEASON_2026_EXTERNAL_MAPPING_RECORDS.length + 1
+    );
+
+    // Writing down what a league calls a team must not change what the rows
+    // are. Both sides of the key go through the same canonicalisation, so a
+    // record that renames one renames both.
+    expect(after.byClass).toEqual(before.byClass);
+    expect(after.meta.rowsUnmatched).toBe(0);
+    expect(after.meta.rowsMatchedIdentical).toBe(before.meta.rowsMatchedIdentical);
+    expect(after.meta.rowsMatchedDiffering).toBe(before.meta.rowsMatchedDiffering);
+  });
+
+  it('4 — a field our side does not carry is uncompared, not a difference against null', () => {
+    const identical = corpusResolution().rows.find(
+      (row) => row.rowClass === EXTERNAL_ROW_CLASS.MATCHED_IDENTICAL
+    );
+    expect(identical).toBeDefined();
+    const ours = corpusQuery().standing.find(
+      (fixture) => fixture.fixtureId === identical.fixtureId
+    );
+    const theirs = corpusQuery().rows.find((row) => row.rowId === identical.rowId);
+    expect(ours).toBeDefined();
+    expect(theirs).toBeDefined();
+
+    const resolution = classifyExternalImport(
+      {
+        subject: 'a division we do not record against one they publish',
+        rows: [{ ...theirs, division: 'Seeding' }],
+        standing: [{ ...ours, division: null }],
+        keyFields: ['date', 'home', 'away'],
+        comparedFields: ['kickoffMinutes', 'division'],
+      },
+      corpusRegistry()
+    );
+    const row = resolution.rows[0];
+    expect(row.fixtureId).toBe(ours.fixtureId);
+
+    // The uncompared guard belongs to the pair, not to one side of it. A null
+    // on ours is exactly as uncomparable as a null on theirs, and reporting it
+    // as `ours: null` puts a row in the acceptance domain that nothing can
+    // honestly accept.
+    expect(row.uncomparedFields).toContain('division');
+    expect(row.comparedFields).not.toContain('division');
+    expect(row.differences.map((difference) => difference.field)).not.toContain('division');
+    expect(row.rowClass).toBe(EXTERNAL_ROW_CLASS.MATCHED_IDENTICAL);
+    expect(acceptanceDomainOf(resolution)).toEqual([]);
+    expect(codesOf(resolution.findings)).toContain(
+      EXTERNAL_IMPORT_REASON.EXTERNAL_FIELD_UNCOMPARED
+    );
+  });
+
+  it('5 — sixteen sets that cover two of sixteen are not exhaustive', () => {
+    const domain = acceptanceDomainOf(corpusResolution());
+    expect(domain).toHaveLength(4);
+    const sets = [];
+    for (let i = 0; i < 8; i += 1) sets.push([]);
+    for (let i = 0; i < 8; i += 1) sets.push([...domain]);
+
+    const sweep = sweepAcceptanceSets({
+      subject: 'sixteen sets that are two sets',
+      resolution: corpusResolution(),
+      standing: corpusQuery().standing,
+      graph: corpusGraph(),
+      timingTable: corpusTiming(),
+      sets,
+    });
+
+    // A count is not a cover. Sixteen sets over a four-row domain is the number
+    // an exhaustive sweep has, and these sixteen answer two of the sixteen
+    // questions — including, in particular, none of the twelve single-pitch
+    // splits that are the whole finding of this module.
+    expect(sweep.setsPossible).toBe(16);
+    expect(sweep.results).toHaveLength(16);
+    expect(sweep.exhaustive).toBe(false);
+    const finding = sweep.findings.find(
+      (candidate) =>
+        candidate.code === EXTERNAL_IMPORT_REASON.EXTERNAL_ACCEPTANCE_SETS_NOT_EXHAUSTIVE
+    );
+    expect(finding).toBeDefined();
+    expect(finding.details.setsExamined).toBe(16);
+    expect(finding.details.setsCovered).toBe(2);
+    expect(finding.details.setsPossible).toBe(16);
+
+    // A set naming a row outside the domain covers none of the domain either.
+    const invented = sweepAcceptanceSets({
+      subject: 'sixteen sets about rows that are not in the domain',
+      resolution: corpusResolution(),
+      standing: corpusQuery().standing,
+      graph: corpusGraph(),
+      timingTable: corpusTiming(),
+      sets: [['a-row-no-classification-holds']],
+    });
+    expect(invented.exhaustive).toBe(false);
+  });
+
+  it('6 — a spacing pair that could not be checked says so, rather than passing quietly', () => {
+    const untimed = toSeason2026StandingFixtures(corpusGames()).filter(
+      (fixture) => fixture.endMinutes === null
+    );
+    const [first, second] = untimed;
+    expect(second).toBeDefined();
+    expect(first.date).toBe(second.date);
+    expect(first.surfaceId).toBe(second.surfaceId);
+
+    const elsewhere = {
+      ...second,
+      venueId: season2026VenueId('Alder Park'),
+      surfaceId: season2026SurfaceId('Alder Park', 'Pitch 2'),
+    };
+    const registry = buildExternalMappingRegistry(
+      {
+        registryId: 'summit',
+        label: 'a registry that names the stadium',
+        party: 'test league',
+        records: [
+          {
+            id: 'summit-stadium',
+            kind: EXTERNAL_MAPPING_KIND.VENUE,
+            externalLabel: 'Summit (Stadium)',
+            venueId: first.venueId,
+            surfaceId: first.surfaceId,
+            subjectId: null,
+            provenance: 'constructed for tests/externalFixtureImport.test.js',
+          },
+        ],
+      },
+      { graph: corpusGraph() }
+    );
+
+    /**
+     * The same move at two formats: the corpus's untimed `Scrimmage`, whose
+     * `game_formats.csv` row does not exist (GAP-14), and an 11v11 whose does.
+     *
+     * @param {string|null} format
+     * @param {number} laterKickoffMinutes
+     */
+    function moveOntoTheStadium(format, laterKickoffMinutes) {
+      const a = {
+        ...first,
+        format,
+        endMinutes: format === null ? null : first.kickoffMinutes + 90,
+      };
+      const b = {
+        ...elsewhere,
+        kickoffMinutes: laterKickoffMinutes,
+        format,
+        endMinutes: format === null ? null : laterKickoffMinutes + 90,
+      };
+      const resolution = classifyExternalImport(
+        {
+          subject: 'a fixture moved onto ground another already holds',
+          rows: [
+            {
+              rowId: 'relocate#0',
+              sourceLabel: 'constructed',
+              date: b.date,
+              kickoffMinutes: b.kickoffMinutes,
+              venueLabel: 'Summit (Stadium)',
+              homeLabel: b.homeLabel,
+              awayLabel: b.awayLabel,
+              format: null,
+              division: null,
+            },
+          ],
+          standing: [a, b],
+          keyFields: ['date', 'home', 'away'],
+          comparedFields: ['kickoffMinutes', 'venueId', 'surfaceId'],
+        },
+        registry
+      );
+      expect(resolution.meta.rowsMatchedDiffering).toBe(1);
+      return analyseImportImpact({
+        subject: 'a fixture moved onto ground another already holds',
+        resolution,
+        standing: [a, b],
+        query: { acceptedRowIds: ['relocate#0'] },
+        graph: corpusGraph(),
+        timingTable: corpusTiming(),
+      });
+    }
+
+    // Unregistered format, unknown end: neither the turnover floor nor the
+    // declared block can be applied, and the pair says which and why instead of
+    // leaving "nothing introduced" to mean "nothing was looked at".
+    const unchecked = moveOntoTheStadium(null, second.kickoffMinutes);
+    const skipped = unchecked.introduced.find(
+      (finding) => finding.code === EXTERNAL_IMPORT_REASON.EXTERNAL_IMPACT_SPACING_UNCHECKED
+    );
+    expect(skipped).toBeDefined();
+    expect(detailList(skipped.details, 'checksUnrun')).toEqual(['cadence', 'turnover']);
+    expect(skipped.details.format).toBeNull();
+
+    // The positive control, on the same pair with a format `game_formats.csv`
+    // does declare: the checks run, and one of them fires. A "no finding" that
+    // meant "unchecked" and a "no finding" that meant "checked and clean" are
+    // the two answers this code exists to tell apart.
+    const timing = getFormatTiming(corpusTiming(), '11v11');
+    const ran = moveOntoTheStadium('11v11', first.kickoffMinutes + 90);
+    expect(codesOf(ran.introduced)).not.toContain(
+      EXTERNAL_IMPORT_REASON.EXTERNAL_IMPACT_SPACING_UNCHECKED
+    );
+    const turnover = ran.introduced.find(
+      (finding) => finding.code === EXTERNAL_IMPORT_REASON.EXTERNAL_IMPACT_TURNOVER_SHORTFALL
+    );
+    expect(turnover).toBeDefined();
+    expect(turnover.details.gapMinutes).toBe(0);
+    expect(turnover.details.floorMinutes).toBe(timing.turnoverMinMinutes);
+  });
+
+  it('7 — a scope surface the facility graph does not have is reported, not thrown', () => {
+    const ghost = 'alder-park/pitch-9';
+    const registry = buildExternalMappingRegistry(
+      {
+        registryId: 'ghost',
+        label: 'a record naming ground the graph does not have',
+        party: 'external seeding league',
+        records: [
+          {
+            id: 'ghost-pitch',
+            kind: EXTERNAL_MAPPING_KIND.VENUE,
+            externalLabel: 'Alder Park (Pitch 9)',
+            venueId: season2026VenueId('Alder Park'),
+            surfaceId: ghost,
+            subjectId: null,
+            provenance: 'constructed for tests/externalFixtureImport.test.js',
+          },
+        ],
+      },
+      { graph: corpusGraph() }
+    );
+    // The precondition the defect needs: the label resolves backwards even
+    // though the ground is not in the graph.
+    expect(reverseResolveSurface(registry, ghost).state).toBe(EXTERNAL_NAME_RESOLUTION.RESOLVED);
+
+    const exported = buildAvoidWindows({
+      query: {
+        subject: 'a pitch the club does not have',
+        documentId: 'ghost-1',
+        generatedFor: 'external seeding league',
+        dates: ['2026-08-22'],
+        surfaceIds: [ghost],
+        excludeFixtureIds: [],
+      },
+      registry,
+      standing: toSeason2026StandingFixtures(corpusGames()),
+      graph: corpusGraph(),
+    });
+    expect(codesOf(exported.findings)).toContain(
+      EXTERNAL_IMPORT_REASON.EXTERNAL_AVOID_SURFACE_UNKNOWN
+    );
+    expect(exported.status).toBe(EXTERNAL_IMPORT_STATUS.REJECTED);
+    expect(exported.document.windows).toEqual([]);
+    expect(exported.unmappedSurfaceIds).toEqual([ghost]);
+  });
+
+  it('8 — "nothing projected" says what happened, and does not claim agreement', () => {
+    const kept = SEASON_2026_EXTERNAL_MAPPING_RECORDS.filter(
+      (record) => record.surfaceId !== season2026SurfaceId('Alder Park', 'Pitch 3')
+    );
+    const reduced = buildExternalMappingRegistry(
+      season2026ExternalMappingInput({ records: kept }),
+      { graph: corpusGraph() }
+    );
+    const resolution = classifyExternalImport(corpusQuery(), reduced);
+    const refusedRowIds = resolution.rows.filter((row) => !row.acceptable).map((row) => row.rowId);
+    // Meta-assertion: with nothing refused this would be a test about an
+    // acceptance that happened to move nothing, which is the other case.
+    expect(refusedRowIds.length).toBeGreaterThan(0);
+
+    const result = analyseImportImpact({
+      subject: 'accepting rows that could not be judged',
+      resolution,
+      standing: corpusQuery().standing,
+      query: { acceptedRowIds: refusedRowIds },
+      graph: corpusGraph(),
+      timingTable: corpusTiming(),
+    });
+    expect(result.moved).toEqual([]);
+    const nothing = result.findings.find(
+      (finding) => finding.code === EXTERNAL_IMPORT_REASON.EXTERNAL_IMPACT_NOTHING_PROJECTED
+    );
+    expect(nothing).toBeDefined();
+
+    // The rows were refused, not agreed with. A message that says they "already
+    // agree" tells an operator the import was a no-op when in fact none of it
+    // could be applied.
+    expect(nothing.message).not.toMatch(/already agree/);
+    expect(detailList(nothing.details, 'rejectedRowIds')).toEqual([...refusedRowIds].sort());
+    expect(nothing.details.agreeingRowIds).toEqual([]);
+    expect(codesOf(result.findings)).toContain(
+      EXTERNAL_IMPORT_REASON.EXTERNAL_ACCEPTANCE_ROW_NOT_ACCEPTABLE
+    );
+
+    // And the other half of the same message, from the corpus: rows that really
+    // do already agree are named as agreeing and nothing is called refused.
+    const agreeing = corpusResolution()
+      .rows.filter((row) => row.rowClass === EXTERNAL_ROW_CLASS.MATCHED_IDENTICAL)
+      .map((row) => row.rowId);
+    expect(agreeing.length).toBeGreaterThan(0);
+    const noop = analyseImportImpact({
+      subject: 'accepting rows that already agree',
+      resolution: corpusResolution(),
+      standing: corpusQuery().standing,
+      query: { acceptedRowIds: agreeing },
+      graph: corpusGraph(),
+      timingTable: corpusTiming(),
+    });
+    const alsoNothing = noop.findings.find(
+      (finding) => finding.code === EXTERNAL_IMPORT_REASON.EXTERNAL_IMPACT_NOTHING_PROJECTED
+    );
+    expect(alsoNothing).toBeDefined();
+    expect(alsoNothing.details.rejectedRowIds).toEqual([]);
+    expect(detailList(alsoNothing.details, 'agreeingRowIds')).toEqual([...agreeing].sort());
+  });
+
+  it('9 — every set the sweep examined can be looked up by its ids, and nothing else can', () => {
+    const sweep = corpusSweep();
+    expect(sweep.results.length).toBeGreaterThan(0);
+    for (const result of sweep.results) {
+      const found = impactOfSet(sweep, result.acceptedRowIds);
+      expect(found).toBe(result);
+      // Order-independent, which is what makes the key a key.
+      expect(impactOfSet(sweep, [...result.acceptedRowIds].reverse())).toBe(result);
+    }
+    expect(impactOfSet(sweep, ['a-row-this-sweep-never-saw'])).toBeNull();
   });
 });
 

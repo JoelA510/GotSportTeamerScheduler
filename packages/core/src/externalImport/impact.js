@@ -356,8 +356,26 @@ function scanUndecidablePairs(graph, bookings) {
  *
  * Both are read off the **earlier** fixture's format, because both are
  * properties of the ground being handed over rather than of what arrives next.
- * A fixture with no known occupancy end is skipped here and is reported by
- * {@link scanUndecidablePairs} instead — it is undecidable, not compliant.
+ *
+ * ## A pair this cannot check says so
+ *
+ * Two things stop a check: an **unknown occupancy end** on the earlier fixture
+ * (GAP-14, the corpus's `Scrimmage` rows), which leaves nothing to measure a
+ * turnover gap from; and a **format `game_formats.csv` does not register**,
+ * which leaves neither a floor nor a block to measure against. Both used to be
+ * bare `continue`s that skipped *both* checks and emitted nothing, so a pair
+ * nothing had looked at was indistinguishable from a pair that had been looked
+ * at and was clean — in a module whose stated rule is that unknown is not
+ * "fine". Each check is now attempted on its own and every one that cannot run
+ * is published as
+ * {@link import('./reasonCodes.js').EXTERNAL_IMPORT_REASON.EXTERNAL_IMPACT_SPACING_UNCHECKED},
+ * naming the pair and which checks went unrun. Note that the two reasons are not
+ * the same shape: an unknown end stops the turnover check only, because cadence
+ * is measured kickoff to kickoff and needs no footprint at all.
+ *
+ * A format that registers `null` for a floor or a block is a different fact —
+ * the format declares no such rule — and is not reported here, because there is
+ * nothing that went unchecked.
  *
  * @param {import('../timing/types.js').FormatTimingTable} timingTable
  * @param {ReadonlyArray<import('./types.js').ProjectedFixture>} fixtures
@@ -381,9 +399,7 @@ function spacingFindings(timingTable, fixtures) {
     for (let i = 1; i < sorted.length; i += 1) {
       const earlier = sorted[i - 1];
       const later = sorted[i];
-      if (earlier.endMinutes === null) continue;
       const timing = getFormatTiming(timingTable, earlier.format);
-      if (!timing) continue;
       const [date, surfaceId] = key.split('|');
       const shared = {
         bookingAId: earlier.fixtureId,
@@ -396,7 +412,37 @@ function spacingFindings(timingTable, fixtures) {
         format: earlier.format,
       };
 
-      if (timing.turnoverMinMinutes !== null) {
+      /** @type {string[]} */
+      const checksUnrun = [];
+      /** @type {string[]} */
+      const because = [];
+      if (!timing) {
+        checksUnrun.push('turnover', 'cadence');
+        because.push(
+          `game_formats.csv registers no timing for ${earlier.format === null ? 'a fixture stating no format' : JSON.stringify(earlier.format)} (GAP-14), so neither a turnover floor nor a declared block exists to measure against`
+        );
+      } else if (earlier.endMinutes === null) {
+        checksUnrun.push('turnover');
+        because.push(
+          `${earlier.fixtureId} has no known occupancy end, so the gap handed over to ${later.fixtureId} cannot be measured`
+        );
+      }
+      if (checksUnrun.length > 0) {
+        findings.push(
+          makeExternalImportFinding(
+            EXTERNAL_IMPORT_REASON.EXTERNAL_IMPACT_SPACING_UNCHECKED,
+            `${surfaceId} on ${date}: ${checksUnrun.join(' and ')} went unchecked between ${earlier.fixtureId} and ${later.fixtureId} — ${because.join('; ')}. The pair is reported as unchecked rather than left to read as clean`,
+            {
+              ...shared,
+              checksUnrun,
+              checksRun: ['turnover', 'cadence'].filter((check) => !checksUnrun.includes(check)),
+            }
+          )
+        );
+      }
+      if (!timing) continue;
+
+      if (earlier.endMinutes !== null && timing.turnoverMinMinutes !== null) {
         const gap = later.kickoffMinutes - earlier.endMinutes;
         if (gap < timing.turnoverMinMinutes) {
           findings.push(
@@ -584,11 +630,42 @@ export function analyseImportImpact({ subject, resolution, standing, query, grap
   const findings = [...projection.findings, ...introduced, ...resolvedAway, ...preexisting];
 
   if (acceptedRowIds.length > 0 && projection.moved.length === 0) {
+    // Three different things make a set move nothing, and calling all of them
+    // "already agrees" states something false about two of them. A set whose
+    // rows were **refused** — undecidable, unmatched, or named by nobody — moved
+    // nothing because none of it could be applied, which is the opposite of a
+    // no-op, and an operator told the import "already agrees" would file it as
+    // done. The third is a row that matched and differs only on `format` or
+    // `division`, which this module records and deliberately does not project.
+    const rejectedRowIds = projection.findings
+      .filter(
+        (finding) => finding.code === EXTERNAL_IMPORT_REASON.EXTERNAL_ACCEPTANCE_ROW_NOT_ACCEPTABLE
+      )
+      .map((finding) => /** @type {string} */ (finding.details.rowId))
+      .sort();
+    const rejected = new Set(rejectedRowIds);
+    const applied = acceptedRowIds.filter((rowId) => !rejected.has(rowId));
+    const agreeingRowIds = applied
+      .filter(
+        (rowId) =>
+          (resolution.rows.find((row) => row.rowId === rowId)?.differences ?? []).length === 0
+      )
+      .sort();
+    const unprojectedRowIds = applied.filter((rowId) => !agreeingRowIds.includes(rowId)).sort();
+    const said = [
+      rejectedRowIds.length > 0
+        ? `${rejectedRowIds.length} could not be applied at all (${rejectedRowIds.join(', ')})`
+        : null,
+      agreeingRowIds.length > 0 ? `${agreeingRowIds.length} already agree with what we hold` : null,
+      unprojectedRowIds.length > 0
+        ? `${unprojectedRowIds.length} differ only on fields this module records rather than moves (${unprojectedRowIds.join(', ')})`
+        : null,
+    ].filter((clause) => clause !== null);
     findings.push(
       makeExternalImportFinding(
         EXTERNAL_IMPORT_REASON.EXTERNAL_IMPACT_NOTHING_PROJECTED,
-        `accepting ${acceptedRowIds.length} row(s) moved no fixture; every one of them already agrees with what we hold, so this verdict is about a change that does not exist`,
-        { setKey, acceptedRowIds }
+        `accepting ${acceptedRowIds.length} row(s) moved no fixture: ${said.join('; ')}. This verdict is therefore about a change that does not exist, and says nothing about whether the rows were applied`,
+        { setKey, acceptedRowIds, rejectedRowIds, agreeingRowIds, unprojectedRowIds }
       )
     );
   }
@@ -691,24 +768,45 @@ export function sweepAcceptanceSets({
 
   /** @type {string[][]} */
   let candidateSets;
-  let exhaustive;
   if (sets !== undefined) {
     candidateSets = sets.map((set) => [...set].sort());
-    exhaustive = candidateSets.length === setsPossible;
   } else if (domain.length <= ACCEPTANCE_SWEEP_CAP) {
     candidateSets = allSubsets(domain);
-    exhaustive = true;
   } else {
     const singletons = domain.map((id) => [id]);
     const complements = domain.map((id) => domain.filter((other) => other !== id));
     candidateSets = [[], [...domain], ...singletons, ...complements];
-    exhaustive = false;
   }
+
+  /**
+   * **How many of the `2 ** n` these sets actually cover**, and therefore
+   * whether the sweep is exhaustive.
+   *
+   * Exhaustiveness used to be `candidateSets.length === setsPossible` on the
+   * caller-supplied branch and a hard `true` on the enumerated one. Both were
+   * **counts**, and a count is not a cover: sixteen copies of the empty set over
+   * a four-row domain published `exhaustive: true` and suppressed
+   * `EXTERNAL_ACCEPTANCE_SETS_NOT_EXHAUSTIVE` — this module's own failure mode,
+   * a sweep that quietly skipped the subset that breaks and reported the ones it
+   * tried as though they were all of them.
+   *
+   * So it is derived here, once, from whichever list the branches above
+   * produced, and no branch gets to assert it about itself. A set naming a row
+   * outside the domain covers nothing of the domain and is dropped before
+   * counting; duplicates collapse. The domain has exactly `setsPossible`
+   * distinct subsets, so reaching that many distinct ones *is* the cover, and it
+   * is established without enumerating `2 ** n` of them to compare against.
+   */
+  const inDomain = new Set(domain);
+  const setsCovered = new Set(
+    candidateSets
+      .filter((set) => set.every((rowId) => inDomain.has(rowId)))
+      .map((set) => acceptanceSetKey([...new Set(set)]))
+  ).size;
+  const exhaustive = setsCovered === setsPossible;
 
   /** @type {import('./types.js').ExternalImpactResult[]} */
   const results = [];
-  /** @type {Map<string, import('./types.js').ExternalImpactResult>} */
-  const byKey = new Map();
   for (const set of candidateSets) {
     const result = analyseImportImpact({
       subject,
@@ -719,7 +817,6 @@ export function sweepAcceptanceSets({
       timingTable,
     });
     results.push(result);
-    byKey.set(result.setKey, result);
     meta.acceptanceSetsExamined += 1;
     meta.fixturesProjected += result.meta.fixturesProjected;
     meta.bookingPairsCompared += result.meta.bookingPairsCompared;
@@ -772,11 +869,12 @@ export function sweepAcceptanceSets({
     findings.push(
       makeExternalImportFinding(
         EXTERNAL_IMPORT_REASON.EXTERNAL_ACCEPTANCE_SETS_NOT_EXHAUSTIVE,
-        `${candidateSets.length} of the ${setsPossible} possible acceptance sets over ${domain.length} row(s) were examined; a set not examined has no verdict here, and its absence from the unsafe list means nothing`,
+        `${candidateSets.length} acceptance set(s) were examined and they cover ${setsCovered} of the ${setsPossible} possible over ${domain.length} row(s); a set not covered has no verdict here, and its absence from the unsafe list means nothing`,
         {
           domainSize: domain.length,
           setsPossible,
           setsExamined: candidateSets.length,
+          setsCovered,
           cap: ACCEPTANCE_SWEEP_CAP,
         }
       )
@@ -813,6 +911,12 @@ export function sweepAcceptanceSets({
 
 /**
  * Look up one set's result in a sweep, by its ids.
+ *
+ * Scans `sweep.results`, which is the sweep's own published record of what it
+ * examined and the only place a caller holding a sweep can look. `sweepAcceptanceSets()`
+ * used to build a `setKey -> result` index alongside it and never read it, so
+ * the sweep carried two accounts of the same thing and one of them could drift
+ * out of agreement with the other unnoticed. There is one now.
  *
  * @param {import('./types.js').ExternalAcceptanceSweep} sweep
  * @param {ReadonlyArray<string>} rowIds
