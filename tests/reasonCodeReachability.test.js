@@ -1,8 +1,8 @@
 /**
  * Repo-wide reachability audit for every frozen reason-code table in
  * `packages/core/src` — the generalisation of the per-module audit
- * `tests/attribution.test.js` already carries. 16 vocabularies, 324 codes, of
- * which 314 are shown to be producible and 10 are named as holes.
+ * `tests/attribution.test.js` already carries. 17 vocabularies, 348 codes, of
+ * which 337 are shown to be producible and 11 are named as holes.
  *
  * **The defect this exists to catch.** Four times now, in four unrelated
  * modules, a reason code has been declared, given a severity, documented, and
@@ -54,7 +54,7 @@
  *   coverage down with it, and the audit would then read as a defect in the
  *   module rather than in this file. The labels passed to {@link harvest} exist
  *   so the failure names the call that used to work.
- * - Seven declared codes cannot be produced through any entry point at all, and
+ * - Eight declared codes cannot be produced through any entry point at all, and
  *   three more only by calling an exported helper the pipeline itself never
  *   calls that way. Each is named in {@link UNREACHABLE} with what stands in
  *   the way, and that list — not this file's machinery — is the finding worth
@@ -131,6 +131,18 @@ import {
   canTeamPlay,
   feasibleKickoffBounds,
 } from '@squadlogic/core/feasibility/index.js';
+import {
+  FAIRNESS_COMPETITION,
+  FAIRNESS_METRIC,
+  FAIRNESS_OBJECTIVE,
+  FAIRNESS_REASON,
+  classifyFairnessFixtures,
+  compareObjectiveScores,
+  fairnessReport,
+  participationOf,
+  scoreFairnessObjective,
+  toSeason2026FairnessFixtures,
+} from '@squadlogic/core/fairness/index.js';
 import {
   SEASON_2026_ROW_KIND,
   loadCoachRoster,
@@ -287,6 +299,7 @@ const TABLES = Object.freeze({
   AVAILABILITY_REASON,
   CONSTRAINT_REASON,
   FACILITY_REASON,
+  FAIRNESS_REASON,
   FEASIBILITY_REASON,
   FREEZE_REASON,
   PEOPLE_REASON,
@@ -399,6 +412,11 @@ function allow(code, why, reason) {
 
 /** @type {ReadonlyArray<{ code: string, why: string, reason: string }>} */
 const UNREACHABLE = Object.freeze([
+  allow(
+    'FAIRNESS_FLAG_EVIDENCE_MISSING',
+    WHY.NO_PRODUCTION_PATH,
+    'assertFlagEvidence() runs from fairnessReport() over every flag, and buildPopulations() cannot produce a flag that fails it: a judgement is only ever "outlier" when deriveFairnessJudgement() saw a `usable` dispersion and a finite score, and a usable dispersion carries a centre, a non-zero scale and at least MIN_POPULATION_FOR_DISPERSION members by construction — so the basis, the centre, the scale, the deviation, the score, the threshold and the direction are all present one line before the flag exists. Making it fire would mean introducing the unpublished flag it exists to catch. Its falsifiability is proved where it belongs, in tests/fairnessMetrics.test.js, which hands it a hand-built flag with a null centre and shows it refuses; driving it from here would be the forged-state shape CLAUDE.md §3 names.'
+  ),
   allow(
     'FEASIBILITY_CANDIDATE_DROPPED',
     WHY.NO_PRODUCTION_PATH,
@@ -3822,6 +3840,218 @@ harvest(
       }),
       { teamId: anchor.homeTeamId, dates: ['2026-10-03'], kickoffMinutes: 10 * 60 },
       { venueComplexes }
+    );
+  })()
+);
+
+/* -- fairness -------------------------------------------------------------- */
+
+/**
+ * The fairness and equity layer, driven through its public entry points.
+ *
+ * The season corpus reaches twelve of its twenty-two codes on its own; the
+ * rest need a fixture list this season does not contain, and each is built here
+ * as **input data** — a plain array of schema-shaped fixtures — rather than by
+ * reaching into a returned report.
+ *
+ * `FAIRNESS_GROUP_AMBIGUOUS` used to be one of the twelve and is now one of the
+ * rest. The corpus' only two-label subject, `16GSelect02`, carries `16GS` on one
+ * scrimmage and `U16G` on another and holds no league fixture, and a league
+ * metric's cohort is now drawn from league fixtures only — so the corpus has no
+ * subject holding two keys *of the class a metric reads*, and the code is
+ * driven below from a constructed league list instead.
+ */
+const fairnessFixtures = toSeason2026FairnessFixtures(season.combinedGames).fixtures;
+
+/** A schema-shaped league fixture, for the constructed cases. */
+function fairnessFixture(overrides) {
+  return {
+    fixtureId: 'x',
+    scopeId: 'audit',
+    competition: FAIRNESS_COMPETITION.LEAGUE,
+    date: '2026-08-22',
+    kickoffMinutes: 600,
+    venueId: 'venue-a',
+    surfaceId: 'venue-a/pitch-1',
+    division: 'U10B',
+    ageGroup: 'U10',
+    format: '7v7',
+    homeSubjectId: 'home',
+    awaySubjectId: 'away',
+    ...overrides,
+  };
+}
+
+harvest('fairnessReport(the season corpus)', fairnessReport({ fixtures: fairnessFixtures }));
+
+harvest(
+  'classifyFairnessFixtures(a competition nobody has declared, and a row naming nobody)',
+  classifyFairnessFixtures([
+    fairnessFixture({ fixtureId: 'a', competition: 'tournament' }),
+    fairnessFixture({ fixtureId: 'b', homeSubjectId: null, awaySubjectId: null }),
+  ])
+);
+
+harvest(
+  'classifyFairnessFixtures(two scopes sharing a division label)',
+  classifyFairnessFixtures([
+    fairnessFixture({ fixtureId: 'a', scopeId: 'club-a' }),
+    fairnessFixture({ fixtureId: 'b', scopeId: 'club-b' }),
+  ])
+);
+
+harvest(
+  'fairnessReport(nothing the classifier accepts)',
+  fairnessReport({ fixtures: [fairnessFixture({ competition: 'tournament' })] })
+);
+
+harvest(
+  'fairnessReport(a season of external fixtures only)',
+  fairnessReport({
+    fixtures: Array.from({ length: 8 }, (unused, index) =>
+      fairnessFixture({
+        fixtureId: `e${index}`,
+        competition: FAIRNESS_COMPETITION.EXTERNAL,
+        homeSubjectId: `H${index}`,
+        awaySubjectId: `A${index}`,
+      })
+    ),
+  })
+);
+
+harvest(
+  'fairnessReport(three teams, so no cohort reaches the four-member floor)',
+  fairnessReport({
+    fixtures: [
+      fairnessFixture({ fixtureId: 'a', homeSubjectId: 'T1', awaySubjectId: 'T2' }),
+      fairnessFixture({
+        fixtureId: 'b',
+        date: '2026-08-29',
+        homeSubjectId: 'T2',
+        awaySubjectId: 'T3',
+      }),
+      fairnessFixture({
+        fixtureId: 'c',
+        date: '2026-09-05',
+        homeSubjectId: 'T3',
+        awaySubjectId: 'T1',
+      }),
+    ],
+  })
+);
+
+harvest(
+  'fairnessReport(a league whose fixtures carry no kickoff)',
+  fairnessReport({
+    fixtures: Array.from({ length: 24 }, (unused, index) =>
+      fairnessFixture({
+        fixtureId: `u${index}`,
+        date: `2026-09-${String((index % 6) + 1).padStart(2, '0')}`,
+        kickoffMinutes: null,
+        homeSubjectId: `T${index % 6}`,
+        awaySubjectId: `T${(index % 6) + 6}`,
+      })
+    ),
+    metricIds: [FAIRNESS_METRIC.MEAN_KICKOFF],
+  })
+);
+
+harvest(
+  'fairnessReport(one side scheduled early enough to flag below the cohort)',
+  fairnessReport({
+    fixtures: Array.from({ length: 12 }, (unused, team) =>
+      Array.from({ length: 9 }, (ignored, round) =>
+        fairnessFixture({
+          fixtureId: `t${team}-r${round}`,
+          date: `2026-09-${String(round + 1).padStart(2, '0')}`,
+          kickoffMinutes: team === 0 ? 480 : 600 + ((team + round) % 4) * 7,
+          homeSubjectId: `T${team}`,
+          awaySubjectId: null,
+        })
+      )
+    ).flat(),
+    metricIds: [FAIRNESS_METRIC.MEAN_KICKOFF],
+  })
+);
+
+harvest(
+  'fairnessReport(a team whose league fixtures carry two spellings of its division)',
+  fairnessReport({
+    fixtures: [
+      ...Array.from({ length: 4 }, (unused, round) =>
+        fairnessFixture({
+          fixtureId: `amb-${round}`,
+          date: `2026-09-0${round + 1}`,
+          homeSubjectId: `T${round}`,
+          awaySubjectId: `T${round + 4}`,
+        })
+      ),
+      // The same division, spelled the other way, on a league row. Two keys of
+      // the class the metric reads is what makes a subject ambiguous.
+      fairnessFixture({
+        fixtureId: 'amb-relabelled',
+        date: '2026-09-05',
+        division: '10B',
+        homeSubjectId: 'T0',
+        awaySubjectId: 'T1',
+      }),
+    ],
+  })
+);
+
+harvest(
+  'scoreFairnessObjective(the season corpus, where 22 subjects cannot be scored)',
+  scoreFairnessObjective(
+    fairnessFixtures,
+    { objectiveId: FAIRNESS_OBJECTIVE.HOSTING_BALANCE },
+    participationOf(fairnessFixtures)
+  )
+);
+
+harvest(
+  'fairnessReport(two rows under one fixture id)',
+  fairnessReport({
+    fixtures: [
+      fairnessFixture({ fixtureId: 'dup', homeSubjectId: 'T1', awaySubjectId: 'T2' }),
+      fairnessFixture({
+        fixtureId: 'dup',
+        date: '2026-08-29',
+        homeSubjectId: 'T1',
+        awaySubjectId: 'T3',
+      }),
+    ],
+  })
+);
+
+harvest(
+  'scoreFairnessObjective(a list of rows that name nobody, so nothing is scored)',
+  scoreFairnessObjective(
+    [
+      fairnessFixture({ fixtureId: 'p1', homeSubjectId: null, awaySubjectId: null }),
+      fairnessFixture({ fixtureId: 'p2', homeSubjectId: null, awaySubjectId: null }),
+    ],
+    { objectiveId: FAIRNESS_OBJECTIVE.HOSTING_BALANCE }
+  )
+);
+
+harvest(
+  'compareObjectiveScores(two results over different populations)',
+  (() => {
+    const whole = participationOf(fairnessFixtures);
+    const league = fairnessFixtures.filter(
+      (fixture) => fixture.competition === FAIRNESS_COMPETITION.LEAGUE
+    );
+    return compareObjectiveScores(
+      scoreFairnessObjective(
+        fairnessFixtures,
+        { objectiveId: FAIRNESS_OBJECTIVE.HOSTING_BALANCE },
+        whole
+      ),
+      scoreFairnessObjective(
+        league,
+        { objectiveId: FAIRNESS_OBJECTIVE.HOSTING_BALANCE },
+        participationOf(league)
+      )
     );
   })()
 );

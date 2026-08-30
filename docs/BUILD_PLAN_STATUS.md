@@ -633,11 +633,94 @@ moved, by design: the quality delta, from +1,597,760 to +324,800, and the
 control's `quality.right` from 8,305,400 to 1,105,400 against the searched run's
 400,300 — the change terms are no longer counted inside a number called quality.
 
+**Prompt 7.2 — fairness and equity metrics.** Built in the working tree, not
+committed. `packages/core/src/fairness/` (`reasonCodes.js`, `schemas.js`,
+`types.js`, `classification.js`, `dispersion.js`, `metrics.js`, `outliers.js`,
+`report.js`, `objectives.js`, `adapters/season2026Fairness.js`, `index.js`) plus
+`tests/fairnessMetrics.test.js` (41 cases); `tests/reasonCodeReachability.test.js` gains the
+seventeenth vocabulary and its driver. Suite **1904 -> 1946**, measured at
+`4768869` before and after rather than added up. All six gates green, season
+fixture green.
+
+One call, `fairnessReport()`, over a fixture list. Four metrics — `games-played`,
+`hosting-share`, `mean-kickoff`, `venue-spread` — at three subject kinds, judged
+in three cohorts (`division` / `age-group` / `season`), plus three **unwired**
+solver objectives in `objectives.js`.
+
+**The distinction the module is built around.** `combined_schedule.csv` names 152
+distinct labels in its Home/Away columns; 101 rows name no participant at all
+(100 `Select Game N` reserved slots and one `Scrimmage - teams TBD` reservation),
+and the real participant count is **140**, not 152 and not the 141 an
+exclusion list that misses the third placeholder kind produces. Of the 140,
+**122 hold a league fixture and 18 do not** — five visiting clubs and **thirteen
+of the club's own Select teams**, whose league layer in this corpus is the 100
+unassigned slots. A `league` / `external` / `friendly` classification, read off
+`SEASON_2026_ROW_KIND` in the adapter, is what keeps the 18 out of the league
+population: with the distinction erased, the same corpus raises **21** flags to
+this one's 9, and 19 of the difference are about 15 participants that hold zero
+league fixtures. It is also the difference between a game-count metric that
+answers and one that cannot: without it the season population is 122 nines, 14
+ones and 4 twos, whose median absolute deviation is zero over values that
+differ, so all 140 subjects come back `undecided`.
+
+**Three-valued, at three levels.** A measurement is `measured` with a number or
+`unmeasurable` with a reason and `value: null`, both directions enforced by
+`assertFairnessMeasurement()`. A population's dispersion is `usable` / `uniform`
+/ `degenerate` / `insufficient` — `uniform` and `degenerate` are the same
+`mad === 0` test and opposite answers, and both are live on the corpus (47
+uniform populations, 8 degenerate). A subject's judgement is `outlier` /
+`typical` / `undecided`, and `deriveFairnessJudgement()` is its only producer.
+
+**Outlier means** a modified z-score (median / MAD, Iglewicz-Hoaglin) past 3.5,
+inside a cohort of at least four measurable members. Chosen for robustness on
+6-to-14-team divisions, for evidence a committee can check by hand, and because
+it fails loudly: a zero scale returns `null`, never `Infinity`, and
+`deriveFairnessJudgement()` throws on a non-finite score. There is deliberately
+no fallback scale — two populations judged on two rulers with nothing saying
+which is the class of defect 7.1 spent four rounds removing.
+
+**Artifacts are refused structurally, not statistically.** The four Minis sides
+show 9 home / 0 away because a Minis session names no opponent; an ordinary
+z-score over the naive hosting share flags all four at z = 4.63 and nobody else.
+The module's answer is `unmeasurable` / `FAIRNESS_DENOMINATOR_EMPTY`, reached by
+a two-sidedness test on the row and not by any test for the string `Minis`. The
+second artifact is the comparison basis: eight teams are outliers on mean kickoff
+season-wide, and seven of them are typical inside their own division — the club
+schedules its five-year-olds in the morning. Each of the seven carries
+`heldOnNarrowerBasis: false` and `FAIRNESS_BASIS_WIDER_ONLY`; the eighth,
+`09G7v706`, also flags inside U09G and is the corpus's one narrowest-basis flag
+(756.67 min against a U09G median of 731.67, MAD 4.17, z = 4.05).
+
+**What it refuses to say.** Divisions are measured and, on this corpus, judged
+nowhere: the only defensible cohort for a division is the divisions of its own
+age group, all 36 of which have fewer than four measurable members, so all come
+back `FAIRNESS_POPULATION_TOO_SMALL`. The report says that rather than "no
+division outliers found". It also declines to say which direction is the bad one:
+`FAIRNESS_OUTLIER_HIGH` and `FAIRNESS_OUTLIER_LOW` carry the same severity.
+
+**Unwired, and said so.** `gameScheduling.js`, `autoScheduler.js` and
+`gameMetrics.js` are untouched and import nothing from this package — asserted by
+a scan over `packages/core/src` that finds zero importers outside `fairness/`.
+Every objective result carries `FAIRNESS_OBJECTIVE_UNWIRED`. An unscoreable
+subject contributes **nothing** rather than zero, because these are penalties a
+solver would minimise and a zero penalty is the best possible term: folding
+`unmeasurable` into a number here would not merely lose information, it would
+teach an optimiser to prefer the schedules it cannot see. `compareObjectiveScores()`
+refuses to rank two results whose coverage differs.
+
+Twenty-two new reason codes in a frozen severity table; the reachability audit
+moves to **17 vocabularies, 346 codes, 335 producible, 11 holes**, and its own
+self-check confirms it. The one new hole is
+`FAIRNESS_FLAG_EVIDENCE_MISSING`, whose guard stands behind an invariant
+`buildPopulations()` establishes one line earlier — a judgement is only
+`outlier` when the dispersion is `usable`, and a usable dispersion has a centre
+and a scale by construction. Its falsifiability is proved by a direct call in
+`tests/fairnessMetrics.test.js`, which is what it honestly is.
+
 ## 3. Remaining
 
 | Prompt | Scope |
 |---|---|
-| 7.2 | Fairness and equity metrics |
 | 7.3 | External fixture import with impact analysis |
 
 Follow-ups raised during the build and deliberately not absorbed:
@@ -649,7 +732,18 @@ Follow-ups raised during the build and deliberately not absorbed:
 - **`coach-maximum-gap` is still `RULE_CONSTRAINT_UNENFORCED`** even though
   `evaluatePersonDays()` can now answer it.
 - **Division is still a label, not a key** (GAP-24). `grep divisionId` over all
-  new packages returns nothing.
+  new packages returns nothing. 7.2 groups by the label and states the
+  consequence rather than fixing it: a report is computed over exactly one
+  `scopeId` and a fixture list spanning two is refused with a blocking
+  `FAIRNESS_SCOPE_MIXED`, because two clubs using `U10B` would otherwise form one
+  comparison population whose arithmetic would be impeccable and whose meaning
+  would be nothing. Within a scope the residue is still live, though the corpus
+  no longer shows it: `16GSelect02` carries both `16GS` and `U16G`, but both
+  labels sit on scrimmages and it holds no league fixture, so under a
+  league-only metric it has no league label at all and is reported
+  `FAIRNESS_GROUP_UNLABELLED` rather than `FAIRNESS_GROUP_AMBIGUOUS`. The
+  ambiguity branch is kept live by a constructed driver, since a team that
+  plays a league season under two spellings is the case it exists for.
 - **Promote two widened publication codes to first-class** —
   `NOTICE_PARITY_VACUOUS` / `NOTICE_LABEL_AMBIGUOUS`, currently distinguished only
   by `details.reason`.
