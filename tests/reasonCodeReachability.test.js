@@ -1,8 +1,8 @@
 /**
  * Repo-wide reachability audit for every frozen reason-code table in
  * `packages/core/src` — the generalisation of the per-module audit
- * `tests/attribution.test.js` already carries. 17 vocabularies, 348 codes, of
- * which 337 are shown to be producible and 11 are named as holes.
+ * `tests/attribution.test.js` already carries. 18 vocabularies, 383 codes, of
+ * which 372 are shown to be producible and 11 are named as holes.
  *
  * **The defect this exists to catch.** Four times now, in four unrelated
  * modules, a reason code has been declared, given a severity, documented, and
@@ -124,6 +124,7 @@ import {
   checkSizeEligibility,
   makeFinding as makeFacilityFinding,
   season2026SurfaceId,
+  season2026VenueId,
 } from '@squadlogic/core/facility/index.js';
 import {
   FEASIBILITY_REASON,
@@ -143,6 +144,22 @@ import {
   scoreFairnessObjective,
   toSeason2026FairnessFixtures,
 } from '@squadlogic/core/fairness/index.js';
+import {
+  EXTERNAL_IMPORT_REASON,
+  EXTERNAL_MAPPING_KIND,
+  SEASON_2026_EXTERNAL_MAPPING_RECORDS,
+  analyseImportImpact,
+  buildAvoidWindows,
+  buildExternalMappingRegistry,
+  checkAvoidWindowRoundTrip,
+  classifyExternalImport,
+  readExternalMappingRegistry,
+  season2026ExternalImportQuery,
+  season2026ExternalMappingInput,
+  serialiseExternalMappingRegistry,
+  sweepAcceptanceSets,
+  toSeason2026StandingFixtures,
+} from '@squadlogic/core/externalImport/index.js';
 import {
   SEASON_2026_ROW_KIND,
   loadCoachRoster,
@@ -298,6 +315,7 @@ const TABLES = Object.freeze({
   ATTRIBUTION_REASON,
   AVAILABILITY_REASON,
   CONSTRAINT_REASON,
+  EXTERNAL_IMPORT_REASON,
   FACILITY_REASON,
   FAIRNESS_REASON,
   FEASIBILITY_REASON,
@@ -4054,6 +4072,538 @@ harvest(
       )
     );
   })()
+);
+
+/* -- externalImport -------------------------------------------------------- */
+
+/**
+ * External fixture import, driven through its public entry points.
+ *
+ * The season corpus alone reaches the mapping, the four row classes it actually
+ * produces, and the acceptance sweep; everything below it is a *constructed
+ * input* to the same entry points — a registry with a record deleted, one with
+ * two records claiming a label, a scope of one fixture — never a returned
+ * structure reached into and altered.
+ */
+const externalRegistry = harvest(
+  'buildExternalMappingRegistry(the season corpus)',
+  buildExternalMappingRegistry(season2026ExternalMappingInput(), { graph })
+);
+const externalQuery = season2026ExternalImportQuery({
+  externalFixtures: season.externalFixtures,
+  combinedGames: season.combinedGames,
+});
+const externalResolution = harvest(
+  'classifyExternalImport(the season corpus)',
+  classifyExternalImport(externalQuery, externalRegistry)
+);
+harvest(
+  'sweepAcceptanceSets(the season corpus)',
+  sweepAcceptanceSets({
+    subject: 'season-2026 external seeding fixtures',
+    resolution: externalResolution,
+    standing: externalQuery.standing,
+    graph,
+    timingTable,
+  })
+);
+
+// The counterfactual in which the whole import is safe and seven of its subsets
+// are not — the 11v11 layer alone, which is what an analysis that looks only at
+// the pitches the import names would see.
+harvest(
+  'sweepAcceptanceSets(the 11v11 layer alone, where a safe set has unsafe subsets)',
+  sweepAcceptanceSets({
+    subject: 'the 11v11 layer alone',
+    resolution: externalResolution,
+    standing: externalQuery.standing.filter((fixture) => fixture.format === '11v11'),
+    graph,
+    timingTable,
+  })
+);
+
+harvest(
+  'sweepAcceptanceSets(a sweep that examined two of sixteen sets)',
+  sweepAcceptanceSets({
+    subject: 'a partial sweep',
+    resolution: externalResolution,
+    standing: externalQuery.standing,
+    graph,
+    timingTable,
+    sets: [[], externalQuery.rows.map((row) => row.rowId)],
+  })
+);
+
+const emptyExternalRegistry = harvest(
+  'buildExternalMappingRegistry(no records at all)',
+  buildExternalMappingRegistry({
+    registryId: 'empty',
+    label: 'no records',
+    party: 'external seeding league',
+    records: [],
+  })
+);
+harvest(
+  'classifyExternalImport(a registry with no records at all)',
+  classifyExternalImport(externalQuery, emptyExternalRegistry)
+);
+
+// A registry in which the label this publication actually uses is claimed twice,
+// with different targets: every row carrying it comes back undecidable naming
+// the ambiguity, rather than being resolved to whichever record sorted first.
+harvest(
+  "classifyExternalImport(a registry that claims one of the publication's labels twice)",
+  classifyExternalImport(
+    externalQuery,
+    buildExternalMappingRegistry(
+      season2026ExternalMappingInput({
+        records: [
+          ...SEASON_2026_EXTERNAL_MAPPING_RECORDS,
+          {
+            id: 'second-claimant',
+            kind: EXTERNAL_MAPPING_KIND.VENUE,
+            externalLabel: 'Alder Park (Back Pitch 2)',
+            venueId: season2026VenueId('Alder Park'),
+            surfaceId: season2026SurfaceId('Alder Park', 'Pitch 3'),
+            subjectId: null,
+            provenance: 'constructed for tests/reasonCodeReachability.test.js',
+          },
+        ],
+      }),
+      { graph }
+    )
+  )
+);
+
+harvest(
+  'classifyExternalImport(a registry whose records this publication never names)',
+  classifyExternalImport(
+    externalQuery,
+    buildExternalMappingRegistry({
+      registryId: 'irrelevant',
+      label: 'records for another league',
+      party: 'external seeding league',
+      records: [
+        {
+          id: 'other',
+          kind: EXTERNAL_MAPPING_KIND.VENUE,
+          externalLabel: 'Somewhere Else (Pitch 1)',
+          venueId: season2026VenueId('Riverbend'),
+          surfaceId: season2026SurfaceId('Riverbend', 'Turf'),
+          subjectId: null,
+          provenance: 'constructed for tests/reasonCodeReachability.test.js',
+        },
+      ],
+    })
+  )
+);
+
+harvest(
+  'buildExternalMappingRegistry(two records claiming one key, and a ghost surface)',
+  buildExternalMappingRegistry(
+    {
+      registryId: 'collision',
+      label: 'two authors, one label',
+      party: 'external seeding league',
+      records: [
+        {
+          id: 'a',
+          kind: EXTERNAL_MAPPING_KIND.VENUE,
+          externalLabel: 'The Back Pitch',
+          venueId: season2026VenueId('Alder Park'),
+          surfaceId: season2026SurfaceId('Alder Park', 'Pitch 2'),
+          subjectId: null,
+          provenance: 'constructed for tests/reasonCodeReachability.test.js',
+        },
+        {
+          id: 'b',
+          kind: EXTERNAL_MAPPING_KIND.VENUE,
+          externalLabel: 'the back  pitch',
+          venueId: season2026VenueId('Alder Park'),
+          surfaceId: season2026SurfaceId('Alder Park', 'Pitch 3'),
+          subjectId: null,
+          provenance: 'constructed for tests/reasonCodeReachability.test.js',
+        },
+        {
+          id: 'ghost',
+          kind: EXTERNAL_MAPPING_KIND.VENUE,
+          externalLabel: 'Nowhere (Pitch 9)',
+          venueId: season2026VenueId('Alder Park'),
+          surfaceId: 'alder-park/pitch-9',
+          subjectId: null,
+          provenance: 'constructed for tests/reasonCodeReachability.test.js',
+        },
+      ],
+    },
+    { graph }
+  )
+);
+
+// A registry that keeps only one of the two venue records: the four Pitch 3 rows
+// come back undecidable naming the unresolved label, and accepting one of them
+// is refused.
+const externalReduced = buildExternalMappingRegistry(
+  season2026ExternalMappingInput({
+    records: [
+      SEASON_2026_EXTERNAL_MAPPING_RECORDS.find(
+        (record) => record.surfaceId === season2026SurfaceId('Alder Park', 'Pitch 2')
+      ),
+    ],
+  }),
+  { graph }
+);
+const externalUnresolved = harvest(
+  'classifyExternalImport(a registry missing one venue record)',
+  classifyExternalImport(externalQuery, externalReduced)
+);
+harvest(
+  'analyseImportImpact(accepting a row that could not be judged)',
+  analyseImportImpact({
+    subject: 'accepting an unjudged row',
+    resolution: externalUnresolved,
+    standing: externalQuery.standing,
+    query: {
+      acceptedRowIds: externalUnresolved.rows
+        .filter((row) => !row.acceptable)
+        .map((row) => row.rowId),
+    },
+    graph,
+    timingTable,
+  })
+);
+
+harvest(
+  'classifyExternalImport(a row nothing of ours matches, a duplicated key, and uncompared fields)',
+  classifyExternalImport(
+    {
+      ...externalQuery,
+      comparedFields: ['kickoffMinutes', 'format', 'division'],
+      rows: [
+        ...externalQuery.rows,
+        {
+          rowId: 'invented#0',
+          sourceLabel: 'invented',
+          date: '2026-08-22',
+          kickoffMinutes: 600,
+          venueLabel: 'Alder Park (Back Pitch 2)',
+          homeLabel: 'A Club We Do Not Play',
+          awayLabel: 'Another One',
+          format: null,
+          division: null,
+        },
+      ],
+      standing: [
+        ...externalQuery.standing,
+        {
+          ...externalQuery.standing.find(
+            (fixture) => fixture.fixtureId === externalResolution.rows[0].fixtureId
+          ),
+          fixtureId: 'duplicate-of-the-first',
+        },
+      ],
+    },
+    externalRegistry
+  )
+);
+
+harvest(
+  'classifyExternalImport(zero rows)',
+  classifyExternalImport({ ...externalQuery, rows: [] }, externalRegistry)
+);
+
+harvest(
+  'analyseImportImpact(accepting rows that already agree, over a scope of one fixture)',
+  analyseImportImpact({
+    subject: 'a scope with one fixture in it',
+    resolution: externalResolution,
+    standing: [
+      externalQuery.standing.find(
+        (fixture) => fixture.fixtureId === externalResolution.rows[0].fixtureId
+      ),
+    ],
+    query: {
+      acceptedRowIds: externalResolution.rows
+        .filter((row) => row.differences.length === 0)
+        .map((row) => row.rowId),
+      dates: [
+        externalQuery.standing.find(
+          (fixture) => fixture.fixtureId === externalResolution.rows[0].fixtureId
+        ).date,
+      ],
+    },
+    graph,
+    timingTable,
+  })
+);
+
+// A fixture with no known footprint (GAP-14) moved on top of another: the
+// verdict is `undetermined` and the pair says so.
+const externalStanding = toSeason2026StandingFixtures(season.combinedGames);
+const untimedFixtures = externalStanding.filter((fixture) => fixture.endMinutes === null);
+const untimedRegistry = buildExternalMappingRegistry(
+  {
+    registryId: 'summit',
+    label: 'a registry that names the stadium',
+    party: 'external seeding league',
+    records: [
+      {
+        id: 'summit-stadium',
+        kind: EXTERNAL_MAPPING_KIND.VENUE,
+        externalLabel: 'Summit (Stadium)',
+        venueId: untimedFixtures[0].venueId,
+        surfaceId: untimedFixtures[0].surfaceId,
+        subjectId: null,
+        provenance: 'constructed for tests/reasonCodeReachability.test.js',
+      },
+    ],
+  },
+  { graph }
+);
+const untimedResolution = classifyExternalImport(
+  {
+    subject: 'moving an untimed scrimmage',
+    rows: [
+      {
+        rowId: 'scrimmage-move#0',
+        sourceLabel: 'constructed',
+        date: untimedFixtures[0].date,
+        kickoffMinutes: untimedFixtures[0].kickoffMinutes + 30,
+        venueLabel: 'Summit (Stadium)',
+        homeLabel: untimedFixtures[0].homeLabel,
+        awayLabel: untimedFixtures[0].awayLabel,
+        format: null,
+        division: null,
+      },
+    ],
+    standing: untimedFixtures.slice(0, 2),
+    keyFields: ['date', 'home', 'away'],
+    comparedFields: ['kickoffMinutes', 'venueId', 'surfaceId'],
+  },
+  untimedRegistry
+);
+harvest(
+  'analyseImportImpact(moving a fixture whose footprint is unknown)',
+  analyseImportImpact({
+    subject: 'moving an untimed scrimmage',
+    resolution: untimedResolution,
+    standing: untimedFixtures.slice(0, 2),
+    query: { acceptedRowIds: ['scrimmage-move#0'] },
+    graph,
+    timingTable,
+  })
+);
+
+// A projection that removes a clash the standing plan carries. The standing
+// plan here is the one the league published — the 08/22 fixtures 30 minutes
+// later, where the 12:30 kickoff overlaps the 13:50 9v9 on the adjoining pitch —
+// and the import brings the agreed times back. Accepting them resolves it.
+const externalDates = ['2026-08-22'];
+const movedFixtureIdSet = new Set(
+  externalResolution.rows.filter((row) => row.differences.length > 0).map((row) => row.fixtureId)
+);
+const publishedStanding = externalStanding.map((fixture) =>
+  movedFixtureIdSet.has(fixture.fixtureId)
+    ? {
+        ...fixture,
+        kickoffMinutes: fixture.kickoffMinutes + 30,
+        endMinutes: fixture.endMinutes === null ? null : fixture.endMinutes + 30,
+      }
+    : fixture
+);
+const walkBackRows = externalResolution.rows
+  .filter((row) => row.differences.length > 0)
+  .map((row, index) => {
+    const agreed = externalStanding.find((fixture) => fixture.fixtureId === row.fixtureId);
+    const published = externalQuery.rows.find((candidate) => candidate.rowId === row.rowId);
+    return {
+      rowId: `walk-back#${index}`,
+      sourceLabel: 'the agreed times, sent back to us',
+      date: agreed.date,
+      kickoffMinutes: agreed.kickoffMinutes,
+      venueLabel: published.venueLabel,
+      homeLabel: agreed.homeLabel,
+      awayLabel: agreed.awayLabel,
+      format: null,
+      division: null,
+    };
+  });
+const walkBackResolution = classifyExternalImport(
+  {
+    subject: 'the agreed times against a plan that already holds the published ones',
+    rows: walkBackRows,
+    standing: publishedStanding,
+    keyFields: ['date', 'home', 'away'],
+    comparedFields: ['kickoffMinutes', 'venueId', 'surfaceId'],
+  },
+  externalRegistry
+);
+const walkBackAccepted = walkBackResolution.rows
+  .filter((row) => row.differences.length > 0)
+  .map((row) => row.rowId);
+harvest(
+  'analyseImportImpact(a projection that inherits a clash it did not cause)',
+  analyseImportImpact({
+    subject: 'walking one of the published times back',
+    resolution: walkBackResolution,
+    standing: publishedStanding,
+    query: { acceptedRowIds: walkBackAccepted.slice(0, 1), dates: externalDates },
+    graph,
+    timingTable,
+  })
+);
+harvest(
+  'analyseImportImpact(a projection that resolves the clash the standing plan carries)',
+  analyseImportImpact({
+    subject: 'walking every published time back',
+    resolution: walkBackResolution,
+    standing: publishedStanding,
+    query: { acceptedRowIds: walkBackAccepted, dates: externalDates },
+    graph,
+    timingTable,
+  })
+);
+
+// The avoid-windows export: the corpus scope, a surface with no external name,
+// one two labels claim, an open-ended window, an empty scope, a scope that
+// yields nothing, and a round trip through a registry that lost a record.
+const avoidExport = harvest(
+  'buildAvoidWindows(the seeding weekend)',
+  buildAvoidWindows({
+    query: {
+      subject: 'avoid windows for the seeding weekend',
+      documentId: 'season-2026/avoid/seeding-weekend',
+      generatedFor: 'external seeding league',
+      dates: ['2026-08-22', '2026-08-23'],
+      surfaceIds: [
+        season2026SurfaceId('Alder Park', 'Pitch 2'),
+        season2026SurfaceId('Alder Park', 'Pitch 3'),
+      ],
+      excludeFixtureIds: season.combinedGames
+        .filter((game) => game.kind === SEASON_2026_ROW_KIND.EXTERNAL_FIXTURE)
+        .map((game) => game.id),
+    },
+    registry: externalRegistry,
+    standing: externalStanding,
+    graph,
+  })
+);
+harvest(
+  'checkAvoidWindowRoundTrip(a registry that lost a record)',
+  checkAvoidWindowRoundTrip(avoidExport, externalReduced)
+);
+harvest(
+  'buildAvoidWindows(a surface the league has no name for)',
+  buildAvoidWindows({
+    query: {
+      subject: 'a pitch the league has no name for',
+      documentId: 'orphan-1',
+      generatedFor: 'external seeding league',
+      dates: ['2026-08-22'],
+      surfaceIds: [season2026SurfaceId('Brookside Park', 'Upper 1')],
+      excludeFixtureIds: [],
+    },
+    registry: externalRegistry,
+    standing: externalStanding,
+    graph,
+  })
+);
+harvest(
+  'buildAvoidWindows(a surface two external labels claim)',
+  buildAvoidWindows({
+    query: {
+      subject: 'a pitch with two external names',
+      documentId: 'ambiguous-1',
+      generatedFor: 'external seeding league',
+      dates: ['2026-08-22'],
+      surfaceIds: [season2026SurfaceId('Alder Park', 'Pitch 2')],
+      excludeFixtureIds: [],
+    },
+    registry: buildExternalMappingRegistry(
+      season2026ExternalMappingInput({
+        records: [
+          ...SEASON_2026_EXTERNAL_MAPPING_RECORDS,
+          {
+            id: 'renamed',
+            kind: EXTERNAL_MAPPING_KIND.VENUE,
+            externalLabel: 'Alder Park (Championship Pitch)',
+            venueId: season2026VenueId('Alder Park'),
+            surfaceId: season2026SurfaceId('Alder Park', 'Pitch 2'),
+            subjectId: null,
+            provenance: 'constructed: the league renamed the pitch mid-season',
+          },
+        ],
+      }),
+      { graph }
+    ),
+    standing: externalStanding,
+    graph,
+  })
+);
+harvest(
+  'buildAvoidWindows(an open-ended window at the stadium)',
+  buildAvoidWindows({
+    query: {
+      subject: 'the stadium on the seeding Saturday',
+      documentId: 'summit-1',
+      generatedFor: 'external seeding league',
+      dates: [untimedFixtures[0].date],
+      surfaceIds: [untimedFixtures[0].surfaceId],
+      excludeFixtureIds: [],
+    },
+    registry: untimedRegistry,
+    standing: externalStanding,
+    graph,
+  })
+);
+harvest(
+  'buildAvoidWindows(an empty scope)',
+  buildAvoidWindows({
+    query: {
+      subject: 'nothing at all',
+      documentId: 'empty-1',
+      generatedFor: 'external seeding league',
+      dates: [],
+      surfaceIds: [],
+      excludeFixtureIds: [],
+    },
+    registry: externalRegistry,
+    standing: externalStanding,
+    graph,
+  })
+);
+harvest(
+  'buildAvoidWindows(a scope that yields nothing)',
+  buildAvoidWindows({
+    query: {
+      subject: 'a date with nothing on it',
+      documentId: 'quiet-1',
+      generatedFor: 'external seeding league',
+      dates: ['2026-08-23'],
+      surfaceIds: [season2026SurfaceId('Alder Park', 'Pitch 2')],
+      excludeFixtureIds: season.combinedGames
+        .filter((game) => game.kind === SEASON_2026_ROW_KIND.EXTERNAL_FIXTURE)
+        .map((game) => game.id),
+    },
+    registry: externalRegistry,
+    standing: externalStanding,
+    graph,
+  })
+);
+harvest(
+  'readExternalMappingRegistry(a document whose records name a surface that is not there)',
+  readExternalMappingRegistry(
+    (() => {
+      const document = serialiseExternalMappingRegistry(externalRegistry);
+      return {
+        ...document,
+        records: document.records.map((record) => ({
+          ...record,
+          surfaceId: 'alder-park/pitch-9',
+        })),
+      };
+    })(),
+    { graph }
+  )
 );
 
 /* -------------------------------------------------------------------------- */
