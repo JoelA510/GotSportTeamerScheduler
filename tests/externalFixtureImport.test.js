@@ -3014,7 +3014,7 @@ describe('acceptance 14 — the third review round', () => {
 
   it('5b — every declared avoid-window exclusion cause is produced by some export', () => {
     const standing = toSeason2026StandingFixtures(corpusGames());
-    const build = (documentId, surfaceIds, dates, registry) =>
+    const build = (documentId, surfaceIds, dates, registry, excludeFixtureIds = []) =>
       buildAvoidWindows({
         query: {
           subject: documentId,
@@ -3022,7 +3022,7 @@ describe('acceptance 14 — the third review round', () => {
           generatedFor: 'external seeding league',
           dates,
           surfaceIds,
-          excludeFixtureIds: [],
+          excludeFixtureIds,
         },
         registry,
         standing,
@@ -3088,11 +3088,329 @@ describe('acceptance 14 — the third review round', () => {
           ['2026-10-10'],
           corpusRegistry()
         ),
+        // Occupied, and every occupant dropped by the caller's own exclusion
+        // list — which is not the same fact as the one above and no longer
+        // shares its cause.
+        build(
+          'suppressed-2',
+          [season2026SurfaceId('Alder Park', 'Pitch 2')],
+          ['2026-08-22'],
+          corpusRegistry(),
+          standing.map((fixture) => fixture.fixtureId)
+        ),
+        // A scope that names no date: nothing was looked at.
+        build('unexamined-2', [season2026SurfaceId('Alder Park', 'Pitch 2')], [], corpusRegistry()),
       ].flatMap((exported) => exported.excludedSurfaces.map((entry) => entry.reason))
     );
     // Meta-assertion: an empty set would satisfy nothing below by accident.
     expect(seen.size).toBeGreaterThan(0);
     expect([...seen].sort()).toEqual(Object.values(EXTERNAL_AVOID_EXCLUSION).sort());
+  });
+});
+
+describe('acceptance 15 — the fourth review round', () => {
+  /**
+   * The corpus registry with one venue record's `surfaceId` blanked.
+   *
+   * `ExternalMappingRecordSchema` allows it and `buildExternalMappingRegistry()`
+   * **keeps** the record, flagging it `EXTERNAL_MAPPING_TARGET_UNKNOWN` — so the
+   * label still resolves, and the lookup comes back `resolved` carrying no
+   * surface. That is the one corpus arrangement in which a *successful* lookup
+   * yields no value, which is what tells a `translated` read off the lookup's
+   * status apart from one read off what the lookup produced.
+   *
+   * @returns {import('@squadlogic/core/externalImport/types.js').ExternalMappingRegistry}
+   */
+  function holedRegistry() {
+    const records = SEASON_2026_EXTERNAL_MAPPING_RECORDS.map((record) =>
+      record.surfaceId === season2026SurfaceId('Alder Park', 'Pitch 3')
+        ? { ...record, surfaceId: null }
+        : record
+    );
+    // Meta-assertion: a map that changed nothing would leave every field
+    // translated, and every claim below would be made about an empty set.
+    expect(records.filter((record) => record.surfaceId === null).length).toBe(1);
+    expect(records.length).toBe(SEASON_2026_EXTERNAL_MAPPING_RECORDS.length);
+    return buildExternalMappingRegistry(season2026ExternalMappingInput({ records }), {
+      graph: corpusGraph(),
+    });
+  }
+
+  /**
+   * The corpus registry with the Pitch 3 record deleted — acceptance 14's
+   * construction, which is the one that makes rows *undecidable* with fields
+   * the publication stated and we could not read.
+   *
+   * @returns {import('@squadlogic/core/externalImport/types.js').ExternalMappingRegistry}
+   */
+  function deletedRegistry() {
+    const kept = SEASON_2026_EXTERNAL_MAPPING_RECORDS.filter(
+      (record) => record.surfaceId !== season2026SurfaceId('Alder Park', 'Pitch 3')
+    );
+    expect(kept.length).toBe(SEASON_2026_EXTERNAL_MAPPING_RECORDS.length - 1);
+    return buildExternalMappingRegistry(season2026ExternalMappingInput({ records: kept }), {
+      graph: corpusGraph(),
+    });
+  }
+
+  it('1 — a pitch whose every occupant this export dropped is not published as idle', () => {
+    const standing = toSeason2026StandingFixtures(corpusGames());
+    const surfaceId = season2026SurfaceId('Alder Park', 'Pitch 2');
+    const cone = new Set(conflictingSurfacesOf(corpusGraph(), surfaceId));
+    const dates = [...new Set(standing.map((fixture) => fixture.date))].sort();
+    const busy = dates.find((candidate) =>
+      standing.some((fixture) => fixture.date === candidate && cone.has(fixture.surfaceId))
+    );
+    // Meta-assertion: with no occupied date this test would be asserting about
+    // a surface that really was idle, which is the other finding entirely.
+    expect(busy).toBeDefined();
+    const occupants = standing.filter(
+      (fixture) => fixture.date === busy && cone.has(fixture.surfaceId)
+    );
+    expect(occupants.length).toBeGreaterThan(0);
+
+    const build = (date, excludeFixtureIds) =>
+      buildAvoidWindows({
+        query: {
+          subject: 'one pitch, and an exclusion list that empties it',
+          documentId: `suppressed/${date}/${excludeFixtureIds.length}`,
+          generatedFor: 'external seeding league',
+          dates: [date],
+          surfaceIds: [surfaceId],
+          excludeFixtureIds,
+        },
+        registry: corpusRegistry(),
+        standing,
+        graph: corpusGraph(),
+      });
+
+    // Meta-assertion: the same scope with nothing dropped produces a window per
+    // occupant, so what empties the document below is the exclusion list and
+    // nothing about our schedule.
+    expect(build(busy, []).windows.length).toBe(occupants.length);
+
+    const exported = build(
+      busy,
+      occupants.map((fixture) => fixture.fixtureId)
+    );
+    expect(exported.windows).toEqual([]);
+    // The sentence that was false: it said no fixture occupied it. Six did.
+    expect(codesOf(exported.findings)).not.toContain(
+      EXTERNAL_IMPORT_REASON.EXTERNAL_AVOID_SURFACE_IDLE
+    );
+    expect(exported.idleSurfaceIds).toEqual([]);
+    expect(exported.suppressedSurfaceIds).toEqual([surfaceId]);
+    expect(exported.excludedSurfaces).toEqual([
+      { surfaceId, reason: EXTERNAL_AVOID_EXCLUSION.ALL_OCCUPANTS_EXCLUDED },
+    ]);
+    const finding = exported.findings.find(
+      (candidate) => candidate.code === EXTERNAL_IMPORT_REASON.EXTERNAL_AVOID_SURFACE_SUPPRESSED
+    );
+    expect(finding).toBeDefined();
+    expect(finding.details.surfaceId).toBe(surfaceId);
+    expect(finding.details.suppressedOccupants).toBe(occupants.length);
+    expect(finding.message).not.toMatch(/no fixture occupied it/);
+    expect(finding.message).toMatch(new RegExp(`${occupants.length} fixture`));
+    expect(finding.message).toMatch(/exclusion list/);
+
+    // **The implementation that would pass this wrongly**: call every surface
+    // that produced no window suppressed. A date the club held nothing on has
+    // no dropped occupant, and its absence from the document is a statement
+    // about our schedule — the finding this one was split out of, which has to
+    // survive the split.
+    const quiet = dates.find((candidate) =>
+      standing.every((fixture) => fixture.date !== candidate || !cone.has(fixture.surfaceId))
+    );
+    expect(quiet).toBeDefined();
+    const idle = build(quiet, []);
+    expect(idle.idleSurfaceIds).toEqual([surfaceId]);
+    expect(idle.suppressedSurfaceIds).toEqual([]);
+    expect(idle.excludedSurfaces).toEqual([
+      { surfaceId, reason: EXTERNAL_AVOID_EXCLUSION.NO_OCCUPANCY },
+    ]);
+    const idleFinding = idle.findings.find(
+      (candidate) => candidate.code === EXTERNAL_IMPORT_REASON.EXTERNAL_AVOID_SURFACE_IDLE
+    );
+    expect(idleFinding).toBeDefined();
+    expect(idleFinding.details.suppressedOccupants).toBe(0);
+    expect(idleFinding.message).toMatch(/no fixture occupied it/);
+  });
+
+  it('2 — a scope naming no date says nothing was looked at, not that nothing was there', () => {
+    const standing = toSeason2026StandingFixtures(corpusGames());
+    const surfaceId = season2026SurfaceId('Alder Park', 'Pitch 2');
+    const build = (dates) =>
+      buildAvoidWindows({
+        query: {
+          subject: 'a scope with no date in it',
+          documentId: `unexamined/${dates.length}`,
+          generatedFor: 'external seeding league',
+          dates,
+          surfaceIds: [surfaceId],
+          excludeFixtureIds: [],
+        },
+        registry: corpusRegistry(),
+        standing,
+        graph: corpusGraph(),
+      });
+
+    const exported = build([]);
+    // Meta-assertion: nothing was examined, and the export's own counter is
+    // where that is read from rather than from the absence of windows.
+    expect(exported.meta.avoidScopeCells).toBe(0);
+    expect(exported.windows).toEqual([]);
+    // The empty scope is still refused, loudly, and that is not what changed.
+    expect(codesOf(exported.findings)).toContain(EXTERNAL_IMPORT_REASON.EXTERNAL_AVOID_SCOPE_EMPTY);
+
+    expect(codesOf(exported.findings)).not.toContain(
+      EXTERNAL_IMPORT_REASON.EXTERNAL_AVOID_SURFACE_IDLE
+    );
+    expect(exported.idleSurfaceIds).toEqual([]);
+    expect(exported.unexaminedSurfaceIds).toEqual([surfaceId]);
+    expect(exported.excludedSurfaces).toEqual([
+      { surfaceId, reason: EXTERNAL_AVOID_EXCLUSION.NOT_EXAMINED },
+    ]);
+    const finding = exported.findings.find(
+      (candidate) => candidate.code === EXTERNAL_IMPORT_REASON.EXTERNAL_AVOID_SURFACE_NOT_EXAMINED
+    );
+    expect(finding).toBeDefined();
+    expect(finding.details.surfaceId).toBe(surfaceId);
+    expect(finding.details.datesExamined).toBe(0);
+    expect(finding.message).not.toMatch(/no fixture occupied it/);
+    expect(finding.message).not.toMatch(/0 date\(s\) in scope/);
+
+    // **The implementation that would pass this wrongly**: call every surface
+    // that produced no window unexamined. A scope that names a date did look,
+    // and "we looked and it was free" is the true sentence there.
+    const dates = [...new Set(standing.map((fixture) => fixture.date))].sort();
+    const cone = new Set(conflictingSurfacesOf(corpusGraph(), surfaceId));
+    const quiet = dates.find((candidate) =>
+      standing.every((fixture) => fixture.date !== candidate || !cone.has(fixture.surfaceId))
+    );
+    expect(quiet).toBeDefined();
+    const looked = build([quiet]);
+    expect(looked.meta.avoidScopeCells).toBe(1);
+    expect(looked.unexaminedSurfaceIds).toEqual([]);
+    expect(looked.idleSurfaceIds).toEqual([surfaceId]);
+  });
+
+  it('3 — a record that resolves and names no surface is a value we could not read', () => {
+    const resolution = classifyExternalImport(corpusQuery(), holedRegistry());
+    const affected = resolution.rows.filter(
+      (row) =>
+        row.venue !== null && row.venue.record !== null && row.venue.record.surfaceId === null
+    );
+    // Meta-assertion: no such row and every claim below would be vacuous.
+    expect(affected.length).toBeGreaterThan(0);
+
+    for (const row of affected) {
+      // The crux. The lookup **succeeded** — this is not the unresolved case
+      // wearing a new name — and what it produced for this one field is what
+      // decides whether the field was translated.
+      expect(row.venue.state).toBe(EXTERNAL_NAME_RESOLUTION.RESOLVED);
+      expect(row.venue.surfaceId).toBeNull();
+      expect(row.fieldPresence.surfaceId).toBe(EXTERNAL_FIELD_PRESENCE.THEIRS_UNTRANSLATED);
+      expect(row.untranslatedFields).toContain('surfaceId');
+      expect(row.oneSidedFields).not.toContain('surfaceId');
+      // Per field, not per lookup: the same resolved record does name a venue,
+      // and `venueId` is compared exactly as it was before.
+      expect(row.fieldPresence.venueId).toBe(EXTERNAL_FIELD_PRESENCE.BOTH);
+    }
+    expect(resolution.meta.fieldsUntranslated).toBe(affected.length);
+
+    const oneSidedOnSurface = resolution.findings.filter(
+      (finding) =>
+        finding.code === EXTERNAL_IMPORT_REASON.EXTERNAL_FIELD_ONE_SIDED &&
+        finding.details.field === 'surfaceId'
+    );
+    // The sentence the last round's commit removed, reached by another road.
+    expect(oneSidedOnSurface).toEqual([]);
+    const untranslated = resolution.findings.filter(
+      (finding) => finding.code === EXTERNAL_IMPORT_REASON.EXTERNAL_FIELD_UNTRANSLATED
+    );
+    expect(untranslated.length).toBeGreaterThan(0);
+    for (const finding of untranslated) {
+      expect(finding.message).not.toMatch(/the imported publication does not/);
+      // …and the sentence is true of *this* road too: a record does claim the
+      // label here, so a clause saying none does would be the same defect.
+      expect(finding.message).not.toMatch(/no mapping record/);
+      expect(finding.message).toMatch(/mapping record/);
+    }
+
+    // **The implementation that would pass this wrongly**: call every
+    // venue-derived field with no value untranslated. A row that states no
+    // venue at all carries nothing there, and `schemas.js` tells the two apart
+    // at the boundary precisely so that reading survives.
+    const unstated = classifyExternalImport(
+      {
+        ...corpusQuery(),
+        rows: corpusQuery().rows.map((row, index) =>
+          index === 0 ? { ...row, venueLabel: null } : row
+        ),
+      },
+      corpusRegistry()
+    );
+    expect(unstated.rows[0].venue).toBeNull();
+    expect(unstated.rows[0].untranslatedFields).toEqual([]);
+    expect([...unstated.rows[0].oneSidedFields].sort()).toEqual(['surfaceId', 'venueId']);
+
+    // …and the second: read `translated` off the lookup's status, which is what
+    // it did. The corpus's own records name both a venue and a surface, so
+    // nothing on the untouched corpus may move.
+    expect(corpusResolution().meta.fieldsUntranslated).toBe(0);
+    expect(corpusResolution().meta.fieldsOneSided).toBe(0);
+    expect(corpusResolution().meta.fieldComparisons).toBe(24);
+  });
+
+  it('4 — an undecidable row publishes the fields it could not translate', () => {
+    const resolution = classifyExternalImport(corpusQuery(), deletedRegistry());
+    const undecidable = resolution.rows.filter(
+      (row) => row.rowClass === EXTERNAL_ROW_CLASS.UNDECIDABLE
+    );
+    // Meta-assertion: no undecidable row and there is no per-row account to
+    // read at all.
+    expect(undecidable.length).toBeGreaterThan(0);
+    // …and the fact under test is one these rows actually carry.
+    expect(undecidable.every((row) => row.untranslatedFields.length > 0)).toBe(true);
+
+    for (const row of undecidable) {
+      const finding = resolution.findings.find(
+        (candidate) =>
+          candidate.code === EXTERNAL_IMPORT_REASON.EXTERNAL_ROW_UNDECIDABLE &&
+          candidate.details.rowId === row.rowId
+      );
+      expect(finding).toBeDefined();
+      // Both lists, because "one-sided: none" is not an account of a row whose
+      // fields were stated in words we could not read.
+      expect(finding.details.oneSidedFields).toEqual(row.oneSidedFields);
+      expect(finding.details.untranslatedFields).toEqual(row.untranslatedFields);
+      expect(detailList(finding.details, 'untranslatedFields')).toEqual(['surfaceId', 'venueId']);
+    }
+
+    // **The implementation that would pass this wrongly**: publish every
+    // uncompared field under `untranslatedFields`. A row that states no venue
+    // at all has uncompared fields and nothing untranslated, and its account
+    // must say so rather than borrowing the other row's cause.
+    const unstated = classifyExternalImport(
+      {
+        ...corpusQuery(),
+        rows: corpusQuery().rows.map((row, index) =>
+          index === 0 ? { ...row, venueLabel: null } : row
+        ),
+      },
+      corpusRegistry()
+    );
+    const silent = unstated.rows[0];
+    expect(silent.rowClass).toBe(EXTERNAL_ROW_CLASS.UNDECIDABLE);
+    const account = unstated.findings.find(
+      (candidate) =>
+        candidate.code === EXTERNAL_IMPORT_REASON.EXTERNAL_ROW_UNDECIDABLE &&
+        candidate.details.rowId === silent.rowId
+    );
+    expect(account).toBeDefined();
+    expect(account.details.untranslatedFields).toEqual([]);
+    expect(detailList(account.details, 'uncomparedFields')).toEqual(['surfaceId', 'venueId']);
+    expect(detailList(account.details, 'oneSidedFields')).toEqual(['surfaceId', 'venueId']);
   });
 });
 

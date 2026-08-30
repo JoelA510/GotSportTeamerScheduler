@@ -167,6 +167,13 @@ export const EXTERNAL_FIELD_PRESENCE = Object.freeze({
    * then reported `OURS_ONLY`, under a sentence saying *"the imported
    * publication does not"* carry a value for it. It does. What is missing is
    * our record of what the label means, and that is where the repair goes.
+   *
+   * A lookup that *failed* is only one of the ways our records yield nothing,
+   * and the round after that one found the other: a venue record carrying
+   * `surfaceId: null` is schema-legal, is kept in the registry with
+   * `EXTERNAL_MAPPING_TARGET_UNKNOWN`, and resolves. Membership of this class
+   * is therefore decided by whether a value came back for the field, never by
+   * how the lookup finished — see {@link theirValueOf}.
    */
   THEIRS_UNTRANSLATED: 'the-imported-publication-in-words-we-cannot-translate',
 });
@@ -211,7 +218,7 @@ const FIELD_PRESENCE_REPORT = Object.freeze({
   [EXTERNAL_FIELD_PRESENCE.THEIRS_UNTRANSLATED]: Object.freeze({
     code: EXTERNAL_IMPORT_REASON.EXTERNAL_FIELD_UNTRANSLATED,
     clause:
-      'the imported publication states a ground for it and no mapping record says what that label names, so the value is missing from our reading of the publication rather than from the publication; the repair is to write a mapping record on our side',
+      'the imported publication states a ground for it and our mapping records yielded no value for that label, so the value is missing from our reading of the publication rather than from the publication; the repair is on our side, in the mapping records',
     counter: 'fieldsUntranslated',
   }),
 });
@@ -239,6 +246,20 @@ const FIELD_PRESENCE_REPORT = Object.freeze({
  * Read one field off the imported row, through the venue lookup where the field
  * is derived from it.
  *
+ * **`translated` is read from what the lookup produced, never from how it
+ * finished.** The previous round asked only whether the lookup's *state* was
+ * `resolved`, which is a different question and answers wrongly on the case
+ * `ExternalMappingRecordSchema` allows and `buildExternalMappingRegistry()`
+ * keeps: a venue record carrying `surfaceId: null`, flagged
+ * `EXTERNAL_MAPPING_TARGET_UNKNOWN` and left in the registry. Its label
+ * resolves, so `translated` came back `true`, so `stated` was then computed
+ * from the absent value — and four corpus rows landed in `OURS_ONLY` under the
+ * sentence the last commit removed, *"the imported publication does not carry a
+ * value"*. It does; our record of what its label means is what carries nothing.
+ *
+ * The lookup is also asked **per field**. One record can name a venue and no
+ * surface, and that is one field we could read and one we could not.
+ *
  * @param {Record<string, unknown>} row
  * @param {import('./types.js').ExternalNameResolution|null} venue
  * @param {string} field
@@ -256,12 +277,15 @@ function theirValueOf(row, venue, field, spec) {
     // boundary precisely so this branch means one thing.
     return { stated: false, translated: true, value: null };
   }
-  if (venue.state !== EXTERNAL_NAME_RESOLUTION.RESOLVED) {
-    // A ground **is** stated. We cannot say which of ours it is.
-    return { stated: true, translated: false, value: null };
-  }
-  const value = venue[field === 'venueId' ? 'venueId' : 'surfaceId'];
-  return { stated: value !== null && value !== undefined, translated: true, value };
+  // A ground **is** stated from here on, whatever became of the lookup: the row
+  // carries a label. What is in question is only whether our records turned it
+  // into a value for this field.
+  const value =
+    venue.state === EXTERNAL_NAME_RESOLUTION.RESOLVED
+      ? venue[field === 'venueId' ? 'venueId' : 'surfaceId']
+      : null;
+  const translated = value !== null && value !== undefined;
+  return { stated: true, translated, value: translated ? value : null };
 }
 
 /**
@@ -670,12 +694,25 @@ export function classifyExternalImport(rawQuery, registry) {
     const skippedHere = fieldsHere((presence) => presence !== EXTERNAL_FIELD_PRESENCE.BOTH);
     const oneSidedHere = fieldsHere(isOneSided);
     const neitherHere = fieldsHere((presence) => presence === EXTERNAL_FIELD_PRESENCE.NEITHER);
+    // The third caveat exists because {@link theirValueOf} now reads
+    // `translated` off the value a lookup produced. A *resolved* record naming
+    // no surface leaves the row matched and one of its fields unreadable, which
+    // is an arrangement this bucket could not previously hold — before, every
+    // untranslated field forced the row `undecidable` and out of this sentence.
+    // Without the clause, "nothing differing across kickoffMinutes, venueId"
+    // would be all the reader is told about a row whose ground we never read.
+    const untranslatedHere = fieldsHere(
+      (presence) => presence === EXTERNAL_FIELD_PRESENCE.THEIRS_UNTRANSLATED
+    );
     const caveats = [
       oneSidedHere.length > 0
         ? `${oneSidedHere.join(', ')} is carried by one side only on some of them, which is not agreement`
         : null,
       neitherHere.length > 0
         ? `${neitherHere.join(', ')} is carried by neither side on some of them`
+        : null,
+      untranslatedHere.length > 0
+        ? `${untranslatedHere.join(', ')} is stated by the publication in words our records could not translate on some of them`
         : null,
     ].filter((clause) => clause !== null);
     findings.push(
@@ -691,6 +728,7 @@ export function classifyExternalImport(rawQuery, registry) {
           fieldsSkippedOnTheseRows: skippedHere,
           fieldsOneSidedOnTheseRows: oneSidedHere,
           fieldsNeitherSideCarriesOnTheseRows: neitherHere,
+          fieldsUntranslatedOnTheseRows: untranslatedHere,
         }
       )
     );
@@ -790,6 +828,11 @@ export function classifyExternalImport(rawQuery, registry) {
           differencesObserved: row.differences.map((difference) => difference.field),
           uncomparedFields: row.uncomparedFields,
           oneSidedFields: row.oneSidedFields,
+          // The other half of the split the round before this one made. Without
+          // it the per-row account of the very rows that split exists for reads
+          // `one-sided: none` and says nothing at all about the fields whose
+          // labels we could not read.
+          untranslatedFields: row.untranslatedFields,
         }
       )
     );

@@ -260,8 +260,28 @@ export const EXTERNAL_IMPORT_REASON = Object.freeze({
    * produced no window: nothing occupied it or ground overlapping it on any
    * requested date. Reported because the recipient reads its absence from the
    * document as *"they hold nothing there"*, which is a claim and not silence.
+   *
+   * It is **only** that case. Two neighbours below carry the other two ways a
+   * mapped, in-graph surface produces nothing, because this code's sentence
+   * asserts an observation — *we looked, and it was free* — that neither of
+   * them made.
    */
   EXTERNAL_AVOID_SURFACE_IDLE: 'EXTERNAL_AVOID_SURFACE_IDLE',
+  /**
+   * A scope surface every one of whose occupants is in the export's own
+   * `excludeFixtureIds`. The document carries no window for it, and that is a
+   * fact about what this export was asked to leave out rather than about our
+   * schedule — which is what {@link EXTERNAL_AVOID_SURFACE_IDLE} used to say
+   * about it, over six suppressed fixtures on the corpus's own seeding date.
+   */
+  EXTERNAL_AVOID_SURFACE_SUPPRESSED: 'EXTERNAL_AVOID_SURFACE_SUPPRESSED',
+  /**
+   * A scope surface on a scope that names no date. Nothing was looked at, so
+   * nothing was found free: the loop that would have observed occupancy never
+   * ran, and *"no fixture occupied it on any of the 0 date(s) in scope"* is a
+   * report of an observation that was not made.
+   */
+  EXTERNAL_AVOID_SURFACE_NOT_EXAMINED: 'EXTERNAL_AVOID_SURFACE_NOT_EXAMINED',
   /** Reading the document back did not reproduce the windows it was built from. */
   EXTERNAL_AVOID_ROUNDTRIP_DIVERGED: 'EXTERNAL_AVOID_ROUNDTRIP_DIVERGED',
 });
@@ -317,6 +337,8 @@ export const EXTERNAL_IMPORT_REASON_SEVERITY = Object.freeze({
   [EXTERNAL_IMPORT_REASON.EXTERNAL_AVOID_SCOPE_EMPTY]: EXTERNAL_IMPORT_SEVERITY.BLOCKING,
   [EXTERNAL_IMPORT_REASON.EXTERNAL_AVOID_NONE_EXPORTED]: EXTERNAL_IMPORT_SEVERITY.BLOCKING,
   [EXTERNAL_IMPORT_REASON.EXTERNAL_AVOID_SURFACE_IDLE]: EXTERNAL_IMPORT_SEVERITY.INFO,
+  [EXTERNAL_IMPORT_REASON.EXTERNAL_AVOID_SURFACE_SUPPRESSED]: EXTERNAL_IMPORT_SEVERITY.INFO,
+  [EXTERNAL_IMPORT_REASON.EXTERNAL_AVOID_SURFACE_NOT_EXAMINED]: EXTERNAL_IMPORT_SEVERITY.INFO,
   [EXTERNAL_IMPORT_REASON.EXTERNAL_AVOID_ROUNDTRIP_DIVERGED]: EXTERNAL_IMPORT_SEVERITY.BLOCKING,
 });
 

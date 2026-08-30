@@ -235,7 +235,9 @@
  * @property {string[]} unmappedSurfaceIds - no record claims them: write one
  * @property {string[]} ambiguousSurfaceIds - two records claim them: delete one
  * @property {string[]} unknownSurfaceIds - named, but not in the facility graph
- * @property {string[]} idleSurfaceIds - mapped and in the graph; nothing occupied them or ground overlapping them on the requested dates
+ * @property {string[]} idleSurfaceIds - mapped and in the graph; the requested dates were examined and nothing occupied them or ground overlapping them
+ * @property {string[]} suppressedSurfaceIds - mapped and in the graph; occupied on the requested dates, and every occupant was in the query's own `excludeFixtureIds`
+ * @property {string[]} unexaminedSurfaceIds - mapped and in the graph; the scope named no date, so nothing was observed about them at all
  * @property {ExternalImportFinding[]} findings
  * @property {string} status
  * @property {ExternalImportMeta} meta

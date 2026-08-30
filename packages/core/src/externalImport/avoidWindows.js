@@ -115,8 +115,34 @@ export const EXTERNAL_AVOID_EXCLUSION = Object.freeze({
    * pitch the club simply had nothing on produced no window and appeared
    * nowhere — neither in the document, which is right, nor in the account of
    * what the document leaves out, which is not. This is that case, named.
+   *
+   * It is now **only** that case. The two causes below were reported under this
+   * one for a round, and its name — and the `idleSurfaceIds` list derived from
+   * it — is a claim about our schedule that neither of them supports.
    */
   NO_OCCUPANCY: 'nothing-occupied-it-on-the-requested-dates',
+  /**
+   * Mapped, in the graph, occupied — and every occupant is in the caller's own
+   * {@link AvoidWindowQuerySchema} `excludeFixtureIds`.
+   *
+   * Read off the loop rather than off the empty result, because the two are
+   * different facts with different readers: a recipient reads an absent pitch
+   * as *"they hold nothing there"*, and here we hold six things there and were
+   * asked not to publish them. Reporting it as {@link NO_OCCUPANCY} put a pitch
+   * with six suppressed occupants on the corpus's own seeding Saturday into
+   * `idleSurfaceIds`, under a sentence saying no fixture occupied it.
+   */
+  ALL_OCCUPANTS_EXCLUDED: 'every-occupant-of-it-was-excluded-from-this-export',
+  /**
+   * Mapped, in the graph, and the scope names no date — so the occupancy loop
+   * never ran and nothing was observed about it at all.
+   *
+   * Kept apart from {@link NO_OCCUPANCY} because looking at nothing is not
+   * looking and finding nothing. The export is refused whole in this case
+   * (`EXTERNAL_AVOID_SCOPE_EMPTY`, blocking), and the per-surface account is
+   * still read by whoever asks what became of the surface they named.
+   */
+  NOT_EXAMINED: 'no-date-was-examined',
 });
 
 /**
@@ -284,13 +310,20 @@ export function buildAvoidWindows({ query, registry, standing, graph }) {
     }
     const cone = new Set(conflictingSurfacesOf(graph, surfaceId));
     const windowsBefore = windows.length;
+    // Counted while the loop drops them, not inferred afterwards from an empty
+    // result: it is the difference between "nothing was there" and "everything
+    // that was there is on the caller's exclusion list", and only the loop that
+    // did the dropping can tell them apart.
+    let suppressedOccupants = 0;
     for (const date of dates) {
       meta.avoidScopeCells += 1;
-      const fixtures = (byDate.get(date) ?? []).filter(
-        (fixture) =>
-          cone.has(/** @type {any} */ (fixture).surfaceId) &&
-          !excludedFixtures.has(/** @type {any} */ (fixture).fixtureId)
+      const occupants = (byDate.get(date) ?? []).filter((fixture) =>
+        cone.has(/** @type {any} */ (fixture).surfaceId)
       );
+      const fixtures = occupants.filter(
+        (fixture) => !excludedFixtures.has(/** @type {any} */ (fixture).fixtureId)
+      );
+      suppressedOccupants += occupants.length - fixtures.length;
       for (const fixture of fixtures) {
         const source = /** @type {any} */ (fixture);
         const origin =
@@ -338,27 +371,57 @@ export function buildAvoidWindows({ query, registry, standing, graph }) {
       }
     }
 
-    // The third way a scope surface produces nothing, and the one the two
-    // guards above cannot see. Reported at `info` rather than passed over: a
-    // recipient reads a pitch's absence from this document as *"they hold
-    // nothing there"*, which is a claim about our schedule and not silence, and
-    // the operator who asked for the surface is owed the difference between
-    // "we looked and it was free" and "we never got that far".
+    // The three remaining ways a scope surface produces nothing, and the ones
+    // the two guards above cannot see. Reported at `info` rather than passed
+    // over: a recipient reads a pitch's absence from this document as *"they
+    // hold nothing there"*, which is a claim about our schedule and not
+    // silence, and the operator who asked for the surface is owed the
+    // difference between "we looked and it was free" and "we never got that
+    // far" — and, the round after that, the difference between both of those
+    // and "everything that was there is on the list you told us to drop".
+    //
+    // The cause is chosen from what the loop above observed, in the order the
+    // observations were possible: no date examined at all, then occupants seen
+    // and suppressed, then an examined surface that really was free. A sentence
+    // written next to one branch is a sentence that describes the branch.
     if (windows.length === windowsBefore) {
-      excluded.push({ surfaceId, reason: EXTERNAL_AVOID_EXCLUSION.NO_OCCUPANCY });
-      findings.push(
-        makeExternalImportFinding(
-          EXTERNAL_IMPORT_REASON.EXTERNAL_AVOID_SURFACE_IDLE,
-          `${surfaceId} is published to the recipient as ${JSON.stringify(externalLabel)} and no fixture occupied it, or ground overlapping it, on any of the ${dates.length} date(s) in scope, so the document carries no window for it; that is a statement about our schedule rather than a gap in the export`,
-          {
-            surfaceId,
-            externalLabel,
-            dates,
-            standingFixtures: standing.length,
-            excludedFixtures: excludedFixtures.size,
-          }
-        )
-      );
+      const observed = {
+        surfaceId,
+        externalLabel,
+        dates,
+        datesExamined: dates.length,
+        suppressedOccupants,
+        standingFixtures: standing.length,
+        excludedFixtures: excludedFixtures.size,
+      };
+      if (dates.length === 0) {
+        excluded.push({ surfaceId, reason: EXTERNAL_AVOID_EXCLUSION.NOT_EXAMINED });
+        findings.push(
+          makeExternalImportFinding(
+            EXTERNAL_IMPORT_REASON.EXTERNAL_AVOID_SURFACE_NOT_EXAMINED,
+            `${surfaceId} is published to the recipient as ${JSON.stringify(externalLabel)} and the scope names no date, so nothing was looked at and the document carries no window for it; that is a gap in the question this export was asked, not a fact about our schedule`,
+            observed
+          )
+        );
+      } else if (suppressedOccupants > 0) {
+        excluded.push({ surfaceId, reason: EXTERNAL_AVOID_EXCLUSION.ALL_OCCUPANTS_EXCLUDED });
+        findings.push(
+          makeExternalImportFinding(
+            EXTERNAL_IMPORT_REASON.EXTERNAL_AVOID_SURFACE_SUPPRESSED,
+            `${surfaceId} is published to the recipient as ${JSON.stringify(externalLabel)} and every one of the ${suppressedOccupants} fixture(s) that occupied it, or ground overlapping it, on the ${dates.length} date(s) in scope is in this export's own exclusion list, so the document carries no window for it; that is a fact about what the export was asked to leave out rather than about our schedule`,
+            observed
+          )
+        );
+      } else {
+        excluded.push({ surfaceId, reason: EXTERNAL_AVOID_EXCLUSION.NO_OCCUPANCY });
+        findings.push(
+          makeExternalImportFinding(
+            EXTERNAL_IMPORT_REASON.EXTERNAL_AVOID_SURFACE_IDLE,
+            `${surfaceId} is published to the recipient as ${JSON.stringify(externalLabel)} and no fixture occupied it, or ground overlapping it, on any of the ${dates.length} date(s) in scope, so the document carries no window for it; that is a statement about our schedule rather than a gap in the export`,
+            observed
+          )
+        );
+      }
     }
   }
 
@@ -460,6 +523,8 @@ export function buildAvoidWindows({ query, registry, standing, graph }) {
     ambiguousSurfaceIds: idsFor(EXTERNAL_AVOID_EXCLUSION.AMBIGUOUS),
     unknownSurfaceIds: idsFor(EXTERNAL_AVOID_EXCLUSION.SURFACE_UNKNOWN),
     idleSurfaceIds: idsFor(EXTERNAL_AVOID_EXCLUSION.NO_OCCUPANCY),
+    suppressedSurfaceIds: idsFor(EXTERNAL_AVOID_EXCLUSION.ALL_OCCUPANTS_EXCLUDED),
+    unexaminedSurfaceIds: idsFor(EXTERNAL_AVOID_EXCLUSION.NOT_EXAMINED),
     findings,
     status: deriveExternalImportStatus(findings),
     meta,

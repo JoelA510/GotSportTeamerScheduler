@@ -1,8 +1,8 @@
 /**
  * Repo-wide reachability audit for every frozen reason-code table in
  * `packages/core/src` — the generalisation of the per-module audit
- * `tests/attribution.test.js` already carries. 18 vocabularies, 389 codes, of
- * which 378 are shown to be producible and 11 are named as holes.
+ * `tests/attribution.test.js` already carries. 18 vocabularies, 391 codes, of
+ * which 380 are shown to be producible and 11 are named as holes.
  *
  * **The defect this exists to catch.** Four times now, in four unrelated
  * modules, a reason code has been declared, given a severity, documented, and
@@ -4693,11 +4693,13 @@ harvest(
     graph,
   })
 );
-// Also `EXTERNAL_AVOID_SURFACE_IDLE`: the pitch is mapped and in the graph, and
-// excluding the external fixtures leaves nothing occupying it or its overlap
-// cone that day, which is the third way a scope surface produces no window.
+// Also `EXTERNAL_AVOID_SURFACE_SUPPRESSED`: the pitch is mapped and in the
+// graph, and the only fixtures occupying it or its overlap cone that day are
+// the external ones this export excludes — so every occupant was dropped by
+// the caller's own list, which is not the same fact as a pitch nobody booked
+// and no longer shares its code.
 harvest(
-  'buildAvoidWindows(a scope that yields nothing)',
+  'buildAvoidWindows(a scope whose every occupant is excluded)',
   buildAvoidWindows({
     query: {
       subject: 'a date with nothing on it',
@@ -4708,6 +4710,45 @@ harvest(
       excludeFixtureIds: season.combinedGames
         .filter((game) => game.kind === SEASON_2026_ROW_KIND.EXTERNAL_FIXTURE)
         .map((game) => game.id),
+    },
+    registry: externalRegistry,
+    standing: externalStanding,
+    graph,
+  })
+);
+// `EXTERNAL_AVOID_SURFACE_IDLE`: the same mapped, in-graph pitch on a date the
+// corpus holds nothing at all on — examined, and found free, which is the one
+// arrangement whose sentence is a statement about our schedule.
+harvest(
+  'buildAvoidWindows(a date the club held nothing on)',
+  buildAvoidWindows({
+    query: {
+      subject: 'a pitch on a date nothing touches',
+      documentId: 'idle-driver-1',
+      generatedFor: 'external seeding league',
+      dates: ['2026-10-10'],
+      surfaceIds: [season2026SurfaceId('Alder Park', 'Pitch 2')],
+      excludeFixtureIds: [],
+    },
+    registry: externalRegistry,
+    standing: externalStanding,
+    graph,
+  })
+);
+// `EXTERNAL_AVOID_SURFACE_NOT_EXAMINED`: a scope naming a surface and no date.
+// The export is refused whole (`EXTERNAL_AVOID_SCOPE_EMPTY`), and the surface
+// the caller asked about is still accounted for — as never looked at, which is
+// not the same as looked at and found free.
+harvest(
+  'buildAvoidWindows(a scope that names a surface and no date)',
+  buildAvoidWindows({
+    query: {
+      subject: 'a surface, and no date to look at it on',
+      documentId: 'unexamined-driver-1',
+      generatedFor: 'external seeding league',
+      dates: [],
+      surfaceIds: [season2026SurfaceId('Alder Park', 'Pitch 2')],
+      excludeFixtureIds: [],
     },
     registry: externalRegistry,
     standing: externalStanding,
