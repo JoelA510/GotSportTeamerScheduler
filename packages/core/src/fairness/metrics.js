@@ -139,6 +139,43 @@ function distinctIds(fixtureIds) {
   return Object.freeze([...new Set(fixtureIds)].sort());
 }
 
+/**
+ * The same list, refused rather than shortened if it names an id twice.
+ *
+ * The difference between this and {@link distinctIds} is the whole of finding
+ * one. A metric's **value** is computed over the entry list — `entries.length`,
+ * `hosted / twoSided.length`, a mean over `timed` — and the **count published
+ * beside it** is the size of a set of ids. Deduplicating here makes the second
+ * quietly smaller than the first: with two rows under `f1`, `games-played`
+ * returned `value: 4` while its own evidence said `fixturesCounted: 3` and
+ * named `['f1', 'f4', 'f5']`, and no finding anywhere said the two numbers were
+ * about different things.
+ *
+ * The invariant is established at the module's boundary —
+ * `classifyFairnessFixtures()` refuses a fixture list that repeats an id, so no
+ * report or objective can reach this function with one. This is the same
+ * invariant restated where it is relied on, for a caller who reaches
+ * {@link measureSubject} directly, and it throws for the reason
+ * {@link fairnessMetricOf} throws on an unregistered metric: it is a mistake in
+ * the call, not a property of a season.
+ *
+ * @param {ReadonlyArray<string>} fixtureIds
+ * @param {string} what - names the set in the failure
+ * @returns {ReadonlyArray<string>}
+ */
+function uniqueIds(fixtureIds, what) {
+  const seen = new Set();
+  for (const fixtureId of fixtureIds) {
+    if (seen.has(fixtureId)) {
+      throw new Error(
+        `fairness: the ${what} names fixture ${JSON.stringify(fixtureId)} twice; a count published as evidence must be over exactly the set its value was computed from, and one id over two rows makes them two different numbers wearing one name`
+      );
+    }
+    seen.add(fixtureId);
+  }
+  return Object.freeze([...seen].sort());
+}
+
 /** The fixture ids of a list of counted entries. */
 const idsOf = (entries) => entries.map((entry) => entry.fixture.fixtureId);
 
@@ -169,6 +206,17 @@ const idsOf = (entries) => entries.map((entry) => entry.fixture.fixtureId);
  *    opponent — a 1:1 ratio that hid the general case. Hence the id sets: a
  *    union cannot double-count, and a reader can check the number by counting
  *    the rows it names.
+ * 3. …and the id sets then opened the *opposite* divergence, which is the one
+ *    this note is now longest about. `fixturesCounted` became the size of a set
+ *    while every metric's **value** stayed a function of the entry list, and
+ *    nothing made one id name one row: two rows sharing `f1` gave a team
+ *    `value: 4` beside `fixturesCounted: 3` and `countedFixtureIds:
+ *    ['f1', 'f4', 'f5']`, its division 4 counted over 5 rows, and
+ *    `meta.fixturesCounted` a read-vs-counted shortfall that did not exist.
+ *    A count and its value can only be derived separately while something holds
+ *    them together, so `classifyFairnessFixtures()` now refuses a fixture list
+ *    that repeats an id and {@link uniqueIds} restates the same invariant here,
+ *    where it is relied on.
  *
  * Evidence a reader can check by hand is the point of this module.
  *
@@ -177,7 +225,7 @@ const idsOf = (entries) => entries.map((entry) => entry.fixture.fixtureId);
  * @returns {import('./types.js').FairnessEvidence}
  */
 function evidence(countedFixtureIds, exclusions = []) {
-  const counted = distinctIds(countedFixtureIds);
+  const counted = uniqueIds(countedFixtureIds, 'counted evidence');
   // Each excluded id is attributed to the first bucket that names it, so the
   // breakdown sums to the total rather than over-counting a shared row. A
   // fixture the metric counted is never also an exclusion.
@@ -296,12 +344,30 @@ export const FAIRNESS_METRIC_REGISTRY = Object.freeze({
  * One measurement's evidence, plus the fixtures of a competition the metric
  * does not count and therefore never saw.
  *
+ * The two id sets are disjoint, and that is **asserted rather than assumed**.
+ * It is true today by construction — {@link measureSubject} partitions the
+ * subject's rows on `metric.counts`, so a row is handed to the metric or set
+ * aside and never both, and one id names one row — but the identity that rests
+ * on it fails silently if either premise stops holding: `fixturesExcluded` is
+ * the size of the **union** while `exclusions` is a list of **bucket sizes**,
+ * so an overlapping id would make the buckets sum to more than the total they
+ * claim to break down, with nothing in the arithmetic to object. The check is
+ * one set lookup per set-aside id.
+ *
  * @param {import('./types.js').FairnessEvidence} base
- * @param {ReadonlyArray<string>} setAsideFixtureIds - disjoint from `base` by construction
+ * @param {ReadonlyArray<string>} setAsideFixtureIds
  * @returns {import('./types.js').FairnessEvidence}
  */
 function withSetAside(base, setAsideFixtureIds) {
-  const setAside = distinctIds(setAsideFixtureIds);
+  const setAside = uniqueIds(setAsideFixtureIds, 'set-aside evidence');
+  const already = new Set([...base.countedFixtureIds, ...base.excludedFixtureIds]);
+  for (const fixtureId of setAside) {
+    if (already.has(fixtureId)) {
+      throw new Error(
+        `fairness: fixture ${JSON.stringify(fixtureId)} is both read by this metric and set aside as another competition's; the two sets are disjoint by construction, and an overlap makes the exclusion breakdown sum to more than the total it breaks down`
+      );
+    }
+  }
   const excluded = distinctIds([...base.excludedFixtureIds, ...setAside]);
   return Object.freeze({
     fixturesCounted: base.fixturesCounted,

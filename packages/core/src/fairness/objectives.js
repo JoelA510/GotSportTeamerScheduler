@@ -33,6 +33,17 @@
  * than a number. Two scores over different populations are two different
  * quantities with the same name.
  *
+ * **And the same rule at the level of the whole score.** A term that could not
+ * be scored carries `penalty: null`; a *result* in which nothing at all could be
+ * scored carries `score: null`, with a blocking
+ * `FAIRNESS_OBJECTIVE_UNSCORED`. The rule was stated for one term and not for
+ * the sum, so a season this module could not read — an unclassifiable row, a
+ * repeated fixture id, a list of placeholders naming nobody — emptied `terms`,
+ * left the `unscoredCount > 0` coverage guard unfired, and returned `score: 0`:
+ * the best value a minimisation can hold, over a season it measured nothing of.
+ * {@link compareObjectiveScores} refuses such a result rather than ranking it,
+ * because two of them agree on every field it compares.
+ *
  * ## The three
  *
  * | id | penalty | target |
@@ -327,6 +338,37 @@ export function scoreFairnessObjective(fixtures, config, supplied = null) {
   }
 
   const unscoredCount = terms.length - scoredCount;
+  // **Nothing scored is not a score of zero**, and this is the same rule the
+  // per-term `penalty: null` above states, applied to the total. A season this
+  // module could not read — an unclassifiable row, a repeated fixture id, a
+  // list of placeholders naming nobody — empties `participation`, which empties
+  // `terms`, which leaves `unscoredCount` at zero so the coverage guard below
+  // never fires: the objective returned `score: 0`, the **best possible value
+  // of a minimisation**, with `coverage: 0`, and for a usable list of
+  // placeholders it returned it at `status: 'allowed'` with no finding at all.
+  // Two such results then compared as `{ comparable: true, better: null,
+  // delta: 0 }`, a tie between two seasons neither of which was read.
+  //
+  // The guard is on `scoredCount`, not on `terms.length`: a list of six teams
+  // whose every fixture names no opponent produces six terms and no score, and
+  // is the same claim about the same nothing.
+  const scoreOrNull = scoredCount === 0 ? null : score;
+  if (scoredCount === 0) {
+    findings.push(
+      makeFairnessFinding(
+        FAIRNESS_REASON.FAIRNESS_OBJECTIVE_UNSCORED,
+        `${parsed.objectiveId} scored no subject at all over ${terms.length} considered, so it has no score; it is reported as null rather than as 0 because this objective is a ${FAIRNESS_OBJECTIVE_SENSE.MINIMISE} and 0 is its best possible value, which would rank a season nothing could be measured in above every season that could`,
+        {
+          objectiveId: parsed.objectiveId,
+          metricId: definition.metricId,
+          sense: FAIRNESS_OBJECTIVE_SENSE.MINIMISE,
+          termsScored: scoredCount,
+          termsConsidered: terms.length,
+          subjectsObserved: participation.size,
+        }
+      )
+    );
+  }
   if (unscoredCount > 0) {
     findings.push(
       makeFairnessFinding(
@@ -351,7 +393,7 @@ export function scoreFairnessObjective(fixtures, config, supplied = null) {
     unit: definition.unit,
     weight: parsed.weight,
     basisKind: parsed.basisKind,
-    score,
+    score: scoreOrNull,
     termsScored: scoredCount,
     termsUnscored: unscoredCount,
     coverage: terms.length === 0 ? 0 : scoredCount / terms.length,
@@ -401,16 +443,56 @@ function assertParticipationMatches(observed, supplied, objectiveId) {
  *
  * A solver's whole use for a scalar is to decide whether one candidate is better
  * than another, and this is the one place that decision is made. It refuses
- * unless the two results are the same objective, the same weight, the same
- * basis, and the same coverage — because a smaller sum over fewer terms is not a
- * better schedule, it is a shorter sum, and nothing about the two numbers
- * announces the difference.
+ * unless both results actually hold a score, and the two are the same
+ * objective, the same weight, the same basis, and the same coverage — because a
+ * smaller sum over fewer terms is not a better schedule, it is a shorter sum,
+ * and nothing about the two numbers announces the difference.
  *
  * @param {import('./types.js').FairnessObjectiveResult} left
  * @param {import('./types.js').FairnessObjectiveResult} right
  * @returns {{ comparable: boolean, better: string|null, delta: number|null, findings: ReadonlyArray<import('./types.js').FairnessFinding> }}
  */
 export function compareObjectiveScores(left, right) {
+  // **A result that scored nothing has no score**, so there is nothing here to
+  // rank — and this is checked first, before the mismatch fields, because when
+  // both sides measured nothing they *agree* on every one of them. Two empty
+  // results used to come back `{ comparable: true, better: null, delta: 0 }`:
+  // identical objectiveId, weight, basis, `termsScored: 0` and `coverage: 0`,
+  // two `score`s of 0, and a tie declared between two seasons neither of which
+  // was read. `status` and `findings` say so loudly on both operands and this
+  // function reads neither, which is why the refusal is stated on the one thing
+  // it does read.
+  /** @type {string[]} */
+  const unscored = [];
+  if (left.termsScored === 0) unscored.push('left');
+  if (right.termsScored === 0) unscored.push('right');
+  if (unscored.length > 0) {
+    return {
+      comparable: false,
+      better: null,
+      delta: null,
+      findings: assertFairnessFindings([
+        makeFairnessFinding(
+          FAIRNESS_REASON.FAIRNESS_OBJECTIVE_INCOMPARABLE,
+          `the ${unscored.join(' and ')} result(s) scored no subject at all, so there is no number on that side to rank; a ${FAIRNESS_OBJECTIVE_SENSE.MINIMISE} whose score is absent is not a schedule that scored zero`,
+          {
+            unscored,
+            left: {
+              objectiveId: left.objectiveId,
+              termsScored: left.termsScored,
+              score: left.score,
+            },
+            right: {
+              objectiveId: right.objectiveId,
+              termsScored: right.termsScored,
+              score: right.score,
+            },
+          }
+        ),
+      ]),
+    };
+  }
+
   /** @type {string[]} */
   const mismatches = [];
   if (left.objectiveId !== right.objectiveId) mismatches.push('objectiveId');
@@ -446,11 +528,15 @@ export function compareObjectiveScores(left, right) {
     };
   }
 
+  // Both sides scored at least one subject, so both carry a number: the guard
+  // at the top of this function is what makes the arithmetic below total.
+  const leftScore = /** @type {number} */ (left.score);
+  const rightScore = /** @type {number} */ (right.score);
   return {
     comparable: true,
     // MINIMISE, stated on both results and read here rather than assumed.
-    better: left.score === right.score ? null : left.score < right.score ? 'left' : 'right',
-    delta: left.score - right.score,
+    better: leftScore === rightScore ? null : leftScore < rightScore ? 'left' : 'right',
+    delta: leftScore - rightScore,
     findings: [],
   };
 }

@@ -176,7 +176,38 @@ export function sideOf(fixture, subjectId) {
 }
 
 /**
- * **Classify a fixture list, and refuse one that mixes scopes.**
+ * How many duplicated ids a refusal names before it starts counting only.
+ * `details` is meant to be readable; the count is never capped.
+ *
+ * @type {number}
+ */
+export const DUPLICATE_ID_CAP = 25;
+
+/**
+ * **Classify a fixture list, and refuse one that mixes scopes or repeats an id.**
+ *
+ * ## One fixture id is one fixture
+ *
+ * Every `fixtures*` number this module publishes is the size of a **set of
+ * fixture ids**, and every metric's value is computed over the **rows** a
+ * subject holds. Those are the same number exactly while one id names one row,
+ * and nothing downstream re-establishes it: with two rows sharing `f1` a team
+ * published `games-played` `value: 4` beside `fixturesCounted: 3` and
+ * `countedFixtureIds: ['f1', 'f4', 'f5']`, its division published 4 counted
+ * fixtures over 5 rows, and `meta.fixturesCounted` reported a read-vs-counted
+ * shortfall against a list every row of which a metric reads — all silently.
+ *
+ * So the invariant is established here, once, where fixtures enter the module,
+ * and it is established as a **blocking** finding rather than by deduplicating:
+ * two rows under one id is a defect in the data, and choosing which of them is
+ * the real `f1` — which kickoff, which venue, which opponent — is a question
+ * this module has no standing to answer. Refusing it is the same treatment
+ * {@link FAIRNESS_REASON.FAIRNESS_FIXTURE_UNCLASSIFIED} gives a competition
+ * nobody declared, for the same reason.
+ *
+ * Both entry points run this before anything else — `fairnessReport()` and
+ * `scoreFairnessObjective()` alike — so the guarantee metrics.js relies on is
+ * the one a caller is refused for breaking.
  *
  * ## GAP-24, stated rather than assumed
  *
@@ -226,16 +257,37 @@ export function classifyFairnessFixtures(fixtures) {
   const scopes = new Set();
   /** @type {Map<string, number>} */
   const unclassified = new Map();
+  /** @type {Map<string, number>} */
+  const rowsPerId = new Map();
   let placeholders = 0;
 
   for (const fixture of fixtures) {
     scopes.add(fixture.scopeId);
+    rowsPerId.set(fixture.fixtureId, (rowsPerId.get(fixture.fixtureId) ?? 0) + 1);
     if (!isDeclaredCompetition(fixture.competition)) {
       unclassified.set(fixture.competition, (unclassified.get(fixture.competition) ?? 0) + 1);
       continue;
     }
     byCompetition[fixture.competition] += 1;
     if (fixture.homeSubjectId === null && fixture.awaySubjectId === null) placeholders += 1;
+  }
+
+  const duplicated = [...rowsPerId].filter(([, rows]) => rows > 1).map(([fixtureId]) => fixtureId);
+  if (duplicated.length > 0) {
+    duplicated.sort();
+    findings.push(
+      makeFairnessFinding(
+        FAIRNESS_REASON.FAIRNESS_FIXTURE_DUPLICATED,
+        `${duplicated.length} fixture id(s) name more than one row (${duplicated.slice(0, DUPLICATE_ID_CAP).join(', ')}); every fixture count this module publishes is the size of a set of ids, and every metric's value is computed over rows, so two rows under one id make a value and the evidence beside it two different quantities with nothing to say so`,
+        {
+          duplicatedFixtureIds: duplicated.length,
+          fixtureIds: duplicated.slice(0, DUPLICATE_ID_CAP),
+          fixtureIdsNamed: Math.min(duplicated.length, DUPLICATE_ID_CAP),
+          rowsRead: fixtures.length,
+          distinctFixtureIds: rowsPerId.size,
+        }
+      )
+    );
   }
 
   if (placeholders > 0) {

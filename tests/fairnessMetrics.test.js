@@ -51,6 +51,7 @@ import {
   FAIRNESS_REASON,
   FAIRNESS_REASON_SEVERITY,
   FAIRNESS_SEVERITY,
+  FAIRNESS_SIDE,
   FAIRNESS_STATUS,
   FAIRNESS_SUBJECT_KIND,
   MIN_POPULATION_FOR_DISPERSION,
@@ -64,6 +65,7 @@ import {
   countedFixturesOf,
   fairnessReport,
   groupKeyOf,
+  measureSubject,
   median,
   medianAbsoluteDeviation,
   modifiedZScore,
@@ -1641,6 +1643,31 @@ describe('fairness :: evidence a reader can check by hand', () => {
     expect(swept).toBe(648);
     expect(swept).toBe(report.measurements.length);
 
+    // Rule four, the one the other three assume: **the count published as
+    // evidence is over exactly the set the value was computed from.** The two
+    // are derived separately — the value from the entry list, the count from a
+    // set of ids — and nothing in the arithmetic makes them agree; what makes
+    // them agree is that one fixture id names one row, which the classifier now
+    // refuses a list for breaking. `games-played` is where a divergence is
+    // visible without arithmetic, because its unit *is* that count: a subject
+    // holding two rows under one id published `value: 4` beside
+    // `fixturesCounted: 3`. The list that makes this rule fail is built in
+    // 'fairness :: one fixture id is one fixture' below; here it is asserted
+    // over every team the corpus measures.
+    let valuesChecked = 0;
+    for (const measurement of report.measurements) {
+      if (measurement.metricId !== FAIRNESS_METRIC.GAMES_PLAYED) continue;
+      if (measurement.subjectKind !== FAIRNESS_SUBJECT_KIND.TEAM) continue;
+      if (measurement.measurability !== FAIRNESS_MEASURABILITY.MEASURED) continue;
+      expect(measurement.value).toBe(measurement.evidence.fixturesCounted);
+      expect(measurement.value).toBe(measurement.evidence.countedFixtureIds.length);
+      valuesChecked += 1;
+    }
+    // Meta-assertion on this sweep's own population: 122 of the 140
+    // participants hold a league fixture, and a sweep that measured none of
+    // them would agree with itself about nothing.
+    expect(valuesChecked).toBe(122);
+
     // The pinned example, at a ratio that is **not** 1:1 and checked by hand
     // against the corpus: division `U05B` is eight teams playing nine league
     // fixtures each, which is 36 fixtures and not 72.
@@ -1933,5 +1960,449 @@ describe('fairness :: one enum, read the same way by both halves', () => {
     expect(accepted).toBe(3);
     expect(probes.length - accepted).toBe(6);
     expect(disagreements).toEqual([]);
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* 12. One fixture id is one fixture                                           */
+/* -------------------------------------------------------------------------- */
+
+describe('fairness :: one fixture id is one fixture', () => {
+  /**
+   * Five rows over four teams, two of them carrying the id `f1`.
+   *
+   * `A` appears on four rows and under three ids, which is the shape that
+   * parted a value from its evidence: `games-played` counts entries and
+   * published `value: 4`, while `evidence()` counted a set of ids and published
+   * `fixturesCounted: 3` with `countedFixtureIds: ['f1', 'f4', 'f5']` beside
+   * it. The division published 4 counted over 5 rows, and
+   * `meta.fixturesCounted` reported a read-vs-counted shortfall of one against
+   * a list every row of which a metric reads. None of it raised a finding.
+   */
+  const duplicated = () => [
+    fixture({ fixtureId: 'f1', date: '2026-09-01', homeSubjectId: 'A', awaySubjectId: 'B' }),
+    fixture({ fixtureId: 'f1', date: '2026-09-08', homeSubjectId: 'A', awaySubjectId: 'C' }),
+    fixture({ fixtureId: 'f4', date: '2026-09-15', homeSubjectId: 'A', awaySubjectId: 'D' }),
+    fixture({ fixtureId: 'f5', date: '2026-09-22', homeSubjectId: 'A', awaySubjectId: 'B' }),
+    fixture({ fixtureId: 'f6', date: '2026-09-29', homeSubjectId: 'C', awaySubjectId: 'D' }),
+  ];
+
+  it('refuses a list that names one fixture id twice, at both entry points', () => {
+    const rows = duplicated();
+    // Meta-assertion on the case itself: five rows, four ids, and `A` on four
+    // of the rows under three of the ids. A construction that had lost its
+    // duplicate would prove nothing below.
+    expect(rows).toHaveLength(5);
+    expect(new Set(rows.map((held) => held.fixtureId)).size).toBe(4);
+
+    const report = fairnessReport({ fixtures: rows });
+    expect(report.status).toBe(FAIRNESS_STATUS.REJECTED);
+    const refusal = findingsOf(report, FAIRNESS_REASON.FAIRNESS_FIXTURE_DUPLICATED);
+    expect(refusal).toHaveLength(1);
+    expect(refusal[0].severity).toBe(FAIRNESS_SEVERITY.BLOCKING);
+    expect(refusal[0].details.fixtureIds).toEqual(['f1']);
+    expect(refusal[0].details.duplicatedFixtureIds).toBe(1);
+    expect(refusal[0].details.rowsRead).toBe(5);
+    // Blocking, so no metric ran: the report publishes no team measurement at
+    // all rather than one whose count is over a set its value did not come
+    // from.
+    expect(report.measurements.filter((m) => m.subjectKind === FAIRNESS_SUBJECT_KIND.TEAM)).toEqual(
+      []
+    );
+
+    // The objective is the half a solver would consume, and it gives the same
+    // answer about the same list.
+    const objective = scoreFairnessObjective(rows, {
+      objectiveId: FAIRNESS_OBJECTIVE.GAME_COUNT_PARITY,
+    });
+    expect(objective.status).toBe(FAIRNESS_STATUS.REJECTED);
+    expect(
+      objective.findings.some(
+        (finding) => finding.code === FAIRNESS_REASON.FAIRNESS_FIXTURE_DUPLICATED
+      )
+    ).toBe(true);
+    expect(objective.terms).toEqual([]);
+    expect(objective.score).toBeNull();
+  });
+
+  it('reads the same five rows once the second `f1` has its own id', () => {
+    // The control, and the reason the refusal above is about a duplicate rather
+    // than about this list: one character changes, and the list is read. An
+    // implementation that refused every list would fail here.
+    const repaired = duplicated().map((held, index) =>
+      index === 1 ? { ...held, fixtureId: 'f2' } : held
+    );
+    const clean = fairnessReport({ fixtures: repaired });
+    expect(findingsOf(clean, FAIRNESS_REASON.FAIRNESS_FIXTURE_DUPLICATED)).toHaveLength(0);
+
+    const a = clean.measurements.find(
+      (m) =>
+        m.subjectKind === FAIRNESS_SUBJECT_KIND.TEAM &&
+        m.subjectId === 'A' &&
+        m.metricId === FAIRNESS_METRIC.GAMES_PLAYED
+    );
+    // The four numbers that disagreed, now one number four times over.
+    expect(a.value).toBe(4);
+    expect(a.evidence.fixturesCounted).toBe(4);
+    expect(a.evidence.countedFixtureIds).toEqual(['f1', 'f2', 'f4', 'f5']);
+    expect(clean.meta.fixturesRead).toBe(5);
+    expect(clean.meta.fixturesCounted).toBe(5);
+    expect(clean.meta.fixturesRead - clean.meta.fixturesCounted).toBe(0);
+
+    // …and the division, which used to publish four counted fixtures over the
+    // five its members actually hold.
+    const division = clean.measurements.find(
+      (m) =>
+        m.subjectKind === FAIRNESS_SUBJECT_KIND.DIVISION &&
+        m.subjectId === 'U10B' &&
+        m.metricId === FAIRNESS_METRIC.GAMES_PLAYED
+    );
+    expect(division.evidence.fixturesCounted).toBe(5);
+    expect(division.evidence.countedFixtureIds).toHaveLength(5);
+  });
+
+  it('refuses to publish a count over a set the value did not come from', () => {
+    // The invariant made structural at the line it was broken on, so that a
+    // caller reaching `measureSubject()` directly — past the classifier that
+    // refuses the list above — cannot produce the divergence either. Two rows,
+    // one id: `games-played` would count two and the evidence would name one.
+    const twice = [
+      { fixture: fixture({ fixtureId: 'f1' }), side: FAIRNESS_SIDE.HOME },
+      { fixture: fixture({ fixtureId: 'f1', date: '2026-08-29' }), side: FAIRNESS_SIDE.HOME },
+    ];
+    const gamesPlayed = FAIRNESS_METRIC_REGISTRY[FAIRNESS_METRIC.GAMES_PLAYED];
+    expect(() => measureSubject(gamesPlayed, FAIRNESS_SUBJECT_KIND.TEAM, 'A', twice)).toThrow(
+      /"f1"/
+    );
+
+    // The control: the same two rows under two ids measure, and the value is
+    // the size of the set the evidence names.
+    const once = [
+      twice[0],
+      { fixture: fixture({ fixtureId: 'f2', date: '2026-08-29' }), side: FAIRNESS_SIDE.HOME },
+    ];
+    const measurement = measureSubject(gamesPlayed, FAIRNESS_SUBJECT_KIND.TEAM, 'A', once);
+    expect(measurement.value).toBe(2);
+    expect(measurement.evidence.fixturesCounted).toBe(2);
+    expect(measurement.evidence.countedFixtureIds).toEqual(['f1', 'f2']);
+  });
+
+  it('refuses a set-aside id the metric also counted, which would break the exclusion sum', () => {
+    // `withSetAside()` documents its two id sets as disjoint by construction —
+    // true because competition is a property of a fixture and the metric was
+    // only ever handed the competitions it counts. The review asked for it to
+    // be asserted rather than assumed, because the identity that rests on it —
+    // `exclusions` summing to `fixturesExcluded` — breaks silently if it stops
+    // holding: the union would be smaller than the sum of the buckets and
+    // nothing would object.
+    const gamesPlayed = FAIRNESS_METRIC_REGISTRY[FAIRNESS_METRIC.GAMES_PLAYED];
+    const shared = fixture({ fixtureId: 'f1' });
+    expect(() =>
+      measureSubject(gamesPlayed, FAIRNESS_SUBJECT_KIND.TEAM, 'A', [
+        { fixture: shared, side: FAIRNESS_SIDE.HOME },
+        // The same id under a competition this metric does not count: one row
+        // is both counted and set aside, which no fixture list can produce.
+        {
+          fixture: fixture({ fixtureId: 'f1', competition: FAIRNESS_COMPETITION.FRIENDLY }),
+          side: FAIRNESS_SIDE.HOME,
+        },
+      ])
+    ).toThrow(/"f1"/);
+
+    // The control: a genuinely disjoint set-aside is accounted for, and the
+    // buckets still sum to the total.
+    const measurement = measureSubject(gamesPlayed, FAIRNESS_SUBJECT_KIND.TEAM, 'A', [
+      { fixture: shared, side: FAIRNESS_SIDE.HOME },
+      {
+        fixture: fixture({ fixtureId: 'f2', competition: FAIRNESS_COMPETITION.FRIENDLY }),
+        side: FAIRNESS_SIDE.HOME,
+      },
+    ]);
+    expect(measurement.evidence.fixturesCounted).toBe(1);
+    expect(measurement.evidence.fixturesExcluded).toBe(1);
+    expect(measurement.evidence.exclusions.reduce((sum, [, count]) => sum + count, 0)).toBe(
+      measurement.evidence.fixturesExcluded
+    );
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* 13. An objective that scored nothing has no score                           */
+/* -------------------------------------------------------------------------- */
+
+describe('fairness :: an objective that scored nothing has no score', () => {
+  const HOSTING = { objectiveId: FAIRNESS_OBJECTIVE.HOSTING_BALANCE };
+
+  /** Nine two-sided league rounds among eight teams: every subject scoreable. */
+  const scoreable = () => roundRobin({ teamCount: 8, rounds: 7 });
+
+  it('returns null rather than zero for a list it found nobody in', () => {
+    // Two rows naming no participant on either side. The classifier *accepts*
+    // them — 101 of season-2026's rows are exactly this, and they are reported
+    // rather than refused — so the list is usable and there is simply nobody in
+    // it. `participation` is empty, `terms` is empty, the coverage guard reads
+    // `unscoredCount > 0` and never fires, and the objective returned
+    // `score: 0` with `status: 'allowed'`: the best possible value of a
+    // minimisation, over a season it measured nothing of, with nothing said.
+    const nobody = [
+      fixture({ fixtureId: 'p1', homeSubjectId: null, awaySubjectId: null }),
+      fixture({ fixtureId: 'p2', homeSubjectId: null, awaySubjectId: null }),
+    ];
+    const result = scoreFairnessObjective(nobody, HOSTING);
+    expect(result.terms).toEqual([]);
+    expect(result.termsScored).toBe(0);
+    // The module's own rule for one unmeasurable term, applied to the whole
+    // score: null, never 0, because zero is the best score.
+    expect(result.score).toBeNull();
+    expect(result.status).toBe(FAIRNESS_STATUS.REJECTED);
+    const unscored = result.findings.filter(
+      (finding) => finding.code === FAIRNESS_REASON.FAIRNESS_OBJECTIVE_UNSCORED
+    );
+    expect(unscored).toHaveLength(1);
+    expect(unscored[0].severity).toBe(FAIRNESS_SEVERITY.BLOCKING);
+    expect(unscored[0].details.termsScored).toBe(0);
+    expect(unscored[0].details.sense).toBe(FAIRNESS_OBJECTIVE_SENSE.MINIMISE);
+
+    // The control, so the null is about this list and not about every list: an
+    // implementation that returned null for everything would fail here, and a
+    // real schedule still comes back with a number and an `allowed` status.
+    const real = scoreFairnessObjective(scoreable(), HOSTING);
+    expect(typeof real.score).toBe('number');
+    expect(real.termsScored).toBe(8);
+    expect(real.status).toBe(FAIRNESS_STATUS.ALLOWED);
+  });
+
+  it('returns null when every subject was counted and none could be scored', () => {
+    // The case that separates the fix from the shortcut. `terms` is **not**
+    // empty here — six subjects are considered, each holding nine league
+    // fixtures — and not one of them is scoreable, because none of those
+    // fixtures names an opponent and a hosting share over no two-sided fixture
+    // is not a quantity. A guard written as `terms.length === 0` passes this
+    // and publishes `score: 0` over a schedule in which nothing was measured;
+    // the rule is about what was *scored*, not about what was considered.
+    const solo = Array.from({ length: 6 }, (unused, team) =>
+      Array.from({ length: 9 }, (ignored, round) =>
+        fixture({
+          fixtureId: `s${team}-r${round}`,
+          date: `2026-09-${String(round + 1).padStart(2, '0')}`,
+          homeSubjectId: `T${team}`,
+          awaySubjectId: null,
+        })
+      )
+    ).flat();
+    const result = scoreFairnessObjective(solo, HOSTING);
+    expect(result.terms).toHaveLength(6);
+    expect(result.termsScored).toBe(0);
+    expect(result.termsUnscored).toBe(6);
+    expect(result.terms.every((term) => term.penalty === null)).toBe(true);
+    expect(new Set(result.terms.map((term) => term.reasonCode))).toEqual(
+      new Set([FAIRNESS_REASON.FAIRNESS_DENOMINATOR_EMPTY])
+    );
+    expect(result.score).toBeNull();
+    expect(result.coverage).toBe(0);
+    expect(
+      result.findings.some(
+        (finding) => finding.code === FAIRNESS_REASON.FAIRNESS_OBJECTIVE_UNSCORED
+      )
+    ).toBe(true);
+    // The partial-coverage finding still fires beside it: six of six is a
+    // shortfall as well as a total absence, and the two say different things.
+    expect(
+      result.findings.some(
+        (finding) => finding.code === FAIRNESS_REASON.FAIRNESS_OBJECTIVE_COVERAGE_PARTIAL
+      )
+    ).toBe(true);
+  });
+
+  it('refuses to rank a result that measured nothing, including against another', () => {
+    // Two results that measured nothing used to compare as
+    // `{ comparable: true, better: null, delta: 0 }` — a tie between two
+    // seasons neither of which was read — because `compareObjectiveScores()`
+    // agrees on every field it checks when both sides are empty, and it reads
+    // neither `status` nor `findings`.
+    const left = scoreFairnessObjective(
+      [fixture({ fixtureId: 'p1', homeSubjectId: null, awaySubjectId: null })],
+      HOSTING
+    );
+    const right = scoreFairnessObjective(
+      [fixture({ fixtureId: 'p2', homeSubjectId: null, awaySubjectId: null })],
+      HOSTING
+    );
+    expect(left.termsScored).toBe(0);
+    expect(right.termsScored).toBe(0);
+    // Everything the mismatch guard looks at agrees, which is why the refusal
+    // has to be about the operands rather than about a difference between them.
+    for (const field of ['objectiveId', 'weight', 'basisKind', 'termsScored', 'coverage']) {
+      expect(left[field]).toBe(right[field]);
+    }
+    const both = compareObjectiveScores(left, right);
+    expect(both.comparable).toBe(false);
+    expect(both.better).toBeNull();
+    expect(both.delta).toBeNull();
+    expect(both.findings[0].code).toBe(FAIRNESS_REASON.FAIRNESS_OBJECTIVE_INCOMPARABLE);
+    expect(both.findings[0].severity).toBe(FAIRNESS_SEVERITY.BLOCKING);
+    // The refusal names which side has no score, so it is not mistaken for the
+    // mismatch refusal beside it.
+    expect(both.findings[0].details.unscored).toEqual(['left', 'right']);
+    expect(both.findings[0].details.mismatches).toBeUndefined();
+
+    // One side only, either way round.
+    const real = scoreFairnessObjective(scoreable(), HOSTING);
+    for (const side of ['left', 'right']) {
+      const comparison =
+        side === 'left' ? compareObjectiveScores(left, real) : compareObjectiveScores(real, left);
+      expect(comparison.comparable).toBe(false);
+      expect(comparison.better).toBeNull();
+      expect(comparison.delta).toBeNull();
+      expect(comparison.findings[0].details.unscored).toEqual([side]);
+    }
+
+    // And the control that keeps the guard from being "refuse everything": two
+    // results that both measured something are still ranked, in the declared
+    // sense.
+    const lopsided = scoreable().map((held) => ({
+      ...held,
+      homeSubjectId:
+        held.homeSubjectId < held.awaySubjectId ? held.homeSubjectId : held.awaySubjectId,
+      awaySubjectId:
+        held.homeSubjectId < held.awaySubjectId ? held.awaySubjectId : held.homeSubjectId,
+    }));
+    const ranked = compareObjectiveScores(real, scoreFairnessObjective(lopsided, HOSTING));
+    expect(ranked.comparable).toBe(true);
+    expect(ranked.better).toBe('left');
+    expect(ranked.delta).toBeLessThan(0);
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* 14. The objective classifies, and groups, the way the report does           */
+/* -------------------------------------------------------------------------- */
+
+describe('fairness :: the objective answers about the same list as the report', () => {
+  it('refuses a list carrying a competition nobody declared, rather than scoring the rest', () => {
+    // The objective declares its `fixtures` argument the authority and derives
+    // participation from it, and used not to classify it: one `tournament` row
+    // came back `coverage: 1`, `status: 'allowed'`, no finding, and that row's
+    // opponent silently absent from the population — while `fairnessReport()`
+    // refused the identical list as blocking.
+    const league = roundRobin({ teamCount: 8, rounds: 7 });
+    const withTournament = [
+      ...league,
+      fixture({
+        fixtureId: 'cup-1',
+        date: '2026-11-14',
+        competition: 'tournament',
+        homeSubjectId: 'T1',
+        awaySubjectId: 'T9',
+      }),
+    ];
+    const objective = scoreFairnessObjective(withTournament, {
+      objectiveId: FAIRNESS_OBJECTIVE.HOSTING_BALANCE,
+    });
+    expect(objective.status).toBe(FAIRNESS_STATUS.REJECTED);
+    const refusal = objective.findings.filter(
+      (finding) => finding.code === FAIRNESS_REASON.FAIRNESS_FIXTURE_UNCLASSIFIED
+    );
+    expect(refusal).toHaveLength(1);
+    expect(refusal[0].details.competition).toBe('tournament');
+    expect(objective.terms).toEqual([]);
+    expect(objective.score).toBeNull();
+
+    // The report, asked about the identical list, says the same thing.
+    const report = fairnessReport({ fixtures: withTournament });
+    expect(report.status).toBe(FAIRNESS_STATUS.REJECTED);
+    expect(findingsOf(report, FAIRNESS_REASON.FAIRNESS_FIXTURE_UNCLASSIFIED)).toHaveLength(1);
+
+    // The wrong-passing implementation, constructed: one that classified the
+    // list, raised the finding, and then scored the survivors anyway would
+    // return exactly the league-only answer below — eight teams scored,
+    // coverage 1, `T9` absent and unmentioned. It is a different answer, and it
+    // is the answer the refusal above is distinguished from.
+    const survivors = scoreFairnessObjective(league, {
+      objectiveId: FAIRNESS_OBJECTIVE.HOSTING_BALANCE,
+    });
+    expect(survivors.termsScored).toBe(8);
+    expect(survivors.coverage).toBe(1);
+    expect(survivors.terms.some((term) => term.subjectId === 'T9')).toBe(false);
+    expect(objective.termsScored).not.toBe(survivors.termsScored);
+    expect(objective.coverage).not.toBe(survivors.coverage);
+  });
+
+  it('does not let a friendly’s spelling decide an objective’s cohort', () => {
+    // The report's case, asked of the objective, because for one commit it was
+    // true of the report and false of the objective while the objective's
+    // docstring claimed otherwise. Six teams over nine league rounds spelled
+    // `U10B`, and two extra league rows between `T1` and `T2` so that the
+    // cohort median is load-bearing: eleven games each against nine for the
+    // other four, a median of 9, and a total penalty of 4.
+    const league = [
+      ...roundRobin({ teamCount: 6, rounds: 9 }),
+      fixture({
+        fixtureId: 'extra-1',
+        date: '2026-11-01',
+        homeSubjectId: 'T1',
+        awaySubjectId: 'T2',
+      }),
+      fixture({
+        fixtureId: 'extra-2',
+        date: '2026-11-02',
+        homeSubjectId: 'T2',
+        awaySubjectId: 'T1',
+      }),
+    ];
+    const friendly = fixture({
+      fixtureId: 'friendly-1',
+      date: '2026-11-07',
+      competition: FAIRNESS_COMPETITION.FRIENDLY,
+      division: '10B',
+      ageGroup: 'U10',
+      homeSubjectId: 'T1',
+      awaySubjectId: 'T2',
+    });
+    const config = { objectiveId: FAIRNESS_OBJECTIVE.GAME_COUNT_PARITY };
+
+    const leagueOnly = scoreFairnessObjective(league, config);
+    // Meta-assertion on the construction: a cohort in which everybody already
+    // matches the median would score 0 either way and prove nothing about
+    // grouping.
+    expect(leagueOnly.score).toBe(4);
+    expect(leagueOnly.termsScored).toBe(6);
+
+    const withFriendly = scoreFairnessObjective([...league, friendly], config);
+    const t1 = withFriendly.terms.find((term) => term.subjectId === 'T1');
+    expect(t1.groupKey).toBe('U10B');
+    expect(t1.scored).toBe(true);
+    expect(t1.reasonCode).toBeNull();
+    expect(t1.value).toBe(11);
+    expect(t1.target).toBe(9);
+    expect(withFriendly.terms.every((term) => term.groupKey === 'U10B')).toBe(true);
+    // A scrimmage moves neither the cohort nor the number, so the two results
+    // are the same result and rank against each other.
+    expect(withFriendly.score).toBe(leagueOnly.score);
+    expect(withFriendly.termsScored).toBe(leagueOnly.termsScored);
+    expect(withFriendly.coverage).toBe(leagueOnly.coverage);
+    expect(compareObjectiveScores(withFriendly, leagueOnly).comparable).toBe(true);
+
+    // The positive control, so the case is known to bite: the identical row
+    // read as league gives `T1` and `T2` two league labels, and two keys of the
+    // class the metric reads is what makes a subject ambiguous. Both drop out
+    // of the cohort, which takes the eleven-game pair out of the median's
+    // population and leaves a score of 0 — the fold-into-nothing this objective
+    // used to publish for a scrimmage's spelling.
+    const polluted = scoreFairnessObjective(
+      [...league, { ...friendly, competition: FAIRNESS_COMPETITION.LEAGUE }],
+      config
+    );
+    for (const subjectId of ['T1', 'T2']) {
+      const term = polluted.terms.find((candidate) => candidate.subjectId === subjectId);
+      expect(term.groupKey).toBeNull();
+      expect(term.scored).toBe(false);
+      expect(term.reasonCode).toBe(FAIRNESS_REASON.FAIRNESS_GROUP_AMBIGUOUS);
+    }
+    expect(polluted.termsScored).toBe(4);
+    expect(polluted.score).toBe(0);
+    // …and through the coverage guard the two are then permanently
+    // incomparable, which is the second cost of grouping on every label.
+    expect(compareObjectiveScores(withFriendly, polluted).comparable).toBe(false);
   });
 });

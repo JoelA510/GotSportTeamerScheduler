@@ -215,7 +215,9 @@
  * @property {string} unit
  * @property {number} weight
  * @property {string} basisKind
- * @property {number} score - the weighted sum over **scored terms only**
+ * @property {number|null} score - the weighted sum over **scored terms only**;
+ *   `null`, never `0`, when nothing at all was scored — `0` is the best value a
+ *   minimisation can hold and this is a season nothing was measured in
  * @property {number} termsScored
  * @property {number} termsUnscored
  * @property {number} coverage - scored / (scored + unscored); 1 is total

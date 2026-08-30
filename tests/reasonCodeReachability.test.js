@@ -1,8 +1,8 @@
 /**
  * Repo-wide reachability audit for every frozen reason-code table in
  * `packages/core/src` — the generalisation of the per-module audit
- * `tests/attribution.test.js` already carries. 17 vocabularies, 346 codes, of
- * which 335 are shown to be producible and 11 are named as holes.
+ * `tests/attribution.test.js` already carries. 17 vocabularies, 348 codes, of
+ * which 337 are shown to be producible and 11 are named as holes.
  *
  * **The defect this exists to catch.** Four times now, in four unrelated
  * modules, a reason code has been declared, given a severity, documented, and
@@ -4005,6 +4005,32 @@ harvest(
     fairnessFixtures,
     { objectiveId: FAIRNESS_OBJECTIVE.HOSTING_BALANCE },
     participationOf(fairnessFixtures)
+  )
+);
+
+harvest(
+  'fairnessReport(two rows under one fixture id)',
+  fairnessReport({
+    fixtures: [
+      fairnessFixture({ fixtureId: 'dup', homeSubjectId: 'T1', awaySubjectId: 'T2' }),
+      fairnessFixture({
+        fixtureId: 'dup',
+        date: '2026-08-29',
+        homeSubjectId: 'T1',
+        awaySubjectId: 'T3',
+      }),
+    ],
+  })
+);
+
+harvest(
+  'scoreFairnessObjective(a list of rows that name nobody, so nothing is scored)',
+  scoreFairnessObjective(
+    [
+      fairnessFixture({ fixtureId: 'p1', homeSubjectId: null, awaySubjectId: null }),
+      fairnessFixture({ fixtureId: 'p2', homeSubjectId: null, awaySubjectId: null }),
+    ],
+    { objectiveId: FAIRNESS_OBJECTIVE.HOSTING_BALANCE }
   )
 );
 
