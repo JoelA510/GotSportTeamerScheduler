@@ -312,35 +312,68 @@ export function fairnessSeverityOf(code) {
 }
 
 /**
- * **Render a value a guard refused, without losing what kind of value it was.**
+ * **Render a value a guard refused, without losing what kind of value it was,
+ * and without ever throwing.**
  *
- * The four numeric guards in this layer all print the thing they rejected, and
- * the two obvious ways to do it are each wrong in one direction:
+ * The guards in this layer print the thing they rejected, and every obvious way
+ * to do it is wrong in one direction. `String(value)` renders `'3.5'` as `3.5`,
+ * so the refusal of a string reads exactly like the number that would have been
+ * accepted, and renders `''` and `[]` as nothing at all. `JSON.stringify` alone
+ * renders `NaN` and `Infinity` as the word `null`, which is a *different* value
+ * these same guards also refuse, and throws outright on a `BigInt`. Each round
+ * of patching one of those produced the next edge case, so this is stated as two
+ * properties held by construction rather than as a list of handled cases:
  *
- * - A bare template slot or `String(value)` renders `'3.5'` as `3.5`, so the
- *   refusal of a string reads exactly like the number that would have been
- *   accepted, and renders `''` and `[]` as nothing at all, so the message names
- *   no value.
- * - `JSON.stringify` alone renders `NaN` and `Infinity` as the word `null`,
- *   which is a *different* value this same guard also refuses — and it throws
- *   outright on a `BigInt`, which would replace the diagnostic with a
- *   `TypeError` raised from inside a `throw`.
+ * 1. **Only a number renders as a bare number.** `threshold 10 is not a finite
+ *    number` is a sentence that disproves itself, and it is what `10n` and
+ *    `new Number(10)` both used to produce — a refusal indistinguishable from
+ *    the numeric one it is not.
+ * 2. **It cannot throw, for any input.** These calls sit inside `throw`
+ *    expressions. A renderer that throws replaces the diagnostic with an
+ *    unrelated failure from a line the reader never asked about, which is the
+ *    exact accident this helper exists to prevent.
  *
- * So: numbers by `String`, which prints every non-finite one as itself, and
- * everything else by `JSON.stringify`, which keeps quotes, brackets and braces.
- * The two fallbacks cover the values `JSON.stringify` declines to return a
- * string for — `undefined` and symbols — and the ones it refuses outright.
+ * The `typeof` switch below is total over the eight JavaScript types, and every
+ * branch of it returns a string that cannot be read as a bare number: numbers by
+ * `String` so each non-finite one prints as itself, a `BigInt` with the `n` its
+ * literal carries, a string with the quotes that are the whole distinction from
+ * the number, and the rest as words.
+ *
+ * Objects are the only fallible branch. `JSON.stringify` is worth trying there
+ * because `[]`, `{}` and `{"a":1}` are the most informative renderings there
+ * are, but its answer is accepted **only when it is visibly structured** — one
+ * test on the first character, not a case per hostile type, and it is what stops
+ * a boxed `new Number(10)` and a `toJSON` returning a number from printing as
+ * digits. Below it sit two fallbacks that end at `typeof`, which is not a call
+ * and cannot fail: `Object.prototype.toString` is informative but reads
+ * `Symbol.toStringTag`, which can be a throwing getter, so it is guarded too.
  *
  * @param {unknown} value
  * @returns {string}
  */
 export function describeRefusedValue(value) {
-  if (typeof value === 'number') return String(value);
+  const kind = typeof value;
+  if (kind === 'number') return String(value);
+  if (kind === 'bigint') return `${String(value)}n`;
+  if (kind === 'string') return JSON.stringify(value);
+  // `String` is total on the remaining primitives, symbols included, and none of
+  // them renders as digits: `true`, `false`, `undefined` and `Symbol(x)`.
+  if (kind !== 'object' && kind !== 'function') return String(value);
+  if (value === null) return 'null';
   try {
     const json = JSON.stringify(value);
-    return json === undefined ? String(value) : json;
+    if (typeof json === 'string' && (json[0] === '{' || json[0] === '[' || json[0] === '"')) {
+      return json;
+    }
   } catch {
-    return String(value);
+    // A circular reference, a `BigInt` inside, or a throwing `toJSON`. The value
+    // still has to be named, so fall through rather than propagate.
+  }
+  try {
+    return Object.prototype.toString.call(value);
+  } catch {
+    // A throwing `Symbol.toStringTag` getter. `typeof` already answered.
+    return `[${kind}]`;
   }
 }
 
@@ -405,32 +438,38 @@ export function deriveFairnessStatus(findings) {
  * number on an `unmeasurable` one is the "fold it into zero" defect with a label
  * denying it.
  *
+ * Every value these four refusals print — the subject id in `where` included —
+ * goes through {@link describeRefusedValue}, for the reason that helper exists:
+ * under bare `JSON.stringify` a `NaN`, an `Infinity` and a `null` were one
+ * message, and the worst of them read `is "unmeasurable" and still carries the
+ * value null` — a refusal describing the value that branch requires.
+ *
  * @param {import('./types.js').FairnessMeasurement} measurement
  * @returns {import('./types.js').FairnessMeasurement} the same measurement
  */
 export function assertFairnessMeasurement(measurement) {
-  const where = `${measurement.metricId} of ${measurement.subjectKind} ${JSON.stringify(measurement.subjectId)}`;
+  const where = `${measurement.metricId} of ${measurement.subjectKind} ${describeRefusedValue(measurement.subjectId)}`;
   if (measurement.measurability === FAIRNESS_MEASURABILITY.MEASURED) {
     if (typeof measurement.value !== 'number' || !Number.isFinite(measurement.value)) {
       throw new Error(
-        `fairness: ${where} is "measured" but its value is ${JSON.stringify(measurement.value)}; a measurement with no number is unmeasurable and must say so`
+        `fairness: ${where} is "measured" but its value is ${describeRefusedValue(measurement.value)}; a measurement with no number is unmeasurable and must say so`
       );
     }
     if (measurement.reasonCode !== null) {
       throw new Error(
-        `fairness: ${where} is "measured" and also names reason ${JSON.stringify(measurement.reasonCode)}; a reason code is what an unmeasurable measurement carries instead of a number`
+        `fairness: ${where} is "measured" and also names reason ${describeRefusedValue(measurement.reasonCode)}; a reason code is what an unmeasurable measurement carries instead of a number`
       );
     }
     return measurement;
   }
   if (measurement.measurability !== FAIRNESS_MEASURABILITY.UNMEASURABLE) {
     throw new Error(
-      `fairness: ${where} carries measurability ${JSON.stringify(measurement.measurability)}, which is not a member of FAIRNESS_MEASURABILITY`
+      `fairness: ${where} carries measurability ${describeRefusedValue(measurement.measurability)}, which is not a member of FAIRNESS_MEASURABILITY`
     );
   }
   if (measurement.value !== null) {
     throw new Error(
-      `fairness: ${where} is "unmeasurable" and still carries the value ${JSON.stringify(measurement.value)}; folding an unmeasurable subject into a number is the defect this enum exists to stop`
+      `fairness: ${where} is "unmeasurable" and still carries the value ${describeRefusedValue(measurement.value)}; folding an unmeasurable subject into a number is the defect this enum exists to stop`
     );
   }
   if (measurement.reasonCode === null) {
@@ -468,9 +507,8 @@ export function assertFairnessMeasurement(measurement) {
  * line that reads it, because those four answer without ever comparing against
  * it: an absent threshold makes `Math.abs(47.2) > undefined` evaluate `false`
  * and returns `typical`, a clean bill of health from a comparison that could
- * not have found anything. So the parameter is optional here, and a record that
- * lost the key in transit is still answerable from what it carries — on those
- * four paths only.
+ * not have found anything. So a record that lost the key in transit is still
+ * answerable from what it carries — on those four paths only.
  *
  * That placement does **not** make a re-derived `undecided()` row work, and
  * nothing here claims it does. `undecided()` reads its state and its threshold
@@ -479,7 +517,27 @@ export function assertFairnessMeasurement(measurement) {
  * membership check. Such a row does not carry a `measurability` for a caller to
  * supply either. Re-deriving one is not an operation this function offers.
  *
- * @param {{ measurability: string, dispersion: string, score: number|null, threshold?: number|null }} input
+ * **The type below is deliberately stricter than that guard, and stays that
+ * way.** Answering four paths without a threshold is a property of the runtime,
+ * about a record whose key was dropped in transit — and such a record arrives
+ * from `JSON.parse`, as `any`, so no parameter type was ever applied to it.
+ * Writing the field `threshold?: number|null` to describe those four paths
+ * therefore bought no caller anything, and it cost the compiler the one check it
+ * was doing work on: under the optional type
+ * `{ measurability: 'measured', dispersion: 'usable', score: 1 }` typechecks
+ * clean and throws at runtime for every measured member of a usable population.
+ * A set of `@overload` signatures does express the real shape — it was tried, it
+ * rejects that call and admits the four early-return ones — but its non-usable
+ * branch has to spell `'uniform'|'degenerate'|'insufficient'` out by hand, since
+ * `Object.freeze()` widens {@link FAIRNESS_DISPERSION}'s values to `string` and
+ * the union cannot be derived from the enum. A second copy of the enum, kept in
+ * sync by hand, is a worse trade than a type stricter than the runtime. So the
+ * field is required, and this paragraph is why. The typecheck gate holds it:
+ * tests/fairnessMetrics.test.js, section 15, marks that call `@ts-expect-error`,
+ * and making the field optional again turns the directive unused and fails
+ * `npm run typecheck`.
+ *
+ * @param {{ measurability: string, dispersion: string, score: number|null, threshold: number }} input
  * @returns {string} a {@link FAIRNESS_JUDGEMENT} value
  */
 export function deriveFairnessJudgement(input) {

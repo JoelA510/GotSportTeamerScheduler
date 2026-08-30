@@ -61,6 +61,7 @@ import {
   compareObjectiveScores,
   classifyFairnessFixtures,
   describeDispersion,
+  describeRefusedValue,
   deriveFairnessJudgement,
   countedFixturesOf,
   fairnessReport,
@@ -2976,6 +2977,42 @@ describe('fairness :: a guard sits where its comparison is', () => {
       FAIRNESS_JUDGEMENT.OUTLIER
     );
   });
+
+  it('requires the threshold from the compiler too, on the path that compares', () => {
+    // The regression this replaces: round 6 typed the field
+    // `threshold?: number|null` so the four early-return paths above would read
+    // as legal without it. That is true of the runtime and false of the one path
+    // that matters — and the optional type removed tsc's check from exactly
+    // there, so a call site that dropped the field passed CI and threw for every
+    // measured member of a usable population.
+    //
+    // The falsification is the directive on the next line rather than an
+    // assertion: `@ts-expect-error` is itself an error when the line below it
+    // typechecks, so re-optionalising `threshold` fails `npm run typecheck` with
+    // "Unused '@ts-expect-error' directive". The runtime half is asserted here,
+    // and it is what the compiler is being asked to catch first.
+    expect(() =>
+      deriveFairnessJudgement(
+        // @ts-expect-error [INVALID_INPUT] - `threshold` is required on the comparing path;
+        // this directive is the falsification test for that requirement.
+        {
+          measurability: FAIRNESS_MEASURABILITY.MEASURED,
+          dispersion: FAIRNESS_DISPERSION.USABLE,
+          score: 1,
+        }
+      )
+    ).toThrow(/threshold undefined is not a finite number/);
+    // The control, so the line above is about the missing field and not about
+    // the shape: the same call with the field typechecks and answers.
+    expect(
+      deriveFairnessJudgement({
+        measurability: FAIRNESS_MEASURABILITY.MEASURED,
+        dispersion: FAIRNESS_DISPERSION.USABLE,
+        score: 1,
+        threshold: OUTLIER_SCORE_THRESHOLD,
+      })
+    ).toBe(FAIRNESS_JUDGEMENT.TYPICAL);
+  });
 });
 
 /* -------------------------------------------------------------------------- */
@@ -3058,15 +3095,97 @@ describe('fairness :: a refused value is printed with its type intact', () => {
     expect(messageFor(undefined)).toMatch(/threshold undefined is not a finite number/);
   });
 
-  it('does not let the renderer throw in place of the refusal', () => {
+  it('does not let the renderer throw, or print a BigInt as a number', () => {
     // `JSON.stringify` refuses a BigInt outright. A renderer that throws inside
     // a `throw` replaces the diagnostic with a TypeError from a line the reader
     // never asked about — the third wrong-passing implementation, and the
     // reason the renderer is one function rather than four expressions.
     expect(() => JSON.stringify(BigInt(10))).toThrow(TypeError);
+
+    // Round 6 caught the throw and fell back to `String(value)`, which is the
+    // fourth wrong-passing implementation: it renders `10n` as `10`, so the
+    // refusal reads `threshold 10 is not a finite number` — a sentence the
+    // number inside it disproves, and one indistinguishable from the refusal of
+    // an actual number. This assertion previously pinned that output. The `n`
+    // is the finding.
+    expect(String(BigInt(10))).toBe(String(10));
     expect(() =>
       deriveFairnessJudgement(/** @type {any} */ ({ ...comparing, threshold: BigInt(10) }))
-    ).toThrow(/threshold 10 is not a finite number/);
+    ).toThrow(/threshold 10n is not a finite number/);
+    expect(() =>
+      deriveFairnessJudgement(/** @type {any} */ ({ ...comparing, threshold: BigInt(10) }))
+    ).not.toThrow(/threshold 10 is not a finite number/);
+  });
+
+  it('tells NaN, Infinity and null apart in the measurement guard too', () => {
+    // The same defect, two guards away, left untouched for two rounds:
+    // `assertFairnessMeasurement` printed its refused value through bare
+    // `JSON.stringify`. The wrong-passing implementation is that call, and here
+    // it is collapsing three different refusals onto one word.
+    expect(JSON.stringify(NaN)).toBe(JSON.stringify(null));
+    expect(JSON.stringify(Infinity)).toBe(JSON.stringify(null));
+
+    /** @param {string} measurability @param {unknown} value @param {unknown} reasonCode */
+    const refusalFor = (measurability, value, reasonCode) => {
+      try {
+        assertFairnessMeasurement(
+          /** @type {any} */ ({
+            metricId: FAIRNESS_METRIC.HOSTING_SHARE,
+            unit: 'share of 1',
+            subjectKind: FAIRNESS_SUBJECT_KIND.TEAM,
+            subjectId: 'MinisA',
+            measurability,
+            value,
+            reasonCode,
+            evidence: {
+              fixturesCounted: 0,
+              fixturesExcluded: 0,
+              exclusions: [],
+              countedFixtureIds: [],
+              excludedFixtureIds: [],
+            },
+          })
+        );
+      } catch (error) {
+        return /** @type {Error} */ (error).message;
+      }
+      throw new Error('expected a refusal');
+    };
+
+    // The `measured` half: three values, three messages, none of them borrowing
+    // another's word.
+    const measured = [NaN, Infinity, -Infinity, null, '3.5'].map((value) =>
+      refusalFor(FAIRNESS_MEASURABILITY.MEASURED, value, null)
+    );
+    expect(measured[0]).toMatch(/its value is NaN;/);
+    expect(measured[1]).toMatch(/its value is Infinity;/);
+    expect(measured[2]).toMatch(/its value is -Infinity;/);
+    expect(measured[3]).toMatch(/its value is null;/);
+    expect(measured[4]).toMatch(/its value is "3\.5";/);
+    // Meta-assertion: five refusals, five distinct messages. Under bare
+    // `JSON.stringify` the first four were three.
+    expect(new Set(measured).size).toBe(5);
+
+    // The `unmeasurable` half, and the worse of the two: this branch *requires*
+    // `value === null`, so rendering a refused `NaN` as `null` produced
+    // "still carries the value null" — a message describing the passing case
+    // while refusing. The finding is that word, so it is asserted both ways.
+    const unmeasurable = refusalFor(
+      FAIRNESS_MEASURABILITY.UNMEASURABLE,
+      NaN,
+      FAIRNESS_REASON.FAIRNESS_DENOMINATOR_EMPTY
+    );
+    expect(unmeasurable).toMatch(/still carries the value NaN;/);
+    expect(unmeasurable).not.toMatch(/still carries the value null/);
+    // The control, so the refusal above is about the value and not about the
+    // call: `null` on this branch is what it asks for, and passes.
+    expect(() =>
+      refusalFor(
+        FAIRNESS_MEASURABILITY.UNMEASURABLE,
+        null,
+        FAIRNESS_REASON.FAIRNESS_DENOMINATOR_EMPTY
+      )
+    ).toThrow(/expected a refusal/);
   });
 
   it('names the value at all four sites, not only the threshold', () => {
@@ -3100,5 +3219,220 @@ describe('fairness :: a refused value is printed with its type intact', () => {
     // The control: the same population untouched scores, so each refusal above
     // is about the one field it names and not about the call.
     expect(modifiedZScore(700, usable())).toBeCloseTo(0.6745 * (700 - 2.5), 10);
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* 17. The refusal renderer is total                                           */
+/* -------------------------------------------------------------------------- */
+
+describe('fairness :: the refusal renderer is total', () => {
+  // Three rounds of polish produced three new edge cases: `String()` lost
+  // strings, `JSON.stringify` lost `NaN` and threw on a BigInt, the
+  // `catch { return String(value) }` that answered that could itself throw, and
+  // the `String()` inside it rendered `10n` as bare digits. Guessing the fourth
+  // edge case is what has not worked. These two properties over a table of
+  // hostile values are what replaces the guessing:
+  //
+  //   1. it returns a string for every input, throwing for none, and
+  //   2. only a number renders as a bare number.
+  //
+  // A rendering "reads as a bare number" when `String(Number(text)) === text`.
+  /** @param {string} text */
+  const readsAsBareNumber = (text) => String(Number(text)) === text;
+
+  /** @returns {Array<[string, unknown]>} */
+  const hostileValues = () => {
+    const circular = /** @type {Record<string, unknown>} */ ({});
+    circular.self = circular;
+    const nullProtoCircular = /** @type {Record<string, unknown>} */ (Object.create(null));
+    nullProtoCircular.self = nullProtoCircular;
+    return [
+      ['a BigInt', BigInt(10)],
+      ['a symbol', Symbol('10')],
+      ['a boxed Number', new Number(10)],
+      ['a boxed String', new String('3.5')],
+      ['an object whose toJSON returns a number', { toJSON: () => 10 }],
+      ['a circular object', circular],
+      ['a null-prototype circular object', nullProtoCircular],
+      [
+        'an object whose toJSON throws',
+        {
+          toJSON() {
+            throw new Error('refused by toJSON');
+          },
+        },
+      ],
+      [
+        'an object whose Symbol.toPrimitive throws',
+        {
+          [Symbol.toPrimitive]() {
+            throw new Error('refused by Symbol.toPrimitive');
+          },
+        },
+      ],
+      [
+        'an object whose toJSON and Symbol.toPrimitive both throw',
+        {
+          toJSON() {
+            throw new Error('refused by toJSON');
+          },
+          [Symbol.toPrimitive]() {
+            throw new Error('refused by Symbol.toPrimitive');
+          },
+        },
+      ],
+      [
+        'an object whose Symbol.toStringTag getter throws',
+        {
+          toJSON() {
+            throw new Error('refused by toJSON');
+          },
+          get [Symbol.toStringTag]() {
+            throw new Error('refused by Symbol.toStringTag');
+          },
+        },
+      ],
+      ['NaN', NaN],
+      ['Infinity', Infinity],
+      ['-Infinity', -Infinity],
+      ['the empty string', ''],
+      ['an empty array', []],
+      ['an empty object', {}],
+      ['null', null],
+      ['undefined', undefined],
+      ['a function', function refused() {}],
+      ['true', true],
+    ];
+  };
+
+  it('returns a string for every hostile value, and throws for none', () => {
+    const rows = hostileValues();
+
+    // Meta-assertions first, because "nothing threw" over a table of harmless
+    // values is a statement about nothing. The table has to contain the three
+    // failure modes the renderer's three layers exist for, and it is asserted
+    // that it does — a table that stopped containing them fails here rather
+    // than passing quietly.
+    /** @param {(value: unknown) => unknown} operation */
+    const rowsThatBreak = (operation) =>
+      rows.filter(([, value]) => {
+        try {
+          operation(value);
+          return false;
+        } catch {
+          return true;
+        }
+      });
+    expect(rowsThatBreak((value) => JSON.stringify(value)).length).toBeGreaterThan(0);
+    expect(rowsThatBreak((value) => String(value)).length).toBeGreaterThan(0);
+    expect(rowsThatBreak((value) => Object.prototype.toString.call(value)).length).toBeGreaterThan(
+      0
+    );
+    expect(rows).toHaveLength(21);
+
+    for (const [label, value] of rows) {
+      /** @type {unknown} */
+      let rendered;
+      expect(() => {
+        rendered = describeRefusedValue(value);
+      }, label).not.toThrow();
+      expect(typeof rendered, label).toBe('string');
+      expect(/** @type {string} */ (rendered).length, label).toBeGreaterThan(0);
+    }
+  });
+
+  it('renders only numbers as numbers, so no two kinds collide', () => {
+    const rows = hostileValues();
+    // Meta-assertion: the sweep below is only worth anything if the table holds
+    // values that are *not* numbers, and the count says how many.
+    const notNumbers = rows.filter(([, value]) => typeof value !== 'number');
+    expect(notNumbers).toHaveLength(18);
+
+    for (const [label, value] of notNumbers) {
+      expect(readsAsBareNumber(describeRefusedValue(value)), label).toBe(false);
+    }
+    // …and the predicate is not vacuously false: a number does read as one, so
+    // the sweep above is a distinction and not a tautology.
+    expect(readsAsBareNumber(describeRefusedValue(10))).toBe(true);
+    expect(describeRefusedValue(10)).toBe('10');
+
+    // The collision the last round shipped, named: three kinds that all used to
+    // print `10`, now three different strings.
+    const tens = [describeRefusedValue(10), describeRefusedValue(BigInt(10))];
+    tens.push(describeRefusedValue(new Number(10)));
+    expect(new Set(tens).size).toBe(3);
+    expect(tens[1]).toBe('10n');
+  });
+
+  it('rejects the renderers that returned String(value)', () => {
+    const rows = hostileValues();
+
+    // The first wrong-passing implementation, constructed: `String(v)` for
+    // everything, which is what the `catch` fallback did. Seven of the
+    // twenty-one rows break it: three print a non-number as a number, and four
+    // throw. The list is spelled out rather than counted, because which rows
+    // break it is the finding.
+    /** @param {unknown} value */
+    const naive = (value) => String(value);
+    const naiveFailures = rows.filter(([, value]) => {
+      try {
+        return readsAsBareNumber(naive(value)) && typeof value !== 'number';
+      } catch {
+        return true;
+      }
+    });
+    expect(naiveFailures.map(([label]) => label)).toEqual([
+      'a BigInt',
+      'a boxed Number',
+      'a boxed String',
+      'a null-prototype circular object',
+      'an object whose Symbol.toPrimitive throws',
+      'an object whose toJSON and Symbol.toPrimitive both throw',
+      'an object whose Symbol.toStringTag getter throws',
+    ]);
+
+    // The second, constructed verbatim from the implementation this round
+    // replaced: numbers by `String`, everything else by `JSON.stringify` with
+    // `String` as the fallback for what it declines and what it refuses.
+    /** @param {unknown} value */
+    const roundSix = (value) => {
+      if (typeof value === 'number') return String(value);
+      try {
+        const json = JSON.stringify(value);
+        return json === undefined ? String(value) : json;
+      } catch {
+        return String(value);
+      }
+    };
+    // It throws in place of the diagnostic on the two rows whose fallback also
+    // fails — the exact accident the helper is documented to prevent.
+    const roundSixThrows = rows.filter(([, value]) => {
+      try {
+        roundSix(value);
+        return false;
+      } catch {
+        return true;
+      }
+    });
+    expect(roundSixThrows.map(([label]) => label)).toEqual([
+      'a null-prototype circular object',
+      'an object whose toJSON and Symbol.toPrimitive both throw',
+      'an object whose Symbol.toStringTag getter throws',
+    ]);
+    // …and where it does answer, it still prints two non-numbers as `10`.
+    expect(roundSix(BigInt(10))).toBe('10');
+    expect(roundSix(new Number(10))).toBe('10');
+
+    // The renderer under test survives every row of the same table. Asserted as
+    // a count, so a table that shrank could not make this pass by default.
+    const survived = rows.filter(([, value]) => {
+      try {
+        return typeof describeRefusedValue(value) === 'string';
+      } catch {
+        return false;
+      }
+    });
+    expect(survived).toHaveLength(rows.length);
   });
 });
