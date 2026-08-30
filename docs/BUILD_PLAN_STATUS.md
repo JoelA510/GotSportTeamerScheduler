@@ -109,7 +109,11 @@ published external times would put four 11v11 games ten minutes into the 13:50
 9v9 games on the overlapping sub-pitches, which is *why* the club negotiated the
 earlier slots — the corpus carries the reason for its own discrepancy.
 
-### Historical — 6.1's first review round, kept for the pattern
+The round-by-round detail this section used to carry — every finding, its
+reproduction and its fix — is not lost: it is in the commit messages and the PR
+bodies for #334 to #354, which is where it belongs now that the plan is done.
+It lived here while the work was in flight because the scratchpad kept being
+wiped and this file was the only thing that survived.
 
 ## 3. Remaining
 
