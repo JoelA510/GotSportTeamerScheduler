@@ -59,6 +59,7 @@ import {
   EXTERNAL_NAME_RESOLUTION,
   EXTERNAL_NAME_RESOLUTION_REASON,
   EXTERNAL_ROW_CLASS,
+  EXTERNAL_ROW_CLASS_ACCEPTABILITY,
   EXTERNAL_ROW_CLASS_ORDER,
   MappingDocumentSchema,
   SEASON_2026_EXTERNAL_MAPPING_RECORDS,
@@ -212,6 +213,58 @@ function externalFixtureIds() {
     .map((game) => game.id);
 }
 
+/**
+ * The corpus registry with one venue record's `surfaceId` blanked.
+ *
+ * `ExternalMappingRecordSchema` allows it and `buildExternalMappingRegistry()`
+ * **keeps** the record, flagging it `EXTERNAL_MAPPING_TARGET_UNKNOWN` — so the
+ * label still resolves, and the lookup comes back `resolved` carrying no
+ * surface. That is the one corpus arrangement in which a *successful* lookup
+ * yields no value, which is what tells a `translated` read off the lookup's
+ * status apart from one read off what the lookup produced — and, one layer
+ * down, a row class read off the lookup's status apart from one read off the
+ * ground the lookup actually produced.
+ *
+ * Shared by acceptance 15 and 16, and called inside a test rather than at file
+ * load for the reason the header gives.
+ *
+ * @returns {import('@squadlogic/core/externalImport/types.js').ExternalMappingRegistry}
+ */
+function holedRegistry() {
+  const records = SEASON_2026_EXTERNAL_MAPPING_RECORDS.map((record) =>
+    record.surfaceId === season2026SurfaceId('Alder Park', 'Pitch 3')
+      ? { ...record, surfaceId: null }
+      : record
+  );
+  // Meta-assertion: a map that changed nothing would leave every field
+  // translated, and every claim below would be made about an empty set.
+  expect(records.filter((record) => record.surfaceId === null).length).toBe(1);
+  expect(records.length).toBe(SEASON_2026_EXTERNAL_MAPPING_RECORDS.length);
+  return buildExternalMappingRegistry(season2026ExternalMappingInput({ records }), {
+    graph: corpusGraph(),
+  });
+}
+
+/**
+ * The corpus registry with the Pitch 3 record deleted — acceptance 14's
+ * construction, which is the one that makes rows *undecidable* with fields
+ * the publication stated and we could not read.
+ *
+ * The other road to the same fact as {@link holedRegistry}: there, a record
+ * claims the label and names no ground; here, no record claims it at all.
+ *
+ * @returns {import('@squadlogic/core/externalImport/types.js').ExternalMappingRegistry}
+ */
+function deletedRegistry() {
+  const kept = SEASON_2026_EXTERNAL_MAPPING_RECORDS.filter(
+    (record) => record.surfaceId !== season2026SurfaceId('Alder Park', 'Pitch 3')
+  );
+  expect(kept.length).toBe(SEASON_2026_EXTERNAL_MAPPING_RECORDS.length - 1);
+  return buildExternalMappingRegistry(season2026ExternalMappingInput({ records: kept }), {
+    graph: corpusGraph(),
+  });
+}
+
 /* -------------------------------------------------------------------------- */
 /* The deliberately wrong resolver, for the adversarial controls               */
 /* -------------------------------------------------------------------------- */
@@ -250,6 +303,27 @@ describe('externalImport — the frozen tables', () => {
 
   it('throws on an unregistered code rather than defaulting it to info', () => {
     expect(() => externalImportSeverityOf('EXTERNAL_NOT_A_CODE')).toThrow(/no registered severity/);
+  });
+
+  it('decides acceptability for every row class, with a reason, and for nothing else', () => {
+    const declared = [...EXTERNAL_ROW_CLASS_ORDER];
+    expect(declared.length).toBeGreaterThan(0);
+    expect(Object.keys(EXTERNAL_ROW_CLASS_ACCEPTABILITY).sort()).toEqual([...declared].sort());
+    for (const rowClass of declared) {
+      const decision = EXTERNAL_ROW_CLASS_ACCEPTABILITY[rowClass];
+      expect(typeof decision.acceptable).toBe('boolean');
+      expect(decision.because.length).toBeGreaterThan(0);
+    }
+    // Two may be accepted and two may not — a table that said `true` everywhere
+    // would satisfy the coverage check above and withdraw nothing.
+    expect(
+      declared.filter((name) => EXTERNAL_ROW_CLASS_ACCEPTABILITY[name].acceptable).sort()
+    ).toEqual([EXTERNAL_ROW_CLASS.MATCHED_DIFFERING, EXTERNAL_ROW_CLASS.MATCHED_IDENTICAL].sort());
+    // …and each states its **own** reason. One clause reused across classes is
+    // the bare boolean again, wearing a sentence.
+    expect(
+      new Set(declared.map((name) => EXTERNAL_ROW_CLASS_ACCEPTABILITY[name].because)).size
+    ).toBe(declared.length);
   });
 
   it('gives every name-resolution state a row, and only `resolved` maps to null', () => {
@@ -3109,50 +3183,6 @@ describe('acceptance 14 — the third review round', () => {
 });
 
 describe('acceptance 15 — the fourth review round', () => {
-  /**
-   * The corpus registry with one venue record's `surfaceId` blanked.
-   *
-   * `ExternalMappingRecordSchema` allows it and `buildExternalMappingRegistry()`
-   * **keeps** the record, flagging it `EXTERNAL_MAPPING_TARGET_UNKNOWN` — so the
-   * label still resolves, and the lookup comes back `resolved` carrying no
-   * surface. That is the one corpus arrangement in which a *successful* lookup
-   * yields no value, which is what tells a `translated` read off the lookup's
-   * status apart from one read off what the lookup produced.
-   *
-   * @returns {import('@squadlogic/core/externalImport/types.js').ExternalMappingRegistry}
-   */
-  function holedRegistry() {
-    const records = SEASON_2026_EXTERNAL_MAPPING_RECORDS.map((record) =>
-      record.surfaceId === season2026SurfaceId('Alder Park', 'Pitch 3')
-        ? { ...record, surfaceId: null }
-        : record
-    );
-    // Meta-assertion: a map that changed nothing would leave every field
-    // translated, and every claim below would be made about an empty set.
-    expect(records.filter((record) => record.surfaceId === null).length).toBe(1);
-    expect(records.length).toBe(SEASON_2026_EXTERNAL_MAPPING_RECORDS.length);
-    return buildExternalMappingRegistry(season2026ExternalMappingInput({ records }), {
-      graph: corpusGraph(),
-    });
-  }
-
-  /**
-   * The corpus registry with the Pitch 3 record deleted — acceptance 14's
-   * construction, which is the one that makes rows *undecidable* with fields
-   * the publication stated and we could not read.
-   *
-   * @returns {import('@squadlogic/core/externalImport/types.js').ExternalMappingRegistry}
-   */
-  function deletedRegistry() {
-    const kept = SEASON_2026_EXTERNAL_MAPPING_RECORDS.filter(
-      (record) => record.surfaceId !== season2026SurfaceId('Alder Park', 'Pitch 3')
-    );
-    expect(kept.length).toBe(SEASON_2026_EXTERNAL_MAPPING_RECORDS.length - 1);
-    return buildExternalMappingRegistry(season2026ExternalMappingInput({ records: kept }), {
-      graph: corpusGraph(),
-    });
-  }
-
   it('1 — a pitch whose every occupant this export dropped is not published as idle', () => {
     const standing = toSeason2026StandingFixtures(corpusGames());
     const surfaceId = season2026SurfaceId('Alder Park', 'Pitch 2');
@@ -3411,6 +3441,189 @@ describe('acceptance 15 — the fourth review round', () => {
     expect(account.details.untranslatedFields).toEqual([]);
     expect(detailList(account.details, 'uncomparedFields')).toEqual(['surfaceId', 'venueId']);
     expect(detailList(account.details, 'oneSidedFields')).toEqual(['surfaceId', 'venueId']);
+  });
+});
+
+describe('acceptance 16 — the fifth review round', () => {
+  it('1 — an accepted row whose ground we could not read is never said to already agree', () => {
+    const resolution = classifyExternalImport(corpusQuery(), holedRegistry());
+    // The rows the holed record touches that would move nothing if accepted:
+    // nothing to project, and one field whose ground our records did not yield.
+    const unread = resolution.rows.filter(
+      (row) => row.untranslatedFields.length > 0 && row.differences.length === 0
+    );
+    // Meta-assertion: no such row and every claim below is about an empty set.
+    expect(unread.length).toBeGreaterThan(0);
+    const unreadRowIds = unread.map((row) => row.rowId).sort();
+
+    const impact = analyseImportImpact({
+      subject: 'accepting rows whose ground we could not read',
+      resolution,
+      standing: corpusQuery().standing,
+      query: { acceptedRowIds: unreadRowIds },
+      graph: corpusGraph(),
+      timingTable: corpusTiming(),
+    });
+    expect(impact.moved).toEqual([]);
+    const nothing = impact.findings.find(
+      (finding) => finding.code === EXTERNAL_IMPORT_REASON.EXTERNAL_IMPACT_NOTHING_PROJECTED
+    );
+    expect(nothing).toBeDefined();
+
+    // The claim that was false. Their ground was never read, so *"we already
+    // agree with what we hold"* is not something this run observed about them.
+    expect(nothing.message).not.toMatch(/already agree/);
+    expect(nothing.details.agreeingRowIds).toEqual([]);
+    // …and they are accounted for somewhere, rather than merely absent from the
+    // one bucket this assertion names.
+    const named = new Set(
+      [
+        'rejectedRowIds',
+        'outOfScopeRowIds',
+        'unprojectedRowIds',
+        'oneSidedRowIds',
+        'agreeingRowIds',
+        'unexplainedRowIds',
+      ].flatMap((key) => /** @type {string[]} */ (nothing.details[key]))
+    );
+    expect([...named].sort()).toEqual(unreadRowIds);
+
+    // **Why this needs no cause of its own in `nothingProjectedCauses()`.** The
+    // row-class fix in the test below is the root of the same defect: a row
+    // whose ground we could not read is no longer acceptable, by either road —
+    // no record claims the label, or a record claims it and names no ground —
+    // so it never reaches the `agrees` branch to be misreported there. A sixth
+    // bucket would be machinery for a case that can no longer occur. If that
+    // ever stops holding, this fires, and the bucket becomes necessary again.
+    for (const built of [resolution, classifyExternalImport(corpusQuery(), deletedRegistry())]) {
+      expect(built.rows.filter((row) => row.untranslatedFields.length > 0).length).toBeGreaterThan(
+        0
+      );
+      expect(
+        built.rows.filter((row) => row.acceptable && row.untranslatedFields.length > 0)
+      ).toEqual([]);
+    }
+
+    // **The implementation that would pass this wrongly**: never name any row
+    // under `agrees` at all. The untouched corpus's identical rows are read on
+    // both sides, and they must still be named as agreeing, in that clause.
+    const agreeing = corpusResolution()
+      .rows.filter((row) => row.rowClass === EXTERNAL_ROW_CLASS.MATCHED_IDENTICAL)
+      .map((row) => row.rowId)
+      .sort();
+    expect(agreeing.length).toBeGreaterThan(0);
+    const noop = analyseImportImpact({
+      subject: 'accepting rows that already agree',
+      resolution: corpusResolution(),
+      standing: corpusQuery().standing,
+      query: { acceptedRowIds: agreeing },
+      graph: corpusGraph(),
+      timingTable: corpusTiming(),
+    });
+    const alsoNothing = noop.findings.find(
+      (finding) => finding.code === EXTERNAL_IMPORT_REASON.EXTERNAL_IMPACT_NOTHING_PROJECTED
+    );
+    expect(alsoNothing).toBeDefined();
+    expect(alsoNothing.message).toMatch(/already agree/);
+    expect(detailList(alsoNothing.details, 'agreeingRowIds')).toEqual(agreeing);
+  });
+
+  it('2 — a venue that resolved to no ground leaves the row unjudged, as one that did not resolve does', () => {
+    const resolution = classifyExternalImport(corpusQuery(), holedRegistry());
+    const affected = resolution.rows.filter(
+      (row) =>
+        row.venue !== null &&
+        row.venue.state === EXTERNAL_NAME_RESOLUTION.RESOLVED &&
+        row.venue.surfaceId === null
+    );
+    // Meta-assertion: no such row and every claim below is about an empty set.
+    expect(affected.length).toBeGreaterThan(0);
+
+    for (const row of affected) {
+      // The lookup **succeeded** and a record does claim this label: this is
+      // not the unresolved case wearing a new name, and the venue half of the
+      // ground was read.
+      expect(row.venue.record).not.toBeNull();
+      expect(row.venue.venueId).not.toBeNull();
+      // The crux. The identity key is (date, home, away) and does not carry the
+      // ground; our record of this label did not carry it either. So the row
+      // has not been judged — the same conclusion the unresolved case reaches,
+      // because it is the same fact arriving by a different road.
+      expect(row.rowClass).toBe(EXTERNAL_ROW_CLASS.UNDECIDABLE);
+      expect(row.reasonCode).toBe(EXTERNAL_IMPORT_REASON.EXTERNAL_ROW_GROUND_UNREAD);
+      // …and an operator cannot accept it.
+      expect(row.acceptable).toBe(false);
+      // The acceptability decision states its own reason rather than leaving a
+      // bare boolean to be read back off the class by whoever needs to explain
+      // it — which is how the refusal came to say "there is no fixture of ours
+      // to apply it to" about a row that names exactly one.
+      expect(typeof row.acceptableBecause).toBe('string');
+      expect(row.acceptableBecause).toMatch(/not been judged/);
+    }
+
+    // One per-row account, per row — incident 10 — and it must not borrow the
+    // unresolved case's cause, because a record does claim this label.
+    for (const row of affected) {
+      const finding = resolution.findings.find(
+        (candidate) =>
+          candidate.code === EXTERNAL_IMPORT_REASON.EXTERNAL_ROW_GROUND_UNREAD &&
+          candidate.details.rowId === row.rowId
+      );
+      expect(finding).toBeDefined();
+      expect(finding.message).not.toMatch(/no mapping record/);
+      expect(finding.message).toMatch(/mapping record/);
+      expect(finding.details.recordId).toBe(row.venue.record.id);
+    }
+
+    // Accepting one is refused, and the refusal says the row's own reason.
+    const impact = analyseImportImpact({
+      subject: 'accepting a row whose ground we could not read',
+      resolution,
+      standing: corpusQuery().standing,
+      query: { acceptedRowIds: affected.map((row) => row.rowId).sort() },
+      graph: corpusGraph(),
+      timingTable: corpusTiming(),
+    });
+    expect(impact.moved).toEqual([]);
+    const refusals = impact.findings.filter(
+      (finding) => finding.code === EXTERNAL_IMPORT_REASON.EXTERNAL_ACCEPTANCE_ROW_NOT_ACCEPTABLE
+    );
+    expect(refusals.map((finding) => finding.details.rowId).sort()).toEqual(
+      affected.map((row) => row.rowId).sort()
+    );
+    for (const refusal of refusals) {
+      expect(refusal.message).toMatch(/not been judged/);
+      // The sentence that was false of a row like this one: it names one of our
+      // fixtures, so "there is no fixture of ours to apply it to" is not why.
+      expect(refusal.message).not.toMatch(/no fixture of ours/);
+    }
+
+    // **The implementation that would pass this wrongly**: call every row whose
+    // venue resolved undecidable. The corpus's own records name both a venue
+    // and a surface, so not one of its rows may move.
+    expect(corpusResolution().meta.rowsUndecidable).toBe(0);
+    expect(corpusResolution().meta.rowsMatchedIdentical).toBe(4);
+    expect(corpusResolution().meta.rowsMatchedDiffering).toBe(4);
+    expect(corpusResolution().rows.every((row) => row.acceptable)).toBe(true);
+
+    // …and the second: decide it from the caller's `comparedFields`. The ground
+    // is the row's identity evidence, not one of the fields a caller happened to
+    // ask about, so a query that never compares the surface still cannot judge
+    // the row — exactly as the unresolved-label guard already behaves.
+    const affectedIds = new Set(affected.map((row) => row.rowId));
+    const kickoffOnly = classifyExternalImport(
+      { ...corpusQuery(), comparedFields: ['kickoffMinutes'] },
+      holedRegistry()
+    );
+    const sameRows = kickoffOnly.rows.filter((row) => affectedIds.has(row.rowId));
+    expect(sameRows.length).toBe(affected.length);
+    for (const row of sameRows) {
+      // Nothing untranslated to read off — the surface was never compared — and
+      // the row is unjudged all the same.
+      expect(row.untranslatedFields).toEqual([]);
+      expect(row.rowClass).toBe(EXTERNAL_ROW_CLASS.UNDECIDABLE);
+      expect(row.acceptable).toBe(false);
+    }
   });
 });
 

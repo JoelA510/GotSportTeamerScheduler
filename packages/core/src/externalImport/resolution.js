@@ -31,6 +31,23 @@
  * publication states no venue — and the second is a row that has not been
  * judged, not a row that agrees.
  *
+ * A row whose label a record *does* claim, where the lookup **resolves** and
+ * what comes back names no venue or no surface, is the same fact arriving one
+ * step later: `EXTERNAL_ROW_GROUND_UNREAD`. Reading the row class off the
+ * lookup's *state* let that one through as `matched` and `acceptable`, so an
+ * operator could accept a fixture whose ground this module never resolved, and
+ * the projection would then reason about clashes and turnover on **our** pitch
+ * while the publication meant one we could not name. The class is therefore
+ * decided by the ground the lookup produced, never by how the lookup finished —
+ * the same correction {@link theirValueOf} carries one layer up. Each of the
+ * four keeps its own code because each names a different repair; all four reach
+ * {@link import('./reasonCodes.js').EXTERNAL_ROW_CLASS.UNDECIDABLE}, because the
+ * identity key does not carry the ground and not one of them read it.
+ *
+ * Whether a row may then be **accepted** is stated beside the class rather than
+ * recomputed by each caller that has to explain a refusal — see
+ * {@link EXTERNAL_ROW_CLASS_ACCEPTABILITY}.
+ *
  * The evidence is still published. An undecidable row carries every difference
  * that *could* be computed, in `differences`, with the fields that could not in
  * `uncomparedFields` — and of those, the ones exactly one side stated in
@@ -222,6 +239,63 @@ const FIELD_PRESENCE_REPORT = Object.freeze({
     counter: 'fieldsUntranslated',
   }),
 });
+
+/**
+ * **May a row of this class be named in an acceptance set, and why.**
+ *
+ * A table rather than a boolean expression, for the reason
+ * {@link FIELD_PRESENCE_REPORT} is a table. `acceptable` was previously derived
+ * inline as *"the class is one of these two"*, which is a decision with no
+ * stated reason: every caller that had to explain a refusal had to reconstruct
+ * one, and `projectAcceptance()` reconstructed it wrongly — it told an operator
+ * *"there is no fixture of ours to apply it to"* about undecidable rows that
+ * name exactly one of our fixtures and lack a judgement, not a fixture.
+ *
+ * The clause is therefore stated once, beside the decision, and travels on the
+ * row as `acceptableBecause`. A fifth row class added to
+ * {@link EXTERNAL_ROW_CLASS} with no row here fails loudly at the moment a row
+ * reaches it — see {@link acceptabilityOf} — rather than defaulting to
+ * unacceptable and silently withdrawing a whole class from acceptance.
+ *
+ * @type {Readonly<Record<string, { acceptable: boolean, because: string }>>}
+ */
+export const EXTERNAL_ROW_CLASS_ACCEPTABILITY = Object.freeze({
+  [EXTERNAL_ROW_CLASS.MATCHED_IDENTICAL]: Object.freeze({
+    acceptable: true,
+    because:
+      'the row was judged against exactly one of our fixtures and every compared field agrees, so accepting it is a legal no-op',
+  }),
+  [EXTERNAL_ROW_CLASS.MATCHED_DIFFERING]: Object.freeze({
+    acceptable: true,
+    because:
+      'the row was judged against exactly one of our fixtures and the fields it differs on were both read, so there is something to apply and something to apply it to',
+  }),
+  [EXTERNAL_ROW_CLASS.UNMATCHED]: Object.freeze({
+    acceptable: false,
+    because: 'the row matches no fixture we hold, so there is nothing of ours to apply it to',
+  }),
+  [EXTERNAL_ROW_CLASS.UNDECIDABLE]: Object.freeze({
+    acceptable: false,
+    because:
+      'the row has not been judged — it is neither found to be unchanged nor found to be missing — so accepting it would apply a change this run never established',
+  }),
+});
+
+/**
+ * The acceptability decision for one row class, with its reason.
+ *
+ * @param {string} rowClass
+ * @returns {{ acceptable: boolean, because: string }}
+ */
+function acceptabilityOf(rowClass) {
+  const decision = EXTERNAL_ROW_CLASS_ACCEPTABILITY[rowClass];
+  if (decision === undefined) {
+    throw new Error(
+      `externalImport: row class ${JSON.stringify(rowClass)} has no row in EXTERNAL_ROW_CLASS_ACCEPTABILITY; every class must declare whether its rows may be accepted and why`
+    );
+  }
+  return decision;
+}
 
 /**
  * **What the imported publication said about one field**, as two facts that are
@@ -616,6 +690,30 @@ export function classifyExternalImport(rawQuery, registry) {
         venue.state === EXTERNAL_NAME_RESOLUTION.AMBIGUOUS
           ? EXTERNAL_IMPORT_REASON.EXTERNAL_MAPPING_LABEL_AMBIGUOUS
           : EXTERNAL_IMPORT_REASON.EXTERNAL_MAPPING_LABEL_UNRESOLVED;
+    } else if (venue.venueId === null || venue.surfaceId === null) {
+      // The same fact as the branch above, arriving by a different road, and
+      // until now the road decided the answer. The guard above asks how the
+      // lookup *finished*; a record that names only half a ground finishes
+      // `resolved`, so the row fell through to `matched` and stayed
+      // `acceptable` — an operator could accept a fixture whose ground this
+      // module never resolved, and the projection would then reason about
+      // clashes and turnover on **our** pitch while the publication meant one
+      // we could not name. That is incident 3's shape.
+      //
+      // {@link theirValueOf} already learned this lesson one layer up: read the
+      // fact from the value, not from how it arrived. The row class had not.
+      // The doctrine at the head of this module decides the rest — the identity
+      // key does not carry the ground, so a ground we could not read leaves
+      // "the same two teams on the same date" unjudged, exactly as an
+      // unresolved label does.
+      //
+      // Asked of the lookup rather than of `fieldPresence` on purpose: the
+      // ground is the row's identity evidence, not one of the fields a caller
+      // happened to list in `comparedFields`. Deciding it from the query would
+      // make the same publication judgeable or not according to what was asked
+      // about it, and the guard above already does not work that way.
+      rowClass = EXTERNAL_ROW_CLASS.UNDECIDABLE;
+      reasonCode = EXTERNAL_IMPORT_REASON.EXTERNAL_ROW_GROUND_UNREAD;
     } else if (candidates.length === 0) {
       rowClass = EXTERNAL_ROW_CLASS.UNMATCHED;
       reasonCode = EXTERNAL_IMPORT_REASON.EXTERNAL_ROW_UNMATCHED;
@@ -626,9 +724,7 @@ export function classifyExternalImport(rawQuery, registry) {
       rowClass = EXTERNAL_ROW_CLASS.MATCHED_IDENTICAL;
     }
 
-    const acceptable =
-      rowClass === EXTERNAL_ROW_CLASS.MATCHED_IDENTICAL ||
-      rowClass === EXTERNAL_ROW_CLASS.MATCHED_DIFFERING;
+    const acceptability = acceptabilityOf(rowClass);
 
     rows.push({
       rowId: row.rowId,
@@ -646,7 +742,8 @@ export function classifyExternalImport(rawQuery, registry) {
       oneSidedFields: oneSided,
       untranslatedFields: untranslated,
       fieldPresence: Object.freeze(fieldPresence),
-      acceptable,
+      acceptable: acceptability.acceptable,
+      acceptableBecause: acceptability.because,
     });
   }
 
@@ -694,13 +791,18 @@ export function classifyExternalImport(rawQuery, registry) {
     const skippedHere = fieldsHere((presence) => presence !== EXTERNAL_FIELD_PRESENCE.BOTH);
     const oneSidedHere = fieldsHere(isOneSided);
     const neitherHere = fieldsHere((presence) => presence === EXTERNAL_FIELD_PRESENCE.NEITHER);
-    // The third caveat exists because {@link theirValueOf} now reads
-    // `translated` off the value a lookup produced. A *resolved* record naming
-    // no surface leaves the row matched and one of its fields unreadable, which
-    // is an arrangement this bucket could not previously hold — before, every
-    // untranslated field forced the row `undecidable` and out of this sentence.
-    // Without the clause, "nothing differing across kickoffMinutes, venueId"
-    // would be all the reader is told about a row whose ground we never read.
+    // The third caveat was added when a *resolved* record naming no surface
+    // still left the row `matched`, so this bucket could hold a row one of
+    // whose fields was unreadable. `EXTERNAL_ROW_GROUND_UNREAD` closed that:
+    // an untranslated field now means a venue-derived field with no value,
+    // which is `undecidable` by either road, so no matched row can reach this
+    // sentence carrying one and `untranslatedHere` is empty on every input the
+    // classifier accepts. It is kept — computed uniformly with its two
+    // siblings off the same per-row record — because the failure it guards is
+    // the sentence *"nothing differing across kickoffMinutes, venueId"* being
+    // all a reader is told about a row whose ground was never read, and a
+    // clause that costs an empty list is a cheaper guard against the class
+    // chain and {@link theirValueOf} drifting apart than the silence is.
     const untranslatedHere = fieldsHere(
       (presence) => presence === EXTERNAL_FIELD_PRESENCE.THEIRS_UNTRANSLATED
     );
@@ -797,6 +899,28 @@ export function classifyExternalImport(rawQuery, registry) {
             rowId: row.rowId,
             sourceLabel: row.sourceLabel,
             matchKey: row.matchKey,
+            candidateFixtureIds: row.candidateFixtureIds,
+          }
+        )
+      );
+    } else if (row.reasonCode === EXTERNAL_IMPORT_REASON.EXTERNAL_ROW_GROUND_UNREAD) {
+      // Named separately from the unresolved case because the repair is: a
+      // record **does** claim this label, and the field to fill is inside it.
+      // A sentence saying no record claims the label would send an operator
+      // to write the record they already have.
+      const record = /** @type {any} */ (row.venue).record;
+      findings.push(
+        makeExternalImportFinding(
+          EXTERNAL_IMPORT_REASON.EXTERNAL_ROW_GROUND_UNREAD,
+          `imported row ${row.rowId} (${row.matchKey}) states the ground ${JSON.stringify(row.venue.label)} and mapping record ${record.id} claims that label but names ${row.venue.venueId === null ? 'no venue' : 'no surface'}, so the ground was not read and "the same two teams on the same date" is not known to be the same fixture; the repair is in that record`,
+          {
+            rowId: row.rowId,
+            sourceLabel: row.sourceLabel,
+            matchKey: row.matchKey,
+            externalLabel: row.venue.label,
+            recordId: record.id,
+            venueId: row.venue.venueId,
+            surfaceId: row.venue.surfaceId,
             candidateFixtureIds: row.candidateFixtureIds,
           }
         )

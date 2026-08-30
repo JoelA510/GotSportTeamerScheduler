@@ -223,8 +223,13 @@ export function projectAcceptance({ resolution, standing, acceptedRowIds, timing
       findings.push(
         makeExternalImportFinding(
           EXTERNAL_IMPORT_REASON.EXTERNAL_ACCEPTANCE_ROW_NOT_ACCEPTABLE,
-          `row ${rowId} was accepted but it is ${row.rowClass}: there is no fixture of ours to apply it to, so nothing was projected for it`,
-          { rowId, rowClass: row.rowClass, reason: row.reasonCode }
+          `row ${rowId} was accepted but it is ${row.rowClass}: ${row.acceptableBecause}, so nothing was projected for it`,
+          {
+            rowId,
+            rowClass: row.rowClass,
+            reason: row.reasonCode,
+            acceptableBecause: row.acceptableBecause,
+          }
         )
       );
       continue;

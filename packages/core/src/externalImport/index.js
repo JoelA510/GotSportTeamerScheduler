@@ -119,6 +119,7 @@ export {
   EXTERNAL_COMPARED_FIELD,
   EXTERNAL_FIELD_PRESENCE,
   EXTERNAL_KEY_FIELD,
+  EXTERNAL_ROW_CLASS_ACCEPTABILITY,
   acceptanceDomainOf,
   classifyExternalImport,
 } from './resolution.js';

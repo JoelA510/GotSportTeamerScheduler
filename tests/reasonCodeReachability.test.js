@@ -1,8 +1,8 @@
 /**
  * Repo-wide reachability audit for every frozen reason-code table in
  * `packages/core/src` — the generalisation of the per-module audit
- * `tests/attribution.test.js` already carries. 18 vocabularies, 391 codes, of
- * which 380 are shown to be producible and 11 are named as holes.
+ * `tests/attribution.test.js` already carries. 18 vocabularies, 392 codes, of
+ * which 381 are shown to be producible and 11 are named as holes.
  *
  * **The defect this exists to catch.** Four times now, in four unrelated
  * modules, a reason code has been declared, given a severity, documented, and
@@ -4268,6 +4268,41 @@ harvest(
     standing: externalQuery.standing,
     query: {
       acceptedRowIds: externalUnresolved.rows
+        .filter((row) => !row.acceptable)
+        .map((row) => row.rowId),
+    },
+    graph,
+    timingTable,
+  })
+);
+
+// A registry that keeps the Pitch 3 record and blanks its surface. The record
+// still claims the label, so the lookup **resolves** — and it yields no ground,
+// which is `EXTERNAL_ROW_GROUND_UNREAD`: the same fact as the unresolved case
+// above, reached by the road where the lookup succeeded. The rows carrying that
+// label come back undecidable and cannot be accepted.
+const externalHoled = buildExternalMappingRegistry(
+  season2026ExternalMappingInput({
+    records: SEASON_2026_EXTERNAL_MAPPING_RECORDS.map((record) =>
+      record.surfaceId === season2026SurfaceId('Alder Park', 'Pitch 3')
+        ? { ...record, surfaceId: null }
+        : record
+    ),
+  }),
+  { graph }
+);
+const externalGroundUnread = harvest(
+  'classifyExternalImport(a registry whose venue record names no surface)',
+  classifyExternalImport(externalQuery, externalHoled)
+);
+harvest(
+  'analyseImportImpact(accepting a row whose ground we could not read)',
+  analyseImportImpact({
+    subject: 'accepting a row whose ground we could not read',
+    resolution: externalGroundUnread,
+    standing: externalQuery.standing,
+    query: {
+      acceptedRowIds: externalGroundUnread.rows
         .filter((row) => !row.acceptable)
         .map((row) => row.rowId),
     },

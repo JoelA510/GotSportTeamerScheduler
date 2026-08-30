@@ -205,6 +205,17 @@ export const EXTERNAL_IMPORT_REASON = Object.freeze({
   EXTERNAL_FIELD_UNTRANSLATED: 'EXTERNAL_FIELD_UNTRANSLATED',
   /** The publication states no venue at all, so the row cannot be judged. */
   EXTERNAL_ROW_VENUE_UNSTATED: 'EXTERNAL_ROW_VENUE_UNSTATED',
+  /**
+   * The publication states a ground, a record claims the label, the lookup
+   * **resolved** — and what came back names no venue or no surface, so the
+   * ground was still not read.
+   *
+   * Told apart from {@link EXTERNAL_MAPPING_LABEL_UNRESOLVED} because a record
+   * does claim this label and the repair is inside that record, not a new one.
+   * It reaches the same row class for the same reason: the identity key is
+   * (date, home, away) and does not carry the ground.
+   */
+  EXTERNAL_ROW_GROUND_UNREAD: 'EXTERNAL_ROW_GROUND_UNREAD',
   /** Zero rows were handed to the classifier. */
   EXTERNAL_IMPORT_NO_ROWS_READ: 'EXTERNAL_IMPORT_NO_ROWS_READ',
   /** Rows arrived and not one reached a decidable class. */
@@ -311,6 +322,7 @@ export const EXTERNAL_IMPORT_REASON_SEVERITY = Object.freeze({
   [EXTERNAL_IMPORT_REASON.EXTERNAL_FIELD_ONE_SIDED]: EXTERNAL_IMPORT_SEVERITY.COMPROMISE,
   [EXTERNAL_IMPORT_REASON.EXTERNAL_FIELD_UNTRANSLATED]: EXTERNAL_IMPORT_SEVERITY.COMPROMISE,
   [EXTERNAL_IMPORT_REASON.EXTERNAL_ROW_VENUE_UNSTATED]: EXTERNAL_IMPORT_SEVERITY.BLOCKING,
+  [EXTERNAL_IMPORT_REASON.EXTERNAL_ROW_GROUND_UNREAD]: EXTERNAL_IMPORT_SEVERITY.BLOCKING,
   [EXTERNAL_IMPORT_REASON.EXTERNAL_IMPORT_NO_ROWS_READ]: EXTERNAL_IMPORT_SEVERITY.BLOCKING,
   [EXTERNAL_IMPORT_REASON.EXTERNAL_IMPORT_NOTHING_CLASSIFIED]: EXTERNAL_IMPORT_SEVERITY.BLOCKING,
 

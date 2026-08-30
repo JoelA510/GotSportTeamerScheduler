@@ -138,6 +138,7 @@
  * @property {string[]} untranslatedFields - those the publication stated in a vocabulary no mapping record translates
  * @property {Readonly<Record<string, string>>} fieldPresence - the `EXTERNAL_FIELD_PRESENCE` observed per requested field, on **this** row; the four lists above are derived from it
  * @property {boolean} acceptable - may this row be named in an acceptance set?
+ * @property {string} acceptableBecause - why, stated beside the decision rather than reconstructed from the class by whoever has to explain a refusal
  */
 
 /**
