@@ -3405,8 +3405,12 @@ describe('fairness :: the refusal renderer is total', () => {
         return String(value);
       }
     };
-    // It throws in place of the diagnostic on the two rows whose fallback also
-    // fails — the exact accident the helper is documented to prevent.
+    // It throws in place of the diagnostic on the three rows whose fallback
+    // also fails — the exact accident the helper is documented to prevent.
+    // The count is asserted below rather than trusted here; one of the three
+    // is the throwing Symbol.toStringTag row, which is the only coverage for
+    // the renderer's innermost catch, so do not drop a row to make a number
+    // match.
     const roundSixThrows = rows.filter(([, value]) => {
       try {
         roundSix(value);
