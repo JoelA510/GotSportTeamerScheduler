@@ -428,7 +428,9 @@ export function assertFairnessMeasurement(measurement) {
  * `score` must be a finite number or an explicit `null`. An `Infinity` arriving
  * here throws rather than comparing greater than every threshold, because an
  * infinite modified z-score is what a zero scale produces and it means "no
- * scale", not "infinitely unfair".
+ * scale", not "infinitely unfair". `threshold` must be a finite number for the
+ * same reason and it is checked the same way: the comparison it is one side of
+ * answers `typical` when it is absent.
  *
  * @param {{ measurability: string, dispersion: string, score: number|null, threshold: number }} input
  * @returns {string} a {@link FAIRNESS_JUDGEMENT} value
@@ -449,6 +451,15 @@ export function deriveFairnessJudgement(input) {
   if (input.score !== null && !Number.isFinite(input.score)) {
     throw new Error(
       `fairness: score ${JSON.stringify(input.score)} is not finite; an infinite deviation is a scale of zero wearing a number, and it means "no scale", never "infinitely unfair"`
+    );
+  }
+  // The fourth input, checked like the other three. The last line of this
+  // function compares a score against it, and `Math.abs(47.2) > undefined` is
+  // `false`: an absent threshold returned `typical`, which is a clean bill of
+  // health issued by a comparison that could not have found anything.
+  if (!Number.isFinite(input.threshold)) {
+    throw new Error(
+      `fairness: threshold ${JSON.stringify(input.threshold)} is not a finite number; every judgement this function returns other than "undecided" is a comparison against it, and a comparison against nothing answers "typical"`
     );
   }
   if (input.measurability === FAIRNESS_MEASURABILITY.UNMEASURABLE) {

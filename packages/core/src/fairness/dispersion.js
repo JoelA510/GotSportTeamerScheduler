@@ -247,13 +247,31 @@ export function distributionOf(values) {
  * exactly this reason: an infinity here would compare greater than every
  * threshold and flag every member of a degenerate population.
  *
+ * The state test answers *"is this population one a deviation can be scored
+ * against?"*; the two below answer *"are the numbers this line divides
+ * actually here?"*, which is the question the arithmetic asks and which the
+ * state used to be read as a proxy for. A `usable` population carrying neither
+ * is not one {@link describeDispersion} can produce, so it is a mistake in the
+ * call and throws like one — and the centre is the dangerous half: read past a
+ * missing one and every deviation is measured from **zero**, which returns a
+ * plausible finite number that nothing downstream can tell from a score.
+ *
  * @param {number} value
  * @param {import('./types.js').FairnessDispersion} dispersion
  * @returns {number|null}
  */
 export function modifiedZScore(value, dispersion) {
   if (dispersion.state !== FAIRNESS_DISPERSION.USABLE) return null;
-  const centre = /** @type {number} */ (dispersion.centre);
-  const scale = /** @type {number} */ (dispersion.scale);
+  const { centre, scale } = dispersion;
+  if (!Number.isFinite(centre)) {
+    throw new Error(
+      `fairness: population ${JSON.stringify(dispersion.metricId)} calls itself "${FAIRNESS_DISPERSION.USABLE}" while its centre is ${JSON.stringify(centre)}; a deviation is measured from a centre, and measuring it from an absent one measures it from zero and publishes the result as a score`
+    );
+  }
+  if (!Number.isFinite(scale) || scale === 0) {
+    throw new Error(
+      `fairness: population ${JSON.stringify(dispersion.metricId)} calls itself "${FAIRNESS_DISPERSION.USABLE}" while its scale is ${JSON.stringify(scale)}; a scale of zero or of nothing is what the other three dispersion states exist to report, and dividing by it is the infinity deriveFairnessJudgement() refuses`
+    );
+  }
   return (MAD_CONSISTENCY_CONSTANT * (value - centre)) / scale;
 }

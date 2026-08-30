@@ -217,6 +217,16 @@ const idsOf = (entries) => entries.map((entry) => entry.fixture.fixtureId);
  *    them together, so `classifyFairnessFixtures()` now refuses a fixture list
  *    that repeats an id and {@link uniqueIds} restates the same invariant here,
  *    where it is relied on.
+ * 4. …and it restated it on the **counted** list only. Every exclusion bucket
+ *    ran its ids through `[...new Set(ids)]` instead, so the identical two rows
+ *    under one id threw in a counted position and were silently shortened in an
+ *    excluded one: two one-sided rows under `S1` published
+ *    `fixturesExcluded: 1` about the two rows the subject holds, and
+ *    `counted + excluded === rows held` — the identity the whole contract above
+ *    rests on — was false with nothing to say so. So this function is now the
+ *    **one place** the invariant is enforced, over every id it is handed, in
+ *    whichever list: there is no path to a `FairnessEvidence` that does not run
+ *    through it, and no id in one that it has not seen.
  *
  * Evidence a reader can check by hand is the point of this module.
  *
@@ -226,15 +236,24 @@ const idsOf = (entries) => entries.map((entry) => entry.fixture.fixtureId);
  */
 function evidence(countedFixtureIds, exclusions = []) {
   const counted = uniqueIds(countedFixtureIds, 'counted evidence');
-  // Each excluded id is attributed to the first bucket that names it, so the
-  // breakdown sums to the total rather than over-counting a shared row. A
-  // fixture the metric counted is never also an exclusion.
+  // One id, one row, one place in the accounting — over every list, because a
+  // bucket that quietly shortened itself broke the same identity the counted
+  // list is guarded for. A fixture the metric counted is never also an
+  // exclusion, and a fixture in two buckets would make them sum to less than
+  // the total they claim to break down; both are refused rather than absorbed.
   const seen = new Set(counted);
   /** @type {Array<[string, number]>} */ const buckets = [];
   /** @type {string[]} */ const excluded = [];
   for (const [reason, ids] of exclusions) {
-    const fresh = [...new Set(ids)].filter((id) => !seen.has(id));
-    for (const id of fresh) seen.add(id);
+    const fresh = uniqueIds(ids, `${reason} exclusion`);
+    for (const fixtureId of fresh) {
+      if (seen.has(fixtureId)) {
+        throw new Error(
+          `fairness: fixture ${JSON.stringify(fixtureId)} is accounted for twice in one measurement's evidence, the second time under ${JSON.stringify(reason)}; every number published here is the size of a set of rows and a row belongs to exactly one of those sets, so an id in two of them makes the parts sum to something other than the whole they break down`
+        );
+      }
+      seen.add(fixtureId);
+    }
     excluded.push(...fresh);
     buckets.push([reason, fresh.length]);
   }
@@ -431,7 +450,13 @@ export function measureSubject(metric, subjectKind, subjectId, allEntries) {
       measurability: FAIRNESS_MEASURABILITY.UNMEASURABLE,
       value: null,
       reasonCode: FAIRNESS_REASON.FAIRNESS_SUBJECT_OUTSIDE_CLASS,
-      evidence: evidence([], [['fixture-of-another-competition', idsOf(setAside)]]),
+      // Through {@link withSetAside}, exactly as the measured return below —
+      // this path used to name the bucket itself and so reached neither its
+      // disjointness assertion nor, before finding two, `uniqueIds()` on the
+      // set-aside list. The output is the same evidence either way; what
+      // differs is that a subject whose rows are all of another competition is
+      // now held to the same accounting as one whose rows are read.
+      evidence: withSetAside(evidence([]), idsOf(setAside)),
     });
   }
 

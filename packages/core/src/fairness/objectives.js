@@ -439,6 +439,33 @@ function assertParticipationMatches(observed, supplied, objectiveId) {
 }
 
 /**
+ * **The number a result can be ranked on, or `null` if it holds none.**
+ *
+ * The one place that question is answered, and it is answered about the
+ * quantity the ranking arithmetic actually reads. The guard in
+ * {@link compareObjectiveScores} used to read `termsScored` and then cast
+ * `score`'s null away, which is two quantities for one decision: a result with
+ * `termsScored: 8` and no score — a JSON round trip writes any non-finite
+ * number as `null` and drops an `undefined` key, and any future producer may
+ * simply not set one — passed the guard, and `null < 0.5714` then declared the
+ * side holding no number the better schedule, with a delta computed from a
+ * null. The two states are refused together because they are one claim:
+ *
+ * - nothing was scored, so there is no number for a score to be; and
+ * - no finite number is present, whatever the term counts say.
+ *
+ * A result claiming a score while claiming to have scored no subject is a
+ * contradiction rather than a ranking, and the first test still refuses it.
+ *
+ * @param {import('./types.js').FairnessObjectiveResult} result
+ * @returns {number|null}
+ */
+function rankableScoreOf(result) {
+  if (result.termsScored === 0) return null;
+  return Number.isFinite(result.score) ? result.score : null;
+}
+
+/**
  * **Compare two objective results, or refuse to.**
  *
  * A solver's whole use for a scalar is to decide whether one candidate is better
@@ -461,11 +488,16 @@ export function compareObjectiveScores(left, right) {
   // two `score`s of 0, and a tie declared between two seasons neither of which
   // was read. `status` and `findings` say so loudly on both operands and this
   // function reads neither, which is why the refusal is stated on the one thing
-  // it does read.
+  // it does read — and it is stated on the **number the comparison at the
+  // bottom of this function performs its arithmetic with**, obtained here and
+  // used there, so there is no second quantity standing in for it and no cast
+  // between the test and the subtraction. See {@link rankableScoreOf}.
+  const leftScore = rankableScoreOf(left);
+  const rightScore = rankableScoreOf(right);
   /** @type {string[]} */
   const unscored = [];
-  if (left.termsScored === 0) unscored.push('left');
-  if (right.termsScored === 0) unscored.push('right');
+  if (leftScore === null) unscored.push('left');
+  if (rightScore === null) unscored.push('right');
   if (unscored.length > 0) {
     return {
       comparable: false,
@@ -474,7 +506,7 @@ export function compareObjectiveScores(left, right) {
       findings: assertFairnessFindings([
         makeFairnessFinding(
           FAIRNESS_REASON.FAIRNESS_OBJECTIVE_INCOMPARABLE,
-          `the ${unscored.join(' and ')} result(s) scored no subject at all, so there is no number on that side to rank; a ${FAIRNESS_OBJECTIVE_SENSE.MINIMISE} whose score is absent is not a schedule that scored zero`,
+          `the ${unscored.join(' and ')} result(s) hold no score to rank — either no subject was scored, so there is no number for one to be, or no finite number is present; a ${FAIRNESS_OBJECTIVE_SENSE.MINIMISE} whose score is absent is not a schedule that scored zero, and ranking it would make the side nothing could be measured on the better schedule`,
           {
             unscored,
             left: {
@@ -528,10 +560,10 @@ export function compareObjectiveScores(left, right) {
     };
   }
 
-  // Both sides scored at least one subject, so both carry a number: the guard
-  // at the top of this function is what makes the arithmetic below total.
-  const leftScore = /** @type {number} */ (left.score);
-  const rightScore = /** @type {number} */ (right.score);
+  // `leftScore` and `rightScore` are the numbers the guard at the top of this
+  // function tested — not `left.score` read a second time through a cast — so
+  // the value the refusal was decided on is the value subtracted here, and
+  // there is no arrangement of this function in which the two differ.
   return {
     comparable: true,
     // MINIMISE, stated on both results and read here rather than assumed.

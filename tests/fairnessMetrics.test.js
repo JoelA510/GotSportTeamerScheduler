@@ -933,6 +933,117 @@ describe('fairness :: unmeasurable is not zero and typical is not undecided', ()
     ).toBe(true);
   });
 
+  it('refuses a population that calls itself usable while holding no centre or scale', () => {
+    // The sweep the fourth review round asked for, at the two other places a
+    // guard and the arithmetic it protects keyed on different quantities.
+    // `modifiedZScore()` tested `dispersion.state` and then read `centre` and
+    // `scale` through casts that erased their nullability, and
+    // `deriveFairnessJudgement()` validated its measurability, its dispersion
+    // state and its score while comparing against a `threshold` it never
+    // checked at all.
+    //
+    // **What this test claims, stated plainly**, because the claim is narrower
+    // than the two below it: both functions are exported, and both take their
+    // arguments from a caller, so this is a test of their *contracts* and not a
+    // claim that the report pipeline can reach these states.
+    // `describeDispersion()` cannot produce any of them, and none of them
+    // survives a round trip out of one that could. What is being asserted is
+    // that each guard now keys on the quantity its own arithmetic divides by,
+    // rather than on a state read as a proxy for it — so a caller cannot get a
+    // number out of either function that was computed from an absent one.
+    const usable = describeDispersion('m', [
+      { subjectId: 'a', value: 600 },
+      { subjectId: 'b', value: 610 },
+      { subjectId: 'c', value: 620 },
+      { subjectId: 'd', value: 700 },
+    ]);
+    expect(usable.state).toBe(FAIRNESS_DISPERSION.USABLE);
+    expect(usable.centre).toBe(615);
+    expect(usable.scale).toBe(10);
+    // The control first: a real population still scores, by hand.
+    expect(modifiedZScore(700, usable)).toBeCloseTo((0.6745 * (700 - 615)) / 10, 9);
+
+    // The centre is the dangerous half, and the reason this is worth a guard
+    // rather than a cast: the arithmetic measures the deviation from **zero**
+    // and returns a perfectly plausible finite number, which
+    // `deriveFairnessJudgement()` then accepts and flags on — its own
+    // non-finite check cannot see this one. What follows is the constructed
+    // wrong implementation, the line the cast used to run, and the flag it
+    // produces.
+    const centreless = { ...usable, centre: null };
+    const wrong = (0.6745 * (700 - centreless.centre)) / centreless.scale;
+    expect(Number.isFinite(wrong)).toBe(true);
+    expect(wrong).toBeCloseTo(47.215, 3);
+    expect(
+      deriveFairnessJudgement({
+        measurability: FAIRNESS_MEASURABILITY.MEASURED,
+        dispersion: FAIRNESS_DISPERSION.USABLE,
+        score: wrong,
+        threshold: OUTLIER_SCORE_THRESHOLD,
+      })
+    ).toBe(FAIRNESS_JUDGEMENT.OUTLIER);
+    expect(() => modifiedZScore(700, centreless)).toThrow(/centre/);
+
+    // An absent scale divides by zero, which the judgement guard already
+    // refuses downstream — the refusal is stated as well in the function whose
+    // arithmetic needs the number, so the two guards key on the same quantity
+    // rather than one catching what the other let through.
+    const scaleless = { ...usable, scale: null };
+    expect((0.6745 * (700 - scaleless.centre)) / scaleless.scale).toBe(Infinity);
+    expect(() => modifiedZScore(700, scaleless)).toThrow(/scale/);
+
+    // …and a state that says `usable` over a zero scale, which no
+    // `describeDispersion()` output can be and which would flag every member
+    // of a population whose values are identical.
+    expect(() => modifiedZScore(700, { ...usable, scale: 0 })).toThrow(/scale/);
+
+    // The other half, and the fourth input of four: `deriveFairnessJudgement()`
+    // validated its measurability, its dispersion state and its score, and
+    // compared against a `threshold` it never checked. A population that has
+    // been through JSON is the same reachable arrival as the objective's — an
+    // absent threshold does not survive the trip, and this is the one arrival
+    // here a caller can reach without hand-building it — and
+    // `Math.abs(47.215) > undefined` is `false`, so the judgement came back
+    // `typical`: a clean bill of health from a comparison that could not have
+    // found anything, which is the shape this module exists to prevent.
+    const thresholdless = JSON.parse(JSON.stringify({ ...usable, threshold: undefined }));
+    expect(Object.hasOwn(thresholdless, 'threshold')).toBe(false);
+    expect(Math.abs(wrong) > thresholdless.threshold).toBe(false);
+    expect(() =>
+      deriveFairnessJudgement({
+        measurability: FAIRNESS_MEASURABILITY.MEASURED,
+        dispersion: FAIRNESS_DISPERSION.USABLE,
+        score: wrong,
+        threshold: thresholdless.threshold,
+      })
+    ).toThrow(/threshold/);
+    // The control, so the refusal is about the threshold and not about the
+    // call: the same call with the declared threshold judges.
+    expect(
+      deriveFairnessJudgement({
+        measurability: FAIRNESS_MEASURABILITY.MEASURED,
+        dispersion: FAIRNESS_DISPERSION.USABLE,
+        score: wrong,
+        threshold: OUTLIER_SCORE_THRESHOLD,
+      })
+    ).toBe(FAIRNESS_JUDGEMENT.OUTLIER);
+
+    // Neither refusal touches the corpus: every judgement it publishes was
+    // scored against a population that held both numbers.
+    const report = corpusReport();
+    const scored = report.judgements.filter((judgement) => judgement.score !== null);
+    expect(scored.length).toBeGreaterThan(0);
+    expect(
+      scored.every(
+        (judgement) =>
+          Number.isFinite(judgement.centre) &&
+          Number.isFinite(judgement.scale) &&
+          judgement.scale !== 0 &&
+          Number.isFinite(judgement.threshold)
+      )
+    ).toBe(true);
+  });
+
   it('leaves a cohort of two undecided rather than typical — on all 28 division cohorts of this corpus', () => {
     const report = corpusReport();
     const divisionCohorts = report.populations.filter(
@@ -2124,6 +2235,184 @@ describe('fairness :: one fixture id is one fixture', () => {
       measurement.evidence.fixturesExcluded
     );
   });
+
+  it('refuses a repeated id wherever the evidence lands it, not only in the counted list', () => {
+    // Findings one and two of the fourth review round are one invariant leaking
+    // on two paths, so they are asserted as one sweep. `uniqueIds()` guarded
+    // the counted list and nothing guarded the rest: the `counted.length === 0`
+    // early return built its evidence directly, and every exclusion bucket ran
+    // its ids through `[...new Set(ids)]`. Two rows under one id therefore
+    // *threw* in a counted position and were *silently deduped* everywhere
+    // else, publishing `fixturesExcluded: 1` about two rows the subject holds.
+    //
+    // Each row below is a different return path through `measureSubject()`,
+    // chosen so the repeated id lands somewhere other than the counted list.
+    const paths = [
+      {
+        what: 'the outside-class early return',
+        metricId: FAIRNESS_METRIC.GAMES_PLAYED,
+        bucket: 'fixture-of-another-competition',
+        counted: 0,
+        excluded: 2,
+        rows: (secondId) => [
+          {
+            fixture: fixture({ fixtureId: 'S1', competition: FAIRNESS_COMPETITION.FRIENDLY }),
+            side: FAIRNESS_SIDE.HOME,
+          },
+          {
+            fixture: fixture({
+              fixtureId: secondId,
+              date: '2026-08-29',
+              competition: FAIRNESS_COMPETITION.FRIENDLY,
+            }),
+            side: FAIRNESS_SIDE.HOME,
+          },
+        ],
+      },
+      {
+        what: 'hosting-share with no two-sided fixture',
+        metricId: FAIRNESS_METRIC.HOSTING_SHARE,
+        bucket: 'fixture-names-no-opponent',
+        counted: 0,
+        excluded: 2,
+        rows: (secondId) => [
+          { fixture: fixture({ fixtureId: 'S1', awaySubjectId: null }), side: FAIRNESS_SIDE.HOME },
+          {
+            fixture: fixture({ fixtureId: secondId, date: '2026-08-29', awaySubjectId: null }),
+            side: FAIRNESS_SIDE.HOME,
+          },
+        ],
+      },
+      {
+        what: 'hosting-share that reached a value',
+        metricId: FAIRNESS_METRIC.HOSTING_SHARE,
+        bucket: 'fixture-names-no-opponent',
+        counted: 1,
+        excluded: 2,
+        rows: (secondId) => [
+          { fixture: fixture({ fixtureId: 'g1' }), side: FAIRNESS_SIDE.HOME },
+          { fixture: fixture({ fixtureId: 'S1', awaySubjectId: null }), side: FAIRNESS_SIDE.HOME },
+          {
+            fixture: fixture({ fixtureId: secondId, date: '2026-08-29', awaySubjectId: null }),
+            side: FAIRNESS_SIDE.HOME,
+          },
+        ],
+      },
+      {
+        what: 'mean-kickoff with no timed fixture',
+        metricId: FAIRNESS_METRIC.MEAN_KICKOFF,
+        bucket: 'fixture-has-no-kickoff',
+        counted: 0,
+        excluded: 2,
+        rows: (secondId) => [
+          { fixture: fixture({ fixtureId: 'S1', kickoffMinutes: null }), side: FAIRNESS_SIDE.HOME },
+          {
+            fixture: fixture({ fixtureId: secondId, date: '2026-08-29', kickoffMinutes: null }),
+            side: FAIRNESS_SIDE.HOME,
+          },
+        ],
+      },
+      {
+        what: 'venue-spread with no located fixture',
+        metricId: FAIRNESS_METRIC.VENUE_SPREAD,
+        bucket: 'fixture-has-no-venue',
+        counted: 0,
+        excluded: 2,
+        rows: (secondId) => [
+          { fixture: fixture({ fixtureId: 'S1', venueId: null }), side: FAIRNESS_SIDE.HOME },
+          {
+            fixture: fixture({ fixtureId: secondId, date: '2026-08-29', venueId: null }),
+            side: FAIRNESS_SIDE.HOME,
+          },
+        ],
+      },
+    ];
+
+    let swept = 0;
+    /** @type {Set<string>} */ const outcomes = new Set();
+    for (const path of paths) {
+      const metric = FAIRNESS_METRIC_REGISTRY[path.metricId];
+      const duplicated = path.rows('S1');
+      // Meta-assertion on the case itself, per path: two rows under one id, so
+      // a construction that had lost its duplicate would prove nothing.
+      expect(new Set(duplicated.map((held) => held.fixture.fixtureId)).size).toBe(
+        duplicated.length - 1
+      );
+      expect(() => measureSubject(metric, FAIRNESS_SUBJECT_KIND.TEAM, 'A', duplicated)).toThrow(
+        /"S1"/
+      );
+
+      // The control, so the refusal is about the repeated id and not about the
+      // path: one character changes and the same rows measure, with every row
+      // the subject holds accounted for exactly once.
+      const repaired = path.rows('S2');
+      const measurement = measureSubject(metric, FAIRNESS_SUBJECT_KIND.TEAM, 'A', repaired);
+      expect(measurement.evidence.fixturesCounted).toBe(path.counted);
+      expect(measurement.evidence.fixturesExcluded).toBe(path.excluded);
+      expect(measurement.evidence.fixturesCounted + measurement.evidence.fixturesExcluded).toBe(
+        repaired.length
+      );
+      expect(measurement.evidence.exclusions).toContainEqual([path.bucket, path.excluded]);
+      expect(measurement.evidence.exclusions.reduce((sum, [, count]) => sum + count, 0)).toBe(
+        measurement.evidence.fixturesExcluded
+      );
+      expect(measurement.evidence.countedFixtureIds).toHaveLength(path.counted);
+      expect(measurement.evidence.excludedFixtureIds).toHaveLength(path.excluded);
+
+      // The implementation this refusal replaces, constructed: the silently
+      // deduping one published exactly this for the duplicated rows above — one
+      // id, one bucket entry, one fewer exclusion than rows held — and the
+      // identity every measurement is published under is what rejects it.
+      const deduped = {
+        fixturesCounted: path.counted,
+        fixturesExcluded: path.excluded - 1,
+        exclusions: [[path.bucket, path.excluded - 1]],
+      };
+      expect(deduped.fixturesCounted + deduped.fixturesExcluded).not.toBe(duplicated.length);
+      outcomes.add(measurement.measurability);
+      swept += 1;
+    }
+
+    // Meta-assertions on the sweep's own population. Five paths, four distinct
+    // exclusion buckets, and both measurability outcomes — the leak was on the
+    // unmeasurable returns, and a sweep that only visited those would not show
+    // that a measured one publishes its exclusions the same way.
+    expect(swept).toBe(paths.length);
+    expect(swept).toBe(5);
+    expect(new Set(paths.map((path) => path.bucket)).size).toBe(4);
+    expect([...outcomes].sort()).toEqual(
+      [FAIRNESS_MEASURABILITY.MEASURED, FAIRNESS_MEASURABILITY.UNMEASURABLE].sort()
+    );
+
+    // …and the tie to the corpus, so the four buckets above are not four names
+    // this test chose. Every exclusion bucket the season report publishes is
+    // one of them, save `measureGroup()`'s own, whose ids are a `distinctIds()`
+    // union asserted by rule two of 'evidence a reader can check by hand'. A
+    // bucket added to the module without a path here fails this line.
+    const corpusBuckets = new Set(
+      corpusReport().measurements.flatMap((measurement) =>
+        measurement.evidence.exclusions.map(([reason]) => reason)
+      )
+    );
+    expect(corpusBuckets.size).toBeGreaterThan(0);
+    const covered = new Set([...paths.map((path) => path.bucket), 'fixture-not-counted-by-metric']);
+    expect([...corpusBuckets].filter((name) => !covered.has(name))).toEqual([]);
+
+    // The structural half of the same finding, because the accounting fix
+    // above would hold even if the two return paths still built their evidence
+    // separately: `measureSubject()` names **no exclusion bucket of its own**.
+    // Both of its returns hand their set-aside ids to `withSetAside()`, which
+    // is the function that owns that bucket; the early return used to name it
+    // inline, which is exactly how it came to bypass the disjointness check the
+    // measured return goes through. Inlining a bucket here again fails this
+    // line, in the idiom the Minis assertion above already uses.
+    expect(measureSubject.toString()).not.toMatch(/'fixture-/);
+    // The control: the literal this looks for is really how the module writes a
+    // bucket, so the assertion is not passing on a spelling nobody uses.
+    expect(FAIRNESS_METRIC_REGISTRY[FAIRNESS_METRIC.HOSTING_SHARE].measure.toString()).toMatch(
+      /'fixture-names-no-opponent'/
+    );
+  });
 });
 
 /* -------------------------------------------------------------------------- */
@@ -2271,6 +2560,80 @@ describe('fairness :: an objective that scored nothing has no score', () => {
     expect(ranked.comparable).toBe(true);
     expect(ranked.better).toBe('left');
     expect(ranked.delta).toBeLessThan(0);
+  });
+
+  it('refuses to rank a result carrying no number, whatever it says it scored', () => {
+    // The guard above reads `termsScored`; the arithmetic below it reads
+    // `score`, and it read it through a cast that erased the null. So a result
+    // with `termsScored: 8` and no score passed both guards and was ranked:
+    // `null < 0.5714` is true, which made the side that holds no number the
+    // better schedule. `compareObjectiveScores()` is a comparator over two
+    // operands **its caller supplies** — a solver ranks a stored candidate
+    // against a fresh one — so this is its contract and not the pipeline's
+    // internal state: `scoreFairnessObjective()` never emits this pair, and it
+    // does not have to for the guard to owe the arithmetic a number. A result
+    // that has been through JSON on the way is the same object with `score` no
+    // longer a number, because `JSON.stringify` writes a non-finite number as
+    // `null` and drops an `undefined` key entirely, and a producer that simply
+    // does not set the field arrives the same way. `termsScored` survives all
+    // three, which is why keying on it decided nothing about the subtraction.
+    const real = scoreFairnessObjective(scoreable(), HOSTING);
+    expect(real.termsScored).toBe(8);
+    expect(typeof real.score).toBe('number');
+
+    const nulled = JSON.parse(JSON.stringify({ ...real, score: NaN }));
+    expect(nulled.score).toBeNull();
+    expect(nulled.termsScored).toBe(8);
+    const absent = JSON.parse(JSON.stringify({ ...real, score: undefined }));
+    expect(Object.hasOwn(absent, 'score')).toBe(false);
+    expect(absent.termsScored).toBe(8);
+
+    // The implementation this replaces, written out: keyed on `termsScored`, it
+    // lets both operands through, and here is the ranking it then produced — a
+    // `better` decided by a null and a delta computed from one.
+    const byTermsScored = (left, right) => left.termsScored === 0 || right.termsScored === 0;
+    expect(byTermsScored(nulled, real)).toBe(false);
+    expect(nulled.score < real.score).toBe(true);
+    expect(real.score - nulled.score).toBe(real.score);
+    expect(Number.isNaN(real.score - absent.score)).toBe(true);
+
+    // Refused now, on either side, for either arrival.
+    for (const operand of [nulled, absent]) {
+      for (const side of ['left', 'right']) {
+        const comparison =
+          side === 'left'
+            ? compareObjectiveScores(operand, real)
+            : compareObjectiveScores(real, operand);
+        expect(comparison.comparable).toBe(false);
+        expect(comparison.better).toBeNull();
+        expect(comparison.delta).toBeNull();
+        expect(comparison.findings[0].code).toBe(FAIRNESS_REASON.FAIRNESS_OBJECTIVE_INCOMPARABLE);
+        expect(comparison.findings[0].severity).toBe(FAIRNESS_SEVERITY.BLOCKING);
+        expect(comparison.findings[0].details.unscored).toEqual([side]);
+        expect(comparison.findings[0].details.mismatches).toBeUndefined();
+      }
+    }
+
+    // The rule the broadened guard must not lose on its way to keying on the
+    // number: a result claiming a score while claiming to have scored nothing
+    // is a contradiction, and it is still refused — on the claim, not on the
+    // number, because there is no population behind the number.
+    const inconsistent = { ...real, termsScored: 0 };
+    expect(typeof inconsistent.score).toBe('number');
+    expect(compareObjectiveScores(inconsistent, real).comparable).toBe(false);
+    expect(compareObjectiveScores(inconsistent, real).findings[0].details.unscored).toEqual([
+      'left',
+    ]);
+
+    // And the control that keeps this from being "refuse everything": two
+    // results that both carry a number are still ranked, and a result survives
+    // the round trip that did not empty its score.
+    const intact = JSON.parse(JSON.stringify(real));
+    expect(intact.score).toBe(real.score);
+    const ranked = compareObjectiveScores(intact, real);
+    expect(ranked.comparable).toBe(true);
+    expect(ranked.better).toBeNull();
+    expect(ranked.delta).toBe(0);
   });
 });
 
