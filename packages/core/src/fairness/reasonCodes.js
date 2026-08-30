@@ -450,16 +450,7 @@ export function deriveFairnessJudgement(input) {
   }
   if (input.score !== null && !Number.isFinite(input.score)) {
     throw new Error(
-      `fairness: score ${JSON.stringify(input.score)} is not finite; an infinite deviation is a scale of zero wearing a number, and it means "no scale", never "infinitely unfair"`
-    );
-  }
-  // The fourth input, checked like the other three. The last line of this
-  // function compares a score against it, and `Math.abs(47.2) > undefined` is
-  // `false`: an absent threshold returned `typical`, which is a clean bill of
-  // health issued by a comparison that could not have found anything.
-  if (!Number.isFinite(input.threshold)) {
-    throw new Error(
-      `fairness: threshold ${JSON.stringify(input.threshold)} is not a finite number; every judgement this function returns other than "undecided" is a comparison against it, and a comparison against nothing answers "typical"`
+      `fairness: score ${String(input.score)} is not finite; an infinite deviation is a scale of zero wearing a number, and it means "no scale", never "infinitely unfair"`
     );
   }
   if (input.measurability === FAIRNESS_MEASURABILITY.UNMEASURABLE) {
@@ -468,6 +459,18 @@ export function deriveFairnessJudgement(input) {
   if (input.dispersion === FAIRNESS_DISPERSION.UNIFORM) return FAIRNESS_JUDGEMENT.TYPICAL;
   if (input.dispersion !== FAIRNESS_DISPERSION.USABLE) return FAIRNESS_JUDGEMENT.UNDECIDED;
   if (input.score === null) return FAIRNESS_JUDGEMENT.UNDECIDED;
+  // The fourth input, checked like the other three — but **here**, below the
+  // returns that never reach the comparison. `undecided()` legitimately writes
+  // `threshold: null` for a subject with no group key, and re-deriving from
+  // such a row must answer, not throw. Past this line a comparison is about to
+  // happen, and `Math.abs(47.2) > undefined` is `false`: an absent threshold
+  // returned `typical`, a clean bill of health from a comparison that could
+  // not have found anything.
+  if (!Number.isFinite(input.threshold)) {
+    throw new Error(
+      `fairness: threshold ${String(input.threshold)} is not a finite number; the judgement about to be returned is a comparison against it, and a comparison against nothing answers "typical"`
+    );
+  }
   return Math.abs(input.score) > input.threshold
     ? FAIRNESS_JUDGEMENT.OUTLIER
     : FAIRNESS_JUDGEMENT.TYPICAL;

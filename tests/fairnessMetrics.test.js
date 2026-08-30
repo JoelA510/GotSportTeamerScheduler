@@ -2769,3 +2769,75 @@ describe('fairness :: the objective answers about the same list as the report', 
     expect(compareObjectiveScores(withFriendly, polluted).comparable).toBe(false);
   });
 });
+
+describe('fairness :: a guard sits where its comparison is', () => {
+  // Round 5. The threshold check was added above the early returns, so it
+  // rejected rows on paths that never compare against it. `undecided()`
+  // legitimately writes `threshold: null` for a subject with no group key, and
+  // re-deriving from such a row is an ordinary thing for a caller to do.
+  const noComparison = [
+    {
+      why: 'unmeasurable',
+      measurability: FAIRNESS_MEASURABILITY.UNMEASURABLE,
+      dispersion: FAIRNESS_DISPERSION.USABLE,
+      score: null,
+    },
+    {
+      why: 'uniform',
+      measurability: FAIRNESS_MEASURABILITY.MEASURED,
+      dispersion: FAIRNESS_DISPERSION.UNIFORM,
+      score: null,
+    },
+    {
+      why: 'insufficient',
+      measurability: FAIRNESS_MEASURABILITY.MEASURED,
+      dispersion: FAIRNESS_DISPERSION.INSUFFICIENT,
+      score: null,
+    },
+    {
+      why: 'degenerate',
+      measurability: FAIRNESS_MEASURABILITY.MEASURED,
+      dispersion: FAIRNESS_DISPERSION.DEGENERATE,
+      score: null,
+    },
+    {
+      why: 'no score',
+      measurability: FAIRNESS_MEASURABILITY.MEASURED,
+      dispersion: FAIRNESS_DISPERSION.USABLE,
+      score: null,
+    },
+  ];
+
+  it('answers rather than throws for a row whose threshold no comparison reads', () => {
+    for (const row of noComparison) {
+      expect(() => deriveFairnessJudgement({ ...row, threshold: null }), row.why).not.toThrow();
+    }
+    // Meta-assertion: the sweep must actually exercise both returns it claims
+    // to cover, or "nothing threw" would be a statement about an empty set.
+    const answers = noComparison.map((row) => deriveFairnessJudgement({ ...row, threshold: null }));
+    expect(answers).toHaveLength(5);
+    expect(new Set(answers)).toEqual(
+      new Set([FAIRNESS_JUDGEMENT.UNDECIDED, FAIRNESS_JUDGEMENT.TYPICAL])
+    );
+  });
+
+  it('still refuses a missing threshold at the one place a comparison happens', () => {
+    const comparing = {
+      measurability: FAIRNESS_MEASURABILITY.MEASURED,
+      dispersion: FAIRNESS_DISPERSION.USABLE,
+      score: 47.2,
+    };
+    expect(() => deriveFairnessJudgement({ ...comparing, threshold: null })).toThrow(
+      /threshold null is not a finite number/
+    );
+    // The value it was given is printed verbatim, not rendered away.
+    expect(() => deriveFairnessJudgement({ ...comparing, threshold: NaN })).toThrow(
+      /threshold NaN is not a finite number/
+    );
+    // And the guard is not a blanket refusal: the same row with a real
+    // threshold answers, so "throws" above is about the threshold alone.
+    expect(deriveFairnessJudgement({ ...comparing, threshold: 3.5 })).toBe(
+      FAIRNESS_JUDGEMENT.OUTLIER
+    );
+  });
+});
