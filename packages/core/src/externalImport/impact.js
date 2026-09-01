@@ -74,6 +74,7 @@
  * @module externalImport/impact
  */
 
+import { getSurface } from '../facility/facilityGraph.js';
 import {
   bookingsOverlapInTime,
   findFacilityConflicts,
@@ -327,6 +328,23 @@ function bookingsOf(fixtures) {
  * question here is per *pair*: a scrimmage with no known end is only undecidable
  * against something it could actually collide with.
  *
+ * ## A surface the graph does not hold
+ *
+ * `surfacesConflict()` looks its two surfaces up with `requireSurface()`, which
+ * **throws**. `findFacilityConflicts()`, asked the same question about the same
+ * booking list two lines away in `planFindings()`, looks up with `getSurface()`,
+ * reports `SURFACE_UNKNOWN` and carries on with the rest of the plan. Two
+ * contracts for one fact meant a booking its sibling had already classified and
+ * survived killed the whole analysis in the caller's hand — reachable only
+ * through this function, because the pair has to have an unknown footprint
+ * (GAP-14) before `surfacesConflict()` is consulted at all.
+ *
+ * The sibling's contract is adopted rather than a third one invented: the pair
+ * is skipped, and the *report* is `findFacilityConflicts()`'s own
+ * `unknownSurface` list, which `planFindings()` now carries instead of
+ * discarding. A private re-enumeration here would be a second answer to a
+ * question this module names one owner for.
+ *
  * @param {import('../facility/types.js').FacilityGraph} graph
  * @param {ReadonlyArray<import('../facility/types.js').FacilityBooking>} bookings
  * @returns {{ pairsCompared: number, undecidable: Array<{ aId: string, bId: string, surfaceAId: string, surfaceBId: string, date: string }> }}
@@ -343,6 +361,9 @@ function scanUndecidablePairs(graph, bookings) {
       pairsCompared += 1;
       const concurrent = bookingsOverlapInTime(a, b);
       if (concurrent !== null) continue;
+      // Exactly where the sibling skips, and for exactly its reason.
+      if (getSurface(graph, a.surfaceId) === null) continue;
+      if (getSurface(graph, b.surfaceId) === null) continue;
       if (!surfacesConflict(graph, a.surfaceId, b.surfaceId).conflict) continue;
       undecidable.push({
         aId: a.id,
@@ -488,11 +509,15 @@ function spacingFindings(timingTable, fixtures) {
  * @param {import('../facility/types.js').FacilityGraph} graph
  * @param {import('../timing/types.js').FormatTimingTable} timingTable
  * @param {ReadonlyArray<import('./types.js').ProjectedFixture>} fixtures
- * @returns {{ byKey: Map<string, import('./types.js').ExternalImportFinding>, pairsCompared: number, undecidable: Array<{ aId: string, bId: string, surfaceAId: string, surfaceBId: string, date: string }> }}
+ * @returns {{ byKey: Map<string, import('./types.js').ExternalImportFinding>, pairsCompared: number, undecidable: Array<{ aId: string, bId: string, surfaceAId: string, surfaceBId: string, date: string }>, unknownSurface: import('../facility/types.js').FacilityFinding[] }}
  */
 function planFindings(graph, timingTable, fixtures) {
   const bookings = bookingsOf(fixtures);
-  const { conflicts } = findFacilityConflicts(graph, bookings);
+  // `unknownSurface` was destructured away and dropped, so the one enumerator
+  // that does look a booking's ground up had its answer discarded — while the
+  // pair scan two lines down threw on the same booking. Both halves of that are
+  // fixed here and in `scanUndecidablePairs()`.
+  const { conflicts, unknownSurface } = findFacilityConflicts(graph, bookings);
   const scan = scanUndecidablePairs(graph, bookings);
 
   /** @type {Map<string, import('./types.js').ExternalImportFinding>} */
@@ -504,7 +529,12 @@ function planFindings(graph, timingTable, fixtures) {
   for (const finding of spacingFindings(timingTable, fixtures)) {
     byKey.set(pairKeyOf(finding), finding);
   }
-  return { byKey, pairsCompared: scan.pairsCompared, undecidable: scan.undecidable };
+  return {
+    byKey,
+    pairsCompared: scan.pairsCompared,
+    undecidable: scan.undecidable,
+    unknownSurface,
+  };
 }
 
 /**
@@ -846,6 +876,27 @@ export function analyseImportImpact({ subject, resolution, standing, query, grap
           agreeingRowIds: buckets[NOTHING_PROJECTED_CAUSE.AGREES],
           unexplainedRowIds: buckets[NOTHING_PROJECTED_CAUSE.UNEXPLAINED],
           rowsUnderMoreThanOneCause: multiple,
+        }
+      )
+    );
+  }
+
+  // Ground the graph does not hold, reported per booking of the projected plan.
+  // Every layer this analysis consults is keyed on a known surface, so a booking
+  // standing on an unknown one was not examined by any of them — and until the
+  // pair scan stopped throwing on it, it took the whole analysis with it.
+  for (const unknown of after.unknownSurface) {
+    findings.push(
+      makeExternalImportFinding(
+        EXTERNAL_IMPORT_REASON.EXTERNAL_IMPACT_SURFACE_UNKNOWN,
+        `${unknown.message}, so nothing about it was compared: not occupancy, not spacing, and not concurrency. This verdict is silent about that booking rather than clean about it`,
+        {
+          setKey,
+          bookingId: unknown.details.bookingId,
+          surfaceId: unknown.details.surfaceId,
+          date: unknown.details.date,
+          facilityCode: unknown.code,
+          facilitySeverity: unknown.severity,
         }
       )
     );

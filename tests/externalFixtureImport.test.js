@@ -3658,3 +3658,126 @@ describe('externalImport — the shipping app is untouched', () => {
     expect(importers).toEqual([]);
   });
 });
+
+/* -------------------------------------------------------------------------- */
+/* Cross-module seam: the pair scan and the conflict enumerator disagreed       */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * **Finding 3 — one call reports, the sibling two lines up threw.**
+ *
+ * `planFindings()` asks two questions of the same booking list, two lines
+ * apart. `findFacilityConflicts()` looks each surface up with `getSurface()`,
+ * reports `SURFACE_UNKNOWN` for one the graph does not hold, and carries on
+ * with the rest of the plan. `scanUndecidablePairs()` reached the same booking
+ * through `surfacesConflict()`, which looks up with `requireSurface()` and
+ * throws — so the whole impact analysis died in the caller's hand on an input
+ * its sibling had already classified and survived.
+ *
+ * The throw is only reachable through the undecidable path: `surfacesConflict()`
+ * is consulted for a pair **only** when `bookingsOverlapInTime()` answers
+ * `null`, which needs one of the two to have no known end. The corpus's untimed
+ * `Scrimmage` rows (GAP-14) are exactly that, which is why this seam went four
+ * modules deep without being reached by the suite: every other path had already
+ * skipped the booking.
+ *
+ * The contract adopted is the sibling's own, not a third one — the unknown
+ * surface is reported and the pair is skipped, and the report is
+ * `findFacilityConflicts()`'s own `unknownSurface` list rather than a second
+ * enumeration of the same fact. `impact.js` names that function "the only
+ * conflict enumerator, before and after"; a private re-derivation here would
+ * have been the thing that comment forbids.
+ */
+describe('the pair scan adopts the conflict enumerator’s contract for an unknown surface', () => {
+  /**
+   * The corpus's two untimed rows, with the second one's ground removed from
+   * the graph's reach by renaming it. Derived, never typed: the surface id is
+   * the corpus's own with a suffix the geometry cannot contain.
+   */
+  function untimedPairOnUnknownGround() {
+    const untimed = toSeason2026StandingFixtures(corpusGames()).filter(
+      (fixture) => fixture.endMinutes === null
+    );
+    const [first, second] = untimed;
+    return { first, second, unknownSurfaceId: `${second.surfaceId}--not-in-this-graph` };
+  }
+
+  it('the reproduction really is an unknown surface on a footprint-less pair', () => {
+    // Meta-assertions. Without all three the assertions below would pass on air:
+    // a pair on two dates never reaches the scan, a pair with two known ends
+    // never reaches `surfacesConflict()`, and a surface the graph *does* hold
+    // was never the question.
+    const { first, second, unknownSurfaceId } = untimedPairOnUnknownGround();
+    expect(second, 'the corpus carries two untimed rows').toBeDefined();
+    expect(first.date).toBe(second.date);
+    expect(first.endMinutes).toBeNull();
+    expect(corpusGraph().surfaces[first.surfaceId]).toBeDefined();
+    expect(corpusGraph().surfaces[unknownSurfaceId]).toBeUndefined();
+  });
+
+  it('reports the unknown surface and finishes, rather than throwing out of the analysis', () => {
+    const { first, second, unknownSurfaceId } = untimedPairOnUnknownGround();
+    const standing = [first, { ...second, surfaceId: unknownSurfaceId }];
+
+    // No accepted row: the question is only whether the *standing* plan can be
+    // examined at all. A set that moves nothing must still produce a verdict.
+    const result = analyseImportImpact({
+      subject: 'a standing plan holding ground the graph does not',
+      resolution: classifyExternalImport(
+        {
+          subject: 'a standing plan holding ground the graph does not',
+          rows: [],
+          standing,
+          keyFields: ['date', 'home', 'away'],
+          comparedFields: ['kickoffMinutes', 'venueId', 'surfaceId'],
+        },
+        corpusRegistry()
+      ),
+      standing,
+      query: { acceptedRowIds: [], dates: [first.date] },
+      graph: corpusGraph(),
+      timingTable: corpusTiming(),
+    });
+
+    const unknown = result.findings.filter(
+      (finding) => finding.code === EXTERNAL_IMPORT_REASON.EXTERNAL_IMPACT_SURFACE_UNKNOWN
+    );
+    expect(unknown).toHaveLength(1);
+    expect(unknown[0].details.surfaceId).toBe(unknownSurfaceId);
+    expect(unknown[0].details.bookingId).toBe(second.fixtureId);
+    // It is reported, so it is not silent; and it is blocking, so an operator
+    // cannot read the verdict without it.
+    expect(unknown[0].severity).toBe(EXTERNAL_IMPORT_SEVERITY.BLOCKING);
+    expect(result.status).toBe(EXTERNAL_IMPORT_STATUS.REJECTED);
+  });
+
+  it('the same plan with the surface restored reports no unknown ground at all', () => {
+    // The negative control. Identical call, identical fixtures, one field
+    // changed back — so the finding above is a statement about the unknown
+    // surface and not about this pair, this date or this corpus.
+    const { first, second } = untimedPairOnUnknownGround();
+    const standing = [first, second];
+    const result = analyseImportImpact({
+      subject: 'the same plan on ground the graph holds',
+      resolution: classifyExternalImport(
+        {
+          subject: 'the same plan on ground the graph holds',
+          rows: [],
+          standing,
+          keyFields: ['date', 'home', 'away'],
+          comparedFields: ['kickoffMinutes', 'venueId', 'surfaceId'],
+        },
+        corpusRegistry()
+      ),
+      standing,
+      query: { acceptedRowIds: [], dates: [first.date] },
+      graph: corpusGraph(),
+      timingTable: corpusTiming(),
+    });
+    expect(
+      result.findings.filter(
+        (finding) => finding.code === EXTERNAL_IMPORT_REASON.EXTERNAL_IMPACT_SURFACE_UNKNOWN
+      )
+    ).toEqual([]);
+  });
+});

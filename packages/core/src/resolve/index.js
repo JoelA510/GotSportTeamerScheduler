@@ -139,7 +139,12 @@ export { buildChangeReport, violationTally } from './report.js';
 
 export { ChangeBudgetExceeded, commitResolve } from './commit.js';
 
-export { FREEZE_AUDIT_STAGE_ID, RESOLVE_STAGES, buildResolvePipeline } from './stages.js';
+export {
+  FREEZE_AUDIT_STAGE_ID,
+  RESOLVE_STAGES,
+  VERIFY_STAGE_ID,
+  buildResolvePipeline,
+} from './stages.js';
 
 export { probeStage, probeEveryStage } from './probe.js';
 

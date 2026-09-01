@@ -67,7 +67,11 @@ import {
   checkPlacement,
   season2026ExternalFixtureChanges,
 } from '@squadlogic/core/resolve/index.js';
-import { runRuleEngine, toSeason2026Schedule } from '@squadlogic/core/ruleEngine/index.js';
+import {
+  ScheduleSchema,
+  runRuleEngine,
+  toSeason2026Schedule,
+} from '@squadlogic/core/ruleEngine/index.js';
 import {
   SEASON_2026_INCIDENT_8_WARMUP_MINUTES,
   TIMING_REASON,
@@ -2230,5 +2234,113 @@ describe('attribution :: structural', () => {
     const resolveBarrel = readFileSync(path.join(CORE, 'resolve', 'index.js'), 'utf8');
     expect(resolveBarrel).toContain('violationsAbout');
     expect(resolveBarrel).toContain('registryConstraintIdsFor');
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* Cross-module seam: the context read a field the schema owns                 */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * **Finding 5 — a TypeError on the path that exists to report absence.**
+ *
+ * `buildAttributionContext()` took `input.schedule` on trust and read
+ * `schedule.commitments` off it twice: once to build a coach-travel evaluation,
+ * and once — in the `travel === null` branch — to say how many commitments the
+ * evaluation it could *not* build would have judged. `ScheduleSchema` declares
+ * `commitments` with `.default([])`, so a schedule literal that omits it is a
+ * perfectly legal schedule; unparsed, it is `undefined`, and
+ * `schedule.commitments.length` throws.
+ *
+ * The throw lands on the exact path whose whole job is to return
+ * `ATTRIBUTION_TRAVEL_ABSENT` — "I cannot speak about coaches" — so the one
+ * input that most needed that answer got a stack trace instead. Its two
+ * siblings, `runRuleEngine()` and `runResolve()`, both parse the schedule
+ * through `ScheduleSchema` before reading a field off it; this one did not, and
+ * the corpus schedule carries every field, so nothing in the suite noticed.
+ */
+describe('attribution :: the context parses the schedule it is handed', () => {
+  /**
+   * A legal schedule literal: `ScheduleSchema` defaults every field it omits.
+   *
+   * One real game, because a zero-game schedule is refused earlier and for a
+   * different reason — `buildSlotInventory()` refuses to build an inventory
+   * nothing could ever be placed into (incident 4). That refusal is correct and
+   * is not what this block is about, so the input carries a game and omits only
+   * the field the schema defaults.
+   */
+  const sparseSchedule = () => ({
+    name: 'a schedule stated as a literal',
+    games: [schedule.games[0]],
+  });
+
+  it('the omission really is legal, so this is not a test about a malformed input', () => {
+    // The meta-assertion. If `commitments` were required, the throw below would
+    // be correct behaviour and this whole block would be arguing for a bug.
+    const parsed = ScheduleSchema.parse(sparseSchedule());
+    expect(parsed.commitments).toEqual([]);
+    expect(parsed.teamUniverse).toEqual([]);
+    expect(parsed.games).toHaveLength(1);
+    // …and the raw literal genuinely lacks the field the builder reached for.
+    expect(Object.hasOwn(sparseSchedule(), 'commitments')).toBe(false);
+  });
+
+  it('reports ATTRIBUTION_TRAVEL_ABSENT rather than throwing on a schedule that omits commitments', () => {
+    const thin = buildAttributionContext({
+      graph,
+      table,
+      calendar,
+      registry,
+      schedule: sparseSchedule(),
+    });
+    expect(thin.findings.map((finding) => finding.code).sort()).toEqual([
+      ATTRIBUTION_REASON.ATTRIBUTION_ROSTER_ABSENT,
+      ATTRIBUTION_REASON.ATTRIBUTION_TRAVEL_ABSENT,
+      ATTRIBUTION_REASON.ATTRIBUTION_VERIFICATION_ABSENT,
+    ]);
+    const absent = thin.findings.find(
+      (finding) => finding.code === ATTRIBUTION_REASON.ATTRIBUTION_TRAVEL_ABSENT
+    );
+    // The count the message carries is the parsed value, not `undefined`.
+    expect(absent?.details.commitmentCount).toBe(0);
+    expect(thin.status).toBe(ATTRIBUTION_STATUS.COMPROMISED);
+    // The context carries the parsed schedule, so every later reader of a
+    // defaulted field — `explain.js` reads `schedule.teamUniverse` — gets the
+    // schema's answer rather than `undefined`.
+    expect(thin.schedule.commitments).toEqual([]);
+    expect(thin.schedule.teamUniverse).toEqual([]);
+  });
+
+  it('builds the travel evaluation from the same parsed schedule when complexes are supplied', () => {
+    // The other half of the same defect: with `venueComplexes` stated, the
+    // builder reached `evaluateCoachTravel(schedule.commitments, …)` instead,
+    // and handed it `undefined`.
+    const withComplexes = buildAttributionContext({
+      graph,
+      table,
+      calendar,
+      registry,
+      schedule: sparseSchedule(),
+      venueComplexes,
+    });
+    expect(withComplexes.travel).not.toBeNull();
+    expect(withComplexes.findings.map((finding) => finding.code).sort()).toEqual([
+      ATTRIBUTION_REASON.ATTRIBUTION_ROSTER_ABSENT,
+      ATTRIBUTION_REASON.ATTRIBUTION_VERIFICATION_ABSENT,
+    ]);
+  });
+
+  it('refuses a schedule the schema refuses, rather than half-reading it', () => {
+    // The negative control for the parse: it is a parse, not a defaulting
+    // helper, so an input `ScheduleSchema` rejects is rejected here too.
+    expect(() =>
+      buildAttributionContext({
+        graph,
+        table,
+        calendar,
+        registry,
+        schedule: { ...sparseSchedule(), notAField: true },
+      })
+    ).toThrow();
   });
 });

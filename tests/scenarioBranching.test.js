@@ -76,6 +76,7 @@ import {
   toFormatTimingInput,
 } from '@squadlogic/core/timing/index.js';
 import { verifySnapshotDigest } from '@squadlogic/core/publication/index.js';
+import { WAIVER_REASON, buildWaiverLedger } from '@squadlogic/core/waivers/index.js';
 import {
   RELOCATION_POLICY,
   REPLACEMENT_GRADE,
@@ -3885,5 +3886,430 @@ describe('the staleness check answers for the result its caller is holding', () 
     expect(memo.fingerprintOf(inputs, child, [scenario])).toBe(
       materialiseScenario(inputs, child, { ancestry: [scenario] }).fingerprint
     );
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* Shared subjects for the cross-module seam blocks below                      */
+/* -------------------------------------------------------------------------- */
+
+/** Memo for the seam subject, so the venue search below runs once. */
+/** @type {Record<string, any>} */
+const cacheSeam = {};
+
+/**
+ * A branch that moves nothing: an added blackout on ground the schedule never
+ * stands on. The same device the vacuity control uses, lifted to module scope
+ * so both seam blocks can state "the record set is the only thing that differs".
+ *
+ * @param {string} baselineId
+ * @returns {Object}
+ */
+function quietBranchOver(baselineId) {
+  const used = new Set(schedule.games.map((game) => game.venueId));
+  const venueId =
+    Object.values(graph.venues)
+      .map((venue) => venue.id)
+      .find((id) => !used.has(id)) ?? 'a-venue-this-corpus-does-not-have';
+  return makeScenario({
+    id: 'a-branch-that-moves-nothing',
+    name: 'ground the schedule never stands on',
+    baselineId,
+    rationale: 'so the record set under test is the only thing that differs',
+    requestedBy: REQUESTED_BY,
+    createdAt: REQUESTED_AT,
+    overrides: [
+      {
+        kind: SCENARIO_OVERRIDE_KIND.ADD,
+        recordSet: SCENARIO_RECORD_SET.PERMITS,
+        record: {
+          id: 'a-blackout-nobody-notices',
+          venueId,
+          scopeKind: 'weekday-default',
+          weekday: 'SAT',
+          date: null,
+          hasPermit: false,
+          openMinutes: null,
+          closeMinutes: null,
+          lit: null,
+          lightsOffMinutes: null,
+          note: 'a venue this schedule never uses',
+          source: 'the cross-module seam regression',
+        },
+        by: REQUESTED_BY,
+        at: REQUESTED_AT,
+        reason: 'withdraw ground the schedule never stands on',
+      },
+    ],
+  });
+}
+
+/* -------------------------------------------------------------------------- */
+/* Cross-module seam: the branch's waiver ledger, built and then not installed */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * **Findings 1 and 2 — one seam, two halves.**
+ *
+ * `runScenario()` builds a waiver ledger from the branch's own record set and
+ * uses it for the two rule-engine runs it makes itself. It then hands
+ * `materialised.engines` to `applyChangeRequest()` — and `runResolve()` reads
+ * its ledger off `engines.waiverLedger`, a key nothing here ever set. So the
+ * re-solve's internal rule engine ran **waiver-blind** while the scenario's own
+ * verification did not: one branch, two different pictures of the same season,
+ * and the waiver-blind one is the one that priced the objective, wrote
+ * `RESOLVE_VERIFY_NEW_VIOLATION`, and whose findings
+ * {@link runScenario} pushes into the result's own list and therefore into its
+ * status and its promotion gate. That is the corpus's incident 9 in shape: a
+ * waiver that exists and does not apply.
+ *
+ * The second half is one function up. `waiverLedgerFor()` returns
+ * `buildWaiverLedger()`'s ledger and drops `buildWaiverLedger()`'s **findings**,
+ * so `WAIVER_ID_DUPLICATE` — blocking, and the report that a waiver was
+ * silently discarded — reached nobody. The rule engine does not stand in for
+ * it: `runRuleEngine()` forwards `applyWaivers()`'s *reconciliation* findings
+ * (an unknown constraint, a non-waivable one), which are a different set built
+ * from a different pass. A ledger's own build findings have no other reader.
+ *
+ * **Neither half subsumes the other**, and the second block below is the proof:
+ * with the ledger installed on the engines, a duplicate waiver id is *still*
+ * invisible, because the duplicate is resolved inside `buildWaiverLedger()`
+ * before any engine is handed anything.
+ */
+describe('the branch’s waiver ledger reaches the re-solve, not only the scenario', () => {
+  /**
+   * A branch that **relocates**, so `applyChangeRequest()` actually runs, and
+   * that keeps a waivable violation standing on the schedule it produces.
+   *
+   * Chosen by a stated property rather than by name: the smallest venue whose
+   * withdrawal still leaves the re-solve's own verification holding at least one
+   * violation of a constraint this season says may be waived. Withdrawing the
+   * acceptance test's venue does not — that branch's re-solve carries no
+   * waivable violation at all — which is exactly why this seam survived a
+   * per-prompt review of the module that owns it.
+   */
+  function waivableBranchSubject() {
+    if (cacheSeam.subject === undefined) {
+      const profiles = venueProfiles();
+      let chosen = null;
+      for (const profile of [...profiles].sort((a, b) => a.games - b.games)) {
+        const branch = season2026VenueUnavailableScenario({
+          venueId: profile.venueId,
+          baselineId: inputs.id,
+          requestedBy: REQUESTED_BY,
+          at: REQUESTED_AT,
+        });
+        const options = {
+          baselineEngines,
+          baselineVerification,
+          relocationPolicy: season2026RelocationPolicy({
+            graph,
+            table,
+            format: profile.formats[0],
+            excludeVenueIds: [profile.venueId],
+            games: schedule.games,
+          }),
+          requirement: {
+            slots: 1,
+            label: `one slot on ${profile.venueId}`,
+            source: 'derived from fixtures/season-2026/combined_schedule.csv',
+          },
+        };
+        const plain = runScenario(inputs, branch, options);
+        if (plain.run === null || plain.run.verification === null) continue;
+        const waivables = plain.run.verification.violations.filter(
+          (violation) =>
+            violation.constraintId && registry.byId[violation.constraintId]?.waivable === true
+        );
+        if (waivables.length === 0) continue;
+        chosen = { profile, branch, options, plain, waivable: waivables[0] };
+        break;
+      }
+      cacheSeam.subject = chosen;
+    }
+    return cacheSeam.subject;
+  }
+
+  /** A bundle carrying the stated waivers and nothing else changed. */
+  function bundleWithWaivers(waivers) {
+    return season2026SeasonInputs({
+      schedule,
+      facilityInput,
+      timingInput,
+      calendarInput,
+      constraints: SEASON_2026_CONSTRAINTS,
+      venueComplexes,
+      waivers,
+    });
+  }
+
+  it('the subject really is a relocating branch with a waivable violation left standing', () => {
+    // The meta-assertions. Each of the three is a way the assertions below
+    // would otherwise pass on air: a branch that relocated nothing never calls
+    // `applyChangeRequest()`; a run with no verification has no picture to be
+    // wrong about; and a run with no waivable violation gives a ledger nothing
+    // to do, so "the ledger reached it" would be unfalsifiable.
+    const subject = waivableBranchSubject();
+    expect(subject, 'a venue whose withdrawal leaves a waivable violation').not.toBeNull();
+    expect(subject.plain.relocations.proposals.length).toBeGreaterThan(0);
+    expect(subject.plain.run).not.toBeNull();
+    expect(subject.plain.run.verification).not.toBeNull();
+    expect(registry.byId[subject.waivable.constraintId].waivable).toBe(true);
+    // And with no waiver anywhere, nothing is waived — the floor the next test
+    // measures from.
+    expect(subject.plain.run.verification.meta.violationsWaived).toBe(0);
+  });
+
+  it('honours the branch’s waivers inside the re-solve, not only in its own verification', () => {
+    const subject = waivableBranchSubject();
+    const waived = bundleWithWaivers([
+      {
+        id: 'the-waiver-the-re-solve-must-see',
+        constraintId: subject.waivable.constraintId,
+        name: 'the exception the board granted',
+        scope: { personId: subject.waivable.details.personId },
+        reason: 'the board granted this coach an exception, and every engine must see it',
+        approval: {
+          approvedBy: REQUESTED_BY,
+          approvedAt: '2026-07-01',
+          reference: 'board minutes 2026-07',
+        },
+      },
+    ]);
+    const branch = season2026VenueUnavailableScenario({
+      venueId: subject.profile.venueId,
+      baselineId: waived.id,
+      requestedBy: REQUESTED_BY,
+      at: REQUESTED_AT,
+    });
+    const run = runScenario(waived, branch, { ...subject.options, baselineVerification: null });
+
+    // The ledger is installed on the branch's own engines, which is what the
+    // re-solve reads it from — not merely held in a local the resolver cannot
+    // see.
+    expect(run.materialised.engines.waiverLedger).not.toBeNull();
+    expect(run.materialised.engines.waiverLedger.waiverIds).toEqual([
+      'the-waiver-the-re-solve-must-see',
+    ]);
+
+    // The defect, in one line: the re-solve's own rule-engine run waived
+    // nothing, while the scenario's did.
+    expect(run.run.verification.meta.violationsWaived).toBeGreaterThan(0);
+    expect(run.verification.meta.violationsWaived).toBeGreaterThan(0);
+    const stamped = run.run.verification.violations.filter(
+      (violation) => violation.waived === true
+    );
+    expect(stamped.length).toBe(run.run.verification.meta.violationsWaived);
+    expect(stamped.every((violation) => violation.waivedBy !== null)).toBe(true);
+    // Every one of them is an exception to the constraint the waiver names, so
+    // the count is the waiver's doing rather than something else's.
+    expect(new Set(stamped.map((violation) => violation.constraintId))).toEqual(
+      new Set([subject.waivable.constraintId])
+    );
+    expect(new Set(stamped.map((violation) => violation.waiverId))).toEqual(
+      new Set(['the-waiver-the-re-solve-must-see'])
+    );
+    // …and the identical branch with no waiver waives nothing, which is what
+    // makes the assertion above about the waiver and not about the branch.
+    expect(subject.plain.run.verification.meta.violationsWaived).toBe(0);
+  });
+
+  it('stops pricing a waived violation as blocking in the re-solve’s objective', () => {
+    // The harm, stated as the finding states it. A soft constraint's violation
+    // is already `compromise`, so this branch **retypes** the waivable
+    // constraint to hard — a record edit the scenario type exists to allow —
+    // which makes its violation `blocking` and therefore worth
+    // `blockingViolation` in the objective. Waived, `applyWaivers()` demotes it
+    // to `compromise`. The two runs below differ by the waiver alone.
+    const subject = waivableBranchSubject();
+    const constraintId = subject.waivable.constraintId;
+    const overrides = (waiverNote) => [
+      {
+        kind: SCENARIO_OVERRIDE_KIND.VENUE_UNAVAILABLE,
+        venueId: subject.profile.venueId,
+        dates: null,
+        by: REQUESTED_BY,
+        at: REQUESTED_AT,
+        reason: `${subject.profile.venueId} is unavailable for the whole season`,
+      },
+      {
+        kind: SCENARIO_OVERRIDE_KIND.RETYPE,
+        recordSet: SCENARIO_RECORD_SET.CONSTRAINTS,
+        recordId: constraintId,
+        type: CONSTRAINT_TYPE.HARD,
+        by: REQUESTED_BY,
+        at: REQUESTED_AT,
+        reason: `the board made "${constraintId}" binding, ${waiverNote}`,
+      },
+    ];
+    const branchOver = (bundle, waiverNote) =>
+      runScenario(
+        bundle,
+        makeScenario({
+          id: 'hardened-and-excepted',
+          name: 'the rule made binding',
+          baselineId: bundle.id,
+          rationale: 'so the price of a waived violation is the only thing that differs',
+          requestedBy: REQUESTED_BY,
+          createdAt: REQUESTED_AT,
+          overrides: overrides(waiverNote),
+        }),
+        { ...subject.options, baselineVerification: null }
+      );
+
+    const hardened = branchOver(bundleWithWaivers([]), 'and nobody is excepted from it');
+    const excepted = branchOver(
+      bundleWithWaivers([
+        {
+          id: 'the-exception-to-the-hardened-rule',
+          constraintId,
+          name: 'the exception the board granted',
+          scope: { personId: subject.waivable.details.personId },
+          reason: 'the board granted this coach an exception to the rule it had just hardened',
+          approval: {
+            approvedBy: REQUESTED_BY,
+            approvedAt: '2026-07-01',
+            reference: 'board minutes 2026-07',
+          },
+        },
+      ]),
+      'and one coach is excepted from it'
+    );
+
+    const blockingIn = (run) =>
+      run.run.objective.resolvedSchedule.terms.blockingViolation?.count ?? 0;
+    const compromiseIn = (run) =>
+      run.run.objective.resolvedSchedule.terms.compromiseViolation?.count ?? 0;
+
+    // Meta-assertion: the retype has to have made something blocking, or the
+    // comparison below is between two zeroes.
+    expect(blockingIn(hardened)).toBeGreaterThan(0);
+    const moved = excepted.run.verification.meta.violationsWaived;
+    expect(moved).toBeGreaterThan(0);
+
+    // The waived violations stop being priced at `blockingViolation` and start
+    // being priced at `compromiseViolation`. Nothing else about the two runs
+    // differs, so the whole of the delta is the waiver.
+    expect(blockingIn(excepted)).toBe(blockingIn(hardened) - moved);
+    expect(compromiseIn(excepted)).toBe(compromiseIn(hardened) + moved);
+    expect(excepted.run.objective.resolvedSchedule.qualityCost).toBeLessThan(
+      hardened.run.objective.resolvedSchedule.qualityCost
+    );
+  });
+});
+
+/**
+ * **Finding 2 on its own**, so that it is visibly not finding 1 in disguise.
+ *
+ * A duplicate waiver id is resolved inside `buildWaiverLedger()`: the second
+ * record is dropped and `WAIVER_ID_DUPLICATE` is written to the ledger's own
+ * `findings`. Every engine downstream is then handed a ledger that is
+ * internally consistent and one waiver short, so installing that ledger
+ * everywhere — finding 1's whole fix — changes nothing about this at all. The
+ * only reader that could ever report it is the caller that built it.
+ */
+describe('a waiver the branch silently lost is reported, not swallowed', () => {
+  /** Two waivers, one id. The second is the one `buildWaiverLedger()` drops. */
+  function duplicatePair() {
+    const waivable = baselineVerification.violations.find(
+      (violation) =>
+        violation.constraintId &&
+        registry.byId[violation.constraintId]?.waivable === true &&
+        violation.details?.personId
+    );
+    const base = {
+      constraintId: /** @type {any} */ (waivable).constraintId,
+      approval: {
+        approvedBy: REQUESTED_BY,
+        approvedAt: '2026-07-01',
+        reference: 'board minutes 2026-07',
+      },
+    };
+    return {
+      waivable,
+      waivers: [
+        {
+          ...base,
+          id: 'two-waivers-one-id',
+          name: 'the exception the board granted',
+          scope: { personId: /** @type {any} */ (waivable).details.personId },
+          reason: 'the first of two records claiming this id',
+        },
+        {
+          ...base,
+          id: 'two-waivers-one-id',
+          name: 'the exception somebody typed twice',
+          scope: { personId: /** @type {any} */ (waivable).details.personId },
+          reason: 'the second of two records claiming this id, and the one that is dropped',
+        },
+      ],
+    };
+  }
+
+  it('the ledger really does drop one of them, so there is something to report', () => {
+    // The meta-assertion, and the reason this is a defect rather than a
+    // preference: the branch is running one waiver short of what its record set
+    // states, and every engine downstream is consistent with the short version.
+    const { waivers } = duplicatePair();
+    expect(waivers[0].id).toBe(waivers[1].id);
+    const ledger = buildWaiverLedger({
+      name: 'the falsification',
+      source: 'tests/scenarioBranching.test.js',
+      waivers,
+    });
+    expect(ledger.waiverIds).toEqual(['two-waivers-one-id']);
+    expect(ledger.findings.map((finding) => finding.code)).toContain(
+      WAIVER_REASON.WAIVER_ID_DUPLICATE
+    );
+  });
+
+  it('carries WAIVER_ID_DUPLICATE into the scenario’s own findings and status', () => {
+    const { waivers } = duplicatePair();
+    const bundle = season2026SeasonInputs({
+      schedule,
+      facilityInput,
+      timingInput,
+      calendarInput,
+      constraints: SEASON_2026_CONSTRAINTS,
+      venueComplexes,
+      waivers,
+    });
+    // A branch that moves nothing, so the duplicate is the only thing under
+    // test — and, deliberately, one that never reaches `applyChangeRequest()`
+    // at all. Finding 1's fix cannot be what makes this pass.
+    const quiet = quietBranchOver(bundle.id);
+    const run = runScenario(bundle, quiet, { ...runOptions, baselineVerification: null });
+    expect(run.run, 'a branch that displaces nothing never re-solves').toBeNull();
+
+    const duplicate = run.findings.filter(
+      (finding) => finding.code === WAIVER_REASON.WAIVER_ID_DUPLICATE
+    );
+    expect(duplicate).toHaveLength(1);
+    expect(duplicate[0].details.waiverId).toBe('two-waivers-one-id');
+    expect(duplicate[0].severity).toBe(CONSTRAINT_SEVERITY.BLOCKING);
+    // …and it counts, rather than sitting in a list nobody derives from.
+    expect(run.status).toBe(SCENARIO_STATUS.REJECTED);
+  });
+
+  it('says nothing at all when the ids are distinct', () => {
+    // The negative control. Identical shape, one character changed, so the
+    // finding above is about the duplicate and not about carrying waivers.
+    const { waivers } = duplicatePair();
+    const bundle = season2026SeasonInputs({
+      schedule,
+      facilityInput,
+      timingInput,
+      calendarInput,
+      constraints: SEASON_2026_CONSTRAINTS,
+      venueComplexes,
+      waivers: [waivers[0], { ...waivers[1], id: 'two-waivers-two-ids' }],
+    });
+    const run = runScenario(bundle, quietBranchOver(bundle.id), {
+      ...runOptions,
+      baselineVerification: null,
+    });
+    expect(
+      run.findings.filter((finding) => finding.code === WAIVER_REASON.WAIVER_ID_DUPLICATE)
+    ).toEqual([]);
   });
 });

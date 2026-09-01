@@ -1,8 +1,8 @@
 /**
  * Repo-wide reachability audit for every frozen reason-code table in
  * `packages/core/src` — the generalisation of the per-module audit
- * `tests/attribution.test.js` already carries. 18 vocabularies, 392 codes, of
- * which 381 are shown to be producible and 11 are named as holes.
+ * `tests/attribution.test.js` already carries. 18 vocabularies, 393 codes, of
+ * which 382 are shown to be producible and 11 are named as holes.
  *
  * **The defect this exists to catch.** Four times now, in four unrelated
  * modules, a reason code has been declared, given a severity, documented, and
@@ -4461,6 +4461,37 @@ harvest(
     resolution: untimedResolution,
     standing: untimedFixtures.slice(0, 2),
     query: { acceptedRowIds: ['scrimmage-move#0'] },
+    graph,
+    timingTable,
+  })
+);
+
+// The same untimed pair with one of them standing on ground the facility graph
+// does not hold. It is that pair specifically because the analysis only consults
+// `surfacesConflict()` for a pair whose overlap `bookingsOverlapInTime()` could
+// not decide, which needs an unknown footprint — and that call used to throw out
+// of the whole analysis rather than reporting, while `findFacilityConflicts()`
+// two lines away classified the same booking and carried on.
+const unknownGroundStanding = [
+  untimedFixtures[0],
+  { ...untimedFixtures[1], surfaceId: `${untimedFixtures[1].surfaceId}--not-in-this-graph` },
+];
+harvest(
+  'analyseImportImpact(a plan standing on ground the facility graph does not hold)',
+  analyseImportImpact({
+    subject: 'a plan standing on ground the graph does not hold',
+    resolution: classifyExternalImport(
+      {
+        subject: 'a plan standing on ground the graph does not hold',
+        rows: [],
+        standing: unknownGroundStanding,
+        keyFields: ['date', 'home', 'away'],
+        comparedFields: ['kickoffMinutes', 'venueId', 'surfaceId'],
+      },
+      untimedRegistry
+    ),
+    standing: unknownGroundStanding,
+    query: { acceptedRowIds: [], dates: [untimedFixtures[0].date] },
     graph,
     timingTable,
   })

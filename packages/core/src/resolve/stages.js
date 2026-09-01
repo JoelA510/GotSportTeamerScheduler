@@ -1135,14 +1135,45 @@ export const RESOLVE_STAGES = Object.freeze(
 export const FREEZE_AUDIT_STAGE_ID = freezeAudit.id;
 
 /**
- * The pipeline for one run, with any caller-supplied stages inserted before the
- * audit.
+ * `verify` runs after every stage that may write, including a caller's.
+ *
+ * The pair with {@link FREEZE_AUDIT_STAGE_ID}: those two are the pipeline's
+ * closing stages, one reporting what the result violates and one proving
+ * nothing frozen moved, and **both** must come after anything that can change a
+ * placement. Named so a caller registering an `extraStages` entry can state
+ * where it lands rather than counting positions.
+ */
+export const VERIFY_STAGE_ID = verify.id;
+
+/**
+ * The pipeline for one run, with any caller-supplied stages inserted before
+ * `verify` — and therefore before the audit.
  *
  * `extraStages` mirrors `buildStandingRuleEngine({ extraRules })` deliberately:
  * it is how `tests/freezeScopes.test.js` injects the **deliberately
  * non-compliant** stage that the audit's own positive control needs. An audit
  * that cannot catch a stage reaching around the gate is not worth having, and
  * the only way to know is to hand it one.
+ *
+ * ## Why they go before `verify`, not merely before the audit
+ *
+ * They used to be spliced between `verify` and `freeze-audit`. The audit does
+ * have to run last, and "before the audit" reads like the whole constraint —
+ * but it put the one class of stage nobody in this repository wrote *after* the
+ * only stage that checks the result. A move a caller's stage applied was
+ * therefore never judged by the standing rule engine, and the run reported the
+ * violations of a schedule that no longer existed.
+ *
+ * The cache key made it worse than a stale number. `runVerification()` keys on
+ * `ledger.moves.length`, and `runResolve()` reads the run's own
+ * `verification` out of that cache **after** the pipeline has finished. An
+ * extra stage that applied even one move pushed the final count past the key
+ * `verify` had cached under, so the lookup missed and `run.verification` came
+ * back `null` — indistinguishable from `verify: false`, with nothing anywhere
+ * saying a verification had been asked for and not produced.
+ *
+ * `verify` and `freeze-audit` both declare no mutation kinds and write no
+ * placement, so neither can move the key out from under that lookup.
  *
  * @param {ReadonlyArray<Object>} [extraStages]
  * @returns {import('./types.js').ResolveStage[]}
@@ -1151,16 +1182,21 @@ export function buildResolvePipeline(extraStages = []) {
   const parsed = extraStages.map(
     (stage) => /** @type {import('./types.js').ResolveStage} */ (ResolveStageSchema.parse(stage))
   );
-  const core = RESOLVE_STAGES.filter((stage) => stage.id !== FREEZE_AUDIT_STAGE_ID);
-  const audit = /** @type {import('./types.js').ResolveStage} */ (
-    RESOLVE_STAGES.find((stage) => stage.id === FREEZE_AUDIT_STAGE_ID)
-  );
-  const seen = new Set(core.map((stage) => stage.id));
+  const closing = new Set([VERIFY_STAGE_ID, FREEZE_AUDIT_STAGE_ID]);
+  const writers = RESOLVE_STAGES.filter((stage) => !closing.has(stage.id));
+  const stageById = (id) =>
+    /** @type {import('./types.js').ResolveStage} */ (
+      RESOLVE_STAGES.find((stage) => stage.id === id)
+    );
+  // Every registered id, not merely the ones that come before the extras: a
+  // caller shadowing `verify` would otherwise have been accepted and then
+  // silently dropped from the pipeline.
+  const seen = new Set(RESOLVE_STAGES.map((stage) => stage.id));
   for (const stage of parsed) {
-    if (seen.has(stage.id) || stage.id === FREEZE_AUDIT_STAGE_ID) {
+    if (seen.has(stage.id)) {
       throw new Error(`resolve: two stages claim the id "${stage.id}"`);
     }
     seen.add(stage.id);
   }
-  return [...core, ...parsed, audit];
+  return [...writers, ...parsed, stageById(VERIFY_STAGE_ID), stageById(FREEZE_AUDIT_STAGE_ID)];
 }
