@@ -74,6 +74,7 @@
  * @module externalImport/impact
  */
 
+import { getSurface } from '../facility/facilityGraph.js';
 import {
   bookingsOverlapInTime,
   findFacilityConflicts,
@@ -207,6 +208,8 @@ export function projectAcceptance({ resolution, standing, acceptedRowIds, timing
 
   /** @type {Map<string, import('./types.js').ExternalRowResolution>} */
   const movesByFixture = new Map();
+  /** Fixtures more than one accepted row claims. @type {Map<string, import('./types.js').ExternalRowResolution[]>} */
+  const contested = new Map();
   for (const rowId of acceptedRowIds) {
     const row = rowsById.get(rowId);
     if (row === undefined) {
@@ -234,7 +237,54 @@ export function projectAcceptance({ resolution, standing, acceptedRowIds, timing
       );
       continue;
     }
-    movesByFixture.set(row.fixtureId, row);
+    // **Two rows for one fixture is a contest, not a later revision.** This was
+    // a plain `set()`, so the second row silently displaced the first: the set
+    // `{A, B}` projected exactly what `{B}` did, and the sweep's comparison
+    // between them was between a thing and itself. `runResolve()` throws on the
+    // analogous "two changes for one game"; this reports instead, for two
+    // reasons. That collision is a *caller* naming two destinations before
+    // anything is built, with nowhere to put a report; this one is made by the
+    // data — the classification decides which fixture a row names, and an
+    // operator accepting two rows cannot see that they collide — and every
+    // other impossible acceptance in this same loop is reported rather than
+    // thrown. And `sweepAcceptanceSets()` analyses every subset in turn, so a
+    // throw would take the whole enumeration down over one subset, while
+    // finding the subsets that break is the sweep's entire purpose.
+    const held = movesByFixture.get(row.fixtureId);
+    if (held === undefined) {
+      movesByFixture.set(row.fixtureId, row);
+      continue;
+    }
+    if (!contested.has(row.fixtureId)) contested.set(row.fixtureId, [held]);
+    /** @type {import('./types.js').ExternalRowResolution[]} */ (contested.get(row.fixtureId)).push(
+      row
+    );
+  }
+
+  // Reported once per fixture, after the whole set is read, so the finding names
+  // every row that contests it rather than the two that happened to be adjacent.
+  for (const [fixtureId, rows] of [...contested.entries()].sort((a, b) =>
+    a[0].localeCompare(b[0])
+  )) {
+    const rowIds = rows.map((row) => row.rowId).sort();
+    // Neither is applied: taking the first is exactly as arbitrary as taking
+    // the last, and freeze-by-default is what this module does with a fixture
+    // no accepted row can speak for.
+    movesByFixture.delete(fixtureId);
+    findings.push(
+      makeExternalImportFinding(
+        EXTERNAL_IMPORT_REASON.EXTERNAL_ACCEPTANCE_FIXTURE_CONTESTED,
+        `rows ${rowIds.join(', ')} were all accepted and all resolve to fixture ${fixtureId}; they do not agree on where it goes, so it holds its published position and none of them is applied`,
+        {
+          fixtureId,
+          rowIds,
+          rowCount: rowIds.length,
+          differingFields: [
+            ...new Set(rows.flatMap((row) => row.differences.map((entry) => entry.field))),
+          ].sort(),
+        }
+      )
+    );
   }
 
   /** @type {import('./types.js').ProjectedFixture[]} */
@@ -327,6 +377,23 @@ function bookingsOf(fixtures) {
  * question here is per *pair*: a scrimmage with no known end is only undecidable
  * against something it could actually collide with.
  *
+ * ## A surface the graph does not hold
+ *
+ * `surfacesConflict()` looks its two surfaces up with `requireSurface()`, which
+ * **throws**. `findFacilityConflicts()`, asked the same question about the same
+ * booking list two lines away in `planFindings()`, looks up with `getSurface()`,
+ * reports `SURFACE_UNKNOWN` and carries on with the rest of the plan. Two
+ * contracts for one fact meant a booking its sibling had already classified and
+ * survived killed the whole analysis in the caller's hand — reachable only
+ * through this function, because the pair has to have an unknown footprint
+ * (GAP-14) before `surfacesConflict()` is consulted at all.
+ *
+ * The sibling's contract is adopted rather than a third one invented: the pair
+ * is skipped, and the *report* is `findFacilityConflicts()`'s own
+ * `unknownSurface` list, which `planFindings()` now carries instead of
+ * discarding. A private re-enumeration here would be a second answer to a
+ * question this module names one owner for.
+ *
  * @param {import('../facility/types.js').FacilityGraph} graph
  * @param {ReadonlyArray<import('../facility/types.js').FacilityBooking>} bookings
  * @returns {{ pairsCompared: number, undecidable: Array<{ aId: string, bId: string, surfaceAId: string, surfaceBId: string, date: string }> }}
@@ -343,6 +410,9 @@ function scanUndecidablePairs(graph, bookings) {
       pairsCompared += 1;
       const concurrent = bookingsOverlapInTime(a, b);
       if (concurrent !== null) continue;
+      // Exactly where the sibling skips, and for exactly its reason.
+      if (getSurface(graph, a.surfaceId) === null) continue;
+      if (getSurface(graph, b.surfaceId) === null) continue;
       if (!surfacesConflict(graph, a.surfaceId, b.surfaceId).conflict) continue;
       undecidable.push({
         aId: a.id,
@@ -488,11 +558,15 @@ function spacingFindings(timingTable, fixtures) {
  * @param {import('../facility/types.js').FacilityGraph} graph
  * @param {import('../timing/types.js').FormatTimingTable} timingTable
  * @param {ReadonlyArray<import('./types.js').ProjectedFixture>} fixtures
- * @returns {{ byKey: Map<string, import('./types.js').ExternalImportFinding>, pairsCompared: number, undecidable: Array<{ aId: string, bId: string, surfaceAId: string, surfaceBId: string, date: string }> }}
+ * @returns {{ byKey: Map<string, import('./types.js').ExternalImportFinding>, pairsCompared: number, undecidable: Array<{ aId: string, bId: string, surfaceAId: string, surfaceBId: string, date: string }>, unknownSurface: import('../facility/types.js').FacilityFinding[] }}
  */
 function planFindings(graph, timingTable, fixtures) {
   const bookings = bookingsOf(fixtures);
-  const { conflicts } = findFacilityConflicts(graph, bookings);
+  // `unknownSurface` was destructured away and dropped, so the one enumerator
+  // that does look a booking's ground up had its answer discarded — while the
+  // pair scan two lines down threw on the same booking. Both halves of that are
+  // fixed here and in `scanUndecidablePairs()`.
+  const { conflicts, unknownSurface } = findFacilityConflicts(graph, bookings);
   const scan = scanUndecidablePairs(graph, bookings);
 
   /** @type {Map<string, import('./types.js').ExternalImportFinding>} */
@@ -504,7 +578,12 @@ function planFindings(graph, timingTable, fixtures) {
   for (const finding of spacingFindings(timingTable, fixtures)) {
     byKey.set(pairKeyOf(finding), finding);
   }
-  return { byKey, pairsCompared: scan.pairsCompared, undecidable: scan.undecidable };
+  return {
+    byKey,
+    pairsCompared: scan.pairsCompared,
+    undecidable: scan.undecidable,
+    unknownSurface,
+  };
 }
 
 /**
@@ -545,9 +624,16 @@ function planFindings(graph, timingTable, fixtures) {
  * rows are named twice rather than leaving a reader to discover it by
  * arithmetic that no longer works.
  *
- * {@link UNEXPLAINED} is the honest floor rather than a decoration: two accepted
- * rows naming one fixture leave only the last of them projected, and a message
- * that has to name a cause would name the wrong one. It says so instead.
+ * {@link UNEXPLAINED} is the honest floor rather than a decoration. The case it
+ * was written for — two accepted rows naming one fixture, leaving only the last
+ * of them projected — is no longer one of its instances, and could never have
+ * been: this bucket is reached only when the whole set moved **nothing**, and a
+ * set that quietly kept the last of two rows had moved something. So the one
+ * case the comment named was the one case it could not fire on.
+ * `projectAcceptance()` now reports that collision where it happens, as
+ * `EXTERNAL_ACCEPTANCE_FIXTURE_CONTESTED`, and holds the fixture. The floor
+ * stays, for the causes nobody has enumerated yet: a message that has to name a
+ * cause would name the wrong one, and this says so instead.
  *
  * @readonly
  * @enum {string}
@@ -846,6 +932,27 @@ export function analyseImportImpact({ subject, resolution, standing, query, grap
           agreeingRowIds: buckets[NOTHING_PROJECTED_CAUSE.AGREES],
           unexplainedRowIds: buckets[NOTHING_PROJECTED_CAUSE.UNEXPLAINED],
           rowsUnderMoreThanOneCause: multiple,
+        }
+      )
+    );
+  }
+
+  // Ground the graph does not hold, reported per booking of the projected plan.
+  // Every layer this analysis consults is keyed on a known surface, so a booking
+  // standing on an unknown one was not examined by any of them — and until the
+  // pair scan stopped throwing on it, it took the whole analysis with it.
+  for (const unknown of after.unknownSurface) {
+    findings.push(
+      makeExternalImportFinding(
+        EXTERNAL_IMPORT_REASON.EXTERNAL_IMPACT_SURFACE_UNKNOWN,
+        `${unknown.message}, so nothing about it was compared: not occupancy, not spacing, and not concurrency. This verdict is silent about that booking rather than clean about it`,
+        {
+          setKey,
+          bookingId: unknown.details.bookingId,
+          surfaceId: unknown.details.surfaceId,
+          date: unknown.details.date,
+          facilityCode: unknown.code,
+          facilitySeverity: unknown.severity,
         }
       )
     );

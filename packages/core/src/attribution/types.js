@@ -228,6 +228,7 @@
  * @property {number} transitionsConsulted
  * @property {number} rosterEntriesConsulted
  * @property {number} placementChecksRun
+ * @property {number} registryRecordsUnjudged - records the severity lookup could not judge for a game this answer asked about, and so did not apply
  * @property {number} boundaryQueriesRun
  * @property {number} relaxationsTested
  * @property {number} membersProvenNecessary

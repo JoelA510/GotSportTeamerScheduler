@@ -44,11 +44,13 @@
  */
 
 import { AVAILABILITY_SEVERITY } from '../availability/reasonCodes.js';
+import { CONSTRAINT_SEVERITY } from '../constraints/reasonCodes.js';
 import { checkKickoffAvailability } from '../availability/kickoff.js';
-import { DEFAULT_SIZE_RANK } from '../facility/eligibility.js';
+import { DEFAULT_SIZE_RANK, checkSizeEligibility } from '../facility/eligibility.js';
 import { bookingsOverlapInTime } from '../facility/occupancy.js';
-import { FACILITY_REASON } from '../facility/reasonCodes.js';
+import { FACILITY_REASON, FACILITY_STATUS } from '../facility/reasonCodes.js';
 import { buildReserveCapacityReport } from '../reserve/capacity.js';
+import { RESERVE_REASON } from '../reserve/reasonCodes.js';
 
 import {
   RELOCATION_POLICY,
@@ -83,19 +85,38 @@ const EXAMPLE_LIMIT = 5;
 /**
  * Candidate replacement ground for a format, derived rather than typed in.
  *
- * Three filters, each stated:
+ * Four filters, each stated:
  *
  * 1. **Not at a withdrawn venue.** Obvious, and the caller names them.
  * 2. **A leaf surface.** A parent pitch is bookable, but booking Alder Pitch 1
  *    takes 1A and 1B with it, so proposing onto a parent is strictly more
  *    disruptive than proposing onto a half. `checkOccupancy()` would refuse the
  *    parent anyway the moment either half is in use.
- * 3. **Within `maxGradesAbove` size grades of the format.** The size policy is
+ * 3. **Big enough, by `checkSizeEligibility()` and not by a second rule.**
+ *    Whether a format fits a patch of ground is `facility/eligibility.js`'s
+ *    question, and it is asked here rather than answered again. This filter used
+ *    to judge from the *smallest* declared size, which excluded every surface
+ *    declaring more than one — Brookside's Upper 1 and Upper 2 declare
+ *    `["7v7","9v9"]`, are `allowed` for 9v9 by `checkSizeEligibility()` and are
+ *    counted as 9v9 ground by the reserve adapter, and were nonetheless refused
+ *    here, so a venue withdrawal reported 9v9 games unrelocatable while legal
+ *    ground stood empty.
+ * 4. **Within `maxGradesAbove` size grades of the format.** The size policy is
  *    downward-closed, so *every* 11v11 pitch is technically eligible for a 7v7
  *    game and a search that took the policy literally would offer the stadium.
  *    One grade up is the club's own practice — a 7v7 game on a 9v9 pitch is a
  *    real arrangement with a real cost (`LINING_MISMATCH`); a 7v7 game on the
  *    11v11 stadium is a different conversation.
+ *
+ *    **The grade of a surface is its largest declared size**, which is the same
+ *    quantity `checkSizeEligibility()` measures "big enough" against. Reading the
+ *    floor off the largest and the ceiling off the smallest would be the two
+ *    disagreeing rules again, one level down: a surface would be both big enough
+ *    *because* its largest fits and not oversized *because* its smallest is
+ *    close, which is a claim about two different patches of ground. A surface
+ *    declaring `["4v4","11v11"]` is the stadium, and the smallest-size ceiling
+ *    would have offered it to a Minis game as "one grade up" — exactly the case
+ *    this filter exists to refuse.
  *
  * The result is **the input to a stated policy, not the policy itself**:
  * `RelocationPolicySchema.surfaceIds` has no default, exactly as
@@ -115,6 +136,9 @@ export function replacementSurfacesFor(graph, query) {
   }
   const excluded = new Set(query.excludeVenueIds ?? []);
   const maxGradesAbove = query.maxGradesAbove ?? 1;
+  // The rank table travels with the eligibility question so the two cannot be
+  // asked against different orderings.
+  const sizeOptions = query.sizeRank ? { sizeRank: query.sizeRank } : {};
 
   return Object.values(graph.surfaces)
     .filter((surface) => !excluded.has(surface.venueId))
@@ -123,9 +147,16 @@ export function replacementSurfacesFor(graph, query) {
       const ranks = surface.sizes
         .map((size) => rankTable[size])
         .filter((rank) => typeof rank === 'number');
+      // Nothing rankable to measure a grade against; `checkSizeEligibility()`
+      // says `SIZE_UNKNOWN_FORMAT` about the same surface.
       if (ranks.length === 0) return false;
-      const smallest = Math.min(...ranks);
-      return smallest >= wanted && smallest <= wanted + maxGradesAbove;
+      // The ceiling is this module's own policy and nothing else's.
+      if (Math.max(...ranks) > wanted + maxGradesAbove) return false;
+      // "Big enough" is not this module's question.
+      return (
+        checkSizeEligibility(graph, { surfaceId: surface.id, format: query.format }, sizeOptions)
+          .status === FACILITY_STATUS.ALLOWED
+      );
     })
     .map((surface) => surface.id)
     .sort();
@@ -223,6 +254,40 @@ function bookingForReservedSlot(slot) {
 }
 
 /**
+ * Capacity codes this proposer does **not** lift into its plan's findings.
+ *
+ * Every one of them answers the requirement `proposeRelocations()` invents for
+ * its own grid derivation — `slots: Math.max(1, perDate)`, computed from the
+ * displaced set a moment earlier — rather than a requirement an operator stated
+ * about the branch. Two consequences make lifting them wrong rather than merely
+ * noisy.
+ *
+ * - **They restate, worse, what this plan already reports.** "The ground cannot
+ *   hold all of them" is exactly the fact `unrelocatable` carries, per game,
+ *   with a reason, as `SCENARIO_RELOCATION_UNAVAILABLE` and a TIME TBD fixture.
+ *   A second copy at date granularity adds no information and names no game.
+ * - **They would put shelving on the wrong side of this module's own line.**
+ *   `docs/SCENARIOS.md` states it: a branch that *shelves* games is
+ *   `compromised` and promotable, and a branch that *loses* one carries
+ *   `FIXTURE_DROPPED` at blocking and is refused. A capacity shortfall is the
+ *   cause of shelving, so blocking on it would make every venue-withdrawal
+ *   branch with a single TIME TBD fixture unpromotable — including the
+ *   acceptance run, whose twelve are the documented answer rather than a fault.
+ *
+ * They stay on `capacities` in full, where a caller asking about the ground
+ * rather than about the branch can read them.
+ *
+ * @type {ReadonlySet<string>}
+ */
+const ANSWERS_THE_PROPOSERS_OWN_REQUIREMENT = Object.freeze(
+  new Set([
+    RESERVE_REASON.RESERVE_CAPACITY_BELOW_REQUIREMENT,
+    RESERVE_REASON.RESERVE_CAPACITY_AT_REQUIREMENT,
+    RESERVE_REASON.RESERVE_CAPACITY_CONDITIONAL_SHORTFALL,
+  ])
+);
+
+/**
  * Propose a replacement slot for each displaced game.
  *
  * @param {{ graph: Object, table: Object, calendar: Object, registry?: Object }} engines - the **branch's** engines
@@ -261,7 +326,7 @@ export function proposeRelocations(engines, input) {
       surfaceIds: Object.freeze([...policy.surfaceIds]),
       proposals: [],
       unrelocatable: [],
-      capacity: null,
+      capacities: [],
       findings,
       status: deriveScenarioStatus(findings),
       meta,
@@ -289,8 +354,21 @@ export function proposeRelocations(engines, input) {
    */
   /** @type {Map<string, number[]>} */
   const grid = new Map();
-  /** @type {Object|null} */
-  let capacity = null;
+  /**
+   * Every report, whole.
+   *
+   * This was `capacity`: **one** report, arbitrarily the first, with every
+   * report's `findings` and `status` dropped. Two blocking codes could
+   * therefore reach nothing — `RESERVE_CAPACITY_VACUOUS`, which says the report
+   * generated no slot at all so every requirement it met was met by an empty
+   * count, and `RESERVED_SLOT_UNCOVERED`, which says a reservation stands on
+   * ground this report does not cover. The first is the worse of the two here:
+   * an empty grid and a season with no spare ground both make the search report
+   * *"nowhere to go"*, and nothing distinguished them.
+   *
+   * @type {Object[]}
+   */
+  const capacities = [];
   for (const format of formats) {
     const forFormat = displaced.filter((game) => game.format === format);
     const perDate = Math.max(
@@ -312,7 +390,25 @@ export function proposeRelocations(engines, input) {
       reservedSlots: [...reservedSlots],
       bookings: [],
     });
-    if (capacity === null) capacity = report;
+    capacities.push(report);
+    // **The report's own verdict, carried rather than discarded.** What is
+    // lifted into the plan's findings is everything that impeaches the report:
+    // it examined nothing, it does not cover ground somebody reserved, a
+    // reservation sits off its grid, a date is over its own cap. Those are
+    // things this proposer cannot say for itself, and while they were dropped a
+    // blocking finding could not reach `plan.status`, `runScenario()`'s result
+    // or `promoteScenario()`'s gate.
+    //
+    // `info` provenance is not lifted — `SLOT_CONDITION_SATISFIED` per
+    // generated slot and `RESERVE_CAPACITY_BOUND` per date run to hundreds of
+    // entries on a real season and would bury the branch's own report without
+    // moving a single status. Nothing is dropped: every report is on
+    // `capacities` in full.
+    for (const finding of report.findings) {
+      if (finding.severity === CONSTRAINT_SEVERITY.INFO) continue;
+      if (ANSWERS_THE_PROPOSERS_OWN_REQUIREMENT.has(finding.code)) continue;
+      findings.push(/** @type {import('./types.js').ScenarioFinding} */ (finding));
+    }
     for (const dateRow of report.dates) {
       for (const surfaceRow of dateRow.bySurface) {
         grid.set(`${format}|${dateRow.date}|${surfaceRow.surfaceId}`, [
@@ -578,7 +674,7 @@ export function proposeRelocations(engines, input) {
     surfaceIds: Object.freeze([...policy.surfaceIds]),
     proposals,
     unrelocatable,
-    capacity,
+    capacities,
     findings,
     status: deriveScenarioStatus(findings),
     meta,

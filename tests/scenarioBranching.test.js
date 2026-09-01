@@ -53,6 +53,7 @@ import {
   buildSeason2026ConstraintRegistry,
 } from '@squadlogic/core/constraints/index.js';
 import {
+  DEFAULT_SIZE_RANK,
   buildFacilityGraphFromSeason2026,
   buildSeason2026VenueComplexMap,
   checkLining,
@@ -67,7 +68,7 @@ import {
   loadSeason2026,
   loadSunsets,
 } from '@squadlogic/core/fixtures/index.js';
-import { PUBLICATION_TBD } from '@squadlogic/core/reserve/index.js';
+import { PUBLICATION_TBD, RESERVE_REASON } from '@squadlogic/core/reserve/index.js';
 import { candidateSlotsFor, RESOLVE_OBJECTIVE_WEIGHTS } from '@squadlogic/core/resolve/index.js';
 import { runRuleEngine } from '@squadlogic/core/ruleEngine/index.js';
 import { toSeason2026Schedule } from '@squadlogic/core/ruleEngine/adapters/season2026Schedule.js';
@@ -76,6 +77,7 @@ import {
   toFormatTimingInput,
 } from '@squadlogic/core/timing/index.js';
 import { verifySnapshotDigest } from '@squadlogic/core/publication/index.js';
+import { WAIVER_REASON, buildWaiverLedger } from '@squadlogic/core/waivers/index.js';
 import {
   RELOCATION_POLICY,
   REPLACEMENT_GRADE,
@@ -87,6 +89,7 @@ import {
   SCENARIO_STATUS,
   ScenarioMemo,
   diffAgainstBaselineScenario,
+  diffCapacity,
   diffScenarios,
   diffSchedules,
   expandVenueUnavailable,
@@ -3885,5 +3888,900 @@ describe('the staleness check answers for the result its caller is holding', () 
     expect(memo.fingerprintOf(inputs, child, [scenario])).toBe(
       materialiseScenario(inputs, child, { ancestry: [scenario] }).fingerprint
     );
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* Shared subjects for the cross-module seam blocks below                      */
+/* -------------------------------------------------------------------------- */
+
+/** Memo for the seam subject, so the venue search below runs once. */
+/** @type {Record<string, any>} */
+const cacheSeam = {};
+
+/**
+ * A branch that moves nothing: an added blackout on ground the schedule never
+ * stands on. The same device the vacuity control uses, lifted to module scope
+ * so both seam blocks can state "the record set is the only thing that differs".
+ *
+ * @param {string} baselineId
+ * @returns {Object}
+ */
+function quietBranchOver(baselineId) {
+  const used = new Set(schedule.games.map((game) => game.venueId));
+  const venueId =
+    Object.values(graph.venues)
+      .map((venue) => venue.id)
+      .find((id) => !used.has(id)) ?? 'a-venue-this-corpus-does-not-have';
+  return makeScenario({
+    id: 'a-branch-that-moves-nothing',
+    name: 'ground the schedule never stands on',
+    baselineId,
+    rationale: 'so the record set under test is the only thing that differs',
+    requestedBy: REQUESTED_BY,
+    createdAt: REQUESTED_AT,
+    overrides: [
+      {
+        kind: SCENARIO_OVERRIDE_KIND.ADD,
+        recordSet: SCENARIO_RECORD_SET.PERMITS,
+        record: {
+          id: 'a-blackout-nobody-notices',
+          venueId,
+          scopeKind: 'weekday-default',
+          weekday: 'SAT',
+          date: null,
+          hasPermit: false,
+          openMinutes: null,
+          closeMinutes: null,
+          lit: null,
+          lightsOffMinutes: null,
+          note: 'a venue this schedule never uses',
+          source: 'the cross-module seam regression',
+        },
+        by: REQUESTED_BY,
+        at: REQUESTED_AT,
+        reason: 'withdraw ground the schedule never stands on',
+      },
+    ],
+  });
+}
+
+/* -------------------------------------------------------------------------- */
+/* Cross-module seam: the branch's waiver ledger, built and then not installed */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * **Findings 1 and 2 — one seam, two halves.**
+ *
+ * `runScenario()` builds a waiver ledger from the branch's own record set and
+ * uses it for the two rule-engine runs it makes itself. It then hands
+ * `materialised.engines` to `applyChangeRequest()` — and `runResolve()` reads
+ * its ledger off `engines.waiverLedger`, a key nothing here ever set. So the
+ * re-solve's internal rule engine ran **waiver-blind** while the scenario's own
+ * verification did not: one branch, two different pictures of the same season,
+ * and the waiver-blind one is the one that priced the objective, wrote
+ * `RESOLVE_VERIFY_NEW_VIOLATION`, and whose findings
+ * {@link runScenario} pushes into the result's own list and therefore into its
+ * status and its promotion gate. That is the corpus's incident 9 in shape: a
+ * waiver that exists and does not apply.
+ *
+ * The second half is one function up. `waiverLedgerFor()` returns
+ * `buildWaiverLedger()`'s ledger and drops `buildWaiverLedger()`'s **findings**,
+ * so `WAIVER_ID_DUPLICATE` — blocking, and the report that a waiver was
+ * silently discarded — reached nobody. The rule engine does not stand in for
+ * it: `runRuleEngine()` forwards `applyWaivers()`'s *reconciliation* findings
+ * (an unknown constraint, a non-waivable one), which are a different set built
+ * from a different pass. A ledger's own build findings have no other reader.
+ *
+ * **Neither half subsumes the other**, and the second block below is the proof:
+ * with the ledger installed on the engines, a duplicate waiver id is *still*
+ * invisible, because the duplicate is resolved inside `buildWaiverLedger()`
+ * before any engine is handed anything.
+ */
+describe('the branch’s waiver ledger reaches the re-solve, not only the scenario', () => {
+  /**
+   * A branch that **relocates**, so `applyChangeRequest()` actually runs, and
+   * that keeps a waivable violation standing on the schedule it produces.
+   *
+   * Chosen by a stated property rather than by name: the smallest venue whose
+   * withdrawal still leaves the re-solve's own verification holding at least one
+   * violation of a constraint this season says may be waived. Withdrawing the
+   * acceptance test's venue does not — that branch's re-solve carries no
+   * waivable violation at all — which is exactly why this seam survived a
+   * per-prompt review of the module that owns it.
+   */
+  function waivableBranchSubject() {
+    if (cacheSeam.subject === undefined) {
+      const profiles = venueProfiles();
+      let chosen = null;
+      for (const profile of [...profiles].sort((a, b) => a.games - b.games)) {
+        const branch = season2026VenueUnavailableScenario({
+          venueId: profile.venueId,
+          baselineId: inputs.id,
+          requestedBy: REQUESTED_BY,
+          at: REQUESTED_AT,
+        });
+        const options = {
+          baselineEngines,
+          baselineVerification,
+          relocationPolicy: season2026RelocationPolicy({
+            graph,
+            table,
+            format: profile.formats[0],
+            excludeVenueIds: [profile.venueId],
+            games: schedule.games,
+          }),
+          requirement: {
+            slots: 1,
+            label: `one slot on ${profile.venueId}`,
+            source: 'derived from fixtures/season-2026/combined_schedule.csv',
+          },
+        };
+        const plain = runScenario(inputs, branch, options);
+        if (plain.run === null || plain.run.verification === null) continue;
+        const waivables = plain.run.verification.violations.filter(
+          (violation) =>
+            violation.constraintId && registry.byId[violation.constraintId]?.waivable === true
+        );
+        if (waivables.length === 0) continue;
+        chosen = { profile, branch, options, plain, waivable: waivables[0] };
+        break;
+      }
+      cacheSeam.subject = chosen;
+    }
+    return cacheSeam.subject;
+  }
+
+  /** A bundle carrying the stated waivers and nothing else changed. */
+  function bundleWithWaivers(waivers) {
+    return season2026SeasonInputs({
+      schedule,
+      facilityInput,
+      timingInput,
+      calendarInput,
+      constraints: SEASON_2026_CONSTRAINTS,
+      venueComplexes,
+      waivers,
+    });
+  }
+
+  it('the subject really is a relocating branch with a waivable violation left standing', () => {
+    // The meta-assertions. Each of the three is a way the assertions below
+    // would otherwise pass on air: a branch that relocated nothing never calls
+    // `applyChangeRequest()`; a run with no verification has no picture to be
+    // wrong about; and a run with no waivable violation gives a ledger nothing
+    // to do, so "the ledger reached it" would be unfalsifiable.
+    const subject = waivableBranchSubject();
+    expect(subject, 'a venue whose withdrawal leaves a waivable violation').not.toBeNull();
+    expect(subject.plain.relocations.proposals.length).toBeGreaterThan(0);
+    expect(subject.plain.run).not.toBeNull();
+    expect(subject.plain.run.verification).not.toBeNull();
+    expect(registry.byId[subject.waivable.constraintId].waivable).toBe(true);
+    // And with no waiver anywhere, nothing is waived — the floor the next test
+    // measures from.
+    expect(subject.plain.run.verification.meta.violationsWaived).toBe(0);
+  });
+
+  it('honours the branch’s waivers inside the re-solve, not only in its own verification', () => {
+    const subject = waivableBranchSubject();
+    const waived = bundleWithWaivers([
+      {
+        id: 'the-waiver-the-re-solve-must-see',
+        constraintId: subject.waivable.constraintId,
+        name: 'the exception the board granted',
+        scope: { personId: subject.waivable.details.personId },
+        reason: 'the board granted this coach an exception, and every engine must see it',
+        approval: {
+          approvedBy: REQUESTED_BY,
+          approvedAt: '2026-07-01',
+          reference: 'board minutes 2026-07',
+        },
+      },
+    ]);
+    const branch = season2026VenueUnavailableScenario({
+      venueId: subject.profile.venueId,
+      baselineId: waived.id,
+      requestedBy: REQUESTED_BY,
+      at: REQUESTED_AT,
+    });
+    const run = runScenario(waived, branch, { ...subject.options, baselineVerification: null });
+
+    // The ledger is installed on the branch's own engines, which is what the
+    // re-solve reads it from — not merely held in a local the resolver cannot
+    // see.
+    expect(run.materialised.engines.waiverLedger).not.toBeNull();
+    expect(run.materialised.engines.waiverLedger.waiverIds).toEqual([
+      'the-waiver-the-re-solve-must-see',
+    ]);
+
+    // The defect, in one line: the re-solve's own rule-engine run waived
+    // nothing, while the scenario's did.
+    expect(run.run.verification.meta.violationsWaived).toBeGreaterThan(0);
+    expect(run.verification.meta.violationsWaived).toBeGreaterThan(0);
+    const stamped = run.run.verification.violations.filter(
+      (violation) => violation.waived === true
+    );
+    expect(stamped.length).toBe(run.run.verification.meta.violationsWaived);
+    expect(stamped.every((violation) => violation.waivedBy !== null)).toBe(true);
+    // Every one of them is an exception to the constraint the waiver names, so
+    // the count is the waiver's doing rather than something else's.
+    expect(new Set(stamped.map((violation) => violation.constraintId))).toEqual(
+      new Set([subject.waivable.constraintId])
+    );
+    expect(new Set(stamped.map((violation) => violation.waiverId))).toEqual(
+      new Set(['the-waiver-the-re-solve-must-see'])
+    );
+    // …and the identical branch with no waiver waives nothing, which is what
+    // makes the assertion above about the waiver and not about the branch.
+    expect(subject.plain.run.verification.meta.violationsWaived).toBe(0);
+  });
+
+  it('stops pricing a waived violation as blocking in the re-solve’s objective', () => {
+    // The harm, stated as the finding states it. A soft constraint's violation
+    // is already `compromise`, so this branch **retypes** the waivable
+    // constraint to hard — a record edit the scenario type exists to allow —
+    // which makes its violation `blocking` and therefore worth
+    // `blockingViolation` in the objective. Waived, `applyWaivers()` demotes it
+    // to `compromise`. The two runs below differ by the waiver alone.
+    const subject = waivableBranchSubject();
+    const constraintId = subject.waivable.constraintId;
+    const overrides = (waiverNote) => [
+      {
+        kind: SCENARIO_OVERRIDE_KIND.VENUE_UNAVAILABLE,
+        venueId: subject.profile.venueId,
+        dates: null,
+        by: REQUESTED_BY,
+        at: REQUESTED_AT,
+        reason: `${subject.profile.venueId} is unavailable for the whole season`,
+      },
+      {
+        kind: SCENARIO_OVERRIDE_KIND.RETYPE,
+        recordSet: SCENARIO_RECORD_SET.CONSTRAINTS,
+        recordId: constraintId,
+        type: CONSTRAINT_TYPE.HARD,
+        by: REQUESTED_BY,
+        at: REQUESTED_AT,
+        reason: `the board made "${constraintId}" binding, ${waiverNote}`,
+      },
+    ];
+    const branchOver = (bundle, waiverNote) =>
+      runScenario(
+        bundle,
+        makeScenario({
+          id: 'hardened-and-excepted',
+          name: 'the rule made binding',
+          baselineId: bundle.id,
+          rationale: 'so the price of a waived violation is the only thing that differs',
+          requestedBy: REQUESTED_BY,
+          createdAt: REQUESTED_AT,
+          overrides: overrides(waiverNote),
+        }),
+        { ...subject.options, baselineVerification: null }
+      );
+
+    const hardened = branchOver(bundleWithWaivers([]), 'and nobody is excepted from it');
+    const excepted = branchOver(
+      bundleWithWaivers([
+        {
+          id: 'the-exception-to-the-hardened-rule',
+          constraintId,
+          name: 'the exception the board granted',
+          scope: { personId: subject.waivable.details.personId },
+          reason: 'the board granted this coach an exception to the rule it had just hardened',
+          approval: {
+            approvedBy: REQUESTED_BY,
+            approvedAt: '2026-07-01',
+            reference: 'board minutes 2026-07',
+          },
+        },
+      ]),
+      'and one coach is excepted from it'
+    );
+
+    const blockingIn = (run) =>
+      run.run.objective.resolvedSchedule.terms.blockingViolation?.count ?? 0;
+    const compromiseIn = (run) =>
+      run.run.objective.resolvedSchedule.terms.compromiseViolation?.count ?? 0;
+
+    // Meta-assertion: the retype has to have made something blocking, or the
+    // comparison below is between two zeroes.
+    expect(blockingIn(hardened)).toBeGreaterThan(0);
+    const moved = excepted.run.verification.meta.violationsWaived;
+    expect(moved).toBeGreaterThan(0);
+
+    // The waived violations stop being priced at `blockingViolation` and start
+    // being priced at `compromiseViolation`. Nothing else about the two runs
+    // differs, so the whole of the delta is the waiver.
+    expect(blockingIn(excepted)).toBe(blockingIn(hardened) - moved);
+    expect(compromiseIn(excepted)).toBe(compromiseIn(hardened) + moved);
+    expect(excepted.run.objective.resolvedSchedule.qualityCost).toBeLessThan(
+      hardened.run.objective.resolvedSchedule.qualityCost
+    );
+  });
+});
+
+/**
+ * **Finding 2 on its own**, so that it is visibly not finding 1 in disguise.
+ *
+ * A duplicate waiver id is resolved inside `buildWaiverLedger()`: the second
+ * record is dropped and `WAIVER_ID_DUPLICATE` is written to the ledger's own
+ * `findings`. Every engine downstream is then handed a ledger that is
+ * internally consistent and one waiver short, so installing that ledger
+ * everywhere — finding 1's whole fix — changes nothing about this at all. The
+ * only reader that could ever report it is the caller that built it.
+ */
+describe('a waiver the branch silently lost is reported, not swallowed', () => {
+  /** Two waivers, one id. The second is the one `buildWaiverLedger()` drops. */
+  function duplicatePair() {
+    const waivable = baselineVerification.violations.find(
+      (violation) =>
+        violation.constraintId &&
+        registry.byId[violation.constraintId]?.waivable === true &&
+        violation.details?.personId
+    );
+    const base = {
+      constraintId: /** @type {any} */ (waivable).constraintId,
+      approval: {
+        approvedBy: REQUESTED_BY,
+        approvedAt: '2026-07-01',
+        reference: 'board minutes 2026-07',
+      },
+    };
+    return {
+      waivable,
+      waivers: [
+        {
+          ...base,
+          id: 'two-waivers-one-id',
+          name: 'the exception the board granted',
+          scope: { personId: /** @type {any} */ (waivable).details.personId },
+          reason: 'the first of two records claiming this id',
+        },
+        {
+          ...base,
+          id: 'two-waivers-one-id',
+          name: 'the exception somebody typed twice',
+          scope: { personId: /** @type {any} */ (waivable).details.personId },
+          reason: 'the second of two records claiming this id, and the one that is dropped',
+        },
+      ],
+    };
+  }
+
+  it('the ledger really does drop one of them, so there is something to report', () => {
+    // The meta-assertion, and the reason this is a defect rather than a
+    // preference: the branch is running one waiver short of what its record set
+    // states, and every engine downstream is consistent with the short version.
+    const { waivers } = duplicatePair();
+    expect(waivers[0].id).toBe(waivers[1].id);
+    const ledger = buildWaiverLedger({
+      name: 'the falsification',
+      source: 'tests/scenarioBranching.test.js',
+      waivers,
+    });
+    expect(ledger.waiverIds).toEqual(['two-waivers-one-id']);
+    expect(ledger.findings.map((finding) => finding.code)).toContain(
+      WAIVER_REASON.WAIVER_ID_DUPLICATE
+    );
+  });
+
+  it('carries WAIVER_ID_DUPLICATE into the scenario’s own findings and status', () => {
+    const { waivers } = duplicatePair();
+    const bundle = season2026SeasonInputs({
+      schedule,
+      facilityInput,
+      timingInput,
+      calendarInput,
+      constraints: SEASON_2026_CONSTRAINTS,
+      venueComplexes,
+      waivers,
+    });
+    // A branch that moves nothing, so the duplicate is the only thing under
+    // test — and, deliberately, one that never reaches `applyChangeRequest()`
+    // at all. Finding 1's fix cannot be what makes this pass.
+    const quiet = quietBranchOver(bundle.id);
+    const run = runScenario(bundle, quiet, { ...runOptions, baselineVerification: null });
+    expect(run.run, 'a branch that displaces nothing never re-solves').toBeNull();
+
+    const duplicate = run.findings.filter(
+      (finding) => finding.code === WAIVER_REASON.WAIVER_ID_DUPLICATE
+    );
+    expect(duplicate).toHaveLength(1);
+    expect(duplicate[0].details.waiverId).toBe('two-waivers-one-id');
+    expect(duplicate[0].severity).toBe(CONSTRAINT_SEVERITY.BLOCKING);
+    // …and it counts, rather than sitting in a list nobody derives from.
+    expect(run.status).toBe(SCENARIO_STATUS.REJECTED);
+  });
+
+  it('says nothing at all when the ids are distinct', () => {
+    // The negative control. Identical shape, one character changed, so the
+    // finding above is about the duplicate and not about carrying waivers.
+    const { waivers } = duplicatePair();
+    const bundle = season2026SeasonInputs({
+      schedule,
+      facilityInput,
+      timingInput,
+      calendarInput,
+      constraints: SEASON_2026_CONSTRAINTS,
+      venueComplexes,
+      waivers: [waivers[0], { ...waivers[1], id: 'two-waivers-two-ids' }],
+    });
+    const run = runScenario(bundle, quietBranchOver(bundle.id), {
+      ...runOptions,
+      baselineVerification: null,
+    });
+    expect(
+      run.findings.filter((finding) => finding.code === WAIVER_REASON.WAIVER_ID_DUPLICATE)
+    ).toEqual([]);
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* Round 2, finding 1 — one size rule, not two                                 */
+/* -------------------------------------------------------------------------- */
+
+describe('replacement ground is judged by the size rule the facility model owns', () => {
+  /**
+   * `replacementSurfacesFor()` used to judge "is this ground big enough" from
+   * the **smallest** declared size while `checkSizeEligibility()` judges it from
+   * the **largest** and honours a literal declaration. Every surface declaring
+   * more than one size fell in the gap: Brookside's Upper 1 and Upper 2 declare
+   * `["7v7","9v9"]`, are `allowed` for 9v9, and are counted as 9v9 ground by the
+   * reserve adapter — and were refused as replacement ground for 9v9, so a
+   * venue withdrawal reported 9v9 games unrelocatable while legal ground stood
+   * empty.
+   *
+   * The subject is chosen by a stated property — a leaf surface declaring more
+   * than one size — rather than by name, and the assertion below is an equality
+   * over the *whole* corpus rather than a check on the two surfaces that showed
+   * it.
+   */
+  const rank = graph.sizeRank ?? DEFAULT_SIZE_RANK;
+  /** Ordered by the rank table itself, so "the largest format it fits" means what it says. */
+  const FORMATS = Object.keys(rank).sort((a, b) => rank[a] - rank[b]);
+  /** High enough that the "one grade up" ceiling never bites, so only the size predicate is under test. */
+  const NO_CEILING = 99;
+  const leaves = graph.surfaceIds
+    .map((id) => graph.surfaces[id])
+    .filter((surface) => surface.childIds.length === 0);
+  const multiSized = leaves.filter((surface) => surface.sizes.length > 1);
+
+  /** The predicate this test is about, asked of the facility model. */
+  const sizeEligible = (surfaceId, format) =>
+    checkSizeEligibility(graph, { surfaceId, format }).status === FACILITY_STATUS.ALLOWED;
+
+  it('has ground declared for more than one size to be wrong about', () => {
+    // The meta-assertion the rest of the block rests on. A corpus in which every
+    // surface declared exactly one size would make "smallest" and "largest" the
+    // same number, and every assertion below would pass vacuously.
+    expect(leaves.length).toBeGreaterThan(10);
+    expect(multiSized.length).toBeGreaterThan(0);
+    expect(FORMATS.length).toBeGreaterThan(3);
+    // …and at least one of them is eligible for a format that is not its
+    // smallest declared size, which is the case the two rules disagreed on.
+    const straddling = multiSized.filter((surface) => {
+      const ranks = surface.sizes.map((size) => rank[size]).filter((r) => typeof r === 'number');
+      return FORMATS.some(
+        (format) => sizeEligible(surface.id, format) && rank[format] > Math.min(...ranks)
+      );
+    });
+    expect(straddling.length).toBeGreaterThan(0);
+  });
+
+  it('offers exactly the surfaces the facility model calls size-eligible', () => {
+    for (const format of FORMATS) {
+      const offered = new Set(
+        replacementSurfacesFor(graph, { format, maxGradesAbove: NO_CEILING })
+      );
+      const eligible = leaves
+        .filter((surface) => sizeEligible(surface.id, format))
+        .map((surface) => surface.id)
+        .sort();
+      expect([...offered].sort(), `replacement ground for ${format}`).toEqual(eligible);
+    }
+  });
+
+  it('rejects the smallest-declared-size rule it used to use', () => {
+    // The positive control. The old predicate, written out here, is run against
+    // the assertion above; if it passed, the assertion would be proving nothing.
+    const oldPredicate = (format) =>
+      leaves
+        .filter((surface) => {
+          const ranks = surface.sizes
+            .map((size) => rank[size])
+            .filter((r) => typeof r === 'number');
+          if (ranks.length === 0) return false;
+          const smallest = Math.min(...ranks);
+          return smallest >= rank[format] && smallest <= rank[format] + NO_CEILING;
+        })
+        .map((surface) => surface.id)
+        .sort();
+    const disagreements = FORMATS.filter((format) => {
+      const eligible = leaves
+        .filter((surface) => sizeEligible(surface.id, format))
+        .map((surface) => surface.id)
+        .sort();
+      return JSON.stringify(oldPredicate(format)) !== JSON.stringify(eligible);
+    });
+    expect(disagreements.length).toBeGreaterThan(0);
+  });
+
+  it('names the ground the withdrawal report used to call unreachable', () => {
+    // The reproduced case, derived: every multi-sized leaf, at the largest
+    // format it is eligible for, under the adapter's own one-grade-up policy.
+    for (const surface of multiSized) {
+      const eligible = FORMATS.filter((format) => sizeEligible(surface.id, format));
+      const largest = eligible[eligible.length - 1];
+      expect(replacementSurfacesFor(graph, { format: largest, maxGradesAbove: 1 })).toContain(
+        surface.id
+      );
+    }
+    // …which on this corpus is Brookside's two, for 9v9.
+    expect(replacementSurfacesFor(graph, { format: '9v9', maxGradesAbove: 1 })).toEqual(
+      expect.arrayContaining(['brookside-park/upper-1', 'brookside-park/upper-2'])
+    );
+  });
+
+  it('still refuses ground more than the stated number of grades above the format', () => {
+    // The ceiling is this module's own policy and it survives the fix: the grade
+    // of a surface is its largest declared size, which is the same quantity
+    // `checkSizeEligibility()` measures "big enough" against.
+    for (const format of FORMATS) {
+      for (const surfaceId of replacementSurfacesFor(graph, { format, maxGradesAbove: 1 })) {
+        const ranks = graph.surfaces[surfaceId].sizes
+          .map((size) => rank[size])
+          .filter((r) => typeof r === 'number');
+        expect(Math.max(...ranks), `${surfaceId} offered for ${format}`).toBeLessThanOrEqual(
+          rank[format] + 1
+        );
+      }
+    }
+    // Non-vacuous: the stadium is eligible for 7v7 under the downward-closed
+    // policy and is not offered for it.
+    expect(sizeEligible('summit-hs/stadium', '7v7')).toBe(true);
+    expect(replacementSurfacesFor(graph, { format: '7v7', maxGradesAbove: 1 })).not.toContain(
+      'summit-hs/stadium'
+    );
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* Round 2 sweep — a capacity delta says whether its two reports could count    */
+/* -------------------------------------------------------------------------- */
+
+describe('a capacity delta states what the two reports it came from said', () => {
+  /**
+   * Class B in `diffCapacity()`: `buildReserveCapacityReport()` returns a count
+   * **and** a report about the count, and only the count was read. A report that
+   * generated no slots says `RESERVE_CAPACITY_VACUOUS` at blocking, and the
+   * delta published from it read as a plain fact about the season — "0 against
+   * 0, a delta of 0" being the most dangerous shape of that.
+   */
+  const cleanSubject = capacitySubjects[0];
+  /**
+   * The same subject with its kickoff window shut. Nothing about the ground
+   * changes; the report simply generates no slot to count, which is exactly the
+   * state `RESERVE_CAPACITY_VACUOUS` exists to name.
+   */
+  const vacuousSubject = {
+    ...cleanSubject,
+    latestKickoffMinutes: cleanSubject.earliestKickoffMinutes - 1,
+  };
+
+  it('carries both reports statuses and codes on the delta it publishes', () => {
+    const clean = diffCapacity(baselineEngines, baselineEngines, [cleanSubject]);
+    const finding = /** @type {Object} */ (
+      clean.findings.find((entry) => entry.code === SCENARIO_REASON.SCENARIO_CAPACITY_DELTA)
+    );
+    expect(finding).toBeDefined();
+    // The meta-assertion: the clean subject really did count something, or the
+    // contrast below would be between two empty reports.
+    expect(finding.details.leftSlots).toBeGreaterThan(0);
+    expect(finding.details.leftReportStatus).toBe(finding.details.rightReportStatus);
+    expect(Array.isArray(finding.details.leftReportCodes)).toBe(true);
+    expect(Array.isArray(finding.details.rightReportCodes)).toBe(true);
+  });
+
+  it('does not let a delta of nothing read as a delta', () => {
+    const vacuous = diffCapacity(baselineEngines, baselineEngines, [vacuousSubject]);
+    const finding = /** @type {Object} */ (
+      vacuous.findings.find((entry) => entry.code === SCENARIO_REASON.SCENARIO_CAPACITY_DELTA)
+    );
+    // The numbers on their own say "nothing changed"…
+    expect(finding.details.leftSlots).toBe(0);
+    expect(finding.details.rightSlots).toBe(0);
+    expect(finding.details.delta).toBe(0);
+    // …and the half that used to be dropped says why that is not a fact about
+    // the season.
+    expect(finding.details.leftReportCodes).toContain('RESERVE_CAPACITY_VACUOUS');
+    expect(finding.details.rightReportCodes).toContain('RESERVE_CAPACITY_VACUOUS');
+    expect(finding.details.leftReportStatus).toBe('rejected');
+    expect(finding.details.rightReportStatus).toBe('rejected');
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* Round 3, finding 3 - a blocking report discarded, an empty grid read as full */
+/* -------------------------------------------------------------------------- */
+
+describe('proposeRelocations :: the capacity reports it asks for, carried whole', () => {
+  /**
+   * `proposeRelocations()` built one `buildReserveCapacityReport()` per displaced
+   * format, read `report.dates` off each to fill the grid, kept **the first**
+   * report on `capacity`, and dropped every report's `findings` and `status` on
+   * the floor. Two blocking codes therefore could not reach anything:
+   *
+   * - `RESERVE_CAPACITY_VACUOUS` — the report generated no slot at all, so every
+   *   requirement it reports as met was met by an empty count. The grid is then
+   *   empty and the proposer reads *"no room"* — which is what a season with no
+   *   spare ground looks like, and also what a report that examined nothing
+   *   looks like, and the two were indistinguishable.
+   * - `RESERVED_SLOT_UNCOVERED` — a reservation standing on ground the report
+   *   does not cover, so no grid, condition or requirement check in it applies
+   *   to that ground. Incident 10's own shape: a commitment that disappears
+   *   without a word.
+   *
+   * Neither reached `plan.findings`, `plan.status`, `runScenario()`'s result, or
+   * `promoteScenario()`'s gate. This was left in round 2 because fixing it
+   * changes a public return shape; it is the second time it has been reported,
+   * and a blocking finding that cannot reach a promotion gate is worth the
+   * shape change.
+   *
+   * `capacity` (one report, arbitrarily the first) becomes `capacities` (every
+   * report, in format order). On this corpus the acceptance run displaces one
+   * format and so has exactly one report, which is why the first-only bug was
+   * invisible there and why the block below builds a two-format branch.
+   */
+
+  const survivors = schedule.games.filter(
+    (game) => !result.displaced.some((entry) => entry.gameId === String(game.id))
+  );
+  const displacedGamesById = Object.fromEntries(
+    schedule.games.map((game) => [String(game.id), game])
+  );
+
+  /** Propose over the acceptance branch's own displaced set, with overrides. */
+  const propose = (overrides = {}) =>
+    proposeRelocations(result.materialised.engines, {
+      displaced: result.displaced,
+      survivors,
+      gamesById: displacedGamesById,
+      policy,
+      requirement,
+      ...overrides,
+    });
+
+  it('carries every report it built, not the first one', () => {
+    const plan = result.relocations;
+    const formats = [...new Set(result.displaced.map((game) => game.format))].sort();
+    expect(plan.capacities).toHaveLength(formats.length);
+    // The meta-assertion that makes "carried" mean something: the reports hold
+    // real content, so dropping them dropped something.
+    for (const report of plan.capacities) {
+      expect(report.findings.length).toBeGreaterThan(0);
+      expect(report.status).toEqual(expect.any(String));
+      expect(report.dates.length).toBeGreaterThan(0);
+    }
+    // The old field is gone rather than kept beside the new one: a `capacity`
+    // that named one of several reports was the defect, and leaving it would
+    // leave a reader a way to read the wrong number.
+    expect('capacity' in plan).toBe(false);
+  });
+
+  it('builds one report per displaced format, and keeps them all', () => {
+    // The half the acceptance run cannot show, because it displaces one format.
+    // Two formats' worth of displaced games, so two reports exist to lose.
+    const twoFormats = (() => {
+      const other = schedule.games.find(
+        (game) =>
+          game.format && game.format !== AFFECTED_FORMAT && game.endMinutes !== null && game.counted
+      );
+      return [
+        ...result.displaced.slice(0, 3),
+        {
+          gameId: String(/** @type {Object} */ (other).id),
+          label: 'a second format, displaced',
+          date: /** @type {Object} */ (other).date,
+          venueId: /** @type {Object} */ (other).venueId,
+          surfaceId: /** @type {Object} */ (other).surfaceId,
+          startMinutes: /** @type {Object} */ (other).startMinutes,
+          format: /** @type {Object} */ (other).format,
+          codes: Object.freeze([]),
+          constraintIds: Object.freeze([]),
+        },
+      ];
+    })();
+    const formats = [...new Set(twoFormats.map((game) => game.format))].sort();
+    expect(formats).toHaveLength(2);
+    const plan = propose({
+      displaced: twoFormats,
+      gamesById: displacedGamesById,
+    });
+    // Pre-fix this was one report, whichever format sorted first.
+    expect(plan.capacities).toHaveLength(2);
+    expect(plan.capacities.map((report) => report.format).sort()).toEqual(formats);
+  });
+
+  it('lets a report that examined nothing say so, at blocking', () => {
+    // `RESERVE_CAPACITY_VACUOUS`. A window narrow enough that no kickoff fits
+    // generates no slot, so the grid is empty — and an empty grid and a busy
+    // season read the same to the proposer. Pre-fix the report said so and the
+    // plan did not.
+    const plan = propose({
+      // A window one minute wide, one minute before midnight: no kickoff of
+      // this format fits inside any permit, so the report generates no slot.
+      policy: {
+        ...policy,
+        earliestKickoffMinutes: 24 * 60 - 1,
+        latestKickoffMinutes: 24 * 60,
+        cadenceMinutes: 24 * 60,
+      },
+    });
+    const vacuous = plan.capacities.filter((report) =>
+      report.findings.some((finding) => finding.code === RESERVE_REASON.RESERVE_CAPACITY_VACUOUS)
+    );
+    // Meta-assertion: the arrangement really did produce a vacuous report, so
+    // the assertion below is about something.
+    expect(vacuous.length).toBeGreaterThan(0);
+    const codes = codesOf(plan.findings);
+    expect(codes).toContain(RESERVE_REASON.RESERVE_CAPACITY_VACUOUS);
+    expect(plan.status).toBe(SCENARIO_STATUS.REJECTED);
+    const raised = plan.findings.find(
+      (finding) => finding.code === RESERVE_REASON.RESERVE_CAPACITY_VACUOUS
+    );
+    expect(raised.severity).toBe(CONSTRAINT_SEVERITY.BLOCKING);
+  });
+
+  it('lets a reservation on ground the report does not cover say so, at blocking', () => {
+    // `RESERVED_SLOT_UNCOVERED`. A reserved slot of the displaced format,
+    // standing on a surface the policy does not name, is ground the report
+    // cannot judge — and the proposer holds it as a booking regardless, so the
+    // branch is spending ground the report is silent about.
+    const offPolicySurface = /** @type {string} */ (
+      Object.values(graph.surfaces)
+        .map((surface) => surface.id)
+        .find((surfaceId) => !policy.surfaceIds.includes(surfaceId))
+    );
+    const plan = propose({
+      reservedSlots: [
+        {
+          id: 'round-3-uncovered',
+          kind: 'reservation',
+          label: 'a reservation on ground this report does not cover',
+          date: result.displaced[0].date,
+          venueId: graph.surfaces[offPolicySurface].venueId,
+          surfaceId: offPolicySurface,
+          startMinutes: 9 * 60,
+          endMinutes: 10 * 60,
+          format: AFFECTED_FORMAT,
+          homeSide: 'tbd',
+          awaySide: 'tbd',
+        },
+      ],
+    });
+    expect(codesOf(plan.findings)).toContain(RESERVE_REASON.RESERVED_SLOT_UNCOVERED);
+    expect(plan.status).toBe(SCENARIO_STATUS.REJECTED);
+  });
+
+  it('reaches the scenario result and the promotion gate', () => {
+    // The whole point of the shape change: a blocking finding that stops at the
+    // proposer is a blocking finding nothing can act on. `runScenario()` already
+    // folds `relocations.findings` into its own, so once the plan carries the
+    // report the branch does too — and `promoteScenario()` refuses a branch
+    // whose status is `rejected`.
+    const offPolicySurface = /** @type {string} */ (
+      Object.values(graph.surfaces)
+        .map((surface) => surface.id)
+        .find((surfaceId) => !policy.surfaceIds.includes(surfaceId))
+    );
+    const uncovered = {
+      id: 'round-3-uncovered-scenario',
+      kind: 'reservation',
+      label: 'a reservation on ground the branch does not cover',
+      date: result.displaced[0].date,
+      venueId: graph.surfaces[offPolicySurface].venueId,
+      surfaceId: offPolicySurface,
+      startMinutes: 9 * 60,
+      endMinutes: 10 * 60,
+      format: AFFECTED_FORMAT,
+      homeSide: 'tbd',
+      awaySide: 'tbd',
+    };
+    const branch = runScenario(
+      inputs,
+      makeScenario({
+        ...scenario,
+        id: `${scenario.id}-uncovered`,
+        overrides: [
+          ...scenario.overrides,
+          {
+            kind: SCENARIO_OVERRIDE_KIND.ADD,
+            recordSet: SCENARIO_RECORD_SET.RESERVED_SLOTS,
+            record: uncovered,
+            by: REQUESTED_BY,
+            at: REQUESTED_AT,
+            reason: 'a reservation standing outside the replacement policy ground',
+          },
+        ],
+      }),
+      runOptions
+    );
+    expect(codesOf(branch.findings)).toContain(RESERVE_REASON.RESERVED_SLOT_UNCOVERED);
+    expect(branch.status).toBe(SCENARIO_STATUS.REJECTED);
+    expect(() =>
+      promoteScenario({
+        result: branch,
+        diff: diffAgainstBaselineScenario(branch, {
+          baselineEngines,
+          baselineVerification,
+          capacitySubjects,
+        }),
+        promotionId: 'round-3-uncovered-promotion',
+        promotedAt: REQUESTED_AT,
+        promotedBy: REQUESTED_BY,
+        rationale: 'a branch whose capacity report names ground it does not cover',
+      })
+    ).toThrow();
+  });
+
+  it('does not block on a shortfall against a requirement it invented for itself', () => {
+    // The other half of the line, and it has to be asserted or the rule above
+    // reads as "lift everything blocking". `RESERVE_CAPACITY_BELOW_REQUIREMENT`
+    // is blocking on the report and is *not* lifted, because the requirement it
+    // answers is the one this proposer computed a moment earlier from the
+    // displaced set — and because the fact it states, "the ground cannot hold
+    // all of them", is what `unrelocatable` already reports per game with a
+    // reason. `docs/SCENARIOS.md` draws the same line: a branch that shelves is
+    // `compromised` and promotable, a branch that loses a fixture is refused.
+    // Blocking here would make every withdrawal branch with one TIME TBD
+    // unpromotable, the acceptance run included.
+    // The caller's `requirement.slots` is not even read here — the proposer
+    // takes only the label and source and computes `Math.max(1, perDate)` from
+    // the displaced set itself, which is the whole of the argument. So the
+    // shortfall is produced the way a real one arises: one narrow strip of
+    // ground, against a date that needs several slots.
+    const plan = propose({
+      policy: {
+        ...policy,
+        surfaceIds: [policy.surfaceIds[0]],
+        cadenceMinutes: 60,
+        earliestKickoffMinutes: policy.earliestKickoffMinutes,
+        latestKickoffMinutes: policy.earliestKickoffMinutes + 60,
+      },
+    });
+    const short = plan.capacities.filter((report) =>
+      report.findings.some(
+        (finding) => finding.code === RESERVE_REASON.RESERVE_CAPACITY_BELOW_REQUIREMENT
+      )
+    );
+    // Meta-assertion: the shortfall really was produced, so the assertion that
+    // it is not lifted is about something.
+    expect(short.length).toBeGreaterThan(0);
+    expect(codesOf(plan.findings)).not.toContain(RESERVE_REASON.RESERVE_CAPACITY_BELOW_REQUIREMENT);
+    // Carried, not dropped: a caller asking about the ground rather than about
+    // the branch still reads it.
+    expect(
+      plan.capacities.flatMap((report) => report.findings.map((finding) => finding.code))
+    ).toContain(RESERVE_REASON.RESERVE_CAPACITY_BELOW_REQUIREMENT);
+    // And the shortfall is reported in this plan's own vocabulary, per game.
+    expect(plan.unrelocatable.length + plan.proposals.length).toBe(result.displaced.length);
+  });
+
+  it('says nothing of the sort on the acceptance run', () => {
+    // The negative control, and the reason no acceptance figure moves: the
+    // acceptance branch's one capacity report is `allowed` and every finding it
+    // carries is `info`, so carrying it changes what is *reachable* and not what
+    // is reported. An implementation that raised a blocking finding for every
+    // report would pass everything above and fail here.
+    const plan = result.relocations;
+    for (const report of plan.capacities) {
+      expect(report.status).not.toBe(SCENARIO_STATUS.REJECTED);
+      expect(
+        report.findings.filter((finding) => finding.severity !== CONSTRAINT_SEVERITY.INFO)
+      ).toEqual([]);
+    }
+    expect(codesOf(plan.findings)).not.toContain(RESERVE_REASON.RESERVE_CAPACITY_VACUOUS);
+    expect(codesOf(plan.findings)).not.toContain(RESERVE_REASON.RESERVED_SLOT_UNCOVERED);
+    expect(result.status).toBe(SCENARIO_STATUS.COMPROMISED);
   });
 });

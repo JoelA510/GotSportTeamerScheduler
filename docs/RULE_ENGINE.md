@@ -121,7 +121,30 @@ Ten rules covering twelve of the fourteen seeded constraints.
 | `coach-conflict` | both coach-travel records | `evaluateCoachTravel()` | **> 0 person-pairs**, > 0 people, > 0 commitments |
 | `round-robin` | `round-robin-completeness` | `resolvePolicy()` | **every division examined** |
 | `home-away-balance` | `home-away-balance` | `resolvePolicy()` | > 0 teams, > 0 games counted |
-| `conflict-fairness` | `conflict-fairness` | roster + commitments | > 0 groups, > 0 teams, > 0 commitment pairs |
+| `conflict-fairness` | `conflict-fairness` | roster + commitments | > 0 groups, > 0 teams, > 0 commitment pairs **judged** |
+
+A game standing on a `surfaceId` the facility graph does not hold is reported by
+all three field rules and takes none of them down. `field-eligibility` says the
+ground is unfit; `field-same-ground` and `field-adjacency` each publish
+`SURFACE_UNKNOWN` against that game naming **their own** unrun check, and count
+the concurrent pairs they could not judge separately from the ones they compared
+— so a schedule whose every concurrent pair stood on unknown ground fails its
+exercise minimum rather than reporting a clean bill.
+
+`conflict-fairness` now answers the same way one rule over. A coach named on two
+teams' commitments on one date, at least one of which has no known end, is a
+pair `bookingsOverlapInTime()` answers `null` to — neither an overlap nor an
+all-clear. It used to be counted as compared and then dropped in silence, so an
+undecidable overlap read as *"no conflict"* and the rule's exercise minimum was
+satisfied by pairs it never judged. It now raises `CONFLICT_OVERLAP_UNJUDGED` at
+`compromise`, naming the person, the date, both teams and the unmeasurable
+commitment, and `commitmentPairsCompared` counts only pairs that reached a
+verdict — with `commitmentPairsUnjudgedUnknownEnd` beside it. The published
+season reaches this once: GAP-14's `Scrimmage` rows have no measurable end, and
+one of them shares a coach and a date with another team's game. Before this, one bad surface
+id threw out of `surfacesConflict()` and made both concurrency rules `RULE_THREW`:
+every real clash went unreported and the `OCCUPIED_*` counts fell to zero, which
+`verify` and `scenario/diff.js` read as an improvement.
 
 Nothing here re-derives a conflict, a permit window, a sunset or a travel gap.
 The five rules with no Phase 1 evaluator behind them read their numbers from the
@@ -131,9 +154,10 @@ to a preference turns every `ROUND_ROBIN_INCOMPLETE` into an `info` with no edit
 to any rule. That is [GAP-12](MODEL_GAPS.md#gap-12) working through a third
 module without a branch anywhere.
 
-Two codes are deliberately **ungovernable** by a record — `TURNOVER_UNJUDGED`
-and `ROUND_ROBIN_DIVISION_UNJUDGED`. They say *"this rule could not decide"*,
-which is a fact about the evidence rather than a policy position, and letting a
+Three codes are deliberately **ungovernable** by a record —
+`TURNOVER_UNJUDGED`, `ROUND_ROBIN_DIVISION_UNJUDGED` and
+`CONFLICT_OVERLAP_UNJUDGED`. They say *"this rule could not decide"*, which is a
+fact about the evidence rather than a policy position, and letting a
 `preference` record demote them to `info` would let a schedule reach `allowed`
 on the strength of questions nobody answered.
 

@@ -403,6 +403,42 @@ export function runScenario(inputs, scenario, options) {
     materialised.records[SCENARIO_RECORD_SET.WAIVERS] ?? [],
     `scenario "${scenario.id}" waivers`
   );
+  /**
+   * **Installed on the branch's engines, not merely held in this function.**
+   *
+   * `runResolve()` reads its ledger off `engines.waiverLedger`, and the engines
+   * it is given here are `materialised.engines`. Holding the ledger in a local
+   * meant the two rule-engine runs `runScenario()` makes itself were
+   * waiver-aware while the one `applyChangeRequest()` makes *inside* the
+   * re-solve was not: one branch with two pictures of the same season, and the
+   * waiver-blind picture was the one that priced the objective, wrote
+   * `RESOLVE_VERIFY_NEW_VIOLATION`, and reached `findings` — and therefore
+   * `status` and `promoteScenario()` — through `run.findings` below. A waived
+   * violation was priced at the objective's blocking rate there and at its
+   * compromise rate here, for the same violation in the same run. Incident 9 is
+   * a waiver that exists and does not apply; this was one that applied in half
+   * the pipeline.
+   *
+   * The materialised bundle is built by this function three lines up and is not
+   * yet held by anybody else, so this is completing its construction rather
+   * than mutating a value a caller has seen.
+   */
+  materialised.engines.waiverLedger = branchLedger;
+  /**
+   * **What building the ledger found, carried rather than discarded.**
+   *
+   * `buildWaiverLedger()` resolves a duplicate waiver id by keeping the first
+   * record and reporting `WAIVER_ID_DUPLICATE` at blocking on the ledger's own
+   * `findings`. Every engine downstream is then handed a ledger that is
+   * internally consistent and one waiver short, so no verification can ever
+   * report it: `runRuleEngine()` forwards `applyWaivers()`'s *reconciliation*
+   * findings, which are a different set from a different pass. The caller that
+   * built the ledger is the only reader those findings have.
+   *
+   * The branch's, not the baseline's: this result is a judgement on the branch,
+   * and the baseline's own record set is the baseline's to answer for.
+   */
+  if (branchLedger !== null) findings.push(...branchLedger.findings);
   const baselineVerification =
     options.baselineVerification ??
     runRuleEngine(baselineSchedule, {
@@ -469,7 +505,7 @@ export function runScenario(inputs, scenario, options) {
         constraintIds: Object.freeze([...game.constraintIds]),
         candidatesConsidered: 0,
       })),
-      capacity: null,
+      capacities: [],
       findings: [
         makeScenarioFinding(
           SCENARIO_REASON.SCENARIO_RELOCATIONS_DISABLED,

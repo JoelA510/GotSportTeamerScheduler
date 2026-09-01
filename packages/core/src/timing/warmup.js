@@ -28,6 +28,7 @@
 import { checkBooking } from '../facility/eligibility.js';
 import { getSurface } from '../facility/facilityGraph.js';
 import { findFacilityConflicts, surfacesConflict } from '../facility/occupancy.js';
+import { FACILITY_REASON, makeFinding as makeFacilityFinding } from '../facility/reasonCodes.js';
 import {
   absorbFacilityMeta,
   createTimingMeta,
@@ -361,6 +362,28 @@ export function findTimingConflicts(graph, table, fixtures) {
 }
 
 /**
+ * "This module was asked about ground the facility graph does not hold."
+ *
+ * The code is `facility/`'s own, built by `facility/`'s own `makeFinding()`, so
+ * its severity comes from the one table that owns it. Timing declares no
+ * synonym for it: a second code meaning the same thing is the drift
+ * `timing/reasonCodes.js` opens by refusing.
+ *
+ * @param {string} surfaceId
+ * @param {string} date
+ * @returns {import('./types.js').TimingFinding}
+ */
+function unknownSurfaceFinding(surfaceId, date) {
+  return /** @type {import('./types.js').TimingFinding} */ (
+    makeFacilityFinding(
+      FACILITY_REASON.SURFACE_UNKNOWN,
+      `timing was asked about surface "${surfaceId}", which is not in the graph`,
+      { surfaceId, date }
+    )
+  );
+}
+
+/**
  * Existing bookings that stand on ground conflicting with a surface, on a date.
  *
  * @param {import('../facility/types.js').FacilityGraph} graph
@@ -376,6 +399,14 @@ function conflictingBookingsOn(graph, surfaceId, date, existingBookings, ignoreB
   const surfacesSeen = new Set([surfaceId]);
   /** @type {import('../facility/types.js').FacilityBooking[]} */
   const out = [];
+  // **The query's own ground, guarded exactly as each booking's is.** This loop
+  // guarded the booking and not the surface it was being compared against, so a
+  // query about ground the graph does not hold threw out of `requireSurface()`
+  // one line down — while both siblings in `availability/kickoff.js` report
+  // `SURFACE_UNKNOWN` and return a no-answer. Nothing conflicts with ground that
+  // does not exist; the two public callers say so before they get here, and this
+  // returns the empty set rather than a verdict it cannot reach.
+  if (!getSurface(graph, surfaceId)) return out;
   for (const booking of existingBookings) {
     if (ignored.has(booking.id)) continue;
     if (booking.date !== date) continue;
@@ -410,6 +441,29 @@ export function warmupWindowAvailability(graph, table, rawQuery, options = {}) {
   const meta = createTimingMeta();
   /** @type {import('./types.js').TimingFinding[]} */
   const findings = [];
+
+  // **Ground the graph does not hold is reported, not thrown.** The sibling
+  // question in `availability/kickoff.js` — `checkKickoffAvailability()` and
+  // `earliestLegalKickoff()`, both of which take a surface id from data — emits
+  // `SURFACE_UNKNOWN` and returns a no-answer, and this module reports the
+  // facility vocabulary directly everywhere else it needs it (`deriveTimingStatus()`
+  // reads nothing but `finding.severity`, which is why one list can hold both).
+  // Throwing here made an unknown surface a stack trace in one module and a
+  // finding in its neighbour, for the same question about the same graph.
+  if (!getSurface(graph, query.surfaceId)) {
+    findings.push(unknownSurfaceFinding(query.surfaceId, query.date));
+    return /** @type {any} */ ({
+      status: deriveTimingStatus(findings),
+      findings,
+      meta,
+      availableFromMinutes: query.kickoffMinutes,
+      availableMinutes: 0,
+      requestedMinutes: warmupMinutesFor(table, query.format, query.warmupMinutes),
+      bounded: false,
+      boundBy: null,
+      boundByBookingIds: [],
+    });
+  }
 
   const requestedMinutes = warmupMinutesFor(table, query.format, query.warmupMinutes);
   if (requestedMinutes === null) {
@@ -581,6 +635,15 @@ export function earliestKickoffWithWarmup(graph, table, rawQuery, options = {}) 
     boundBy: null,
     candidatesTested: 0,
   };
+
+  // Reported before the timing table is consulted, for the same reason
+  // `checkKickoffAvailability()` reports it before anything else: an answer
+  // about ground the graph does not hold is not an answer, and it is a finding
+  // rather than a throw. See {@link warmupWindowAvailability}.
+  if (!getSurface(graph, query.surfaceId)) {
+    findings.push(unknownSurfaceFinding(query.surfaceId, query.date));
+    return /** @type {any} */ ({ ...noAnswer, status: deriveTimingStatus(findings) });
+  }
 
   if (timing.footprint === 'unknown' || timing.occupancyMinutes === null) {
     findings.push(...timing.findings);

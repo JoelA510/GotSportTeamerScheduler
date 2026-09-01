@@ -60,6 +60,22 @@ the reserved slots reach `proposeRelocations()`, both as the capacity report's
 own `reservedSlots` and as bookings, so ground the branch is holding is never
 offered back to it as spare.
 
+`proposeRelocations()` returns every capacity report it built on
+**`capacities`** — one per displaced format, whole. It used to return
+`capacity`: the *first* report, with every report's `findings` and `status`
+dropped, so `RESERVE_CAPACITY_VACUOUS` and `RESERVED_SLOT_UNCOVERED`, both
+blocking, reached neither the plan's status nor `promoteScenario()`'s gate — and
+an empty grid and a season with no spare ground both read as "nowhere to go".
+The plan now lifts every consequential finding that **impeaches the report** —
+it examined nothing, it does not cover ground somebody reserved, a reservation
+is off its grid, a date is over its cap. It does not lift the three that answer
+the requirement the proposer invented for its own grid derivation
+(`RESERVE_CAPACITY_BELOW_REQUIREMENT` and the two shortfall codes): that fact is
+what `unrelocatable` already reports per game, and blocking on it would make a
+branch that *shelves* fixtures unpromotable, which is the opposite of the line
+§11 draws between a shelved fixture and a lost one. They stay readable on
+`capacities`.
+
 `ScenarioOverride` is a tagged union over one **named record set**:
 
 | kind                 | what it does                                                                        |
@@ -348,10 +364,22 @@ solver did not find them. Every finding this module emits names the policy.
 | `policy`                 | `nearest-kickoff` (drift first) or `prefer-clean` (grade first)                       |
 
 `replacementSurfacesFor()` filters to leaf surfaces (booking a parent pitch takes
-both halves with it), not at a withdrawn venue, and **within one size grade of
-the format**. The last filter matters: the size policy is downward-closed, so
-*every* 11v11 pitch is technically eligible for a 7v7 game and a search that took
-the policy literally would offer the stadium.
+both halves with it), not at a withdrawn venue, **big enough for the format**,
+and **within one size grade of it**.
+
+"Big enough" is `checkSizeEligibility()`'s answer and not a second rule. It used
+to be a parallel one that judged from the *smallest* declared size, and every
+surface declaring more than one fell in the gap: Brookside's Upper 1 and Upper 2
+declare `["7v7","9v9"]`, are `allowed` for 9v9, and are counted as 9v9 ground by
+the reserve adapter — and were refused as replacement ground for 9v9, so a
+withdrawal reported 9v9 games unrelocatable while legal ground stood empty.
+
+The last filter matters for the opposite reason: the size policy is
+downward-closed, so *every* 11v11 pitch is technically eligible for a 7v7 game and
+a search that took the policy literally would offer the stadium. A surface's
+**grade is its largest declared size** — the same quantity `checkSizeEligibility()`
+measures "big enough" against, so the floor and the ceiling are read off one
+number rather than off two that can disagree.
 
 The **anchor** matters too, and the test asserts why. The club's blanket first
 kickoff is 08:00; the earliest 7v7 kickoff in the corpus is 09:00. A grid laid at

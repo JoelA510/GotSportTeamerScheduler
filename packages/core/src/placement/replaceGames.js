@@ -155,12 +155,25 @@ export function replaceGamesUnderRegistry(engines, input) {
           { existingBookings: working }
         );
 
+        const teamIds = [game.homeTeamId, game.awayTeamId].filter(
+          (id) => typeof id === 'string' && id.length > 0
+        );
         const severity = effectiveSeverityTable(registry, {
           date: parsed.date,
           venueId: surface.venueId,
           surfaceId,
           surfaceLineage: [...surface.lineage],
           ...(game.divisionLabel ? { divisionLabel: game.divisionLabel } : {}),
+          // **The sides are a scope this harness holds.** Round 2 closed exactly
+          // this omission in `resolve/legality.js` `checkPlacement()` and left
+          // the copy here: `ScopeContextSchema` reads an absent field as "the
+          // context does not name one", so every `team`-scoped record came back
+          // `CONSTRAINT_SCOPE_UNJUDGED` and was not applied — while
+          // `ruleEngine/engine.js` narrows per subject with this very field, so
+          // one registry gave two verdicts about one game. Omitted rather than
+          // sent empty when the row names no side: an empty array is a stated
+          // "no teams" that matches nothing while claiming to have looked.
+          ...(teamIds.length > 0 ? { teamIds } : {}),
         });
         meta.registryCodesGoverned += severity.meta.reasonCodesGoverned;
         meta.registryOverridesApplied += severity.meta.reasonCodesOverridden;

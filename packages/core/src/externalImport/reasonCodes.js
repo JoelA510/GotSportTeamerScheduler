@@ -237,6 +237,23 @@ export const EXTERNAL_IMPORT_REASON = Object.freeze({
   EXTERNAL_IMPACT_UNDETERMINED: 'EXTERNAL_IMPACT_UNDETERMINED',
   /** A spacing check that could not run on a pair. Never a silent skip. */
   EXTERNAL_IMPACT_SPACING_UNCHECKED: 'EXTERNAL_IMPACT_SPACING_UNCHECKED',
+  /**
+   * A booking in the plan names ground the facility graph does not hold.
+   *
+   * `blocking`, for the same reason {@link EXTERNAL_AVOID_SURFACE_UNKNOWN} is:
+   * nothing about that booking was checked. It was not compared for occupancy,
+   * it was not compared for spacing, and it was not counted as undecidable
+   * either — every layer this analysis consults is keyed on a surface the graph
+   * holds. A verdict that stayed silent about it would be reporting "nothing
+   * was introduced" over a booking nothing looked at, which is incident 4's
+   * shape.
+   *
+   * It is reported and **not** added to `introduced`: an unknown surface is not
+   * a clash this acceptance created, and the standing plan may hold it too. The
+   * finding is what makes the analysis unusable-as-clean; the verdict keeps
+   * meaning what it says.
+   */
+  EXTERNAL_IMPACT_SURFACE_UNKNOWN: 'EXTERNAL_IMPACT_SURFACE_UNKNOWN',
   /** Stated on every analysis: which layers were consulted, and which were not. */
   EXTERNAL_IMPACT_SCOPE_STATED: 'EXTERNAL_IMPACT_SCOPE_STATED',
   /** The acceptance set moved no row. Said, rather than read as "all clear". */
@@ -245,6 +262,24 @@ export const EXTERNAL_IMPORT_REASON = Object.freeze({
   EXTERNAL_IMPACT_NOTHING_EXAMINED: 'EXTERNAL_IMPACT_NOTHING_EXAMINED',
   /** A row was accepted that resolved to nothing acceptable. */
   EXTERNAL_ACCEPTANCE_ROW_NOT_ACCEPTABLE: 'EXTERNAL_ACCEPTANCE_ROW_NOT_ACCEPTABLE',
+  /**
+   * Two or more accepted rows resolve to the same standing fixture, and they do
+   * not agree, so the fixture holds its ground and neither row is applied.
+   *
+   * `blocking`. The projection used to key accepted rows by `fixtureId`, which
+   * silently kept the **last** of them: the set `{A, B}` then projected exactly
+   * what `{B}` did, and the sweep's comparison between those two sets was
+   * between a thing and itself. Taking the first would be as arbitrary as
+   * taking the last, so neither is taken — freeze by default is this module's
+   * own stance, and a disagreement between two published rows is a conversation
+   * rather than an edit.
+   *
+   * Reachable from an ordinary input: the classification refuses two *standing*
+   * fixtures on one key (`EXTERNAL_ROW_KEY_AMBIGUOUS`) and says nothing about
+   * two *imported* rows on one key, which is what a re-published or corrected
+   * external file carries.
+   */
+  EXTERNAL_ACCEPTANCE_FIXTURE_CONTESTED: 'EXTERNAL_ACCEPTANCE_FIXTURE_CONTESTED',
   /** A subset of this set is unsafe. A whole-import verdict does not transfer. */
   EXTERNAL_ACCEPTANCE_SUBSET_UNSAFE: 'EXTERNAL_ACCEPTANCE_SUBSET_UNSAFE',
   /** The sweep did not examine all 2^n sets. Says how many, and why. */
@@ -333,11 +368,13 @@ export const EXTERNAL_IMPORT_REASON_SEVERITY = Object.freeze({
   [EXTERNAL_IMPORT_REASON.EXTERNAL_IMPACT_CADENCE_BREACH]: EXTERNAL_IMPORT_SEVERITY.COMPROMISE,
   [EXTERNAL_IMPORT_REASON.EXTERNAL_IMPACT_UNDETERMINED]: EXTERNAL_IMPORT_SEVERITY.COMPROMISE,
   [EXTERNAL_IMPORT_REASON.EXTERNAL_IMPACT_SPACING_UNCHECKED]: EXTERNAL_IMPORT_SEVERITY.COMPROMISE,
+  [EXTERNAL_IMPORT_REASON.EXTERNAL_IMPACT_SURFACE_UNKNOWN]: EXTERNAL_IMPORT_SEVERITY.BLOCKING,
   [EXTERNAL_IMPORT_REASON.EXTERNAL_IMPACT_SCOPE_STATED]: EXTERNAL_IMPORT_SEVERITY.INFO,
   [EXTERNAL_IMPORT_REASON.EXTERNAL_IMPACT_NOTHING_PROJECTED]: EXTERNAL_IMPORT_SEVERITY.INFO,
   [EXTERNAL_IMPORT_REASON.EXTERNAL_IMPACT_NOTHING_EXAMINED]: EXTERNAL_IMPORT_SEVERITY.BLOCKING,
   [EXTERNAL_IMPORT_REASON.EXTERNAL_ACCEPTANCE_ROW_NOT_ACCEPTABLE]:
     EXTERNAL_IMPORT_SEVERITY.BLOCKING,
+  [EXTERNAL_IMPORT_REASON.EXTERNAL_ACCEPTANCE_FIXTURE_CONTESTED]: EXTERNAL_IMPORT_SEVERITY.BLOCKING,
   [EXTERNAL_IMPORT_REASON.EXTERNAL_ACCEPTANCE_SUBSET_UNSAFE]: EXTERNAL_IMPORT_SEVERITY.BLOCKING,
   [EXTERNAL_IMPORT_REASON.EXTERNAL_ACCEPTANCE_SETS_NOT_EXHAUSTIVE]: EXTERNAL_IMPORT_SEVERITY.INFO,
 

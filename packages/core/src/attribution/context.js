@@ -34,6 +34,7 @@ import { FREEZE_DISPOSITION } from '../freeze/reasonCodes.js';
 import { soleCoachRiskRegister } from '../people/roster.js';
 import { buildSlotInventory } from '../resolve/inventory.js';
 import { createResolveLedger, createResolveState } from '../resolve/state.js';
+import { ScheduleSchema } from '../ruleEngine/schemas.js';
 import { evaluateCoachTravel } from '../waivers/coachTravel.js';
 
 import {
@@ -51,7 +52,10 @@ import {
  * @param {Object} input.table - a `FormatTimingTable`
  * @param {Object} input.calendar - an `AvailabilityCalendar`
  * @param {Object} input.registry - a `ConstraintRegistry`
- * @param {import('../ruleEngine/types.js').Schedule} input.schedule
+ * @param {Object} input.schedule - raw; see `ScheduleSchema`, which is what
+ *   parses it. Not a parsed `Schedule`: a caller may state a schedule as a
+ *   literal and let the schema default the fields it omits, exactly as
+ *   `runRuleEngine()` and `runResolve()` allow
  * @param {Object|null} [input.verification] - a `runRuleEngine()` result
  * @param {Object|null} [input.travel] - an `evaluateCoachTravel()` result
  * @param {Object|null} [input.venueComplexes] - used only to build `travel` when
@@ -65,11 +69,30 @@ export function buildAttributionContext(input) {
     table,
     calendar,
     registry,
-    schedule,
     verification = null,
     venueComplexes = null,
     roster = null,
   } = input;
+  /**
+   * **Parsed, exactly as its two siblings parse it.**
+   *
+   * `runRuleEngine()` and `runResolve()` both put the schedule through
+   * `ScheduleSchema` before reading a field off it, and this builder did not: it
+   * read `schedule.commitments` twice on trust. `commitments` is declared with
+   * `.default([])`, so a schedule literal that omits it is a perfectly legal
+   * schedule — and unparsed it is `undefined`, so
+   * `schedule.commitments.length` threw. It threw on the branch whose entire
+   * purpose is to answer `ATTRIBUTION_TRAVEL_ABSENT`, which is to say the one
+   * input that most needed "I cannot speak about coaches" got a stack trace
+   * instead. `explain.js` reads `schedule.teamUniverse` off this same value and
+   * had the same hole.
+   *
+   * The parsed value is what the context carries, so every later reader sees the
+   * schema's answer rather than whatever the caller happened to type.
+   */
+  const schedule = /** @type {import('../ruleEngine/types.js').Schedule} */ (
+    ScheduleSchema.parse(input.schedule)
+  );
   const meta = createAttributionMeta();
   /** @type {import('./types.js').AttributionFinding[]} */
   const findings = [];

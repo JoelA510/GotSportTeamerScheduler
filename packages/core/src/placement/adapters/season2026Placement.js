@@ -83,6 +83,12 @@ export function toSeason2026PlacementInput(graph, rows, selection) {
       format: row.format,
       label: `${row.homeLabel} v ${row.awayLabel}`,
       divisionLabel: row.division || null,
+      // The sides, so the severity lookup can judge a `team`-scoped record.
+      // A placeholder cell is not a team id — the corpus is full of `-`,
+      // `MinisA` and `Scrimmage - teams TBD` — and passing one would match a
+      // record against a label, which is incident 4's own mistake.
+      homeTeamId: row.homeIsPlaceholder ? null : row.homeTeamId || null,
+      awayTeamId: row.awayIsPlaceholder ? null : row.awayTeamId || null,
       publishedSurfaceId: season2026SurfaceId(row.venue, row.field),
       publishedKickoffMinutes: row.kickoffMinutes,
     }));

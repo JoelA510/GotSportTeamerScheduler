@@ -62,12 +62,15 @@ export function bookingsOn(state, date, exceptGameId) {
  * @param {import('./types.js').ResolveState} state
  * @param {string} gameId
  * @param {import('./types.js').Slot} slot
- * @returns {{ legal: boolean, status: string, findings: Array<Object>, blockingCodes: string[], blockingCodeCounts: Record<string, number>, counterpartGameIds: string[], availability: Object }}
+ * @returns {{ legal: boolean, status: string, findings: Array<Object>, blockingCodes: string[], blockingCodeCounts: Record<string, number>, counterpartGameIds: string[], availability: Object, registryFindings: Array<Object> }}
  */
 export function checkPlacement(engines, state, gameId, slot) {
   const game = state.baseline[gameId];
   if (!game) throw new Error(`resolve: no baseline game "${gameId}"`);
   const surface = getSurface(engines.graph, slot.surfaceId);
+  const teamIds = [game.homeTeamId, game.awayTeamId].filter(
+    (id) => typeof id === 'string' && id.length > 0
+  );
 
   const availability = checkKickoffAvailability(
     engines.graph,
@@ -89,6 +92,17 @@ export function checkPlacement(engines, state, gameId, slot) {
     surfaceId: slot.surfaceId,
     surfaceLineage: surface ? [...surface.lineage] : [slot.surfaceId],
     ...(game.divisionLabel ? { divisionLabel: game.divisionLabel } : {}),
+    // **The sides are a scope the caller already holds.** `ScopeContextSchema`
+    // takes an absent field as "the context does not name one", so leaving the
+    // teams out made every `team`-scoped record `CONSTRAINT_SCOPE_UNJUDGED` and
+    // therefore not applied — while the rule engine narrows per subject with
+    // exactly this field (`ruleEngine/engine.js` `subjectScopeContext()`), so
+    // one registry gave two verdicts about one game. Derived the same way
+    // `resolve/resolve.js` and `resolve/probe.js` derive it for the freeze
+    // plan, and omitted rather than sent empty when the row names no side: the
+    // corpus's reserved league slots carry TBD teams, and an empty array is a
+    // stated "no teams" that would match nothing while claiming to have looked.
+    ...(teamIds.length > 0 ? { teamIds } : {}),
   });
   const applied = applyRegistrySeverity(availability.findings, severity);
 
@@ -129,5 +143,38 @@ export function checkPlacement(engines, state, gameId, slot) {
     blockingCodeCounts,
     counterpartGameIds: [...counterparts].sort(),
     availability,
+    // **What the seam itself said, carried rather than dropped.**
+    // `effectiveSeverityTable()` returns a table *and* a report: which records
+    // it could not judge here, which it retyped, and where two of equal
+    // specificity disagreed. That report was discarded, so a constraint the
+    // lookup could not decide about — a `person`-scoped record, or a `team`-
+    // scoped one against a fixture whose sides are still TBD — was silently not
+    // applied and nothing anywhere said so.
+    //
+    // Kept **beside** `findings` rather than merged into it, on purpose.
+    // `findings`, `status` and `legal` are this function's answer to "is the
+    // game legal on this slot", and they are facility legality re-severitied;
+    // a note about how the registry was read is provenance about the reading,
+    // not a fact about the ground. Merging it would move `status` for every
+    // candidate slot in the solver's hot path on the strength of a remark.
+    //
+    // **Where it is read, stated because for one round it was read nowhere.**
+    // Carrying the report and having no caller look at it is not a middle path
+    // between merging and dropping — it is the appearance of one, and the
+    // trace reached exactly as many reports as the drop it replaced.
+    // `attribution/explain.js` `claimsForPlacement()` now restates every
+    // consequential entry as `ATTRIBUTION_CONSTRAINT_UNJUDGED`, so
+    // `explainGame()` and `explainKickoffTime()` — one question at a time,
+    // holding the game, and able to afford it — carry it into their own
+    // `findings` and `status`. `resolve/stages.js` still reads neither field,
+    // which is the whole reason the split exists.
+    // `tests/sourceHygiene.test.js` fails if that reader ever goes away.
+    //
+    // `registryStatus` stood here too and is gone: it was
+    // `deriveConstraintStatus(severity.findings)` and stated no fact these
+    // findings do not, so it was a second inert field beside the first rather
+    // than a second half of the report. Deleted rather than given a contrived
+    // reader, which would have been the same mistake wearing a check's clothes.
+    registryFindings: severity.findings,
   };
 }

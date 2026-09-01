@@ -83,12 +83,14 @@ import {
 import {
   FrozenGameMoveAttempt,
   FrozenGameUnsatisfiable,
+  FREEZE_AUDIT_STAGE_ID,
   MOVE_KIND,
   RESOLVE_OBJECTIVE_WEIGHTS,
   RESOLVE_REASON,
   RESOLVE_STAGES,
   ResolveStageSchema,
   STAGE_PROBE,
+  VERIFY_STAGE_ID,
   applyChangeRequest,
   applyMove,
   buildResolvePipeline,
@@ -859,9 +861,28 @@ describe('the eight stages and the contract each of them signs', () => {
     expect(() => buildResolvePipeline([{ ...stage, id: 'freeze-audit' }])).toThrow(
       /two stages claim the id/
     );
-    // …and a legitimate extra stage lands before the audit, never after it.
+    // `verify` is shadowable too, and refused for the same reason: a caller who
+    // claimed that id used to be accepted and then silently dropped, because the
+    // shadow check enumerated only the stages that ran before the extras.
+    expect(() => buildResolvePipeline([{ ...stage, id: 'verify' }])).toThrow(
+      /two stages claim the id/
+    );
+    // …and a legitimate extra stage lands before **both** closing stages. It
+    // used to be spliced between them, which put a caller's writes past the only
+    // stage that checks the result; the claim is therefore tightened rather than
+    // relaxed — the original "before the audit" is still asserted, and "before
+    // verify" is added to it.
     const pipeline = buildResolvePipeline([{ ...stage, id: 'extra' }]);
-    expect(pipeline.map((entry) => entry.id).slice(-2)).toEqual(['extra', 'freeze-audit']);
+    const ids = pipeline.map((entry) => entry.id);
+    expect(ids.indexOf('extra')).toBeLessThan(ids.indexOf('freeze-audit'));
+    expect(ids.indexOf('extra')).toBeLessThan(ids.indexOf('verify'));
+    expect(ids.slice(-3)).toEqual(['extra', 'verify', 'freeze-audit']);
+    // The closing pair writes nothing, which is what makes it safe for them to
+    // come last: neither can move the verification cache key.
+    for (const id of [VERIFY_STAGE_ID, FREEZE_AUDIT_STAGE_ID]) {
+      const stageEntry = /** @type {any} */ (RESOLVE_STAGES.find((entry) => entry.id === id));
+      expect(stageEntry.freezeContract.mutationKinds, id).toEqual([]);
+    }
   });
 });
 
@@ -2356,5 +2377,149 @@ describe('scheduleGames() refuses a freeze rather than ignoring one', () => {
     expect(() => scheduleGames({ teams, slots, roundRobinByDivision, freeze: null })).toThrow(
       TypeError
     );
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* Cross-module seam: where a caller-supplied stage sits in the pipeline        */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * **Finding 4 — a caller-supplied stage's moves were never verified.**
+ *
+ * `buildResolvePipeline()` inserted `extraStages` between `verify` and
+ * `freeze-audit`. Everything about that reads as deliberate — the audit does
+ * have to run last — but it put the one class of stage nobody in this
+ * repository wrote **after** the only stage that checks the result. A move an
+ * extra stage applied was therefore never judged by the standing rule engine,
+ * and the run reported the violations of a schedule that no longer existed.
+ *
+ * It was worse than a stale number, because of the cache key. `runVerification`
+ * keys on `ledger.moves.length`, and the run's own
+ * `verification: context.verificationCache.get(ledger.moves.length) ?? null`
+ * is read **after** the pipeline. An extra stage that applied even one move
+ * pushed the final count past the key `verify` had cached under, so the lookup
+ * missed and `run.verification` came back **`null`** — indistinguishable from
+ * `verify: false`. A caller who asked for verification, and whose stage moved a
+ * game, was handed "no verification" with nothing anywhere saying so.
+ *
+ * `freeze-audit` still runs last; it writes no placement, so it cannot move the
+ * key out from under the lookup.
+ */
+describe('a caller-supplied stage is verified, because it runs before verify', () => {
+  /**
+   * A **compliant** extra stage: it goes through `applyMove()`, the one writer,
+   * and moves a game the change request thawed onto a slot the baseline
+   * inventory already holds — another game's. That is a real clash, so the
+   * standing rule engine has something to say about it, which is what makes
+   * "was this move verified?" an answerable question rather than a hopeful one.
+   */
+  function collidingStage() {
+    /** @type {{ gameId: string|null, slot: Object|null }} */
+    const observed = { gameId: null, slot: null };
+    const stage = {
+      id: 'extra-collide',
+      title: 'A caller-supplied stage that relocates one thawed game onto occupied ground',
+      freezeContract: {
+        mutationKinds: [MOVE_KIND.RELOCATE],
+        probe: STAGE_PROBE.OFFERS_FROZEN_MOVE,
+        claim:
+          'relocates a single thawed game through applyMove(), asking the freeze exactly as any core stage does',
+      },
+      run(state) {
+        const gameId = state.gameIds.find(
+          (id) => state.dispositions[id] === FREEZE_DISPOSITION.THAWED && state.games[id]
+        );
+        if (gameId === undefined) return state;
+        const mine = state.games[gameId];
+        // Somebody else's ground, on somebody else's date: a slot the inventory
+        // certainly holds, occupied by a game that is certainly not this one.
+        const host = state.gameIds
+          .map((id) => state.games[id])
+          .find(
+            (game) =>
+              game &&
+              game.id !== gameId &&
+              game.date === mine.date &&
+              (game.surfaceId !== mine.surfaceId || game.startMinutes !== mine.startMinutes)
+          );
+        if (host === undefined) return state;
+        const to = { date: host.date, surfaceId: host.surfaceId, startMinutes: host.startMinutes };
+        observed.gameId = gameId;
+        observed.slot = to;
+        return applyMove(
+          state,
+          {
+            gameId,
+            kind: MOVE_KIND.RELOCATE,
+            to,
+            reason: 'the regression for finding 4: a caller-supplied stage that actually moves',
+            cause: null,
+          },
+          this.id
+        );
+      },
+    };
+    return { stage, observed };
+  }
+
+  it('inserts an extra stage before verify, and still runs the audit last', () => {
+    const ids = buildResolvePipeline([
+      {
+        id: 'extra',
+        title: 'x',
+        freezeContract: {
+          mutationKinds: [],
+          probe: STAGE_PROBE.WRITES_NOTHING,
+          claim: 'a claim long enough to say something',
+        },
+        run: (state) => state,
+      },
+    ]).map((stage) => stage.id);
+    // The original claim, kept: an extra stage lands before the audit.
+    expect(ids.indexOf('extra')).toBeLessThan(ids.indexOf('freeze-audit'));
+    // …and the claim it did not make, which is the defect: before `verify` too.
+    expect(ids.indexOf('extra')).toBeLessThan(ids.indexOf('verify'));
+    expect(ids.slice(-3)).toEqual(['extra', 'verify', 'freeze-audit']);
+    expect(ids[ids.length - 1]).toBe('freeze-audit');
+  });
+
+  it('verifies the schedule the extra stage left behind, rather than reporting nothing', () => {
+    const { stage, observed } = collidingStage();
+    const run = applyChangeRequest({
+      schedule,
+      changes,
+      engines,
+      baselineVerification,
+      extraStages: [stage],
+    });
+
+    // Meta-assertions. Without these the two below would pass on a stage that
+    // never ran, never moved anything, or moved something nobody could see.
+    expect(observed.gameId, 'the extra stage found a thawed game to move').not.toBeNull();
+    expect(run.stages.find((entry) => entry.stageId === 'extra-collide')?.movesApplied).toBe(1);
+    expect(run.moves.some((move) => move.stageId === 'extra-collide')).toBe(true);
+
+    // The defect, in one line: the cache key moved past what `verify` stored.
+    expect(run.verification, 'a run asked to verify must produce a verification').not.toBeNull();
+
+    // And it is a verification of the schedule that came out, not of the one
+    // that existed before the extra stage wrote to it. Re-derived independently
+    // from the run's own result: same engines, same rules, same answer.
+    const independent = runRuleEngine(run.schedule, { registry, resources });
+    const shapeOf = (verification) =>
+      verification.violations
+        .map((v) => `${v.code}|${v.severity}|${v.subjectId ?? ''}`)
+        .sort()
+        .join('\n');
+    expect(shapeOf(run.verification)).toBe(shapeOf(independent));
+  });
+
+  it('the same run without the extra stage verifies too — so the assertion is about the stage', () => {
+    // The negative control. If `run.verification` were null on an ordinary run
+    // as well, the assertion above would be about verification in general
+    // rather than about where a caller-supplied stage sits.
+    const plain = applyChangeRequest({ schedule, changes, engines, baselineVerification });
+    expect(plain.verification).not.toBeNull();
   });
 });

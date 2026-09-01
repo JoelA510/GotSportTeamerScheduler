@@ -133,9 +133,17 @@ function consequential(findings) {
  * Retyping is what Prompt 2.1 exists to make routine, so both go through the
  * same seam.
  *
- * The seam's own provenance findings are discarded here exactly as
- * `checkPlacement()` discards them: this is a severity lookup, not a second
- * report about the registry.
+ * **The seam's own provenance findings are discarded here, and
+ * `checkPlacement()` no longer discards them.** The difference is what each is
+ * handed. `checkPlacement()` holds the game, so a `team`-scoped record it left
+ * `CONSTRAINT_SCOPE_UNJUDGED` is one it could have judged, and it now returns
+ * the seam's report on `registryFindings`. This helper is handed a *place* —
+ * `where` carries a surface, a venue and a date and no sides at all, because the
+ * two boundary questions are asked of ground on a date rather than of a fixture.
+ * An unjudged team scope from here says "the question named no team", which is
+ * true of every call and so tells a reader nothing. `explainGame()` and
+ * `explainKickoffTime()` reach the game's own verdict through
+ * `checkPlacement()`, which is where the sides are.
  *
  * @param {import('./types.js').AttributionContext} context
  * @param {{ surfaceId: string, venueId: string|null, date: string, divisionLabel?: string|null }} where
@@ -151,7 +159,13 @@ function underRegistry(context, where, findings) {
     /** @type {import('../constraints/types.js').ConstraintRegistry} */ (context.engines.registry),
     {
       date: where.date,
-      venueId: surface?.venueId ?? where.venueId,
+      // `undefined`, never `null`: `ScopeContextSchema` is `.strict()` and takes
+      // an absent venue as "the context does not name one", which is what an
+      // unknown surface means. A `null` is a stated venue whose id is nothing,
+      // and it is a `ZodError` out of a severity lookup rather than an answer.
+      // `feasibility/verdict.js` `underRegistry()` writes the same coalesce for
+      // the same reason; this one was a hardcoded `null` at every call site.
+      venueId: surface?.venueId ?? where.venueId ?? undefined,
       surfaceId: where.surfaceId,
       surfaceLineage: surface ? [...surface.lineage] : [where.surfaceId],
       ...(where.divisionLabel ? { divisionLabel: where.divisionLabel } : {}),
@@ -244,22 +258,69 @@ function claimsFromBounds(constraints, findings, ctx, meta) {
 }
 
 /**
- * Turn one `checkPlacement()` result into claims and the constraints that did
- * not apply.
+ * Turn one `checkPlacement()` result into claims, the constraints that did not
+ * apply, and what the registry could not decide about this game.
+ *
+ * **The third one is round 3's finding 5.** `checkPlacement()` returns the
+ * severity seam's own report on `registryFindings` — which records it could not
+ * judge here and therefore did not apply — and for a whole round no production
+ * caller read it. A field produced and read by nobody is not a middle path
+ * between merging the trace and dropping it; it is the appearance of one, and
+ * it reached exactly as many reports as the drop did.
+ *
+ * It is surfaced *here* rather than inside `checkPlacement()` because of what
+ * each is. `checkPlacement()` is called once per candidate slot by
+ * `resolve/stages.js`, and merging a remark about how the registry was read
+ * into `findings` would move `status` for every one of them — that reasoning
+ * was sound and stands. `explainGame()` and `explainKickoffTime()` are asked
+ * one question at a time, already carry a `findings` array and a `status`
+ * derived from it, and hold the **game**, which is what makes an unjudged
+ * `person` scope a fact worth reporting rather than the truism it would be from
+ * a place-shaped question (see {@link underRegistry}).
+ *
+ * Only *consequential* seam findings are restated. The two the lookup can raise
+ * above `info` — `CONSTRAINT_SCOPE_UNJUDGED` and `CONSTRAINT_WINDOW_UNJUDGED` —
+ * both say "could not decide", which is why one code covers them; the `info`
+ * provenance below (a retype, a narrower scope applied) is how the registry is
+ * *meant* to work and would be noise in an operator's answer.
  *
  * @param {Object} placement - a `checkPlacement()` result
  * @param {{ registry: Object, gameId: string|null, surfaceId: string, venueId: string|null, date: string }} ctx
  * @param {import('./types.js').AttributionMeta} meta
- * @returns {{ claims: import('./types.js').ConstraintClaim[], notApplicable: import('./types.js').InapplicableConstraint[] }}
+ * @returns {{ claims: import('./types.js').ConstraintClaim[], notApplicable: import('./types.js').InapplicableConstraint[], findings: import('./types.js').AttributionFinding[] }}
  */
 function claimsForPlacement(placement, ctx, meta) {
   const availability = /** @type {Object} */ (placement.availability);
-  return claimsFromBounds(
+  const built = claimsFromBounds(
     availability.constraints ?? [],
     /** @type {import('./types.js').AttributionFinding[]} */ (placement.findings),
     { ...ctx, source: ATTRIBUTION_SOURCE.FACILITY },
     meta
   );
+
+  /** @type {import('./types.js').AttributionFinding[]} */
+  const findings = [];
+  for (const finding of /** @type {Array<Object>} */ (placement.registryFindings ?? [])) {
+    if (finding.severity === ATTRIBUTION_SEVERITY.INFO) continue;
+    meta.registryRecordsUnjudged += 1;
+    const details = /** @type {Record<string, unknown>} */ (finding.details ?? {});
+    findings.push(
+      makeAttributionFinding(
+        ATTRIBUTION_REASON.ATTRIBUTION_CONSTRAINT_UNJUDGED,
+        `the registry could not be read cleanly for game "${ctx.gameId}" at ${ctx.surfaceId} on ${ctx.date}, so a record was not applied to it: ${finding.message}`,
+        {
+          gameId: ctx.gameId,
+          surfaceId: ctx.surfaceId,
+          date: ctx.date,
+          seamCode: finding.code,
+          constraintId: details.constraintId ?? null,
+          scopeKind: details.scopeKind ?? null,
+        }
+      )
+    );
+  }
+
+  return { ...built, findings };
 }
 
 /**
@@ -315,6 +376,7 @@ export function explainGame(context, rawQuery) {
     date: slot.date,
   };
   const placed = claimsForPlacement(placement, ctx, meta);
+  findings.push(...placed.findings);
 
   /** @type {import('./types.js').ConstraintClaim[]} */
   const violationClaims = [];
@@ -435,6 +497,7 @@ export function explainKickoffTime(context, rawQuery) {
     date: alternative.date,
   };
   const placed = claimsForPlacement(placement, ctx, meta);
+  findings.push(...placed.findings);
   findings.push(
     ...categoryOnlyClaimFindings(
       placed.claims,

@@ -224,6 +224,20 @@ injected through `extraStages` (the same idiom as the rule engine's
 `extraRules`) that reaches around the writer. An audit that cannot catch that is
 not worth having, and the only way to know is to hand it one.
 
+**Where a caller's stage lands: before `verify`, and therefore before the
+audit.** `verify` and `freeze-audit` are the pipeline's two closing stages, both
+declaring no mutation kinds, and every stage that can write a placement runs
+before them — a caller's included. `extraStages` used to be spliced _between_
+them, which put the one class of stage nobody in this repository wrote after the
+only stage that checks the result: a move a caller's stage applied was never
+judged by the standing rule engine. The verification cache made it louder than a
+stale number. `runVerification()` keys on the move count, and `runResolve()`
+reads the run's own `verification` out of that cache after the pipeline
+finishes, so an extra stage that applied even one move pushed the count past the
+key `verify` had cached under and `run.verification` came back `null` —
+indistinguishable from `verify: false`, with nothing saying a verification had
+been asked for and not produced.
+
 ---
 
 ## 5. A frozen game that cannot be satisfied
