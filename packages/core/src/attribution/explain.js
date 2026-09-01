@@ -258,22 +258,69 @@ function claimsFromBounds(constraints, findings, ctx, meta) {
 }
 
 /**
- * Turn one `checkPlacement()` result into claims and the constraints that did
- * not apply.
+ * Turn one `checkPlacement()` result into claims, the constraints that did not
+ * apply, and what the registry could not decide about this game.
+ *
+ * **The third one is round 3's finding 5.** `checkPlacement()` returns the
+ * severity seam's own report on `registryFindings` — which records it could not
+ * judge here and therefore did not apply — and for a whole round no production
+ * caller read it. A field produced and read by nobody is not a middle path
+ * between merging the trace and dropping it; it is the appearance of one, and
+ * it reached exactly as many reports as the drop did.
+ *
+ * It is surfaced *here* rather than inside `checkPlacement()` because of what
+ * each is. `checkPlacement()` is called once per candidate slot by
+ * `resolve/stages.js`, and merging a remark about how the registry was read
+ * into `findings` would move `status` for every one of them — that reasoning
+ * was sound and stands. `explainGame()` and `explainKickoffTime()` are asked
+ * one question at a time, already carry a `findings` array and a `status`
+ * derived from it, and hold the **game**, which is what makes an unjudged
+ * `person` scope a fact worth reporting rather than the truism it would be from
+ * a place-shaped question (see {@link underRegistry}).
+ *
+ * Only *consequential* seam findings are restated. The two the lookup can raise
+ * above `info` — `CONSTRAINT_SCOPE_UNJUDGED` and `CONSTRAINT_WINDOW_UNJUDGED` —
+ * both say "could not decide", which is why one code covers them; the `info`
+ * provenance below (a retype, a narrower scope applied) is how the registry is
+ * *meant* to work and would be noise in an operator's answer.
  *
  * @param {Object} placement - a `checkPlacement()` result
  * @param {{ registry: Object, gameId: string|null, surfaceId: string, venueId: string|null, date: string }} ctx
  * @param {import('./types.js').AttributionMeta} meta
- * @returns {{ claims: import('./types.js').ConstraintClaim[], notApplicable: import('./types.js').InapplicableConstraint[] }}
+ * @returns {{ claims: import('./types.js').ConstraintClaim[], notApplicable: import('./types.js').InapplicableConstraint[], findings: import('./types.js').AttributionFinding[] }}
  */
 function claimsForPlacement(placement, ctx, meta) {
   const availability = /** @type {Object} */ (placement.availability);
-  return claimsFromBounds(
+  const built = claimsFromBounds(
     availability.constraints ?? [],
     /** @type {import('./types.js').AttributionFinding[]} */ (placement.findings),
     { ...ctx, source: ATTRIBUTION_SOURCE.FACILITY },
     meta
   );
+
+  /** @type {import('./types.js').AttributionFinding[]} */
+  const findings = [];
+  for (const finding of /** @type {Array<Object>} */ (placement.registryFindings ?? [])) {
+    if (finding.severity === ATTRIBUTION_SEVERITY.INFO) continue;
+    meta.registryRecordsUnjudged += 1;
+    const details = /** @type {Record<string, unknown>} */ (finding.details ?? {});
+    findings.push(
+      makeAttributionFinding(
+        ATTRIBUTION_REASON.ATTRIBUTION_CONSTRAINT_UNJUDGED,
+        `the registry could not be read cleanly for game "${ctx.gameId}" at ${ctx.surfaceId} on ${ctx.date}, so a record was not applied to it: ${finding.message}`,
+        {
+          gameId: ctx.gameId,
+          surfaceId: ctx.surfaceId,
+          date: ctx.date,
+          seamCode: finding.code,
+          constraintId: details.constraintId ?? null,
+          scopeKind: details.scopeKind ?? null,
+        }
+      )
+    );
+  }
+
+  return { ...built, findings };
 }
 
 /**
@@ -329,6 +376,7 @@ export function explainGame(context, rawQuery) {
     date: slot.date,
   };
   const placed = claimsForPlacement(placement, ctx, meta);
+  findings.push(...placed.findings);
 
   /** @type {import('./types.js').ConstraintClaim[]} */
   const violationClaims = [];
@@ -449,6 +497,7 @@ export function explainKickoffTime(context, rawQuery) {
     date: alternative.date,
   };
   const placed = claimsForPlacement(placement, ctx, meta);
+  findings.push(...placed.findings);
   findings.push(
     ...categoryOnlyClaimFindings(
       placed.claims,

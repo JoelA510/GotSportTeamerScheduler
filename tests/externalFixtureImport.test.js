@@ -83,6 +83,7 @@ import {
   recordMappingUse,
   resolveExternalName,
   reverseResolveSurface,
+  projectAcceptance,
   season2026ExternalImportQuery,
   season2026ExternalMappingInput,
   serialiseExternalMappingRegistry,
@@ -3779,5 +3780,181 @@ describe('the pair scan adopts the conflict enumerator’s contract for an unkno
         (finding) => finding.code === EXTERNAL_IMPORT_REASON.EXTERNAL_IMPACT_SURFACE_UNKNOWN
       )
     ).toEqual([]);
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* Round 3, finding 2 - two accepted rows collapsing into one                   */
+/* -------------------------------------------------------------------------- */
+
+describe('projectAcceptance :: two accepted rows naming one fixture', () => {
+  /**
+   * `projectAcceptance()` collected accepted rows into a `Map` keyed by
+   * `fixtureId`, so two rows resolving to the same standing fixture left only
+   * the **last** of them projected — silently, with no finding, and with
+   * `movedByRowId` naming one of the two as though the other had not been
+   * accepted. The sweep then reported the set `{A, B}` as byte-identical to
+   * `{B}`, which is the one comparison it exists to make.
+   *
+   * The `UNEXPLAINED` bucket's own comment names this case — *"two accepted
+   * rows naming one fixture leave only the last of them projected"* — but that
+   * bucket is only reached when the whole set moved **nothing**, and this is a
+   * set that moved something. So the case it names is the one case it cannot
+   * fire on.
+   *
+   * **Reachable from an ordinary input, not only from a constructed one.** The
+   * classification guards two *standing* fixtures on one key
+   * (`EXTERNAL_ROW_KEY_AMBIGUOUS`); it does not guard two *imported* rows on
+   * one key, and a re-published or corrected external file carrying the same
+   * fixture twice is exactly that. Both rows come back `acceptable` against the
+   * same `fixtureId`, each stating its own kickoff.
+   */
+
+  /** The corpus's own external rows, plus a second row for the first fixture. */
+  const contested = (() => {
+    const query = corpusQuery();
+    const original = query.rows[0];
+    // A corrected re-publication: same key, a later kickoff. Nothing here
+    // reaches into a returned structure — this is the classifier's own input.
+    const correction = {
+      ...original,
+      rowId: `${original.rowId}-republished`,
+      kickoffMinutes: original.kickoffMinutes + 195,
+    };
+    const resolution = classifyExternalImport(
+      { ...query, rows: [...query.rows, correction] },
+      corpusRegistry()
+    );
+    return { query, original, correction, resolution };
+  })();
+
+  const bothRowIds = [contested.original.rowId, contested.correction.rowId];
+
+  /** Project one acceptance set over the contested resolution. */
+  const project = (acceptedRowIds) =>
+    projectAcceptance({
+      resolution: contested.resolution,
+      standing: contested.query.standing,
+      acceptedRowIds,
+      timingTable: corpusTiming(),
+    });
+
+  it('really does produce two acceptable rows on one fixture', () => {
+    // The meta-assertion. If the classifier refused the duplicate — as it
+    // refuses two standing fixtures on one key — this whole block would be
+    // about a state no input can reach, which is the shape this repo has been
+    // caught by before.
+    const rows = contested.resolution.rows.filter((row) => bothRowIds.includes(row.rowId));
+    expect(rows).toHaveLength(2);
+    for (const row of rows) {
+      expect(row.acceptable, row.rowId).toBe(true);
+      expect(row.fixtureId, row.rowId).toBe(rows[0].fixtureId);
+    }
+    expect(rows[0].fixtureId).toEqual(expect.any(String));
+    // …and the two disagree, so which one wins is a decision rather than a
+    // formality.
+    const kickoffs = rows.map(
+      (row) =>
+        row.differences.find((difference) => difference.field === 'kickoffMinutes')?.theirs ?? null
+    );
+    expect(kickoffs[0]).not.toBe(kickoffs[1]);
+  });
+
+  it('refuses to pick one silently, and says which rows contest the fixture', () => {
+    // The falsification. Pre-fix this projection carries no finding at all and
+    // moves the fixture to the second row's kickoff.
+    const projected = project(bothRowIds);
+    const contest = projected.findings.filter(
+      (finding) => finding.code === EXTERNAL_IMPORT_REASON.EXTERNAL_ACCEPTANCE_FIXTURE_CONTESTED
+    );
+    expect(contest).toHaveLength(1);
+    expect(externalImportSeverityOf(contest[0].code)).toBe(EXTERNAL_IMPORT_SEVERITY.BLOCKING);
+    expect(detailList(contest[0].details, 'rowIds')).toEqual([...bothRowIds].sort());
+    expect(contest[0].details.fixtureId).toBe(contested.resolution.rows[0].fixtureId);
+  });
+
+  it('freezes the contested fixture rather than applying either row', () => {
+    // Freeze by default, which is this module's own stated stance and the only
+    // answer that is not a coin toss: taking the *first* row is as arbitrary as
+    // taking the last, and the disagreement is a conversation, not an edit.
+    const projected = project(bothRowIds);
+    const fixtureId = /** @type {string} */ (contested.resolution.rows[0].fixtureId);
+    const standing = /** @type {Object} */ (
+      contested.query.standing.find((fixture) => fixture.fixtureId === fixtureId)
+    );
+    const after = /** @type {Object} */ (
+      projected.fixtures.find((fixture) => fixture.fixtureId === fixtureId)
+    );
+    expect(after.kickoffMinutes).toBe(standing.kickoffMinutes);
+    expect(after.movedByRowId).toBeNull();
+    expect(projected.moved.map((fixture) => fixture.fixtureId)).not.toContain(fixtureId);
+  });
+
+  it('distinguishes the two-row set from the one-row set, which it could not before', () => {
+    // The consequence that made this worth reporting rather than tolerating.
+    // Pre-fix `{A, B}` and `{B}` projected byte-identical fixtures, so the
+    // sweep's comparison between them was between a thing and itself.
+    const both = project(bothRowIds);
+    const onlySecond = project([contested.correction.rowId]);
+    const fixtureId = /** @type {string} */ (contested.resolution.rows[0].fixtureId);
+    const kickoffOf = (projection) =>
+      /** @type {Object} */ (projection.fixtures.find((fixture) => fixture.fixtureId === fixtureId))
+        .kickoffMinutes;
+    expect(kickoffOf(both)).not.toBe(kickoffOf(onlySecond));
+    // The one-row set is untouched: accepting one row is not contested, and an
+    // implementation that froze on any duplicate *key* would fail here.
+    expect(onlySecond.moved.map((fixture) => fixture.fixtureId)).toContain(fixtureId);
+    expect(codesOf(onlySecond.findings)).not.toContain(
+      EXTERNAL_IMPORT_REASON.EXTERNAL_ACCEPTANCE_FIXTURE_CONTESTED
+    );
+  });
+
+  it('reports rather than throwing, unlike runResolve(), and here is why', () => {
+    // `runResolve()` throws on two changes for one game because that is a
+    // *caller* writing two destinations for one thing, before anything is
+    // built, with no report to put it in. This is not that. The collision is
+    // made by the data — the classification decides which fixture a row names,
+    // and an operator accepting two rows cannot see that they collide — and
+    // this module reports every other impossible acceptance
+    // (`EXTERNAL_ACCEPTANCE_ROW_NOT_ACCEPTABLE` for an unknown row and for an
+    // unacceptable one) rather than throwing.
+    //
+    // The decisive half is the sweep: `sweepAcceptanceSets()` enumerates every
+    // subset and analyses each, and a throw would take the whole enumeration
+    // down over one subset — while finding the subsets that break is the sweep's
+    // entire purpose. Asserted, because it is the argument.
+    expect(() => project(bothRowIds)).not.toThrow();
+    const sweep = sweepAcceptanceSets({
+      subject: 'a re-published external file',
+      resolution: contested.resolution,
+      standing: contested.query.standing,
+      graph: corpusGraph(),
+      timingTable: corpusTiming(),
+      sets: [[], [contested.correction.rowId], bothRowIds],
+    });
+    expect(sweep.results).toHaveLength(3);
+    const contestedResult = sweep.results.find(
+      (result) => result.setKey === acceptanceSetKey(bothRowIds)
+    );
+    expect(contestedResult).toBeDefined();
+    expect(codesOf(/** @type {Object} */ (contestedResult).findings)).toContain(
+      EXTERNAL_IMPORT_REASON.EXTERNAL_ACCEPTANCE_FIXTURE_CONTESTED
+    );
+  });
+
+  it('says nothing of the sort on the corpus, where no two rows contest a fixture', () => {
+    // The negative control: the published external file names eight fixtures
+    // once each, so an implementation that reported a contest for every
+    // accepted row would pass everything above and fail here.
+    const clean = projectAcceptance({
+      resolution: corpusResolution(),
+      standing: corpusQuery().standing,
+      acceptedRowIds: acceptanceDomainOf(corpusResolution()),
+      timingTable: corpusTiming(),
+    });
+    expect(codesOf(clean.findings)).not.toContain(
+      EXTERNAL_IMPORT_REASON.EXTERNAL_ACCEPTANCE_FIXTURE_CONTESTED
+    );
+    expect(clean.moved.length).toBeGreaterThan(0);
   });
 });

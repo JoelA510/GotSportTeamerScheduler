@@ -208,6 +208,8 @@ export function projectAcceptance({ resolution, standing, acceptedRowIds, timing
 
   /** @type {Map<string, import('./types.js').ExternalRowResolution>} */
   const movesByFixture = new Map();
+  /** Fixtures more than one accepted row claims. @type {Map<string, import('./types.js').ExternalRowResolution[]>} */
+  const contested = new Map();
   for (const rowId of acceptedRowIds) {
     const row = rowsById.get(rowId);
     if (row === undefined) {
@@ -235,7 +237,54 @@ export function projectAcceptance({ resolution, standing, acceptedRowIds, timing
       );
       continue;
     }
-    movesByFixture.set(row.fixtureId, row);
+    // **Two rows for one fixture is a contest, not a later revision.** This was
+    // a plain `set()`, so the second row silently displaced the first: the set
+    // `{A, B}` projected exactly what `{B}` did, and the sweep's comparison
+    // between them was between a thing and itself. `runResolve()` throws on the
+    // analogous "two changes for one game"; this reports instead, for two
+    // reasons. That collision is a *caller* naming two destinations before
+    // anything is built, with nowhere to put a report; this one is made by the
+    // data — the classification decides which fixture a row names, and an
+    // operator accepting two rows cannot see that they collide — and every
+    // other impossible acceptance in this same loop is reported rather than
+    // thrown. And `sweepAcceptanceSets()` analyses every subset in turn, so a
+    // throw would take the whole enumeration down over one subset, while
+    // finding the subsets that break is the sweep's entire purpose.
+    const held = movesByFixture.get(row.fixtureId);
+    if (held === undefined) {
+      movesByFixture.set(row.fixtureId, row);
+      continue;
+    }
+    if (!contested.has(row.fixtureId)) contested.set(row.fixtureId, [held]);
+    /** @type {import('./types.js').ExternalRowResolution[]} */ (contested.get(row.fixtureId)).push(
+      row
+    );
+  }
+
+  // Reported once per fixture, after the whole set is read, so the finding names
+  // every row that contests it rather than the two that happened to be adjacent.
+  for (const [fixtureId, rows] of [...contested.entries()].sort((a, b) =>
+    a[0].localeCompare(b[0])
+  )) {
+    const rowIds = rows.map((row) => row.rowId).sort();
+    // Neither is applied: taking the first is exactly as arbitrary as taking
+    // the last, and freeze-by-default is what this module does with a fixture
+    // no accepted row can speak for.
+    movesByFixture.delete(fixtureId);
+    findings.push(
+      makeExternalImportFinding(
+        EXTERNAL_IMPORT_REASON.EXTERNAL_ACCEPTANCE_FIXTURE_CONTESTED,
+        `rows ${rowIds.join(', ')} were all accepted and all resolve to fixture ${fixtureId}; they do not agree on where it goes, so it holds its published position and none of them is applied`,
+        {
+          fixtureId,
+          rowIds,
+          rowCount: rowIds.length,
+          differingFields: [
+            ...new Set(rows.flatMap((row) => row.differences.map((entry) => entry.field))),
+          ].sort(),
+        }
+      )
+    );
   }
 
   /** @type {import('./types.js').ProjectedFixture[]} */
@@ -575,9 +624,16 @@ function planFindings(graph, timingTable, fixtures) {
  * rows are named twice rather than leaving a reader to discover it by
  * arithmetic that no longer works.
  *
- * {@link UNEXPLAINED} is the honest floor rather than a decoration: two accepted
- * rows naming one fixture leave only the last of them projected, and a message
- * that has to name a cause would name the wrong one. It says so instead.
+ * {@link UNEXPLAINED} is the honest floor rather than a decoration. The case it
+ * was written for — two accepted rows naming one fixture, leaving only the last
+ * of them projected — is no longer one of its instances, and could never have
+ * been: this bucket is reached only when the whole set moved **nothing**, and a
+ * set that quietly kept the last of two rows had moved something. So the one
+ * case the comment named was the one case it could not fire on.
+ * `projectAcceptance()` now reports that collision where it happens, as
+ * `EXTERNAL_ACCEPTANCE_FIXTURE_CONTESTED`, and holds the fixture. The floor
+ * stays, for the causes nobody has enumerated yet: a message that has to name a
+ * cause would name the wrong one, and this says so instead.
  *
  * @readonly
  * @enum {string}

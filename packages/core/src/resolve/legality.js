@@ -62,7 +62,7 @@ export function bookingsOn(state, date, exceptGameId) {
  * @param {import('./types.js').ResolveState} state
  * @param {string} gameId
  * @param {import('./types.js').Slot} slot
- * @returns {{ legal: boolean, status: string, findings: Array<Object>, blockingCodes: string[], blockingCodeCounts: Record<string, number>, counterpartGameIds: string[], availability: Object, registryFindings: Array<Object>, registryStatus: string }}
+ * @returns {{ legal: boolean, status: string, findings: Array<Object>, blockingCodes: string[], blockingCodeCounts: Record<string, number>, counterpartGameIds: string[], availability: Object, registryFindings: Array<Object> }}
  */
 export function checkPlacement(engines, state, gameId, slot) {
   const game = state.baseline[gameId];
@@ -157,7 +157,24 @@ export function checkPlacement(engines, state, gameId, slot) {
     // a note about how the registry was read is provenance about the reading,
     // not a fact about the ground. Merging it would move `status` for every
     // candidate slot in the solver's hot path on the strength of a remark.
+    //
+    // **Where it is read, stated because for one round it was read nowhere.**
+    // Carrying the report and having no caller look at it is not a middle path
+    // between merging and dropping — it is the appearance of one, and the
+    // trace reached exactly as many reports as the drop it replaced.
+    // `attribution/explain.js` `claimsForPlacement()` now restates every
+    // consequential entry as `ATTRIBUTION_CONSTRAINT_UNJUDGED`, so
+    // `explainGame()` and `explainKickoffTime()` — one question at a time,
+    // holding the game, and able to afford it — carry it into their own
+    // `findings` and `status`. `resolve/stages.js` still reads neither field,
+    // which is the whole reason the split exists.
+    // `tests/sourceHygiene.test.js` fails if that reader ever goes away.
+    //
+    // `registryStatus` stood here too and is gone: it was
+    // `deriveConstraintStatus(severity.findings)` and stated no fact these
+    // findings do not, so it was a second inert field beside the first rather
+    // than a second half of the report. Deleted rather than given a contrived
+    // reader, which would have been the same mistake wearing a check's clothes.
     registryFindings: severity.findings,
-    registryStatus: severity.status,
   };
 }

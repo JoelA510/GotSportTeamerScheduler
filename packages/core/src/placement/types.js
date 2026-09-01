@@ -20,6 +20,8 @@
  * @property {string|null} format
  * @property {string|null} label
  * @property {string|null} divisionLabel - a label, not a key (GAP-24)
+ * @property {string|null} homeTeamId - null when the row's side is a placeholder
+ * @property {string|null} awayTeamId - null when the row's side is a placeholder
  * @property {string|null} publishedSurfaceId
  * @property {number|null} publishedKickoffMinutes
  */

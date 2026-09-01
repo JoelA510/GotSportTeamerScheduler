@@ -1925,3 +1925,214 @@ describe('rule engine :: a game on ground the graph does not hold', () => {
     }
   });
 });
+
+/* -------------------------------------------------------------------------- */
+/* Round 3, finding 1 - a counter that counted pairs it never judged            */
+/* -------------------------------------------------------------------------- */
+
+describe('rule engine :: a coach overlap that cannot be decided', () => {
+  /**
+   * `conflictFairnessRule` bumped `commitmentPairsCompared` **before** the
+   * unknown-end check and then `continue`d in silence. Three things followed
+   * from one line in the wrong order:
+   *
+   * 1. an undecidable overlap read as *"no conflict"* — the fabricated
+   *    all-clear `bookingsOverlapInTime()` returns `null` precisely to avoid;
+   * 2. nothing anywhere said the question had not been answered;
+   * 3. the rule's own exercise minimum, which is written on that counter, was
+   *    satisfied by pairs it never judged — so a season whose every cross-team
+   *    coach pair stood on an unmeasurable commitment would have reported a
+   *    clean spread and a satisfied minimum, having compared nothing.
+   *
+   * This is the counter half of the `scanConcurrency()` fix one rule over, and
+   * the reporting half of what `reserve/slots.js` `doubleBookingFindings()` and
+   * `waivers/coachTravel.js` already do: three answers, and the third one said
+   * out loud.
+   *
+   * The corpus reaches it. GAP-14's `Scrimmage` rows have no `game_formats.csv`
+   * entry and therefore no measurable end, and one of them shares a person and
+   * a date with a commitment for a different team.
+   */
+
+  /** Every cross-team commitment pair the rule's own join produces. */
+  const crossTeamPairs = () => {
+    /** @type {Map<string, Array<Object>>} */
+    const byPersonDate = new Map();
+    for (const commitment of schedule.commitments) {
+      const key = [commitment.personId, commitment.date].join('|');
+      if (!byPersonDate.has(key)) byPersonDate.set(key, []);
+      /** @type {Array<Object>} */ (byPersonDate.get(key)).push(commitment);
+    }
+    /** @type {Array<{ a: Object, b: Object }>} */
+    const pairs = [];
+    for (const entries of byPersonDate.values()) {
+      for (let i = 0; i < entries.length; i += 1) {
+        for (let j = i + 1; j < entries.length; j += 1) {
+          const a = entries[i];
+          const b = entries[j];
+          if (a.teamId === null || b.teamId === null || a.teamId === b.teamId) continue;
+          pairs.push({ a, b });
+        }
+      }
+    }
+    return pairs;
+  };
+
+  const allPairs = crossTeamPairs();
+  const undecidable = allPairs.filter(
+    (pair) => pair.a.endMinutes === null || pair.b.endMinutes === null
+  );
+  const counters = run.byRuleId[RULE_ID.CONFLICT_FAIRNESS].exercise.counters;
+  const fairnessFindings = run.byRuleId[RULE_ID.CONFLICT_FAIRNESS].findings;
+
+  it('has an undecidable cross-team coach pair in the corpus to be wrong about', () => {
+    // The meta-assertion this whole block rests on. Without it every assertion
+    // below would hold vacuously, which is the failure mode the file is named
+    // for.
+    expect(allPairs.length).toBeGreaterThan(0);
+    expect(undecidable.length).toBeGreaterThan(0);
+    // And the undecidability is GAP-14's, not an artefact: the commitment with
+    // no end is one whose game the format table cannot measure.
+    for (const pair of undecidable) {
+      const unmeasurable = [pair.a, pair.b].filter((entry) => entry.endMinutes === null);
+      expect(unmeasurable.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('counts only the pairs it actually judged, and reports the rest as their own number', () => {
+    // The falsification. An implementation that bumps the counter before the
+    // unknown-end check reports `commitmentPairsCompared === allPairs.length`
+    // and no third value at all; both halves of this fail against it.
+    expect(counters.commitmentPairsCompared).toBe(allPairs.length - undecidable.length);
+    expect(counters.commitmentPairsUnjudgedUnknownEnd).toBe(undecidable.length);
+    expect(counters.commitmentPairsCompared).toBeLessThan(allPairs.length);
+    // Nothing is lost between the two: every pair the join produced is in
+    // exactly one of them.
+    expect(counters.commitmentPairsCompared + counters.commitmentPairsUnjudgedUnknownEnd).toBe(
+      allPairs.length
+    );
+  });
+
+  it('says which overlap it could not decide, rather than calling it no conflict', () => {
+    const raised = fairnessFindings.filter(
+      (finding) => finding.code === RULE_VIOLATION_REASON.CONFLICT_OVERLAP_UNJUDGED
+    );
+    expect(raised).toHaveLength(undecidable.length);
+    const finding = raised[0];
+    expect(finding.severity).toBe(RULE_SEVERITY.COMPROMISE);
+    // The finding names the person, the date, both sides and which commitment
+    // is the unmeasurable one — enough to act on without parsing the message.
+    expect(typeof finding.details.personId).toBe('string');
+    expect(typeof finding.details.date).toBe('string');
+    expect(finding.details.teamIds).toHaveLength(2);
+    expect(
+      /** @type {string[]} */ (finding.details.unmeasurableCommitmentIds).length
+    ).toBeGreaterThan(0);
+    expect(finding.message).toContain('cannot be decided');
+    // It reaches the run's own findings and therefore its status, which is the
+    // whole difference between this fix and a field nobody reads.
+    expect(run.findings.map((entry) => entry.code)).toContain(
+      RULE_VIOLATION_REASON.CONFLICT_OVERLAP_UNJUDGED
+    );
+  });
+
+  it('withholds a verdict rather than inventing either one', () => {
+    // The pair is undecidable *only* because an end is missing, and the proof
+    // is that supplying one decides it. Give the unmeasurable commitment the
+    // end its format cannot supply and the pair moves from the unjudged column
+    // to the compared one and the finding goes away; nothing else about the
+    // rule changes. An implementation that had simply waved the pair through
+    // would show no movement at all.
+    const unmeasurableIds = new Set(
+      undecidable.flatMap((pair) =>
+        [pair.a, pair.b].filter((entry) => entry.endMinutes === null).map((entry) => entry.id)
+      )
+    );
+    expect(unmeasurableIds.size).toBeGreaterThan(0);
+    const measured = {
+      ...schedule,
+      commitments: schedule.commitments.map((commitment) =>
+        unmeasurableIds.has(commitment.id)
+          ? { ...commitment, endMinutes: commitment.startMinutes + 60 }
+          : commitment
+      ),
+    };
+    const measuredRun = runRuleEngine(measured, { registry, resources });
+    const after = measuredRun.byRuleId[RULE_ID.CONFLICT_FAIRNESS].exercise.counters;
+    expect(after.commitmentPairsUnjudgedUnknownEnd).toBe(0);
+    expect(after.commitmentPairsCompared).toBe(allPairs.length);
+    expect(
+      measuredRun.byRuleId[RULE_ID.CONFLICT_FAIRNESS].findings.map((finding) => finding.code)
+    ).not.toContain(RULE_VIOLATION_REASON.CONFLICT_OVERLAP_UNJUDGED);
+  });
+
+  it('fails its exercise minimum on a season it could not judge at all', () => {
+    // The positive control, and the reason the counter split matters. Every
+    // commitment loses its end, so every cross-team pair is undecidable. The
+    // pre-fix implementation counts all 137 of them as compared, clears its
+    // minimum of 1, and reports a clean spread having measured nothing. The
+    // fixed one counts zero and says so at blocking.
+    const blinded = {
+      ...schedule,
+      commitments: schedule.commitments.map((commitment) => ({
+        ...commitment,
+        endMinutes: null,
+      })),
+    };
+    const blindRun = runRuleEngine(blinded, { registry, resources });
+    const blindCounters = blindRun.byRuleId[RULE_ID.CONFLICT_FAIRNESS].exercise.counters;
+    // The mutation applied.
+    expect(blinded.commitments.filter((entry) => entry.endMinutes === null)).toHaveLength(
+      schedule.commitments.length
+    );
+    expect(blindCounters.commitmentPairsCompared).toBe(0);
+    expect(blindCounters.commitmentPairsUnjudgedUnknownEnd).toBe(allPairs.length);
+    const codes = blindRun.byRuleId[RULE_ID.CONFLICT_FAIRNESS].findings.map(
+      (finding) => finding.code
+    );
+    expect(codes).toContain(RULE_REASON.RULE_EXERCISE_BELOW_MINIMUM);
+    const below = blindRun.byRuleId[RULE_ID.CONFLICT_FAIRNESS].findings.find(
+      (finding) => finding.code === RULE_REASON.RULE_EXERCISE_BELOW_MINIMUM
+    );
+    expect(below.severity).toBe(RULE_SEVERITY.BLOCKING);
+  });
+
+  it('leaves no other rule in this file counting what it did not judge', () => {
+    // The sweep finding 1 asks for, encoded rather than described. Every rule
+    // whose exercise minimum is written on a "compared"/"judged" counter must
+    // report a *third* value beside it — the count it could not decide — or
+    // have no undecidable path at all. The pairs are stated here so that a new
+    // rule with a compared-counter minimum fails until it is classified.
+    const withPairCounters = {
+      [RULE_ID.FIELD_SAME_GROUND]: 'concurrentPairsUnjudgedUnknownSurface',
+      [RULE_ID.FIELD_ADJACENCY]: 'concurrentPairsUnjudgedUnknownSurface',
+      [RULE_ID.COACH_CONFLICT]: 'personPairsJudged',
+      [RULE_ID.CONFLICT_FAIRNESS]: 'commitmentPairsUnjudgedUnknownEnd',
+    };
+    for (const [ruleId, thirdValue] of Object.entries(withPairCounters)) {
+      const seen = run.byRuleId[ruleId].exercise.counters;
+      expect(Object.keys(seen), ruleId).toContain(thirdValue);
+      expect(typeof seen[thirdValue], ruleId).toBe('number');
+    }
+    // `turnover-minimum` and `round-robin` reach an undecidable case too, and
+    // each already answers it the other admissible way: a finding on the
+    // subject naming the thing it could not measure, plus a *second* minimum
+    // that a blinded run cannot clear (`policiesResolved`, `divisionsJudged`).
+    // Asserted rather than trusted, because that is what makes their absence
+    // from the table above a classification rather than an omission.
+    expect(
+      STANDING_RULES.find((rule) => rule.id === RULE_ID.TURNOVER_MINIMUM).reasonCodes
+    ).toContain(RULE_VIOLATION_REASON.TURNOVER_UNJUDGED);
+    expect(
+      Object.keys(
+        STANDING_RULES.find((rule) => rule.id === RULE_ID.TURNOVER_MINIMUM).exercise.minimums
+      )
+    ).toContain('policiesResolved');
+    expect(STANDING_RULES.find((rule) => rule.id === RULE_ID.ROUND_ROBIN).reasonCodes).toContain(
+      RULE_VIOLATION_REASON.ROUND_ROBIN_DIVISION_UNJUDGED
+    );
+    expect(run.byRuleId[RULE_ID.ROUND_ROBIN].exercise.counters.divisionsJudged).toBeLessThanOrEqual(
+      run.byRuleId[RULE_ID.ROUND_ROBIN].exercise.counters.divisionsExamined
+    );
+  });
+});

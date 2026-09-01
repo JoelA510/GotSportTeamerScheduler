@@ -46,10 +46,14 @@ import { buildFormatTimingTableFromSeason2026 } from '@squadlogic/core/timing/in
 import { buildAvailabilityCalendarFromSeason2026 } from '@squadlogic/core/availability/index.js';
 
 import {
+  CONSTRAINT_ENFORCEMENT,
+  CONSTRAINT_REASON,
+  CONSTRAINT_SCOPE_KIND,
   CONSTRAINT_SEVERITY,
   CONSTRAINT_STATUS,
   CONSTRAINT_TYPE,
   SEASON_2026_CONSTRAINT_ID,
+  buildConstraintRegistry,
   buildSeason2026ConstraintRegistry,
   retypeConstraint,
   whatIfConstraintType,
@@ -416,5 +420,184 @@ describe('the harness refuses vacuous work', () => {
         ],
       })
     ).toThrow(/bounded to one venue/);
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* Round 3, finding 4 - the same scope omission, one module over               */
+/* -------------------------------------------------------------------------- */
+
+describe('the placement harness :: the sides are a scope it can hold', () => {
+  /**
+   * Round 2 closed this in `resolve/legality.js` `checkPlacement()` and left the
+   * identical omission here. `replaceGamesUnderRegistry()` builds its scope
+   * context out of date, venue, surface lineage and division and stops, so every
+   * `team`-scoped record comes back `CONSTRAINT_SCOPE_UNJUDGED` and is **not
+   * applied** — while `ruleEngine/engine.js` narrows per subject with exactly
+   * that field. One registry, two verdicts about one game, and nothing anywhere
+   * saying so.
+   *
+   * `PlacementGameSchema` being `.strict()` with no team field is part of the
+   * defect rather than a bound on the fix: a caller who *holds* the sides — the
+   * corpus adapter holds `homeTeamId` and `awayTeamId` on every row — cannot
+   * hand them over, so the omission is not one a caller can work around.
+   */
+
+  /** The game this block scopes a constraint to, and a code it already carries. */
+  const subject = (() => {
+    for (const placement of hardRun.placements) {
+      const code = placement.findings.map((finding) => finding.code)[0];
+      if (!code) continue;
+      const row = rows.find((entry) => entry.id === placement.gameId);
+      if (!row || !row.homeTeamId || row.homeIsPlaceholder) continue;
+      return { placement, code, row };
+    }
+    return null;
+  })();
+
+  /**
+   * The season's registry plus one record, scoped as asked and claiming a code
+   * the placement already carries.
+   *
+   * @param {string} scopeKind
+   * @param {Object} scope
+   * @returns {Object}
+   */
+  const withScopedConstraint = (scopeKind, scope) =>
+    buildConstraintRegistry({
+      name: hardRegistry.name,
+      source: hardRegistry.source,
+      constraints: [
+        ...hardRegistry.constraints,
+        {
+          id: `round-3.${scopeKind}.scoped`,
+          policy: 'round-3-probe',
+          name: `a ${scopeKind}-scoped rule about ${/** @type {Object} */ (subject).code}`,
+          type: CONSTRAINT_TYPE.HARD,
+          scope: { kind: scopeKind, ...scope },
+          rationale:
+            'constructed: the corpus registry is global- and venue-scoped only, so a narrower scope has to be stated to be tested at all',
+          source: {
+            setBy: 'tests/placementHarness.test.js',
+            setAt: null,
+            note: 'constructed for this test; never a clock read',
+            reference: 'round 3, finding 4',
+          },
+          enforcement: CONSTRAINT_ENFORCEMENT.REASON_CODES,
+          reasonCodes: [/** @type {Object} */ (subject).code],
+        },
+      ],
+    });
+
+  /** Run the harness under a registry, over the same bounded input. */
+  const runUnder = (registryUnderTest) =>
+    replaceGamesUnderRegistry({ ...engines, registry: registryUnderTest }, input);
+
+  it('has a placed game with a named home side and a finding to retype', () => {
+    // The meta-assertions. Without a placement carrying a code there is nothing
+    // for a record to claim; without a real team id there is no scope to state;
+    // and the corpus registry scoping nothing to a team is *why* this survived
+    // a full season run unnoticed.
+    expect(subject).not.toBeNull();
+    const found = /** @type {Object} */ (subject);
+    expect(found.code).toEqual(expect.any(String));
+    expect(found.row.homeTeamId).toEqual(expect.any(String));
+    expect(found.row.homeIsPlaceholder).toBe(false);
+    expect(
+      hardRegistry.constraintIds
+        .map((id) => hardRegistry.byId[id].scope.kind)
+        .includes(CONSTRAINT_SCOPE_KIND.TEAM)
+    ).toBe(false);
+  });
+
+  it('lets a caller state the sides at all', () => {
+    // The half `PlacementGameSchema` refused. A `.strict()` schema with no team
+    // field rejects the very input the fix needs, so the fix is not complete
+    // until the door opens.
+    const found = /** @type {Object} */ (subject);
+    expect(() =>
+      replaceGamesUnderRegistry(engines, {
+        ...input,
+        games: input.games.map((game) =>
+          game.id === found.placement.gameId
+            ? { ...game, homeTeamId: found.row.homeTeamId, awayTeamId: found.row.awayTeamId }
+            : game
+        ),
+      })
+    ).not.toThrow();
+  });
+
+  it('carries the sides from the corpus adapter without being asked', () => {
+    // And the adapter, which holds them on every row, hands them over — so the
+    // fix is reached by the production path rather than only by a test that
+    // constructs the field by hand.
+    const found = /** @type {Object} */ (subject);
+    const carried = input.games.find((game) => game.id === found.placement.gameId);
+    expect(carried.homeTeamId).toBe(found.row.homeTeamId);
+    expect(carried.awayTeamId).toBe(found.row.awayTeamId);
+    // Placeholder sides are omitted rather than sent: `Scrimmage - teams TBD`
+    // is not a team id, and stating one would match a record against a label.
+    for (const game of input.games) {
+      const row = rows.find((entry) => entry.id === game.id);
+      if (row.homeIsPlaceholder) expect(game.homeTeamId).toBeNull();
+    }
+  });
+
+  it('applies a team-scoped record, because it holds the game that names the team', () => {
+    const found = /** @type {Object} */ (subject);
+    const scoped = runUnder(
+      withScopedConstraint(CONSTRAINT_SCOPE_KIND.TEAM, { teamId: found.row.homeTeamId })
+    );
+    // The falsification. Pre-fix the record is `CONSTRAINT_SCOPE_UNJUDGED` and
+    // never applied, so this candidate is accepted exactly as before and the
+    // game is placed on the same ground.
+    const rejected = scoped.rejections.filter(
+      (entry) =>
+        entry.gameId === found.placement.gameId &&
+        entry.findings.some(
+          (finding) =>
+            finding.code === found.code && finding.severity === CONSTRAINT_SEVERITY.BLOCKING
+        )
+    );
+    expect(rejected.length).toBeGreaterThan(0);
+  });
+
+  it('leaves a team-scoped record about another team alone', () => {
+    // The positive control: an implementation that hardened every record handed
+    // to it would pass the assertion above and fail this one.
+    const found = /** @type {Object} */ (subject);
+    const scoped = runUnder(
+      withScopedConstraint(CONSTRAINT_SCOPE_KIND.TEAM, {
+        teamId: `${found.row.homeTeamId}-somebody-else`,
+      })
+    );
+    const rejected = scoped.rejections.filter(
+      (entry) =>
+        entry.gameId === found.placement.gameId &&
+        entry.findings.some(
+          (finding) =>
+            finding.code === found.code && finding.severity === CONSTRAINT_SEVERITY.BLOCKING
+        )
+    );
+    expect(rejected).toHaveLength(0);
+    expect(scoped.placements.map((entry) => entry.gameId)).toContain(found.placement.gameId);
+  });
+
+  it('agrees with the rule engine about the same record, which is the whole point', () => {
+    // One registry, one verdict. The scope judgement the harness now makes is
+    // the same one `constraints/scope.js` makes for the rule engine, asked of
+    // the same record and the same team.
+    const found = /** @type {Object} */ (subject);
+    const scoped = withScopedConstraint(CONSTRAINT_SCOPE_KIND.TEAM, {
+      teamId: found.row.homeTeamId,
+    });
+    const record = scoped.byId['round-3.team.scoped'];
+    expect(record.scope.teamId).toBe(found.row.homeTeamId);
+    // Judged, not unjudged: the context now names the field the scope is about.
+    const mine = runUnder(scoped);
+    const unjudged = mine.rejections
+      .concat(mine.placements)
+      .flatMap((entry) => entry.findings.map((finding) => finding.code));
+    expect(unjudged).not.toContain(CONSTRAINT_REASON.CONSTRAINT_SCOPE_UNJUDGED);
   });
 });

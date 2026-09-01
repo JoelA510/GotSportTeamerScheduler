@@ -60,6 +60,22 @@ the reserved slots reach `proposeRelocations()`, both as the capacity report's
 own `reservedSlots` and as bookings, so ground the branch is holding is never
 offered back to it as spare.
 
+`proposeRelocations()` returns every capacity report it built on
+**`capacities`** — one per displaced format, whole. It used to return
+`capacity`: the *first* report, with every report's `findings` and `status`
+dropped, so `RESERVE_CAPACITY_VACUOUS` and `RESERVED_SLOT_UNCOVERED`, both
+blocking, reached neither the plan's status nor `promoteScenario()`'s gate — and
+an empty grid and a season with no spare ground both read as "nowhere to go".
+The plan now lifts every consequential finding that **impeaches the report** —
+it examined nothing, it does not cover ground somebody reserved, a reservation
+is off its grid, a date is over its cap. It does not lift the three that answer
+the requirement the proposer invented for its own grid derivation
+(`RESERVE_CAPACITY_BELOW_REQUIREMENT` and the two shortfall codes): that fact is
+what `unrelocatable` already reports per game, and blocking on it would make a
+branch that *shelves* fixtures unpromotable, which is the opposite of the line
+§11 draws between a shelved fixture and a lost one. They stay readable on
+`capacities`.
+
 `ScenarioOverride` is a tagged union over one **named record set**:
 
 | kind                 | what it does                                                                        |

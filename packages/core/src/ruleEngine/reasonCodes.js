@@ -317,6 +317,16 @@ export const RULE_VIOLATION_REASON = Object.freeze({
   /* -- conflict fairness ------------------------------------------------------ */
   /** Within one age group, coach conflicts are concentrated on one team. */
   CONFLICT_SPREAD_EXCEEDED: 'CONFLICT_SPREAD_EXCEEDED',
+  /**
+   * One coach is named on two teams' commitments on one date and at least one
+   * of them has no known end, so whether they overlap cannot be measured.
+   *
+   * The third answer `bookingsOverlapInTime()` exists to give. Counting it as
+   * "no conflict" is a fabricated all-clear, and counting it as a conflict is a
+   * fabricated one the other way; both would feed the fairness spread a number
+   * nobody measured. GAP-14's `Scrimmage` rows are the corpus's own instance.
+   */
+  CONFLICT_OVERLAP_UNJUDGED: 'CONFLICT_OVERLAP_UNJUDGED',
 });
 
 /**
@@ -341,14 +351,15 @@ export const RULE_VIOLATION_SEVERITY = Object.freeze({
   [RULE_VIOLATION_REASON.TEAM_ABSENT_FROM_SCHEDULE]: RULE_SEVERITY.BLOCKING,
 
   [RULE_VIOLATION_REASON.CONFLICT_SPREAD_EXCEEDED]: RULE_SEVERITY.COMPROMISE,
+  [RULE_VIOLATION_REASON.CONFLICT_OVERLAP_UNJUDGED]: RULE_SEVERITY.COMPROMISE,
 });
 
 /**
  * Codes whose severity a constraint record may never change.
  *
- * `TURNOVER_UNJUDGED` and `ROUND_ROBIN_DIVISION_UNJUDGED` say *"this rule could
- * not decide"*, which is a fact about the evidence rather than a policy
- * position. `TEAM_ABSENT_FROM_SCHEDULE` is the same kind of statement about the
+ * `TURNOVER_UNJUDGED`, `ROUND_ROBIN_DIVISION_UNJUDGED` and
+ * `CONFLICT_OVERLAP_UNJUDGED` say *"this rule could not decide"*, which is a
+ * fact about the evidence rather than a policy position. `TEAM_ABSENT_FROM_SCHEDULE` is the same kind of statement about the
  * join rather than about the season, and retyping the hosting-balance record
  * must not be able to quieten a team that vanished from the schedule. Letting a `preference` record demote them to `info` would let a
  * schedule reach `allowed` on the strength of questions nobody answered — the
@@ -364,6 +375,7 @@ const UNGOVERNABLE_CODES = Object.freeze(
     RULE_VIOLATION_REASON.ROUND_ROBIN_DIVISION_UNJUDGED,
     RULE_VIOLATION_REASON.ROUND_ROBIN_NOT_REQUIRED,
     RULE_VIOLATION_REASON.TEAM_ABSENT_FROM_SCHEDULE,
+    RULE_VIOLATION_REASON.CONFLICT_OVERLAP_UNJUDGED,
   ])
 );
 

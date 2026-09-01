@@ -44,11 +44,13 @@
  */
 
 import { AVAILABILITY_SEVERITY } from '../availability/reasonCodes.js';
+import { CONSTRAINT_SEVERITY } from '../constraints/reasonCodes.js';
 import { checkKickoffAvailability } from '../availability/kickoff.js';
 import { DEFAULT_SIZE_RANK, checkSizeEligibility } from '../facility/eligibility.js';
 import { bookingsOverlapInTime } from '../facility/occupancy.js';
 import { FACILITY_REASON, FACILITY_STATUS } from '../facility/reasonCodes.js';
 import { buildReserveCapacityReport } from '../reserve/capacity.js';
+import { RESERVE_REASON } from '../reserve/reasonCodes.js';
 
 import {
   RELOCATION_POLICY,
@@ -252,6 +254,40 @@ function bookingForReservedSlot(slot) {
 }
 
 /**
+ * Capacity codes this proposer does **not** lift into its plan's findings.
+ *
+ * Every one of them answers the requirement `proposeRelocations()` invents for
+ * its own grid derivation — `slots: Math.max(1, perDate)`, computed from the
+ * displaced set a moment earlier — rather than a requirement an operator stated
+ * about the branch. Two consequences make lifting them wrong rather than merely
+ * noisy.
+ *
+ * - **They restate, worse, what this plan already reports.** "The ground cannot
+ *   hold all of them" is exactly the fact `unrelocatable` carries, per game,
+ *   with a reason, as `SCENARIO_RELOCATION_UNAVAILABLE` and a TIME TBD fixture.
+ *   A second copy at date granularity adds no information and names no game.
+ * - **They would put shelving on the wrong side of this module's own line.**
+ *   `docs/SCENARIOS.md` states it: a branch that *shelves* games is
+ *   `compromised` and promotable, and a branch that *loses* one carries
+ *   `FIXTURE_DROPPED` at blocking and is refused. A capacity shortfall is the
+ *   cause of shelving, so blocking on it would make every venue-withdrawal
+ *   branch with a single TIME TBD fixture unpromotable — including the
+ *   acceptance run, whose twelve are the documented answer rather than a fault.
+ *
+ * They stay on `capacities` in full, where a caller asking about the ground
+ * rather than about the branch can read them.
+ *
+ * @type {ReadonlySet<string>}
+ */
+const ANSWERS_THE_PROPOSERS_OWN_REQUIREMENT = Object.freeze(
+  new Set([
+    RESERVE_REASON.RESERVE_CAPACITY_BELOW_REQUIREMENT,
+    RESERVE_REASON.RESERVE_CAPACITY_AT_REQUIREMENT,
+    RESERVE_REASON.RESERVE_CAPACITY_CONDITIONAL_SHORTFALL,
+  ])
+);
+
+/**
  * Propose a replacement slot for each displaced game.
  *
  * @param {{ graph: Object, table: Object, calendar: Object, registry?: Object }} engines - the **branch's** engines
@@ -290,7 +326,7 @@ export function proposeRelocations(engines, input) {
       surfaceIds: Object.freeze([...policy.surfaceIds]),
       proposals: [],
       unrelocatable: [],
-      capacity: null,
+      capacities: [],
       findings,
       status: deriveScenarioStatus(findings),
       meta,
@@ -318,8 +354,21 @@ export function proposeRelocations(engines, input) {
    */
   /** @type {Map<string, number[]>} */
   const grid = new Map();
-  /** @type {Object|null} */
-  let capacity = null;
+  /**
+   * Every report, whole.
+   *
+   * This was `capacity`: **one** report, arbitrarily the first, with every
+   * report's `findings` and `status` dropped. Two blocking codes could
+   * therefore reach nothing — `RESERVE_CAPACITY_VACUOUS`, which says the report
+   * generated no slot at all so every requirement it met was met by an empty
+   * count, and `RESERVED_SLOT_UNCOVERED`, which says a reservation stands on
+   * ground this report does not cover. The first is the worse of the two here:
+   * an empty grid and a season with no spare ground both make the search report
+   * *"nowhere to go"*, and nothing distinguished them.
+   *
+   * @type {Object[]}
+   */
+  const capacities = [];
   for (const format of formats) {
     const forFormat = displaced.filter((game) => game.format === format);
     const perDate = Math.max(
@@ -341,7 +390,25 @@ export function proposeRelocations(engines, input) {
       reservedSlots: [...reservedSlots],
       bookings: [],
     });
-    if (capacity === null) capacity = report;
+    capacities.push(report);
+    // **The report's own verdict, carried rather than discarded.** What is
+    // lifted into the plan's findings is everything that impeaches the report:
+    // it examined nothing, it does not cover ground somebody reserved, a
+    // reservation sits off its grid, a date is over its own cap. Those are
+    // things this proposer cannot say for itself, and while they were dropped a
+    // blocking finding could not reach `plan.status`, `runScenario()`'s result
+    // or `promoteScenario()`'s gate.
+    //
+    // `info` provenance is not lifted — `SLOT_CONDITION_SATISFIED` per
+    // generated slot and `RESERVE_CAPACITY_BOUND` per date run to hundreds of
+    // entries on a real season and would bury the branch's own report without
+    // moving a single status. Nothing is dropped: every report is on
+    // `capacities` in full.
+    for (const finding of report.findings) {
+      if (finding.severity === CONSTRAINT_SEVERITY.INFO) continue;
+      if (ANSWERS_THE_PROPOSERS_OWN_REQUIREMENT.has(finding.code)) continue;
+      findings.push(/** @type {import('./types.js').ScenarioFinding} */ (finding));
+    }
     for (const dateRow of report.dates) {
       for (const surfaceRow of dateRow.bySurface) {
         grid.set(`${format}|${dateRow.date}|${surfaceRow.surfaceId}`, [
@@ -607,7 +674,7 @@ export function proposeRelocations(engines, input) {
     surfaceIds: Object.freeze([...policy.surfaceIds]),
     proposals,
     unrelocatable,
-    capacity,
+    capacities,
     findings,
     status: deriveScenarioStatus(findings),
     meta,

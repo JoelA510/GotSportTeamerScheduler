@@ -1508,7 +1508,10 @@ export const conflictFairnessRule = Object.freeze({
   id: RULE_ID.CONFLICT_FAIRNESS,
   title: 'Coach conflicts are shared evenly within an age group',
   constraintIds: [SEASON_2026_CONSTRAINT_ID.CONFLICT_FAIRNESS],
-  reasonCodes: [RULE_VIOLATION_REASON.CONFLICT_SPREAD_EXCEEDED],
+  reasonCodes: [
+    RULE_VIOLATION_REASON.CONFLICT_SPREAD_EXCEEDED,
+    RULE_VIOLATION_REASON.CONFLICT_OVERLAP_UNJUDGED,
+  ],
   rationale:
     'A coach conflict means a team plays with its co-coach covering. The burden is unavoidable; its concentration on one team is not. The grouping key is supplied by the caller because deriving it means parsing a division label, and a label is not a key (GAP-24).',
   exercise: {
@@ -1516,7 +1519,7 @@ export const conflictFairnessRule = Object.freeze({
     coverage: {},
     identifierKinds: [RULE_IDENTIFIER_KIND.TEAM],
     rationale:
-      'Fairness is a comparison between teams in a group, so a run that saw no group or no team compared nothing. The commitment-pair count is the same person-pair claim the coach rule makes, because this rule counts conflicts the same join produces.',
+      'Fairness is a comparison between teams in a group, so a run that saw no group or no team compared nothing. The commitment-pair count is the same person-pair claim the coach rule makes, because this rule counts conflicts the same join produces. It counts only pairs that reached a verdict: the minimum is the claim "this rule measured something", and a pair whose overlap could not be decided is exactly the thing it did not measure.',
   },
   /**
    * @param {import('./types.js').Schedule} schedule
@@ -1549,16 +1552,57 @@ export const conflictFairnessRule = Object.freeze({
     const rosterSize = new Map(schedule.teams.map((team) => [team.id, team.personIds.length]));
     /** @type {Set<string>} */
     const conflictKeys = new Set();
+    /** @type {import('./types.js').RuleFinding[]} */
+    const unjudgedFindings = [];
     let commitmentPairsCompared = 0;
+    let commitmentPairsUnjudgedUnknownEnd = 0;
     for (const entries of byPersonDate.values()) {
       for (let i = 0; i < entries.length; i += 1) {
         for (let j = i + 1; j < entries.length; j += 1) {
           const a = entries[i];
           const b = entries[j];
           if (a.teamId === null || b.teamId === null || a.teamId === b.teamId) continue;
+          // `bookingsOverlapInTime()` owns this question and answers it three
+          // ways; re-deriving the comparison here would be a second overlap
+          // model free to disagree with the one every other module asks. Its
+          // `null` is the deliberate third answer for an unknown footprint
+          // (GAP-14), and it is neither an overlap nor an all-clear.
+          const overlap = bookingsOverlapInTime(
+            /** @type {import('../facility/types.js').FacilityBooking} */ ({ ...a }),
+            /** @type {import('../facility/types.js').FacilityBooking} */ ({ ...b })
+          );
+          if (overlap === null) {
+            // **Counted apart, and said out loud.** This counter used to be
+            // bumped before the check and the pair dropped in silence, so an
+            // undecidable overlap read as "no conflict" and the exercise
+            // minimum — which is written on `commitmentPairsCompared` — was
+            // satisfied by pairs this rule never judged. Same fix as
+            // `scanConcurrency()` one rule over, same reporting as
+            // `reserve/slots.js` `doubleBookingFindings()` one module over.
+            commitmentPairsUnjudgedUnknownEnd += 1;
+            const teamIds = [/** @type {string} */ (a.teamId), /** @type {string} */ (b.teamId)]
+              .slice()
+              .sort();
+            unjudgedFindings.push(
+              makeViolationFinding(
+                RULE_VIOLATION_REASON.CONFLICT_OVERLAP_UNJUDGED,
+                `"${a.personId}" is committed to "${a.id}" and "${b.id}" on ${a.date} for different teams, and at least one of them has no known end, so whether they overlap cannot be decided; the conflict counts for ${teamIds.join(' and ')} may understate this date`,
+                {
+                  personId: a.personId,
+                  date: a.date,
+                  commitmentIds: [a.id, b.id].slice().sort(),
+                  teamIds,
+                  unmeasurableCommitmentIds: [a, b]
+                    .filter((side) => side.endMinutes === null)
+                    .map((side) => side.id)
+                    .sort(),
+                }
+              )
+            );
+            continue;
+          }
           commitmentPairsCompared += 1;
-          if (a.endMinutes === null || b.endMinutes === null) continue;
-          if (a.startMinutes >= b.endMinutes || b.startMinutes >= a.endMinutes) continue;
+          if (overlap === false) continue;
           for (const side of [a, b]) {
             const teamId = /** @type {string} */ (side.teamId);
             if ((rosterSize.get(teamId) ?? 0) < 2) continue;
@@ -1624,11 +1668,18 @@ export const conflictFairnessRule = Object.freeze({
 
     return {
       subjects,
-      findings: [],
+      // Rule-level rather than on a subject, deliberately. This rule's subject
+      // is a *group* and its violation is a spread; an undecidable pair is not
+      // an unfair distribution, it is a hole in the evidence the distribution
+      // was counted from. It reaches `result.findings` and therefore the run's
+      // status and the validation report, which is where a reader looks — the
+      // same place `coach-conflict` puts `TRAVEL_SCAN_VACUOUS`.
+      findings: unjudgedFindings,
       counters: {
         groupsExamined: teamsByGroup.size,
         teamsExamined,
         commitmentPairsCompared,
+        commitmentPairsUnjudgedUnknownEnd,
         conflictedTeams: conflictsByTeam.size,
       },
       matched: { [RULE_IDENTIFIER_KIND.TEAM]: [...conflictsByTeam.keys()].sort() },

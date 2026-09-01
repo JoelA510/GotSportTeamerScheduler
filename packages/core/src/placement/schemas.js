@@ -36,6 +36,19 @@ export const PlacementGameSchema = z
     format: z.string().min(1).nullable(),
     label: z.string().min(1).nullable().default(null),
     divisionLabel: z.string().min(1).nullable().default(null),
+    /**
+     * The two sides, so a `team`-scoped constraint record can be judged.
+     *
+     * Omitted from this schema for one round, which — the schema being
+     * `.strict()` — meant a caller holding the sides could not hand them over
+     * and every `team`-scoped record was `CONSTRAINT_SCOPE_UNJUDGED` and not
+     * applied, while the rule engine judged the same record against the same
+     * game. `null` is the honest value for a row whose side is a placeholder
+     * (`Scrimmage - teams TBD`, `Visiting Club A`): a label is not a team id,
+     * and stating one would match a record against a piece of prose.
+     */
+    homeTeamId: IdSchema.nullable().default(null),
+    awayTeamId: IdSchema.nullable().default(null),
     /** Null when the game has no published position to be compared against. */
     publishedSurfaceId: IdSchema.nullable().default(null),
     publishedKickoffMinutes: MinutesSchema.nullable().default(null),

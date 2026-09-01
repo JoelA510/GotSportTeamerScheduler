@@ -128,7 +128,7 @@
  * @property {ReadonlyArray<string>} surfaceIds - the stated candidate ground
  * @property {RelocationProposal[]} proposals
  * @property {UnrelocatableGame[]} unrelocatable
- * @property {Object|null} capacity - the `buildReserveCapacityReport()` the grid came from
+ * @property {Object[]} capacities - every `buildReserveCapacityReport()` the grid was built from, one per displaced format, whole. Was `capacity`, which held the first report only and dropped every report's `findings` and `status` — so `RESERVE_CAPACITY_VACUOUS` and `RESERVED_SLOT_UNCOVERED`, both blocking, reached neither this plan's `findings` nor `promoteScenario()`'s gate.
  * @property {ScenarioFinding[]} findings
  * @property {string} status
  * @property {ScenarioMeta} meta

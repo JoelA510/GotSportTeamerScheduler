@@ -266,6 +266,22 @@ export const ATTRIBUTION_REASON = Object.freeze({
    */
   ATTRIBUTION_ROSTER_ABSENT: 'ATTRIBUTION_ROSTER_ABSENT',
   /**
+   * A constraint record the severity lookup could not judge against this game,
+   * and therefore did **not** apply.
+   *
+   * `compromise`, and for the same reason as its three neighbours: the answer
+   * is silent about a rule the club wrote down, and silence must not read as a
+   * clean bill. `checkPlacement()` holds the game, so it can judge a `team` or
+   * `division` scope; a `person` scope it cannot reach at all, and a record
+   * scoped that way is quietly inert while the placement reads legal.
+   *
+   * This is the code the round-2 `registryFindings` field was carried *for*.
+   * That field was produced and read by nobody for a whole round, which is why
+   * `tests/sourceHygiene.test.js` now fails a carried trace with no production
+   * reader rather than trusting that one exists.
+   */
+  ATTRIBUTION_CONSTRAINT_UNJUDGED: 'ATTRIBUTION_CONSTRAINT_UNJUDGED',
+  /**
    * Nothing this run holds bounds the thing that was asked about.
    *
    * `compromise`. An unbounded answer is not the same as a generous one.
@@ -334,6 +350,7 @@ export const ATTRIBUTION_REASON_SEVERITY = Object.freeze({
   [ATTRIBUTION_REASON.ATTRIBUTION_VERIFICATION_ABSENT]: ATTRIBUTION_SEVERITY.COMPROMISE,
   [ATTRIBUTION_REASON.ATTRIBUTION_TRAVEL_ABSENT]: ATTRIBUTION_SEVERITY.COMPROMISE,
   [ATTRIBUTION_REASON.ATTRIBUTION_ROSTER_ABSENT]: ATTRIBUTION_SEVERITY.COMPROMISE,
+  [ATTRIBUTION_REASON.ATTRIBUTION_CONSTRAINT_UNJUDGED]: ATTRIBUTION_SEVERITY.COMPROMISE,
   [ATTRIBUTION_REASON.ATTRIBUTION_BOUND_UNSTATED]: ATTRIBUTION_SEVERITY.COMPROMISE,
   [ATTRIBUTION_REASON.ATTRIBUTION_QUESTION_UNANSWERABLE]: ATTRIBUTION_SEVERITY.COMPROMISE,
 
@@ -424,6 +441,15 @@ export function createAttributionMeta() {
     rosterEntriesConsulted: 0,
     /** Calls into `checkPlacement()`. */
     placementChecksRun: 0,
+    /**
+     * Constraint records the severity lookup could not judge for a game this
+     * answer asked about, and therefore did not apply.
+     *
+     * Zero on this corpus, whose registry is global- and venue-scoped only —
+     * which is what makes it a meta-assertion rather than a decoration: a test
+     * can show the trace both fires and stays quiet.
+     */
+    registryRecordsUnjudged: 0,
     /** Calls into `latestLegalKickoff()` / `earliestKickoffWithWarmup()`. */
     boundaryQueriesRun: 0,
     /** Registries projected to test whether a constraint is necessary. */

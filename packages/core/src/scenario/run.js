@@ -505,7 +505,7 @@ export function runScenario(inputs, scenario, options) {
         constraintIds: Object.freeze([...game.constraintIds]),
         candidatesConsidered: 0,
       })),
-      capacity: null,
+      capacities: [],
       findings: [
         makeScenarioFinding(
           SCENARIO_REASON.SCENARIO_RELOCATIONS_DISABLED,

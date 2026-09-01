@@ -68,7 +68,7 @@ import {
   loadSeason2026,
   loadSunsets,
 } from '@squadlogic/core/fixtures/index.js';
-import { PUBLICATION_TBD } from '@squadlogic/core/reserve/index.js';
+import { PUBLICATION_TBD, RESERVE_REASON } from '@squadlogic/core/reserve/index.js';
 import { candidateSlotsFor, RESOLVE_OBJECTIVE_WEIGHTS } from '@squadlogic/core/resolve/index.js';
 import { runRuleEngine } from '@squadlogic/core/ruleEngine/index.js';
 import { toSeason2026Schedule } from '@squadlogic/core/ruleEngine/adapters/season2026Schedule.js';
@@ -4497,5 +4497,291 @@ describe('a capacity delta states what the two reports it came from said', () =>
     expect(finding.details.rightReportCodes).toContain('RESERVE_CAPACITY_VACUOUS');
     expect(finding.details.leftReportStatus).toBe('rejected');
     expect(finding.details.rightReportStatus).toBe('rejected');
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* Round 3, finding 3 - a blocking report discarded, an empty grid read as full */
+/* -------------------------------------------------------------------------- */
+
+describe('proposeRelocations :: the capacity reports it asks for, carried whole', () => {
+  /**
+   * `proposeRelocations()` built one `buildReserveCapacityReport()` per displaced
+   * format, read `report.dates` off each to fill the grid, kept **the first**
+   * report on `capacity`, and dropped every report's `findings` and `status` on
+   * the floor. Two blocking codes therefore could not reach anything:
+   *
+   * - `RESERVE_CAPACITY_VACUOUS` — the report generated no slot at all, so every
+   *   requirement it reports as met was met by an empty count. The grid is then
+   *   empty and the proposer reads *"no room"* — which is what a season with no
+   *   spare ground looks like, and also what a report that examined nothing
+   *   looks like, and the two were indistinguishable.
+   * - `RESERVED_SLOT_UNCOVERED` — a reservation standing on ground the report
+   *   does not cover, so no grid, condition or requirement check in it applies
+   *   to that ground. Incident 10's own shape: a commitment that disappears
+   *   without a word.
+   *
+   * Neither reached `plan.findings`, `plan.status`, `runScenario()`'s result, or
+   * `promoteScenario()`'s gate. This was left in round 2 because fixing it
+   * changes a public return shape; it is the second time it has been reported,
+   * and a blocking finding that cannot reach a promotion gate is worth the
+   * shape change.
+   *
+   * `capacity` (one report, arbitrarily the first) becomes `capacities` (every
+   * report, in format order). On this corpus the acceptance run displaces one
+   * format and so has exactly one report, which is why the first-only bug was
+   * invisible there and why the block below builds a two-format branch.
+   */
+
+  const survivors = schedule.games.filter(
+    (game) => !result.displaced.some((entry) => entry.gameId === String(game.id))
+  );
+  const displacedGamesById = Object.fromEntries(
+    schedule.games.map((game) => [String(game.id), game])
+  );
+
+  /** Propose over the acceptance branch's own displaced set, with overrides. */
+  const propose = (overrides = {}) =>
+    proposeRelocations(result.materialised.engines, {
+      displaced: result.displaced,
+      survivors,
+      gamesById: displacedGamesById,
+      policy,
+      requirement,
+      ...overrides,
+    });
+
+  it('carries every report it built, not the first one', () => {
+    const plan = result.relocations;
+    const formats = [...new Set(result.displaced.map((game) => game.format))].sort();
+    expect(plan.capacities).toHaveLength(formats.length);
+    // The meta-assertion that makes "carried" mean something: the reports hold
+    // real content, so dropping them dropped something.
+    for (const report of plan.capacities) {
+      expect(report.findings.length).toBeGreaterThan(0);
+      expect(report.status).toEqual(expect.any(String));
+      expect(report.dates.length).toBeGreaterThan(0);
+    }
+    // The old field is gone rather than kept beside the new one: a `capacity`
+    // that named one of several reports was the defect, and leaving it would
+    // leave a reader a way to read the wrong number.
+    expect('capacity' in plan).toBe(false);
+  });
+
+  it('builds one report per displaced format, and keeps them all', () => {
+    // The half the acceptance run cannot show, because it displaces one format.
+    // Two formats' worth of displaced games, so two reports exist to lose.
+    const twoFormats = (() => {
+      const other = schedule.games.find(
+        (game) =>
+          game.format && game.format !== AFFECTED_FORMAT && game.endMinutes !== null && game.counted
+      );
+      return [
+        ...result.displaced.slice(0, 3),
+        {
+          gameId: String(/** @type {Object} */ (other).id),
+          label: 'a second format, displaced',
+          date: /** @type {Object} */ (other).date,
+          venueId: /** @type {Object} */ (other).venueId,
+          surfaceId: /** @type {Object} */ (other).surfaceId,
+          startMinutes: /** @type {Object} */ (other).startMinutes,
+          format: /** @type {Object} */ (other).format,
+          codes: Object.freeze([]),
+          constraintIds: Object.freeze([]),
+        },
+      ];
+    })();
+    const formats = [...new Set(twoFormats.map((game) => game.format))].sort();
+    expect(formats).toHaveLength(2);
+    const plan = propose({
+      displaced: twoFormats,
+      gamesById: displacedGamesById,
+    });
+    // Pre-fix this was one report, whichever format sorted first.
+    expect(plan.capacities).toHaveLength(2);
+    expect(plan.capacities.map((report) => report.format).sort()).toEqual(formats);
+  });
+
+  it('lets a report that examined nothing say so, at blocking', () => {
+    // `RESERVE_CAPACITY_VACUOUS`. A window narrow enough that no kickoff fits
+    // generates no slot, so the grid is empty — and an empty grid and a busy
+    // season read the same to the proposer. Pre-fix the report said so and the
+    // plan did not.
+    const plan = propose({
+      // A window one minute wide, one minute before midnight: no kickoff of
+      // this format fits inside any permit, so the report generates no slot.
+      policy: {
+        ...policy,
+        earliestKickoffMinutes: 24 * 60 - 1,
+        latestKickoffMinutes: 24 * 60,
+        cadenceMinutes: 24 * 60,
+      },
+    });
+    const vacuous = plan.capacities.filter((report) =>
+      report.findings.some((finding) => finding.code === RESERVE_REASON.RESERVE_CAPACITY_VACUOUS)
+    );
+    // Meta-assertion: the arrangement really did produce a vacuous report, so
+    // the assertion below is about something.
+    expect(vacuous.length).toBeGreaterThan(0);
+    const codes = codesOf(plan.findings);
+    expect(codes).toContain(RESERVE_REASON.RESERVE_CAPACITY_VACUOUS);
+    expect(plan.status).toBe(SCENARIO_STATUS.REJECTED);
+    const raised = plan.findings.find(
+      (finding) => finding.code === RESERVE_REASON.RESERVE_CAPACITY_VACUOUS
+    );
+    expect(raised.severity).toBe(CONSTRAINT_SEVERITY.BLOCKING);
+  });
+
+  it('lets a reservation on ground the report does not cover say so, at blocking', () => {
+    // `RESERVED_SLOT_UNCOVERED`. A reserved slot of the displaced format,
+    // standing on a surface the policy does not name, is ground the report
+    // cannot judge — and the proposer holds it as a booking regardless, so the
+    // branch is spending ground the report is silent about.
+    const offPolicySurface = /** @type {string} */ (
+      Object.values(graph.surfaces)
+        .map((surface) => surface.id)
+        .find((surfaceId) => !policy.surfaceIds.includes(surfaceId))
+    );
+    const plan = propose({
+      reservedSlots: [
+        {
+          id: 'round-3-uncovered',
+          kind: 'reservation',
+          label: 'a reservation on ground this report does not cover',
+          date: result.displaced[0].date,
+          venueId: graph.surfaces[offPolicySurface].venueId,
+          surfaceId: offPolicySurface,
+          startMinutes: 9 * 60,
+          endMinutes: 10 * 60,
+          format: AFFECTED_FORMAT,
+          homeSide: 'tbd',
+          awaySide: 'tbd',
+        },
+      ],
+    });
+    expect(codesOf(plan.findings)).toContain(RESERVE_REASON.RESERVED_SLOT_UNCOVERED);
+    expect(plan.status).toBe(SCENARIO_STATUS.REJECTED);
+  });
+
+  it('reaches the scenario result and the promotion gate', () => {
+    // The whole point of the shape change: a blocking finding that stops at the
+    // proposer is a blocking finding nothing can act on. `runScenario()` already
+    // folds `relocations.findings` into its own, so once the plan carries the
+    // report the branch does too — and `promoteScenario()` refuses a branch
+    // whose status is `rejected`.
+    const offPolicySurface = /** @type {string} */ (
+      Object.values(graph.surfaces)
+        .map((surface) => surface.id)
+        .find((surfaceId) => !policy.surfaceIds.includes(surfaceId))
+    );
+    const uncovered = {
+      id: 'round-3-uncovered-scenario',
+      kind: 'reservation',
+      label: 'a reservation on ground the branch does not cover',
+      date: result.displaced[0].date,
+      venueId: graph.surfaces[offPolicySurface].venueId,
+      surfaceId: offPolicySurface,
+      startMinutes: 9 * 60,
+      endMinutes: 10 * 60,
+      format: AFFECTED_FORMAT,
+      homeSide: 'tbd',
+      awaySide: 'tbd',
+    };
+    const branch = runScenario(
+      inputs,
+      makeScenario({
+        ...scenario,
+        id: `${scenario.id}-uncovered`,
+        overrides: [
+          ...scenario.overrides,
+          {
+            kind: SCENARIO_OVERRIDE_KIND.ADD,
+            recordSet: SCENARIO_RECORD_SET.RESERVED_SLOTS,
+            record: uncovered,
+            by: REQUESTED_BY,
+            at: REQUESTED_AT,
+            reason: 'a reservation standing outside the replacement policy ground',
+          },
+        ],
+      }),
+      runOptions
+    );
+    expect(codesOf(branch.findings)).toContain(RESERVE_REASON.RESERVED_SLOT_UNCOVERED);
+    expect(branch.status).toBe(SCENARIO_STATUS.REJECTED);
+    expect(() =>
+      promoteScenario({
+        result: branch,
+        diff: diffAgainstBaselineScenario(branch, {
+          baselineEngines,
+          baselineVerification,
+          capacitySubjects,
+        }),
+        promotionId: 'round-3-uncovered-promotion',
+        promotedAt: REQUESTED_AT,
+        promotedBy: REQUESTED_BY,
+        rationale: 'a branch whose capacity report names ground it does not cover',
+      })
+    ).toThrow();
+  });
+
+  it('does not block on a shortfall against a requirement it invented for itself', () => {
+    // The other half of the line, and it has to be asserted or the rule above
+    // reads as "lift everything blocking". `RESERVE_CAPACITY_BELOW_REQUIREMENT`
+    // is blocking on the report and is *not* lifted, because the requirement it
+    // answers is the one this proposer computed a moment earlier from the
+    // displaced set — and because the fact it states, "the ground cannot hold
+    // all of them", is what `unrelocatable` already reports per game with a
+    // reason. `docs/SCENARIOS.md` draws the same line: a branch that shelves is
+    // `compromised` and promotable, a branch that loses a fixture is refused.
+    // Blocking here would make every withdrawal branch with one TIME TBD
+    // unpromotable, the acceptance run included.
+    // The caller's `requirement.slots` is not even read here — the proposer
+    // takes only the label and source and computes `Math.max(1, perDate)` from
+    // the displaced set itself, which is the whole of the argument. So the
+    // shortfall is produced the way a real one arises: one narrow strip of
+    // ground, against a date that needs several slots.
+    const plan = propose({
+      policy: {
+        ...policy,
+        surfaceIds: [policy.surfaceIds[0]],
+        cadenceMinutes: 60,
+        earliestKickoffMinutes: policy.earliestKickoffMinutes,
+        latestKickoffMinutes: policy.earliestKickoffMinutes + 60,
+      },
+    });
+    const short = plan.capacities.filter((report) =>
+      report.findings.some(
+        (finding) => finding.code === RESERVE_REASON.RESERVE_CAPACITY_BELOW_REQUIREMENT
+      )
+    );
+    // Meta-assertion: the shortfall really was produced, so the assertion that
+    // it is not lifted is about something.
+    expect(short.length).toBeGreaterThan(0);
+    expect(codesOf(plan.findings)).not.toContain(RESERVE_REASON.RESERVE_CAPACITY_BELOW_REQUIREMENT);
+    // Carried, not dropped: a caller asking about the ground rather than about
+    // the branch still reads it.
+    expect(
+      plan.capacities.flatMap((report) => report.findings.map((finding) => finding.code))
+    ).toContain(RESERVE_REASON.RESERVE_CAPACITY_BELOW_REQUIREMENT);
+    // And the shortfall is reported in this plan's own vocabulary, per game.
+    expect(plan.unrelocatable.length + plan.proposals.length).toBe(result.displaced.length);
+  });
+
+  it('says nothing of the sort on the acceptance run', () => {
+    // The negative control, and the reason no acceptance figure moves: the
+    // acceptance branch's one capacity report is `allowed` and every finding it
+    // carries is `info`, so carrying it changes what is *reachable* and not what
+    // is reported. An implementation that raised a blocking finding for every
+    // report would pass everything above and fail here.
+    const plan = result.relocations;
+    for (const report of plan.capacities) {
+      expect(report.status).not.toBe(SCENARIO_STATUS.REJECTED);
+      expect(
+        report.findings.filter((finding) => finding.severity !== CONSTRAINT_SEVERITY.INFO)
+      ).toEqual([]);
+    }
+    expect(codesOf(plan.findings)).not.toContain(RESERVE_REASON.RESERVE_CAPACITY_VACUOUS);
+    expect(codesOf(plan.findings)).not.toContain(RESERVE_REASON.RESERVED_SLOT_UNCOVERED);
+    expect(result.status).toBe(SCENARIO_STATUS.COMPROMISED);
   });
 });

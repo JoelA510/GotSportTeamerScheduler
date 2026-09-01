@@ -43,7 +43,6 @@ import {
   CONSTRAINT_REASON,
   CONSTRAINT_SCOPE_KIND,
   CONSTRAINT_SEVERITY,
-  CONSTRAINT_STATUS,
   CONSTRAINT_TYPE,
   SEASON_2026_CONSTRAINT_ID,
   buildConstraintRegistry,
@@ -2114,8 +2113,8 @@ describe('attribution :: every declared reason code is reachable', () => {
     const unfired = Object.values(ATTRIBUTION_REASON)
       .filter((code) => !fired.has(code))
       .sort();
-    // The two that remain are guards for states the *published* season does not
-    // contain, and both are named here rather than left to be discovered:
+    // The three that remain are guards for states the *published* season does
+    // not contain, and each is named here rather than left to be discovered:
     //
     // - `ATTRIBUTION_CLAIM_CATEGORY_ONLY` needs a finding carrying neither an
     //   identifier nor a number. Every finding the six source modules can emit
@@ -2126,9 +2125,17 @@ describe('attribution :: every declared reason code is reachable', () => {
     //   state holds, and no constraint or finding says anything about. Every
     //   venue in this corpus has a permit record, so the permit bound alone
     //   attributes all 679.
+    // - `ATTRIBUTION_CONSTRAINT_UNJUDGED` needs a record whose scope this
+    //   question cannot reach. The corpus registry is global- and venue-scoped
+    //   only — asserted directly in the round-2 block below — and a game-shaped
+    //   question can judge every one of those, so nothing here goes unjudged.
+    //   Fired against a constructed `person`-scoped record instead, in
+    //   `describe('explainGame :: the registry trace reaches a report')`, with
+    //   this run standing as its negative control.
     expect(unfired).toEqual(
       [
         ATTRIBUTION_REASON.ATTRIBUTION_CLAIM_CATEGORY_ONLY,
+        ATTRIBUTION_REASON.ATTRIBUTION_CONSTRAINT_UNJUDGED,
         ATTRIBUTION_REASON.ATTRIBUTION_GAME_UNATTRIBUTED,
       ].sort()
     );
@@ -2561,6 +2568,172 @@ describe('checkPlacement :: the sides are a scope it holds, and the seam has a v
     // never empty would carry no information.
     const found = /** @type {Object} */ (subject);
     expect(found.placement.registryFindings).toEqual([]);
-    expect(found.placement.registryStatus).toBe(CONSTRAINT_STATUS.ALLOWED);
+    // `registryStatus` stood beside it for one round and was read by nothing —
+    // it is `deriveConstraintStatus(registryFindings)` and carried no fact the
+    // findings did not. Round 3 deleted it rather than leave a second inert
+    // field behind while fixing the first; the status is still derivable, and
+    // the assertion above is the one that was ever doing any work.
+    expect('registryStatus' in found.placement).toBe(false);
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* Round 3, finding 5 - the round-2 fix was produced and read by nobody         */
+/* -------------------------------------------------------------------------- */
+
+describe('explainGame :: the registry trace reaches a report, or it is not a fix', () => {
+  /**
+   * Round 2 gave `checkPlacement()` a `registryFindings` / `registryStatus`
+   * pair so the seam's own report would stop being discarded, and then no
+   * production caller read either one. All four consumers take `legal`,
+   * `findings`, `blockingCodes` and `availability` and nothing else, so the
+   * unjudged-scope trace the fix existed for still reached no report. A field
+   * nobody reads is not a middle path between merging and dropping; it is the
+   * appearance of one.
+   *
+   * The reasoning that produced it was sound as far as it went — merging the
+   * trace into `findings` would move `status` for every candidate slot in
+   * `resolve/stages.js`, which is the solver's hot path and cannot afford a
+   * remark. The error was concluding that therefore *nothing* should read it.
+   *
+   * So it is surfaced at the consumer that can afford it. `explainGame()` and
+   * `explainKickoffTime()` are asked one question at a time, already carry a
+   * `findings` array and a `status` derived from it, and — unlike the boundary
+   * helpers — hold the *game*, which is what makes an unjudged team scope a
+   * fact worth reporting rather than a truism. `resolve/stages.js` is untouched.
+   */
+
+  /** A game whose sides are both named, so a team scope is judgeable. */
+  const sided = (() => {
+    for (const gameId of context.state.gameIds) {
+      const game = context.state.baseline[gameId];
+      if (!game || !game.homeTeamId || !game.awayTeamId) continue;
+      return { gameId, game };
+    }
+    return null;
+  })();
+
+  /**
+   * The season registry plus one record whose scope this question cannot reach.
+   *
+   * `person` is the honest choice: `explainGame()` holds a game, so it can and
+   * now does judge a team scope, and a scope it genuinely cannot reach is the
+   * one whose report an operator actually needs — the record is **not applied**
+   * while the answer reads clean.
+   *
+   * @returns {Object}
+   */
+  const withPersonScopedConstraint = () =>
+    buildConstraintRegistry({
+      name: registry.name,
+      source: registry.source,
+      constraints: [
+        ...registry.constraints,
+        {
+          id: 'round-3.person.scoped',
+          policy: 'round-3-probe',
+          name: 'a person-scoped rule this question cannot judge',
+          type: CONSTRAINT_TYPE.HARD,
+          scope: { kind: CONSTRAINT_SCOPE_KIND.PERSON, personId: 'p-000' },
+          rationale:
+            'constructed: the corpus registry names no person scope, so the scope an answer cannot reach has to be stated to be tested at all',
+          source: {
+            setBy: 'tests/attribution.test.js',
+            setAt: null,
+            note: 'constructed for this test; never a clock read',
+            reference: 'round 3, finding 5',
+          },
+          enforcement: CONSTRAINT_ENFORCEMENT.REASON_CODES,
+          reasonCodes: [FACILITY_REASON.LINING_MISMATCH],
+        },
+      ],
+    });
+
+  it('has a game with both sides named to ask about', () => {
+    expect(sided).not.toBeNull();
+    expect(/** @type {Object} */ (sided).game.homeTeamId).toEqual(expect.any(String));
+  });
+
+  it('says, in its own findings, that a record went unjudged and was not applied', () => {
+    // The falsification. Pre-fix `checkPlacement()` produced the trace and
+    // `explainGame()` never looked, so this answer's findings and status were
+    // identical with and without the unreachable record.
+    const found = /** @type {Object} */ (sided);
+    const scoped = withPersonScopedConstraint();
+    const answer = explainGame(
+      { ...context, engines: { ...context.engines, registry: scoped } },
+      { gameId: found.gameId }
+    );
+    const raised = answer.findings.filter(
+      (finding) => finding.code === ATTRIBUTION_REASON.ATTRIBUTION_CONSTRAINT_UNJUDGED
+    );
+    expect(raised.length).toBeGreaterThan(0);
+    expect(raised[0].severity).toBe(ATTRIBUTION_SEVERITY.COMPROMISE);
+    // It names the record and the scope kind it could not reach, so the reader
+    // can act without parsing a message.
+    expect(raised.some((finding) => finding.details.constraintId === 'round-3.person.scoped')).toBe(
+      true
+    );
+    expect(raised[0].details.gameId).toBe(found.gameId);
+    // …and it reaches the answer's own status, which is the difference between
+    // this and a field nobody reads.
+    expect(answer.status).not.toBe(ATTRIBUTION_STATUS.ALLOWED);
+    expect(answer.meta.registryRecordsUnjudged).toBe(raised.length);
+  });
+
+  it('says nothing of the sort when every record could be judged', () => {
+    // The negative control. The corpus registry is global- and venue-scoped
+    // only, so there is nothing here the lookup cannot decide — and an
+    // implementation that reported unjudged scopes unconditionally would pass
+    // the assertion above and fail this one.
+    const found = /** @type {Object} */ (sided);
+    const answer = explainGame(context, { gameId: found.gameId });
+    expect(answer.findings.map((finding) => finding.code)).not.toContain(
+      ATTRIBUTION_REASON.ATTRIBUTION_CONSTRAINT_UNJUDGED
+    );
+    expect(answer.meta.registryRecordsUnjudged).toBe(0);
+  });
+
+  it('carries the same trace through the counterfactual, which also holds the game', () => {
+    const found = /** @type {Object} */ (sided);
+    const scoped = withPersonScopedConstraint();
+    const answer = explainKickoffTime(
+      { ...context, engines: { ...context.engines, registry: scoped } },
+      { gameId: found.gameId, insteadOfMinutes: found.game.startMinutes + 30 }
+    );
+    expect(answer.findings.map((finding) => finding.code)).toContain(
+      ATTRIBUTION_REASON.ATTRIBUTION_CONSTRAINT_UNJUDGED
+    );
+    expect(answer.meta.registryRecordsUnjudged).toBeGreaterThan(0);
+  });
+
+  it('leaves the solver hot path alone, which is why it is surfaced here', () => {
+    // The bound on the fix, asserted rather than promised. `checkPlacement()`'s
+    // own verdict is unchanged by a record it could not judge: merging the
+    // trace into `findings` would move `status` for every candidate slot the
+    // re-solver scores, and that reasoning was and remains sound.
+    const found = /** @type {Object} */ (sided);
+    const scoped = withPersonScopedConstraint();
+    const slot = {
+      date: found.game.date,
+      surfaceId: found.game.surfaceId,
+      startMinutes: found.game.startMinutes,
+    };
+    const before = checkPlacement(context.engines, context.state, found.gameId, slot);
+    const after = checkPlacement(
+      { ...context.engines, registry: scoped },
+      context.state,
+      found.gameId,
+      slot
+    );
+    expect(after.legal).toBe(before.legal);
+    expect(after.status).toBe(before.status);
+    expect(after.findings.map((finding) => finding.code)).not.toContain(
+      CONSTRAINT_REASON.CONSTRAINT_SCOPE_UNJUDGED
+    );
+    // …and the field it produces is the one the report above was built from.
+    expect(after.registryFindings.map((finding) => finding.code)).toContain(
+      CONSTRAINT_REASON.CONSTRAINT_SCOPE_UNJUDGED
+    );
   });
 });

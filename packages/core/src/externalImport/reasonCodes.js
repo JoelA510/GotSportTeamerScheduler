@@ -262,6 +262,24 @@ export const EXTERNAL_IMPORT_REASON = Object.freeze({
   EXTERNAL_IMPACT_NOTHING_EXAMINED: 'EXTERNAL_IMPACT_NOTHING_EXAMINED',
   /** A row was accepted that resolved to nothing acceptable. */
   EXTERNAL_ACCEPTANCE_ROW_NOT_ACCEPTABLE: 'EXTERNAL_ACCEPTANCE_ROW_NOT_ACCEPTABLE',
+  /**
+   * Two or more accepted rows resolve to the same standing fixture, and they do
+   * not agree, so the fixture holds its ground and neither row is applied.
+   *
+   * `blocking`. The projection used to key accepted rows by `fixtureId`, which
+   * silently kept the **last** of them: the set `{A, B}` then projected exactly
+   * what `{B}` did, and the sweep's comparison between those two sets was
+   * between a thing and itself. Taking the first would be as arbitrary as
+   * taking the last, so neither is taken — freeze by default is this module's
+   * own stance, and a disagreement between two published rows is a conversation
+   * rather than an edit.
+   *
+   * Reachable from an ordinary input: the classification refuses two *standing*
+   * fixtures on one key (`EXTERNAL_ROW_KEY_AMBIGUOUS`) and says nothing about
+   * two *imported* rows on one key, which is what a re-published or corrected
+   * external file carries.
+   */
+  EXTERNAL_ACCEPTANCE_FIXTURE_CONTESTED: 'EXTERNAL_ACCEPTANCE_FIXTURE_CONTESTED',
   /** A subset of this set is unsafe. A whole-import verdict does not transfer. */
   EXTERNAL_ACCEPTANCE_SUBSET_UNSAFE: 'EXTERNAL_ACCEPTANCE_SUBSET_UNSAFE',
   /** The sweep did not examine all 2^n sets. Says how many, and why. */
@@ -356,6 +374,7 @@ export const EXTERNAL_IMPORT_REASON_SEVERITY = Object.freeze({
   [EXTERNAL_IMPORT_REASON.EXTERNAL_IMPACT_NOTHING_EXAMINED]: EXTERNAL_IMPORT_SEVERITY.BLOCKING,
   [EXTERNAL_IMPORT_REASON.EXTERNAL_ACCEPTANCE_ROW_NOT_ACCEPTABLE]:
     EXTERNAL_IMPORT_SEVERITY.BLOCKING,
+  [EXTERNAL_IMPORT_REASON.EXTERNAL_ACCEPTANCE_FIXTURE_CONTESTED]: EXTERNAL_IMPORT_SEVERITY.BLOCKING,
   [EXTERNAL_IMPORT_REASON.EXTERNAL_ACCEPTANCE_SUBSET_UNSAFE]: EXTERNAL_IMPORT_SEVERITY.BLOCKING,
   [EXTERNAL_IMPORT_REASON.EXTERNAL_ACCEPTANCE_SETS_NOT_EXHAUSTIVE]: EXTERNAL_IMPORT_SEVERITY.INFO,
 

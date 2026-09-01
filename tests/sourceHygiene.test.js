@@ -188,3 +188,95 @@ describe('source hygiene :: dropping the registry seam report is a stated act', 
     expect(dropsIt(reads)).toBe(false);
   });
 });
+
+/* -------------------------------------------------------------------------- */
+/* A trace field produced and read by nobody is not a fix                       */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Fields a module returns **solely** so that something downstream can report a
+ * trace, and the file that produces each.
+ *
+ * The rule this exists for is round 3's finding 5. Round 2 stopped
+ * `resolve/legality.js` `checkPlacement()` from discarding the registry seam's
+ * report by returning it on `registryFindings` / `registryStatus` — and then no
+ * production caller read either field. All four consumers took `legal`,
+ * `findings`, `blockingCodes` and `availability`, so the unjudged-scope trace
+ * the change existed for reached exactly as many reports as before: none. The
+ * fix passed its own tests, because its own tests were the only readers.
+ *
+ * A field like that is worse than the drop it replaced: the drop is visible in
+ * a diff and the field looks like a fix. So each one declared here must have at
+ * least one reader under `packages/core/src` **other than the file that
+ * produces it**. There are only two honest states — carried and read, or not
+ * carried and said so in the docstring — and this check is what makes the
+ * middle one fail.
+ *
+ * @type {Record<string, string>}
+ */
+const CARRIED_TRACE_FIELDS = Object.freeze({
+  registryFindings: 'resolve/legality.js',
+});
+
+describe('source hygiene :: a carried trace field has a production reader', () => {
+  const files = sourceFilesUnder(CORE_SRC);
+
+  /**
+   * Files that read `.<field>` off something, other than the named producer.
+   *
+   * A read is `.field` appearing anywhere but the producing file. Deliberately
+   * crude: the question is whether *any* production module consumes the field
+   * at all, and a check that tried to prove the read was of this particular
+   * object would fail open on every indirection.
+   *
+   * @param {string} field
+   * @param {string} producer
+   * @returns {string[]}
+   */
+  function readersOf(field, producer) {
+    /** @type {string[]} */
+    const readers = [];
+    for (const file of files) {
+      const key = path.relative(CORE_SRC, file).split(path.sep).join('/');
+      if (key === producer) continue;
+      const source = readFileSync(file, 'utf8');
+      // Field reads only: `x.registryFindings`, never the `registryFindings:`
+      // that declares one, and never a mention inside a comment line.
+      const lines = source
+        .split('\n')
+        .filter((line) => !/^\s*(\*|\/\/)/.test(line))
+        .join('\n');
+      if (new RegExp(`\\.${field}\\b`).test(lines)) readers.push(key);
+    }
+    return readers.sort();
+  }
+
+  it('finds the producers it names', () => {
+    // The meta-assertion. A table naming a file that does not exist, or a field
+    // nothing produces, would make every check below pass for the wrong reason.
+    for (const [field, producer] of Object.entries(CARRIED_TRACE_FIELDS)) {
+      const full = path.join(CORE_SRC, ...producer.split('/'));
+      expect(files, producer).toContain(full);
+      expect(readFileSync(full, 'utf8'), `${producer} does not produce ${field}`).toMatch(
+        new RegExp(`\\b${field}\\s*:`)
+      );
+    }
+  });
+
+  it('detects a field that nothing outside its producer reads', () => {
+    // The positive control: the same predicate over a field name no module
+    // anywhere mentions must come back with no readers, so a green result below
+    // is a result rather than a regex that never matches.
+    expect(readersOf('aFieldNobodyProduces', 'resolve/legality.js')).toEqual([]);
+  });
+
+  it('has at least one production reader for every field it carries', () => {
+    for (const [field, producer] of Object.entries(CARRIED_TRACE_FIELDS)) {
+      const readers = readersOf(field, producer);
+      expect(
+        readers,
+        `"${field}" is produced by ${producer} and read by no other file under packages/core/src. Either surface it at a consumer that can afford it, merge it where the severity belongs, or delete it and say plainly in the docstring that the trace is not carried — a field nobody reads is the appearance of a fix, not a fix (round 3, finding 5).`
+      ).not.toEqual([]);
+    }
+  });
+});

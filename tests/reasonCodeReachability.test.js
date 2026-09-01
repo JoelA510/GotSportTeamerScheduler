@@ -1,8 +1,8 @@
 /**
  * Repo-wide reachability audit for every frozen reason-code table in
  * `packages/core/src` — the generalisation of the per-module audit
- * `tests/attribution.test.js` already carries. 18 vocabularies, 393 codes, of
- * which 382 are shown to be producible and 11 are named as holes.
+ * `tests/attribution.test.js` already carries. 18 vocabularies, 396 codes, of
+ * which 385 are shown to be producible and 11 are named as holes.
  *
  * **The defect this exists to catch.** Four times now, in four unrelated
  * modules, a reason code has been declared, given a severity, documented, and
@@ -153,6 +153,7 @@ import {
   buildExternalMappingRegistry,
   checkAvoidWindowRoundTrip,
   classifyExternalImport,
+  projectAcceptance,
   readExternalMappingRegistry,
   season2026ExternalImportQuery,
   season2026ExternalMappingInput,
@@ -2762,6 +2763,50 @@ harvest(
   'explainGame(a game the schedule does not hold)',
   explainGame(context, { gameId: 'not-a-game' })
 );
+/**
+ * A `person`-scoped record, which a game-shaped question cannot judge and
+ * therefore does not apply.
+ *
+ * The corpus registry is global- and venue-scoped only, so the record has to be
+ * stated to reach the code at all — a constructed *input*, which is what this
+ * driver is allowed, rather than a returned structure reached into.
+ */
+harvest(
+  'explainGame(under a person-scoped record it cannot judge)',
+  explainGame(
+    {
+      ...context,
+      engines: {
+        ...context.engines,
+        registry: buildConstraintRegistry({
+          name: registry.name,
+          source: registry.source,
+          constraints: [
+            ...registry.constraints,
+            {
+              id: 'reachability.person.scoped',
+              policy: 'reachability-probe',
+              name: 'a person-scoped rule a game-shaped question cannot judge',
+              type: CONSTRAINT_TYPE.HARD,
+              scope: { kind: CONSTRAINT_SCOPE_KIND.PERSON, personId: 'p-000' },
+              rationale:
+                'constructed: the season registry names no person scope, so the scope an answer cannot reach has to be stated to be driven',
+              source: {
+                setBy: 'tests/reasonCodeReachability.test.js',
+                setAt: null,
+                note: 'constructed for this driver; never a clock read',
+                reference: 'round 3, finding 5',
+              },
+              enforcement: CONSTRAINT_ENFORCEMENT.REASON_CODES,
+              reasonCodes: [FACILITY_REASON.LINING_MISMATCH],
+            },
+          ],
+        }),
+      },
+    },
+    { gameId: schedule.games[0].id }
+  )
+);
 harvest(
   'explainTeamConflict(a team the schedule does not hold)',
   explainTeamConflict(context, { teamId: 'not-a-team' })
@@ -4118,6 +4163,33 @@ harvest(
     resolution: externalResolution,
     standing: externalQuery.standing.filter((fixture) => fixture.format === '11v11'),
     graph,
+    timingTable,
+  })
+);
+
+// A re-published external file: the same fixture listed twice, the second row
+// carrying a corrected kickoff. Both rows come back acceptable against one
+// standing fixture — the classification guards two *standing* fixtures on one
+// key and says nothing about two *imported* rows on one key — so the acceptance
+// set that names both contests it, and the fixture holds its ground.
+const republishedQuery = {
+  ...externalQuery,
+  rows: [
+    ...externalQuery.rows,
+    {
+      ...externalQuery.rows[0],
+      rowId: `${externalQuery.rows[0].rowId}-republished`,
+      kickoffMinutes: externalQuery.rows[0].kickoffMinutes + 195,
+    },
+  ],
+};
+const republishedResolution = classifyExternalImport(republishedQuery, externalRegistry);
+harvest(
+  'projectAcceptance(two accepted rows contesting one fixture)',
+  projectAcceptance({
+    resolution: republishedResolution,
+    standing: republishedQuery.standing,
+    acceptedRowIds: [externalQuery.rows[0].rowId, `${externalQuery.rows[0].rowId}-republished`],
     timingTable,
   })
 );
