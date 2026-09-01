@@ -45,9 +45,9 @@
 
 import { AVAILABILITY_SEVERITY } from '../availability/reasonCodes.js';
 import { checkKickoffAvailability } from '../availability/kickoff.js';
-import { DEFAULT_SIZE_RANK } from '../facility/eligibility.js';
+import { DEFAULT_SIZE_RANK, checkSizeEligibility } from '../facility/eligibility.js';
 import { bookingsOverlapInTime } from '../facility/occupancy.js';
-import { FACILITY_REASON } from '../facility/reasonCodes.js';
+import { FACILITY_REASON, FACILITY_STATUS } from '../facility/reasonCodes.js';
 import { buildReserveCapacityReport } from '../reserve/capacity.js';
 
 import {
@@ -83,19 +83,38 @@ const EXAMPLE_LIMIT = 5;
 /**
  * Candidate replacement ground for a format, derived rather than typed in.
  *
- * Three filters, each stated:
+ * Four filters, each stated:
  *
  * 1. **Not at a withdrawn venue.** Obvious, and the caller names them.
  * 2. **A leaf surface.** A parent pitch is bookable, but booking Alder Pitch 1
  *    takes 1A and 1B with it, so proposing onto a parent is strictly more
  *    disruptive than proposing onto a half. `checkOccupancy()` would refuse the
  *    parent anyway the moment either half is in use.
- * 3. **Within `maxGradesAbove` size grades of the format.** The size policy is
+ * 3. **Big enough, by `checkSizeEligibility()` and not by a second rule.**
+ *    Whether a format fits a patch of ground is `facility/eligibility.js`'s
+ *    question, and it is asked here rather than answered again. This filter used
+ *    to judge from the *smallest* declared size, which excluded every surface
+ *    declaring more than one — Brookside's Upper 1 and Upper 2 declare
+ *    `["7v7","9v9"]`, are `allowed` for 9v9 by `checkSizeEligibility()` and are
+ *    counted as 9v9 ground by the reserve adapter, and were nonetheless refused
+ *    here, so a venue withdrawal reported 9v9 games unrelocatable while legal
+ *    ground stood empty.
+ * 4. **Within `maxGradesAbove` size grades of the format.** The size policy is
  *    downward-closed, so *every* 11v11 pitch is technically eligible for a 7v7
  *    game and a search that took the policy literally would offer the stadium.
  *    One grade up is the club's own practice — a 7v7 game on a 9v9 pitch is a
  *    real arrangement with a real cost (`LINING_MISMATCH`); a 7v7 game on the
  *    11v11 stadium is a different conversation.
+ *
+ *    **The grade of a surface is its largest declared size**, which is the same
+ *    quantity `checkSizeEligibility()` measures "big enough" against. Reading the
+ *    floor off the largest and the ceiling off the smallest would be the two
+ *    disagreeing rules again, one level down: a surface would be both big enough
+ *    *because* its largest fits and not oversized *because* its smallest is
+ *    close, which is a claim about two different patches of ground. A surface
+ *    declaring `["4v4","11v11"]` is the stadium, and the smallest-size ceiling
+ *    would have offered it to a Minis game as "one grade up" — exactly the case
+ *    this filter exists to refuse.
  *
  * The result is **the input to a stated policy, not the policy itself**:
  * `RelocationPolicySchema.surfaceIds` has no default, exactly as
@@ -115,6 +134,9 @@ export function replacementSurfacesFor(graph, query) {
   }
   const excluded = new Set(query.excludeVenueIds ?? []);
   const maxGradesAbove = query.maxGradesAbove ?? 1;
+  // The rank table travels with the eligibility question so the two cannot be
+  // asked against different orderings.
+  const sizeOptions = query.sizeRank ? { sizeRank: query.sizeRank } : {};
 
   return Object.values(graph.surfaces)
     .filter((surface) => !excluded.has(surface.venueId))
@@ -123,9 +145,16 @@ export function replacementSurfacesFor(graph, query) {
       const ranks = surface.sizes
         .map((size) => rankTable[size])
         .filter((rank) => typeof rank === 'number');
+      // Nothing rankable to measure a grade against; `checkSizeEligibility()`
+      // says `SIZE_UNKNOWN_FORMAT` about the same surface.
       if (ranks.length === 0) return false;
-      const smallest = Math.min(...ranks);
-      return smallest >= wanted && smallest <= wanted + maxGradesAbove;
+      // The ceiling is this module's own policy and nothing else's.
+      if (Math.max(...ranks) > wanted + maxGradesAbove) return false;
+      // "Big enough" is not this module's question.
+      return (
+        checkSizeEligibility(graph, { surfaceId: surface.id, format: query.format }, sizeOptions)
+          .status === FACILITY_STATUS.ALLOWED
+      );
     })
     .map((surface) => surface.id)
     .sort();

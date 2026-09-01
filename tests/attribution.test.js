@@ -40,7 +40,10 @@ import {
 } from '@squadlogic/core/availability/index.js';
 import {
   CONSTRAINT_ENFORCEMENT,
+  CONSTRAINT_REASON,
   CONSTRAINT_SCOPE_KIND,
+  CONSTRAINT_SEVERITY,
+  CONSTRAINT_STATUS,
   CONSTRAINT_TYPE,
   SEASON_2026_CONSTRAINT_ID,
   buildConstraintRegistry,
@@ -2342,5 +2345,222 @@ describe('attribution :: the context parses the schedule it is handed', () => {
         schedule: { ...sparseSchedule(), notAField: true },
       })
     ).toThrow();
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* Round 2, findings 3 and 4                                                   */
+/* -------------------------------------------------------------------------- */
+
+describe('attribution :: a boundary question about ground we do not hold is answered', () => {
+  /**
+   * Finding 3, and it was masked by finding 2. `underRegistry()` wrote a
+   * hardcoded `venueId: null` into a `.strict()` `ScopeContextSchema` whose
+   * `venueId` is non-nullable, so the moment the timing module stopped throwing
+   * on an unknown surface the severity lookup threw a `ZodError` instead — the
+   * crash relocated rather than went away. `feasibility/verdict.js` writes
+   * `?? undefined` at the identical helper and documents exactly this case.
+   */
+  const GHOST = `${PITCH_2}-not-in-the-graph`;
+
+  it('is asked about ground the graph really does not hold', () => {
+    // The meta-assertion: an id already in the graph would make the block below
+    // a test of the ordinary path.
+    expect(graph.surfaceIds).toContain(PITCH_2);
+    expect(graph.surfaceIds).not.toContain(GHOST);
+  });
+
+  it('names the unknown surface as the binding claim instead of throwing', () => {
+    const answer = explainEarliestKickoff(context, {
+      surfaceId: GHOST,
+      date: busyDate,
+      format: '11v11',
+      warmupMinutes: WARMUP,
+      notBeforeMinutes: floor,
+    });
+    expect(answer.kickoffMinutes).toBeNull();
+    expect(answer.status).toBe(ATTRIBUTION_STATUS.COMPROMISED);
+    // The question is unanswerable, and the answer says *why* rather than only
+    // that: the binding claim is the facility module's own code.
+    expect(answer.findings.map((finding) => finding.code)).toContain(
+      ATTRIBUTION_REASON.ATTRIBUTION_QUESTION_UNANSWERABLE
+    );
+    const binding = /** @type {Object} */ (answer.binding);
+    expect(binding).not.toBeNull();
+    expect(binding.code).toBe(FACILITY_REASON.SURFACE_UNKNOWN);
+    expect(answer.claims.map((claim) => claim.code)).toContain(FACILITY_REASON.SURFACE_UNKNOWN);
+  });
+
+  it('still answers the real question about the real pitch', () => {
+    // The negative control: a helper that reported SURFACE_UNKNOWN for every
+    // surface would pass everything above.
+    const answer = explainEarliestKickoff(context, {
+      surfaceId: PITCH_2,
+      date: busyDate,
+      format: '11v11',
+      warmupMinutes: WARMUP,
+      notBeforeMinutes: floor,
+    });
+    expect(answer.status).toBe(ATTRIBUTION_STATUS.ALLOWED);
+    expect(answer.claims.map((claim) => claim.code)).not.toContain(FACILITY_REASON.SURFACE_UNKNOWN);
+  });
+});
+
+describe('checkPlacement :: the sides are a scope it holds, and the seam has a voice', () => {
+  /**
+   * Finding 4, in two halves.
+   *
+   * `checkPlacement()` holds the game and did not pass its `teamIds` to the
+   * severity lookup, so every `team`-scoped record came back
+   * `CONSTRAINT_SCOPE_UNJUDGED` and was **not applied** — while the rule engine
+   * narrows per subject with exactly that field, so one registry gave two
+   * verdicts about one game. And the lookup's own report, which is where
+   * `CONSTRAINT_SCOPE_UNJUDGED` was written down, was discarded, so nothing
+   * anywhere said the constraint had gone unjudged.
+   */
+
+  /** A legal placement whose game names both of its sides. */
+  const subject = (() => {
+    for (const gameId of context.state.gameIds) {
+      const game = context.state.baseline[gameId];
+      if (!game || !game.homeTeamId || !game.awayTeamId) continue;
+      const slot = { date: game.date, surfaceId: game.surfaceId, startMinutes: game.startMinutes };
+      const placement = checkPlacement(context.engines, context.state, gameId, slot);
+      if (!placement.legal) continue;
+      const code = placement.findings.map((finding) => finding.code)[0];
+      if (!code) continue;
+      return { gameId, game, slot, placement, code };
+    }
+    return null;
+  })();
+
+  /**
+   * The same registry with one extra record: a `hard` constraint claiming the
+   * code that placement already carries, scoped to **this game's home team**.
+   * Built from the registry's own records rather than from a list typed here,
+   * so it is the season's registry plus one thing.
+   *
+   * @param {string} scopeKind
+   * @param {Object} scope
+   * @returns {Object}
+   */
+  const withScopedConstraint = (scopeKind, scope) =>
+    buildConstraintRegistry({
+      name: registry.name,
+      source: registry.source,
+      constraints: [
+        ...registry.constraints,
+        {
+          id: `round-2.${scopeKind}.scoped`,
+          policy: 'round-2-probe',
+          name: `a ${scopeKind}-scoped rule about ${/** @type {Object} */ (subject).code}`,
+          type: CONSTRAINT_TYPE.HARD,
+          scope: { kind: scopeKind, ...scope },
+          rationale:
+            'constructed: the corpus registry is global- and venue-scoped only, so a narrower scope has to be stated to be tested at all',
+          source: {
+            setBy: 'tests/attribution.test.js',
+            setAt: null,
+            note: 'constructed for this test; never a clock read',
+            reference: 'round 2, finding 4',
+          },
+          enforcement: CONSTRAINT_ENFORCEMENT.REASON_CODES,
+          reasonCodes: [/** @type {Object} */ (subject).code],
+        },
+      ],
+    });
+
+  it('has a legal placement with both sides named to be wrong about', () => {
+    // The meta-assertion. Without a game that names its teams there is no
+    // `teamIds` to pass and the whole block would be about nothing; without a
+    // finding to retype there would be no verdict to move.
+    expect(subject).not.toBeNull();
+    const found = /** @type {Object} */ (subject);
+    expect(found.placement.legal).toBe(true);
+    expect(found.game.homeTeamId).toEqual(expect.any(String));
+    expect(found.code).toEqual(expect.any(String));
+    // …and the corpus registry itself scopes nothing to a team, which is why
+    // this defect could survive a full season run unnoticed.
+    expect(registry.constraintIds.map((id) => registry.byId[id].scope.kind).includes('team')).toBe(
+      false
+    );
+  });
+
+  it('applies a team-scoped constraint, because it holds the game that names the team', () => {
+    const found = /** @type {Object} */ (subject);
+    const scoped = withScopedConstraint(CONSTRAINT_SCOPE_KIND.TEAM, {
+      teamId: found.game.homeTeamId,
+    });
+    const after = checkPlacement(
+      { ...context.engines, registry: scoped },
+      context.state,
+      found.gameId,
+      found.slot
+    );
+    expect(after.legal).toBe(false);
+    expect(after.blockingCodes).toContain(found.code);
+    // The registry decided this, not the facility model: the same code is still
+    // `blocking` only because a record says so here.
+    expect(after.findings.find((finding) => finding.code === found.code).severity).toBe(
+      CONSTRAINT_SEVERITY.BLOCKING
+    );
+    // And the seam had nothing to complain about, because it could judge.
+    expect(after.registryFindings.map((finding) => finding.code)).not.toContain(
+      CONSTRAINT_REASON.CONSTRAINT_SCOPE_UNJUDGED
+    );
+  });
+
+  it('leaves a team-scoped constraint about another team alone', () => {
+    // The positive control for the assertion above: an implementation that
+    // simply hardened every record it was handed would pass it.
+    const found = /** @type {Object} */ (subject);
+    const scoped = withScopedConstraint(CONSTRAINT_SCOPE_KIND.TEAM, {
+      teamId: `${found.game.homeTeamId}-somebody-else`,
+    });
+    const after = checkPlacement(
+      { ...context.engines, registry: scoped },
+      context.state,
+      found.gameId,
+      found.slot
+    );
+    expect(after.legal).toBe(true);
+    expect(after.blockingCodes).not.toContain(found.code);
+  });
+
+  it('says out loud when a scope it cannot reach leaves a constraint unjudged', () => {
+    // The half that was dropped. `checkPlacement()` holds no people, so a
+    // `person`-scoped record is genuinely undecidable here — and that is a fact
+    // an operator needs, because the record is then *not applied* while the
+    // placement reads legal.
+    const found = /** @type {Object} */ (subject);
+    const scoped = withScopedConstraint(CONSTRAINT_SCOPE_KIND.PERSON, { personId: 'p-000' });
+    const after = checkPlacement(
+      { ...context.engines, registry: scoped },
+      context.state,
+      found.gameId,
+      found.slot
+    );
+    const codes = after.registryFindings.map((finding) => finding.code);
+    expect(codes).toContain(CONSTRAINT_REASON.CONSTRAINT_SCOPE_UNJUDGED);
+    expect(
+      after.registryFindings.some(
+        (finding) => finding.details.constraintId === 'round-2.person.scoped'
+      )
+    ).toBe(true);
+    // The verdict itself is untouched: this is provenance about how the
+    // registry was read, not a fact about the ground, and merging it into
+    // `findings` would move `status` for every candidate slot in the solver.
+    expect(after.legal).toBe(true);
+    expect(after.findings.map((finding) => finding.code)).not.toContain(
+      CONSTRAINT_REASON.CONSTRAINT_SCOPE_UNJUDGED
+    );
+  });
+
+  it('reports nothing about the registry when there is nothing to report', () => {
+    // The negative control for the field itself: a `registryFindings` that were
+    // never empty would carry no information.
+    const found = /** @type {Object} */ (subject);
+    expect(found.placement.registryFindings).toEqual([]);
+    expect(found.placement.registryStatus).toBe(CONSTRAINT_STATUS.ALLOWED);
   });
 });

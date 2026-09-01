@@ -123,6 +123,17 @@ Ten rules covering twelve of the fourteen seeded constraints.
 | `home-away-balance` | `home-away-balance` | `resolvePolicy()` | > 0 teams, > 0 games counted |
 | `conflict-fairness` | `conflict-fairness` | roster + commitments | > 0 groups, > 0 teams, > 0 commitment pairs |
 
+A game standing on a `surfaceId` the facility graph does not hold is reported by
+all three field rules and takes none of them down. `field-eligibility` says the
+ground is unfit; `field-same-ground` and `field-adjacency` each publish
+`SURFACE_UNKNOWN` against that game naming **their own** unrun check, and count
+the concurrent pairs they could not judge separately from the ones they compared
+— so a schedule whose every concurrent pair stood on unknown ground fails its
+exercise minimum rather than reporting a clean bill. Before this, one bad surface
+id threw out of `surfacesConflict()` and made both concurrency rules `RULE_THREW`:
+every real clash went unreported and the `OCCUPIED_*` counts fell to zero, which
+`verify` and `scenario/diff.js` read as an improvement.
+
 Nothing here re-derives a conflict, a permit window, a sunset or a travel gap.
 The five rules with no Phase 1 evaluator behind them read their numbers from the
 **constraint record** via `resolvePolicy()`, and take their severity from that

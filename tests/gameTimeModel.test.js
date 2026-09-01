@@ -1277,3 +1277,94 @@ describe('game time model :: input validation and immutability', () => {
     );
   });
 });
+
+/* -------------------------------------------------------------------------- */
+/* Round 2, finding 2 - ground the graph does not hold is reported, not thrown  */
+/* -------------------------------------------------------------------------- */
+
+describe('game time model :: an unknown surface is a finding, exactly as it is next door', () => {
+  /**
+   * `conflictingBookingsOn()` guarded each *booking's* surface and not the
+   * query's own, so `surfacesConflict()` looked the query's up with
+   * `requireSurface()` and threw — while both siblings in
+   * `availability/kickoff.js`, asked the same kind of question about the same
+   * graph, report `SURFACE_UNKNOWN` and return a no-answer. One module's stack
+   * trace was the other's finding.
+   *
+   * The id is derived from a real one so that nothing but its presence in the
+   * graph differs, and the guard below proves the throw needed a booking to
+   * compare against: the defect only bit when there was work to do.
+   */
+  const GHOST = `${sid(ALDER, 'Pitch 2')}-not-in-the-graph`;
+
+  it('is asked about ground the graph really does not hold, with real bookings standing on the date', () => {
+    // Two meta-assertions. Without the first the query is about a surface that
+    // exists; without the second the comparison loop never runs and the case
+    // this block is about is never reached.
+    expect(graph.surfaceIds).toContain(sid(ALDER, 'Pitch 2'));
+    expect(graph.surfaceIds).not.toContain(GHOST);
+    expect(busyDayBookings.length).toBeGreaterThan(5);
+  });
+
+  it('reports SURFACE_UNKNOWN from the warm-up window rather than throwing', () => {
+    const result = warmupWindowAvailability(
+      graph,
+      table,
+      {
+        surfaceId: GHOST,
+        date: BUSY_DATE,
+        kickoffMinutes: morningEleven.kickoffMinutes,
+        format: '11v11',
+        warmupMinutes: WARMUP,
+      },
+      { existingBookings: busyDayBookings }
+    );
+    expect(codesOf(result)).toEqual([FACILITY_REASON.SURFACE_UNKNOWN]);
+    expect(result.status).toBe(TIMING_STATUS.REJECTED);
+    expect(blockingOf(result).length).toBe(1);
+    // A no-answer, not a fabricated window.
+    expect(result.availableMinutes).toBe(0);
+    expect(result.bounded).toBe(false);
+    expect(result.boundBy).toBeNull();
+  });
+
+  it('reports SURFACE_UNKNOWN from the earliest-kickoff search rather than throwing', () => {
+    const result = earliestKickoffWithWarmup(
+      graph,
+      table,
+      {
+        surfaceId: GHOST,
+        date: BUSY_DATE,
+        format: '11v11',
+        warmupMinutes: WARMUP,
+        notBeforeMinutes: lastPitch2End,
+      },
+      { existingBookings: busyDayBookings }
+    );
+    expect(codesOf(result)).toEqual([FACILITY_REASON.SURFACE_UNKNOWN]);
+    expect(result.status).toBe(TIMING_STATUS.REJECTED);
+    expect(result.kickoffMinutes).toBeNull();
+    // Nothing was searched, and the counter says so rather than reading as a
+    // search that found nothing.
+    expect(result.candidatesTested).toBe(0);
+  });
+
+  it('still answers the real question about the real pitch', () => {
+    // The negative control for the guard: a guard that returned early for every
+    // surface would pass every assertion above and destroy the module.
+    const result = earliestKickoffWithWarmup(
+      graph,
+      table,
+      {
+        surfaceId: sid(ALDER, 'Pitch 2'),
+        date: BUSY_DATE,
+        format: '11v11',
+        warmupMinutes: WARMUP,
+        notBeforeMinutes: lastPitch2End,
+      },
+      { existingBookings: busyDayBookings }
+    );
+    expect(result.kickoffMinutes).toBe(afternoonNine.endMinutes + WARMUP);
+    expect(codesOf(result)).not.toContain(FACILITY_REASON.SURFACE_UNKNOWN);
+  });
+});

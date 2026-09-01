@@ -53,6 +53,7 @@ import {
   buildSeason2026ConstraintRegistry,
 } from '@squadlogic/core/constraints/index.js';
 import {
+  DEFAULT_SIZE_RANK,
   buildFacilityGraphFromSeason2026,
   buildSeason2026VenueComplexMap,
   checkLining,
@@ -88,6 +89,7 @@ import {
   SCENARIO_STATUS,
   ScenarioMemo,
   diffAgainstBaselineScenario,
+  diffCapacity,
   diffScenarios,
   diffSchedules,
   expandVenueUnavailable,
@@ -4311,5 +4313,189 @@ describe('a waiver the branch silently lost is reported, not swallowed', () => {
     expect(
       run.findings.filter((finding) => finding.code === WAIVER_REASON.WAIVER_ID_DUPLICATE)
     ).toEqual([]);
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* Round 2, finding 1 — one size rule, not two                                 */
+/* -------------------------------------------------------------------------- */
+
+describe('replacement ground is judged by the size rule the facility model owns', () => {
+  /**
+   * `replacementSurfacesFor()` used to judge "is this ground big enough" from
+   * the **smallest** declared size while `checkSizeEligibility()` judges it from
+   * the **largest** and honours a literal declaration. Every surface declaring
+   * more than one size fell in the gap: Brookside's Upper 1 and Upper 2 declare
+   * `["7v7","9v9"]`, are `allowed` for 9v9, and are counted as 9v9 ground by the
+   * reserve adapter — and were refused as replacement ground for 9v9, so a
+   * venue withdrawal reported 9v9 games unrelocatable while legal ground stood
+   * empty.
+   *
+   * The subject is chosen by a stated property — a leaf surface declaring more
+   * than one size — rather than by name, and the assertion below is an equality
+   * over the *whole* corpus rather than a check on the two surfaces that showed
+   * it.
+   */
+  const rank = graph.sizeRank ?? DEFAULT_SIZE_RANK;
+  /** Ordered by the rank table itself, so "the largest format it fits" means what it says. */
+  const FORMATS = Object.keys(rank).sort((a, b) => rank[a] - rank[b]);
+  /** High enough that the "one grade up" ceiling never bites, so only the size predicate is under test. */
+  const NO_CEILING = 99;
+  const leaves = graph.surfaceIds
+    .map((id) => graph.surfaces[id])
+    .filter((surface) => surface.childIds.length === 0);
+  const multiSized = leaves.filter((surface) => surface.sizes.length > 1);
+
+  /** The predicate this test is about, asked of the facility model. */
+  const sizeEligible = (surfaceId, format) =>
+    checkSizeEligibility(graph, { surfaceId, format }).status === FACILITY_STATUS.ALLOWED;
+
+  it('has ground declared for more than one size to be wrong about', () => {
+    // The meta-assertion the rest of the block rests on. A corpus in which every
+    // surface declared exactly one size would make "smallest" and "largest" the
+    // same number, and every assertion below would pass vacuously.
+    expect(leaves.length).toBeGreaterThan(10);
+    expect(multiSized.length).toBeGreaterThan(0);
+    expect(FORMATS.length).toBeGreaterThan(3);
+    // …and at least one of them is eligible for a format that is not its
+    // smallest declared size, which is the case the two rules disagreed on.
+    const straddling = multiSized.filter((surface) => {
+      const ranks = surface.sizes.map((size) => rank[size]).filter((r) => typeof r === 'number');
+      return FORMATS.some(
+        (format) => sizeEligible(surface.id, format) && rank[format] > Math.min(...ranks)
+      );
+    });
+    expect(straddling.length).toBeGreaterThan(0);
+  });
+
+  it('offers exactly the surfaces the facility model calls size-eligible', () => {
+    for (const format of FORMATS) {
+      const offered = new Set(
+        replacementSurfacesFor(graph, { format, maxGradesAbove: NO_CEILING })
+      );
+      const eligible = leaves
+        .filter((surface) => sizeEligible(surface.id, format))
+        .map((surface) => surface.id)
+        .sort();
+      expect([...offered].sort(), `replacement ground for ${format}`).toEqual(eligible);
+    }
+  });
+
+  it('rejects the smallest-declared-size rule it used to use', () => {
+    // The positive control. The old predicate, written out here, is run against
+    // the assertion above; if it passed, the assertion would be proving nothing.
+    const oldPredicate = (format) =>
+      leaves
+        .filter((surface) => {
+          const ranks = surface.sizes
+            .map((size) => rank[size])
+            .filter((r) => typeof r === 'number');
+          if (ranks.length === 0) return false;
+          const smallest = Math.min(...ranks);
+          return smallest >= rank[format] && smallest <= rank[format] + NO_CEILING;
+        })
+        .map((surface) => surface.id)
+        .sort();
+    const disagreements = FORMATS.filter((format) => {
+      const eligible = leaves
+        .filter((surface) => sizeEligible(surface.id, format))
+        .map((surface) => surface.id)
+        .sort();
+      return JSON.stringify(oldPredicate(format)) !== JSON.stringify(eligible);
+    });
+    expect(disagreements.length).toBeGreaterThan(0);
+  });
+
+  it('names the ground the withdrawal report used to call unreachable', () => {
+    // The reproduced case, derived: every multi-sized leaf, at the largest
+    // format it is eligible for, under the adapter's own one-grade-up policy.
+    for (const surface of multiSized) {
+      const eligible = FORMATS.filter((format) => sizeEligible(surface.id, format));
+      const largest = eligible[eligible.length - 1];
+      expect(replacementSurfacesFor(graph, { format: largest, maxGradesAbove: 1 })).toContain(
+        surface.id
+      );
+    }
+    // …which on this corpus is Brookside's two, for 9v9.
+    expect(replacementSurfacesFor(graph, { format: '9v9', maxGradesAbove: 1 })).toEqual(
+      expect.arrayContaining(['brookside-park/upper-1', 'brookside-park/upper-2'])
+    );
+  });
+
+  it('still refuses ground more than the stated number of grades above the format', () => {
+    // The ceiling is this module's own policy and it survives the fix: the grade
+    // of a surface is its largest declared size, which is the same quantity
+    // `checkSizeEligibility()` measures "big enough" against.
+    for (const format of FORMATS) {
+      for (const surfaceId of replacementSurfacesFor(graph, { format, maxGradesAbove: 1 })) {
+        const ranks = graph.surfaces[surfaceId].sizes
+          .map((size) => rank[size])
+          .filter((r) => typeof r === 'number');
+        expect(Math.max(...ranks), `${surfaceId} offered for ${format}`).toBeLessThanOrEqual(
+          rank[format] + 1
+        );
+      }
+    }
+    // Non-vacuous: the stadium is eligible for 7v7 under the downward-closed
+    // policy and is not offered for it.
+    expect(sizeEligible('summit-hs/stadium', '7v7')).toBe(true);
+    expect(replacementSurfacesFor(graph, { format: '7v7', maxGradesAbove: 1 })).not.toContain(
+      'summit-hs/stadium'
+    );
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* Round 2 sweep — a capacity delta says whether its two reports could count    */
+/* -------------------------------------------------------------------------- */
+
+describe('a capacity delta states what the two reports it came from said', () => {
+  /**
+   * Class B in `diffCapacity()`: `buildReserveCapacityReport()` returns a count
+   * **and** a report about the count, and only the count was read. A report that
+   * generated no slots says `RESERVE_CAPACITY_VACUOUS` at blocking, and the
+   * delta published from it read as a plain fact about the season — "0 against
+   * 0, a delta of 0" being the most dangerous shape of that.
+   */
+  const cleanSubject = capacitySubjects[0];
+  /**
+   * The same subject with its kickoff window shut. Nothing about the ground
+   * changes; the report simply generates no slot to count, which is exactly the
+   * state `RESERVE_CAPACITY_VACUOUS` exists to name.
+   */
+  const vacuousSubject = {
+    ...cleanSubject,
+    latestKickoffMinutes: cleanSubject.earliestKickoffMinutes - 1,
+  };
+
+  it('carries both reports statuses and codes on the delta it publishes', () => {
+    const clean = diffCapacity(baselineEngines, baselineEngines, [cleanSubject]);
+    const finding = /** @type {Object} */ (
+      clean.findings.find((entry) => entry.code === SCENARIO_REASON.SCENARIO_CAPACITY_DELTA)
+    );
+    expect(finding).toBeDefined();
+    // The meta-assertion: the clean subject really did count something, or the
+    // contrast below would be between two empty reports.
+    expect(finding.details.leftSlots).toBeGreaterThan(0);
+    expect(finding.details.leftReportStatus).toBe(finding.details.rightReportStatus);
+    expect(Array.isArray(finding.details.leftReportCodes)).toBe(true);
+    expect(Array.isArray(finding.details.rightReportCodes)).toBe(true);
+  });
+
+  it('does not let a delta of nothing read as a delta', () => {
+    const vacuous = diffCapacity(baselineEngines, baselineEngines, [vacuousSubject]);
+    const finding = /** @type {Object} */ (
+      vacuous.findings.find((entry) => entry.code === SCENARIO_REASON.SCENARIO_CAPACITY_DELTA)
+    );
+    // The numbers on their own say "nothing changed"…
+    expect(finding.details.leftSlots).toBe(0);
+    expect(finding.details.rightSlots).toBe(0);
+    expect(finding.details.delta).toBe(0);
+    // …and the half that used to be dropped says why that is not a fact about
+    // the season.
+    expect(finding.details.leftReportCodes).toContain('RESERVE_CAPACITY_VACUOUS');
+    expect(finding.details.rightReportCodes).toContain('RESERVE_CAPACITY_VACUOUS');
+    expect(finding.details.leftReportStatus).toBe('rejected');
+    expect(finding.details.rightReportStatus).toBe('rejected');
   });
 });

@@ -133,9 +133,17 @@ function consequential(findings) {
  * Retyping is what Prompt 2.1 exists to make routine, so both go through the
  * same seam.
  *
- * The seam's own provenance findings are discarded here exactly as
- * `checkPlacement()` discards them: this is a severity lookup, not a second
- * report about the registry.
+ * **The seam's own provenance findings are discarded here, and
+ * `checkPlacement()` no longer discards them.** The difference is what each is
+ * handed. `checkPlacement()` holds the game, so a `team`-scoped record it left
+ * `CONSTRAINT_SCOPE_UNJUDGED` is one it could have judged, and it now returns
+ * the seam's report on `registryFindings`. This helper is handed a *place* —
+ * `where` carries a surface, a venue and a date and no sides at all, because the
+ * two boundary questions are asked of ground on a date rather than of a fixture.
+ * An unjudged team scope from here says "the question named no team", which is
+ * true of every call and so tells a reader nothing. `explainGame()` and
+ * `explainKickoffTime()` reach the game's own verdict through
+ * `checkPlacement()`, which is where the sides are.
  *
  * @param {import('./types.js').AttributionContext} context
  * @param {{ surfaceId: string, venueId: string|null, date: string, divisionLabel?: string|null }} where
@@ -151,7 +159,13 @@ function underRegistry(context, where, findings) {
     /** @type {import('../constraints/types.js').ConstraintRegistry} */ (context.engines.registry),
     {
       date: where.date,
-      venueId: surface?.venueId ?? where.venueId,
+      // `undefined`, never `null`: `ScopeContextSchema` is `.strict()` and takes
+      // an absent venue as "the context does not name one", which is what an
+      // unknown surface means. A `null` is a stated venue whose id is nothing,
+      // and it is a `ZodError` out of a severity lookup rather than an answer.
+      // `feasibility/verdict.js` `underRegistry()` writes the same coalesce for
+      // the same reason; this one was a hardcoded `null` at every call site.
+      venueId: surface?.venueId ?? where.venueId ?? undefined,
       surfaceId: where.surfaceId,
       surfaceLineage: surface ? [...surface.lineage] : [where.surfaceId],
       ...(where.divisionLabel ? { divisionLabel: where.divisionLabel } : {}),

@@ -187,9 +187,19 @@ export function unenforcedGoverningConstraints(verification, registry, context, 
  *
  * The same two public functions `resolve/legality.js` calls, in the same order,
  * so a retyped constraint reads identically in a feasibility answer and in the
- * placement check it is derived from. The seam's own provenance findings are
- * discarded here exactly as `checkPlacement()` discards them: this is a severity
- * lookup, not a second report about the registry.
+ * placement check it is derived from.
+ *
+ * **The seam's own provenance findings are discarded here, and `checkPlacement()`
+ * no longer discards them.** That is a real difference and not an oversight.
+ * `checkPlacement()` is handed a *game*, so a `team`-scoped record it cannot
+ * judge is a record it could have judged and did not — worth reporting, and it
+ * now returns them on `registryFindings`. This function is handed a *position*:
+ * a surface, a venue and a date, with no sides anywhere in `where`, because
+ * `probeKickoff()` asks about a slot rather than about a fixture. A
+ * `CONSTRAINT_SCOPE_UNJUDGED` from here says only "the question named no team",
+ * which is true of every call and therefore tells a reader nothing. The
+ * team-scoped verdict still reaches a feasibility answer, through
+ * `attribution/explain.js` and `checkPlacement()`, which is where the game is.
  *
  * @param {{ graph: Object, registry: Object }} engines
  * @param {{ surfaceId: string, venueId: string|null, date: string, divisionLabel?: string|null }} where

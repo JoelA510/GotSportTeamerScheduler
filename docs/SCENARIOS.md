@@ -348,10 +348,22 @@ solver did not find them. Every finding this module emits names the policy.
 | `policy`                 | `nearest-kickoff` (drift first) or `prefer-clean` (grade first)                       |
 
 `replacementSurfacesFor()` filters to leaf surfaces (booking a parent pitch takes
-both halves with it), not at a withdrawn venue, and **within one size grade of
-the format**. The last filter matters: the size policy is downward-closed, so
-*every* 11v11 pitch is technically eligible for a 7v7 game and a search that took
-the policy literally would offer the stadium.
+both halves with it), not at a withdrawn venue, **big enough for the format**,
+and **within one size grade of it**.
+
+"Big enough" is `checkSizeEligibility()`'s answer and not a second rule. It used
+to be a parallel one that judged from the *smallest* declared size, and every
+surface declaring more than one fell in the gap: Brookside's Upper 1 and Upper 2
+declare `["7v7","9v9"]`, are `allowed` for 9v9, and are counted as 9v9 ground by
+the reserve adapter — and were refused as replacement ground for 9v9, so a
+withdrawal reported 9v9 games unrelocatable while legal ground stood empty.
+
+The last filter matters for the opposite reason: the size policy is
+downward-closed, so *every* 11v11 pitch is technically eligible for a 7v7 game and
+a search that took the policy literally would offer the stadium. A surface's
+**grade is its largest declared size** — the same quantity `checkSizeEligibility()`
+measures "big enough" against, so the floor and the ceiling are read off one
+number rather than off two that can disagree.
 
 The **anchor** matters too, and the test asserts why. The club's blanket first
 kickoff is 08:00; the earliest 7v7 kickoff in the corpus is 09:00. A grid laid at

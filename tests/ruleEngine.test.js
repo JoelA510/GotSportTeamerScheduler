@@ -1763,3 +1763,165 @@ describe('rule engine :: the season-2026 adapter', () => {
     expect(findings.severity).toBe(RULE_SEVERITY.INFO);
   });
 });
+
+/* -------------------------------------------------------------------------- */
+/* Round 2, finding 5 - one bad surface id used to take both field rules down   */
+/* -------------------------------------------------------------------------- */
+
+describe('rule engine :: a game on ground the graph does not hold', () => {
+  /**
+   * `scanConcurrency()` handed both surface ids straight to `surfacesConflict()`,
+   * which looks them up with `requireSurface()` and throws. One game on an
+   * unknown surface therefore made **both** concurrency rules `RULE_THREW`:
+   * every real clash in the schedule went unreported and the `OCCUPIED_*` and
+   * `OCCUPANCY_FOOTPRINT_UNKNOWN` counts fell to zero — which `verify` and
+   * `scenario/diff.js` read as an improvement. A blindness that presents as a
+   * better schedule is the worst failure mode this package has.
+   *
+   * The subject is chosen by property: a game that really is concurrent with
+   * another at its own venue on its own date, because a game with no concurrent
+   * partner never reaches the comparison and so never showed the defect.
+   */
+
+  /** Two games are concurrent when both footprints are known and they overlap. */
+  const concurrent = (a, b) =>
+    a.date === b.date &&
+    a.endMinutes !== null &&
+    b.endMinutes !== null &&
+    a.startMinutes < b.endMinutes &&
+    b.startMinutes < a.endMinutes;
+
+  const victim = schedule.games.find((game) =>
+    schedule.games.some(
+      (other) => other.id !== game.id && other.venueId === game.venueId && concurrent(game, other)
+    )
+  );
+  const GHOST = `${/** @type {Object} */ (victim).surfaceId}-not-in-the-graph`;
+
+  /**
+   * The same season with that one game moved onto ground the graph does not
+   * hold, and **the surface universe moved with it** — which is what
+   * `toSeason2026Schedule()` does, since it derives the universe from the games
+   * themselves. That matters: with the ghost inside its own universe the
+   * exercise judge says nothing, so `RULE_MATCHED_UNKNOWN_IDENTIFIER` does not
+   * cover this case and the two rules have to speak for themselves.
+   */
+  const poisoned = {
+    ...schedule,
+    games: schedule.games.map((game) =>
+      game.id === /** @type {Object} */ (victim).id ? { ...game, surfaceId: GHOST } : game
+    ),
+    surfaceUniverse: [...new Set([...schedule.surfaceUniverse, GHOST])].sort(),
+  };
+  const poisonedRun = runRuleEngine(poisoned, { registry, resources });
+
+  /** Every violation code and how many of each, for one run. */
+  const violationCounts = (result) => {
+    /** @type {Record<string, number>} */
+    const counts = {};
+    for (const violation of result.violations) {
+      counts[violation.code] = (counts[violation.code] ?? 0) + 1;
+    }
+    return counts;
+  };
+
+  it('has a genuinely concurrent game to move, and moves only that one', () => {
+    // Three meta-assertions. Without a concurrent partner the pair loop never
+    // runs; without the ghost being absent from the graph there is nothing to
+    // be unable to look up; and without it being *present* in the universe the
+    // exercise judge would report it and this block would be about that instead.
+    expect(victim).toBeDefined();
+    expect(graph.surfaceIds).not.toContain(GHOST);
+    expect(poisoned.surfaceUniverse).toContain(GHOST);
+    expect(poisoned.games).toHaveLength(schedule.games.length);
+    expect(poisoned.games.filter((game) => game.surfaceId === GHOST)).toHaveLength(1);
+  });
+
+  it('does not take the two concurrency rules down with it', () => {
+    expect(poisonedRun.meta.rulesThrew).toBe(0);
+    expect(poisonedRun.meta.rulesRun).toBe(run.meta.rulesRun);
+    for (const ruleId of [RULE_ID.FIELD_SAME_GROUND, RULE_ID.FIELD_ADJACENCY]) {
+      expect(poisonedRun.byRuleId[ruleId].ran, ruleId).toBe(true);
+      expect(
+        poisonedRun.byRuleId[ruleId].findings.map((finding) => finding.code),
+        ruleId
+      ).not.toContain(RULE_REASON.RULE_THREW);
+    }
+  });
+
+  it('keeps reporting everything the clean run reported', () => {
+    // The half that mattered. Every code the clean run raised is still raised at
+    // the same count, so nothing about the rest of the season went quiet.
+    const before = violationCounts(run);
+    const after = violationCounts(poisonedRun);
+    // The meta-assertion: the clean run really does report things to lose.
+    expect(Object.keys(before).length).toBeGreaterThan(3);
+    expect(before[FACILITY_REASON.OCCUPANCY_FOOTPRINT_UNKNOWN]).toBeGreaterThan(0);
+    for (const [code, count] of Object.entries(before)) {
+      expect(after[code], `${code} after one bad surface id`).toBe(count);
+    }
+  });
+
+  it('says, from each rule, which question it could not ask about that game', () => {
+    for (const ruleId of [RULE_ID.FIELD_SAME_GROUND, RULE_ID.FIELD_ADJACENCY]) {
+      const subject = poisonedRun.byRuleId[ruleId].subjects.find(
+        (entry) => entry.details.gameId === /** @type {Object} */ (victim).id
+      );
+      expect(subject, ruleId).toBeDefined();
+      const finding = /** @type {Object} */ (subject).findings.find(
+        (entry) => entry.code === FACILITY_REASON.SURFACE_UNKNOWN
+      );
+      expect(finding, ruleId).toBeDefined();
+      expect(finding.severity).toBe(RULE_SEVERITY.BLOCKING);
+      expect(finding.details.surfaceId).toBe(GHOST);
+      expect(finding.message).toContain('could not be decided');
+      // Each rule names its own unrun check rather than repeating the other's.
+      expect(finding.details.ruleId).toBe(ruleId);
+    }
+    const sameGround = /** @type {Object} */ (
+      poisonedRun.byRuleId[RULE_ID.FIELD_SAME_GROUND].subjects.find(
+        (entry) => entry.details.gameId === /** @type {Object} */ (victim).id
+      )
+    ).findings.find((entry) => entry.code === FACILITY_REASON.SURFACE_UNKNOWN);
+    const adjacency = /** @type {Object} */ (
+      poisonedRun.byRuleId[RULE_ID.FIELD_ADJACENCY].subjects.find(
+        (entry) => entry.details.gameId === /** @type {Object} */ (victim).id
+      )
+    ).findings.find((entry) => entry.code === FACILITY_REASON.SURFACE_UNKNOWN);
+    expect(sameGround.message).not.toBe(adjacency.message);
+  });
+
+  it('counts the pairs it could not judge rather than counting them as compared', () => {
+    // The exercise minimums are written on `concurrentPairsCompared`, so a pair
+    // that never reached `surfacesConflict()` must not be counted there: a
+    // schedule whose every concurrent pair stood on unknown ground would
+    // otherwise claim to have proved something.
+    for (const ruleId of [RULE_ID.FIELD_SAME_GROUND, RULE_ID.FIELD_ADJACENCY]) {
+      const counters = poisonedRun.byRuleId[ruleId].exercise.counters;
+      expect(counters.unknownSurfaceGames, ruleId).toBe(1);
+      expect(counters.concurrentPairsUnjudgedUnknownSurface, ruleId).toBeGreaterThan(0);
+      expect(counters.concurrentPairsCompared, ruleId).toBe(
+        run.byRuleId[ruleId].exercise.counters.concurrentPairsCompared -
+          counters.concurrentPairsUnjudgedUnknownSurface
+      );
+    }
+  });
+
+  it('reports nothing of the sort on the clean season', () => {
+    // The negative control: a guard that fired for every surface would pass
+    // every assertion above and report the whole corpus as unknown ground.
+    for (const ruleId of [RULE_ID.FIELD_SAME_GROUND, RULE_ID.FIELD_ADJACENCY]) {
+      expect(run.byRuleId[ruleId].exercise.counters.unknownSurfaceGames, ruleId).toBe(0);
+      expect(
+        run.byRuleId[ruleId].exercise.counters.concurrentPairsUnjudgedUnknownSurface,
+        ruleId
+      ).toBe(0);
+      expect(
+        run.byRuleId[ruleId].subjects.flatMap((entry) =>
+          entry.findings.map((finding) => finding.code)
+        ),
+        ruleId
+      ).not.toContain(FACILITY_REASON.SURFACE_UNKNOWN);
+    }
+  });
+});

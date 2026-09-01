@@ -160,24 +160,57 @@ function bucketByVenueDate(games) {
  * concurrent" is decided once, by `bookingsOverlapInTime()`, and each rule only
  * chooses which verdicts are its business.
  *
+ * ## Ground the graph does not hold
+ *
+ * `surfacesConflict()` looks both surfaces up with `requireSurface()`, which
+ * throws. A game whose `surfaceId` the graph does not hold therefore took the
+ * **whole rule** down: `field-same-ground` and `field-adjacency` both came back
+ * `RULE_THREW`, every real clash in the schedule went unreported, and the
+ * `OCCUPIED_*` and `OCCUPANCY_FOOTPRINT_UNKNOWN` counts fell to zero — which
+ * `verify` and `scenario/diff.js` read as an *improvement*. A blindness that
+ * presents as a better schedule is the worst failure mode this package has.
+ *
+ * The sibling in this same file already reports rather than throws:
+ * `scanKickoffs()` runs `checkKickoffAvailability()`, which emits
+ * `SURFACE_UNKNOWN` and carries on, and `field-eligibility` owns that code. So
+ * this scan reports too. Two consequences are deliberate:
+ *
+ * - The unjudgeable games come back on `unknownSurface`, and **both** rules
+ *   publish `SURFACE_UNKNOWN` against them naming the check that went unrun.
+ *   `field-eligibility`'s finding says the ground is unfit; theirs say the
+ *   concurrency question was never asked. `RULE_MATCHED_UNKNOWN_IDENTIFIER` does
+ *   not cover it: `toSeason2026Schedule()` derives `surfaceUniverse` from the
+ *   games themselves, so a bad surface id is inside its own universe and the
+ *   exercise judge says nothing about it.
+ * - `concurrentPairs` and `concurrentCrossSurfacePairs` count only pairs that
+ *   actually reached `surfacesConflict()`. Both rules' exercise minimums are
+ *   written on those counters, so a schedule whose every concurrent pair stands
+ *   on unknown ground fails `RULE_EXERCISE_BELOW_MINIMUM` at blocking rather
+ *   than reporting a clean bill for work it did not do.
+ *
  * @param {Object} graph
  * @param {ReadonlyArray<import('./types.js').ScheduledGame>} games
- * @returns {{ pairs: Array<{ a: import('./types.js').ScheduledGame, b: import('./types.js').ScheduledGame, code: string|null, sameSurface: boolean }>, unknownFootprint: import('./types.js').ScheduledGame[], pairsCompared: number, concurrentPairs: number, concurrentCrossSurfacePairs: number, surfaceIds: Set<string> }}
+ * @returns {{ pairs: Array<{ a: import('./types.js').ScheduledGame, b: import('./types.js').ScheduledGame, code: string|null, sameSurface: boolean }>, unknownFootprint: import('./types.js').ScheduledGame[], unknownSurface: import('./types.js').ScheduledGame[], pairsCompared: number, concurrentPairs: number, concurrentCrossSurfacePairs: number, pairsUnjudgedUnknownSurface: number, surfaceIds: Set<string> }}
  */
 function scanConcurrency(graph, games) {
   /** @type {Array<{ a: import('./types.js').ScheduledGame, b: import('./types.js').ScheduledGame, code: string|null, sameSurface: boolean }>} */
   const pairs = [];
   /** @type {import('./types.js').ScheduledGame[]} */
   const unknownFootprint = [];
+  /** @type {import('./types.js').ScheduledGame[]} */
+  const unknownSurface = [];
   const surfaceIds = new Set();
   let pairsCompared = 0;
   let concurrentPairs = 0;
   let concurrentCrossSurfacePairs = 0;
+  let pairsUnjudgedUnknownSurface = 0;
 
   for (const game of games) {
     surfaceIds.add(game.surfaceId);
     if (game.endMinutes === null) unknownFootprint.push(game);
+    if (!getSurface(/** @type {any} */ (graph), game.surfaceId)) unknownSurface.push(game);
   }
+  const unknownSurfaceIds = new Set(unknownSurface.map((game) => game.surfaceId));
 
   for (const bucket of bucketByVenueDate(games).values()) {
     for (let i = 0; i < bucket.length; i += 1) {
@@ -188,6 +221,13 @@ function scanConcurrency(graph, games) {
         // `null` means an unknown footprint; that game is reported separately
         // and inventing a verdict for it would hide the gap (GAP-14).
         if (bookingsOverlapInTime(bookingOf(a), bookingOf(b)) !== true) continue;
+        // Concurrent, and one of them stands on ground the graph does not hold,
+        // so whether they share it cannot be decided. Counted and reported, not
+        // thrown and not waved through — see this function's own doc-comment.
+        if (unknownSurfaceIds.has(a.surfaceId) || unknownSurfaceIds.has(b.surfaceId)) {
+          pairsUnjudgedUnknownSurface += 1;
+          continue;
+        }
         concurrentPairs += 1;
         const sameSurface = a.surfaceId === b.surfaceId;
         if (!sameSurface) concurrentCrossSurfacePairs += 1;
@@ -200,9 +240,11 @@ function scanConcurrency(graph, games) {
   return {
     pairs,
     unknownFootprint,
+    unknownSurface,
     pairsCompared,
     concurrentPairs,
     concurrentCrossSurfacePairs,
+    pairsUnjudgedUnknownSurface,
     surfaceIds,
   };
 }
@@ -235,6 +277,38 @@ function pairFinding(code, a, b, surfaceAName, surfaceBName) {
         startBMinutes: b.startMinutes,
         endBMinutes: b.endMinutes,
         venueId: a.venueId,
+      }
+    )
+  );
+}
+
+/**
+ * "This game stands on ground the graph does not hold, so the check below never
+ * ran on it."
+ *
+ * `facility/`'s own code, built by `facility/`'s own `makeFinding()`, so the
+ * severity comes from the one table that owns it. Both concurrency rules emit
+ * it, each naming its own unrun check: an operator told only that the ground is
+ * unfit (which is `field-eligibility`'s finding) would not know that the
+ * same-ground and adjacency questions were never asked about this row.
+ *
+ * @param {string} ruleId
+ * @param {import('./types.js').ScheduledGame} game
+ * @param {string} unrun - what could not be decided, in words
+ * @returns {import('./types.js').RuleFinding}
+ */
+function unknownGroundFinding(ruleId, game, unrun) {
+  return /** @type {import('./types.js').RuleFinding} */ (
+    makeFinding(
+      FACILITY_REASON.SURFACE_UNKNOWN,
+      `${game.id} names surface "${game.surfaceId}", which is not in the graph, so ${unrun}`,
+      {
+        ruleId,
+        bookingId: game.id,
+        surfaceId: game.surfaceId,
+        venueId: game.venueId,
+        date: game.date,
+        startMinutes: game.startMinutes,
       }
     )
   );
@@ -406,6 +480,7 @@ export const fieldSameGroundRule = Object.freeze({
     FACILITY_REASON.OCCUPIED_SAME_SURFACE,
     FACILITY_REASON.OCCUPIED_PARENT_CHILD,
     FACILITY_REASON.OCCUPANCY_FOOTPRINT_UNKNOWN,
+    FACILITY_REASON.SURFACE_UNKNOWN,
   ],
   rationale:
     'Two games on the identical surface, or on a pitch and one of its own halves, cannot both be played. The verdict comes from the Phase 1.1 facility graph; this rule only decides which of its answers belong to this constraint.',
@@ -448,6 +523,17 @@ export const fieldSameGroundRule = Object.freeze({
       push(pair.a, finding);
     }
 
+    for (const game of scan.unknownSurface) {
+      push(
+        game,
+        unknownGroundFinding(
+          RULE_ID.FIELD_SAME_GROUND,
+          game,
+          'whether it stands on the same patch of ground as anything else could not be decided'
+        )
+      );
+    }
+
     for (const game of scan.unknownFootprint) {
       push(
         game,
@@ -485,6 +571,8 @@ export const fieldSameGroundRule = Object.freeze({
         gamePairsCompared: scan.pairsCompared,
         concurrentPairsCompared: scan.concurrentPairs,
         unknownFootprintGames: scan.unknownFootprint.length,
+        unknownSurfaceGames: scan.unknownSurface.length,
+        concurrentPairsUnjudgedUnknownSurface: scan.pairsUnjudgedUnknownSurface,
       },
       matched: {
         [RULE_IDENTIFIER_KIND.SURFACE]: [...scan.surfaceIds].sort(),
@@ -499,7 +587,7 @@ export const fieldAdjacencyRule = Object.freeze({
   id: RULE_ID.FIELD_ADJACENCY,
   title: 'Overlapping fields may not host concurrent games',
   constraintIds: [SEASON_2026_CONSTRAINT_ID.FIELD_OVERLAP_ADJACENCY],
-  reasonCodes: [FACILITY_REASON.OCCUPIED_SPATIAL_OVERLAP],
+  reasonCodes: [FACILITY_REASON.OCCUPIED_SPATIAL_OVERLAP, FACILITY_REASON.SURFACE_UNKNOWN],
   rationale:
     'Alder Park pitches 2 and 3 physically overlap 1 and 4, halves included. Incident 3 is the version of this rule that arrived mid-project, after several schedule versions had modelled the fields as independent strings.',
   exercise: {
@@ -533,6 +621,17 @@ export const fieldAdjacencyRule = Object.freeze({
       /** @type {import('./types.js').RuleFinding[]} */ (byGameId.get(pair.a.id)).push(finding);
     }
 
+    for (const game of scan.unknownSurface) {
+      if (!byGameId.has(game.id)) byGameId.set(game.id, []);
+      /** @type {import('./types.js').RuleFinding[]} */ (byGameId.get(game.id)).push(
+        unknownGroundFinding(
+          RULE_ID.FIELD_ADJACENCY,
+          game,
+          'whether it overlaps ground another game is using at the same minute could not be decided'
+        )
+      );
+    }
+
     const gamesById = new Map(schedule.games.map((game) => [game.id, game]));
     const subjects = [...byGameId.entries()].map(([gameId, findings]) =>
       gameSubject(
@@ -553,6 +652,8 @@ export const fieldAdjacencyRule = Object.freeze({
         concurrentPairsCompared: scan.concurrentPairs,
         concurrentFieldPairsCompared: scan.concurrentCrossSurfacePairs,
         overlapPairsInGraph,
+        unknownSurfaceGames: scan.unknownSurface.length,
+        concurrentPairsUnjudgedUnknownSurface: scan.pairsUnjudgedUnknownSurface,
       },
       matched: {
         [RULE_IDENTIFIER_KIND.SURFACE]: [...scan.surfaceIds].sort(),

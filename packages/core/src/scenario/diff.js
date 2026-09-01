@@ -254,6 +254,11 @@ export function scheduleDiffPartitionFindings(partition, counts) {
  *
  * @param {Object} leftEngines
  * @param {Object} rightEngines
+ * Each delta's finding also states **what the two reports themselves said** —
+ * their statuses and the reason codes they carried — because a delta is only a
+ * fact about the season when both sides could count. See the note beside
+ * `reportCodes` below.
+ *
  * @param {ReadonlyArray<Object>} subjects - `ReserveCapacityInputSchema` inputs
  * @returns {{ deltas: import('./types.js').ScenarioCapacityDelta[], findings: import('./types.js').ScenarioFinding[] }}
  */
@@ -266,6 +271,26 @@ export function diffCapacity(leftEngines, rightEngines, subjects) {
   for (const subject of subjects) {
     const left = buildReserveCapacityReport(leftEngines, subject);
     const right = buildReserveCapacityReport(rightEngines, subject);
+    /**
+     * **Whether the two numbers came from reports that could count.**
+     *
+     * `buildReserveCapacityReport()` returns a count *and* a report about the
+     * count, and only the count was read. A report that examined no dates or
+     * generated no slots says `RESERVE_CAPACITY_VACUOUS` at blocking, and a
+     * subject whose reserved ground the report does not cover says
+     * `RESERVED_SLOT_UNCOVERED` — and the delta published from either read as a
+     * plain fact about the season, with "0 against 0, a delta of 0" the most
+     * dangerous shape of it.
+     *
+     * Carried as **data on the delta's own finding**, not merged into
+     * `findings`. These are reserve-vocabulary findings with reserve
+     * severities; splicing a `blocking` one into a scenario report would let
+     * one module's severity table decide another's status, which is the drift
+     * `timing/reasonCodes.js` opens by refusing. The codes and the two statuses
+     * are what a reader needs to know the number is worth reading.
+     */
+    const reportCodes = (report) =>
+      [...new Set(report.findings.map((finding) => finding.code))].sort();
     /** @type {Record<string, { left: number, right: number, delta: number }>} */
     const byDate = {};
     for (const date of [
@@ -301,6 +326,10 @@ export function diffCapacity(leftEngines, rightEngines, subjects) {
           delta: rightTotal - leftTotal,
           dateCount: Object.keys(byDate).length,
           surfaceCount: [...new Set(subject.surfaceIds)].length,
+          leftReportStatus: left.status,
+          rightReportStatus: right.status,
+          leftReportCodes: reportCodes(left),
+          rightReportCodes: reportCodes(right),
         }
       )
     );
