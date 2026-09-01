@@ -15,7 +15,8 @@ remembered.
 
 **Twenty-one PRs merged (#334-#354);** the table's rows exceed that because
 setup, 0.1 and 0.2 share #334. Test suite **848 → 2066**: 848 at `cd31924`, the
-merge before #334, and 2066 at `9253ad0`, the merge of #354. The season fixture
+merge before #334, and 2165 at `06a1b97`, after the whole-build review of §2a.
+The season fixture
 was green at every merge, and the shipping app never regressed — the bundle's
 first-paint total held at 217.96 KB gz with the same entry hash from the first
 PR to the last, because nothing built here is wired into it yet (see §3).
@@ -115,11 +116,88 @@ bodies for #334 to #354, which is where it belongs now that the plan is done.
 It lived here while the work was in flight because the scratchpad kept being
 wiped and this file was the only thing that survived.
 
+### 2a. The whole-build review
+
+The eleven per-prompt reviews each saw one module's diff. A single review across
+the finished work — all 20 modules, ~109k lines — was run afterwards, and found
+**fifteen defects in three rounds (5, 5, 5), every one at a seam between two
+modules**. Merged as #356.
+
+The two worth remembering:
+
+- **A branch built its waiver ledger and never installed it** on the engines its
+  re-solve reads, so waived violations were priced as blocking in the objective
+  and the report, feeding the branch's status and its promotion gate. This
+  corpus's incident 9, in new code. No per-prompt review could have found it:
+  the 6.1 acceptance branch has no waivable violation at all, so the case had to
+  be found by probing every venue withdrawal for one that does.
+- **One game on an unknown surface made both clash rules throw**, so every real
+  clash in the 679-row season went unreported and the occupancy counts fell to
+  zero — which `verify` and the scenario diff read as an improvement. A blindness
+  that presents as a better schedule is the worst shape this project produced.
+
+**The loop terminated on its own evidence.** Round 2 found that three of its five
+findings were round 1's classes in a different module pair, so round 2 closed the
+classes package-wide instead of patching sites. Round 3 then found mostly those
+same shapes recurring plus items already on the open list — the search exhausting
+itself rather than the code continuing to yield.
+
+Three structural guards came out of it, each with a positive control, and each
+deriving its population from source rather than from a list someone maintains:
+
+- every facility-importing module must be classified as reporting, reporting
+  elsewhere, deliberately throwing, or graph-derived — a new importer fails until
+  classified;
+- every severity-table call must read the seam's findings or name itself with a
+  reason (this one caught a misclassification inside the sweep that produced it);
+- **a field produced under one file and read under none fails.** That guard exists
+  because a fix approved in round 2 turned out to be inert — fields added beside a
+  result that no production caller read. A field nobody reads is the appearance of
+  a middle path, not one, and it is the same hollow-guarantee shape the per-prompt
+  reviews found ~150 times.
+
+No acceptance figure moved in any round, measured through the acceptance path
+each time rather than argued.
+
 ## 3. Remaining
 
 Nothing. 7.3 was the last prompt in the build plan.
 
 Follow-ups raised during the build and deliberately not absorbed:
+
+From the whole-build review (#356), stated rather than left to be rediscovered:
+
+- **11 declared reason codes are unreachable**, each named with a reason in
+  `UNREACHABLE` in `tests/reasonCodeReachability.test.js` — 8 with no production
+  path, 3 reachable only through an exported helper the pipeline never calls that
+  way. The audit header is a checked claim and reads 18 vocabularies / 396 codes /
+  385 producible / 11 holes.
+- **Four call sites still drop the severity-seam report**, each named with a
+  reason. `placement/replaceGames.js` now judges the team scope but is still
+  excused from carrying the report — one half of a pair that was matched in
+  `checkPlacement()`.
+- **`resolve/stages.js` reads neither half of the registry trace.** The stated
+  bound of the round-3 fix: the solver's hot path cannot afford a status-moving
+  remark. A team-scoped record left unjudged during a re-solve is invisible unless
+  someone later asks `explainGame()` about that game.
+- **`attribution/minimal.js` does not surface the trace** at either
+  `checkPlacement()` call; `legalWith()` sits inside a relaxation search, and
+  `minimalBlockingSet()`'s single call could afford it and does not.
+- **The three capacity codes answering the proposer's own invented requirement
+  are readable only on `capacities`** and nothing reads them, so "was there room?"
+  at branch level means walking that list. Correctly not blocking the plan — but
+  the same shape as the inert-field defect, one level down.
+- **`conflictFairnessRule`'s undecidable pairs do not reach `violations`,** so a
+  scenario diff cannot see one being introduced. Stable at 1 on this corpus. The
+  fix is a subject and costs +100 quality per side.
+- **`reserve/conditions.js` answers `null` — "unconditional" — for ground the
+  graph does not hold.** Unreachable through the pipeline, which is asserted, but
+  a direct caller would read it as an all-clear.
+- **`proposeRelocations()` keeps every capacity report now, but the `underRegistry()`
+  seam is triplicated** across attribution, feasibility and resolve. Docstrings
+  agree with the code; the shared-seam refactor is proposed, not built.
+- **~44 markdown files fail `prettier --check` at baseline**, including
+  `docs/FREEZE_SCOPES.md`. Pre-existing and untouched.
 
 - **A standing warm-up rule.** `timing/` proved the published season has 8 warm-up
   conflicts on its busiest date, but `SEASON_2026_WARMUP_POLICY` ships empty and
