@@ -1,0 +1,5 @@
+permit_id,venue,event,issued,max_daily_attendance,source_pages
+PERMIT-01,Alder Park,Soccer practice and games,2026-08-10,50,24
+PERMIT-02,Brookside Park,Soccer practices (week) Games (Saturday),2026-08-03,40,7
+PERMIT-03,Maplewood,Soccer practice and games (Junior),2026-07-31,50,10
+PERMIT-04,Summit HS,soccer practice and games,2026-08-07,30,5
