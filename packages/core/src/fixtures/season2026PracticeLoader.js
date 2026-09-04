@@ -47,6 +47,13 @@ const FIXTURE_RELATIVE_DIR = path.join('fixtures', 'season-2026', 'practice');
  */
 export const SEASON_LONG_CLOSURE_MIN_FRACTION = 0.5;
 
+/**
+ * A closure row is all-day when it opens at 00:00 and closes at or after this
+ * — `23:00`, the latest close the constraint sheet writes (it never writes
+ * `24:00`). Anything narrower is a daily window, reported as time-bounded.
+ */
+export const ALL_DAY_CLOSE_MINUTES = 23 * 60;
+
 /** Default location, resolved from this module's own path (see the game loader). */
 const DEFAULT_FIXTURE_DIR = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -133,7 +140,7 @@ export function loadPracticeFile(fileName, options = {}) {
  *
  * @param {Object} parsed - the per-file parse results, keyed by file name
  * @param {import('./season2026Loader.js').Season2026} season
- * @returns {{ findings: Array<Object>, examined: Record<string, number>, seasonLongClosures: Array<{ id: string, venue: string, overlapDays: number, seasonDays: number }> }}
+ * @returns {{ findings: Array<Object>, examined: Record<string, number>, seasonLongClosures: Array<{ id: string, venue: string, overlapDays: number, seasonDays: number }>, timeBoundedClosures: Array<{ id: string, venue: string, overlapDays: number, seasonDays: number, startMinutes: number, endMinutes: number }> }}
  */
 export function crossCorpusFindings(parsed, season) {
   const findings = [];
@@ -148,6 +155,7 @@ export function crossCorpusFindings(parsed, season) {
     namedPlayerKeys: 0,
     rosterSelectTeams: 0,
     rosterSelectCoaches: 0,
+    timeBoundedSeasonClosures: 0,
     reservations: 0,
     /** Reservations dated before the season's first scheduled date, and after its last. */
     reservationsBeforeSeason: 0,
@@ -327,22 +335,39 @@ export function crossCorpusFindings(parsed, season) {
   // SEASON_LONG_CLOSURE_MIN_FRACTION of the days from the first scheduled date
   // to the last. Half is the threshold because at that point the venue is
   // closed for more of the season than it is open, whatever its span.
+  // The time window is honoured too: only an all-day row (the sheet's own
+  // spelling is 00:00-23:00) closes the venue. A multi-day all-fields row with
+  // a daily window is not promoted; it is reported apart as time-bounded, so a
+  // consumer that knows the practice hours can judge it.
   const seasonDays = inclusiveSpanDays(firstScheduled, lastScheduled);
   const seasonLongClosures = [];
+  const timeBoundedClosures = [];
   for (const constraint of constraints) {
     if (!constraint.allFields) continue;
     examined.allFieldsConstraints += 1;
     const from = constraint.dateStart > firstScheduled ? constraint.dateStart : firstScheduled;
     const to = constraint.dateEnd < lastScheduled ? constraint.dateEnd : lastScheduled;
     const overlapDays = from <= to ? inclusiveSpanDays(from, to) : 0;
-    if (overlapDays / seasonDays >= SEASON_LONG_CLOSURE_MIN_FRACTION) {
-      seasonLongClosures.push({
+    if (overlapDays / seasonDays < SEASON_LONG_CLOSURE_MIN_FRACTION) continue;
+    const allDay = constraint.startMinutes === 0 && constraint.endMinutes >= ALL_DAY_CLOSE_MINUTES;
+    if (!allDay) {
+      examined.timeBoundedSeasonClosures += 1;
+      timeBoundedClosures.push({
         id: constraint.id,
         venue: constraint.venue,
         overlapDays,
         seasonDays,
+        startMinutes: constraint.startMinutes,
+        endMinutes: constraint.endMinutes,
       });
+      continue;
     }
+    seasonLongClosures.push({
+      id: constraint.id,
+      venue: constraint.venue,
+      overlapDays,
+      seasonDays,
+    });
   }
 
   /* ---- registrations against each other ---- */
@@ -409,18 +434,17 @@ export function crossCorpusFindings(parsed, season) {
     }
   }
 
-  /* ---- aliases against closures ---- */
-  const closedVenues = new Set(seasonLongClosures.map((closure) => closure.venue));
+  /* ---- aliases against closures: one finding per closure ---- */
+  const closuresByVenue = new Map();
+  const constraintById = new Map(constraints.map((constraint) => [constraint.id, constraint]));
+  for (const closure of seasonLongClosures) {
+    if (!closuresByVenue.has(closure.venue)) closuresByVenue.set(closure.venue, []);
+    closuresByVenue.get(closure.venue).push(constraintById.get(closure.id));
+  }
   for (const alias of aliases) {
     if (alias.venue === null) continue;
     examined.aliasesWithVenue += 1;
-    const closure = closedVenues.has(alias.venue)
-      ? constraints.find(
-          (constraint) =>
-            constraint.id === seasonLongClosures.find((c) => c.venue === alias.venue).id
-        )
-      : null;
-    if (closure) {
+    for (const closure of closuresByVenue.get(alias.venue) ?? []) {
       push({
         code: SEASON_2026_PRACTICE_FINDING.ALIAS_RESOLVES_TO_CLOSED_VENUE,
         file: 'practice_field_aliases.csv',
@@ -432,7 +456,7 @@ export function crossCorpusFindings(parsed, season) {
     }
   }
 
-  return { findings, examined, seasonLongClosures };
+  return { findings, examined, seasonLongClosures, timeBoundedClosures };
 }
 
 /* -------------------------------------------------------------------------- */
@@ -458,6 +482,7 @@ export function crossCorpusFindings(parsed, season) {
  * @property {Array<Object>} fieldEquipment
  * @property {{ shared: string[], disagreements: Array<Object> }} decoderRings
  * @property {Array<{ id: string, venue: string, overlapDays: number, seasonDays: number }>} seasonLongClosures
+ * @property {Array<{ id: string, venue: string, overlapDays: number, seasonDays: number, startMinutes: number, endMinutes: number }>} timeBoundedClosures
  * @property {Array<Object>} findings
  * @property {Record<string, number>} findingsByCode - every code in the table, zero included
  * @property {{ rowsRead: number, rowsParsed: number, files: Record<string, {rowsRead: number, rowsParsed: number}>, examined: Record<string, number> }} meta
@@ -540,6 +565,7 @@ export function loadSeason2026Practice(options = {}) {
     fieldEquipment: parsed['field_equipment.csv'].records,
     decoderRings: { shared: decoderRings.shared, disagreements: decoderRings.disagreements },
     seasonLongClosures: cross.seasonLongClosures,
+    timeBoundedClosures: cross.timeBoundedClosures,
     findings,
     findingsByCode,
     meta: { rowsRead, rowsParsed, files, examined: cross.examined },

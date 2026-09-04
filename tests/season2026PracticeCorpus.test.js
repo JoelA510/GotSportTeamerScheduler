@@ -47,6 +47,7 @@ import {
   SEASON_2026_PRACTICE_FINDING_SEVERITY,
   SEASON_2026_PRACTICE_SCHEMAS,
   SEASON_LONG_CLOSURE_MIN_FRACTION,
+  ALL_DAY_CLOSE_MINUTES,
   UNRESOLVED_VENUE_TOKEN,
 } from '@squadlogic/core/fixtures/index.js';
 
@@ -55,6 +56,13 @@ const season = loadSeason2026();
 const practice = loadSeason2026Practice({ season });
 
 const F = SEASON_2026_PRACTICE_FINDING;
+
+/** The blocking codes, each raised by the "raises every blocking code" control. */
+const BLOCKING_CODES_DRIVEN_BELOW = [
+  F.CHANGE_LOG_DAY_MISMATCH,
+  F.PERMIT_DAY_MISMATCH,
+  F.PRACTICE_TEAM_NOT_ON_ROSTER,
+].sort();
 
 /** The corpus in the per-file shape `crossCorpusFindings()` takes, for the controls. */
 const parsedCorpus = {
@@ -245,8 +253,12 @@ describe('season-2026 practice corpus :: every file, every row', () => {
     for (const finding of practice.findings) {
       expect(finding.severity).toBe(SEASON_2026_PRACTICE_FINDING_SEVERITY[finding.code]);
     }
-    // Nothing in the shipped corpus is blocking; the two blocking codes are
-    // driven by the positive controls below.
+    // Nothing in the shipped corpus is blocking. Every blocking code is driven
+    // by a positive control in this file ("raises every blocking code").
+    const blocking = Object.keys(SEASON_2026_PRACTICE_FINDING_SEVERITY).filter(
+      (code) => SEASON_2026_PRACTICE_FINDING_SEVERITY[code] === 'blocking'
+    );
+    expect(blocking.sort()).toEqual(BLOCKING_CODES_DRIVEN_BELOW);
     expect(practice.findings.filter((f) => f.severity === 'blocking')).toHaveLength(0);
     expect(practice.findings.filter((f) => f.severity === 'compromise').length).toBeGreaterThan(0);
   });
@@ -413,6 +425,14 @@ describe('season-2026 practice corpus :: field constraints and closures', () => 
       expect(practice.fieldConstraints.find((row) => row.id === closure.id).allFields).toBe(true);
     }
     expect(closures.map((c) => c.overlapDays)).toEqual([71, 85, 85]);
+    // All three are all-day rows; no multi-day row with a daily window exists.
+    for (const closure of closures) {
+      const row = practice.fieldConstraints.find((r) => r.id === closure.id);
+      expect(row.startMinutes).toBe(0);
+      expect(row.endMinutes).toBeGreaterThanOrEqual(ALL_DAY_CLOSE_MINUTES);
+    }
+    expect(practice.timeBoundedClosures).toEqual([]);
+    expect(practice.meta.examined.timeBoundedSeasonClosures).toBe(0);
     // The criterion separates them from everything else by a wide margin: the
     // other all-fields rows are single days.
     expect(practice.meta.examined.allFieldsConstraints).toBe(5);
@@ -1069,6 +1089,159 @@ describe('season-2026 practice corpus :: positive controls', () => {
         .filter((f) => f.code === F.ALIAS_RESOLVES_TO_CLOSED_VENUE)
         .map((f) => f.subject)
     ).toEqual(['7v7 Field 1']);
+  });
+
+  it('keeps a time-bounded multi-day closure apart from a season-long one', () => {
+    // Same dates as Cedarbrook's real closure, but 16:00-19:00 daily: enough
+    // date overlap to qualify, yet not an all-day row, so it is reported as
+    // time-bounded and the alias finding does not fire.
+    const constraints = parseFieldConstraints(
+      csvRow('field_constraints.csv', {
+        date_start: '2026-09-05',
+        date_end: '2026-11-28',
+        time_start: '16:00',
+        time_end: '19:00',
+        venue: 'Cedarbrook Park',
+        fields: 'All',
+        reason: 'Offline',
+      })
+    );
+    const result = crossCorpusFindings(parsedWith('field_constraints.csv', constraints), season);
+    expect(result.seasonLongClosures).toEqual([]);
+    expect(result.timeBoundedClosures).toMatchObject([
+      { venue: 'Cedarbrook Park', overlapDays: 71, startMinutes: 960, endMinutes: 1140 },
+    ]);
+    expect(result.examined.timeBoundedSeasonClosures).toBe(1);
+    expect(result.findings.filter((f) => f.code === F.ALIAS_RESOLVES_TO_CLOSED_VENUE)).toEqual([]);
+  });
+
+  it('reports one alias finding per season-long closure of its venue', () => {
+    // Two all-day closures of the venue, each covering the whole season.
+    const both = parseFieldConstraints(
+      csvRows('field_constraints.csv', [
+        {
+          date_start: '2026-08-01',
+          date_end: '2026-11-28',
+          time_start: '00:00',
+          time_end: '23:00',
+          venue: 'Cedarbrook Park',
+          fields: 'All',
+          reason: 'Reseeding',
+        },
+        {
+          date_start: '2026-08-01',
+          date_end: '2026-11-28',
+          time_start: '00:00',
+          time_end: '23:00',
+          venue: 'Cedarbrook Park',
+          fields: 'All',
+          reason: 'Offline',
+        },
+      ])
+    );
+    const result = crossCorpusFindings(parsedWith('field_constraints.csv', both), season);
+    expect(result.seasonLongClosures.map((c) => c.venue)).toEqual([
+      'Cedarbrook Park',
+      'Cedarbrook Park',
+    ]);
+    const closed = result.findings.filter((f) => f.code === F.ALIAS_RESOLVES_TO_CLOSED_VENUE);
+    expect(closed.map((f) => f.subject)).toEqual(['7v7 Field 1', '7v7 Field 1']);
+    expect(closed.map((f) => f.detail)).toEqual([
+      'resolves to Cedarbrook Park, Reseeding 2026-08-01 to 2026-11-28',
+      'resolves to Cedarbrook Park, Offline 2026-08-01 to 2026-11-28',
+    ]);
+    // The corpus has one season-long closure for the venue and one finding.
+    expect(findingsOf(F.ALIAS_RESOLVES_TO_CLOSED_VENUE)).toHaveLength(1);
+  });
+
+  it('compares the first occurrence of a duplicated code on either side', () => {
+    const alias = parsePracticeFieldAliases(
+      csvRow('practice_field_aliases.csv', {
+        display_name: '7v7 Field 1',
+        actual_label: 'X',
+        venue: 'V',
+      })
+    ).records;
+    // Fields sheet lists X then Y: the alias agrees with the first row, so no
+    // disagreement — a last-wins index would report one.
+    const agreesFirst = parseFieldCodeNames(
+      csvRows('field_code_names.csv', [
+        { code_name: '7v7 Field 1', actual_label: 'X', venue: 'V' },
+        { code_name: '7v7 Field 1', actual_label: 'Y', venue: 'V' },
+      ])
+    );
+    expect(agreesFirst.findings.map((f) => f.code)).toEqual([F.DUPLICATE_DECODER_CODE]);
+    expect(compareDecoderRings(alias, agreesFirst.records).disagreements).toEqual([]);
+    // Fields sheet lists Y then X: the first row differs, so one disagreement
+    // — a last-wins index would silently reconcile it to zero.
+    const differsFirst = parseFieldCodeNames(
+      csvRows('field_code_names.csv', [
+        { code_name: '7v7 Field 1', actual_label: 'Y', venue: 'V' },
+        { code_name: '7v7 Field 1', actual_label: 'X', venue: 'V' },
+      ])
+    );
+    const mirror = compareDecoderRings(alias, differsFirst.records);
+    expect(mirror.disagreements).toHaveLength(1);
+    expect(mirror.disagreements[0].fieldsSheet).toBe('Y');
+  });
+
+  it('judges an unparsed availability row from the data, not only the label', () => {
+    // An empty window the source does not account for is unparsed even when
+    // the label is blank; `unavailable` and `competitive-programme` account for it.
+    const row = (raw_value, interpretation) =>
+      parseWeeklyAvailability(
+        csvRow('field_weekly_availability.csv', {
+          venue: 'V',
+          day: 'Mon',
+          raw_value,
+          interpreted_window: '',
+          interpretation,
+        })
+      ).findings.map((f) => f.code);
+    expect(row('ask Pat', '')).toEqual([F.AVAILABILITY_UNPARSED]);
+    expect(row('X', 'unavailable')).toEqual([]);
+    expect(row('comp', 'competitive-programme')).toEqual([]);
+    expect(findingsOf(F.AVAILABILITY_UNPARSED)).toHaveLength(0);
+  });
+
+  it('raises every blocking code', () => {
+    // The three blocking codes, each from the public entry point that owns it.
+    const raised = new Set();
+    for (const f of parseGameChangeLog(
+      csvRow('game_change_log.csv', {
+        date: 'Nov 08 (Mon)',
+        matchup: 'A vs B',
+        was: '(not previously scheduled)',
+        now: '5:30 PM Alder Park Soccer 2',
+        reason: 'r',
+      }),
+      { seasonYear: 2026 }
+    ).findings) {
+      raised.add(f.code);
+    }
+    for (const f of parsePermitReservations(
+      csvRow('permit_reservations.csv', {
+        permit_id: 'P',
+        venue: 'V',
+        date: '2026-08-10',
+        day: 'Tuesday',
+        start: '18:00',
+        end: '20:00',
+        facility: 'F',
+      })
+    ).findings) {
+      raised.add(f.code);
+    }
+    for (const f of crossCorpusFindings(
+      parsedWith(
+        'practice_grid.csv',
+        parsePracticeGrid(csvRow('practice_grid.csv', { ...GRID_ROW, team_code: '05GMicro99' }))
+      ),
+      season
+    ).findings) {
+      if (f.code === F.PRACTICE_TEAM_NOT_ON_ROSTER) raised.add(f.code);
+    }
+    expect([...raised].sort()).toEqual(BLOCKING_CODES_DRIVEN_BELOW);
   });
 
   it('compares a duplicated alias code once and reports the duplicate', () => {

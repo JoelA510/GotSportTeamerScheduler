@@ -1073,7 +1073,12 @@ export function parseFieldCodeNames(text, _options = {}) {
  * @returns {{ shared: string[], disagreements: Array<{code:string, kind:string, practiceSheet:string|null, fieldsSheet:string, fieldsSheetConfirmed:string|null}>, findings: Array<Object> }}
  */
 export function compareDecoderRings(aliases, codeNames) {
-  const byCode = new Map(codeNames.map((record) => [record.codeName, record]));
+  // First occurrence on both sides: a duplicated code_name is the parser's
+  // DUPLICATE_DECODER_CODE finding, never the row that happened to come last.
+  const byCode = new Map();
+  for (const record of codeNames) {
+    if (!byCode.has(record.codeName)) byCode.set(record.codeName, record);
+  }
   const shared = [];
   const disagreements = [];
   const findings = [];
@@ -1556,10 +1561,17 @@ export function parseWeeklyAvailability(text, _options = {}) {
     const rawValue = trim(row.raw_value);
     const dateShaped = ISO_DATE_RE.test(rawValue);
     const labelled = interpretation === 'excel-date-corruption';
+    // "Unparsed" is judged from the data too: an empty window that the source
+    // does not account for (unavailable, competitive-programme) is unparsed
+    // whether or not the label says so.
+    const unaccounted =
+      window === '' &&
+      interpretation !== 'unavailable' &&
+      interpretation !== 'competitive-programme';
     const flagged =
       dateShaped || labelled
         ? SEASON_2026_PRACTICE_FINDING.AVAILABILITY_EXCEL_DATE_CORRUPTION
-        : interpretation === 'unparsed'
+        : interpretation === 'unparsed' || unaccounted
           ? SEASON_2026_PRACTICE_FINDING.AVAILABILITY_UNPARSED
           : null;
     if (flagged) {

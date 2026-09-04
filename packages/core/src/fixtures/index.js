@@ -69,6 +69,7 @@ export {
   readPracticeFixtureFile,
   SEASON_2026_PRACTICE_FILES,
   SEASON_LONG_CLOSURE_MIN_FRACTION,
+  ALL_DAY_CLOSE_MINUTES,
 } from './season2026PracticeLoader.js';
 
 export {
