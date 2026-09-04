@@ -29,6 +29,7 @@ import {
 } from './season2026Loader.js';
 import {
   compareDecoderRings,
+  inclusiveSpanDays,
   makePracticeFinding,
   SEASON_2026_PRACTICE_COLUMNS,
   SEASON_2026_PRACTICE_FINDING,
@@ -38,6 +39,13 @@ import {
 
 /** Path of the corpus relative to the repository root. */
 const FIXTURE_RELATIVE_DIR = path.join('fixtures', 'season-2026', 'practice');
+
+/**
+ * An all-fields closure covering at least this fraction of the days between
+ * the season's first and last scheduled date is "closed for effectively the
+ * whole season". See `crossCorpusFindings()` for why half.
+ */
+export const SEASON_LONG_CLOSURE_MIN_FRACTION = 0.5;
 
 /** Default location, resolved from this module's own path (see the game loader). */
 const DEFAULT_FIXTURE_DIR = path.resolve(
@@ -125,7 +133,7 @@ export function loadPracticeFile(fileName, options = {}) {
  *
  * @param {Object} parsed - the per-file parse results, keyed by file name
  * @param {import('./season2026Loader.js').Season2026} season
- * @returns {{ findings: Array<Object>, examined: Record<string, number> }}
+ * @returns {{ findings: Array<Object>, examined: Record<string, number>, seasonLongClosures: Array<{ id: string, venue: string, overlapDays: number, seasonDays: number }> }}
  */
 export function crossCorpusFindings(parsed, season) {
   const findings = [];
@@ -141,6 +149,10 @@ export function crossCorpusFindings(parsed, season) {
     rosterSelectTeams: 0,
     rosterSelectCoaches: 0,
     reservations: 0,
+    /** Reservations dated before the season's first scheduled date, and after its last. */
+    reservationsBeforeSeason: 0,
+    reservationsAfterSeason: 0,
+    allFieldsConstraints: 0,
     venueFiles: 0,
     venueNames: 0,
     aliasesWithVenue: 0,
@@ -287,18 +299,50 @@ export function crossCorpusFindings(parsed, season) {
     }
   }
 
-  /* ---- reservations against the season year ---- */
+  /* ---- reservations against the season ---- */
+  // The finding is a calendar-year check and says so. How much of the permit
+  // sits outside the scheduled season proper (the August lead-in, the
+  // December tail) is a figure in `examined`, not hundreds of per-row findings.
+  const firstScheduled = season.scheduledDates[0];
+  const lastScheduled = season.scheduledDates[season.scheduledDates.length - 1];
   for (const row of reservations) {
     examined.reservations += 1;
+    if (row.date < firstScheduled) examined.reservationsBeforeSeason += 1;
+    if (row.date > lastScheduled) examined.reservationsAfterSeason += 1;
     if (Number(row.date.slice(0, 4)) === season.seasonYear) continue;
     push({
-      code: SEASON_2026_PRACTICE_FINDING.PERMIT_RESERVATION_OUTSIDE_SEASON,
+      code: SEASON_2026_PRACTICE_FINDING.PERMIT_RESERVATION_OUTSIDE_SEASON_YEAR,
       file: 'permit_reservations.csv',
       rowIndex: row.rowIndex,
       subject: `${row.permitId} ${row.date}`,
-      detail: `dated outside the ${season.seasonYear} season the game corpus states`,
+      detail: `dated in ${row.date.slice(0, 4)}, not the ${season.seasonYear} season year the game corpus states`,
       raw: row.raw,
     });
+  }
+
+  /* ---- closures against the scheduled season ---- */
+  // "Closed for effectively the whole season" is decided here, where the
+  // season's dates are known, not by a day count in the parser: an all-fields
+  // closure is season-long when it covers at least
+  // SEASON_LONG_CLOSURE_MIN_FRACTION of the days from the first scheduled date
+  // to the last. Half is the threshold because at that point the venue is
+  // closed for more of the season than it is open, whatever its span.
+  const seasonDays = inclusiveSpanDays(firstScheduled, lastScheduled);
+  const seasonLongClosures = [];
+  for (const constraint of constraints) {
+    if (!constraint.allFields) continue;
+    examined.allFieldsConstraints += 1;
+    const from = constraint.dateStart > firstScheduled ? constraint.dateStart : firstScheduled;
+    const to = constraint.dateEnd < lastScheduled ? constraint.dateEnd : lastScheduled;
+    const overlapDays = from <= to ? inclusiveSpanDays(from, to) : 0;
+    if (overlapDays / seasonDays >= SEASON_LONG_CLOSURE_MIN_FRACTION) {
+      seasonLongClosures.push({
+        id: constraint.id,
+        venue: constraint.venue,
+        overlapDays,
+        seasonDays,
+      });
+    }
   }
 
   /* ---- registrations against each other ---- */
@@ -365,12 +409,17 @@ export function crossCorpusFindings(parsed, season) {
     }
   }
 
-  /* ---- aliases against constraints ---- */
-  const seasonClosures = constraints.filter((constraint) => constraint.seasonLong);
+  /* ---- aliases against closures ---- */
+  const closedVenues = new Set(seasonLongClosures.map((closure) => closure.venue));
   for (const alias of aliases) {
     if (alias.venue === null) continue;
     examined.aliasesWithVenue += 1;
-    const closure = seasonClosures.find((constraint) => constraint.venue === alias.venue);
+    const closure = closedVenues.has(alias.venue)
+      ? constraints.find(
+          (constraint) =>
+            constraint.id === seasonLongClosures.find((c) => c.venue === alias.venue).id
+        )
+      : null;
     if (closure) {
       push({
         code: SEASON_2026_PRACTICE_FINDING.ALIAS_RESOLVES_TO_CLOSED_VENUE,
@@ -383,7 +432,7 @@ export function crossCorpusFindings(parsed, season) {
     }
   }
 
-  return { findings, examined };
+  return { findings, examined, seasonLongClosures };
 }
 
 /* -------------------------------------------------------------------------- */
@@ -408,6 +457,7 @@ export function crossCorpusFindings(parsed, season) {
  * @property {Array<Object>} weeklyAvailability
  * @property {Array<Object>} fieldEquipment
  * @property {{ shared: string[], disagreements: Array<Object> }} decoderRings
+ * @property {Array<{ id: string, venue: string, overlapDays: number, seasonDays: number }>} seasonLongClosures
  * @property {Array<Object>} findings
  * @property {Record<string, number>} findingsByCode - every code in the table, zero included
  * @property {{ rowsRead: number, rowsParsed: number, files: Record<string, {rowsRead: number, rowsParsed: number}>, examined: Record<string, number> }} meta
@@ -489,6 +539,7 @@ export function loadSeason2026Practice(options = {}) {
     weeklyAvailability: parsed['field_weekly_availability.csv'].records,
     fieldEquipment: parsed['field_equipment.csv'].records,
     decoderRings: { shared: decoderRings.shared, disagreements: decoderRings.disagreements },
+    seasonLongClosures: cross.seasonLongClosures,
     findings,
     findingsByCode,
     meta: { rowsRead, rowsParsed, files, examined: cross.examined },

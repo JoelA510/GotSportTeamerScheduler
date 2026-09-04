@@ -4927,7 +4927,7 @@ harvest(
 // Excel-corrupted rows, the two decoder rings' 12 disagreements, the minted
 // people, and so on. The six it does not carry are the six it should not:
 // a row the source could not interpret at all, a reservation whose stated day
-// is not its date's, a reservation dated outside the season, a change-log
+// is not its date's, a reservation dated outside the season year, a change-log
 // note that disagrees with its date, a code listed twice in one decoder ring,
 // and a practice slot for a team the roster does not hold. Each is driven
 // through the same public parser the loader calls, fed a one- or two-row file.
@@ -4961,7 +4961,7 @@ harvest(
   )
 );
 harvest(
-  'crossCorpusFindings(a grid naming a team the roster does not hold, and a reservation dated outside the season)',
+  'crossCorpusFindings(a grid naming a team the roster does not hold, and a reservation dated outside the season year)',
   crossCorpusFindings(
     {
       'practice_grid.csv': parsePracticeGrid(

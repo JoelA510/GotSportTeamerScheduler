@@ -97,8 +97,8 @@ export const SEASON_2026_PRACTICE_FINDING = Object.freeze({
   SELECT_COACH_SLOT_DIFFERS: 'SELECT_COACH_SLOT_DIFFERS',
   /** A rostered coach of a Select team whom `select_coaches.csv` does not list. */
   SELECT_COACH_OMITTED_BY_SHEET: 'SELECT_COACH_OMITTED_BY_SHEET',
-  /** A `permit_reservations.csv` window dated outside the game corpus's season year. */
-  PERMIT_RESERVATION_OUTSIDE_SEASON: 'PERMIT_RESERVATION_OUTSIDE_SEASON',
+  /** A `permit_reservations.csv` window whose calendar year is not the game corpus's season year. */
+  PERMIT_RESERVATION_OUTSIDE_SEASON_YEAR: 'PERMIT_RESERVATION_OUTSIDE_SEASON_YEAR',
   /** A venue named in this corpus that `../facility_geometry.json` does not know by that name. */
   VENUE_NOT_IN_GAME_CORPUS: 'VENUE_NOT_IN_GAME_CORPUS',
   /** A practice alias whose real venue `field_constraints.csv` closes for the season. */
@@ -141,7 +141,8 @@ export const SEASON_2026_PRACTICE_FINDING_SEVERITY = Object.freeze({
   [SEASON_2026_PRACTICE_FINDING.SELECT_COACH_NOT_ON_ROSTER_TEAM]: FACILITY_SEVERITY.COMPROMISE,
   [SEASON_2026_PRACTICE_FINDING.SELECT_COACH_SLOT_DIFFERS]: FACILITY_SEVERITY.INFO,
   [SEASON_2026_PRACTICE_FINDING.SELECT_COACH_OMITTED_BY_SHEET]: FACILITY_SEVERITY.COMPROMISE,
-  [SEASON_2026_PRACTICE_FINDING.PERMIT_RESERVATION_OUTSIDE_SEASON]: FACILITY_SEVERITY.COMPROMISE,
+  [SEASON_2026_PRACTICE_FINDING.PERMIT_RESERVATION_OUTSIDE_SEASON_YEAR]:
+    FACILITY_SEVERITY.COMPROMISE,
   [SEASON_2026_PRACTICE_FINDING.VENUE_NOT_IN_GAME_CORPUS]: FACILITY_SEVERITY.COMPROMISE,
   [SEASON_2026_PRACTICE_FINDING.ALIAS_RESOLVES_TO_CLOSED_VENUE]: FACILITY_SEVERITY.COMPROMISE,
 });
@@ -266,9 +267,8 @@ const FieldConstraintSchema = z
     /** The `fields` cell as written — `4`, `All`, `Parking`, `Adjacent Fields`, or a corrupted date. */
     fields: NonEmpty,
     allFields: z.boolean(),
+    /** Parser-level fact. Whether it closes the venue for the season is the loader's call. */
     spanDays: z.number().int().min(1),
-    /** An all-fields closure spanning `SEASON_LONG_CLOSURE_MIN_DAYS` or more. */
-    seasonLong: z.boolean(),
     reason: NonEmpty,
     sourceKind: NonEmpty.nullable(),
     raw: RawRowSchema,
@@ -568,11 +568,18 @@ export const SEASON_2026_PRACTICE_COLUMNS = Object.freeze({
 export const UNRESOLVED_VENUE_TOKEN = '(unresolved)';
 
 /**
- * An all-fields constraint spanning at least this many days is "closed for
- * effectively the whole season" in the README's words. The corpus's three such
- * rows span 92 and 120 days inclusive; its longest single-event blackout spans one.
+ * What a decoder-ring disagreement is made of. Both kinds count as a
+ * disagreement — the plan says fewer than 12 means something was silently
+ * reconciled, and the corpus author counted a blank against a label — but a
+ * reader of the count is told which is which.
+ *
+ * @readonly
+ * @enum {string}
  */
-export const SEASON_LONG_CLOSURE_MIN_DAYS = 60;
+export const DECODER_DISAGREEMENT_KIND = Object.freeze({
+  LABEL_CONFLICT: 'label-conflict',
+  BLANK_VS_LABEL: 'blank-vs-label',
+});
 
 /* -------------------------------------------------------------------------- */
 /* Primitive parsers                                                           */
@@ -904,33 +911,40 @@ export function parsePracticeGrid(text, _options = {}) {
 /* -------------------------------------------------------------------------- */
 
 /**
- * Record a code seen twice in one decoder ring. `compareDecoderRings()` indexes
- * a ring by code, so a duplicate would otherwise be resolved by whichever row
- * came last — which is exactly the silent reconciliation the plan warns of.
+ * Record a key seen twice in one file. The one duplicate detector, used by
+ * both decoder rings, both registrations and the inventory: a key that would
+ * be indexed downstream must not be quietly resolved to whichever row came
+ * last — which is exactly the silent reconciliation the plan warns of.
  *
- * @param {Map<string, number>} seen
- * @param {string} code
+ * @param {Map<string, number>} seen - key → first row index, per file
+ * @param {string} key
  * @param {number} rowIndex
  * @param {string} fileName
  * @param {Record<string, string>} row
  * @param {Array<Object>} findings
+ * @param {string} code - a {@link SEASON_2026_PRACTICE_FINDING} value
+ * @param {(firstRow: number) => string} detailOf
  */
-function noteDuplicateCode(seen, code, rowIndex, fileName, row, findings) {
-  if (seen.has(code)) {
+function noteDuplicate(seen, key, rowIndex, fileName, row, findings, code, detailOf) {
+  if (seen.has(key)) {
     findings.push(
       makePracticeFinding({
-        code: SEASON_2026_PRACTICE_FINDING.DUPLICATE_DECODER_CODE,
+        code,
         file: fileName,
         rowIndex,
-        subject: code,
-        detail: `also listed at row ${seen.get(code)}; a lookup by code would keep only one`,
+        subject: key,
+        detail: detailOf(/** @type {number} */ (seen.get(key))),
         raw: row,
       })
     );
   } else {
-    seen.set(code, rowIndex);
+    seen.set(key, rowIndex);
   }
 }
+
+/** The decoder-ring wording, shared by both rings. */
+const duplicateCodeDetail = (firstRow) =>
+  `also listed at row ${firstRow}; a lookup by code would keep only one`;
 
 /**
  * @param {string} text
@@ -942,7 +956,16 @@ export function parsePracticeFieldAliases(text, _options = {}) {
   const findings = [];
   const seen = new Map();
   const records = rows.map((row, rowIndex) => {
-    noteDuplicateCode(seen, trim(row.display_name), rowIndex, fileName, row, findings);
+    noteDuplicate(
+      seen,
+      trim(row.display_name),
+      rowIndex,
+      fileName,
+      row,
+      findings,
+      SEASON_2026_PRACTICE_FINDING.DUPLICATE_DECODER_CODE,
+      duplicateCodeDetail
+    );
     const actualLabel = orNull(row.actual_label);
     if (actualLabel === null) {
       findings.push(
@@ -992,7 +1015,16 @@ export function parseFieldCodeNames(text, _options = {}) {
   const findings = [];
   const seen = new Map();
   const records = rows.map((row, rowIndex) => {
-    noteDuplicateCode(seen, trim(row.code_name), rowIndex, fileName, row, findings);
+    noteDuplicate(
+      seen,
+      trim(row.code_name),
+      rowIndex,
+      fileName,
+      row,
+      findings,
+      SEASON_2026_PRACTICE_FINDING.DUPLICATE_DECODER_CODE,
+      duplicateCodeDetail
+    );
     const uncertain = parseYesFlag(row.uncertain, `${fileName} row ${rowIndex} uncertain`);
     if (uncertain) {
       findings.push(
@@ -1030,22 +1062,35 @@ export function parseFieldCodeNames(text, _options = {}) {
  * that "neither side is marked authoritative" is something a reader derives
  * from the data rather than takes on trust. Nothing here resolves on it.
  *
+ * Each code is compared once: a display name the aliases sheet lists twice is
+ * the parser's `DUPLICATE_DECODER_CODE` finding, not a second comparison.
+ * Every disagreement carries a `kind`, so a count of them says what it is made
+ * of: a `label-conflict` is two labels that differ, a `blank-vs-label` is a
+ * code the practice sheet lists with no field behind it.
+ *
  * @param {Array<{rowIndex:number, displayName:string, actualLabel:string|null, raw:Object}>} aliases
  * @param {Array<{codeName:string, actualLabel:string, confirmed:string|null, raw:Object}>} codeNames
- * @returns {{ shared: string[], disagreements: Array<{code:string, practiceSheet:string|null, fieldsSheet:string, fieldsSheetConfirmed:string|null}>, findings: Array<Object> }}
+ * @returns {{ shared: string[], disagreements: Array<{code:string, kind:string, practiceSheet:string|null, fieldsSheet:string, fieldsSheetConfirmed:string|null}>, findings: Array<Object> }}
  */
 export function compareDecoderRings(aliases, codeNames) {
   const byCode = new Map(codeNames.map((record) => [record.codeName, record]));
   const shared = [];
   const disagreements = [];
   const findings = [];
+  const visited = new Set();
   for (const alias of aliases) {
+    if (visited.has(alias.displayName)) continue;
+    visited.add(alias.displayName);
     const other = byCode.get(alias.displayName);
     if (!other) continue;
     shared.push(alias.displayName);
     if (alias.actualLabel === other.actualLabel) continue;
     disagreements.push({
       code: alias.displayName,
+      kind:
+        alias.actualLabel === null
+          ? DECODER_DISAGREEMENT_KIND.BLANK_VS_LABEL
+          : DECODER_DISAGREEMENT_KIND.LABEL_CONFLICT,
       practiceSheet: alias.actualLabel,
       fieldsSheet: other.actualLabel,
       fieldsSheetConfirmed: other.confirmed,
@@ -1105,7 +1150,6 @@ export function parseFieldConstraints(text, _options = {}) {
       fields,
       allFields,
       spanDays,
-      seasonLong: allFields && spanDays >= SEASON_LONG_CLOSURE_MIN_DAYS,
       reason: trim(row.reason),
       sourceKind: orNull(row.source_kind),
       raw: row,
@@ -1141,20 +1185,16 @@ export function parseCoachRegistration(text, options) {
   const seen = new Map();
   const records = rows.map((row, rowIndex) => {
     const personKey = trim(row.person_key);
-    if (seen.has(personKey)) {
-      findings.push(
-        makePracticeFinding({
-          code: SEASON_2026_PRACTICE_FINDING.DUPLICATE_PERSON_KEY,
-          file: fileName,
-          rowIndex,
-          subject: personKey,
-          detail: `also registered at row ${seen.get(personKey)}`,
-          raw: row,
-        })
-      );
-    } else {
-      seen.set(personKey, rowIndex);
-    }
+    noteDuplicate(
+      seen,
+      personKey,
+      rowIndex,
+      fileName,
+      row,
+      findings,
+      SEASON_2026_PRACTICE_FINDING.DUPLICATE_PERSON_KEY,
+      (firstRow) => `also registered at row ${firstRow}`
+    );
     const players = /** @type {Array<1|2>} */ ([1, 2]).map((slot) => {
       const birthYear = parseIntOrNull(
         row[`player_${slot}_birth_year`],
@@ -1218,20 +1258,16 @@ export function parsePlayerRegistration(text, options) {
   const seen = new Map();
   const records = rows.map((row, rowIndex) => {
     const playerKey = trim(row.player_key);
-    if (seen.has(playerKey)) {
-      findings.push(
-        makePracticeFinding({
-          code: SEASON_2026_PRACTICE_FINDING.DUPLICATE_PLAYER_KEY,
-          file: fileName,
-          rowIndex,
-          subject: playerKey,
-          detail: `also registered at row ${seen.get(playerKey)}`,
-          raw: row,
-        })
-      );
-    } else {
-      seen.set(playerKey, rowIndex);
-    }
+    noteDuplicate(
+      seen,
+      playerKey,
+      rowIndex,
+      fileName,
+      row,
+      findings,
+      SEASON_2026_PRACTICE_FINDING.DUPLICATE_PLAYER_KEY,
+      (firstRow) => `also registered at row ${firstRow}`
+    );
     const birthYear = parseIntCell(row.birth_year, `${fileName} row ${rowIndex} birth_year`);
     if (birthYear >= options.seasonYear) {
       findings.push(
@@ -1466,20 +1502,16 @@ export function parseFieldInventory(text, _options = {}) {
   const seen = new Map();
   const records = rows.map((row, rowIndex) => {
     const venue = trim(row.venue);
-    if (seen.has(venue)) {
-      findings.push(
-        makePracticeFinding({
-          code: SEASON_2026_PRACTICE_FINDING.DUPLICATE_INVENTORY_VENUE,
-          file: fileName,
-          rowIndex,
-          subject: venue,
-          detail: `also inventoried at row ${seen.get(venue)}`,
-          raw: row,
-        })
-      );
-    } else {
-      seen.set(venue, rowIndex);
-    }
+    noteDuplicate(
+      seen,
+      venue,
+      rowIndex,
+      fileName,
+      row,
+      findings,
+      SEASON_2026_PRACTICE_FINDING.DUPLICATE_INVENTORY_VENUE,
+      (firstRow) => `also inventoried at row ${firstRow}`
+    );
     return {
       rowIndex,
       venue,

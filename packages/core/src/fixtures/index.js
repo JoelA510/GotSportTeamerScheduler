@@ -68,6 +68,7 @@ export {
   practiceFixtureFilePath,
   readPracticeFixtureFile,
   SEASON_2026_PRACTICE_FILES,
+  SEASON_LONG_CLOSURE_MIN_FRACTION,
 } from './season2026PracticeLoader.js';
 
 export {
@@ -93,6 +94,7 @@ export {
   selectTeamCode,
   weekdayCodeOfDayName,
   AVAILABILITY_INTERPRETATIONS,
+  DECODER_DISAGREEMENT_KIND,
   PracticeFindingSchema,
   REGISTRATION_REF_CLASSES,
   SEASON_2026_PRACTICE_COLUMNS,
@@ -100,6 +102,5 @@ export {
   SEASON_2026_PRACTICE_FINDING_SEVERITY,
   SEASON_2026_PRACTICE_PARSERS,
   SEASON_2026_PRACTICE_SCHEMAS,
-  SEASON_LONG_CLOSURE_MIN_DAYS,
   UNRESOLVED_VENUE_TOKEN,
 } from './season2026PracticeParsers.js';

@@ -28,6 +28,7 @@ import {
   crossCorpusFindings,
   parseCoachRegistration,
   parseFieldCodeNames,
+  parseFieldConstraints,
   parsePlayerRegistration,
   parsePracticeFieldAliases,
   parseGameChangeLog,
@@ -38,13 +39,14 @@ import {
   selectTeamCode,
   weekdayCodeOfDayName,
   AVAILABILITY_INTERPRETATIONS,
+  DECODER_DISAGREEMENT_KIND,
   REGISTRATION_REF_CLASSES,
   SEASON_2026_PRACTICE_COLUMNS,
   SEASON_2026_PRACTICE_FILES,
   SEASON_2026_PRACTICE_FINDING,
   SEASON_2026_PRACTICE_FINDING_SEVERITY,
   SEASON_2026_PRACTICE_SCHEMAS,
-  SEASON_LONG_CLOSURE_MIN_DAYS,
+  SEASON_LONG_CLOSURE_MIN_FRACTION,
   UNRESOLVED_VENUE_TOKEN,
 } from '@squadlogic/core/fixtures/index.js';
 
@@ -70,6 +72,7 @@ const parsedCorpus = {
   'field_weekly_availability.csv': { records: practice.weeklyAvailability },
   'field_equipment.csv': { records: practice.fieldEquipment },
 };
+const parsedWith = (file, result) => ({ ...parsedCorpus, [file]: result });
 
 /** Findings of one code, in corpus order. */
 const findingsOf = (code) => practice.findings.filter((finding) => finding.code === code);
@@ -321,6 +324,19 @@ describe('season-2026 practice corpus :: the two decoder rings', () => {
   it('shares 20 codes and disagrees on exactly 12 of them', () => {
     expect(practice.decoderRings.shared).toHaveLength(20);
     expect(practice.decoderRings.disagreements).toHaveLength(12);
+    // The 12 is 11 label conflicts plus one blank-vs-label (11v11 Field 2,
+    // which the practice sheet lists with no field behind it). The blank is
+    // counted as a disagreement on purpose: the plan says fewer than 12 means
+    // something was silently reconciled, and the corpus author evidently
+    // counted it. The composition is asserted so the number cannot hide it.
+    const kinds = tally(practice.decoderRings.disagreements, (entry) => entry.kind);
+    expect(Object.fromEntries(kinds)).toEqual({
+      [DECODER_DISAGREEMENT_KIND.LABEL_CONFLICT]: 11,
+      [DECODER_DISAGREEMENT_KIND.BLANK_VS_LABEL]: 1,
+    });
+    expect(practice.decoderRings.disagreements.find((e) => e.kind === 'blank-vs-label').code).toBe(
+      '11v11 Field 2'
+    );
     expect(findingsOf(F.DECODER_RINGS_DISAGREE)).toHaveLength(12);
     // The README table names 9; the corpus carries 3 more it does not list.
     const codes = practice.decoderRings.disagreements.map((entry) => entry.code).sort();
@@ -338,6 +354,7 @@ describe('season-2026 practice corpus :: the two decoder rings', () => {
     const byCode = new Map(practice.decoderRings.disagreements.map((e) => [e.code, e]));
     expect(byCode.get('7v7 Field 1')).toEqual({
       code: '7v7 Field 1',
+      kind: DECODER_DISAGREEMENT_KIND.LABEL_CONFLICT,
       practiceSheet: 'Cedarbrook Park Field 1',
       fieldsSheet: 'Larkfield Green Field 2?',
       fieldsSheetConfirmed: null,
@@ -377,25 +394,39 @@ describe('season-2026 practice corpus :: the two decoder rings', () => {
 describe('season-2026 practice corpus :: field constraints and closures', () => {
   it('has 13 constraint rows, three of them season-long closures', () => {
     expect(practice.fieldConstraints).toHaveLength(13);
-    const closures = practice.fieldConstraints.filter((row) => row.seasonLong);
+    // Season-long is decided against the scheduled season (first to last
+    // scheduled date), not by a day count: the fraction of it each all-fields
+    // closure covers.
+    const closures = practice.seasonLongClosures;
     expect(closures.map((row) => row.venue).sort()).toEqual([
       'Cedarbrook Park',
       'Fivepines Park',
       'Quarrywood Park',
     ]);
-    for (const row of closures) {
-      expect(row.allFields).toBe(true);
-      expect(row.spanDays).toBeGreaterThanOrEqual(SEASON_LONG_CLOSURE_MIN_DAYS);
+    const seasonDays = inclusiveSpanDays(season.scheduledDates[0], season.scheduledDates.at(-1));
+    expect(seasonDays).toBe(85);
+    for (const closure of closures) {
+      expect(closure.seasonDays).toBe(seasonDays);
+      expect(closure.overlapDays / seasonDays).toBeGreaterThanOrEqual(
+        SEASON_LONG_CLOSURE_MIN_FRACTION
+      );
+      expect(practice.fieldConstraints.find((row) => row.id === closure.id).allFields).toBe(true);
     }
-    // The criterion separates them from everything else by a wide margin.
-    const others = practice.fieldConstraints.filter((row) => !row.seasonLong);
-    expect(others).toHaveLength(10);
-    const longestOther = Math.max(...others.filter((r) => r.allFields).map((r) => r.spanDays));
-    expect(longestOther).toBe(1);
+    expect(closures.map((c) => c.overlapDays)).toEqual([71, 85, 85]);
+    // The criterion separates them from everything else by a wide margin: the
+    // other all-fields rows are single days.
+    expect(practice.meta.examined.allFieldsConstraints).toBe(5);
+    const closureIds = new Set(closures.map((c) => c.id));
+    const otherAllFields = practice.fieldConstraints.filter(
+      (row) => row.allFields && !closureIds.has(row.id)
+    );
+    expect(otherAllFields).toHaveLength(2);
+    for (const row of otherAllFields) expect(row.spanDays).toBe(1);
     // The adjacency rule spans the season too but is not an all-fields closure.
-    const spacing = others.find((row) => row.reason === 'Spacing');
+    const spacing = practice.fieldConstraints.find((row) => row.reason === 'Spacing');
     expect(spacing).toMatchObject({ venue: 'Alder Park', fields: 'Adjacent Fields' });
-    expect(spacing.spanDays).toBeGreaterThanOrEqual(SEASON_LONG_CLOSURE_MIN_DAYS);
+    expect(spacing.allFields).toBe(false);
+    expect(spacing.spanDays).toBe(120);
   });
 
   it('reports the Excel-corrupted fields cell rather than reading it as a date', () => {
@@ -522,7 +553,15 @@ describe('season-2026 practice corpus :: permits', () => {
     // checked against it rather than defining it.
     expect(practice.seasonYear).toBe(season.seasonYear);
     expect(practice.meta.examined.reservations).toBe(767);
-    expect(findingsOf(F.PERMIT_RESERVATION_OUTSIDE_SEASON)).toHaveLength(0);
+    expect(findingsOf(F.PERMIT_RESERVATION_OUTSIDE_SEASON_YEAR)).toHaveLength(0);
+    // The August lead-in and December tail are figures, not findings.
+    const before = practice.permitReservations.filter((r) => r.date < season.scheduledDates[0]);
+    const after = practice.permitReservations.filter((r) => r.date > season.scheduledDates.at(-1));
+    expect(practice.meta.examined.reservationsBeforeSeason).toBe(before.length);
+    expect(practice.meta.examined.reservationsAfterSeason).toBe(after.length);
+    expect(before.length).toBeGreaterThan(0);
+    expect(after.length).toBeGreaterThan(0);
+    expect(before.length + after.length).toBeLessThan(767);
   });
 
   it('keeps every reservation on the weekday its date falls on', () => {
@@ -930,7 +969,6 @@ describe('season-2026 practice corpus :: positive controls', () => {
     expect(alias.findings.map((f) => f.code)).toEqual([F.DECODER_RING_ALIAS_VENUE_BLANK]);
     expect(alias.records[0].venue).toBeNull();
 
-    const parsedWith = (file, result) => ({ ...parsedCorpus, [file]: result });
     const late = crossCorpusFindings(
       parsedWith(
         'permit_reservations.csv',
@@ -949,15 +987,102 @@ describe('season-2026 practice corpus :: positive controls', () => {
       season
     );
     expect(
-      late.findings.filter((f) => f.code === F.PERMIT_RESERVATION_OUTSIDE_SEASON)
+      late.findings.filter((f) => f.code === F.PERMIT_RESERVATION_OUTSIDE_SEASON_YEAR)
     ).toHaveLength(1);
     expect(late.examined.reservations).toBe(1);
-    // …and a sheet that lists nobody for a team reports every roster coach of it.
-    const empty = crossCorpusFindings(parsedWith('select_coaches.csv', { records: [] }), season);
-    const omitted = empty.findings.filter((f) => f.code === F.SELECT_COACH_OMITTED_BY_SHEET);
-    expect(omitted).toHaveLength(empty.examined.rosterSelectCoaches);
-    expect(omitted.length).toBeGreaterThan(8);
-    for (const f of omitted) expect(f.detail).toMatch(/lists nobody for the team$/);
+    // A same-year reservation before the season is a figure, not a finding.
+    const early = crossCorpusFindings(
+      parsedWith(
+        'permit_reservations.csv',
+        parsePermitReservations(
+          csvRow('permit_reservations.csv', {
+            permit_id: 'P',
+            venue: 'Alder Park',
+            date: '2026-01-05',
+            day: 'Monday',
+            start: '18:00',
+            end: '20:00',
+            facility: 'F',
+          })
+        )
+      ),
+      season
+    );
+    expect(
+      early.findings.filter((f) => f.code === F.PERMIT_RESERVATION_OUTSIDE_SEASON_YEAR)
+    ).toEqual([]);
+    expect(early.examined.reservationsBeforeSeason).toBe(1);
+    expect(early.examined.reservationsAfterSeason).toBe(0);
+    // …and a sheet that leaves one team out (the reachable case — an empty
+    // file is refused at the header) reports every roster coach of that team.
+    const without = crossCorpusFindings(
+      parsedWith('select_coaches.csv', {
+        records: practice.selectCoaches.filter((row) => row.teamCode !== '14GSelect03'),
+      }),
+      season
+    );
+    const omitted = without.findings.filter((f) => f.code === F.SELECT_COACH_OMITTED_BY_SHEET);
+    const forTeam = omitted.filter((f) => f.subject.startsWith('14GSelect03 '));
+    expect(forTeam.map((f) => f.subject)).toEqual([
+      '14GSelect03 riley pike',
+      '14GSelect03 bailey usher',
+      '14GSelect03 oakley pryce',
+    ]);
+    for (const f of forTeam) expect(f.detail).toMatch(/lists nobody for the team$/);
+    // oakley pryce was already omitted with the full sheet; the other two are new.
+    expect(omitted).toHaveLength(8 + 2);
+  });
+
+  it('decides season-long closures by overlap with the scheduled season, not by span', () => {
+    // A 59-day all-fields closure in mid-season counts; a 60-day one in
+    // January does not. Under the old 60-day threshold both answers flip.
+    const constraints = parseFieldConstraints(
+      csvRows('field_constraints.csv', [
+        {
+          date_start: '2026-09-01',
+          date_end: '2026-10-29',
+          time_start: '00:00',
+          time_end: '23:00',
+          venue: 'Cedarbrook Park',
+          fields: 'All',
+          reason: 'Offline',
+        },
+        {
+          date_start: '2026-01-01',
+          date_end: '2026-03-01',
+          time_start: '00:00',
+          time_end: '23:00',
+          venue: 'Quarrywood Park',
+          fields: 'All',
+          reason: 'Offline',
+        },
+      ])
+    );
+    expect(constraints.records.map((r) => r.spanDays)).toEqual([59, 60]);
+    const result = crossCorpusFindings(parsedWith('field_constraints.csv', constraints), season);
+    expect(result.examined.allFieldsConstraints).toBe(2);
+    expect(result.seasonLongClosures.map((c) => [c.venue, c.overlapDays])).toEqual([
+      ['Cedarbrook Park', 59],
+    ]);
+    expect(
+      result.findings
+        .filter((f) => f.code === F.ALIAS_RESOLVES_TO_CLOSED_VENUE)
+        .map((f) => f.subject)
+    ).toEqual(['7v7 Field 1']);
+  });
+
+  it('compares a duplicated alias code once and reports the duplicate', () => {
+    const dup = practice.fieldAliases.find((a) => a.displayName === '9v9 Field 1');
+    const rings = compareDecoderRings([...practice.fieldAliases, dup], practice.fieldCodeNames);
+    expect(rings.shared).toHaveLength(20);
+    expect(rings.disagreements).toHaveLength(12);
+    const parsed = parsePracticeFieldAliases(
+      csvRows('practice_field_aliases.csv', [
+        { display_name: '9v9 Field 1', actual_label: 'A', venue: 'V' },
+        { display_name: '9v9 Field 1', actual_label: 'B', venue: 'V' },
+      ])
+    );
+    expect(parsed.findings.map((f) => f.code)).toEqual([F.DUPLICATE_DECODER_CODE]);
   });
 
   it('raises the change-log day mismatch and the duplicate decoder code', () => {
