@@ -102,15 +102,16 @@ export function readFixtureFile(fileName, dir = DEFAULT_FIXTURE_DIR) {
 
 /**
  * SHA-256 of every corpus file, so a test can prove a load left the sources
- * byte-identical.
+ * byte-identical. The practice corpus loader reuses it with its own file list.
  *
  * @param {string} [dir]
+ * @param {ReadonlyArray<string>} [files]
  * @returns {Record<string, string>}
  */
-export function computeFixtureChecksums(dir = DEFAULT_FIXTURE_DIR) {
+export function computeFixtureChecksums(dir = DEFAULT_FIXTURE_DIR, files = SEASON_2026_FILES) {
   /** @type {Record<string, string>} */
   const out = {};
-  for (const fileName of SEASON_2026_FILES) {
+  for (const fileName of files) {
     const bytes = readFileSync(fixtureFilePath(fileName, dir));
     out[fileName] = createHash('sha256').update(bytes).digest('hex');
   }

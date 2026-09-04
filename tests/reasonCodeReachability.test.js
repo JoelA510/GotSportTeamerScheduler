@@ -1,8 +1,8 @@
 /**
  * Repo-wide reachability audit for every frozen reason-code table in
  * `packages/core/src` — the generalisation of the per-module audit
- * `tests/attribution.test.js` already carries. 18 vocabularies, 396 codes, of
- * which 385 are shown to be producible and 11 are named as holes.
+ * `tests/attribution.test.js` already carries. 19 vocabularies, 420 codes, of
+ * which 409 are shown to be producible and 11 are named as holes.
  *
  * **The defect this exists to catch.** Four times now, in four unrelated
  * modules, a reason code has been declared, given a severity, documented, and
@@ -162,14 +162,22 @@ import {
   toSeason2026StandingFixtures,
 } from '@squadlogic/core/externalImport/index.js';
 import {
+  SEASON_2026_PRACTICE_FINDING,
   SEASON_2026_ROW_KIND,
+  crossCorpusFindings,
   loadCoachRoster,
   loadExternalFixtures,
   loadFacilityGeometry,
   loadFacilityPermits,
   loadGameFormats,
   loadSeason2026,
+  loadSeason2026Practice,
   loadSunsets,
+  parseFieldCodeNames,
+  parseGameChangeLog,
+  parsePermitReservations,
+  parsePracticeGrid,
+  parseWeeklyAvailability,
 } from '@squadlogic/core/fixtures/index.js';
 import {
   FREEZE_REASON,
@@ -328,6 +336,7 @@ const TABLES = Object.freeze({
   RULE_REASON,
   RULE_VIOLATION_REASON,
   SCENARIO_REASON,
+  SEASON_2026_PRACTICE_FINDING,
   TIMING_REASON,
   TRAVEL_REASON,
   WAIVER_REASON,
@@ -4907,6 +4916,70 @@ harvest(
       };
     })(),
     { graph }
+  )
+);
+
+/* -------------------------------------------------------------------------- */
+/* fixtures/season2026PracticeParsers — the practice corpus (Phase 8.0)        */
+/* -------------------------------------------------------------------------- */
+
+// The corpus itself carries 19 of the 24 codes: 28 unresolved venues, the
+// Excel-corrupted rows, the two decoder rings' 12 disagreements, the minted
+// people, and so on. The five it does not carry are the five it should not:
+// a row the source could not interpret at all, a reservation whose stated day
+// is not its date's, a change-log note that disagrees with its date, a code
+// listed twice in one decoder ring, and a practice slot for a team the roster
+// does not hold. Each is driven through the same public parser the loader
+// calls, fed a one- or two-row file.
+const practiceCorpus = harvest(
+  'loadSeason2026Practice(the season-2026 practice corpus)',
+  loadSeason2026Practice({ season })
+);
+harvest(
+  'parseWeeklyAvailability(a row the source could not interpret)',
+  parseWeeklyAvailability(
+    'venue,day,raw_value,interpreted_window,interpretation\nOrchard Park,Mon,ask the office,,unparsed\n'
+  )
+);
+harvest(
+  "parsePermitReservations(a reservation whose stated day is not its date's)",
+  parsePermitReservations(
+    'permit_id,venue,date,day,start,end,facility,services\nPERMIT-01,Alder Park,2026-08-10,Tuesday,18:00,20:00,Field - Soccer 1A/1B (Field),\n'
+  )
+);
+harvest(
+  'parseGameChangeLog(a note that disagrees with the date it was given)',
+  parseGameChangeLog(
+    'date,matchup,was,now,reason\nNov 08 (Mon),A vs B,(not previously scheduled),5:30 PM Alder Park Soccer 2,r\n',
+    { seasonYear: 2026 }
+  )
+);
+harvest(
+  'parseFieldCodeNames(a code listed twice)',
+  parseFieldCodeNames(
+    'code_name,actual_label,venue,remainder,uncertain,confirmed,used_for\n7v7 Field 1,X,X,,,,\n7v7 Field 1,Y,Y,,,,\n'
+  )
+);
+harvest(
+  'crossCorpusFindings(a grid naming a team the roster does not hold)',
+  crossCorpusFindings(
+    {
+      'practice_grid.csv': parsePracticeGrid(
+        'source_sheet,venue,field,subunit,day,start,duration_minutes,team_code\nS,Orchard Park,Field 1,A,Tuesday,16:00,45,05GMicro99\n'
+      ),
+      'practice_field_aliases.csv': { records: practiceCorpus.fieldAliases },
+      'field_constraints.csv': { records: practiceCorpus.fieldConstraints },
+      'field_code_names.csv': { records: practiceCorpus.fieldCodeNames },
+      'coach_registration.csv': { records: practiceCorpus.coachRegistrations },
+      'player_registration.csv': { records: practiceCorpus.playerRegistrations },
+      'select_coaches.csv': { records: practiceCorpus.selectCoaches },
+      'permits.csv': { records: practiceCorpus.permits },
+      'permit_reservations.csv': { records: practiceCorpus.permitReservations },
+      'field_inventory.csv': { records: practiceCorpus.fieldInventory },
+      'field_weekly_availability.csv': { records: practiceCorpus.weeklyAvailability },
+      'field_equipment.csv': { records: practiceCorpus.fieldEquipment },
+    },
+    season
   )
 );
 
