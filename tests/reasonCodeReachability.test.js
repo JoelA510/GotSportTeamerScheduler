@@ -1,8 +1,8 @@
 /**
  * Repo-wide reachability audit for every frozen reason-code table in
  * `packages/core/src` — the generalisation of the per-module audit
- * `tests/attribution.test.js` already carries. 19 vocabularies, 420 codes, of
- * which 409 are shown to be producible and 11 are named as holes.
+ * `tests/attribution.test.js` already carries. 19 vocabularies, 424 codes, of
+ * which 413 are shown to be producible and 11 are named as holes.
  *
  * **The defect this exists to catch.** Four times now, in four unrelated
  * modules, a reason code has been declared, given a severity, documented, and
@@ -4923,14 +4923,14 @@ harvest(
 /* fixtures/season2026PracticeParsers — the practice corpus (Phase 8.0)        */
 /* -------------------------------------------------------------------------- */
 
-// The corpus itself carries 19 of the 24 codes: 28 unresolved venues, the
+// The corpus itself carries 22 of the 28 codes: 28 unresolved venues, the
 // Excel-corrupted rows, the two decoder rings' 12 disagreements, the minted
-// people, and so on. The five it does not carry are the five it should not:
+// people, and so on. The six it does not carry are the six it should not:
 // a row the source could not interpret at all, a reservation whose stated day
-// is not its date's, a change-log note that disagrees with its date, a code
-// listed twice in one decoder ring, and a practice slot for a team the roster
-// does not hold. Each is driven through the same public parser the loader
-// calls, fed a one- or two-row file.
+// is not its date's, a reservation dated outside the season, a change-log
+// note that disagrees with its date, a code listed twice in one decoder ring,
+// and a practice slot for a team the roster does not hold. Each is driven
+// through the same public parser the loader calls, fed a one- or two-row file.
 const practiceCorpus = harvest(
   'loadSeason2026Practice(the season-2026 practice corpus)',
   loadSeason2026Practice({ season })
@@ -4961,7 +4961,7 @@ harvest(
   )
 );
 harvest(
-  'crossCorpusFindings(a grid naming a team the roster does not hold)',
+  'crossCorpusFindings(a grid naming a team the roster does not hold, and a reservation dated outside the season)',
   crossCorpusFindings(
     {
       'practice_grid.csv': parsePracticeGrid(
@@ -4974,7 +4974,9 @@ harvest(
       'player_registration.csv': { records: practiceCorpus.playerRegistrations },
       'select_coaches.csv': { records: practiceCorpus.selectCoaches },
       'permits.csv': { records: practiceCorpus.permits },
-      'permit_reservations.csv': { records: practiceCorpus.permitReservations },
+      'permit_reservations.csv': parsePermitReservations(
+        'permit_id,venue,date,day,start,end,facility,services\nPERMIT-01,Alder Park,2027-08-10,Tuesday,18:00,20:00,Field - Soccer 1A/1B (Field),\n'
+      ),
       'field_inventory.csv': { records: practiceCorpus.fieldInventory },
       'field_weekly_availability.csv': { records: practiceCorpus.weeklyAvailability },
       'field_equipment.csv': { records: practiceCorpus.fieldEquipment },

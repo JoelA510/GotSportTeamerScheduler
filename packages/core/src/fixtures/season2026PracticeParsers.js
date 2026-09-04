@@ -60,6 +60,8 @@ export const SEASON_2026_PRACTICE_FINDING = Object.freeze({
   DECODER_RING_UNCERTAIN: 'DECODER_RING_UNCERTAIN',
   /** A `practice_field_aliases.csv` row with no actual label at all. */
   DECODER_RING_ALIAS_BLANK: 'DECODER_RING_ALIAS_BLANK',
+  /** A `practice_field_aliases.csv` row with a label but no venue: the joins cannot see it. */
+  DECODER_RING_ALIAS_VENUE_BLANK: 'DECODER_RING_ALIAS_VENUE_BLANK',
   /** The same code listed twice in one decoder ring; a lookup would keep only one. */
   DUPLICATE_DECODER_CODE: 'DUPLICATE_DECODER_CODE',
   /** `game_change_log.csv` row whose `(Sun)`-style note disagrees with the date it was given. */
@@ -89,8 +91,14 @@ export const SEASON_2026_PRACTICE_FINDING = Object.freeze({
   ROSTER_TEAM_HOLDS_NO_PRACTICE: 'ROSTER_TEAM_HOLDS_NO_PRACTICE',
   /** A `person_key` in a registration file that `../coach_roster.csv` does not carry: minted. */
   PERSON_KEY_MINTED: 'PERSON_KEY_MINTED',
-  /** A `select_coaches.csv` row whose (team, slot, person) is not what `../coach_roster.csv` says. */
-  SELECT_COACH_DISAGREES_WITH_ROSTER: 'SELECT_COACH_DISAGREES_WITH_ROSTER',
+  /** A `select_coaches.csv` row naming a person `../coach_roster.csv` does not have on that team. */
+  SELECT_COACH_NOT_ON_ROSTER_TEAM: 'SELECT_COACH_NOT_ON_ROSTER_TEAM',
+  /** A `select_coaches.csv` row naming a rostered coach of that team at a different slot. */
+  SELECT_COACH_SLOT_DIFFERS: 'SELECT_COACH_SLOT_DIFFERS',
+  /** A rostered coach of a Select team whom `select_coaches.csv` does not list. */
+  SELECT_COACH_OMITTED_BY_SHEET: 'SELECT_COACH_OMITTED_BY_SHEET',
+  /** A `permit_reservations.csv` window dated outside the game corpus's season year. */
+  PERMIT_RESERVATION_OUTSIDE_SEASON: 'PERMIT_RESERVATION_OUTSIDE_SEASON',
   /** A venue named in this corpus that `../facility_geometry.json` does not know by that name. */
   VENUE_NOT_IN_GAME_CORPUS: 'VENUE_NOT_IN_GAME_CORPUS',
   /** A practice alias whose real venue `field_constraints.csv` closes for the season. */
@@ -115,6 +123,7 @@ export const SEASON_2026_PRACTICE_FINDING_SEVERITY = Object.freeze({
   [SEASON_2026_PRACTICE_FINDING.DECODER_RINGS_DISAGREE]: FACILITY_SEVERITY.COMPROMISE,
   [SEASON_2026_PRACTICE_FINDING.DECODER_RING_UNCERTAIN]: FACILITY_SEVERITY.INFO,
   [SEASON_2026_PRACTICE_FINDING.DECODER_RING_ALIAS_BLANK]: FACILITY_SEVERITY.INFO,
+  [SEASON_2026_PRACTICE_FINDING.DECODER_RING_ALIAS_VENUE_BLANK]: FACILITY_SEVERITY.COMPROMISE,
   [SEASON_2026_PRACTICE_FINDING.DUPLICATE_DECODER_CODE]: FACILITY_SEVERITY.COMPROMISE,
   [SEASON_2026_PRACTICE_FINDING.CHANGE_LOG_DAY_MISMATCH]: FACILITY_SEVERITY.BLOCKING,
   [SEASON_2026_PRACTICE_FINDING.PERMIT_DAY_MISMATCH]: FACILITY_SEVERITY.BLOCKING,
@@ -129,7 +138,10 @@ export const SEASON_2026_PRACTICE_FINDING_SEVERITY = Object.freeze({
   [SEASON_2026_PRACTICE_FINDING.PRACTICE_TEAM_PLAYS_NO_GAME]: FACILITY_SEVERITY.INFO,
   [SEASON_2026_PRACTICE_FINDING.ROSTER_TEAM_HOLDS_NO_PRACTICE]: FACILITY_SEVERITY.INFO,
   [SEASON_2026_PRACTICE_FINDING.PERSON_KEY_MINTED]: FACILITY_SEVERITY.INFO,
-  [SEASON_2026_PRACTICE_FINDING.SELECT_COACH_DISAGREES_WITH_ROSTER]: FACILITY_SEVERITY.COMPROMISE,
+  [SEASON_2026_PRACTICE_FINDING.SELECT_COACH_NOT_ON_ROSTER_TEAM]: FACILITY_SEVERITY.COMPROMISE,
+  [SEASON_2026_PRACTICE_FINDING.SELECT_COACH_SLOT_DIFFERS]: FACILITY_SEVERITY.INFO,
+  [SEASON_2026_PRACTICE_FINDING.SELECT_COACH_OMITTED_BY_SHEET]: FACILITY_SEVERITY.COMPROMISE,
+  [SEASON_2026_PRACTICE_FINDING.PERMIT_RESERVATION_OUTSIDE_SEASON]: FACILITY_SEVERITY.COMPROMISE,
   [SEASON_2026_PRACTICE_FINDING.VENUE_NOT_IN_GAME_CORPUS]: FACILITY_SEVERITY.COMPROMISE,
   [SEASON_2026_PRACTICE_FINDING.ALIAS_RESOLVES_TO_CLOSED_VENUE]: FACILITY_SEVERITY.COMPROMISE,
 });
@@ -558,7 +570,7 @@ export const UNRESOLVED_VENUE_TOKEN = '(unresolved)';
 /**
  * An all-fields constraint spanning at least this many days is "closed for
  * effectively the whole season" in the README's words. The corpus's three such
- * rows span 91 and 119 days; its longest single-event blackout spans one.
+ * rows span 92 and 120 days inclusive; its longest single-event blackout spans one.
  */
 export const SEASON_LONG_CLOSURE_MIN_DAYS = 60;
 
@@ -568,22 +580,23 @@ export const SEASON_LONG_CLOSURE_MIN_DAYS = 60;
 
 const orNull = (value) => (trim(value) === '' ? null : trim(value));
 
-const DAY_NAME_TO_CODE = Object.freeze({
-  Sunday: 'SUN',
-  Monday: 'MON',
-  Tuesday: 'TUE',
-  Wednesday: 'WED',
-  Thursday: 'THU',
-  Friday: 'FRI',
-  Saturday: 'SAT',
-  Sun: 'SUN',
-  Mon: 'MON',
-  Tue: 'TUE',
-  Wed: 'WED',
-  Thu: 'THU',
-  Fri: 'FRI',
-  Sat: 'SAT',
-});
+/** A Map, not an object: `'constructor'` must not resolve to anything. */
+const DAY_NAME_TO_CODE = new Map([
+  ['Sunday', 'SUN'],
+  ['Monday', 'MON'],
+  ['Tuesday', 'TUE'],
+  ['Wednesday', 'WED'],
+  ['Thursday', 'THU'],
+  ['Friday', 'FRI'],
+  ['Saturday', 'SAT'],
+  ['Sun', 'SUN'],
+  ['Mon', 'MON'],
+  ['Tue', 'TUE'],
+  ['Wed', 'WED'],
+  ['Thu', 'THU'],
+  ['Fri', 'FRI'],
+  ['Sat', 'SAT'],
+]);
 
 const MONTH_ABBREVIATIONS = Object.freeze({
   Jan: 1,
@@ -656,8 +669,8 @@ export function parseClock24Minutes(value) {
  * @returns {string}
  */
 export function weekdayCodeOfDayName(value) {
-  const code = DAY_NAME_TO_CODE[trim(value)];
-  if (!code) throw new TypeError(`unparseable day name: ${JSON.stringify(value)}`);
+  const code = DAY_NAME_TO_CODE.get(trim(value));
+  if (code === undefined) throw new TypeError(`unparseable day name: ${JSON.stringify(value)}`);
   return code;
 }
 
@@ -943,11 +956,24 @@ export function parsePracticeFieldAliases(text, _options = {}) {
         })
       );
     }
+    const venue = orNull(row.venue);
+    if (actualLabel !== null && venue === null) {
+      findings.push(
+        makePracticeFinding({
+          code: SEASON_2026_PRACTICE_FINDING.DECODER_RING_ALIAS_VENUE_BLANK,
+          file: fileName,
+          rowIndex,
+          subject: trim(row.display_name),
+          detail: `resolves to ${JSON.stringify(actualLabel)} but names no venue, so no venue join can see it`,
+          raw: row,
+        })
+      );
+    }
     return {
       rowIndex,
       displayName: trim(row.display_name),
       actualLabel,
-      venue: orNull(row.venue),
+      venue,
       field: orNull(row.field),
       subunit: orNull(row.subunit),
       raw: row,
@@ -1176,11 +1202,17 @@ export function parseCoachRegistration(text, options) {
 }
 
 /**
+ * Same contract as `parseCoachRegistration()`: the season year is required so
+ * the birth-year check cannot silently not run.
+ *
  * @param {string} text
- * @param {{ seasonYear?: number }} [_options] - accepted so every parser has one shape
+ * @param {{ seasonYear: number }} options
  */
-export function parsePlayerRegistration(text, _options = {}) {
+export function parsePlayerRegistration(text, options) {
   const fileName = 'player_registration.csv';
+  if (!options || !Number.isInteger(options.seasonYear)) {
+    throw new TypeError(`${fileName}: seasonYear is required to judge birth years`);
+  }
   const rows = expectCsvColumns(text, fileName);
   const findings = [];
   const seen = new Map();
@@ -1200,12 +1232,25 @@ export function parsePlayerRegistration(text, _options = {}) {
     } else {
       seen.set(playerKey, rowIndex);
     }
+    const birthYear = parseIntCell(row.birth_year, `${fileName} row ${rowIndex} birth_year`);
+    if (birthYear >= options.seasonYear) {
+      findings.push(
+        makePracticeFinding({
+          code: SEASON_2026_PRACTICE_FINDING.BIRTH_YEAR_IMPLAUSIBLE,
+          file: fileName,
+          rowIndex,
+          subject: playerKey,
+          detail: `birth year ${birthYear} is not before the ${options.seasonYear} season`,
+          raw: row,
+        })
+      );
+    }
     return {
       rowIndex,
       playerName: trim(row.player_name),
       playerKey,
       gender: trim(row.gender),
-      birthYear: parseIntCell(row.birth_year, `${fileName} row ${rowIndex} birth_year`),
+      birthYear,
       ageGroup: parseIntCell(row.age_group, `${fileName} row ${rowIndex} age_group`),
       ageGroupCode: orNull(row.age_group_code),
       program: orNull(row.program),
@@ -1296,7 +1341,11 @@ export function parseGameChangeLog(text, options) {
     const { date, note } = parseMonthDayDate(row.date, options.seasonYear);
     // The note is the log's only evidence about the year it was given, since
     // the year comes from another file. Same contract as the permit sheet.
-    if (note !== null && DAY_NAME_TO_CODE[note] && DAY_NAME_TO_CODE[note] !== weekdayCodeOf(date)) {
+    if (
+      note !== null &&
+      DAY_NAME_TO_CODE.has(note) &&
+      DAY_NAME_TO_CODE.get(note) !== weekdayCodeOf(date)
+    ) {
       findings.push(
         makePracticeFinding({
           code: SEASON_2026_PRACTICE_FINDING.CHANGE_LOG_DAY_MISMATCH,

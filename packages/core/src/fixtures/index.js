@@ -67,7 +67,6 @@ export {
   loadSeason2026Practice,
   practiceFixtureFilePath,
   readPracticeFixtureFile,
-  seasonYearOfReservations,
   SEASON_2026_PRACTICE_FILES,
 } from './season2026PracticeLoader.js';
 

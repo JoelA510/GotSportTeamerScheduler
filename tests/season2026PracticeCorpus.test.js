@@ -25,8 +25,11 @@ import {
   loadSeason2026,
   loadSeason2026Practice,
   parseClock24Minutes,
+  crossCorpusFindings,
   parseCoachRegistration,
   parseFieldCodeNames,
+  parsePlayerRegistration,
+  parsePracticeFieldAliases,
   parseGameChangeLog,
   parseMonthDayDate,
   parsePermitReservations,
@@ -50,6 +53,23 @@ const season = loadSeason2026();
 const practice = loadSeason2026Practice({ season });
 
 const F = SEASON_2026_PRACTICE_FINDING;
+
+/** The corpus in the per-file shape `crossCorpusFindings()` takes, for the controls. */
+const parsedCorpus = {
+  'practice_grid.csv': { records: practice.practiceSlots },
+  'practice_field_aliases.csv': { records: practice.fieldAliases },
+  'field_code_names.csv': { records: practice.fieldCodeNames },
+  'field_constraints.csv': { records: practice.fieldConstraints },
+  'coach_registration.csv': { records: practice.coachRegistrations },
+  'player_registration.csv': { records: practice.playerRegistrations },
+  'game_change_log.csv': { records: practice.gameChanges },
+  'select_coaches.csv': { records: practice.selectCoaches },
+  'permits.csv': { records: practice.permits },
+  'permit_reservations.csv': { records: practice.permitReservations },
+  'field_inventory.csv': { records: practice.fieldInventory },
+  'field_weekly_availability.csv': { records: practice.weeklyAvailability },
+  'field_equipment.csv': { records: practice.fieldEquipment },
+};
 
 /** Findings of one code, in corpus order. */
 const findingsOf = (code) => practice.findings.filter((finding) => finding.code === code);
@@ -111,6 +131,9 @@ describe('season-2026 practice corpus :: pure parsers', () => {
     expect(weekdayCodeOfDayName('Friday')).toBe('FRI');
     expect(weekdayCodeOfDayName('Fri')).toBe('FRI');
     expect(() => weekdayCodeOfDayName('Freitag')).toThrow(TypeError);
+    // A plain-object lookup would answer this with Object.prototype.constructor.
+    expect(() => weekdayCodeOfDayName('constructor')).toThrow(TypeError);
+    expect(() => weekdayCodeOfDayName('__proto__')).toThrow(TypeError);
     expect(selectTeamCode('U14B', 1)).toBe('14BSelect01');
     expect(selectTeamCode('U19G', 12)).toBe('19GSelect12');
     expect(() => selectTeamCode('14B', 1)).toThrow(TypeError);
@@ -341,6 +364,13 @@ describe('season-2026 practice corpus :: the two decoder rings', () => {
     const blank = findingsOf(F.DECODER_RING_ALIAS_BLANK);
     expect(blank).toHaveLength(1);
     expect(blank[0].subject).toBe('11v11 Field 2');
+    // A label with no venue is the other way an alias escapes every venue
+    // join; it is a finding, never a silent skip.
+    const venueBlank = findingsOf(F.DECODER_RING_ALIAS_VENUE_BLANK);
+    expect(venueBlank.map((f) => f.subject)).toEqual(['11v11 Field 1']);
+    expect(venueBlank[0].raw.actual_label).toBe('Willowmead Park Turf');
+    // The two excluded aliases are exactly the two findings: 20 = 18 + 1 + 1.
+    expect(practice.meta.examined.aliasesWithVenue + blank.length + venueBlank.length).toBe(20);
   });
 });
 
@@ -488,7 +518,11 @@ describe('season-2026 practice corpus :: permits', () => {
         practice.permitReservations.filter((row) => row.permitId === permit.permitId).length
       ).toBeGreaterThan(0);
     }
+    // Single producer: the game corpus states the year; every reservation is
+    // checked against it rather than defining it.
     expect(practice.seasonYear).toBe(season.seasonYear);
+    expect(practice.meta.examined.reservations).toBe(767);
+    expect(findingsOf(F.PERMIT_RESERVATION_OUTSIDE_SEASON)).toHaveLength(0);
   });
 
   it('keeps every reservation on the weekday its date falls on', () => {
@@ -595,9 +629,10 @@ describe('season-2026 practice corpus :: cross-corpus join', () => {
   });
 
   it('counts the game-playing roster teams that hold no practice slot', () => {
-    // The README says 65. Enumerated from the roster, the corpus says 44;
-    // enumerated from every named side of ../combined_schedule.csv (Minis
-    // sessions and visiting clubs included) it says 53. Neither is 65.
+    // The source claimed 65 (kept visible in the README as the source's
+    // claim). Enumerated from the roster the corpus says 44; from every named
+    // side of ../combined_schedule.csv (Minis sessions and visiting clubs
+    // included) it says 53. Neither is 65; the README now carries both.
     const none = findingsOf(F.ROSTER_TEAM_HOLDS_NO_PRACTICE);
     expect(none).toHaveLength(44);
     expect(none.length + 88 - 1).toBe(practice.meta.examined.rosterTeamsWithGame);
@@ -624,22 +659,45 @@ describe('season-2026 practice corpus :: cross-corpus join', () => {
     expect(onRoster).toHaveLength(201 - 35);
   });
 
-  it('reports where select_coaches.csv and ../coach_roster.csv disagree', () => {
+  it('reports where select_coaches.csv and ../coach_roster.csv disagree, in both directions', () => {
     expect(practice.meta.examined.selectCoachRows).toBe(22);
-    const disagree = findingsOf(F.SELECT_COACH_DISAGREES_WITH_ROSTER);
-    expect(disagree).toHaveLength(9);
-    // Every minted select coach is a disagreement; two rostered people are too.
+    // Sheet → roster. "Not on the team" and "on the team at another slot" are
+    // different findings: slot is a clash-breaker, not a role.
+    const notOnTeam = findingsOf(F.SELECT_COACH_NOT_ON_ROSTER_TEAM);
+    const slotDiffers = findingsOf(F.SELECT_COACH_SLOT_DIFFERS);
+    expect(notOnTeam).toHaveLength(8);
+    expect(slotDiffers.map((f) => f.subject)).toEqual(['19BSelect01 emerson crane']);
+    expect(slotDiffers[0].detail).toBe('sheet slot 1; roster slot 2');
+    // Every minted select coach is not on the team; one rostered person is too.
     const mintedSelect = new Set(
       findingsOf(F.PERSON_KEY_MINTED)
         .filter((f) => f.file === 'select_coaches.csv')
         .map((f) => f.subject)
     );
-    const rosteredDisagreements = disagree.filter((f) => !mintedSelect.has(f.raw.person_key));
-    expect(rosteredDisagreements.map((f) => f.raw.person_key).sort()).toEqual([
-      'emerson crane',
-      'teagan hobbes',
+    expect(mintedSelect.size).toBe(7);
+    expect(
+      notOnTeam.filter((f) => !mintedSelect.has(f.raw.person_key)).map((f) => f.raw.person_key)
+    ).toEqual(['teagan hobbes']);
+    expect(22 - notOnTeam.length - slotDiffers.length).toBe(13);
+
+    // Roster → sheet, enumerated from the roster's Select teams so a coach the
+    // sheet leaves out is reported rather than absent.
+    expect(practice.meta.examined.rosterSelectTeams).toBe(14);
+    expect(practice.meta.examined.rosterSelectCoaches).toBeGreaterThan(0);
+    const omitted = findingsOf(F.SELECT_COACH_OMITTED_BY_SHEET);
+    expect(omitted.map((f) => f.subject.split(' ').slice(1).join(' ')).sort()).toEqual([
+      'lena jute',
+      'nathaniel deverell',
+      'oakley pryce',
+      'perry yeats',
+      'remy zorn',
+      'tatum tolliver',
+      'vesper orton',
+      'wren reed',
     ]);
-    expect(22 - disagree.length).toBe(13);
+    // Every Select roster coach is either listed by the sheet or reported.
+    const listed = practice.meta.examined.rosterSelectCoaches - omitted.length;
+    expect(listed).toBe(22 - notOnTeam.length);
   });
 
   it('names the venues this corpus uses that the game corpus does not know by name', () => {
@@ -844,6 +902,62 @@ describe('season-2026 practice corpus :: positive controls', () => {
     expect(parseCoachRegistration(row, { seasonYear: 2027 }).findings).toEqual([]);
     // Without a year the check cannot run, and it refuses rather than not running.
     expect(() => parseCoachRegistration(row, /** @type {any} */ (undefined))).toThrow(/seasonYear/);
+
+    // The player sheet holds the same contract; the corpus's 2008-2023 range
+    // never exercises it, so the control does.
+    const player = csvRow('player_registration.csv', {
+      player_name: 'A B',
+      player_key: 'a b',
+      gender: 'f',
+      birth_year: '2026',
+      age_group: '4',
+      program: 'Minis',
+    });
+    expect(
+      parsePlayerRegistration(player, { seasonYear: 2026 }).findings.map((f) => f.code)
+    ).toEqual([F.BIRTH_YEAR_IMPLAUSIBLE]);
+    expect(parsePlayerRegistration(player, { seasonYear: 2027 }).findings).toEqual([]);
+    expect(() => parsePlayerRegistration(player, /** @type {any} */ (undefined))).toThrow(
+      /seasonYear/
+    );
+    expect(practice.playerRegistrations.every((r) => r.birthYear < practice.seasonYear)).toBe(true);
+  });
+
+  it('raises the venue-blank alias and the out-of-season reservation', () => {
+    const alias = parsePracticeFieldAliases(
+      csvRow('practice_field_aliases.csv', { display_name: 'X', actual_label: 'Somewhere Turf' })
+    );
+    expect(alias.findings.map((f) => f.code)).toEqual([F.DECODER_RING_ALIAS_VENUE_BLANK]);
+    expect(alias.records[0].venue).toBeNull();
+
+    const parsedWith = (file, result) => ({ ...parsedCorpus, [file]: result });
+    const late = crossCorpusFindings(
+      parsedWith(
+        'permit_reservations.csv',
+        parsePermitReservations(
+          csvRow('permit_reservations.csv', {
+            permit_id: 'P',
+            venue: 'Alder Park',
+            date: '2027-08-10',
+            day: 'Tuesday',
+            start: '18:00',
+            end: '20:00',
+            facility: 'F',
+          })
+        )
+      ),
+      season
+    );
+    expect(
+      late.findings.filter((f) => f.code === F.PERMIT_RESERVATION_OUTSIDE_SEASON)
+    ).toHaveLength(1);
+    expect(late.examined.reservations).toBe(1);
+    // …and a sheet that lists nobody for a team reports every roster coach of it.
+    const empty = crossCorpusFindings(parsedWith('select_coaches.csv', { records: [] }), season);
+    const omitted = empty.findings.filter((f) => f.code === F.SELECT_COACH_OMITTED_BY_SHEET);
+    expect(omitted).toHaveLength(empty.examined.rosterSelectCoaches);
+    expect(omitted.length).toBeGreaterThan(8);
+    for (const f of omitted) expect(f.detail).toMatch(/lists nobody for the team$/);
   });
 
   it('raises the change-log day mismatch and the duplicate decoder code', () => {

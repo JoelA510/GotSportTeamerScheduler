@@ -99,21 +99,6 @@ export function computePracticeFixtureChecksums(dir = DEFAULT_FIXTURE_DIR) {
 }
 
 /**
- * Derive the season year from `permit_reservations.csv`, the one file in the
- * corpus whose every row carries a full date. The change log needs it.
- *
- * @param {Array<{date: string}>} reservations
- * @returns {number}
- */
-export function seasonYearOfReservations(reservations) {
-  const years = [...new Set(reservations.map((row) => Number(row.date.slice(0, 4))))];
-  if (years.length !== 1) {
-    throw new Error(`permit_reservations.csv spans ${years.length} years: ${years.join(', ')}`);
-  }
-  return years[0];
-}
-
-/**
  * Parse one corpus file. Every parser takes the same `{ seasonYear }`; the
  * ones that need it (`game_change_log.csv`, `coach_registration.csv`) refuse
  * to run without it, the rest ignore it.
@@ -153,6 +138,9 @@ export function crossCorpusFindings(parsed, season) {
     selectCoachRows: 0,
     coCoachKeys: 0,
     namedPlayerKeys: 0,
+    rosterSelectTeams: 0,
+    rosterSelectCoaches: 0,
+    reservations: 0,
     venueFiles: 0,
     venueNames: 0,
     aliasesWithVenue: 0,
@@ -165,6 +153,7 @@ export function crossCorpusFindings(parsed, season) {
   const coachRegistrations = parsed['coach_registration.csv'].records;
   const players = parsed['player_registration.csv'].records;
   const selectCoaches = parsed['select_coaches.csv'].records;
+  const reservations = parsed['permit_reservations.csv'].records;
 
   /* ---- teams: roster is the universe ---- */
   const rosterTeams = new Map(season.teams.map((team) => [team.id, team]));
@@ -246,20 +235,70 @@ export function crossCorpusFindings(parsed, season) {
         raw: row.raw,
       });
     }
+    // Slot is a clash-breaker, not a role (PHASE_8_PLAN §8.2): a coach the
+    // roster has on the team at another slot is a different finding from a
+    // coach the roster does not have on the team at all.
     const team = rosterTeams.get(row.teamCode);
-    const slot = team ? team.coachSlots.find((entry) => entry.slot === row.coachSlot) : null;
-    if (!slot || slot.personKey !== row.personKey) {
+    const onTeam = team ? team.coachSlots.find((entry) => entry.personKey === row.personKey) : null;
+    if (!onTeam) {
       push({
-        code: SEASON_2026_PRACTICE_FINDING.SELECT_COACH_DISAGREES_WITH_ROSTER,
+        code: SEASON_2026_PRACTICE_FINDING.SELECT_COACH_NOT_ON_ROSTER_TEAM,
         file: 'select_coaches.csv',
         rowIndex: row.rowIndex,
-        subject: `${row.teamCode} slot ${row.coachSlot}`,
+        subject: `${row.teamCode} ${row.personKey}`,
         detail: team
-          ? `sheet says ${row.personKey}; roster slot ${row.coachSlot} is ${slot ? slot.personKey : 'empty'}`
+          ? `sheet lists ${row.personKey} at slot ${row.coachSlot}; roster coaches are ${team.coachPersonKeys.join(', ')}`
           : `sheet names ${row.teamCode}, which the roster does not carry`,
         raw: row.raw,
       });
+    } else if (onTeam.slot !== row.coachSlot) {
+      push({
+        code: SEASON_2026_PRACTICE_FINDING.SELECT_COACH_SLOT_DIFFERS,
+        file: 'select_coaches.csv',
+        rowIndex: row.rowIndex,
+        subject: `${row.teamCode} ${row.personKey}`,
+        detail: `sheet slot ${row.coachSlot}; roster slot ${onTeam.slot}`,
+        raw: row.raw,
+      });
     }
+  }
+  // The other direction, enumerated from the roster: every coach of every
+  // rostered Select team must be on the sheet somewhere for that team.
+  const sheetPeopleByTeam = new Map();
+  for (const row of selectCoaches) {
+    if (!sheetPeopleByTeam.has(row.teamCode)) sheetPeopleByTeam.set(row.teamCode, new Set());
+    sheetPeopleByTeam.get(row.teamCode).add(row.personKey);
+  }
+  for (const team of season.teams) {
+    if (!/Select/.test(team.id)) continue;
+    examined.rosterSelectTeams += 1;
+    const listed = sheetPeopleByTeam.get(team.id) ?? new Set();
+    for (const entry of team.coachSlots) {
+      examined.rosterSelectCoaches += 1;
+      if (listed.has(entry.personKey)) continue;
+      push({
+        code: SEASON_2026_PRACTICE_FINDING.SELECT_COACH_OMITTED_BY_SHEET,
+        file: 'select_coaches.csv',
+        rowIndex: null,
+        subject: `${team.id} ${entry.personKey}`,
+        detail: `roster slot ${entry.slot}; select_coaches.csv lists ${listed.size === 0 ? 'nobody for the team' : [...listed].join(', ')}`,
+        raw: null,
+      });
+    }
+  }
+
+  /* ---- reservations against the season year ---- */
+  for (const row of reservations) {
+    examined.reservations += 1;
+    if (Number(row.date.slice(0, 4)) === season.seasonYear) continue;
+    push({
+      code: SEASON_2026_PRACTICE_FINDING.PERMIT_RESERVATION_OUTSIDE_SEASON,
+      file: 'permit_reservations.csv',
+      rowIndex: row.rowIndex,
+      subject: `${row.permitId} ${row.date}`,
+      detail: `dated outside the ${season.seasonYear} season the game corpus states`,
+      raw: row.raw,
+    });
   }
 
   /* ---- registrations against each other ---- */
@@ -396,13 +435,11 @@ export function loadSeason2026Practice(options = {}) {
 
   /** @type {Record<string, { records: Array<Object>, findings: Array<Object>, rowsRead: number }>} */
   const parsed = {};
-  const reservations = loadPracticeFile('permit_reservations.csv', { dir });
-  const seasonYear = seasonYearOfReservations(reservations.records);
+  // One producer for the season year: the game corpus. A reservation file
+  // from another year is reported against it, never used to redefine it.
+  const seasonYear = season.seasonYear;
   for (const fileName of SEASON_2026_PRACTICE_FILES) {
-    parsed[fileName] =
-      fileName === 'permit_reservations.csv'
-        ? reservations
-        : loadPracticeFile(fileName, { dir, seasonYear });
+    parsed[fileName] = loadPracticeFile(fileName, { dir, seasonYear });
   }
 
   const decoderRings = compareDecoderRings(
