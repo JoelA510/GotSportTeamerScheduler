@@ -13,7 +13,7 @@ venue, field or person key here means the same thing it means there.
 Same standard as the game corpus: structural relationships preserved exactly,
 identities replaced. Concretely:
 
-- **The venue, field, team and person maps were *derived*, not invented.** The
+- **The venue, field, team and person maps were _derived_, not invented.** The
   game schedule in this drop is the same season as `../combined_schedule.csv`,
   so the two were joined on `(date, kickoff, division, format)` and the
   pseudonyms read off the published corpus. That join produced a 1:1 map with
@@ -42,15 +42,21 @@ The real→pseudonym map is **not** in this repo and must not be committed.
 
 ## Files
 
-| File | Rows | Contents |
-|---|---|---|
-| `practice_grid.csv` | 457 | Weekly practice assignments: venue, field, sub-unit, day, start, duration, team. `source_sheet` names which revision of the plan the row came from. |
-| `practice_field_aliases.csv` | 20 | The club's "decoder ring": the name a field is given on the published practice schedule vs the field it actually is. |
-| `field_constraints.csv` | 13 | Blackouts, closures and the adjacency rule, with date and time bounds. |
-| `coach_registration.csv` | 201 | One row per coach registration: their player(s) as links, birth year, playing-up flag, and preferred co-coach as a link plus a class. |
-| `player_registration.csv` | 1153 | Pseudonymous player, gender, birth year, age group, program, playing-up flag. |
-| `game_change_log.csv` | 167 | The dated change history of the game schedule: what changed, from what, to what, and why. |
-| `select_coaches.csv` | 22 | The Select (11v11) coach roster, supplied by the operator out of band because the registration export does not cover it. |
+| File                            | Rows | Contents                                                                                                                                            |
+| ------------------------------- | ---- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `practice_grid.csv`             | 457  | Weekly practice assignments: venue, field, sub-unit, day, start, duration, team. `source_sheet` names which revision of the plan the row came from. |
+| `practice_field_aliases.csv`    | 20   | The club's "decoder ring": the name a field is given on the published practice schedule vs the field it actually is.                                |
+| `field_constraints.csv`         | 13   | Blackouts, closures and the adjacency rule, with date and time bounds.                                                                              |
+| `coach_registration.csv`        | 201  | One row per coach registration: their player(s) as links, birth year, playing-up flag, and preferred co-coach as a link plus a class.               |
+| `player_registration.csv`       | 1153 | Pseudonymous player, gender, birth year, age group, program, playing-up flag.                                                                       |
+| `game_change_log.csv`           | 167  | The dated change history of the game schedule: what changed, from what, to what, and why.                                                           |
+| `select_coaches.csv`            | 22   | The Select (11v11) coach roster, supplied by the operator out of band because the registration export does not cover it.                            |
+| `permits.csv`                   | 4    | One row per facility-use permit: venue, event, issue date, attendance cap.                                                                          |
+| `permit_reservations.csv`       | 767  | Every reserved window the four permits grant: date, day, start, end, the facility as the permit names it, and the services attached.                |
+| `field_inventory.csv`           | 14   | Per venue: which formats fit and how many, age groups, practice capacity, bathroom provision, notes.                                                |
+| `field_code_names.csv`          | 27   | The league's **other** decoder ring, from the fields workbook. Carries an `uncertain` flag where the source wrote "?".                              |
+| `field_weekly_availability.csv` | 42   | Weekday availability per venue, as `raw_value` **and** `interpreted_window`, with the interpretation named.                                         |
+| `field_equipment.csv`           | 9    | Equipment held on site, per venue.                                                                                                                  |
 
 ## Known-good invariants (assert these)
 
@@ -66,6 +72,26 @@ The real→pseudonym map is **not** in this repo and must not be committed.
 - 1153 players, 29 of them playing up.
 - 13 constraint rows; 3 venues are closed for effectively the whole season
   (`Fivepines Park` reseeding, `Quarrywood Park` and `Cedarbrook Park` offline).
+
+## The permits
+
+`permit_reservations.csv` is the first per-date, per-field permit data in the
+repo — 767 windows across four venues, 2026-08-10 to 2026-12-20. The existing
+`../facility_permits.csv` carries venue-level windows; this carries the grant
+itself, field by field.
+
+Two things it settles:
+
+- **The half-pitch split is permitted ground, not an improvisation.** The permit
+  reserves `Field - Soccer 1A/1B`, `2A/2B`, `3A/3B` and `4A/4B` as named
+  facilities. The practice grid's use of Pitch 2A/2B and 3A/3B — which the game
+  layer uses whole — is what the club is licensed for.
+- **Lighting has a documentary source.** The Summit HS permit attaches
+  `Field Lights` as a service on its reservations. GAP-05 notes the corpus
+  carries `lit` only at venue level; this is per-reservation evidence.
+
+Permit numbers, the approver's name, the vendor's contact details and all URLs
+are dropped. `permit_id` is a positional label (`PERMIT-01`…), not the real one.
 
 ## What this corpus catches that the game corpus cannot
 
@@ -91,7 +117,30 @@ The real→pseudonym map is **not** in this repo and must not be committed.
    does not say. Two sheets carry 142 rows each and differ only in being a
    makeup week.
 
-5. **No seasonal shortening is present.** The 60/50/40 phased-duration pattern
+5. **The league keeps two decoder rings and they disagree on 12 of the 20 codes
+   they share.** `practice_field_aliases.csv` (from the practice workbook) and
+   `field_code_names.csv` (from the fields workbook) both map a published field
+   name to a real one. Where they differ, neither is marked authoritative:
+
+   | code                 | practice sheet says     | fields sheet says             |
+   | -------------------- | ----------------------- | ----------------------------- |
+   | `7v7 Field 1`        | Cedarbrook Park Field 1 | Larkfield Green Field 2 **?** |
+   | `9v9 Field 1`        | Rookery Park Turf 2A    | Rookerie Park Turf 2A         |
+   | `Junior Field 1`–`7` | Maplewood Field _n_     | Maplewood **Back** Field _n_  |
+
+   The first row is the one that bites: one branch points at a venue closed all
+   season, the other carries the source's own "?" . The second row is a spelling
+   variant of one venue across two sheets — kept as two spellings, exactly as
+   `../coach_roster_v1.csv` keeps "Nate" and "Nathaniel", because resolving it
+   silently would delete the test case.
+
+6. **A working sheet's own dates are corrupted and the corruption is legible.**
+   `field_weekly_availability.csv` carries `raw_value = 2026-04-07` where the
+   author typed `4-7` and Excel made it a date. The interpreted window is
+   `16:00-19:00` and the row says `interpretation = excel-date-corruption`. The
+   raw value is kept beside it so the inference can be checked and overridden.
+
+7. **No seasonal shortening is present.** The 60/50/40 phased-duration pattern
    the club describes does not appear in this file — every row sits in one of the
    two fixed regimes. Whatever shortening happens is not recorded here.
 

@@ -1,0 +1,43 @@
+venue,day,raw_value,interpreted_window,interpretation
+Orchard Park,Mon,2026-04-07,16:00-19:00,excel-date-corruption
+Orchard Park,Tue,2026-04-07,16:00-19:00,excel-date-corruption
+Orchard Park,Wed,2026-04-07,16:00-19:00,excel-date-corruption
+Orchard Park,Thu,2026-04-07,16:00-19:00,excel-date-corruption
+Orchard Park,Fri,2026-04-07,16:00-19:00,excel-date-corruption
+Orchard Park,Sat,7am-7pm,07:00-19:00,
+Orchard Park,Sun,X,,unavailable
+Maplewood,Mon,2026-03-08,15:00-20:00,excel-date-corruption
+Maplewood,Tue,2026-03-08,15:00-20:00,excel-date-corruption
+Maplewood,Wed,2026-03-08,15:00-20:00,excel-date-corruption
+Maplewood,Thu,2026-03-08,15:00-20:00,excel-date-corruption
+Maplewood,Fri,2026-03-08,15:00-20:00,excel-date-corruption
+Maplewood,Sat,7am-8pm,07:00-20:00,
+Maplewood,Sun,X,,unavailable
+Larkfield Green,Mon,2026-03-08,15:00-20:00,excel-date-corruption
+Larkfield Green,Tue,2026-03-08,15:00-20:00,excel-date-corruption
+Larkfield Green,Wed,2026-03-08,15:00-20:00,excel-date-corruption
+Larkfield Green,Thu,2026-03-08,15:00-20:00,excel-date-corruption
+Larkfield Green,Fri,2026-03-08,15:00-20:00,excel-date-corruption
+Larkfield Green,Sat,x,,unavailable
+Larkfield Green,Sun,X,,unavailable
+Brookside Park,Mon,6-8pm,18:00-20:00,
+Brookside Park,Wed,6-8pm,18:00-20:00,
+Brookside Park,Fri,6-8pm,18:00-20:00,
+Brookside Park,Sat,7am-6pm,07:00-18:00,
+Brookside Park,Sun,X,,unavailable
+Alder Park,Mon,6-8pm,18:00-20:00,
+Alder Park,Tue,6-8pm,18:00-20:00,
+Alder Park,Wed,6-8pm,18:00-20:00,
+Alder Park,Thu,6-8pm,18:00-20:00,
+Alder Park,Fri,6-8pm,18:00-20:00,
+Alder Park,Sat,7am-6pm,07:00-18:00,
+Alder Park,Sun,7am-6pm,07:00-18:00,
+Ridgeline Club,Mon,comp,,competitive-programme
+Ridgeline Club,Tue,comp,,competitive-programme
+Ridgeline Club,Wed,comp,,competitive-programme
+Ridgeline Club,Thu,comp,,competitive-programme
+Ridgeline Club,Fri,comp,,competitive-programme
+Ridgeline Club,Sat,comp,,competitive-programme
+Ridgeline Club,Sun,comp,,competitive-programme
+Beacon Field,Sat,X,,unavailable
+Beacon Field,Sun,X,,unavailable

@@ -12,7 +12,7 @@ midnight, `YYYY-MM-DD`, and **no `Date` construction**.
 
 ---
 
-## The decision that gates everything from 8.4 onward
+## The decision that gates everything from 8.5 onward
 
 There are two schedulers in this repo and they do not meet:
 
@@ -24,9 +24,10 @@ There are two schedulers in this repo and they do not meet:
 | Imported by `frontend/` | **zero modules**                                    | 17 modules                      |
 | Persisted               | no — every snapshot emits `SNAPSHOT_IN_MEMORY_ONLY` | yes                             |
 
-Tasks 8.0–8.3 are worth doing under either answer. From 8.4 onward the work
+Tasks 8.0–8.4 are worth doing under either answer — 8.4 in particular is
+app-side and therefore lands on the half users can already reach. From 8.5 the work
 either extends an engine nobody can reach, or moves the engine under the app.
-**Decide before 8.4**, and record the decision in `BUILD_PLAN_STATUS.md`.
+**Decide before 8.5**, and record the decision in `BUILD_PLAN_STATUS.md`.
 
 Two open items from §3 are really this decision in disguise: _"Nothing is
 persisted"_ and _"Nothing is wired into the shipping app"_. GAP-30
@@ -59,6 +60,11 @@ The invariants, from fixtures/season-2026/practice/README.md:
 - 201 coach registrations, 19 naming a second player.
 - 1153 players, 29 playing up.
 - 13 constraint rows; 3 venues closed effectively all season.
+- 4 permits and 767 reservation windows, 2026-08-10 to 2026-12-20.
+- 14 venue inventory rows, 27 field code names, 42 weekly availability rows.
+- The two decoder rings share 20 codes and disagree on exactly 12 of them.
+  Assert the disagreement rather than resolving it; a run that finds fewer than
+  12 has silently reconciled something.
 
 Add cross-corpus assertions the README does not state but the join implies:
 every team_code in practice_grid.csv resolves in the game corpus except the one
@@ -66,7 +72,10 @@ named above; every person_key in coach_registration.csv and select_coaches.csv
 is either in ../coach_roster.csv or minted (assert which, do not assume).
 
 Report the 28 rows carrying venue = "(unresolved)" as a named finding rather
-than filtering them out.
+than filtering them out. Do the same for every
+field_weekly_availability.csv row whose interpretation is
+"excel-date-corruption" or "unparsed": the raw value is retained beside the
+interpretation precisely so a later reader can overrule it.
 ```
 
 ---
@@ -91,7 +100,7 @@ refactor around them.
 2. packages/core/src/practiceSlotExpansion.js:13 claims it produces slots that
    "account for daylight adjustments". The file contains no sunset, daylight or
    lighting reference and takes no such input. Either implement it or correct
-   the docstring — correcting it is in scope here, implementing it is 8.8.
+   the docstring — correcting it is in scope here, implementing it is 8.9.
    Whichever you choose, say so in the commit.
 
 Also raise, without fixing: supabase/migrations/20260331000000_definitive_schema.sql
@@ -178,7 +187,80 @@ must be reported for that date and not for others.
 
 ---
 
-## 8.4 — Recurring practice slots
+## 8.4 — Field and blackout administration: import, export, CRUD
+
+**Depends on:** 8.3. This is the task that makes the rest maintainable by the
+club rather than by whoever last edited a spreadsheet.
+
+```
+Make fields and their blackout windows a first-class, editable domain object
+with a round trip, and expose it in the app.
+
+Today the ground truth is four working sheets and four PDF permits that nobody
+reconciles: fixtures/season-2026/practice/ now holds all of them, and its README
+records that the club's two decoder rings disagree on 12 of the 20 field codes
+they share, that one branch of that disagreement points at a venue closed for
+the whole season, and that a working sheet's own availability cells were
+corrupted by Excel into dates.
+
+Three capabilities, in this order:
+
+1. IMPORT. Parse each source into the domain model: permits.csv and
+   permit_reservations.csv into availability windows; field_inventory.csv and
+   field_equipment.csv into surface attributes; field_weekly_availability.csv
+   into recurring windows; field_constraints.csv into blackouts; both decoder
+   rings into the alias layer from 8.3.
+   Import must be non-destructive and reviewable: produce a proposed change set
+   against current state, with per-row disposition (new / unchanged / differing
+   / unresolvable) and a reason. Never apply silently. Where two sources
+   disagree, surface BOTH and refuse to pick — publication/parity.js already
+   has the partitioning shape (matched / differing / added / removed); reuse it
+   rather than inventing a second vocabulary.
+   Preserve the raw cell beside every interpretation, as
+   field_weekly_availability.csv does with raw_value / interpreted_window /
+   interpretation. An operator must be able to see what the sheet said and why
+   the importer read it that way. This is the single most important property
+   for troubleshooting a bad import later.
+
+2. EXPORT. The same model back out to CSV, byte-stable and re-importable, so an
+   export → import round trip is the identity. Assert that as a test on the
+   committed fixtures. externalImport/mapping.js already has the seam shape
+   (serialiseExternalMappingRegistry / readExternalMappingRegistry, byte-
+   identical round trip asserted) — follow it.
+
+3. CRUD in the app. Add, edit and retire venues, surfaces and sub-surfaces, and
+   add, edit and remove blackout windows (a date or date range, a time range or
+   all-day, a reason, and a source). Retire is an END DATE, never a delete —
+   surfaces are not effective-dated today (facility/schemas.js carries no date
+   fields at all) and 8.8 needs them to be. Do that here rather than twice.
+   Every mutation writes an audit_log entry with before and after. Every
+   mutation that would invalidate an existing booking shows the consequence
+   BEFORE commit: which games and practices are affected and what the repair
+   from 8.6 proposes.
+
+Constraints that are not negotiable:
+- All persistence through dedicated RPCs and Zod-validated, per CLAUDE.md.
+- RLS on every new table; blackouts and permits are organisation-scoped.
+- WCAG 2.2 AA on the new UI: the blackout editor is a date/time form, so label
+  every field, make the calendar keyboard-operable, and give a non-drag path to
+  anything draggable.
+- Reuse the design system. No new colours, radii or spacings.
+
+Acceptance:
+- Importing fixtures/season-2026/practice/ produces a change set that names all
+  12 decoder-ring disagreements as `differing` and applies none of them.
+- The Excel-corrupted availability rows import with their raw value intact and
+  are flagged for review, not silently accepted.
+- Export then import is the identity on the committed fixtures.
+- Retiring a surface that hosts a booked practice is refused with the list of
+  affected bookings, and succeeds with an end date once the operator confirms.
+- A blackout added through the UI makes the affected games and practices show
+  as conflicts, and removing it clears them.
+```
+
+---
+
+## 8.5 — Recurring practice slots
 
 **Depends on:** 8.3, and the wiring decision above.
 
@@ -216,9 +298,9 @@ removes that occurrence and no other.
 
 ---
 
-## 8.5 — Bounded local repair
+## 8.6 — Bounded local repair
 
-**Depends on:** 8.4 for the practice side; the game side can start earlier.
+**Depends on:** 8.5 for the practice side; the game side can start earlier.
 
 ```
 Make repair local and cost-bounded, and route every mid-season change through it.
@@ -255,7 +337,7 @@ unchanged or better. Never silently drop an unplaceable slot.
 
 ---
 
-## 8.6 — Move-request analysis
+## 8.7 — Move-request analysis
 
 **Depends on:** 8.3. The most-repeated manual computation in the club's season.
 
@@ -292,9 +374,9 @@ classifies vacancy_available.
 
 ---
 
-## 8.7 — Changelog, notification state, and entity lifecycle
+## 8.8 — Changelog, notification state, and entity lifecycle
 
-**Depends on:** the wiring decision, and 8.4. The largest task here.
+**Depends on:** the wiring decision, and 8.5. The largest task here.
 
 ```
 Add an append-only changelog and effective-dated lifecycle.
@@ -323,7 +405,7 @@ dates at all. Close those two gaps. "Remove coach" becomes an end-date.
 
 Every lifecycle event produces a consequence report BEFORE commit: which teams
 drop to a single coach (soleCoachRiskRegister already derives this), which
-conflict checks change, which slots are displaced with the 8.5 repair proposal,
+conflict checks change, which slots are displaced with the 8.6 repair proposal,
 and what cannot be re-homed.
 
 Acceptance: ending a coach's assignment on a date leaves "who coached this team
@@ -335,9 +417,9 @@ game_change_log.csv's 167 rows load and classify.
 
 ---
 
-## 8.8 — Season phases, sunset, and the DST cliff
+## 8.9 — Season phases, sunset, and the DST cliff
 
-**Depends on:** 8.4. **Blocked on data — do not start without it.**
+**Depends on:** 8.5. **Blocked on data — do not start without it.**
 
 ```
 BLOCKED. Before any code: obtain weekday sunset values for the club's location
@@ -368,7 +450,7 @@ Then:
 2. Support both compression strategies and report per slot which stay legal:
    hold starts and shorten ends (flagging any slot still ending past sunset), or
    cascade so each slot starts when the previous ends (every start moves, which
-   is a published-time change and must route through 8.7's changelog).
+   is a published-time change and must route through 8.8's changelog).
 
 3. Model DST-end as a named season event. The model today is DST-safe by
    construction — clock-free, minutes past midnight, no Date — but DST-blind:
@@ -385,9 +467,9 @@ field in this corpus (GAP-05). Use it; do not add a second lighting source.
 
 ---
 
-## 8.9 — Reply context
+## 8.10 — Reply context
 
-**Depends on:** 8.6, and 8.7 for the notice half. Build last; it is presentation
+**Depends on:** 8.7, and 8.8 for the notice half. Build last; it is presentation
 over queries that must exist first.
 
 ```
