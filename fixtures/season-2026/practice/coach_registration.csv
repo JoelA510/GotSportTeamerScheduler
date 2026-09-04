@@ -1,0 +1,202 @@
+coach_name,person_key,player_1_key,player_1_ref_class,player_1_gender,player_1_birth_year,player_1_playing_up,preferred_co_coach_1_key,preferred_co_coach_1_class,player_2_key,player_2_ref_class,player_2_gender,player_2_birth_year,player_2_playing_up,preferred_co_coach_2_key,preferred_co_coach_2_class
+Toby Hart,toby hart,mira hestevale,named,male,2016,,riley pike,named,verity wynleck,named,female,2018,,remy nash,named
+Perry Yeats,perry yeats,zeda wynmefield,named,male,2013,,gray judd,named,,none,,,,,none
+Remy Nash,remy nash,zoran norrevale,named,female,2018,,toby hart,named,,declined,female,,,,declined
+Riley Pike,riley pike,zoran kelboby,named,female,2014,,,narrative,wrenna alfeham,named,male,2016,,toby hart,named
+Quinn Vance,quinn vance,ilse torreley,named,male,2016,yes,yusuf marsh,named,,none,,,,,none
+Rui Vale,rui vale,signy hesperidge,named-in-prose,female,2018,yes,,none,odis irhemont,named,male,2020,yes,,none
+Reagan Holloway,reagan holloway,signy hesperidge,named-in-prose,female,2018,,,none,odis irhemont,named,male,2020,,,none
+Morgan Eastman,morgan eastman,morgan eastman,named,male,2016,,wanda eastman,named-in-prose,ulric istzastone,named,female,2017,,ines hale,named-in-prose
+Rui Ehrlich,rui ehrlich,joss brekack,named,female,2020,,shay moss,named,,none,,,,,none
+Anders Xanders,anders xanders,imre bramzamont,named,male,2019,,winter dole,named,,declined,,,,,none
+Riley Dunmore,riley dunmore,ilse norbostone,named,male,2018,,zane quimby,named,,none,,,,,none
+Zane Quimby,zane quimby,ulf zelbavale,named-in-prose,male,2018,,riley dunmore,named,,declined,,,,,none
+Jonas Hale,jonas hale,vero kelmeford,named,male,2017,,,none,,none,,,,,none
+Finley Ives,finley ives,gilda ashhefield,named,female,2017,yes,ines hale,named,,none,,,,,none
+Uri Sloane,uri sloane,linnea gilkaley,named,female,2017,,wanda prentiss,named-in-prose,,none,,,,,none
+Vera Marsh,vera marsh,jarl hesvestone,named,male,2019,,,narrative,,none,,,,,none
+Wanda Eastman,wanda eastman,kerrin garcocombe,named,male,2016,,morgan eastman,named,,none,,,,,none
+Bailey Mott,bailey mott,prue hesbaton,named,female,2017,,kian dellucci,named,nessa norfefield,named,female,2019,,sofia bern,named
+Gray Judd,gray judd,elsbet linveworth,named-in-prose,male,2013,,perry yeats,named,linnea kelgadge,named,female,2018,yes,mabon selgack,named
+Anders Vale,anders vale,sorrel yarheham,named,female,2018,,gina lyle,named,,none,,,,,none
+Winter Dole,winter dole,nessa istveridge,named,male,2019,,anders xanders,named,,none,,,,,none
+Teagan Crane,teagan crane,marek selgavale,named,male,2021,,,none,,none,,,,,none
+Hugo Nix,hugo nix,kestrel torboden,named,male,2021,,,declined,,none,,,,,none
+Shay Moss,shay moss,imre norgack,named,female,2020,yes,rui ehrlich,named-in-prose,,none,,,,,none
+Emerson Crane,emerson crane,kerrin dorhethorn,named,male,2009,,,none,,none,,,,,none
+Sam Orme,sam orme,tamsin halneley,named,male,2019,yes,lena vail,named,,declined,,,,,none
+Una Yates,una yates,,narrative,female,2016,,,narrative,,none,,,,,none
+Blake Ingram,blake ingram,vesper yarcefield,named,female,2021,,,none,,none,,,,,none
+Luca Osgood,luca osgood,fenn jessestone,named,female,2021,,joss jorbomere,named-in-prose,,none,,,,,none
+Dov Tolliver,dov tolliver,joss danbathorn,named,female,2016,,lena vail,named,,none,,,,,none
+Mabon Garcedge,mabon garcedge,tamsin fendomont,named-in-prose,male,2015,yes,quinn vance,named,,none,,,,,none
+Mara Calder,mara calder,,unresolved,male,2021,,,none,,narrative,male,2018,,,none
+Greta Wynn,greta wynn,,unresolved,male,2018,,,none,ysolt corkastone,named,male,2021,,,none
+Delia Clyceley,delia clyceley,hale zelwestone,named-in-prose,male,2016,,faron linveham,named,,none,,,,,none
+Elliot Jute,elliot jute,perrin evreden,named,male,2020,,val jute,named,,none,,,,,none
+Nico Vail,nico vail,wrenna norfedge,named,male,2018,,toby nix,named,verity ircoby,named-in-prose,female,2014,,perry sloane,named
+Nessa Danlestone,nessa danlestone,bertram zelweworth,named,male,2015,,,none,,none,,,,,none
+Harper Zamora,harper zamora,elsbet pencoley,named,female,2020,,,none,juno quilboley,named,male,2022,,,none
+Harper Sloane,harper sloane,,unresolved,male,2020,,,narrative,,none,,,,,none
+Odis Elbamont,odis elbamont,zoran ashpedge,named-in-prose,female,2021,,luca osgood,named,,none,,,,,none
+Sofia Vail,sofia vail,tamsin penrevale,named,female,2015,,,unresolved,,declined,,,,,none
+Drew Abbot,drew abbot,fenn clyteley,named,male,2017,yes,toby voss,named,,none,,,,,none
+Toby Voss,toby voss,perrin ovdaridge,named,male,2017,,drew abbot,named,,none,,,,,none
+Gray Kemp,gray kemp,wrenna ulteridge,named,female,2022,yes,ula moss,named,,none,,,,,none
+Mabon Selgack,mabon selgack,clove torsestone,named,female,2018,,gray judd,named,,none,,,,,none
+Micah Dunmore,micah dunmore,fable ashzamont,named,female,2020,,clio usher,named-in-prose,,none,,,,,none
+Clio Usher,clio usher,mira fengacombe,named,female,2020,,,narrative,,none,,,,,none
+Lena Vail,lena vail,vesper marbock,named,male,2019,,sam orme,named,orin istzathorn,named,female,2016,,dov tolliver,named
+Mara Ulmer,mara ulmer,torv yarbothorn,named,female,2018,,oakley ulmer,named,,none,,,,,none
+Ula Moss,ula moss,orin heszaley,named,female,2022,,gray kemp,named,,none,,,,,none
+Xeno Flint,xeno flint,isolde brambofield,named,female,2011,,,narrative,,none,,,,,none
+Winter Corwin,winter corwin,,narrative,male,2020,,morgan pike,named,,none,,,,,none
+Oakley Ulmer,oakley ulmer,odis istsegrove,named-in-prose,female,2018,,torv yarbothorn,named-in-prose,,narrative,male,2021,,elsbet verlecombe,named
+Morgan Pike,morgan pike,,unresolved,male,2020,yes,winter corwin,named,,none,,,,,none
+Oakley Ellison,oakley ellison,sorrel hesleley,named,female,2016,,,narrative,,none,,,,,none
+Remy Reed,remy reed,,narrative,male,2019,,alder clydovale,named-in-prose,,none,,,,,none
+Quinn Ellison,quinn ellison,alder clydovale,named,male,2020,yes,,unresolved,,none,,,,,none
+Faron Linveham,faron linveham,ivo ovzaford,named,male,2026,,delia clyceley,named-in-prose,,none,,,,,none
+Mara Oder,mara oder,clove norcovale,named,female,2015,,sofia vail,named,,none,,,,,none
+Verity Ashzastone,verity ashzastone,perrin ranbostone,named,male,2021,,oakley ulmer,named,,none,,,,,none
+Jonas Ward,jonas ward,corin gilmemont,named,female,2017,,tatum ingram,named,ilse tordoridge,named,female,2019,,,none
+Indy Jute,indy jute,,narrative,male,2017,,remy tave,named,,none,,,,,none
+Vesper Orton,vesper orton,hollin jesfeden,named,male,2008,,,narrative,,none,,,,,none
+Remy Tave,remy tave,nessa torteck,named,male,2017,,,narrative,,none,,,,,none
+Dov Hale,dov hale,ulf alweden,named,female,2013,,,narrative,,declined,,,,,none
+Phoenix Pryce,phoenix pryce,vesper danzack,named,male,2017,,vesper fenwick,named,,none,,,,,none
+Hana Hobbes,hana hobbes,odis ashbovale,named,female,2022,yes,,none,ilse elwethorn,named,female,2022,,,none
+Tatum Tolliver,tatum tolliver,yorick kelcoham,named,male,2010,,,none,,none,,,,,none
+Perry Ulmer,perry ulmer,wren evmefield,named,female,2018,,,none,,none,,,,,none
+Ivo Hobbes,ivo hobbes,,narrative,male,2019,,,none,,none,,,,,none
+Oakley Pryce,oakley pryce,bryn jorceridge,named,female,2014,yes,riley pike,named,,none,,,,,none
+Orin Seldamont,orin seldamont,orin seldamont,named,male,2019,yes,,none,,none,,,,,none
+Zoran Irsefield,zoran irsefield,,unresolved,male,2021,,oakley ulmer,named,,none,,,,,none
+Teagan Hobbes,teagan hobbes,zephyr elremere,named,male,2015,,ula rennick,named,torv quildaley,named,male,2016,,,none
+Fabio Ehrlich,fabio ehrlich,garrick brekacombe,named,female,2013,,dov hale,named,,none,,,,,none
+Perry Sloane,perry sloane,elsbet verreford,named,female,2026,,,unresolved,,none,,,,,none
+Toby Eastman,toby eastman,zeda allethorn,named,female,2020,,skyler ward,named,,none,,,,,none
+Oakley Sutton,oakley sutton,mira ashhewick,named,female,2018,yes,gray judd,named,,declined,,,,,none
+Nathaniel Deverell,nathaniel deverell,corin elgawick,named,female,2014,,bram garcefield,named-in-prose,zeda ranreck,named-in-prose,female,2010,,zeda ranreck,named-in-prose
+Hayden Holloway,hayden holloway,elsbet gilvecombe,named,male,2016,,,none,,none,,,,,none
+Verity Linpedge,verity linpedge,zoran kelveley,named,male,2023,,,none,,none,,,,,none
+Val Jute,val jute,val jute,named,male,2020,,perrin evreden,named-in-prose,,none,,,,,none
+Marek Ulheden,marek ulheden,wrenna evreck,named,male,2017,,,none,,none,,,,,none
+Vesper Fenwick,vesper fenwick,vesper wyngaham,named,male,2017,,phoenix pryce,named,,none,,,,,none
+Katya Ehrlich,katya ehrlich,torv yarlevale,named,male,2021,,brit juno,named-in-prose,,none,,,,,none
+Gray Farrow,gray farrow,ysolt evneham,named,male,2016,,,none,,none,,,,,none
+Brit Juno,brit juno,thora yargamere,named,male,2026,,katya ehrlich,named-in-prose,,none,,,,,none
+Jonas Norwood,jonas norwood,isolde garwethorn,named,female,2017,,,none,,declined,,,,,none
+Kendall Moss,kendall moss,mira jorzastone,named-in-prose,male,2013,,faris garrick,named,,none,,,,,none
+Otis Nash,otis nash,,unresolved,male,2018,,,none,,unresolved,male,2020,,,none
+Micah Cove,micah cove,lark wynneworth,named,female,2021,,,unresolved,,none,,,,,none
+Orin Clyteck,orin clyteck,,narrative,male,2013,,,none,,none,,,,,none
+Charlie Norwood,charlie norwood,charlie norwood,named,male,2021,,,declined,,declined,,,,,none
+Vera Tolliver,vera tolliver,nerys jorceworth,named,male,2016,,sam sorrel,named,,none,,,,,none
+Blake Tolliver,blake tolliver,verity dorkaham,named-in-prose,male,2017,,blake wynn,named,,narrative,,,,,none
+Zora Ehrlich,zora ehrlich,,narrative,male,2019,,,none,,none,,,,,none
+Jonas Ives,jonas ives,,unresolved,male,2014,,,none,,none,,,,,none
+Dov Keating,dov keating,ulric marcecombe,named,female,2015,,,unresolved,,none,,,,,none
+Wren Reed,wren reed,alder cormefield,named,male,2013,,dov judd,named,,none,,,,,none
+Sofia Bern,sofia bern,zoran wyndaworth,named,female,2019,yes,bailey mott,named,,narrative,female,2019,,bailey mott,named
+Avery Marsh,avery marsh,,narrative,female,2017,,rowan lyle,named,,declined,,,,,none
+Tomas Marsh,tomas marsh,dara wynreck,named,female,2014,,,none,,none,,,,,none
+Mara Marsh,mara marsh,,narrative,male,2020,,,none,,none,,,,,none
+Luca Underhill,luca underhill,,narrative,male,2014,,sasha ingram,named-in-prose,,none,,,,,none
+Lior Cove,lior cove,wrenna selceford,named,female,2020,,,none,uri bexley,named,,,,,none
+Bailey Usher,bailey usher,,narrative,female,2014,yes,riley pike,named,,none,,,,,none
+Vera Kane,vera kane,,unresolved,male,2019,,ivo dormecombe,named-in-prose,,none,,,,,none
+Lior Wynn,lior wynn,,narrative,male,2016,,milo garrick,named,,none,,,,,none
+Brit Landry,brit landry,,unresolved,male,2020,,hana abbot,named-in-prose,,declined,,,,,none
+Ula Jute,ula jute,,unresolved,male,2020,,,none,,none,,,,,none
+Mara Prentiss,mara prentiss,thora norlefield,named,female,2020,,,none,,none,,,,,none
+Jarl Gillegrove,jarl gillegrove,jarl quiltefield,named,female,2017,,,narrative,,none,,,,,narrative
+Dov Tave,dov tave,corin evlethorn,named,female,2020,,,none,,none,,,,,none
+Blake Lund,blake lund,,narrative,male,2014,,,none,,none,,,,,none
+Celia Pike,celia pike,juno hesheridge,named,male,2021,,,none,,none,,,,,none
+Mira Gilvemere,mira gilvemere,ysolt kelgaham,named,male,2012,yes,,narrative,,none,,,,,none
+Peyton Mercer,peyton mercer,,narrative,male,2020,yes,harper sloane,named,,none,,,,,none
+Juno Alfeden,juno alfeden,,narrative,male,2020,,linnea halzacombe,named-in-prose,,none,,,,,none
+Skyler Ward,skyler ward,zoran evtethorn,named,female,2020,,,unresolved,,none,,,,,none
+Gray Vance,gray vance,ysolt brerewick,named,female,2021,,,none,,none,,,,,none
+Gina Lyle,gina lyle,garrick gilpefield,named,female,2018,,anders vale,named,,none,,,,,none
+Lane Voss,lane voss,lane voss,named,male,2020,,,narrative,,none,,,,,none
+Remy Oder,remy oder,,narrative,male,2020,,wanda tave,named,,narrative,female,2022,,,narrative
+Wanda Tave,wanda tave,,narrative,male,2026,,remy oder,named,,none,,,,,none
+Xeno Tave,xeno tave,hesper algaton,named,female,2021,,,none,,none,,,,,none
+Nadia Sutton,nadia sutton,imre penremont,named,male,2020,,,narrative,,none,,,,,none
+Nadia Xanders,nadia xanders,,narrative,male,2019,,winter dole,named,,declined,,,,,declined
+Mabon Garkamont,mabon garkamont,,unresolved,male,2014,,,narrative,,declined,,,,,declined
+Garrick Bramcoham,garrick bramcoham,faron evgaley,named,female,2011,,,narrative,,declined,,,,,declined
+Blake Wynn,blake wynn,,narrative,male,2017,yes,blake tolliver,named,,none,,,,,none
+Yusuf Keating,yusuf keating,,unresolved,female,2018,,,none,,none,,,,,none
+Casey Voss,casey voss,nils pencefield,named,female,2021,,teagan lund,named,,none,,,,,none
+Teagan Lund,teagan lund,yorick ulweridge,named,female,2021,,,unresolved,,declined,,,,,none
+Bryn Jorcomere,bryn jorcomere,,unresolved,male,2020,,,none,,none,,,,,none
+Tatum Ingram,tatum ingram,,unresolved,female,2017,,jonas ward,named,,none,,,,,none
+Vesper Corceley,vesper corceley,,narrative,female,2011,,nils allemere,named-in-prose,,none,,,,,none
+Nils Allemere,nils allemere,,narrative,female,2011,,vesper corceley,named-in-prose,,none,,,,,none
+Vesper Dellucci,vesper dellucci,,unresolved,female,2020,,,narrative,,none,,,,,none
+Kendall Bern,kendall bern,ivo verwewell,named,male,2021,,,none,,none,,,,,none
+Marek Evbofield,marek evbofield,bertram istteley,named,female,2019,,,narrative,,declined,,,,,none
+Oakley Ingram,oakley ingram,vesper quilmewell,named,female,2019,,,none,,none,,,,,none
+Nadia Grieve,nadia grieve,isolde alkaden,named,male,2021,,,none,,none,,,,,none
+Uri Bexley,uri bexley,xara ranbaby,named,female,2020,,,narrative,,none,,,,,none
+Rennick Gargaworth,rennick gargaworth,,narrative,male,2020,,zora thorne,named,orin garback,named,female,2017,,bailey mott,named
+Kestrel Garreck,kestrel garreck,,narrative,male,2015,,clove selvethorn,named,,none,,,,,none
+Hana Dunmore,hana dunmore,,narrative,male,2021,,,none,,none,,,,,none
+Linnea Halzacombe,linnea halzacombe,,unresolved,male,2020,,elena eastman,named,,none,,,,,none
+Bailey Isley,bailey isley,orin wyncemont,named,female,2019,,,none,,none,,,,,none
+Ari Calder,ari calder,clove ovtewick,named,female,2026,,,narrative,,declined,,,,,none
+Nadia Lyle,nadia lyle,vero verkacombe,named,male,2021,,vesper gilcogrove,named-in-prose,,none,,,,,none
+Hugo Keating,hugo keating,,narrative,male,2017,,ari palmer,named-in-prose,wrenna irdock,named,female,2020,,ari palmer,named
+Celia Gale,celia gale,,unresolved,male,2021,,,narrative,,none,,,,,none
+Rafa Sorrel,rafa sorrel,,narrative,female,2020,,,none,,none,,,,,none
+Charlie Mott,charlie mott,zoran garceck,named,male,2016,,,none,,none,,,,,narrative
+Zoran Garceck,zoran garceck,,narrative,male,2016,,,none,,none,,,,,none
+Skyler Reed,skyler reed,zoran linbostone,named,male,2019,yes,,none,,none,,,,,none
+Hana Abbot,hana abbot,,unresolved,male,2020,yes,,narrative,,none,,,,,none
+Teagan Xanders,teagan xanders,alder eltecombe,named,male,2022,,,narrative,,declined,,,,,none
+Otis Ward,otis ward,faron danteworth,named,male,2021,,celia gale,named,,none,,,,,none
+Toby Nix,toby nix,bertram danzawick,named,male,2018,,,unresolved,,none,,,,,none
+Avery Ives,avery ives,pell bramnewick,named,male,2021,,teagan xanders,named,,none,,,,,none
+Milo Judd,milo judd,bryn istseworth,named,male,2018,,,none,,narrative,male,2022,,,none
+Micah Mercer,micah mercer,delia elheworth,named,male,2018,yes,nora yates,named-in-prose,,none,,,,nora yates,named-in-prose
+Nora Vale,nora vale,yorick halteford,named,male,2018,,,none,,none,,,,,none
+Rowan Lyle,rowan lyle,hale ranmeworth,named,female,2026,,,none,,none,,,,,none
+Nadia Juno,nadia juno,zephyr ovleford,named,male,2022,,,none,,none,,,,,none
+Fabio Abbot,fabio abbot,,unresolved,male,2021,,edda york,named-in-prose,,none,,,,,none
+Jules Lockhart,jules lockhart,corin marbostone,named,male,2022,,,none,,none,,,,,none
+Ines Hale,ines hale,fenn jorzaridge,named,female,2017,,,narrative,,declined,,,,,none
+Hesper Tordoden,hesper tordoden,zoran gilneck,named,male,2021,yes,fabio abbot,named,,none,,,,,none
+Riley Sloane,riley sloane,emrys elbodge,named,female,2026,,,declined,,declined,,,,,none
+Nora Yates,nora yates,,unresolved,male,2026,,,none,,none,,,,,none
+Viktor Palmer,viktor palmer,,narrative,male,2026,yes,,narrative,,declined,,,,,none
+Marley Mercer,marley mercer,,narrative,male,2016,,ulf bregavale,named-in-prose,,declined,,,,,declined
+Sam Sorrel,sam sorrel,vesper istweby,named,male,2018,yes,vera tolliver,named,,none,,,,,none
+Dov Judd,dov judd,,declined,male,2013,,wren reed,named,,declined,,,,,declined
+Clio Ulmer,clio ulmer,,declined,male,2018,,,none,,none,,,,,none
+Bryn Heszafield,bryn heszafield,linnea yarcoworth,named,female,2020,,,narrative,,none,,,,,none
+Vesper Isley,vesper isley,sable dordostone,named,male,2012,,,narrative,,unresolved,male,2018,,,narrative
+Mabon Ranwevale,mabon ranwevale,hesper dorheridge,named,male,2021,,,none,,none,,,,,none
+Lark Clyrethorn,lark clyrethorn,,narrative,male,2022,,,none,,none,,,,,none
+Lena Jute,lena jute,prue ranheton,named,male,2013,,,none,,none,,,,,none
+Verity Bramteford,verity bramteford,ulf quilsestone,named-in-prose,male,2012,,,none,,narrative,male,2014,,,none
+Sam Eyre,sam eyre,linnea irteridge,named,male,2017,,,none,,none,,,,,none
+Edda Elnevale,edda elnevale,edda elnevale,named,male,2022,,,none,,none,,,,,none
+Verity Bramteford,verity bramteford,verity bramteford,named,male,2010,,,none,ulf quilsestone,named,male,2012,,,none
+Otis Dray,otis dray,dara corhewick,named,male,2021,,teagan crane,named-in-prose,,none,,,,,none
+Wanda Prentiss,wanda prentiss,kova dormeton,named,female,2017,,,unresolved,,none,,,,,none
+Odis Garweden,odis garweden,,declined,female,2013,,,none,,none,,,,,none
+Sasha Ingram,sasha ingram,,declined,male,2014,,luca underhill,named,,declined,,,,,none
+Zora Thorne,zora thorne,,unresolved,male,2020,,kian dellucci,named,,none,,,,,none
+Signy Corkaworth,signy corkaworth,signy corkaworth,named,male,2019,,,none,,none,,,,,none
+Phoenix Jarvis,phoenix jarvis,sorrel hesceford,named,female,2020,,,none,,none,,,,,none
+Dana Jute,dana jute,fable istwewell,named,male,2019,yes,,none,,none,male,,,,none
+Ari Palmer,ari palmer,wrenna irdock,named,female,2020,,hugo keating,named,,none,,,,,declined
+Rafa Voss,rafa voss,mira bramceck,named,female,2019,,phoenix jarvis,named,,none,,,,,none
+Ivo Dormecombe,ivo dormecombe,ivo dormecombe,named,male,2018,,,narrative,,none,,,,,none
+Anders Ulmer,anders ulmer,,narrative,female,2018,,,none,,none,,,,,none
+Noel Calder,noel calder,bryn ulleridge,named,male,2018,yes,,none,,none,,,,,none
+Frankie Orton,frankie orton,orin seldamont,named,male,2019,yes,nora vale,named,,none,,,,,none
+Casey Usher,casey usher,kestrel fenzavale,named-in-prose,male,2021,,,narrative,,none,,,,,none

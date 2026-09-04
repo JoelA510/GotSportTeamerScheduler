@@ -1,0 +1,458 @@
+source_sheet,venue,field,subunit,day,start,duration_minutes,team_code
+93 Combined,Orchard Park,Field 1,A,Tuesday,16:00,45,05GMicro04
+93 Combined,Orchard Park,Field 1,A,Tuesday,16:45,45,05BMicro08
+93 Combined,Orchard Park,Field 1,A,Tuesday,17:30,45,05GMicro03
+93 Combined,Orchard Park,Field 1,A,Thursday,16:00,45,06BMicro06
+93 Combined,Orchard Park,Field 1,A,Thursday,16:45,45,06BMicro03
+93 Combined,Orchard Park,Field 1,A,Thursday,17:30,45,06GMicro05
+93 Combined,Orchard Park,Field 1,B,Tuesday,16:45,45,05BMicro04
+93 Combined,Orchard Park,Field 1,B,Tuesday,17:30,45,05GMicro05
+93 Combined,Orchard Park,Field 1,B,Thursday,16:45,45,06BMicro12
+93 Combined,Orchard Park,Field 1,B,Thursday,17:30,45,06GMicro02
+93 Combined,Orchard Park,Field 2,A,Tuesday,16:45,45,06GMicro03
+93 Combined,Orchard Park,Field 2,A,Tuesday,17:30,45,06BMicro05
+93 Combined,Orchard Park,Field 2,A,Thursday,16:45,45,05BMicro02
+93 Combined,Orchard Park,Field 2,A,Thursday,17:30,45,05GMicro06
+93 Combined,Orchard Park,Field 2,B,Tuesday,16:00,45,06GMicro04
+93 Combined,Orchard Park,Field 2,B,Tuesday,16:45,45,06GMicro07
+93 Combined,Orchard Park,Field 2,B,Tuesday,17:30,45,06BMicro04
+93 Combined,Orchard Park,Field 2,B,Thursday,16:45,45,05BMicro07
+93 Combined,Orchard Park,Field 2,B,Thursday,17:30,45,05GMicro01
+93 Combined,Orchard Park,Field 3,A,Tuesday,16:45,45,06GMicro01
+93 Combined,Orchard Park,Field 3,A,Tuesday,17:30,45,06BMicro01
+93 Combined,Orchard Park,Field 3,A,Thursday,16:45,45,06BMicro11
+93 Combined,Orchard Park,Field 3,A,Thursday,17:30,45,06BMicro07
+93 Combined,Orchard Park,Field 3,B,Tuesday,16:45,45,06BMicro02
+93 Combined,Orchard Park,Field 3,B,Tuesday,17:30,45,06BMicro09
+93 Combined,Orchard Park,Field 3,B,Thursday,17:30,45,06BMicro10
+93 Combined,Orchard Park,Field 4,A,Tuesday,16:45,45,05GMicro02
+93 Combined,Orchard Park,Field 4,A,Tuesday,17:30,45,05BMicro03
+93 Combined,Orchard Park,Field 4,A,Thursday,17:30,45,05BMicro06
+93 Combined,Orchard Park,Field 4,B,Tuesday,16:45,45,05BMicro01
+93 Combined,Orchard Park,Field 4,B,Tuesday,17:30,45,06GMicro06
+93 Combined,Orchard Park,Field 4,B,Thursday,17:30,45,05BMicro05
+93 Combined,Orchard Park,Field 5,,Tuesday,17:00,60,07BJunior07
+93 Combined,Orchard Park,Field 5,,Tuesday,18:00,60,07GJunior04
+93 Combined,Orchard Park,Field 5,,Thursday,17:00,60,07BJunior07
+93 Combined,Orchard Park,Field 5,,Thursday,18:00,60,07GJunior04
+93 Combined,Orchard Park,Field 6,,Tuesday,17:00,60,07BJunior14
+93 Combined,Orchard Park,Field 6,,Tuesday,18:00,60,07GJunior08
+93 Combined,Orchard Park,Field 6,,Thursday,17:00,60,07BJunior14
+93 Combined,Orchard Park,Field 6,,Thursday,18:00,60,07GJunior08
+93 Combined,Maplewood,Field 1,A,Monday,16:00,60,07GJunior02
+93 Combined,Maplewood,Field 1,A,Monday,17:00,60,07BJunior06
+93 Combined,Maplewood,Field 1,A,Monday,18:00,60,08GJunior06
+93 Combined,Maplewood,Field 1,A,Tuesday,16:00,60,07GJunior01
+93 Combined,Maplewood,Field 1,A,Tuesday,17:00,60,07BJunior09
+93 Combined,Maplewood,Field 1,A,Tuesday,18:00,60,07BJunior13
+93 Combined,Maplewood,Field 1,A,Wednesday,16:00,60,07GJunior02
+93 Combined,Maplewood,Field 1,A,Wednesday,17:00,60,07BJunior06
+93 Combined,Maplewood,Field 1,A,Wednesday,18:00,60,08GJunior06
+93 Combined,Maplewood,Field 1,A,Thursday,16:00,60,07GJunior01
+93 Combined,Maplewood,Field 1,A,Thursday,17:00,60,07BJunior09
+93 Combined,Maplewood,Field 1,A,Thursday,18:00,60,07BJunior13
+93 Combined,Maplewood,Field 1,B,Monday,16:00,60,07GJunior07
+93 Combined,Maplewood,Field 1,B,Monday,17:00,60,07BJunior05
+93 Combined,Maplewood,Field 1,B,Monday,18:00,60,08GJunior08
+93 Combined,Maplewood,Field 1,B,Tuesday,16:00,60,06GMicro08
+93 Combined,Maplewood,Field 1,B,Tuesday,17:00,60,07BJunior08
+93 Combined,Maplewood,Field 1,B,Tuesday,18:00,60,07BJunior03
+93 Combined,Maplewood,Field 1,B,Wednesday,16:00,60,07GJunior07
+93 Combined,Maplewood,Field 1,B,Wednesday,17:00,60,07BJunior05
+93 Combined,Maplewood,Field 1,B,Wednesday,18:00,60,08GJunior08
+93 Combined,Maplewood,Field 1,B,Thursday,17:00,60,07BJunior08
+93 Combined,Maplewood,Field 1,B,Thursday,18:00,60,07BJunior03
+93 Combined,Maplewood,Field 2,A,Monday,16:00,60,08GJunior03
+93 Combined,Maplewood,Field 2,A,Monday,17:00,60,07BJunior04
+93 Combined,Maplewood,Field 2,A,Monday,18:00,60,07BJunior01
+93 Combined,Maplewood,Field 2,A,Tuesday,16:00,60,07BJunior02
+93 Combined,Maplewood,Field 2,A,Tuesday,17:00,60,07GJunior03
+93 Combined,Maplewood,Field 2,A,Tuesday,18:00,60,08GJunior01
+93 Combined,Maplewood,Field 2,A,Wednesday,16:00,60,08GJunior03
+93 Combined,Maplewood,Field 2,A,Wednesday,17:00,60,07BJunior04
+93 Combined,Maplewood,Field 2,A,Wednesday,18:00,60,07BJunior01
+93 Combined,Maplewood,Field 2,A,Thursday,16:00,60,07BJunior02
+93 Combined,Maplewood,Field 2,A,Thursday,17:00,60,07GJunior03
+93 Combined,Maplewood,Field 2,A,Thursday,18:00,60,08GJunior01
+93 Combined,Maplewood,Field 2,B,Monday,16:00,60,08GJunior05
+93 Combined,Maplewood,Field 2,B,Monday,17:00,60,07BJunior10
+93 Combined,Maplewood,Field 2,B,Monday,18:00,60,07GJunior06
+93 Combined,Maplewood,Field 2,B,Tuesday,17:00,60,07GJunior05
+93 Combined,Maplewood,Field 2,B,Tuesday,18:00,60,08GJunior07
+93 Combined,Maplewood,Field 2,B,Wednesday,16:00,60,06BMicro08
+93 Combined,Maplewood,Field 2,B,Wednesday,17:00,60,07BJunior10
+93 Combined,Maplewood,Field 2,B,Wednesday,18:00,60,07GJunior06
+93 Combined,Maplewood,Field 2,B,Thursday,16:00,60,08GJunior05
+93 Combined,Maplewood,Field 2,B,Thursday,17:00,60,07GJunior05
+93 Combined,Maplewood,Field 2,B,Thursday,18:00,60,08GJunior07
+93 Combined,Maplewood,Field 3,A,Monday,16:00,60,08BJunior06
+93 Combined,Maplewood,Field 3,A,Monday,17:00,60,08BJunior04
+93 Combined,Maplewood,Field 3,A,Monday,18:00,60,07BJunior12
+93 Combined,Maplewood,Field 3,A,Tuesday,16:00,60,08BJunior01
+93 Combined,Maplewood,Field 3,A,Tuesday,17:00,60,08GJunior02
+93 Combined,Maplewood,Field 3,A,Tuesday,18:00,60,08BJunior05
+93 Combined,Maplewood,Field 3,A,Wednesday,16:00,60,08BJunior06
+93 Combined,Maplewood,Field 3,A,Wednesday,17:00,60,08BJunior04
+93 Combined,Maplewood,Field 3,A,Wednesday,18:00,60,07BJunior12
+93 Combined,Maplewood,Field 3,A,Thursday,16:00,60,08BJunior01
+93 Combined,Maplewood,Field 3,A,Thursday,17:00,60,08GJunior02
+93 Combined,Maplewood,Field 3,A,Thursday,18:00,60,08BJunior05
+93 Combined,Maplewood,Field 3,B,Monday,16:00,60,08BJunior10
+93 Combined,Maplewood,Field 3,B,Monday,17:00,60,08GJunior04
+93 Combined,Maplewood,Field 3,B,Monday,18:00,60,07BJunior11
+93 Combined,Maplewood,Field 3,B,Tuesday,16:00,60,08BJunior02
+93 Combined,Maplewood,Field 3,B,Tuesday,17:00,60,08BJunior09
+93 Combined,Maplewood,Field 3,B,Tuesday,18:00,60,08BJunior07
+93 Combined,Maplewood,Field 3,B,Wednesday,16:00,60,08BJunior10
+93 Combined,Maplewood,Field 3,B,Wednesday,17:00,60,08GJunior04
+93 Combined,Maplewood,Field 3,B,Wednesday,18:00,60,07BJunior11
+93 Combined,Maplewood,Field 3,B,Thursday,16:00,60,08BJunior02
+93 Combined,Maplewood,Field 3,B,Thursday,17:00,60,08BJunior09
+93 Combined,Maplewood,Field 3,B,Thursday,18:00,60,08BJunior07
+93 Combined,Maplewood,Field 4,A,Monday,18:00,60,08BJunior03
+93 Combined,Maplewood,Field 4,A,Wednesday,18:00,60,08BJunior03
+93 Combined,Maplewood,Field 4,B,Monday,18:00,60,08BJunior08
+93 Combined,Maplewood,Field 4,B,Wednesday,18:00,60,08BJunior08
+93 Combined,Maplewood,Front,A,Friday,16:00,60,14GSelect03
+93 Combined,Larkfield Green,Field 1,A,Wednesday,17:00,60,16BSelect02
+93 Combined,Larkfield Green,Field 1,A,Wednesday,18:00,60,14BSelect03
+93 Combined,Alder Park,Pitch 1A,Side 1,Tuesday,18:00,60,16GSelect02
+93 Combined,Alder Park,Pitch 1A,Side 1,Wednesday,18:00,60,14BSelect02
+93 Combined,Alder Park,Pitch 1A,Side 1,Thursday,18:00,60,16GSelect02
+93 Combined,Alder Park,Pitch 1B,Side 1,Wednesday,18:00,60,14BSelect04
+93 Combined,Alder Park,Pitch 2A,,Tuesday,18:00,60,19GSelect01
+93 Combined,Alder Park,Pitch 2A,,Wednesday,18:00,60,16BSelect01
+93 Combined,Alder Park,Pitch 2A,,Thursday,18:00,60,19GSelect01
+93 Combined,Alder Park,Pitch 2A,,Friday,18:00,60,14BSelect04
+93 Combined,Alder Park,Pitch 2B,,Tuesday,18:00,60,19BSelect01
+93 Combined,Alder Park,Pitch 2B,,Wednesday,18:00,60,16GSelect01
+93 Combined,Alder Park,Pitch 2B,,Thursday,18:00,60,19BSelect01
+93 Combined,Alder Park,Pitch 2B,,Friday,18:00,60,14BSelect02
+93 Combined,Alder Park,Pitch 3A,,Tuesday,18:00,60,14GSelect02
+93 Combined,Alder Park,Pitch 3A,,Wednesday,18:00,60,14BSelect05
+93 Combined,Alder Park,Pitch 3A,,Thursday,18:00,60,14GSelect02
+93 Combined,Alder Park,Pitch 3A,,Friday,18:00,60,16BSelect02
+93 Combined,Alder Park,Pitch 3B,,Tuesday,18:00,60,14GSelect01
+93 Combined,Alder Park,Pitch 3B,,Wednesday,18:00,60,14BSelect01
+93 Combined,Alder Park,Pitch 3B,,Thursday,18:00,60,14GSelect01
+93 Combined,Alder Park,Pitch 3B,,Friday,18:00,60,14BSelect03
+93 Combined,Alder Park,Pitch 4A,Side 1,Wednesday,18:00,60,14GSelect03
+93 Combined,Alder Park,Pitch 4A,Side 1,Friday,18:00,60,14BSelect05
+93 Combined,Alder Park,Pitch 4B,Side 1,Friday,18:00,60,14BSelect01
+93 Combined,Brookside Park,Lower,A,Monday,18:00,60,16GSelect01
+93 Combined,Brookside Park,Lower,B,Monday,18:00,60,16BSelect01
+WEEK OF LABOR DAY MAKEUPS Combi,Orchard Park,Field 1,A,Tuesday,16:00,45,05GMicro04
+WEEK OF LABOR DAY MAKEUPS Combi,Orchard Park,Field 1,A,Tuesday,16:45,45,05BMicro08
+WEEK OF LABOR DAY MAKEUPS Combi,Orchard Park,Field 1,A,Tuesday,17:30,45,05GMicro03
+WEEK OF LABOR DAY MAKEUPS Combi,Orchard Park,Field 1,A,Thursday,16:00,45,06BMicro06
+WEEK OF LABOR DAY MAKEUPS Combi,Orchard Park,Field 1,A,Thursday,16:45,45,06BMicro03
+WEEK OF LABOR DAY MAKEUPS Combi,Orchard Park,Field 1,A,Thursday,17:30,45,06GMicro05
+WEEK OF LABOR DAY MAKEUPS Combi,Orchard Park,Field 1,B,Tuesday,16:45,45,05BMicro04
+WEEK OF LABOR DAY MAKEUPS Combi,Orchard Park,Field 1,B,Tuesday,17:30,45,05GMicro05
+WEEK OF LABOR DAY MAKEUPS Combi,Orchard Park,Field 1,B,Thursday,16:45,45,06BMicro12
+WEEK OF LABOR DAY MAKEUPS Combi,Orchard Park,Field 1,B,Thursday,17:30,45,06GMicro02
+WEEK OF LABOR DAY MAKEUPS Combi,Orchard Park,Field 2,A,Tuesday,16:45,45,06GMicro03
+WEEK OF LABOR DAY MAKEUPS Combi,Orchard Park,Field 2,A,Tuesday,17:30,45,06BMicro05
+WEEK OF LABOR DAY MAKEUPS Combi,Orchard Park,Field 2,A,Thursday,16:45,45,05BMicro02
+WEEK OF LABOR DAY MAKEUPS Combi,Orchard Park,Field 2,A,Thursday,17:30,45,05GMicro06
+WEEK OF LABOR DAY MAKEUPS Combi,Orchard Park,Field 2,B,Tuesday,16:00,45,06GMicro04
+WEEK OF LABOR DAY MAKEUPS Combi,Orchard Park,Field 2,B,Tuesday,16:45,45,06GMicro07
+WEEK OF LABOR DAY MAKEUPS Combi,Orchard Park,Field 2,B,Tuesday,17:30,45,06BMicro04
+WEEK OF LABOR DAY MAKEUPS Combi,Orchard Park,Field 2,B,Thursday,16:45,45,05BMicro07
+WEEK OF LABOR DAY MAKEUPS Combi,Orchard Park,Field 2,B,Thursday,17:30,45,05GMicro01
+WEEK OF LABOR DAY MAKEUPS Combi,Orchard Park,Field 3,A,Tuesday,16:45,45,06GMicro01
+WEEK OF LABOR DAY MAKEUPS Combi,Orchard Park,Field 3,A,Tuesday,17:30,45,06BMicro01
+WEEK OF LABOR DAY MAKEUPS Combi,Orchard Park,Field 3,A,Thursday,16:45,45,06BMicro11
+WEEK OF LABOR DAY MAKEUPS Combi,Orchard Park,Field 3,A,Thursday,17:30,45,06BMicro07
+WEEK OF LABOR DAY MAKEUPS Combi,Orchard Park,Field 3,B,Tuesday,16:45,45,06BMicro02
+WEEK OF LABOR DAY MAKEUPS Combi,Orchard Park,Field 3,B,Tuesday,17:30,45,06BMicro09
+WEEK OF LABOR DAY MAKEUPS Combi,Orchard Park,Field 3,B,Thursday,17:30,45,06BMicro10
+WEEK OF LABOR DAY MAKEUPS Combi,Orchard Park,Field 4,A,Tuesday,16:45,45,05GMicro02
+WEEK OF LABOR DAY MAKEUPS Combi,Orchard Park,Field 4,A,Tuesday,17:30,45,05BMicro03
+WEEK OF LABOR DAY MAKEUPS Combi,Orchard Park,Field 4,A,Thursday,17:30,45,05BMicro06
+WEEK OF LABOR DAY MAKEUPS Combi,Orchard Park,Field 4,B,Tuesday,16:45,45,05BMicro01
+WEEK OF LABOR DAY MAKEUPS Combi,Orchard Park,Field 4,B,Tuesday,17:30,45,06GMicro06
+WEEK OF LABOR DAY MAKEUPS Combi,Orchard Park,Field 4,B,Thursday,17:30,45,05BMicro05
+WEEK OF LABOR DAY MAKEUPS Combi,Orchard Park,Field 5,,Tuesday,17:00,60,07BJunior07
+WEEK OF LABOR DAY MAKEUPS Combi,Orchard Park,Field 5,,Tuesday,18:00,60,07GJunior04
+WEEK OF LABOR DAY MAKEUPS Combi,Orchard Park,Field 5,,Thursday,17:00,60,07BJunior07
+WEEK OF LABOR DAY MAKEUPS Combi,Orchard Park,Field 5,,Thursday,18:00,60,07GJunior04
+WEEK OF LABOR DAY MAKEUPS Combi,Orchard Park,Field 6,,Tuesday,17:00,60,07BJunior14
+WEEK OF LABOR DAY MAKEUPS Combi,Orchard Park,Field 6,,Tuesday,18:00,60,07GJunior08
+WEEK OF LABOR DAY MAKEUPS Combi,Orchard Park,Field 6,,Thursday,17:00,60,07BJunior14
+WEEK OF LABOR DAY MAKEUPS Combi,Orchard Park,Field 6,,Thursday,18:00,60,07GJunior08
+WEEK OF LABOR DAY MAKEUPS Combi,Maplewood,Field 1,A,Monday,16:00,60,07GJunior02
+WEEK OF LABOR DAY MAKEUPS Combi,Maplewood,Field 1,A,Monday,17:00,60,07BJunior06
+WEEK OF LABOR DAY MAKEUPS Combi,Maplewood,Field 1,A,Monday,18:00,60,08GJunior06
+WEEK OF LABOR DAY MAKEUPS Combi,Maplewood,Field 1,A,Tuesday,16:00,60,07GJunior01
+WEEK OF LABOR DAY MAKEUPS Combi,Maplewood,Field 1,A,Tuesday,17:00,60,07BJunior09
+WEEK OF LABOR DAY MAKEUPS Combi,Maplewood,Field 1,A,Tuesday,18:00,60,07BJunior13
+WEEK OF LABOR DAY MAKEUPS Combi,Maplewood,Field 1,A,Wednesday,16:00,60,07GJunior02
+WEEK OF LABOR DAY MAKEUPS Combi,Maplewood,Field 1,A,Wednesday,17:00,60,07BJunior06
+WEEK OF LABOR DAY MAKEUPS Combi,Maplewood,Field 1,A,Wednesday,18:00,60,08GJunior06
+WEEK OF LABOR DAY MAKEUPS Combi,Maplewood,Field 1,A,Thursday,16:00,60,07GJunior01
+WEEK OF LABOR DAY MAKEUPS Combi,Maplewood,Field 1,A,Thursday,17:00,60,07BJunior09
+WEEK OF LABOR DAY MAKEUPS Combi,Maplewood,Field 1,A,Thursday,18:00,60,07BJunior13
+WEEK OF LABOR DAY MAKEUPS Combi,Maplewood,Field 1,B,Monday,16:00,60,07GJunior07
+WEEK OF LABOR DAY MAKEUPS Combi,Maplewood,Field 1,B,Monday,17:00,60,07BJunior05
+WEEK OF LABOR DAY MAKEUPS Combi,Maplewood,Field 1,B,Monday,18:00,60,08GJunior08
+WEEK OF LABOR DAY MAKEUPS Combi,Maplewood,Field 1,B,Tuesday,16:00,60,06GMicro08
+WEEK OF LABOR DAY MAKEUPS Combi,Maplewood,Field 1,B,Tuesday,17:00,60,07BJunior08
+WEEK OF LABOR DAY MAKEUPS Combi,Maplewood,Field 1,B,Tuesday,18:00,60,07BJunior03
+WEEK OF LABOR DAY MAKEUPS Combi,Maplewood,Field 1,B,Wednesday,16:00,60,07GJunior07
+WEEK OF LABOR DAY MAKEUPS Combi,Maplewood,Field 1,B,Wednesday,17:00,60,07BJunior05
+WEEK OF LABOR DAY MAKEUPS Combi,Maplewood,Field 1,B,Wednesday,18:00,60,08GJunior08
+WEEK OF LABOR DAY MAKEUPS Combi,Maplewood,Field 1,B,Thursday,17:00,60,07BJunior08
+WEEK OF LABOR DAY MAKEUPS Combi,Maplewood,Field 1,B,Thursday,18:00,60,07BJunior03
+WEEK OF LABOR DAY MAKEUPS Combi,Maplewood,Field 2,A,Monday,16:00,60,08GJunior03
+WEEK OF LABOR DAY MAKEUPS Combi,Maplewood,Field 2,A,Monday,17:00,60,07BJunior04
+WEEK OF LABOR DAY MAKEUPS Combi,Maplewood,Field 2,A,Monday,18:00,60,07BJunior01
+WEEK OF LABOR DAY MAKEUPS Combi,Maplewood,Field 2,A,Tuesday,16:00,60,07BJunior02
+WEEK OF LABOR DAY MAKEUPS Combi,Maplewood,Field 2,A,Tuesday,17:00,60,07GJunior03
+WEEK OF LABOR DAY MAKEUPS Combi,Maplewood,Field 2,A,Tuesday,18:00,60,08GJunior01
+WEEK OF LABOR DAY MAKEUPS Combi,Maplewood,Field 2,A,Wednesday,16:00,60,08GJunior03
+WEEK OF LABOR DAY MAKEUPS Combi,Maplewood,Field 2,A,Wednesday,17:00,60,07BJunior04
+WEEK OF LABOR DAY MAKEUPS Combi,Maplewood,Field 2,A,Wednesday,18:00,60,07BJunior01
+WEEK OF LABOR DAY MAKEUPS Combi,Maplewood,Field 2,A,Thursday,16:00,60,07BJunior02
+WEEK OF LABOR DAY MAKEUPS Combi,Maplewood,Field 2,A,Thursday,17:00,60,07GJunior03
+WEEK OF LABOR DAY MAKEUPS Combi,Maplewood,Field 2,A,Thursday,18:00,60,08GJunior01
+WEEK OF LABOR DAY MAKEUPS Combi,Maplewood,Field 2,B,Monday,16:00,60,08GJunior05
+WEEK OF LABOR DAY MAKEUPS Combi,Maplewood,Field 2,B,Monday,17:00,60,07BJunior10
+WEEK OF LABOR DAY MAKEUPS Combi,Maplewood,Field 2,B,Monday,18:00,60,07GJunior06
+WEEK OF LABOR DAY MAKEUPS Combi,Maplewood,Field 2,B,Tuesday,17:00,60,07GJunior05
+WEEK OF LABOR DAY MAKEUPS Combi,Maplewood,Field 2,B,Tuesday,18:00,60,08GJunior07
+WEEK OF LABOR DAY MAKEUPS Combi,Maplewood,Field 2,B,Wednesday,16:00,60,06BMicro08
+WEEK OF LABOR DAY MAKEUPS Combi,Maplewood,Field 2,B,Wednesday,17:00,60,07BJunior10
+WEEK OF LABOR DAY MAKEUPS Combi,Maplewood,Field 2,B,Wednesday,18:00,60,07GJunior06
+WEEK OF LABOR DAY MAKEUPS Combi,Maplewood,Field 2,B,Thursday,16:00,60,08GJunior05
+WEEK OF LABOR DAY MAKEUPS Combi,Maplewood,Field 2,B,Thursday,17:00,60,07GJunior05
+WEEK OF LABOR DAY MAKEUPS Combi,Maplewood,Field 2,B,Thursday,18:00,60,08GJunior07
+WEEK OF LABOR DAY MAKEUPS Combi,Maplewood,Field 3,A,Monday,16:00,60,08BJunior06
+WEEK OF LABOR DAY MAKEUPS Combi,Maplewood,Field 3,A,Monday,17:00,60,08BJunior04
+WEEK OF LABOR DAY MAKEUPS Combi,Maplewood,Field 3,A,Monday,18:00,60,07BJunior12
+WEEK OF LABOR DAY MAKEUPS Combi,Maplewood,Field 3,A,Tuesday,16:00,60,08BJunior01
+WEEK OF LABOR DAY MAKEUPS Combi,Maplewood,Field 3,A,Tuesday,17:00,60,08GJunior02
+WEEK OF LABOR DAY MAKEUPS Combi,Maplewood,Field 3,A,Tuesday,18:00,60,08BJunior05
+WEEK OF LABOR DAY MAKEUPS Combi,Maplewood,Field 3,A,Wednesday,16:00,60,08BJunior06
+WEEK OF LABOR DAY MAKEUPS Combi,Maplewood,Field 3,A,Wednesday,17:00,60,08BJunior04
+WEEK OF LABOR DAY MAKEUPS Combi,Maplewood,Field 3,A,Wednesday,18:00,60,07BJunior12
+WEEK OF LABOR DAY MAKEUPS Combi,Maplewood,Field 3,A,Thursday,16:00,60,08BJunior01
+WEEK OF LABOR DAY MAKEUPS Combi,Maplewood,Field 3,A,Thursday,17:00,60,08GJunior02
+WEEK OF LABOR DAY MAKEUPS Combi,Maplewood,Field 3,A,Thursday,18:00,60,08BJunior05
+WEEK OF LABOR DAY MAKEUPS Combi,Maplewood,Field 3,B,Monday,16:00,60,08BJunior10
+WEEK OF LABOR DAY MAKEUPS Combi,Maplewood,Field 3,B,Monday,17:00,60,08GJunior04
+WEEK OF LABOR DAY MAKEUPS Combi,Maplewood,Field 3,B,Monday,18:00,60,07BJunior11
+WEEK OF LABOR DAY MAKEUPS Combi,Maplewood,Field 3,B,Tuesday,16:00,60,08BJunior02
+WEEK OF LABOR DAY MAKEUPS Combi,Maplewood,Field 3,B,Tuesday,17:00,60,08BJunior09
+WEEK OF LABOR DAY MAKEUPS Combi,Maplewood,Field 3,B,Tuesday,18:00,60,08BJunior07
+WEEK OF LABOR DAY MAKEUPS Combi,Maplewood,Field 3,B,Wednesday,16:00,60,08BJunior10
+WEEK OF LABOR DAY MAKEUPS Combi,Maplewood,Field 3,B,Wednesday,17:00,60,08GJunior04
+WEEK OF LABOR DAY MAKEUPS Combi,Maplewood,Field 3,B,Wednesday,18:00,60,07BJunior11
+WEEK OF LABOR DAY MAKEUPS Combi,Maplewood,Field 3,B,Thursday,16:00,60,08BJunior02
+WEEK OF LABOR DAY MAKEUPS Combi,Maplewood,Field 3,B,Thursday,17:00,60,08BJunior09
+WEEK OF LABOR DAY MAKEUPS Combi,Maplewood,Field 3,B,Thursday,18:00,60,08BJunior07
+WEEK OF LABOR DAY MAKEUPS Combi,Maplewood,Field 4,A,Monday,18:00,60,08BJunior03
+WEEK OF LABOR DAY MAKEUPS Combi,Maplewood,Field 4,A,Wednesday,18:00,60,08BJunior03
+WEEK OF LABOR DAY MAKEUPS Combi,Maplewood,Field 4,B,Monday,18:00,60,08BJunior08
+WEEK OF LABOR DAY MAKEUPS Combi,Maplewood,Field 4,B,Wednesday,18:00,60,08BJunior08
+WEEK OF LABOR DAY MAKEUPS Combi,Maplewood,Front,A,Friday,16:00,60,14GSelect03
+WEEK OF LABOR DAY MAKEUPS Combi,Larkfield Green,Field 1,A,Wednesday,17:00,60,16BSelect02
+WEEK OF LABOR DAY MAKEUPS Combi,Larkfield Green,Field 1,A,Wednesday,18:00,60,14BSelect03
+WEEK OF LABOR DAY MAKEUPS Combi,Alder Park,Pitch 1A,Side 1,Tuesday,18:00,60,16GSelect02
+WEEK OF LABOR DAY MAKEUPS Combi,Alder Park,Pitch 1A,Side 1,Wednesday,18:00,60,14BSelect02
+WEEK OF LABOR DAY MAKEUPS Combi,Alder Park,Pitch 1A,Side 1,Thursday,18:00,60,16GSelect02
+WEEK OF LABOR DAY MAKEUPS Combi,Alder Park,Pitch 1B,Side 1,Wednesday,18:00,60,14BSelect04
+WEEK OF LABOR DAY MAKEUPS Combi,Alder Park,Pitch 2A,,Tuesday,18:00,60,19GSelect01
+WEEK OF LABOR DAY MAKEUPS Combi,Alder Park,Pitch 2A,,Wednesday,18:00,60,16BSelect01
+WEEK OF LABOR DAY MAKEUPS Combi,Alder Park,Pitch 2A,,Thursday,18:00,60,19GSelect01
+WEEK OF LABOR DAY MAKEUPS Combi,Alder Park,Pitch 2A,,Friday,18:00,60,14BSelect04
+WEEK OF LABOR DAY MAKEUPS Combi,Alder Park,Pitch 2B,,Tuesday,18:00,60,19BSelect01
+WEEK OF LABOR DAY MAKEUPS Combi,Alder Park,Pitch 2B,,Wednesday,18:00,60,16GSelect01
+WEEK OF LABOR DAY MAKEUPS Combi,Alder Park,Pitch 2B,,Thursday,18:00,60,19BSelect01
+WEEK OF LABOR DAY MAKEUPS Combi,Alder Park,Pitch 2B,,Friday,18:00,60,14BSelect02
+WEEK OF LABOR DAY MAKEUPS Combi,Alder Park,Pitch 3A,,Tuesday,18:00,60,14GSelect02
+WEEK OF LABOR DAY MAKEUPS Combi,Alder Park,Pitch 3A,,Wednesday,18:00,60,14BSelect05
+WEEK OF LABOR DAY MAKEUPS Combi,Alder Park,Pitch 3A,,Thursday,18:00,60,14GSelect02
+WEEK OF LABOR DAY MAKEUPS Combi,Alder Park,Pitch 3A,,Friday,18:00,60,16BSelect02
+WEEK OF LABOR DAY MAKEUPS Combi,Alder Park,Pitch 3B,,Tuesday,18:00,60,14GSelect01
+WEEK OF LABOR DAY MAKEUPS Combi,Alder Park,Pitch 3B,,Wednesday,18:00,60,14BSelect01
+WEEK OF LABOR DAY MAKEUPS Combi,Alder Park,Pitch 3B,,Thursday,18:00,60,14GSelect01
+WEEK OF LABOR DAY MAKEUPS Combi,Alder Park,Pitch 3B,,Friday,18:00,60,14BSelect03
+WEEK OF LABOR DAY MAKEUPS Combi,Alder Park,Pitch 4A,Side 1,Wednesday,18:00,60,14GSelect03
+WEEK OF LABOR DAY MAKEUPS Combi,Alder Park,Pitch 4A,Side 1,Friday,18:00,60,14BSelect05
+WEEK OF LABOR DAY MAKEUPS Combi,Alder Park,Pitch 4B,Side 1,Friday,18:00,60,14BSelect01
+WEEK OF LABOR DAY MAKEUPS Combi,Brookside Park,Lower,A,Monday,18:00,60,16GSelect01
+WEEK OF LABOR DAY MAKEUPS Combi,Brookside Park,Lower,B,Monday,18:00,60,16BSelect01
+GH,Orchard Park,Field 1,A,Tuesday,16:00,45,05GMicro04
+GH,Orchard Park,Field 1,A,Tuesday,16:45,45,05BMicro08
+GH,Orchard Park,Field 1,A,Tuesday,17:30,45,05GMicro03
+GH,Orchard Park,Field 1,B,Tuesday,16:45,45,05BMicro04
+GH,Orchard Park,Field 1,B,Tuesday,17:30,45,05GMicro05
+GH,Orchard Park,Field 2,A,Tuesday,16:00,45,06GMicro08
+GH,Orchard Park,Field 2,A,Tuesday,16:45,45,06GMicro03
+GH,Orchard Park,Field 2,A,Tuesday,17:30,45,06BMicro05
+GH,Orchard Park,Field 2,B,Tuesday,16:00,45,06GMicro04
+GH,Orchard Park,Field 2,B,Tuesday,16:45,45,06GMicro07
+GH,Orchard Park,Field 2,B,Tuesday,17:30,45,06BMicro04
+GH,Orchard Park,Field 3,A,Tuesday,16:45,45,06GMicro01
+GH,Orchard Park,Field 3,A,Tuesday,17:30,45,06BMicro01
+GH,Orchard Park,Field 3,B,Tuesday,16:45,45,06BMicro02
+GH,Orchard Park,Field 3,B,Tuesday,17:30,45,06BMicro09
+GH,Orchard Park,Field 4,A,Tuesday,16:45,45,05GMicro02
+GH,Orchard Park,Field 4,A,Tuesday,17:30,45,05BMicro03
+GH,Orchard Park,Field 4,B,Tuesday,16:45,45,05BMicro01
+GH,Orchard Park,Field 4,B,Tuesday,17:30,45,06GMicro06
+GH,Orchard Park,Field 1,A,Thursday,16:00,45,06BMicro06
+GH,Orchard Park,Field 1,A,Thursday,16:45,45,06BMicro03
+GH,Orchard Park,Field 1,A,Thursday,17:30,45,06GMicro05
+GH,Orchard Park,Field 1,B,Thursday,16:45,45,06BMicro12
+GH,Orchard Park,Field 1,B,Thursday,17:30,45,06GMicro02
+GH,Orchard Park,Field 2,A,Thursday,16:45,45,05BMicro02
+GH,Orchard Park,Field 2,A,Thursday,17:30,45,05GMicro06
+GH,Orchard Park,Field 2,B,Thursday,16:45,45,05BMicro07
+GH,Orchard Park,Field 2,B,Thursday,17:30,45,05GMicro01
+GH,Orchard Park,Field 3,A,Thursday,16:45,45,06BMicro11
+GH,Orchard Park,Field 3,A,Thursday,17:30,45,06BMicro07
+GH,Orchard Park,Field 3,B,Thursday,16:45,45,06BMicro08
+GH,Orchard Park,Field 3,B,Thursday,17:30,45,06BMicro10
+GH,Orchard Park,Field 4,A,Thursday,17:30,45,05BMicro06
+GH,Orchard Park,Field 4,B,Thursday,17:30,45,05BMicro05
+Junior (Maplewood),Maplewood,Field 1,A,Monday,16:00,60,07GJunior02
+Junior (Maplewood),Maplewood,Field 1,A,Wednesday,16:00,60,07GJunior02
+Junior (Maplewood),Maplewood,Field 1,A,Monday,17:00,60,07BJunior06
+Junior (Maplewood),Maplewood,Field 1,A,Wednesday,17:00,60,07BJunior06
+Junior (Maplewood),Maplewood,Field 1,A,Monday,18:00,60,08GJunior06
+Junior (Maplewood),Maplewood,Field 1,A,Wednesday,18:00,60,08GJunior06
+Junior (Maplewood),Maplewood,Field 1,B,Monday,16:00,60,07GJunior07
+Junior (Maplewood),Maplewood,Field 1,B,Wednesday,16:00,60,07GJunior07
+Junior (Maplewood),Maplewood,Field 1,B,Monday,17:00,60,07BJunior05
+Junior (Maplewood),Maplewood,Field 1,B,Wednesday,17:00,60,07BJunior05
+Junior (Maplewood),Maplewood,Field 1,B,Monday,18:00,60,08GJunior08
+Junior (Maplewood),Maplewood,Field 1,B,Wednesday,18:00,60,08GJunior08
+Junior (Maplewood),Maplewood,Field 2,A,Monday,16:00,60,08GJunior03
+Junior (Maplewood),Maplewood,Field 2,A,Wednesday,16:00,60,08GJunior03
+Junior (Maplewood),Maplewood,Field 2,A,Monday,17:00,60,07BJunior04
+Junior (Maplewood),Maplewood,Field 2,A,Wednesday,17:00,60,07BJunior04
+Junior (Maplewood),Maplewood,Field 2,A,Monday,18:00,60,07BJunior01
+Junior (Maplewood),Maplewood,Field 2,A,Wednesday,18:00,60,07BJunior01
+Junior (Maplewood),Maplewood,Field 2,B,Monday,16:00,60,08GJunior05
+Junior (Maplewood),Maplewood,Field 2,B,Wednesday,16:00,60,08GJunior05
+Junior (Maplewood),Maplewood,Field 2,B,Monday,17:00,60,07BJunior10
+Junior (Maplewood),Maplewood,Field 2,B,Wednesday,17:00,60,07BJunior10
+Junior (Maplewood),Maplewood,Field 2,B,Monday,18:00,60,07GJunior06
+Junior (Maplewood),Maplewood,Field 2,B,Wednesday,18:00,60,07GJunior06
+Junior (Maplewood),Maplewood,Field 3,A,Monday,16:00,60,08BJunior06
+Junior (Maplewood),Maplewood,Field 3,A,Wednesday,16:00,60,08BJunior06
+Junior (Maplewood),Maplewood,Field 3,A,Monday,17:00,60,08BJunior04
+Junior (Maplewood),Maplewood,Field 3,A,Wednesday,17:00,60,08BJunior04
+Junior (Maplewood),Maplewood,Field 3,A,Monday,18:00,60,07BJunior12
+Junior (Maplewood),Maplewood,Field 3,A,Wednesday,18:00,60,07BJunior12
+Junior (Maplewood),Maplewood,Field 3,B,Monday,16:00,60,08BJunior10
+Junior (Maplewood),Maplewood,Field 3,B,Wednesday,16:00,60,08BJunior10
+Junior (Maplewood),Maplewood,Field 3,B,Monday,17:00,60,08GJunior04
+Junior (Maplewood),Maplewood,Field 3,B,Wednesday,17:00,60,08GJunior04
+Junior (Maplewood),Maplewood,Field 3,B,Monday,18:00,60,07BJunior11
+Junior (Maplewood),Maplewood,Field 3,B,Wednesday,18:00,60,07BJunior11
+Junior (Maplewood),Maplewood,Field 4,A,Monday,18:00,60,08BJunior03
+Junior (Maplewood),Maplewood,Field 4,A,Wednesday,18:00,60,08BJunior03
+Junior (Maplewood),Maplewood,Field 4,B,Monday,18:00,60,08BJunior08
+Junior (Maplewood),Maplewood,Field 4,B,Wednesday,18:00,60,08BJunior08
+Junior (Maplewood),Maplewood,Field 1,A,Tuesday,16:00,60,07GJunior01
+Junior (Maplewood),Maplewood,Field 1,A,Thursday,16:00,60,07GJunior01
+Junior (Maplewood),Maplewood,Field 1,A,Tuesday,17:00,60,07BJunior09
+Junior (Maplewood),Maplewood,Field 1,A,Thursday,17:00,60,07BJunior09
+Junior (Maplewood),Maplewood,Field 1,A,Tuesday,18:00,60,07BJunior13
+Junior (Maplewood),Maplewood,Field 1,A,Thursday,18:00,60,07BJunior13
+Junior (Maplewood),Maplewood,Field 1,B,Tuesday,17:00,60,07BJunior08
+Junior (Maplewood),Maplewood,Field 1,B,Thursday,17:00,60,07BJunior08
+Junior (Maplewood),Maplewood,Field 1,B,Tuesday,18:00,60,07BJunior03
+Junior (Maplewood),Maplewood,Field 1,B,Thursday,18:00,60,07BJunior03
+Junior (Maplewood),Maplewood,Field 2,A,Tuesday,16:00,60,07BJunior02
+Junior (Maplewood),Maplewood,Field 2,A,Thursday,16:00,60,07BJunior02
+Junior (Maplewood),Maplewood,Field 2,A,Tuesday,17:00,60,07GJunior03
+Junior (Maplewood),Maplewood,Field 2,A,Thursday,17:00,60,07GJunior03
+Junior (Maplewood),Maplewood,Field 2,A,Tuesday,18:00,60,08GJunior01
+Junior (Maplewood),Maplewood,Field 2,A,Thursday,18:00,60,08GJunior01
+Junior (Maplewood),Maplewood,Field 2,B,Tuesday,17:00,60,07GJunior05
+Junior (Maplewood),Maplewood,Field 2,B,Thursday,17:00,60,07GJunior05
+Junior (Maplewood),Maplewood,Field 2,B,Tuesday,18:00,60,08GJunior07
+Junior (Maplewood),Maplewood,Field 2,B,Thursday,18:00,60,08GJunior07
+Junior (Maplewood),Maplewood,Field 3,A,Tuesday,16:00,60,08BJunior01
+Junior (Maplewood),Maplewood,Field 3,A,Thursday,16:00,60,08BJunior01
+Junior (Maplewood),Maplewood,Field 3,A,Tuesday,17:00,60,08GJunior02
+Junior (Maplewood),Maplewood,Field 3,A,Thursday,17:00,60,08GJunior02
+Junior (Maplewood),Maplewood,Field 3,A,Tuesday,18:00,60,08BJunior05
+Junior (Maplewood),Maplewood,Field 3,A,Thursday,18:00,60,08BJunior05
+Junior (Maplewood),Maplewood,Field 3,B,Tuesday,16:00,60,08BJunior02
+Junior (Maplewood),Maplewood,Field 3,B,Thursday,16:00,60,08BJunior02
+Junior (Maplewood),Maplewood,Field 3,B,Tuesday,17:00,60,08BJunior09
+Junior (Maplewood),Maplewood,Field 3,B,Thursday,17:00,60,08BJunior09
+Junior (Maplewood),Maplewood,Field 3,B,Tuesday,18:00,60,08BJunior07
+Junior (Maplewood),Maplewood,Field 3,B,Thursday,18:00,60,08BJunior07
+Junior (Maplewood),Orchard Park,Field 5,,Tuesday,17:00,60,07BJunior07
+Junior (Maplewood),Orchard Park,Field 5,,Thursday,17:00,60,07BJunior07
+Junior (Maplewood),Orchard Park,Field 5,,Tuesday,18:00,60,07GJunior04
+Junior (Maplewood),Orchard Park,Field 5,,Thursday,18:00,60,07GJunior04
+Junior (Maplewood),Orchard Park,Field 6,,Tuesday,17:00,60,07BJunior14
+Junior (Maplewood),Orchard Park,Field 6,,Thursday,17:00,60,07BJunior14
+Junior (Maplewood),Orchard Park,Field 6,,Tuesday,18:00,60,07GJunior08
+Junior (Maplewood),Orchard Park,Field 6,,Thursday,18:00,60,07GJunior08
+New Schedule w 8-21 edits,Maplewood,Front,A,Friday,16:00,60,14GSelect03
+New Schedule w 8-21 edits,Larkfield Green,Field 1,A,Wednesday,17:00,60,16BSelect02
+New Schedule w 8-21 edits,Larkfield Green,Field 1,A,Wednesday,18:00,60,14BSelect03
+New Practices based on Alder Park b,Maplewood,Front,A,Friday,16:00,60,14GSelect03
+New Practices based on Alder Park b,Larkfield Green,Field 1,A,Monday,17:00,60,16BSelect02
+New Practices based on Alder Park b,Larkfield Green,Field 1,A,Monday,18:00,60,14BSelect03
+New Practices based on Alder Park b,Larkfield Green,Field 1,A,Wednesday,17:00,60,16BSelect02
+New Practices based on Alder Park b,Larkfield Green,Field 1,A,Wednesday,18:00,60,14BSelect03
+New Practices based on Alder Park b,Alder Park,Pitch 1A,Side 1,Monday,18:00,60,14BSelect02
+New Practices based on Alder Park b,Alder Park,Pitch 1A,Side 1,Tuesday,18:00,60,16GSelect02
+New Practices based on Alder Park b,Alder Park,Pitch 1A,Side 1,Wednesday,18:00,60,14BSelect02
+New Practices based on Alder Park b,Alder Park,Pitch 1A,Side 1,Thursday,18:00,60,16GSelect02
+New Practices based on Alder Park b,Alder Park,Pitch 1B,Side 1,Wednesday,18:00,60,14BSelect04
+New Practices based on Alder Park b,Alder Park,Pitch 1B,Side 1,Friday,18:00,60,14BSelect04
+New Practices based on Alder Park b,Alder Park,Pitch 2A,,Monday,18:00,60,16BSelect01
+New Practices based on Alder Park b,Alder Park,Pitch 2A,,Tuesday,18:00,60,19GSelect01
+New Practices based on Alder Park b,Alder Park,Pitch 2A,,Wednesday,18:00,60,16BSelect01
+New Practices based on Alder Park b,Alder Park,Pitch 2A,,Thursday,18:00,60,19GSelect01
+New Practices based on Alder Park b,Alder Park,Pitch 2B,,Monday,18:00,60,16GSelect01
+New Practices based on Alder Park b,Alder Park,Pitch 2B,,Tuesday,18:00,60,19BSelect01
+New Practices based on Alder Park b,Alder Park,Pitch 2B,,Wednesday,18:00,60,16GSelect01
+New Practices based on Alder Park b,Alder Park,Pitch 2B,,Thursday,18:00,60,19BSelect01
+New Practices based on Alder Park b,Alder Park,Pitch 3A,,Monday,18:00,60,14BSelect05
+New Practices based on Alder Park b,Alder Park,Pitch 3A,,Tuesday,18:00,60,14GSelect02
+New Practices based on Alder Park b,Alder Park,Pitch 3A,,Wednesday,18:00,60,14BSelect05
+New Practices based on Alder Park b,Alder Park,Pitch 3A,,Thursday,18:00,60,14GSelect02
+New Practices based on Alder Park b,Alder Park,Pitch 3B,,Monday,18:00,60,14BSelect01
+New Practices based on Alder Park b,Alder Park,Pitch 3B,,Tuesday,18:00,60,14GSelect01
+New Practices based on Alder Park b,Alder Park,Pitch 3B,,Wednesday,18:00,60,14BSelect01
+New Practices based on Alder Park b,Alder Park,Pitch 3B,,Thursday,18:00,60,14GSelect01
+New Practices based on Alder Park b,Alder Park,Pitch 4A,Side 1,Wednesday,18:00,60,14GSelect03
+Select OLD,(unresolved),Field 1,A,Tuesday,17:00,60,14GSelect01
+Select OLD,(unresolved),Field 1,A,Tuesday,18:00,60,19GSelect01
+Select OLD,(unresolved),Field 1,A,Wednesday,17:00,60,14BSelect04
+Select OLD,(unresolved),Field 1,A,Wednesday,18:00,60,14GSelect03
+Select OLD,(unresolved),Field 1,A,Thursday,17:00,60,14GSelect01
+Select OLD,(unresolved),Field 1,A,Thursday,18:00,60,19GSelect01
+Select OLD,(unresolved),Field 1,A,Friday,16:00,60,14GSelect03
+Select OLD,(unresolved),Field 1,A,Friday,17:00,60,14BSelect04
+Select OLD,(unresolved),Field 1,B,Monday,17:00,60,16GSelect01
+Select OLD,(unresolved),Field 1,B,Monday,18:00,60,16BSelect01
+Select OLD,(unresolved),Field 1,B,Tuesday,17:00,60,16GSelect02
+Select OLD,(unresolved),Field 1,B,Tuesday,18:00,60,14GSelect02
+Select OLD,(unresolved),Field 1,B,Wednesday,17:00,60,16GSelect01
+Select OLD,(unresolved),Field 1,B,Wednesday,18:00,60,16BSelect01
+Select OLD,(unresolved),Field 1,B,Thursday,17:00,60,16GSelect02
+Select OLD,(unresolved),Field 1,B,Thursday,18:00,60,14GSelect02
+Select OLD,(unresolved),Field 2,A,Monday,18:00,60,14BSelect05
+Select OLD,(unresolved),Field 2,A,Wednesday,18:00,60,14BSelect05
+Select OLD,(unresolved),Field 3,A,Monday,17:00,60,16BSelect02
+Select OLD,(unresolved),Field 3,A,Monday,18:00,60,14BSelect03
+Select OLD,(unresolved),Field 3,A,Tuesday,17:00,60,19BSelect01
+Select OLD,(unresolved),Field 3,A,Wednesday,18:00,60,14BSelect01
+Select OLD,(unresolved),Field 3,A,Thursday,17:00,60,16BSelect02
+Select OLD,(unresolved),Field 3,A,Thursday,18:00,60,14BSelect03
+Select OLD,(unresolved),Field 3,B,Monday,18:00,60,14BSelect01
+Select OLD,(unresolved),Field 3,B,Tuesday,18:00,60,14BSelect02
+Select OLD,(unresolved),Field 3,B,Thursday,17:00,60,19BSelect01
+Select OLD,(unresolved),Field 3,B,Thursday,18:00,60,14BSelect02
