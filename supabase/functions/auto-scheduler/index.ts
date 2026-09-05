@@ -12,8 +12,8 @@
 
 import { serve } from 'https://deno.land/std@0.223.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.3';
-import { z } from 'https://esm.sh/zod@3.23.8';
 import { evaluatePracticeSchedule } from '../_shared/engines/scoring-engine.ts';
+import { AutoSchedulerInputSchema } from '../_shared/schemas/auto-scheduler.ts';
 import {
   checkHardConstraints,
   listTeamCoachIds,
@@ -30,77 +30,6 @@ import {
 } from '../_shared/auth.ts';
 import { checkRateLimit } from '../_shared/rateLimit.ts';
 import { edgeLogger } from '../_shared/logtail.ts';
-
-// ---------------------------------------------------------------------------
-// Input schema
-// ---------------------------------------------------------------------------
-
-const TeamSchema = z
-  .object({
-    id: z.string(),
-    division: z.string(),
-    coachId: z.string().nullable().optional(),
-    assistantCoachIds: z.array(z.string()).optional(),
-  })
-  .passthrough();
-
-const SlotSchema = z
-  .object({
-    id: z.string(),
-    day: z.string().nullable().optional(),
-    start: z.string().or(z.date()),
-    end: z.string().or(z.date()),
-    capacity: z.number().int().min(0),
-    baseSlotId: z.string().optional(),
-  })
-  .passthrough();
-
-const CoachPreferenceSchema = z
-  .object({
-    preferredDays: z.array(z.string()).optional(),
-    preferredSlotIds: z.array(z.string()).optional(),
-    unavailableSlotIds: z.array(z.string()).optional(),
-  })
-  .passthrough();
-
-const AutoSchedulerInputSchema = z.object({
-  organizationId: z.string().uuid(),
-  seasonSettingsId: z.string().uuid().optional(),
-  teams: z.array(TeamSchema).min(1),
-  slots: z.array(SlotSchema).min(1),
-  coachPreferences: z.record(z.string(), CoachPreferenceSchema).optional().default({}),
-  divisionPreferences: z
-    .record(
-      z.string(),
-      z
-        .object({
-          preferredDays: z.array(z.string()).optional(),
-        })
-        .passthrough()
-    )
-    .optional()
-    .default({}),
-  lockedAssignments: z
-    .array(
-      z.object({
-        teamId: z.string(),
-        slotId: z.string(),
-      })
-    )
-    .optional()
-    .default([]),
-  scoringWeights: z.record(z.string(), z.number()).optional().default({}),
-  schoolDayEnd: z.string().optional(),
-  timezone: z.string().optional(),
-  config: z
-    .object({
-      timeBudgetMs: z.number().int().min(1000).max(25000).optional().default(25000),
-      maxIterations: z.number().int().min(10).max(5000).optional().default(2000),
-      seed: z.number().int().optional().default(42),
-    })
-    .optional()
-    .default({}),
-});
 
 // ---------------------------------------------------------------------------
 // Seeded PRNG (mulberry32)
@@ -501,7 +430,6 @@ serve(async (req) => {
       id: t.id,
       division: t.division,
       coachId: t.coachId ?? null,
-      assistantCoachIds: t.assistantCoachIds ?? [],
       coachIds: listTeamCoachIds(t),
     }));
 

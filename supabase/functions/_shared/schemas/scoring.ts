@@ -9,7 +9,7 @@ export const TeamSchema = z
     id: z.string(),
     division: z.string(),
     coachId: z.string().nullable().optional(),
-    assistantCoachIds: z.array(z.string()).optional(),
+    assistantCoachIds: z.array(z.string()).nullable().optional(),
     organization_id: z.string().uuid().optional(),
   })
   .passthrough();

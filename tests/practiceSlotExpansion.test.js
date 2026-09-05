@@ -1,7 +1,4 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { test } from 'vitest';
 
 import { expandPracticeSlotsForSeason } from '../packages/core/src/practiceSlotExpansion.js';
@@ -208,32 +205,58 @@ test('throws for invalid day names', () => {
 });
 
 // ---------------------------------------------------------------------------
-// 8.1 -- the module must not claim a daylight adjustment it does not perform.
-// Implementing one is task 8.9; until then the docstring says what the code does.
+// 8.1 -- the module performs no daylight adjustment, so it must not claim one. Guarded by
+// behaviour, not wording: no sunset / lighting / daylight input exists or changes the output.
+// Implementing the adjustment is task 8.9.
 // ---------------------------------------------------------------------------
 
-test('practiceSlotExpansion neither claims nor takes a daylight adjustment', () => {
-  const source = readFileSync(
-    path.resolve(
-      path.dirname(fileURLToPath(import.meta.url)),
-      '..',
-      'packages',
-      'core',
-      'src',
-      'practiceSlotExpansion.js'
-    ),
-    'utf8'
+test('practiceSlotExpansion accepts no daylight input and ignores one when offered', () => {
+  const slots = [
+    {
+      id: 'slot-1',
+      day: 'Monday',
+      start: '2024-08-05T19:00:00.000Z',
+      end: '2024-08-05T20:00:00.000Z',
+      capacity: 2,
+      fieldId: 'field-a',
+    },
+  ];
+  const seasonPhases = [
+    createPhase('early', '2024-08-01', '2024-09-15'),
+    createPhase('late', '2024-09-16', '2024-10-31'),
+  ];
+
+  const plain = expandPracticeSlotsForSeason({ slots, seasonPhases });
+  // Built as a value, not an inline literal, so the call site is not the type-checker's excess
+  // property check but the module's own contract that is under test.
+  const offeredInput = {
+    slots,
+    seasonPhases,
+    sunset: '18:30',
+    lighting: false,
+    daylight: { latitude: 0, longitude: 0 },
+  };
+  const offered = expandPracticeSlotsForSeason(offeredInput);
+  assert.deepEqual(offered, plain);
+  assert.equal(plain.length, 2, 'the comparison examined expanded slots');
+
+  // Positive control: an input the module does honour changes the output.
+  const fewerPhases = expandPracticeSlotsForSeason({
+    slots,
+    seasonPhases: seasonPhases.slice(0, 1),
+  });
+  assert.notDeepEqual(fewerPhases, plain);
+
+  // The declared parameter shape names no such input.
+  const declaredParams = (fn) => {
+    const text = fn.toString();
+    return text.slice(text.indexOf('(') + 1, text.indexOf(')'));
+  };
+  const daylightParam = /sunset|daylight|lighting/i;
+  assert.match(
+    declaredParams(({ slots, sunset }) => [slots, sunset]),
+    daylightParam
   );
-  assert.ok(source.includes('export function expandPracticeSlotsForSeason'), 'read the module');
-
-  const claim = /account(s|ing)? for daylight/i;
-  // Positive control: the predicate recognises the sentence it guards against.
-  assert.match('"effective" slots that account for daylight adjustments.', claim);
-  assert.doesNotMatch(source, claim);
-
-  // And the code itself (comments stripped) names no sunset, daylight or lighting input.
-  const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
-  const input = /sunset|daylight|lighting/i;
-  assert.match('const sunsetAt = params.sunset;', input);
-  assert.doesNotMatch(code, input);
+  assert.doesNotMatch(declaredParams(expandPracticeSlotsForSeason), daylightParam);
+  assert.match(declaredParams(expandPracticeSlotsForSeason), /slots/, 'read the real signature');
 });

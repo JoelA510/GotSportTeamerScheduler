@@ -16,6 +16,8 @@ export interface CoachedTeam {
   id: string;
   coachId?: string | null;
   assistantCoachIds?: string[] | null;
+  /** The `teams` column spelling; read when `assistantCoachIds` is absent. */
+  assistant_coach_ids?: string[] | null;
 }
 
 /** A team with its coach list resolved once, at input preparation. */
@@ -24,12 +26,14 @@ export interface PreparedTeam extends CoachedTeam {
 }
 
 /**
- * Head coach plus assistants, deduplicated, empty ids dropped. An absent or null list means no
- * assistants (the same contract `if (team.coachId)` applies to a missing head coach); a list that
- * is present and not an array is rejected rather than read as "no coaches".
+ * Head coach plus assistants, deduplicated, empty ids dropped. The assistant list is read as
+ * `assistantCoachIds` first, then `assistant_coach_ids`, the precedence the core helper applies.
+ * An absent or null list means no assistants (the same contract `if (team.coachId)` applies to a
+ * missing head coach); a list that is present and not an array is rejected rather than read as
+ * "no coaches".
  */
 export function listTeamCoachIds(team: CoachedTeam): string[] {
-  const assistants = team.assistantCoachIds;
+  const assistants = team.assistantCoachIds ?? team.assistant_coach_ids;
   if (assistants !== undefined && assistants !== null && !Array.isArray(assistants)) {
     throw new TypeError(`team ${team.id} assistantCoachIds must be an array when provided`);
   }
