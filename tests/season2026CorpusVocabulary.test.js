@@ -34,8 +34,10 @@
  *   word does.
  * - **Prose is out of scope.** The corpus's two `README.md` files are reviewed
  *   English, not data, and putting their vocabulary on this list would drown
- *   it. Every other file under the corpus root is scanned, and an extension
- *   this guard does not know how to read fails rather than being skipped.
+ *   it. They are excluded by their **exact relative path**, not by shape: any
+ *   other file under the corpus root is scanned, and one this guard does not
+ *   know how to read fails rather than being skipped — a third `README.md`
+ *   included.
  *
  * The subject set is a **recursive** walk of the corpus root, never a list in
  * this file, so a CSV added to a subdirectory that does not exist yet is still
@@ -78,8 +80,14 @@ const MIN_CORPUS_FILES = 22;
 const MIN_CELLS_SCANNED = 30000;
 const MIN_PERSON_CELLS_SCANNED = 3000;
 
-/** Reviewed prose, not data. Skipped by extension, and the skip is asserted. */
-const PROSE_EXTENSIONS = Object.freeze(['.md']);
+/**
+ * Reviewed prose, not data. Excluded by **exact relative path** rather than by
+ * extension or basename: an exclusion keyed on shape would skip any future
+ * `README.md` anywhere under the corpus root, including one holding the names
+ * this guard exists to catch. Anything else the guard cannot read is a loud
+ * failure, README-shaped or not. The skip is asserted by name.
+ */
+const EXCLUDED_FILES = Object.freeze(['README.md', 'practice/README.md']);
 
 /**
  * Columns holding invented people, keyed by the file's path **relative to the
@@ -621,11 +629,11 @@ function scanCorpus(root) {
   };
 
   for (const rel of filesUnder(root)) {
-    const extension = path.extname(rel);
-    if (PROSE_EXTENSIONS.includes(extension)) {
+    if (EXCLUDED_FILES.includes(rel)) {
       proseFiles.push(rel);
       continue;
     }
+    const extension = path.extname(rel);
     if (extension !== '.csv' && extension !== '.json') {
       unreadableFiles.push(rel);
       continue;
@@ -726,8 +734,9 @@ describe('season-2026 corpus vocabulary', () => {
       // An extension this guard cannot read is a hole, so it fails here rather
       // than being dropped on the floor by the `.csv`/`.json` filter.
       expect(scan.unreadableFiles).toEqual([]);
-      expect(scan.proseFiles.every((file) => file.endsWith('README.md'))).toBe(true);
-      expect(scan.proseFiles.length).toBeGreaterThan(0);
+      // Excluded by identity, not by shape: exactly these two paths, so a
+      // third `README.md` anywhere under the corpus root is not skipped.
+      expect([...scan.proseFiles].sort()).toEqual([...EXCLUDED_FILES].sort());
     });
 
     it('read both the vocabulary-checked and the person-name cells', () => {
@@ -925,6 +934,22 @@ describe('season-2026 corpus vocabulary', () => {
         file: 'practice/select_coaches.csv',
         column: 'person_key',
       });
+    });
+
+    it('reports a README dropped into a subdirectory rather than skipping it', () => {
+      // Excluding by shape would swallow this file whole. Excluding by exact
+      // relative path leaves it to the reader, which cannot read Markdown, so
+      // it surfaces as unreadable instead of vanishing.
+      const root = scratchCorpus();
+      mkdirSync(path.join(root, 'practice', 'archive'), { recursive: true });
+      writeFileSync(
+        path.join(root, 'practice', 'archive', 'README.md'),
+        'Zzqfictional FC notes.\n'
+      );
+
+      const control = scanCorpus(root);
+      expect(control.unreadableFiles).toContain('practice/archive/README.md');
+      expect([...control.proseFiles].sort()).toEqual([...EXCLUDED_FILES].sort());
     });
 
     it('reports an allowlist entry the corpus stopped using', () => {
