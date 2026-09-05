@@ -1,4 +1,5 @@
 import { SlotSchema, TeamSchema } from './schemas/index.js';
+import { listTeamCoachIds } from './practiceScheduling.js';
 
 /**
  * Evaluate the quality of practice schedule assignments and emit metrics
@@ -9,10 +10,13 @@ import { SlotSchema, TeamSchema } from './schemas/index.js';
  *   Array of practice assignments linking teams to slots.
  * @param {Array<{ teamId: string, reason: string }>} [params.unassigned=[]] -
  *   Teams that could not be scheduled automatically.
- * @param {Array<{ id: string, division: string, coachId?: string | null }>} params.teams -
+ * @param {Array<{ id: string, division: string, coachId?: string | null, assistantCoachIds?: string[] | null }>} params.teams -
  *   Teams participating in the scheduling run. Each team must provide an `id` and `division`.
  * @param {Array<{ id: string, capacity: number, start: string | Date, end: string | Date, day?: string | null }>} params.slots -
  *   Slot catalogue with capacity and timing metadata.
+ * `coachConflicts` carries one entry per coach: a pair of teams sharing two coaches (head plus
+ * assistant) yields two entries for the same overlap, and `coachLoad` counts each coach's own load.
+ *
  * @returns {{
  *   summary: {
  *     totalTeams: number,
@@ -167,6 +171,7 @@ export function evaluatePracticeSchedule({
       id: team.id,
       division: team.division,
       coachId: team.coachId ?? null,
+      coachIds: listTeamCoachIds(team),
     });
   }
 
@@ -284,10 +289,10 @@ export function evaluatePracticeSchedule({
     divisionAssignments.push({ team, slot });
     assignmentsByDivision.set(team.division, divisionAssignments);
 
-    if (team.coachId) {
-      const coachAssignments = assignmentsByCoach.get(team.coachId) ?? [];
+    for (const coachId of team.coachIds) {
+      const coachAssignments = assignmentsByCoach.get(coachId) ?? [];
       coachAssignments.push({ teamId: team.id, slot });
-      assignmentsByCoach.set(team.coachId, coachAssignments);
+      assignmentsByCoach.set(coachId, coachAssignments);
     }
 
     const baseSlotId = slot.baseSlotId;

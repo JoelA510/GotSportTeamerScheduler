@@ -739,3 +739,100 @@ test('evaluatePracticeSchedule flags school hour violations', () => {
   assert.match(violationWarnings[0], /team-1/);
   assert.match(violationWarnings[0], /15:30/);
 });
+
+// ---------------------------------------------------------------------------
+// 8.1 -- the evaluator reports conflicts on every coach a team carries.
+// ---------------------------------------------------------------------------
+
+test('evaluatePracticeSchedule flags a conflict on a shared assistant coach', () => {
+  // team-2 has no head coach at all, so a head-only evaluator would never see it.
+  const teams = [
+    { id: 'team-1', division: 'U10', coachId: 'coach-a', assistantCoachIds: ['assistant-x'] },
+    { id: 'team-2', division: 'U12', coachId: null, assistantCoachIds: ['assistant-x'] },
+  ];
+
+  const report = evaluatePracticeSchedule({
+    assignments: [
+      { teamId: 'team-1', slotId: 'slot-early-mon' },
+      { teamId: 'team-2', slotId: 'slot-late-mon' },
+    ],
+    teams,
+    slots: SAMPLE_SLOTS,
+    schoolDayEnd: '16:00',
+    timezone: 'UTC',
+  });
+
+  assert.deepEqual(report.coachConflicts, [
+    {
+      coachId: 'assistant-x',
+      teams: [
+        { teamId: 'team-1', slotId: 'slot-early-mon' },
+        { teamId: 'team-2', slotId: 'slot-late-mon' },
+      ],
+      reason: 'overlapping slots',
+    },
+  ]);
+  assert.deepEqual(report.coachLoad, {
+    'coach-a': { assignedTeams: 1, distinctDays: 1 },
+    'assistant-x': { assignedTeams: 2, distinctDays: 1 },
+  });
+});
+
+test('evaluatePracticeSchedule reads the teams-column spelling assistant_coach_ids', () => {
+  const teams = [
+    { id: 'team-1', division: 'U10', coachId: 'coach-a', assistant_coach_ids: ['assistant-x'] },
+    { id: 'team-2', division: 'U12', coachId: null, assistant_coach_ids: ['assistant-x'] },
+  ];
+
+  const report = evaluatePracticeSchedule({
+    assignments: [
+      { teamId: 'team-1', slotId: 'slot-early-mon' },
+      { teamId: 'team-2', slotId: 'slot-late-mon' },
+    ],
+    teams,
+    slots: SAMPLE_SLOTS,
+    schoolDayEnd: '16:00',
+    timezone: 'UTC',
+  });
+
+  assert.equal(report.coachConflicts.length, 1);
+  assert.equal(report.coachConflicts[0].coachId, 'assistant-x');
+});
+
+test('control: distinct assistants on the same overlapping slots raise no conflict', () => {
+  const teams = [
+    { id: 'team-1', division: 'U10', coachId: 'coach-a', assistantCoachIds: ['assistant-x'] },
+    { id: 'team-2', division: 'U12', coachId: null, assistantCoachIds: ['assistant-y'] },
+  ];
+
+  const report = evaluatePracticeSchedule({
+    assignments: [
+      { teamId: 'team-1', slotId: 'slot-early-mon' },
+      { teamId: 'team-2', slotId: 'slot-late-mon' },
+    ],
+    teams,
+    slots: SAMPLE_SLOTS,
+    schoolDayEnd: '16:00',
+    timezone: 'UTC',
+  });
+
+  assert.deepEqual(report.coachConflicts, []);
+  assert.deepEqual(report.coachLoad, {
+    'coach-a': { assignedTeams: 1, distinctDays: 1 },
+    'assistant-x': { assignedTeams: 1, distinctDays: 1 },
+    'assistant-y': { assignedTeams: 1, distinctDays: 1 },
+  });
+});
+
+test('a coach listed as both head and assistant of one team is counted once and never self-conflicts', () => {
+  const report = evaluatePracticeSchedule({
+    assignments: [{ teamId: 'team-1', slotId: 'slot-early-mon' }],
+    teams: [{ id: 'team-1', division: 'U10', coachId: 'coach-a', assistantCoachIds: ['coach-a'] }],
+    slots: SAMPLE_SLOTS,
+    schoolDayEnd: '16:00',
+    timezone: 'UTC',
+  });
+
+  assert.deepEqual(report.coachConflicts, []);
+  assert.deepEqual(report.coachLoad, { 'coach-a': { assignedTeams: 1, distinctDays: 1 } });
+});

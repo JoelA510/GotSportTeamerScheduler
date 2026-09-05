@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { test } from 'vitest';
 
 import { expandPracticeSlotsForSeason } from '../packages/core/src/practiceSlotExpansion.js';
@@ -202,4 +205,35 @@ test('throws for invalid day names', () => {
     () => expandPracticeSlotsForSeason({ slots, seasonPhases }),
     /unrecognised day value/
   );
+});
+
+// ---------------------------------------------------------------------------
+// 8.1 -- the module must not claim a daylight adjustment it does not perform.
+// Implementing one is task 8.9; until then the docstring says what the code does.
+// ---------------------------------------------------------------------------
+
+test('practiceSlotExpansion neither claims nor takes a daylight adjustment', () => {
+  const source = readFileSync(
+    path.resolve(
+      path.dirname(fileURLToPath(import.meta.url)),
+      '..',
+      'packages',
+      'core',
+      'src',
+      'practiceSlotExpansion.js'
+    ),
+    'utf8'
+  );
+  assert.ok(source.includes('export function expandPracticeSlotsForSeason'), 'read the module');
+
+  const claim = /account(s|ing)? for daylight/i;
+  // Positive control: the predicate recognises the sentence it guards against.
+  assert.match('"effective" slots that account for daylight adjustments.', claim);
+  assert.doesNotMatch(source, claim);
+
+  // And the code itself (comments stripped) names no sunset, daylight or lighting input.
+  const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+  const input = /sunset|daylight|lighting/i;
+  assert.match('const sunsetAt = params.sunset;', input);
+  assert.doesNotMatch(code, input);
 });

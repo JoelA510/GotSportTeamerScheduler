@@ -332,3 +332,151 @@ describe('optimizePracticeSchedule', () => {
     assert.ok(Array.isArray(result.evaluation.coachConflicts), 'coachConflicts should be array');
   });
 });
+
+// ---------------------------------------------------------------------------
+// 8.1 -- assistant coaches enter the optimizer's hard-constraint check.
+// `createSlot` pins every slot to one calendar day, so slots overlap exactly
+// when their hours overlap; the `day` label plays no part.
+// ---------------------------------------------------------------------------
+
+describe('assistant coaches in the conflict check', () => {
+  const teamsSharingAssistants = [
+    { id: 'T1', name: 'Team 1', division: 'U10', coachId: 'h1', assistantCoachIds: ['shared-a'] },
+    { id: 'T2', name: 'Team 2', division: 'U12', coachId: 'h2', assistantCoachIds: ['shared-a'] },
+    { id: 'T3', name: 'Team 3', division: 'U10', coachId: 'h3', assistantCoachIds: ['shared-b'] },
+    { id: 'T4', name: 'Team 4', division: 'U12', coachId: 'h4', assistantCoachIds: ['shared-b'] },
+    { id: 'T5', name: 'Team 5', division: 'U10', coachId: null, assistantCoachIds: ['shared-c'] },
+    // Crossover: T6's head coach is T5's assistant.
+    { id: 'T6', name: 'Team 6', division: 'U12', coachId: 'shared-c', assistantCoachIds: [] },
+  ];
+  // Two fields at 17:00 and two at 19:00: every pair fits, but only split across the hours.
+  const slots = [
+    createSlot({ id: 'early-a', day: 'Monday', startHour: 17, endHour: 18, capacity: 3 }),
+    createSlot({ id: 'early-b', day: 'Monday', startHour: 17, endHour: 18, capacity: 3 }),
+    createSlot({ id: 'late-a', day: 'Tuesday', startHour: 19, endHour: 20, capacity: 3 }),
+    createSlot({ id: 'late-b', day: 'Tuesday', startHour: 19, endHour: 20, capacity: 3 }),
+  ];
+
+  // Independent oracle: every coach a team carries, head and assistants alike, built inline
+  // rather than through the helper under test.
+  const coachesOf = (team) => [team.coachId, ...(team.assistantCoachIds ?? [])].filter(Boolean);
+
+  function sharedCoachOverlaps(teams, assignments) {
+    const slotById = new Map(slots.map((s) => [s.id, s]));
+    const slotOf = new Map(assignments.map((a) => [a.teamId, slotById.get(a.slotId)]));
+    const overlaps = [];
+    for (let i = 0; i < teams.length; i += 1) {
+      for (let j = i + 1; j < teams.length; j += 1) {
+        const shared = coachesOf(teams[i]).filter((id) => coachesOf(teams[j]).includes(id));
+        const a = slotOf.get(teams[i].id);
+        const b = slotOf.get(teams[j].id);
+        if (shared.length > 0 && a && b && a.start < b.end && b.start < a.end) {
+          overlaps.push(`${teams[i].id}/${teams[j].id} via ${shared.join(',')}`);
+        }
+      }
+    }
+    return overlaps;
+  }
+
+  test('the helper flags a shared assistant on overlapping slots (control)', () => {
+    const clash = [
+      { teamId: 'T1', slotId: 'early-a' },
+      { teamId: 'T2', slotId: 'early-b' },
+    ];
+    assert.deepEqual(sharedCoachOverlaps(teamsSharingAssistants.slice(0, 2), clash), [
+      'T1/T2 via shared-a',
+    ]);
+    // And the head/assistant crossover shape.
+    const crossover = [
+      { teamId: 'T5', slotId: 'early-a' },
+      { teamId: 'T6', slotId: 'early-b' },
+    ];
+    assert.deepEqual(sharedCoachOverlaps(teamsSharingAssistants.slice(4, 6), crossover), [
+      'T5/T6 via shared-c',
+    ]);
+  });
+
+  test('the optimizer never overlaps two teams that share an assistant coach', () => {
+    const result = optimizePracticeSchedule({
+      teams: teamsSharingAssistants,
+      slots,
+      config: { timeBudgetMs: 2000, maxIterations: 300, seed: 7 },
+    });
+
+    assert.equal(result.assignments.length, 6);
+    assert.deepEqual(result.unassigned, []);
+    assert.deepEqual(sharedCoachOverlaps(teamsSharingAssistants, result.assignments), []);
+    assert.deepEqual(result.evaluation.coachConflicts, []);
+  });
+
+  test('relocate cannot seat an unassigned team on top of its assistant coach', () => {
+    // Isolates the optimizer's own hard-constraint check. The greedy seed leaves T2 unassigned
+    // (every seat clashes with T1 on shared-a) and one seat at 17:00 stays free. Seating T2 there
+    // gains more fitness (coverage + follow-up rate, three teams) than one coach conflict costs,
+    // so only the hard check stands between the optimizer and the double-booking.
+    const teams = [
+      { id: 'T1', name: 'Team 1', division: 'U10', coachId: 'h1', assistantCoachIds: ['shared-a'] },
+      { id: 'T2', name: 'Team 2', division: 'U10', coachId: 'h2', assistantCoachIds: ['shared-a'] },
+      { id: 'T3', name: 'Team 3', division: 'U10', coachId: 'h3', assistantCoachIds: [] },
+    ];
+    const seats = [
+      createSlot({ id: 'early-a', day: 'Monday', startHour: 17, endHour: 18, capacity: 1 }),
+      createSlot({ id: 'early-b', day: 'Monday', startHour: 17, endHour: 18, capacity: 2 }),
+    ];
+
+    const result = optimizePracticeSchedule({
+      teams,
+      slots: seats,
+      config: { timeBudgetMs: 2000, maxIterations: 400, seed: 11 },
+    });
+
+    assert.equal(result.assignments.length, 2);
+    assert.deepEqual(
+      result.unassigned.map((entry) => entry.teamId),
+      ['T2']
+    );
+    assert.deepEqual(result.evaluation.coachConflicts, []);
+  });
+
+  test('relocate cannot seat an unassigned team on a slot its assistant coach is unavailable for', () => {
+    // Isolates the optimizer's unavailability branch: T2 has no head coach, its assistant is
+    // unavailable everywhere, the greedy seed leaves it out, and seating it would gain coverage
+    // with no conflict penalty at all (the evaluator does not know about unavailability).
+    const teams = [
+      { id: 'T1', name: 'Team 1', division: 'U10', coachId: 'h1', assistantCoachIds: [] },
+      { id: 'T2', name: 'Team 2', division: 'U10', coachId: null, assistantCoachIds: ['a2'] },
+      { id: 'T3', name: 'Team 3', division: 'U10', coachId: 'h3', assistantCoachIds: [] },
+    ];
+    const seats = [
+      createSlot({ id: 'early-a', day: 'Monday', startHour: 17, endHour: 18, capacity: 2 }),
+      createSlot({ id: 'late-a', day: 'Tuesday', startHour: 19, endHour: 20, capacity: 2 }),
+    ];
+
+    const result = optimizePracticeSchedule({
+      teams,
+      slots: seats,
+      coachPreferences: { a2: { unavailableSlotIds: ['early-a', 'late-a'] } },
+      config: { timeBudgetMs: 2000, maxIterations: 400, seed: 5 },
+    });
+
+    assert.equal(result.assignments.length, 2);
+    assert.deepEqual(
+      result.unassigned.map((entry) => entry.teamId),
+      ['T2']
+    );
+  });
+
+  test('a locked team books its assistant coach for the optimizer as well', () => {
+    const teams = teamsSharingAssistants.slice(0, 2);
+    const result = optimizePracticeSchedule({
+      teams,
+      slots,
+      lockedAssignments: [{ teamId: 'T1', slotId: 'early-a' }],
+      config: { timeBudgetMs: 1000, maxIterations: 100, seed: 3 },
+    });
+
+    assert.equal(result.assignments.length, 2);
+    assert.deepEqual(sharedCoachOverlaps(teams, result.assignments), []);
+    assert.deepEqual(result.evaluation.coachConflicts, []);
+  });
+});

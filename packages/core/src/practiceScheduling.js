@@ -74,6 +74,35 @@ function getDivisionDayKey(slot, division) {
   return `${slot.day}::${division}`;
 }
 
+/**
+ * Every coach a team carries: the head coach plus any assistant coaches, deduplicated, with
+ * empty ids dropped. The assistant list is read under either spelling the repo uses --
+ * `assistantCoachIds` (engine, `Team` typedef) first, then `assistant_coach_ids` (the `teams`
+ * column) -- the same precedence `teamSnapshot.js` applies. Mirrors the `if (team.coachId)`
+ * contract for a missing head coach -- an absent or null list means no assistants -- but a list
+ * that is present and not an array is rejected rather than read as "no coaches", so a malformed
+ * team never passes as conflict-free.
+ *
+ * @param {{ id?: unknown, coachId?: string | null, assistantCoachIds?: string[] | null, assistant_coach_ids?: string[] | null }} team
+ * @returns {string[]}
+ */
+export function listTeamCoachIds(team) {
+  const assistants = team.assistantCoachIds ?? team.assistant_coach_ids;
+  if (assistants !== undefined && assistants !== null && !Array.isArray(assistants)) {
+    throw new TypeError(`team ${team.id} assistantCoachIds must be an array when provided`);
+  }
+  const ids = new Set();
+  if (team.coachId) {
+    ids.add(team.coachId);
+  }
+  for (const id of assistants ?? []) {
+    if (id) {
+      ids.add(id);
+    }
+  }
+  return [...ids];
+}
+
 export function schedulePractices({
   teams,
   slots,
@@ -144,6 +173,7 @@ export function schedulePractices({
       id: team.id,
       division: team.division,
       coachId: team.coachId ?? null,
+      coachIds: listTeamCoachIds(team),
     };
   });
 
@@ -229,10 +259,10 @@ export function schedulePractices({
     assignedTeamIds.add(team.id);
     incrementDivisionLoad(slot, team.division);
 
-    if (team.coachId) {
-      const existing = coachAssignments.get(team.coachId) ?? [];
+    for (const coachId of team.coachIds) {
+      const existing = coachAssignments.get(coachId) ?? [];
       existing.push({ teamId: team.id, slotId: slot.id, start: slot.start, end: slot.end });
-      coachAssignments.set(team.coachId, existing);
+      coachAssignments.set(coachId, existing);
     }
   };
 
@@ -259,15 +289,15 @@ export function schedulePractices({
     assignmentSources.delete(team.id);
     assignedTeamIds.delete(team.id);
 
-    if (team.coachId) {
-      const existing = coachAssignments.get(team.coachId) ?? [];
+    for (const coachId of team.coachIds) {
+      const existing = coachAssignments.get(coachId) ?? [];
       const filtered = existing.filter(
         (entry) => entry.slotId !== assignment.slotId || entry.teamId !== team.id
       );
       if (filtered.length === 0) {
-        coachAssignments.delete(team.coachId);
+        coachAssignments.delete(coachId);
       } else {
-        coachAssignments.set(team.coachId, filtered);
+        coachAssignments.set(coachId, filtered);
       }
     }
   };
@@ -304,14 +334,16 @@ export function schedulePractices({
 
   const coachTeamCounts = new Map();
   for (const team of sanitizedTeams) {
-    if (team.coachId) {
-      coachTeamCounts.set(team.coachId, (coachTeamCounts.get(team.coachId) ?? 0) + 1);
+    for (const coachId of team.coachIds) {
+      coachTeamCounts.set(coachId, (coachTeamCounts.get(coachId) ?? 0) + 1);
     }
   }
+  const busiestCoachCount = (team) =>
+    Math.max(0, ...team.coachIds.map((coachId) => coachTeamCounts.get(coachId) ?? 0));
 
   const teamsByPriority = [...sanitizedTeams].sort((a, b) => {
-    const aCoachCount = a.coachId ? (coachTeamCounts.get(a.coachId) ?? 0) : 0;
-    const bCoachCount = b.coachId ? (coachTeamCounts.get(b.coachId) ?? 0) : 0;
+    const aCoachCount = busiestCoachCount(a);
+    const bCoachCount = busiestCoachCount(b);
     if (aCoachCount !== bCoachCount) {
       return bCoachCount - aCoachCount;
     }
@@ -401,8 +433,8 @@ export function schedulePractices({
  * scores used by the scheduler to choose the optimal assignment.
  *
  * @param {Object} params
- * @param {{ id: string, division: string, coachId: string | null }} params.team - The team being
- *   evaluated.
+ * @param {{ id: string, division: string, coachId: string | null, coachIds: string[] }} params.team
+ *   - The team being evaluated. `coachIds` carries every coach (head plus assistants).
  * @param {Map<string, { id: string, day: string | null, start: Date, end: Date, capacity: number, assignedTeams: string[] }>} params.slotsById
  *   - Lookup of slot metadata by identifier.
  * @param {Object<string, { preferredDays?: Array<string>, preferredSlotIds?: Array<string>, unavailableSlotIds?: Array<string> }>} params.coachPreferences
@@ -442,9 +474,15 @@ function evaluateSlotsForTeam(
   const divisionPref = divisionPreferences[team.division] ?? {};
   const preferredCoachDays = new Set(coachPref.preferredDays ?? []);
   const preferredCoachSlots = new Set(coachPref.preferredSlotIds ?? []);
-  const unavailableCoachSlots = new Set(coachPref.unavailableSlotIds ?? []);
+  // Unavailability is a hard constraint, so it is unioned over every coach on the team;
+  // preferred days and slots are scoring hints and still follow the head coach only.
+  const unavailableCoachSlots = new Set(
+    team.coachIds.flatMap((coachId) => coachPreferences[coachId]?.unavailableSlotIds ?? [])
+  );
   const preferredDivisionDays = new Set(divisionPref.preferredDays ?? []);
-  const coachExistingAssignments = coachAssignments.get(team.coachId) ?? [];
+  const coachExistingAssignments = team.coachIds.flatMap(
+    (coachId) => coachAssignments.get(coachId) ?? []
+  );
 
   for (const slot of slotsById.values()) {
     let rejectionReason = null;
@@ -455,7 +493,7 @@ function evaluateSlotsForTeam(
     const currentCapacity = slotCapacityMap.get(slot.id);
     const isFull = currentCapacity <= 0;
     const overlapsCoachSchedule =
-      team.coachId &&
+      coachExistingAssignments.length > 0 &&
       overlapsExistingAssignments({
         assignments: coachExistingAssignments,
         start: slot.start,
