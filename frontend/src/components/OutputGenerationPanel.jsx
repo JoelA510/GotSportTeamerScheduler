@@ -3,8 +3,11 @@ import { generateScheduleExports } from '@squadlogic/core/outputGeneration.js';
 import { uploadScheduleExport } from '@squadlogic/core/storageSupabase.js';
 import { IS_MOCK_MODE } from '../config.js';
 import { logger } from '../lib/logger.js';
-import { teamsWithCoachSourceDisagreement } from '@squadlogic/core/people/coachList.js';
-import { teamCoaches } from '../utils/teamCoaches.js';
+import {
+  teamsWithCoachSourceDisagreement,
+  teamsWithUncorroboratedCoachIdentity,
+} from '@squadlogic/core/people/coachList.js';
+import { teamCoachFields, teamCoaches } from '../utils/teamCoaches.js';
 
 const MOCK_UPLOAD = IS_MOCK_MODE;
 const DAY_INDEX = {
@@ -56,9 +59,13 @@ function normalizeTeamForExport(team) {
     id,
     name: team.name ?? team.teamName ?? id,
     division,
-    // 8.2: every coach, reconciled once, in the club's declared order. The
-    // export has one `Coaches` column and no column claiming a head coach.
-    coaches: teamCoaches(team),
+    // 8.2: the row's coach fields under one spelling, **both sources intact**,
+    // so `generateScheduleExports()` reconciles them and its `coachFindings`
+    // carry any disagreement. Reconciling here and passing the settled list
+    // left the core one source to read, and the message below could never
+    // fire — the export said "generated successfully" for a team whose two
+    // sources named different people in slot 1.
+    ...teamCoachFields(team),
   };
 }
 
@@ -267,11 +274,24 @@ export default function OutputGenerationPanel({
         // `COACH_SLOT_UNDECLARED` is also `compromise` and fires for the
         // ordinary app row, so a severity filter told the operator that sources
         // disagreed about teams where only one source was ever read.
+        //
+        // `COACH_IDENTITY_UNCORROBORATED` is the other silence refused: a coach
+        // no row carries an id for is exported but cannot be clash-checked, and
+        // the operator is told so rather than shown a clean sheet.
         const teamsWithDisagreement = teamsWithCoachSourceDisagreement(exports.coachFindings);
+        const teamsUncorroborated = teamsWithUncorroboratedCoachIdentity(exports.coachFindings);
         setMessage(
-          teamsWithDisagreement.length === 0
-            ? 'CSVs generated successfully.'
-            : `CSVs generated successfully. ${teamsWithDisagreement.length} team(s) have sources that disagree about their coaches; every coach is exported and none is treated as the primary.`
+          [
+            'CSVs generated successfully.',
+            teamsWithDisagreement.length === 0
+              ? null
+              : `${teamsWithDisagreement.length} team(s) have sources that disagree about their coaches; every coach is exported and none is treated as the primary.`,
+            teamsUncorroborated.length === 0
+              ? null
+              : `${teamsUncorroborated.length} team(s) have a coach with no id on file; they are exported, but no clash check can cover them until a row carries their id.`,
+          ]
+            .filter(Boolean)
+            .join(' ')
         );
       } catch (err) {
         logger.error('Generation error:', err);

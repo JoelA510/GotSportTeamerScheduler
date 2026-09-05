@@ -2,12 +2,16 @@ import React from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import OutputGenerationPanel from '../frontend/src/components/OutputGenerationPanel.jsx';
+import { generateScheduleExports } from '@squadlogic/core/outputGeneration.js';
+import { teamsWithCoachSourceDisagreement } from '@squadlogic/core/people/coachList.js';
+import { teamCoaches } from '../frontend/src/utils/teamCoaches.js';
 
 const teams = [
   {
     id: 'team-1',
     name: 'Blue Bears',
     division: 'U10',
+    coachId: 'coach-1',
     coachName: 'Alex Coach',
     coachEmail: 'alex@example.com',
     // 8.2: a co-coach with an address of their own gets their own draft; one
@@ -60,6 +64,69 @@ describe('OutputGenerationPanel', () => {
       'type',
       'button'
     );
+  });
+
+  it('reports a team whose two sources disagree about who is first', async () => {
+    // The message existed and could not fire: the panel reconciled each row
+    // itself, passed the settled list to the export, and the export then saw
+    // one source. Both sources now reach the core, whose findings the panel
+    // reads. Slot 1 here is `c1` by the `coaches` list and `c2` by `coachId`.
+    const disagreeing = [
+      {
+        id: 'team-2',
+        name: 'Red Foxes',
+        division: 'U10',
+        coachId: 'c2',
+        coaches: [
+          { personId: 'c1', displayName: 'Casey', slot: 1 },
+          { personId: 'c2', displayName: 'Drew', slot: 2 },
+        ],
+      },
+    ];
+    // POSITIVE CONTROL, the wrong implementation constructed: the row
+    // collapsed to its settled list first hands the core one source, and the
+    // disagreement is gone before the message could read it.
+    const collapsed = generateScheduleExports({
+      teams: [{ id: 'team-2', coaches: teamCoaches(disagreeing[0]) }],
+      practiceAssignments: [{ ...practiceAssignments[0], teamId: 'team-2' }],
+    });
+    expect(teamsWithCoachSourceDisagreement(collapsed.coachFindings)).toEqual([]);
+
+    render(
+      <OutputGenerationPanel
+        teams={disagreeing}
+        practiceAssignments={[{ ...practiceAssignments[0], teamId: 'team-2' }]}
+        supabaseClient={null}
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Generate CSVs' }));
+    expect(
+      await screen.findByText(
+        /1 team\(s\) have sources that disagree about their coaches; every coach is exported/
+      )
+    ).toBeInTheDocument();
+    // …and the single-source team above renders the plain success line, so
+    // the message is a fact about the sources and not about every export.
+    expect(screen.queryByText('CSVs generated successfully.')).toBeNull();
+  });
+
+  it('reports a coach no row carries an id for, rather than a clean sheet', async () => {
+    const nameOnly = [
+      { id: 'team-3', name: 'Green Owls', division: 'U10', coachName: 'Coach Mike' },
+    ];
+    render(
+      <OutputGenerationPanel
+        teams={nameOnly}
+        practiceAssignments={[{ ...practiceAssignments[0], teamId: 'team-3' }]}
+        supabaseClient={null}
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Generate CSVs' }));
+    expect(
+      await screen.findByText(/1 team\(s\) have a coach with no id on file; they are exported/)
+    ).toBeInTheDocument();
+    // It is not reported as a disagreement: one source, one reading.
+    expect(screen.queryByText(/sources that disagree/)).toBeNull();
   });
 
   it('generates coach email drafts from the available team schedule', () => {

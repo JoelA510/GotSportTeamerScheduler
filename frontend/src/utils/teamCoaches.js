@@ -91,10 +91,17 @@ function profileName(profile) {
 /**
  * The team row's coach ids and names, in declared order, under one spelling.
  *
+ * Exported so the export panel can hand the core **both** of a row's sources
+ * — the reconciled `coaches` list and the legacy columns — and read the
+ * disagreement findings the reconciliation produces. Collapsing the row to
+ * `teamCoaches(team)` first settled every disagreement here and threw the
+ * findings away, so the export's own "sources disagree" message could never
+ * fire: declared, not enforced.
+ *
  * @param {any} team
  * @returns {Object}
  */
-function normalizeTeamCoachFields(team) {
+export function teamCoachFields(team) {
   const profile = team?.coach;
   // The joined `coach` embed arrives as a row or, through some selects, as a
   // one-element array. Unwrapped **once** for every field read from it: the
@@ -143,7 +150,7 @@ function normalizeTeamCoachFields(team) {
  */
 export function teamCoaches(team) {
   if (!team) return [];
-  return [...coachesOfTeamRow(normalizeTeamCoachFields(team), team.id ?? 'team').coaches];
+  return [...coachesOfTeamRow(teamCoachFields(team), team.id ?? 'team').coaches];
 }
 
 /**

@@ -22,6 +22,7 @@ import {
   formatTeamCoaches,
   sharedCoachKeys,
   sharedCoachNames,
+  teamCoachFields,
   teamCoachKeys,
   teamCoachNames,
   teamCoaches,
@@ -234,5 +235,18 @@ describe('teamCoaches :: identity, on the app side of the one rule', () => {
     expect(sharedCoachKeys({ ...A, coach_id: 'mike' }, { ...B, coach_id: 'mike' })).toEqual([
       'mike',
     ]);
+  });
+
+  it('hands the export both of a row’s sources, intact', () => {
+    const fields = teamCoachFields({
+      id: 't',
+      coach_id: 'c2',
+      coaches: [
+        { personId: 'c1', slot: 1 },
+        { personId: 'c2', slot: 2 },
+      ],
+    });
+    expect(fields.coachId).toBe('c2');
+    expect(fields.coaches).toHaveLength(2);
   });
 });
