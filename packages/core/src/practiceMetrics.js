@@ -1,5 +1,72 @@
+import { assertCountsLabelled, buildCountUnitRegistry } from './counts.js';
 import { SlotSchema, TeamSchema } from './schemas/index.js';
 import { listTeamCoachIds } from './practiceScheduling.js';
+
+/**
+ * What every number this module publishes is a number **of**.
+ *
+ * A practice report counts three genuinely different things and used to spell
+ * all of them "assigned": a **rostered team**, a **team holding a slot**, and a
+ * **practice assignment** (one team in one slot — a team with two practices is
+ * one team and two assignments). The season-2026 corpus has 132 rostered teams,
+ * 88 of them holding a slot, across 457 practice rows, and no single number
+ * called `totalTeams` could have been all three.
+ *
+ * The fourth slot-unit the corpus trades in — the **field-hour** — is
+ * deliberately absent, and that is a stated bound rather than an oversight:
+ * `SlotSchema` carries a capacity, a start and an end but no field, so this
+ * module cannot say how much ground an assignment consumes. Anything that
+ * claimed to would be counting slots and calling them field-hours.
+ * `facility/` holds the ground; 8.3 is where the two meet.
+ *
+ * @type {Readonly<Record<string, Object>>}
+ */
+export const PRACTICE_METRICS_COUNT_UNITS = buildCountUnitRegistry({
+  'summary.totalTeams': 'ROSTERED_TEAM',
+  'summary.assignedTeams': 'TEAM_SLOT_UNIT',
+  'summary.unassignedTeams': 'ROSTERED_TEAM',
+  'summary.assignmentsRead': 'PRACTICE_ASSIGNMENT',
+  'summary.assignmentsCounted': 'PRACTICE_ASSIGNMENT',
+  'summary.assignmentRate': 'SHARE_OF_ONE',
+  'summary.manualFollowUpRate': 'SHARE_OF_ONE',
+  // Within one slot an assignment and a team are the same thing: the report
+  // refuses a duplicate `team::slot` pair, so `assignedCount` is both.
+  'slotUtilization.[].assignedCount': 'TEAM_SLOT_UNIT',
+  'slotUtilization.[].capacity': 'TEAM_SLOT_UNIT',
+  'slotUtilization.[].utilization': 'SHARE_OF_ONE',
+  // A base slot aggregates several slots, so a team practising twice under one
+  // base slot is one team and two assignments. Everything below `slotUtilization`
+  // therefore counts **assignments**, and labelling them "teams holding a slot"
+  // would reproduce the 88-vs-457 conflation this registry exists to end.
+  'baseSlotDistribution.[].totalAssigned': 'PRACTICE_ASSIGNMENT',
+  'baseSlotDistribution.[].totalCapacity': 'TEAM_SLOT_UNIT',
+  'baseSlotDistribution.[].utilization': 'SHARE_OF_ONE',
+  'baseSlotDistribution.[].divisionBreakdown.[].count': 'PRACTICE_ASSIGNMENT',
+  'baseSlotDistribution.[].divisionBreakdown.[].percentage': 'SHARE_OF_ONE',
+  'divisionDayDistribution.*.totalAssigned': 'PRACTICE_ASSIGNMENT',
+  'divisionDayDistribution.*.averageStartMinutes': 'MINUTES_PAST_MIDNIGHT',
+  'divisionDayDistribution.*.dayBreakdown.[].count': 'PRACTICE_ASSIGNMENT',
+  'divisionDayDistribution.*.dayBreakdown.[].percentage': 'SHARE_OF_ONE',
+  'divisionBaseSlotDistribution.*.totalAssigned': 'PRACTICE_ASSIGNMENT',
+  'divisionBaseSlotDistribution.*.baseSlots.[].count': 'PRACTICE_ASSIGNMENT',
+  'divisionBaseSlotDistribution.*.baseSlots.[].percentage': 'SHARE_OF_ONE',
+  'dayConcentrationAlerts.[].dominantShare': 'SHARE_OF_ONE',
+  'dayConcentrationAlerts.[].dominantCount': 'PRACTICE_ASSIGNMENT',
+  'dayConcentrationAlerts.[].totalAssignments': 'PRACTICE_ASSIGNMENT',
+  'coachLoad.*.assignedTeams': 'PRACTICE_ASSIGNMENT',
+  'coachLoad.*.distinctDays': 'DAY',
+  'fairnessConcerns.[].dominantShare': 'SHARE_OF_ONE',
+  'fairnessConcerns.[].totalAssigned': 'PRACTICE_ASSIGNMENT',
+  'fairnessConcerns.[].totalCapacity': 'TEAM_SLOT_UNIT',
+  'underutilizedBaseSlots.[].totalAssigned': 'PRACTICE_ASSIGNMENT',
+  'underutilizedBaseSlots.[].totalCapacity': 'TEAM_SLOT_UNIT',
+  'underutilizedBaseSlots.[].utilization': 'SHARE_OF_ONE',
+  'unassignedByReason.[].count': 'ROSTERED_TEAM',
+  'unassignedByReason.[].divisionBreakdown.[].count': 'ROSTERED_TEAM',
+  'unassignedByReason.[].divisionBreakdown.[].percentage': 'SHARE_OF_ONE',
+  'manualFollowUpBreakdown.[].count': 'ROSTERED_TEAM',
+  'manualFollowUpBreakdown.[].percentage': 'SHARE_OF_ONE',
+});
 
 /**
  * Key for one overlapping pair of assignments, the same whichever side is named first, so the
@@ -18,9 +85,15 @@ export function conflictPairKey(a, b) {
  * used by the admin dashboard and regression tests.
  *
  * `coachConflicts` carries one entry per overlapping pair of assignments, so a pair of teams
- * sharing two coaches (head plus assistant) is one conflict, charged once by the optimizer's
- * fitness and once as a pipeline issue; `coachIds` lists every coach the pair shares and
- * `coachId` the first of them. `coachLoad` still counts each coach's own load.
+ * sharing two coaches is one conflict, charged once by the optimizer's fitness and once as a
+ * pipeline issue; `coachIds` lists every coach the pair shares and `coachId` the first of them —
+ * first in iteration order, not a rank, and no coach on the list is the team's head (8.2).
+ * `coachLoad` still counts each coach's own load.
+ *
+ * Every number the report publishes carries a unit through
+ * {@link PRACTICE_METRICS_COUNT_UNITS}; `assignmentsRead` and `assignmentsCounted` differ by the
+ * duplicate and unresolvable rows, exactly as `fairness/` separates `fixturesRead` from
+ * `fixturesCounted`.
  *
  * @param {Object} params
  * @param {Array<{ teamId: string, slotId: string }>} params.assignments -
@@ -36,6 +109,8 @@ export function conflictPairKey(a, b) {
  *     totalTeams: number,
  *     assignedTeams: number,
  *     unassignedTeams: number,
+ *     assignmentsRead: number,
+ *     assignmentsCounted: number,
  *     assignmentRate: number,
  *   },
  *   slotUtilization: Array<{
@@ -601,11 +676,16 @@ export function evaluatePracticeSchedule({
     }))
     .sort((a, b) => b.count - a.count || a.category.localeCompare(b.category));
 
-  return {
+  const report = {
     summary: {
       totalTeams,
       assignedTeams,
       unassignedTeams,
+      // Read is what arrived; counted is what survived the duplicate and
+      // unknown-reference checks. A single "assignments" number would hide the
+      // difference, which is the shortfall `dataQualityWarnings` is about.
+      assignmentsRead: assignments.length,
+      assignmentsCounted: seenAssignments.size,
       assignmentRate,
       manualFollowUpRate,
     },
@@ -622,4 +702,6 @@ export function evaluatePracticeSchedule({
     unassignedByReason,
     manualFollowUpBreakdown,
   };
+  assertCountsLabelled(report, PRACTICE_METRICS_COUNT_UNITS, 'evaluatePracticeSchedule()');
+  return report;
 }

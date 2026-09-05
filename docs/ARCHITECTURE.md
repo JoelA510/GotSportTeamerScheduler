@@ -1146,17 +1146,21 @@ staging tables → idempotent finalize RPC.
 
 Two mechanisms, both CSV, both client-generated:
 
-`packages/core/src/outputGeneration.js:29-165` (`generateScheduleExports`) flattens practices and
-games into one row-per-team-per-event table:
+`packages/core/src/outputGeneration.js` (`generateScheduleExports`) flattens practices and
+games into one row-per-team-per-event table. Since 8.2 the coach columns are `Coaches` and
+`Coach Emails` — every coach on the team, `; `-separated and positionally aligned, in the club's
+declared order, produced once by `people/coachList.js` for this export and the reserve /
+TIME TBD publication alike. There is no `Coach Name` / `Assistant Coaches` split: that shape
+asserted a head-coach role the model does not carry (see `packages/core/src/people/coachList.js`).
 
 ```js
-// packages/core/src/outputGeneration.js:1-17
+// packages/core/src/outputGeneration.js
 const HEADERS = {
   TEAM_ID: 'Team ID',
   TEAM_NAME: 'Team Name',
   DIVISION: 'Division',
-  COACH_NAME: 'Coach Name',
-  COACH_EMAIL: 'Coach Email',
+  COACHES: 'Coaches',
+  COACH_EMAILS: 'Coach Emails',
   EVENT_TYPE: 'Event Type',
   OPPONENT: 'Opponent',
   ROLE: 'Role',

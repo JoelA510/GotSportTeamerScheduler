@@ -71,6 +71,8 @@
  * @property {string} start
  * @property {string} end
  * @property {number} capacity
+ * @property {number} [weekIndex] - required by `scheduleGames()`, which refuses a slot without one
+ * @property {string} [division] - absent means the slot is shared across divisions
  * @property {string} [fieldId]
  *   - Opaque field identifier. The physical model behind it (venue, parent/child
  *     pitch configurations, spatial overlap, size vs lining, date-scoped
@@ -121,7 +123,7 @@
  * @typedef {Object} GameScheduleParams
  * @property {Array<Object>} assignments
  * @property {Team[]} teams
- * @property {Array<{ weekIndex: number, division: string }>} [byes]
+ * @property {Array<{ weekIndex: number, division: string, teamId: string }>} [byes]
  * @property {Array<Object>} [unscheduled]
  * @property {Array<Object>} [sharedSlotUsage]
  */

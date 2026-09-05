@@ -250,6 +250,8 @@ test('optional collections default safely when omitted', () => {
     totalTeams: 0,
     assignedTeams: 0,
     unassignedTeams: 0,
+    assignmentsRead: 0,
+    assignmentsCounted: 0,
     assignmentRate: 1,
     manualFollowUpRate: 0,
   });

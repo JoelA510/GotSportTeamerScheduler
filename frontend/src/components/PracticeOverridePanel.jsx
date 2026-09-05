@@ -1,7 +1,34 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import PropTypes from 'prop-types';
 import { AlertCircle, Plus, Check } from 'lucide-react';
 import Button from './ui/Button.jsx';
+import { coachKeysByTeamId, coachLabel, sharedCoachNames } from '../utils/teamCoaches.js';
+
+/**
+ * How to name the coaches two teams share, in a sentence.
+ *
+ * The panel's own team rows carry ids and no names, so this has to read
+ * correctly with no names at all — the first draft produced "Coach 1 coach(es)
+ * (names not loaded) is already scheduled", which is the shipped path.
+ *
+ * @param {number} sharedCount
+ * @param {string[]} named
+ * @returns {string}
+ */
+function sharedCoachPhrase(sharedCount, named) {
+  const plural = sharedCount === 1 ? 'coach' : 'coaches';
+  if (named.length === sharedCount && named.length > 0) {
+    return `${sharedCount === 1 ? 'Coach' : 'Coaches'} ${named.join(', ')} ${
+      sharedCount === 1 ? 'is' : 'are'
+    }`;
+  }
+  if (named.length > 0) {
+    return `${named.join(', ')} and ${sharedCount - named.length} other ${
+      sharedCount - named.length === 1 ? 'coach' : 'coaches'
+    } are`;
+  }
+  return `${sharedCount} shared ${plural} ${sharedCount === 1 ? 'is' : 'are'}`;
+}
 
 function getAssignmentTeamId(assignment) {
   return assignment?.teamId ?? assignment?.team_id ?? assignment?.teams?.id ?? null;
@@ -27,23 +54,38 @@ export default function PracticeOverridePanel({
   const [selectedTeamId, setSelectedTeamId] = useState('');
   const [selectedSlotId, setSelectedSlotId] = useState('');
 
+  // 8.2: every coach on the team, not `team.headCoach` — a field nothing in
+  // this repo produces outside the mock client's seeds, so this check used to
+  // return null for every override on real data.
+  //
+  // Each team's coach keys are derived **once**: deriving them inside the loop
+  // meant a `.strict()` Zod parse per team per staged assignment per render.
+  const teamById = useMemo(() => new Map(teams.map((team) => [String(team.id), team])), [teams]);
+  const coachKeys = useMemo(() => coachKeysByTeamId(teams), [teams]);
+  // The picker's labels, once per team list rather than once per team per
+  // render: `coachLabel()` is a reconciliation, and it was running in JSX.
+  const coachLabels = useMemo(
+    () => new Map(teams.map((team) => [String(team.id), coachLabel(team)])),
+    [teams]
+  );
+
   const checkForConflict = (teamId, slotId) => {
-    const team = teams.find((t) => String(t.id) === String(teamId));
-    if (!team || !team.headCoach) return null;
+    const team = teamById.get(String(teamId));
+    const keys = coachKeys.get(String(teamId));
+    if (!team || !keys || keys.size === 0) return null;
 
-    const conflict = stagedAssignments.find((assignment) => {
-      const stagedTeamId = getAssignmentTeamId(assignment);
-      const oTeam = teams.find((t) => String(t.id) === String(stagedTeamId));
-      return (
-        String(stagedTeamId) !== String(teamId) &&
-        getAssignmentSlotId(assignment) === slotId &&
-        oTeam?.headCoach === team.headCoach
-      );
-    });
+    for (const assignment of stagedAssignments) {
+      const stagedTeamId = String(getAssignmentTeamId(assignment));
+      if (stagedTeamId === String(teamId)) continue;
+      if (getAssignmentSlotId(assignment) !== slotId) continue;
+      const otherKeys = coachKeys.get(stagedTeamId);
+      if (!otherKeys || ![...otherKeys].some((key) => keys.has(key))) continue;
 
-    if (conflict) {
-      return `Coach ${team.headCoach} is already scheduled at this time with ${
-        teams.find((t) => String(t.id) === String(conflict.teamId))?.name || 'another team'
+      const otherTeam = teamById.get(stagedTeamId);
+      const sharedCount = [...otherKeys].filter((key) => keys.has(key)).length;
+      const named = sharedCoachNames(team, otherTeam);
+      return `${sharedCoachPhrase(sharedCount, named)} already scheduled at this time with ${
+        otherTeam?.name || 'another team'
       }.`;
     }
 
@@ -96,7 +138,7 @@ export default function PracticeOverridePanel({
             <option value="">-- Choose Team --</option>
             {teams.map((t) => (
               <option key={t.id} value={t.id}>
-                {t.name} ({t.division}) - Coach: {t.headCoach || 'None'}
+                {t.name} ({t.division}) - {coachLabels.get(String(t.id))}
               </option>
             ))}
           </select>

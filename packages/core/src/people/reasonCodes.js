@@ -274,6 +274,61 @@ export const PEOPLE_REASON = Object.freeze({
   PERSON_SOLE_COACH_OF_MULTIPLE_TEAMS: 'PERSON_SOLE_COACH_OF_MULTIPLE_TEAMS',
   /** The sole-coach scan examined zero teams. Incident 4. */
   SOLE_COACH_SCAN_VACUOUS: 'SOLE_COACH_SCAN_VACUOUS',
+
+  /* -- the one coach model (8.2) ------------------------------------------ */
+  /**
+   * Two sources rank a team's coaches differently: the same person holds two
+   * different slots, or the sources give the lowest slot to two different
+   * people. The union is exported in the surviving source's order **and** this
+   * is emitted, on the same contract as
+   * `availability/`'s `LIGHTING_SOURCE_DISAGREES` — the disagreement is
+   * surfaced, never resolved by picking a side.
+   *
+   * `compromise` rather than the lighting code's `info` for one reason: slot
+   * order is the *clash-breaker*. `ATTENDANCE_RESOLVED_BY_SLOT` keeps the
+   * person on the team where they hold the lower slot, so two sources that
+   * disagree about the order make that resolution unreliable — the same thing
+   * {@link PEOPLE_REASON.ATTENDANCE_SLOT_TIE} is a compromise for.
+   */
+  COACH_ORDER_SOURCE_DISAGREES: 'COACH_ORDER_SOURCE_DISAGREES',
+  /**
+   * A source omits a coach another source names for the same team. The union
+   * is exported; the omission is reported. This is the 8.1 defect one level up
+   * — a check keyed off the shorter source misses a real coach.
+   */
+  COACH_LIST_SOURCE_INCOMPLETE: 'COACH_LIST_SOURCE_INCOMPLETE',
+  /**
+   * Exactly one source carries this team's coaches, so the order was not
+   * cross-checked against anything. **Not the same as agreement**, and said out
+   * loud so it cannot be read as one.
+   */
+  COACH_LIST_UNCORROBORATED: 'COACH_LIST_UNCORROBORATED',
+  /**
+   * A coach arrived with no slot, so slot order cannot break their clashes.
+   * They are still exported — every coach is on every artifact — and listed
+   * after the slotted ones in id order. Reported rather than given a very large
+   * slot number, which reads downstream as a genuine low-priority slot; the
+   * same call {@link PEOPLE_REASON.ATTENDANCE_TEAM_LINK_MISSING} makes.
+   */
+  COACH_SLOT_UNDECLARED: 'COACH_SLOT_UNDECLARED',
+  /**
+   * The reconciliation examined zero coaches for a team the caller named, so
+   * "no disagreement" says nothing. Incident 4's shape, in this module.
+   */
+  COACH_LIST_SCAN_VACUOUS: 'COACH_LIST_SCAN_VACUOUS',
+  /**
+   * A coach is known by an email address or a display name and by no id, so
+   * nothing corroborates *who* they are: two rows spelling "Coach Mike" may be
+   * one person or two, and a row's address may be a shared family inbox. They
+   * are exported and reported like any other coach, and **excluded from the
+   * clash keys** — `listTeamCoachIds()` hands the solvers only id-keyed
+   * coaches. Said out loud because both silences are wrong: keying them in
+   * folds "uncorroborated" into "same person" and refuses matchups on the
+   * strength of a spelling; keying them out and saying nothing folds
+   * "unknown" into "no clash". `compromise`: a clash involving this coach
+   * cannot be detected until a row carries their id.
+   */
+  COACH_IDENTITY_UNCORROBORATED: 'COACH_IDENTITY_UNCORROBORATED',
   /**
    * An active assignment carries an effective window and the roster was built
    * with no as-of date, so the window could not be applied. The assignment is
@@ -411,6 +466,12 @@ export const PEOPLE_REASON_SEVERITY = Object.freeze({
   [PEOPLE_REASON.SOLE_COACH_SCAN_VACUOUS]: PEOPLE_SEVERITY.COMPROMISE,
   [PEOPLE_REASON.ASSIGNMENT_WINDOW_UNJUDGED]: PEOPLE_SEVERITY.COMPROMISE,
   [PEOPLE_REASON.FIXTURE_TEAM_UNCOACHED]: PEOPLE_SEVERITY.BLOCKING,
+  [PEOPLE_REASON.COACH_ORDER_SOURCE_DISAGREES]: PEOPLE_SEVERITY.COMPROMISE,
+  [PEOPLE_REASON.COACH_LIST_SOURCE_INCOMPLETE]: PEOPLE_SEVERITY.COMPROMISE,
+  [PEOPLE_REASON.COACH_LIST_UNCORROBORATED]: PEOPLE_SEVERITY.INFO,
+  [PEOPLE_REASON.COACH_SLOT_UNDECLARED]: PEOPLE_SEVERITY.COMPROMISE,
+  [PEOPLE_REASON.COACH_LIST_SCAN_VACUOUS]: PEOPLE_SEVERITY.COMPROMISE,
+  [PEOPLE_REASON.COACH_IDENTITY_UNCORROBORATED]: PEOPLE_SEVERITY.COMPROMISE,
 
   [PEOPLE_REASON.TIMELINE_SOURCE_NOT_INGESTED]: PEOPLE_SEVERITY.BLOCKING,
   [PEOPLE_REASON.TIMELINE_SOURCE_EMPTY]: PEOPLE_SEVERITY.COMPROMISE,
@@ -523,6 +584,10 @@ export function createPeopleMeta() {
     soleCoachTeams: 0,
     uncoachedTeams: 0,
     multiTeamPeople: 0,
+    /* the one coach model */
+    coachListsExamined: 0,
+    coachesExported: 0,
+    coachListSourcesRead: 0,
     /* timeline */
     commitmentsIngested: 0,
     commitmentsExamined: 0,

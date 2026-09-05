@@ -306,6 +306,24 @@ export const RESERVE_REASON = Object.freeze({
    * a team loses a game"*.
    */
   FIXTURE_DROPPED: 'FIXTURE_DROPPED',
+  /**
+   * A team named on an exported row has two sources that disagree about its
+   * coaches — their order, or who is on the list at all (8.2).
+   *
+   * Re-expressed in this vocabulary rather than passed through as a people
+   * finding, for the reason every module here re-expresses a neighbour's fact:
+   * `deriveReserveStatus()` reads `findings`, and a code from another table
+   * would either be ignored by it or would have to teach it a second severity
+   * map. Passing it out on a separate `coachFindings` key instead is what made
+   * the field inert — produced by this module and read by nothing, in the very
+   * artifact path 8.2 exists to fix.
+   *
+   * `compromise`: every coach is still exported and the row is still correct;
+   * what is unresolved is which of them the club considers first, and slot
+   * order is the clash-breaker, so a contested order makes a resolution
+   * downstream unreliable.
+   */
+  TEAM_COACH_SOURCES_DISAGREE: 'TEAM_COACH_SOURCES_DISAGREE',
   /** A fixture appears both placed and unplaced. `blocking`: the totals cannot both be right. */
   FIXTURE_DOUBLE_COUNTED: 'FIXTURE_DOUBLE_COUNTED',
   /** The accounting examined zero fixtures. `blocking`. */
@@ -398,6 +416,7 @@ export const RESERVE_REASON_SEVERITY = Object.freeze({
   [RESERVE_REASON.FIXTURE_TIME_TBD]: RESERVE_SEVERITY.COMPROMISE,
   [RESERVE_REASON.FIXTURE_REASON_MISSING]: RESERVE_SEVERITY.BLOCKING,
   [RESERVE_REASON.FIXTURE_DROPPED]: RESERVE_SEVERITY.BLOCKING,
+  [RESERVE_REASON.TEAM_COACH_SOURCES_DISAGREE]: RESERVE_SEVERITY.COMPROMISE,
   [RESERVE_REASON.FIXTURE_DOUBLE_COUNTED]: RESERVE_SEVERITY.BLOCKING,
   [RESERVE_REASON.FIXTURE_ACCOUNTING_VACUOUS]: RESERVE_SEVERITY.BLOCKING,
 
