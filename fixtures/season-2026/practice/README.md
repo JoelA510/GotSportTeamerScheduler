@@ -74,18 +74,54 @@ identities replaced. Concretely:
     as the CSVs and refuses any other extension rather than skipping it; it
     checks column headers whether or not the column's cells are exempt; and it
     proves it read whole files rather than the columns a header-keyed parse
-    happened to return. The two corpus `README.md` files are the one deliberate
-    exclusion — reviewed prose, whose vocabulary would drown the list. Adding a
-    legitimate word to the corpus fails the guard until a human puts that word
-    on the list. That is the point.
-  - **What would still get through, stated plainly.** The allowlist does not
-    cover the person-name columns — 1,400-odd invented names would swamp it — so
-    a real person's name substituted into a name column passes, and only the
-    organisation-designator rule (`FC`, `Academy`, `League`, …) would notice an
-    organisation placed there. A real name that happens to already be a word on
-    the allowlist passes too. Neither the scrub nor the guard proves a negative
-    about a name it has never seen; what the guard proves is that no _unseen_
-    word is in the corpus.
+    happened to return. Both the **path** and the **contents** are checked:
+    every segment of every scanned file's relative path goes through the same
+    allowlist, with `_` and `-` read as word separators, so a directory or file
+    named for a real club fails as loudly as a cell does. And because a name can
+    leak without using a letter, **every** cell — person-name columns included —
+    is matched against shapes the corpus does not contain: an email address, a
+    URL scheme or host, a grouped phone number, a run of five or more digits,
+    and any full date whose year is not the season's. A bare four-digit number
+    is deliberately not read as a date, because birth year is a kept column and
+    its values span sixteen years. The two corpus `README.md` files are the one
+    deliberate exclusion — reviewed prose, whose vocabulary would drown the list
+    — and they are excluded by their **exact relative path**, not by being
+    README-shaped, so a third `README.md` anywhere under the corpus root is read
+    rather than skipped. Adding a legitimate word to the corpus fails the guard
+    until a human puts that word on the list. That is the point.
+  - **The pattern worth naming, because it recurred.** The guard's own first
+    version repeated the failure of the denylists it replaces. It was airtight
+    along the axis it was aimed at and silent one step off it, in four
+    directions at once: it read file **contents** and never the **path** those
+    contents sat at; it excluded prose by **shape** (`.md`) rather than by
+    **identity**, so a `README.md` full of real names was skipped for being
+    README-shaped; it saw **letters** and nothing else, so a phone number, an
+    email address and a date of birth were all invisible; and it compared a
+    **trimmed** header against an **untrimmed** parse key, so one half of a
+    single comparison disagreed with the other. Three of the four were shown by
+    planting real organisation names that a fully green run did not mention. An
+    instrument reports zero either because there is nothing there or because it
+    cannot see, and the two look identical from outside. When adding a rule
+    here, ask what dimension it does not cover before asking whether it works.
+  - **What would still get through, stated plainly.** Each of these was run
+    against the guard as it now stands rather than reasoned about:
+    - A **bare real person's name in a person-name column passes.** The
+      allowlist does not cover those columns — 1,400-odd invented names would
+      swamp it — so only the organisation-designator rule (`FC`, `Academy`,
+      `League`, …) and the shape checks above can see anything there, and a
+      plain given name and surname trip neither.
+    - A **real name already on the allowlist passes anywhere.** Matching is
+      case-sensitive, so it passes in the case the list carries it in: a word
+      listed capitalised passes in a cell, while its lowercase form in a path
+      is still reported, and the reverse holds too.
+    - An **organisation named only for existing corpus venues passes**, because
+      every word of it is already on the list.
+    - The **two excluded `README.md` files are not scanned at all**, so nothing
+      in their prose is checked against anything.
+
+    Neither the scrub nor the guard proves a negative about a name it has never
+    seen; what the guard proves is that no _unseen_ word is in the corpus.
+
   - **One real token is knowingly retained.** `field_equipment.csv`'s `item`
     column names a goal brand rather than a party to the season, and three
     fixtures elsewhere in the repo carry that brand and two others, so it is a
