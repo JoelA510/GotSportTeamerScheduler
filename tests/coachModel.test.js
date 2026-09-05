@@ -38,6 +38,7 @@ import {
   legacyTeamCoachSource,
   reconcileTeamCoaches,
   teamCoachSources,
+  teamsWithCoachSourceDisagreement,
 } from '@squadlogic/core/people/index.js';
 import { makeUnplacedFixture, publicationRowsFor } from '@squadlogic/core/reserve/index.js';
 
@@ -845,6 +846,42 @@ describe('coach model :: the artifacts render an order, never a role', () => {
     ]);
     expect(cells.coaches.split(COACH_CELL_SEPARATOR)).toHaveLength(2);
     expect(cells.emails.split(COACH_CELL_SEPARATOR)).toHaveLength(2);
+  });
+
+  it('calls a team disagreeing only when two sources actually did', () => {
+    // A severity filter swept in `COACH_SLOT_UNDECLARED`, which is also
+    // `compromise` and fires for the ordinary app row shape, so the panel told
+    // the operator that sources disagreed about teams where exactly one source
+    // was ever read. A loud alarm made noisy is an alarm nobody reads.
+    const singleSource = generateScheduleExports({
+      teams: [{ id: 'T1', coaches: [{ personId: 'c1' }] }],
+      practiceAssignments: [
+        { teamId: 'T1', start: '2026-09-14T22:00:00Z', end: '2026-09-14T23:00:00Z' },
+      ],
+    });
+    // Meta-assertion: this run really does produce a compromise-severity
+    // finding, so "no disagreement" is a fact about the filter and not about an
+    // empty findings list.
+    expect(singleSource.coachFindings.some((finding) => finding.severity === 'compromise')).toBe(
+      true
+    );
+    expect(teamsWithCoachSourceDisagreement(singleSource.coachFindings)).toEqual([]);
+
+    // POSITIVE CONTROL: two sources naming different coaches still reports.
+    const disagreeing = generateScheduleExports({
+      teams: [
+        {
+          id: 'T2',
+          coachId: 'x',
+          coachName: 'X',
+          coaches: [{ personId: 'y', displayName: 'Y', slot: 1 }],
+        },
+      ],
+      practiceAssignments: [
+        { teamId: 'T2', start: '2026-09-14T22:00:00Z', end: '2026-09-14T23:00:00Z' },
+      ],
+    });
+    expect(teamsWithCoachSourceDisagreement(disagreeing.coachFindings)).toEqual(['T2']);
   });
 
   it('carries no head/assistant vocabulary in the export column set', () => {

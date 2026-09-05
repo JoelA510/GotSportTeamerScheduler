@@ -3,6 +3,7 @@ import { generateScheduleExports } from '@squadlogic/core/outputGeneration.js';
 import { uploadScheduleExport } from '@squadlogic/core/storageSupabase.js';
 import { IS_MOCK_MODE } from '../config.js';
 import { logger } from '../lib/logger.js';
+import { teamsWithCoachSourceDisagreement } from '@squadlogic/core/people/coachList.js';
 import { teamCoaches } from '../utils/teamCoaches.js';
 
 const MOCK_UPLOAD = IS_MOCK_MODE;
@@ -256,20 +257,21 @@ export default function OutputGenerationPanel({
         setGenerated(exports);
         setStatus('idle');
         // The reconciliation's findings are surfaced, not discarded. A
-        // `COACH_ORDER_SOURCE_DISAGREES` is a `compromise`: two sources
-        // disagree about a team's coach order and the export shows both
-        // readings. Producing that finding and dropping it here would make the
-        // export look clean for a team nobody has reconciled — the "declared is
-        // not enforced" shape, in the artifact this change exists to fix.
-        const teamsWithDisagreement = new Set(
-          (exports.coachFindings ?? [])
-            .filter((finding) => finding.severity !== 'info')
-            .map((finding) => finding.details?.teamId)
-        );
+        // `COACH_ORDER_SOURCE_DISAGREES` is two sources contradicting each
+        // other about a team's coach order; producing that and dropping it here
+        // would make the export look clean for a team nobody has reconciled —
+        // the "declared is not enforced" shape, in the artifact this change
+        // exists to fix.
+        //
+        // Filtered on the codes that mean disagreement, **not on severity**:
+        // `COACH_SLOT_UNDECLARED` is also `compromise` and fires for the
+        // ordinary app row, so a severity filter told the operator that sources
+        // disagreed about teams where only one source was ever read.
+        const teamsWithDisagreement = teamsWithCoachSourceDisagreement(exports.coachFindings);
         setMessage(
-          teamsWithDisagreement.size === 0
+          teamsWithDisagreement.length === 0
             ? 'CSVs generated successfully.'
-            : `CSVs generated successfully. ${teamsWithDisagreement.size} team(s) have sources that disagree about their coaches; every coach is exported and none is treated as the primary.`
+            : `CSVs generated successfully. ${teamsWithDisagreement.length} team(s) have sources that disagree about their coaches; every coach is exported and none is treated as the primary.`
         );
       } catch (err) {
         logger.error('Generation error:', err);

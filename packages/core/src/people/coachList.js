@@ -328,6 +328,47 @@ export function coachDisplayText(coach) {
   return coach.displayName ?? coach.personId;
 }
 
+/**
+ * The codes that mean **two sources disagreed**, as opposed to the codes that
+ * describe one source.
+ *
+ * A consumer wanting "does this team's coach list need a human?" must filter on
+ * these and not on severity. `COACH_SLOT_UNDECLARED` is also `compromise` — it
+ * says slot order cannot break a clash for somebody — and it fires for the
+ * ordinary app row shape, so a severity filter reported "the sources disagree
+ * about this team's coaches" for teams where exactly one source was read. That
+ * turns the alarm this task exists to raise into background noise, which is the
+ * failure mode `CLAUDE.md` §3 names for a check nobody can trust.
+ *
+ * Membership belongs here as well as order: a source that omits a coach another
+ * names is two sources disagreeing about who coaches the team.
+ *
+ * @type {ReadonlySet<string>}
+ */
+export const COACH_SOURCE_DISAGREEMENT_CODES = Object.freeze(
+  new Set([PEOPLE_REASON.COACH_ORDER_SOURCE_DISAGREES, PEOPLE_REASON.COACH_LIST_SOURCE_INCOMPLETE])
+);
+
+/**
+ * The teams whose sources disagree, from a projection's `coachFindings`.
+ *
+ * One producer, so the panel, a future report and any other reader cannot each
+ * invent their own filter.
+ *
+ * @param {ReadonlyArray<{ code: string, details?: Record<string, unknown> }>} findings
+ * @returns {string[]} team ids, sorted
+ */
+export function teamsWithCoachSourceDisagreement(findings) {
+  return [
+    ...new Set(
+      (findings ?? [])
+        .filter((finding) => COACH_SOURCE_DISAGREEMENT_CODES.has(finding.code))
+        .map((finding) => String(finding.details?.teamId ?? ''))
+        .filter((teamId) => teamId !== '')
+    ),
+  ].sort();
+}
+
 /** The separator between coaches in an export cell. */
 export const COACH_CELL_SEPARATOR = '; ';
 

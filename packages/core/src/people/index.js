@@ -80,6 +80,7 @@ export {
 export {
   COACH_CELL_SEPARATOR,
   COACH_ORDER_DISAGREEMENT,
+  COACH_SOURCE_DISAGREEMENT_CODES,
   coachDisplayText,
   coachExportCells,
   coachesOfTeamRow,
@@ -89,6 +90,7 @@ export {
   legacyTeamCoachSource,
   reconcileTeamCoaches,
   teamCoachSources,
+  teamsWithCoachSourceDisagreement,
 } from './coachList.js';
 
 export {
