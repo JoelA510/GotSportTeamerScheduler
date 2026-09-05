@@ -159,3 +159,104 @@ The first 8.1 agent hit its own session rate limit mid-round-3, leaving
 uncommitted edits. A fresh agent audited that draft rather than trusting it,
 and found the untested load-bearing hunk above. Handing a dead agent's partial
 work to a new one **as a draft to audit, not a base to extend** is what caught it.
+
+---
+
+## Corpus anonymisation gap — organisation and place names — **merged**
+
+Not a numbered Phase 8 task. Raised by the 8.0 review, ruled on by the operator,
+and worth recording because of what it says about how a guarantee fails.
+
+- **PR:** [#366](https://github.com/JoelA510/SquadLogic/pull/366), branch
+  `fix/corpus-scrub-change-log-org-names`, squash-merged as `f6d379c`.
+- **Tests:** 2263 → **2300 passed** / 34 skipped / 6 todo. The new guard,
+  `tests/season2026CorpusVocabulary.test.js`, went 20 → 34 → **57** cases across
+  two review rounds.
+- **Review rounds:** 2 (4 findings, then 7). The loop stopped there under the
+  standing rule: round 2's findings were round 1's shape recurring, and the
+  residue is now documented rather than hidden.
+
+### What was actually wrong
+
+The corpus README claimed every file passed two independent leak audits, one
+described as scanning for organisation names, both reporting zero. Both audits
+were **denylists built from the real-to-pseudonym map**. That map covered the
+club's own people, teams and venues, so every _opposing_ club and every town the
+source named was outside it and invisible to both passes. The zero was true of
+what the audits could see; the claim was not.
+
+The 8.0 review named one file. The survey that followed covered all 21 corpus
+CSVs plus the geometry JSON and found **a second affected file**: 5 identifying
+entities (4 opposing clubs, 1 town) across 3 columns and 18 rows, 10 distinct
+source tokens, 44 occurrences. Widening the scope past the single reported file
+is what found it.
+
+### The pattern, three times over
+
+This is the entry's real content. Each fix was strong in the dimension it was
+aimed at and blind immediately beside it:
+
+| Round | The guard was                            | It could not see                                          |
+| ----- | ---------------------------------------- | --------------------------------------------------------- |
+| 0     | a denylist of known names                | any name not already on the list                          |
+| 1     | an allowlist of known **words**          | file paths, excluded files, non-letters, untrimmed keys   |
+| 2     | an allowlist over the **ASCII alphabet** | Cyrillic, dotted initialisms, parenthesised phone formats |
+
+Round 1's four holes and round 2's seven were each found the same way: by
+planting a real club name and watching a fully green suite stay green. Three of
+round 1's four and five of round 2's seven were proven that way, not argued.
+Two that are worth naming individually:
+
+- A world-famous club sat in a `coach_name` cell as `Chelsea F.C.` and nothing
+  fired, because the designator rule was fed by a tokeniser that discarded
+  one-character tokens. `Chelsea FC` was caught. The rule was live; it could not
+  see the punctuated form of five of its own fifteen entries.
+- The two README files were excluded from **every** rule rather than just the
+  allowlist, so the list-free shape checks never ran on the two files most likely
+  to describe the real season. The stated justification — "their vocabulary would
+  drown the list" — only ever applied to the allowlist.
+
+### Corrections that came from testing rather than reading
+
+- A supervisor instruction to state "a name already on the allowlist passes
+  anywhere" was **wrong**: matching is case-sensitive and the regenerated path
+  words are lowercase, so a capitalised token passes in a cell while its
+  lowercase form is still caught in a path. Found by probing the claim.
+- A review finding overstated one half of a tautology: deleting the path loop
+  did fail one of the paired assertions. The pair caught deletion and missed
+  narrowing; both are now falsifiable.
+- Running the new shape rules on prose surfaced a real imprecision: `60/50/40`
+  parsed as a slash-date in year 40. Month and day are now bounded, and all
+  1,267 slash dates still match, still only 2026.
+- The guard rejected its own README, because the prose explaining the initialism
+  rule contained a literal dotted acronym. Reworded rather than exempted.
+
+### Deliberately left open
+
+- **A bare organisation name in the two excluded README files still passes.**
+  Those files are off the allowlist by design; an email or phone in them is now
+  caught, a plain English club name is not. Stated in the README's limits list.
+- The limits list now carries its own limit: it can only be as complete as the
+  classes someone has thought to test.
+- One equipment-brand token is knowingly retained and named — it identifies kit,
+  not a party to the season, and three unrelated fixtures elsewhere carry the
+  same brand, so it is a repo-wide convention rather than this corpus's decision.
+
+### Open, and approved: git history
+
+The scrub changes the working tree only. The real names remain readable in git
+history — `git show`, and the PR's own diff, reproduce them from any clone — and
+the guard, which walks the checked-out tree, structurally cannot see this. The
+operator has approved a history rewrite; it is blocked until the in-flight
+branches land and is tracked separately. Note that GitHub may retain the old
+objects via PR refs even after a rewrite, so it reduces exposure rather than
+eliminating it.
+
+### Process note
+
+Two consecutive attempts at round 1 were lost when the harness deleted the
+agent's isolation worktree mid-run, the second time with all four fixes complete
+but uncommitted. The third attempt ran in a plain clone outside the harness's
+cleanup path and committed after each individual fix. That is the durable
+lesson: when a mechanism fails twice the same way, change the mechanism, and
+make the unit of loss one fix rather than one round.
