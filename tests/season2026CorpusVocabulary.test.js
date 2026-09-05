@@ -47,6 +47,10 @@
  * must be exactly the columns that header line declares. That is the hole the
  * 8.0 review found — a header-only extra column is in no parsed row, so a
  * per-row check never sees it.
+ *
+ * Both a **file's path** and its **contents** are checked: every segment of
+ * every scanned file's relative path goes through the same allowlist, with `_`
+ * and `-` read as word separators.
  */
 
 import {
@@ -364,11 +368,13 @@ const ALLOWED_WORDS = Object.freeze([
   'Zenith',
   'actual',
   'age',
+  'aliases',
   'am',
   'and',
   'applies',
   'as',
   'attendance',
+  'availability',
   'available',
   'away',
   'based',
@@ -378,12 +384,15 @@ const ALLOWED_WORDS = Object.freeze([
   'block',
   'blue',
   'calendar',
+  'change',
   'children',
   'class',
   'closed',
   'co',
   'coach',
+  'coaches',
   'code',
+  'combined',
   'comp',
   'competitive',
   'concurrent',
@@ -392,8 +401,10 @@ const ALLOWED_WORDS = Object.freeze([
   'conflicts',
   'constrained',
   'constraint',
+  'constraints',
   'correspondence',
   'corruption',
+  'csv',
   'daily',
   'date',
   'day',
@@ -419,12 +430,16 @@ const ALLOWED_WORDS = Object.freeze([
   'field',
   'fields',
   'fixture',
+  'fixtures',
   'for',
+  'formats',
   'game',
   'games',
   'gaps',
   'gender',
+  'geometry',
   'goals',
+  'grid',
   'group',
   'groups',
   'halves',
@@ -435,14 +450,17 @@ const ALLOWED_WORDS = Object.freeze([
   'interpretation',
   'interpreted',
   'intro',
+  'inventory',
   'is',
   'issued',
   'item',
+  'json',
   'key',
   'kind',
   'label',
   'lined',
   'lit',
+  'log',
   'lower',
   'male',
   'matchup',
@@ -451,6 +469,7 @@ const ALLOWED_WORDS = Object.freeze([
   'minutes',
   'name',
   'named',
+  'names',
   'naming',
   'narrative',
   'no',
@@ -473,6 +492,7 @@ const ALLOWED_WORDS = Object.freeze([
   'parent',
   'parking',
   'permit',
+  'permits',
   'person',
   'player',
   'playing',
@@ -486,17 +506,23 @@ const ALLOWED_WORDS = Object.freeze([
   'programme',
   'prose',
   'public',
+  'published',
   'quality',
   'raw',
   'reason',
+  'rec',
   'ref',
+  'registration',
   'remainder',
+  'reservations',
   'respacing',
+  'roster',
   'schedule',
   'scheduled',
   'scoped',
   'season',
   'seeding',
+  'select',
   'services',
   'sessions',
   'sets',
@@ -510,6 +536,7 @@ const ALLOWED_WORDS = Object.freeze([
   'start',
   'status',
   'subunit',
+  'sunsets',
   'team',
   'teams',
   'test',
@@ -536,6 +563,7 @@ const ALLOWED_WORDS = Object.freeze([
   'was',
   'week',
   'weekend',
+  'weekly',
   'window',
   'with',
   'year',
@@ -584,6 +612,7 @@ function filesUnder(root) {
  * @param {string} root
  * @returns {{
  *   files: string[],
+ *   pathsChecked: number,
  *   proseFiles: string[],
  *   unreadableFiles: string[],
  *   cellsScanned: number,
@@ -611,6 +640,7 @@ function scanCorpus(root) {
   const columnsNotDeclared = [];
   const exemptedColumnsMissing = [];
   const usedAllowed = new Set();
+  let pathsChecked = 0;
   let cellsScanned = 0;
   let personCellsScanned = 0;
   let columnsClassified = 0;
@@ -639,6 +669,15 @@ function scanCorpus(root) {
       continue;
     }
     files.push(rel);
+
+    // The path is data too. A directory or file named for a real club leaks it
+    // just as loudly as a cell does, and `rel` was previously only ever a
+    // label on someone else's finding.
+    pathsChecked += 1;
+    for (const segment of rel.split('/')) {
+      checkVocabulary(rel, '(path)', 0, segment.split(/[_-]+/).join(' '));
+    }
+
     const text = readFileSync(path.join(root, rel), 'utf8');
 
     if (extension === '.json') {
@@ -700,6 +739,7 @@ function scanCorpus(root) {
 
   return {
     files,
+    pathsChecked,
     proseFiles,
     unreadableFiles,
     cellsScanned,
@@ -737,6 +777,13 @@ describe('season-2026 corpus vocabulary', () => {
       // Excluded by identity, not by shape: exactly these two paths, so a
       // third `README.md` anywhere under the corpus root is not skipped.
       expect([...scan.proseFiles].sort()).toEqual([...EXCLUDED_FILES].sort());
+    });
+
+    it('checked the path of every file it read, not only its contents', () => {
+      expect(scan.pathsChecked).toBe(scan.files.length);
+      // A word that only ever occurs in a path, so the path check is provably
+      // feeding the allowlist rather than merely running.
+      expect(scan.usedAllowed.has('csv')).toBe(true);
     });
 
     it('read both the vocabulary-checked and the person-name cells', () => {
@@ -934,6 +981,35 @@ describe('season-2026 corpus vocabulary', () => {
         file: 'practice/select_coaches.csv',
         column: 'person_key',
       });
+    });
+
+    it('reports an unknown word in a directory name', () => {
+      const root = scratchCorpus();
+      mkdirSync(path.join(root, 'zzqfictional_exports'));
+      writeFileSync(
+        path.join(root, 'zzqfictional_exports', 'sheet.csv'),
+        'venue,note\nAlder Park,practice\n'
+      );
+
+      const control = scanCorpus(root);
+      const hits = control.unknown.filter((hit) => hit.word === 'zzqfictional');
+      expect(hits.length).toBeGreaterThan(0);
+      // Every hit came from the path check, not from a cell: the contents are
+      // fully allowlisted, so only the directory's own name can have failed.
+      expect(hits.every((hit) => hit.column === '(path)')).toBe(true);
+    });
+
+    it('reports an unknown word in a file name', () => {
+      const root = scratchCorpus();
+      writeFileSync(
+        path.join(root, 'practice', 'zzqfictional_fc_roster.csv'),
+        'venue,note\nAlder Park,practice\n'
+      );
+
+      const control = scanCorpus(root);
+      const hits = control.unknown.filter((hit) => hit.word === 'zzqfictional');
+      expect(hits.length).toBeGreaterThan(0);
+      expect(hits.every((hit) => hit.column === '(path)')).toBe(true);
     });
 
     it('reports a README dropped into a subdirectory rather than skipping it', () => {
