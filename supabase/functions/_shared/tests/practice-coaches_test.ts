@@ -56,6 +56,40 @@ Deno.test('listTeamCoachIds - head plus assistants once each, empty ids dropped'
   );
 });
 
+Deno.test('listTeamCoachIds - reads the reconciled 8.2 `coaches` shape as well', () => {
+  // The core helper became a call on people/coachList.js in 8.2, which reads
+  // both shapes. A mirror that read only the legacy columns would leave a team
+  // that arrives as `coaches` conflict-free here while the core engine sees
+  // every one of its coaches — protected or not by spelling.
+  assertEquals(listTeamCoachIds({ id: 'T1', coaches: [{ personId: 'c1', slot: 1 }] }), ['c1']);
+  // Union, not replacement, and deduplicated across the two.
+  assertEquals(
+    listTeamCoachIds({
+      id: 'T1',
+      coachId: 'c1',
+      assistantCoachIds: ['a1'],
+      coaches: [{ personId: 'c1', slot: 1 }, { personId: 'c2', slot: 2 }],
+    }),
+    ['c1', 'c2', 'a1']
+  );
+  // A malformed list is refused rather than read as "no coaches".
+  assertThrows(
+    () => listTeamCoachIds({ id: 'T1', coaches: 'nope' as unknown as [] }),
+    TypeError,
+    'team T1 coaches must be an array when provided'
+  );
+});
+
+Deno.test('prepareTeam - carries `coaches` through, so the evaluator can recompute from it', () => {
+  const prepared = prepareTeam({
+    id: 'T1',
+    division: 'U10',
+    coaches: [{ personId: 'c1', slot: 1 }],
+  });
+  assertEquals(prepared.coaches, [{ personId: 'c1', slot: 1 }]);
+  assertEquals(prepared.coachIds, ['c1']);
+});
+
 Deno.test('listTeamCoachIds - reads the teams-column spelling assistant_coach_ids as well', () => {
   assertEquals(listTeamCoachIds({ id: 'T1', coachId: 'h1', assistant_coach_ids: ['a1'] }), [
     'h1',

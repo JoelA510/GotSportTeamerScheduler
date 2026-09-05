@@ -1,7 +1,9 @@
 /**
  * Every coach a team carries, and the hard-constraint check the auto-scheduler runs before
  * seating a team. Mirrors `listTeamCoachIds` in packages/core/src/practiceScheduling.js and
- * `checkHardConstraints` in packages/core/src/autoScheduler.js (Phase 8.1). Kept in _shared so a
+ * `checkHardConstraints` in packages/core/src/autoScheduler.js (Phase 8.1; the reconciled
+ * `coaches` shape added in 8.2, where the core helper became a call on
+ * `people/coachList.js`). Kept in _shared so a
  * Deno test can reach the check without importing the serving module.
  */
 
@@ -12,12 +14,27 @@ export interface TimeWindow {
   slotId?: string;
 }
 
+/** One coach as the reconciled 8.2 shape states them. */
+export interface ReconciledCoach {
+  personId?: string | null;
+  id?: string | null;
+  name?: string | null;
+  displayName?: string | null;
+  slot?: number | null;
+}
+
 export interface CoachedTeam {
   id: string;
   coachId?: string | null;
   assistantCoachIds?: string[] | null;
   /** The `teams` column spelling; read when `assistantCoachIds` is absent. */
   assistant_coach_ids?: string[] | null;
+  /**
+   * The reconciled shape 8.2 made first class in every core artifact. Read
+   * **as well as** the legacy columns, not instead of them: a team must not be
+   * protected or not according to which spelling it arrived in.
+   */
+  coaches?: ReconciledCoach[] | null;
 }
 
 /** A team with its coach list resolved once, at input preparation. */
@@ -37,7 +54,18 @@ export function listTeamCoachIds(team: CoachedTeam): string[] {
   if (assistants !== undefined && assistants !== null && !Array.isArray(assistants)) {
     throw new TypeError(`team ${team.id} assistantCoachIds must be an array when provided`);
   }
+  if (team.coaches !== undefined && team.coaches !== null && !Array.isArray(team.coaches)) {
+    throw new TypeError(`team ${team.id} coaches must be an array when provided`);
+  }
   const ids = new Set<string>();
+  // The reconciled shape first, in slot order, so the two sources union rather
+  // than one winning. The core producer sorts by slot; here the list arrives
+  // sorted and unranked entries keep their position, which is the same order
+  // for every input the Edge Function can actually receive.
+  for (const coach of team.coaches ?? []) {
+    const key = coach?.personId ?? coach?.id ?? coach?.displayName ?? coach?.name;
+    if (key) ids.add(String(key));
+  }
   if (team.coachId) ids.add(team.coachId);
   for (const id of assistants ?? []) {
     if (id) ids.add(id);
@@ -48,9 +76,9 @@ export function listTeamCoachIds(team: CoachedTeam): string[] {
 /**
  * The narrow team the optimiser seats and the evaluator scores: request passthrough keys dropped,
  * the assistant list normalised onto the engine spelling, and the coach set resolved once.
- * `assistantCoachIds` must survive the projection — the evaluator recomputes the conflict set from
- * it rather than trusting a `coachIds` key a request could supply, so dropping it here would
- * silently narrow that check back to head coaches.
+ * `assistantCoachIds` and `coaches` must both survive the projection — the evaluator recomputes
+ * the conflict set from them rather than trusting a `coachIds` key a request could supply, so
+ * dropping either here would silently narrow that check back.
  */
 export function prepareTeam<T extends CoachedTeam & { division: string }>(
   team: T
@@ -60,6 +88,7 @@ export function prepareTeam<T extends CoachedTeam & { division: string }>(
     division: team.division,
     coachId: team.coachId ?? null,
     assistantCoachIds: team.assistantCoachIds ?? team.assistant_coach_ids ?? null,
+    coaches: team.coaches ?? null,
     coachIds: listTeamCoachIds(team),
   };
 }

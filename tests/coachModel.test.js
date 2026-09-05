@@ -641,6 +641,76 @@ describe('coach model :: game coach conflicts are no longer head-coach-only', ()
     expect(report.warnings.filter((warning) => warning.type === 'coach-conflict')).toEqual([]);
   });
 
+  it('gives the same answer whichever shape the team arrived in', () => {
+    // The half-applied widening: `listTeamCoachIds()` read only the legacy
+    // columns, so two teams sharing a coach through the reconciled `coaches`
+    // list produced NO conflict while the same pair spelled the legacy way
+    // produced one. A team was protected or not by its spelling.
+    const games = [
+      game('g1', 'A', 'B', '2026-09-12T14:00:00Z', '2026-09-12T16:00:00Z'),
+      game('g2', 'C', 'D', '2026-09-12T15:00:00Z', '2026-09-12T17:00:00Z'),
+    ];
+    const legacy = [
+      { id: 'A', name: 'A', division: 'U10', coachId: 'shared' },
+      { id: 'B', name: 'B', division: 'U10', coachId: 'b' },
+      { id: 'C', name: 'C', division: 'U10', coachId: 'shared' },
+      { id: 'D', name: 'D', division: 'U10', coachId: 'd' },
+    ];
+    const reconciled = legacy.map((team) => ({
+      id: team.id,
+      name: team.name,
+      division: team.division,
+      coaches: [{ personId: team.coachId, slot: 1 }],
+    }));
+
+    const conflictsOf = (teams) =>
+      evaluateGameSchedule({ assignments: games, teams })
+        .warnings.filter((warning) => warning.type === 'coach-conflict')
+        .map((warning) => warning.details.coachId);
+    // Meta-assertion: the legacy side is non-empty, or the equality below would
+    // hold for a pair of runs that both found nothing.
+    expect(conflictsOf(legacy)).toEqual(['shared']);
+    expect(conflictsOf(reconciled)).toEqual(conflictsOf(legacy));
+
+    const refusalsOf = (teams) =>
+      scheduleGames({
+        teams,
+        roundRobinByDivision: {
+          U10: [{ weekIndex: 1, matchups: [{ homeTeamId: 'A', awayTeamId: 'C' }], byes: [] }],
+        },
+        slots: [
+          {
+            id: 'slot-1',
+            division: 'U10',
+            weekIndex: 1,
+            capacity: 1,
+            start: '2026-09-12T14:00:00Z',
+            end: '2026-09-12T15:00:00Z',
+          },
+        ],
+      }).unscheduled.map((entry) => entry.reason);
+    expect(refusalsOf(legacy)).toEqual(['coach-coaches-both-teams']);
+    expect(refusalsOf(reconciled)).toEqual(refusalsOf(legacy));
+  });
+
+  it('POSITIVE CONTROL: distinct coaches in either shape raise nothing', () => {
+    const games = [
+      game('g1', 'A', 'B', '2026-09-12T14:00:00Z', '2026-09-12T16:00:00Z'),
+      game('g2', 'C', 'D', '2026-09-12T15:00:00Z', '2026-09-12T17:00:00Z'),
+    ];
+    const distinct = ['a', 'b', 'c', 'd'].map((key, index) => ({
+      id: ['A', 'B', 'C', 'D'][index],
+      name: ['A', 'B', 'C', 'D'][index],
+      division: 'U10',
+      coaches: [{ personId: key, slot: 1 }],
+    }));
+    expect(
+      evaluateGameSchedule({ assignments: games, teams: distinct }).warnings.filter(
+        (warning) => warning.type === 'coach-conflict'
+      )
+    ).toEqual([]);
+  });
+
   it('the solver refuses a matchup whose sides share ANY coach, not just the first', () => {
     // The solver and the metric are widened together. Leaving the solver on
     // `coachId` would have it book a clash the report then raises and no rerun

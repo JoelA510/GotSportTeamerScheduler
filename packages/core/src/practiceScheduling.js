@@ -1,3 +1,4 @@
+import { coachesOfTeamRow } from './people/coachList.js';
 import { SlotSchema, TeamSchema } from './schemas/index.js';
 
 /** @typedef {import('./types.js').Team} Team */
@@ -75,32 +76,41 @@ function getDivisionDayKey(slot, division) {
 }
 
 /**
- * Every coach a team carries: the head coach plus any assistant coaches, deduplicated, with
- * empty ids dropped. The assistant list is read under either spelling the repo uses --
- * `assistantCoachIds` (engine, `Team` typedef) first, then `assistant_coach_ids` (the `teams`
- * column) -- the same precedence `teamSnapshot.js` applies. Mirrors the `if (team.coachId)`
- * contract for a missing head coach -- an absent or null list means no assistants -- but a list
- * that is present and not an array is rejected rather than read as "no coaches", so a malformed
- * team never passes as conflict-free.
+ * **Every coach a team carries, whichever shape the team arrived in.**
  *
- * @param {{ id?: unknown, coachId?: string | null, assistantCoachIds?: string[] | null, assistant_coach_ids?: string[] | null }} team
+ * 8.1 introduced this as "head coach plus assistants" over the legacy
+ * `coachId` + `assistantCoachIds[]` columns. 8.2 made the *reconciled* shape —
+ * a `coaches` list of `{ personId, displayName, email, slot }` — first class in
+ * every artifact, and for one round this function did not know about it: two
+ * teams sharing a coach through `coaches` produced **no** conflict while the
+ * same pair spelled the legacy way produced one, so a team was protected or not
+ * according to which shape it happened to arrive in. That is the 8.1 defect
+ * with a new spelling.
+ *
+ * So this is now a thin call on `people/coachList.js`, the single producer
+ * every artifact already goes through. There is one answer to "who coaches this
+ * team" and the solver, both metric modules and every export read it.
+ *
+ * What it keeps from the 8.1 contract, deliberately:
+ *
+ * - **Order.** Slot order, which is the clash-breaker `people/roster.js`
+ *   defends — not a rank of whose conflicts matter.
+ * - **Deduplication.** A person named twice on one team is one coach.
+ * - **Blank is absent.** An empty id contributes nobody.
+ * - **A malformed list is refused, not read as "no coaches"**, so a broken team
+ *   never passes as conflict-free. The message now names the offending value as
+ *   well as the field.
+ *
+ * What it gains: a coach the row can only name (an id-less `coachName`) is a
+ * coach, keyed by that name. The export has always listed them; now the
+ * conflict checks see them too, rather than treating an unidentified coach as
+ * no coach at all.
+ *
+ * @param {{ id?: unknown, coachId?: string | null, assistantCoachIds?: string[] | null, assistant_coach_ids?: string[] | null, coaches?: Array<Object> | null }} team
  * @returns {string[]}
  */
 export function listTeamCoachIds(team) {
-  const assistants = team.assistantCoachIds ?? team.assistant_coach_ids;
-  if (assistants !== undefined && assistants !== null && !Array.isArray(assistants)) {
-    throw new TypeError(`team ${team.id} assistantCoachIds must be an array when provided`);
-  }
-  const ids = new Set();
-  if (team.coachId) {
-    ids.add(team.coachId);
-  }
-  for (const id of assistants ?? []) {
-    if (id) {
-      ids.add(id);
-    }
-  }
-  return [...ids];
+  return [...coachesOfTeamRow(team).personIds];
 }
 
 export function schedulePractices({
