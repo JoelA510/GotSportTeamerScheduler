@@ -838,6 +838,52 @@ describe('coach model :: game coach conflicts are no longer head-coach-only', ()
 });
 
 /* ========================================================================== */
+/* The reserve disagreement's subject set is the exported rows                 */
+/* ========================================================================== */
+
+describe('coach model :: the publication reports a disagreement only for a team it printed', () => {
+  it('emits the reserve disagreement only for a team some row names', () => {
+    // `TEAM_COACH_SOURCES_DISAGREE` is defined on the exported rows. A
+    // 132-team directory with disagreeing teams and a two-fixture TIME TBD
+    // publication naming neither came back `compromise` with every row clean.
+    const contested = {
+      id: 'contested',
+      name: 'contested',
+      coachId: 'from-the-legacy-columns',
+      coaches: [{ personId: 'from-the-reconciled-list', slot: 1 }],
+    };
+    const bystander = { id: 'bystander', name: 'bystander', coachId: 'c1' };
+    const fixtureNaming = (teamId) =>
+      makeUnplacedFixture({
+        fixtureId: `f-${teamId}`,
+        label: teamId,
+        homeTeamId: teamId,
+        reason: 'a fixture constructed by this test',
+      });
+    const disagreeCodes = (result) =>
+      result.findings.filter((f) => f.code === RESERVE_REASON.TEAM_COACH_SOURCES_DISAGREE);
+
+    const absent = publicationRowsFor({
+      slots: [],
+      unplaced: [fixtureNaming('bystander')],
+      teams: [contested, bystander],
+    });
+    // Meta-assertion: rows were produced and the contested team is on none.
+    expect(absent.rows.length).toBeGreaterThan(0);
+    expect(absent.rows.every((entry) => entry.teamId !== 'contested')).toBe(true);
+    expect(disagreeCodes(absent)).toEqual([]);
+
+    // POSITIVE CONTROL: the same directory, with a row naming the team.
+    const present = publicationRowsFor({
+      slots: [],
+      unplaced: [fixtureNaming('bystander'), fixtureNaming('contested')],
+      teams: [contested, bystander],
+    });
+    expect(disagreeCodes(present).map((f) => f.details.teamId)).toEqual(['contested']);
+  });
+});
+
+/* ========================================================================== */
 /* Rendering: one column, no roles                                             */
 /* ========================================================================== */
 

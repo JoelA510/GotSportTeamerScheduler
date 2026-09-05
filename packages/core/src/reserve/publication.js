@@ -166,16 +166,16 @@ function sideText(side, teamId, label, directory) {
  * @param {string} displayName
  * @param {Map<string, Object>} directory
  * @param {string|null} divisionLabel
- * @param {Map<string, { coaches: string, emails: string }>} [coachCells] - built once per team
+ * @param {(team: Object) => { coaches: string, emails: string }} [coachCellsFor] - reconciled once per team, on first lookup
  * @returns {void}
  */
-function fillTeam(row, teamId, displayName, directory, divisionLabel, coachCells) {
+function fillTeam(row, teamId, displayName, directory, divisionLabel, coachCellsFor) {
   const team = teamId ? directory.get(teamId) : null;
   row[SCHEDULE_EXPORT_HEADERS.TEAM_ID] = teamId ?? '';
   row[SCHEDULE_EXPORT_HEADERS.TEAM_NAME] = String(team?.name ?? displayName);
   row[SCHEDULE_EXPORT_HEADERS.DIVISION] = String(team?.division ?? divisionLabel ?? '');
 
-  const cell = team && coachCells ? coachCells.get(String(team.id ?? teamId)) : undefined;
+  const cell = team && coachCellsFor ? coachCellsFor(team) : undefined;
   row[SCHEDULE_EXPORT_HEADERS.COACHES] = cell?.coaches ?? '';
   row[SCHEDULE_EXPORT_HEADERS.COACH_EMAILS] = cell?.emails ?? '';
 }
@@ -194,10 +194,15 @@ export function publicationRowsFor(input) {
   const rows = [];
 
   const directory = new Map((input.teams ?? []).map((team) => [String(team.id), team]));
-  // Reconciled **once per team**, not once per row. A team with five unplaced
-  // fixtures produces five rows, and reconciling inside `fillTeam()` reported
-  // its one disagreement five times — a finding count that scaled with the
-  // export rather than with the facts.
+  // Reconciled **once per team, and only for a team a row names**. A team with
+  // five unplaced fixtures produces five rows, and reconciling inside
+  // `fillTeam()` reported its one disagreement five times — a finding count
+  // that scaled with the export rather than with the facts. The opposite
+  // error came next: reconciling every team in the directory reported a
+  // disagreement for teams on no row at all, so a two-fixture TIME TBD
+  // publication naming neither of them came back `compromise` with every row
+  // clean. `TEAM_COACH_SOURCES_DISAGREE` is defined on the exported rows, so
+  // its subject set is the teams `fillTeam()` actually looked up.
   //
   // The disagreement lands in `findings`, in **this** module's vocabulary.
   // Carrying it out on a separate `coachFindings` key made it inert: produced
@@ -207,7 +212,11 @@ export function publicationRowsFor(input) {
   // this projection sees it with no new reader to write.
   /** @type {Map<string, { coaches: string, emails: string }>} */
   const coachCells = new Map();
-  for (const team of input.teams ?? []) {
+  /** @param {Object} team */
+  const coachCellsFor = (team) => {
+    const key = String(team.id);
+    const cached = coachCells.get(key);
+    if (cached) return cached;
     const reconciled = coachesOfTeamRow(team);
     const disagreements = reconciled.findings.filter((finding) =>
       COACH_SOURCE_DISAGREEMENT_CODES.has(finding.code)
@@ -218,15 +227,17 @@ export function publicationRowsFor(input) {
           RESERVE_REASON.TEAM_COACH_SOURCES_DISAGREE,
           `team "${team.id}" has ${disagreements.length} coach-source disagreement(s) (${[...new Set(disagreements.map((finding) => finding.code))].sort().join(', ')}); every coach is exported and none is treated as the team's primary`,
           {
-            teamId: String(team.id),
+            teamId: key,
             codes: [...new Set(disagreements.map((finding) => finding.code))].sort(),
             disagreements: disagreements.length,
           }
         )
       );
     }
-    coachCells.set(String(team.id), coachExportCells(reconciled.coaches));
-  }
+    const cells = coachExportCells(reconciled.coaches);
+    coachCells.set(key, cells);
+    return cells;
+  };
 
   const slots = input.slots ?? [];
   const unplaced = input.unplaced ?? [];
@@ -268,7 +279,7 @@ export function publicationRowsFor(input) {
       // this field and this kickoff, and a schedule that omitted it would show
       // the ground as free.
       const row = base();
-      fillTeam(row, null, slot.label, directory, slot.divisionLabel, coachCells);
+      fillTeam(row, null, slot.label, directory, slot.divisionLabel, coachCellsFor);
       row[SCHEDULE_EXPORT_HEADERS.OPPONENT] = sideText(
         slot.awaySide,
         slot.awayTeamId,
@@ -284,7 +295,7 @@ export function publicationRowsFor(input) {
       const other = side === 'home' ? 'away' : 'home';
       const teamId = slot[`${side}TeamId`];
       const row = base();
-      fillTeam(row, teamId, String(teamId), directory, slot.divisionLabel, coachCells);
+      fillTeam(row, teamId, String(teamId), directory, slot.divisionLabel, coachCellsFor);
       row[SCHEDULE_EXPORT_HEADERS.ROLE] = side === 'home' ? 'Home' : 'Away';
       row[SCHEDULE_EXPORT_HEADERS.OPPONENT] = sideText(
         slot[`${other}Side`],
@@ -315,7 +326,7 @@ export function publicationRowsFor(input) {
 
     if (named.length === 0) {
       const row = base();
-      fillTeam(row, null, fixture.label, directory, fixture.divisionLabel, coachCells);
+      fillTeam(row, null, fixture.label, directory, fixture.divisionLabel, coachCellsFor);
       rows.push({ row, subjectId: fixture.fixtureId, teamId: null });
       meta.rowsEmitted += 1;
       continue;
@@ -325,7 +336,7 @@ export function publicationRowsFor(input) {
       const other = side === 'home' ? 'away' : 'home';
       const teamId = /** @type {string} */ (fixture[`${side}TeamId`]);
       const row = base();
-      fillTeam(row, teamId, teamId, directory, fixture.divisionLabel, coachCells);
+      fillTeam(row, teamId, teamId, directory, fixture.divisionLabel, coachCellsFor);
       row[SCHEDULE_EXPORT_HEADERS.ROLE] = side === 'home' ? 'Home' : 'Away';
       row[SCHEDULE_EXPORT_HEADERS.OPPONENT] = String(
         fixture[`${other}TeamId`] ?? fixture[`${other}Label`] ?? PUBLICATION_TBD.OPPONENT

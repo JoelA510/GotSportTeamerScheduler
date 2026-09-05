@@ -479,6 +479,11 @@ describe('acceptance 1 :: assigning teams to an unnamed slot leaves its time and
     // here and silently dropped, in the artifact path that task exists to fix.
     // It is re-expressed as a reserve code so `deriveReserveStatus()` and every
     // existing consumer of this projection see it.
+    //
+    // The subject set is the exported rows: the team is put **on a row**, as a
+    // TIME TBD fixture naming it. The first draft emitted for every team in the
+    // directory, so this test passed against an unnamed slot that named nobody
+    // — a finding about a team no reader of the publication could find.
     const one = unnamed[0];
     const contested = {
       id: 'contested-team',
@@ -487,7 +492,18 @@ describe('acceptance 1 :: assigning teams to an unnamed slot leaves its time and
       coachName: 'From The Legacy Columns',
       coaches: [{ personId: 'from-the-reconciled-list', displayName: 'Reconciled', slot: 1 }],
     };
-    const projection = publicationRowsFor({ slots: [one], teams: [contested] });
+    const naming = (teamId) =>
+      makeUnplacedFixture({
+        fixtureId: `tbd-${teamId}`,
+        label: teamId,
+        homeTeamId: teamId,
+        reason: 'a fixture constructed by this test',
+      });
+    const projection = publicationRowsFor({
+      slots: [one],
+      unplaced: [naming('contested-team')],
+      teams: [contested],
+    });
     const reported = observe(projection.findings).filter(
       (finding) => finding.code === RESERVE_REASON.TEAM_COACH_SOURCES_DISAGREE
     );
@@ -495,10 +511,21 @@ describe('acceptance 1 :: assigning teams to an unnamed slot leaves its time and
     expect(reported[0].details.teamId).toBe('contested-team');
     expect(reported[0].severity).toBe(RESERVE_SEVERITY.COMPROMISE);
 
+    // POSITIVE CONTROL: the same team in the directory and on no row raises
+    // nothing, and the projection still produced rows.
+    const offTheRows = publicationRowsFor({ slots: [one], teams: [contested] });
+    expect(offTheRows.rows.length).toBeGreaterThan(0);
+    expect(
+      observe(offTheRows.findings).filter(
+        (finding) => finding.code === RESERVE_REASON.TEAM_COACH_SOURCES_DISAGREE
+      )
+    ).toEqual([]);
+
     // POSITIVE CONTROL: one source, no disagreement — so the code is about the
     // data and not about every team that reaches this projection.
     const settled = publicationRowsFor({
       slots: [one],
+      unplaced: [naming('settled-team')],
       teams: [{ id: 'settled-team', name: 'settled', coachId: 'c1', coachName: 'One' }],
     });
     expect(

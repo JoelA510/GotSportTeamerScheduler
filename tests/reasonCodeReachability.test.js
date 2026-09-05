@@ -2703,14 +2703,23 @@ harvest(
   'accountForFixtures(nothing reconciled at all)',
   accountForFixtures({ expectedFixtureIds: [], placedFixtureIds: [], unplaced: [] })
 );
+// The disagreeing team is **on a row**: `TEAM_COACH_SOURCES_DISAGREE` is
+// defined on the exported rows, and the audit's fixture used to name no team,
+// so the code fired here only because the producer swept the whole directory.
+const contestedFixture = makeUnplacedFixture({
+  fixtureId: 'constructed-contested',
+  label: 'contested v control',
+  homeTeamId: 'audit-contested-team',
+  reason: 'no candidate slot on the date was legal for it',
+});
 harvest(
   'publicationRowsFor(a bound slot, an unbound one, an unplaced fixture and a team whose two sources disagree about its coaches)',
   publicationRowsFor({
     slots: [unnamedSlots[0], boundSlots.slots[0]],
-    unplaced: [unplacedFixture],
+    unplaced: [unplacedFixture, contestedFixture],
     teams: [
       {
-        id: unplacedFixture.homeTeamId,
+        id: contestedFixture.homeTeamId,
         name: 'a team the reason-code reachability audit constructed',
         coachId: 'from-the-legacy-columns',
         coachName: 'From The Legacy Columns',
