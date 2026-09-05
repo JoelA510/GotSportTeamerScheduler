@@ -244,4 +244,36 @@
  * @typedef {Omit<KickoffAvailabilityResult, 'kickoffMinutes'> & { kickoffMinutes: number|null, searchedFromMinutes: number, searchedToMinutes: number, candidatesTested: number }} LatestKickoffResult
  */
 
+/**
+ * A closure window: a statement from the constraint log that ground is shut.
+ *
+ * `fromDate`/`toDate` inclusive ISO dates; `startMinutes`/`endMinutes` the
+ * daily window; `allDay` is what `isAllDayWindow()` says of the times and
+ * nothing else. `scope` names the ground by graph id — see `CLOSURE_SCOPE`.
+ *
+ * @typedef {Object} ClosureWindow
+ * @property {string} id
+ * @property {string} fromDate
+ * @property {string} toDate
+ * @property {number} startMinutes
+ * @property {number} endMinutes
+ * @property {boolean} allDay
+ * @property {{ kind: string, venueIds?: string[], surfaceId?: string, venueName?: string }} scope
+ * @property {string} reason
+ * @property {string|null} fieldsRaw
+ * @property {string|null} venueName
+ * @property {string|null} source
+ */
+
+/**
+ * The built closure set. Deep-frozen; holds no bookings.
+ *
+ * @typedef {Object} ClosureSet
+ * @property {ClosureWindow[]} closures
+ * @property {string[]} closureIds
+ * @property {string|null} source
+ * @property {AvailabilityFinding[]} findings - build-time findings (unknown venues)
+ * @property {{ closureCount: number, allDayCount: number, byKind: Record<string, number> }} stats
+ */
+
 export {};

@@ -20,6 +20,7 @@
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
+import { ALL_DAY_CLOSE_MINUTES, isAllDayWindow } from '../availability/closures.js';
 import { deepFreeze } from '../facility/facilityGraph.js';
 import {
   computeFixtureChecksums,
@@ -51,8 +52,11 @@ export const SEASON_LONG_CLOSURE_MIN_FRACTION = 0.5;
  * A closure row is all-day when it opens at 00:00 and closes at or after this
  * — `23:00`, the latest close the constraint sheet writes (it never writes
  * `24:00`). Anything narrower is a daily window, reported as time-bounded.
+ *
+ * Owned by `availability/closures.js` since Phase 8.3 and re-exported here,
+ * so the loader and the closure model read one cell one way.
  */
-export const ALL_DAY_CLOSE_MINUTES = 23 * 60;
+export { ALL_DAY_CLOSE_MINUTES };
 
 /** Default location, resolved from this module's own path (see the game loader). */
 const DEFAULT_FIXTURE_DIR = path.resolve(
@@ -349,7 +353,7 @@ export function crossCorpusFindings(parsed, season) {
     const to = constraint.dateEnd < lastScheduled ? constraint.dateEnd : lastScheduled;
     const overlapDays = from <= to ? inclusiveSpanDays(from, to) : 0;
     if (overlapDays / seasonDays < SEASON_LONG_CLOSURE_MIN_FRACTION) continue;
-    const allDay = constraint.startMinutes === 0 && constraint.endMinutes >= ALL_DAY_CLOSE_MINUTES;
+    const allDay = isAllDayWindow(constraint.startMinutes, constraint.endMinutes);
     if (!allDay) {
       examined.timeBoundedSeasonClosures += 1;
       timeBoundedClosures.push({

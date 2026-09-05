@@ -183,6 +183,24 @@ export const AVAILABILITY_REASON = Object.freeze({
   /** Nothing already booked bounds this kickoff. Provenance. */
   OCCUPANCY_UNBOUNDED: 'OCCUPANCY_UNBOUNDED',
 
+  /* -- closures (the constraint log, Phase 8.3) --------------------------- */
+  /** The booking stands inside a venue- or surface-scoped closure window. */
+  CLOSURE_BLOCKS_BOOKING: 'CLOSURE_BLOCKS_BOOKING',
+  /**
+   * The booking falls in a closure whose `fields` cell cannot be read (the
+   * corpus's Excel-corrupted `2026-01-07` for `1-7`). It may close this
+   * ground; nobody can tell from the sheet. `compromise`, never nothing.
+   */
+  CLOSURE_SCOPE_UNREADABLE: 'CLOSURE_SCOPE_UNREADABLE',
+  /** The booking has no known end and the closure is not all-day, so the two cannot be compared. */
+  CLOSURE_OVERLAP_UNDECIDABLE: 'CLOSURE_OVERLAP_UNDECIDABLE',
+  /** The booking falls in a row that closes something other than a playing surface (`Parking`). */
+  CLOSURE_NOT_GROUND: 'CLOSURE_NOT_GROUND',
+  /** The booking is under an adjacency rule the graph's overlap pairs already enforce. Provenance. */
+  CLOSURE_ADJACENCY_DEFERRED: 'CLOSURE_ADJACENCY_DEFERRED',
+  /** A closure row names a venue the graph does not hold; it applies to nothing and says so. */
+  CLOSURE_VENUE_UNKNOWN: 'CLOSURE_VENUE_UNKNOWN',
+
   /* -- the derived query -------------------------------------------------- */
   /** Which constraints bind the answer, tightest first. Provenance. */
   LATEST_KICKOFF_BOUND: 'LATEST_KICKOFF_BOUND',
@@ -225,6 +243,13 @@ export const AVAILABILITY_REASON_SEVERITY = Object.freeze({
 
   [AVAILABILITY_REASON.OCCUPANCY_BOUND_BY_BOOKING]: AVAILABILITY_SEVERITY.INFO,
   [AVAILABILITY_REASON.OCCUPANCY_UNBOUNDED]: AVAILABILITY_SEVERITY.INFO,
+
+  [AVAILABILITY_REASON.CLOSURE_BLOCKS_BOOKING]: AVAILABILITY_SEVERITY.BLOCKING,
+  [AVAILABILITY_REASON.CLOSURE_SCOPE_UNREADABLE]: AVAILABILITY_SEVERITY.COMPROMISE,
+  [AVAILABILITY_REASON.CLOSURE_OVERLAP_UNDECIDABLE]: AVAILABILITY_SEVERITY.COMPROMISE,
+  [AVAILABILITY_REASON.CLOSURE_NOT_GROUND]: AVAILABILITY_SEVERITY.INFO,
+  [AVAILABILITY_REASON.CLOSURE_ADJACENCY_DEFERRED]: AVAILABILITY_SEVERITY.INFO,
+  [AVAILABILITY_REASON.CLOSURE_VENUE_UNKNOWN]: AVAILABILITY_SEVERITY.COMPROMISE,
 
   [AVAILABILITY_REASON.LATEST_KICKOFF_BOUND]: AVAILABILITY_SEVERITY.INFO,
   [AVAILABILITY_REASON.NO_LEGAL_KICKOFF]: AVAILABILITY_SEVERITY.BLOCKING,

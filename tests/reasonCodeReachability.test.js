@@ -1,8 +1,8 @@
 /**
  * Repo-wide reachability audit for every frozen reason-code table in
  * `packages/core/src` — the generalisation of the per-module audit
- * `tests/attribution.test.js` already carries. 19 vocabularies, 441 codes, of
- * which 430 are shown to be producible and 11 are named as holes.
+ * `tests/attribution.test.js` already carries. 19 vocabularies, 447 codes, of
+ * which 436 are shown to be producible and 11 are named as holes.
  *
  * **The defect this exists to catch.** Four times now, in four unrelated
  * modules, a reason code has been declared, given a severity, documented, and
@@ -91,6 +91,8 @@ import {
   AVAILABILITY_REASON,
   buildAvailabilityCalendar,
   buildAvailabilityCalendarFromSeason2026,
+  buildClosureSet,
+  checkClosures,
   toAvailabilityCalendarInput,
   checkKickoffAvailability,
   latestLegalKickoff,
@@ -1005,6 +1007,75 @@ const kickoffQuery = (overrides = {}) => ({
   format: '9v9',
   ...overrides,
 });
+
+/**
+ * Every closure scope kind, over the facility rig, on a date every window
+ * covers. The bookings below stand inside each in turn.
+ */
+const closureRig = harvest(
+  'buildClosureSet(every scope kind, one venue unknown)',
+  buildClosureSet(rig, {
+    closures: [
+      {
+        id: 'shut',
+        fromDate: RIG_DATE,
+        toDate: RIG_DATE,
+        startMinutes: 540,
+        endMinutes: 600,
+        allDay: false,
+        scope: { kind: 'surface', surfaceId: 'rig/full' },
+        reason: 'shut',
+      },
+      {
+        id: 'unreadable',
+        fromDate: RIG_DATE,
+        toDate: RIG_DATE,
+        startMinutes: 0,
+        endMinutes: 1380,
+        allDay: true,
+        scope: { kind: 'unreadable', venueIds: ['rig'] },
+        reason: 'unreadable',
+        fieldsRaw: '2026-01-07',
+      },
+      {
+        id: 'parking',
+        fromDate: RIG_DATE,
+        toDate: RIG_DATE,
+        startMinutes: 0,
+        endMinutes: 1380,
+        allDay: true,
+        scope: { kind: 'not-ground', venueIds: ['rig'] },
+        reason: 'parking',
+        fieldsRaw: 'Parking',
+      },
+      {
+        id: 'spacing',
+        fromDate: RIG_DATE,
+        toDate: RIG_DATE,
+        startMinutes: 0,
+        endMinutes: 1380,
+        allDay: true,
+        scope: { kind: 'adjacency', venueIds: ['rig'] },
+        reason: 'spacing',
+      },
+      {
+        id: 'lost',
+        fromDate: RIG_DATE,
+        toDate: RIG_DATE,
+        startMinutes: 0,
+        endMinutes: 1380,
+        allDay: true,
+        scope: { kind: 'venue-unknown', venueName: 'Nowhere Park' },
+        reason: 'lost',
+      },
+    ],
+  })
+);
+harvest('checkClosures(inside every window)', checkClosures(rig, closureRig, rigBooking()));
+harvest(
+  'checkClosures(no end against a timed closure)',
+  checkClosures(rig, closureRig, rigBooking({ endMinutes: null }))
+);
 
 harvest(
   'checkKickoffAvailability(nothing declared)',

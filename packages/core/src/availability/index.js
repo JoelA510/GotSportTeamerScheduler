@@ -56,8 +56,28 @@ export {
 export { checkKickoffAvailability, latestLegalKickoff } from './kickoff.js';
 
 export {
+  ALL_DAY_CLOSE_MINUTES,
+  CLOSURE_SCOPE,
+  ClosureScopeSchema,
+  ClosureSetInputSchema,
+  ClosureWindowSchema,
+  buildClosureSet,
+  checkClosures,
+  findClosureBreaches,
+  isAllDayWindow,
+  reconcileAdjacencyRule,
+} from './closures.js';
+
+export {
   SEASON_2026_PERMIT_MARGIN_MINUTES,
   SEASON_2026_SUNSET_MARGIN_MINUTES,
   buildAvailabilityCalendarFromSeason2026,
   toAvailabilityCalendarInput,
 } from './adapters/season2026Permits.js';
+
+export {
+  SEASON_2026_CONSTRAINT_FIELDS_READINGS,
+  buildSeason2026ClosureSet,
+  readSeason2026ConstraintFields,
+  toSeason2026ClosureInput,
+} from './adapters/season2026Closures.js';
