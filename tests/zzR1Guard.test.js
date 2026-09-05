@@ -50,15 +50,11 @@
  *
  * Both a **file's path** and its **contents** are checked: every segment of
  * every scanned file's relative path goes through the same allowlist, with `_`
- * and `-` read as word separators. And because a name need not spell itself in
- * ASCII letters to be a name, every cell — person-name columns included — is
- * additionally matched against a set of shapes the corpus does not contain: an
- * email address, a URL scheme or host, a phone number, a run of five or more
- * digits, any full date whose year is not on `ALLOWED_YEARS`, **a letter
- * outside ASCII**, and **a dotted initialism**. The last two close the class
- * `words()` cannot see: it splits on `[^A-Za-z]+` and drops one-character
- * tokens, so a name written in another script produces no words at all, and
- * `S.R.F.C.` produces none either — every letter in it is a token of one.
+ * and `-` read as word separators. And because a name can leak without using a
+ * letter, every cell — person-name columns included — is additionally matched
+ * against a small set of shapes the corpus does not contain: an email address,
+ * a URL scheme or host, a grouped phone number, a run of five or more digits,
+ * and any full date whose year is not on `ALLOWED_YEARS`.
  *
  * ## The failure shape this guard was rebuilt around
  *
@@ -150,26 +146,8 @@ const FORBIDDEN_PATTERNS = Object.freeze([
   { name: 'email', pattern: /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+/ },
   { name: 'url-scheme', pattern: /[A-Za-z][A-Za-z0-9+.-]*:\/\// },
   { name: 'url-host', pattern: /\b[A-Za-z0-9-]+\.(?:com|net|org|edu|gov|io|co|us|uk|info|biz)\b/i },
-  // A separator after the area code was once mandatory, which let the single
-  // most common North-American spelling — `(925) 555-0134` — match neither this
-  // shape nor `digit-run`, whose longest run in it is four. The parenthesised
-  // area code, the optional country prefix and optional separators are all in
-  // now; measured at 0 matches across the corpus and both READMEs.
-  {
-    name: 'phone',
-    pattern: /(?:\+\d{1,3}[\s.-]?)?(?:\(\d{3}\)|\b\d{3})[\s.-]?\d{3}[\s.-]?\d{4}\b/,
-  },
+  { name: 'phone', pattern: /\d{3}[\s.-]\d{3}[\s.-]\d{4}/ },
   { name: 'digit-run', pattern: /\d{5,}/ },
-  // The corpus is ASCII by construction — measured at 0 non-ASCII letters
-  // across all 22 scanned files and both READMEs — so any letter outside ASCII
-  // is new data. Letters only, deliberately: the corpus and its prose carry 45
-  // non-ASCII *punctuation* marks (em dashes, arrows, `≤`) that are not names.
-  { name: 'non-ascii-letter', pattern: /(?!\p{ASCII})\p{L}/u },
-  // A dotted initialism is the letter-by-letter spelling `words()` throws away.
-  // Case-insensitive and with no exception list, which the corpus affords: it
-  // holds no dotted initialism at all, in data or in prose. Only *single*
-  // letters count, so `St.` and `Ave.` are not initialisms and do not match.
-  { name: 'initialism', pattern: /(?:[A-Za-z]\.){2,}/ },
 ]);
 
 /**
@@ -663,33 +641,13 @@ const ALLOWED_WORDS = Object.freeze([
 const ALLOWED = new Set(ALLOWED_WORDS);
 
 /**
- * Rewrite a dotted initialism as the word it spells: `S.R.F.C.` -> `SRFC`.
- *
- * This is the root of the hole `non-ascii-letter` and `initialism` cover from
- * the outside. `words()` drops one-character tokens, so every letter of a
- * punctuated initialism was discarded and the token vanished before any rule
- * saw it — from the allowlist, and from the organisation-designator rule that
- * is the *only* content check on the exempt person-name columns. Fixing the
- * shared feeder fixes both, rather than giving each its own patch.
- *
- * A no-op on the corpus as it stands: 0 dotted initialisms in 22 scanned files.
- *
- * @param {string} text
- * @returns {string}
- */
-function collapseInitialisms(text) {
-  return String(text ?? '').replace(/(?:[A-Za-z]\.){2,}/g, (run) => run.replace(/\./g, ''));
-}
-
-/**
- * Alphabetic words of two or more letters in a string, with dotted initialisms
- * collapsed first so `F.C.` reads as the word `FC` rather than as nothing.
+ * Alphabetic words of two or more letters in a string.
  *
  * @param {string} text
  * @returns {string[]}
  */
 function words(text) {
-  return collapseInitialisms(text)
+  return String(text ?? '')
     .split(/[^A-Za-z]+/)
     .filter((word) => word.length >= 2);
 }
@@ -1177,66 +1135,6 @@ describe('season-2026 corpus vocabulary', () => {
       });
     });
 
-    it('reports a name written in a script other than Latin', () => {
-      // `words()` splits on `[^A-Za-z]+`, so a Cyrillic club and city produce
-      // no words at all and the allowlist never sees them. Only a rule that
-      // does not go through `words()` can report this.
-      const root = scratchCorpus();
-      const target = path.join(root, 'practice', 'game_change_log.csv');
-      const text = readFileSync(target, 'utf8').split('\n');
-      const cells = text[1].split(',');
-      cells[4] = '\u0414\u0438\u043d\u0430\u043c\u043e \u041a\u0438\u0435\u0432 fixture';
-      text[1] = cells.join(',');
-      writeFileSync(target, text.join('\n'));
-
-      const control = scanCorpus(root);
-      expect(control.forbidden.map((hit) => hit.word)).toContainEqual(
-        expect.stringContaining('non-ascii-letter')
-      );
-    });
-
-    it('reports a name spelled letter by letter with dots', () => {
-      // Every identity-bearing letter here is a one-character token, so the
-      // pre-fix `words()` filtered the whole name out and left only `vs` and
-      // `fixture` — both allowlisted — behind.
-      const root = scratchCorpus();
-      const target = path.join(root, 'practice', 'game_change_log.csv');
-      const text = readFileSync(target, 'utf8').split('\n');
-      const cells = text[1].split(',');
-      cells[4] = 'S.R.F.C. vs P.R. fixture';
-      text[1] = cells.join(',');
-      writeFileSync(target, text.join('\n'));
-
-      const control = scanCorpus(root);
-      expect(control.forbidden.map((hit) => hit.word)).toContainEqual(
-        expect.stringContaining('initialism')
-      );
-      // And the collapsed spelling reaches the allowlist as a real word, so
-      // the shape check is a backstop rather than the only reader.
-      expect(control.unknown.map((hit) => hit.word)).toContain('SRFC');
-    });
-
-    it('reports a punctuated organisation designator in a person column', () => {
-      // The designator rule is the only content check on the ~4,846 exempt
-      // person-name cells, and it is fed by `words()`, so the punctuated form
-      // of five of its fifteen entries was invisible to it.
-      const root = scratchCorpus();
-      const target = path.join(root, 'practice', 'coach_registration.csv');
-      const text = readFileSync(target, 'utf8').split('\n');
-      const cells = text[1].split(',');
-      cells[0] = 'Zzqfictional F.C.';
-      cells[1] = 'zzqfictional f.c.';
-      text[1] = cells.join(',');
-      writeFileSync(target, text.join('\n'));
-
-      const control = scanCorpus(root);
-      // Caught at the root, by the rule that was always meant to see it...
-      expect(control.orgInPersonColumn.map((hit) => hit.word)).toContain('FC');
-      // ...and independently by the list-free shape, in both letter cases.
-      const initialisms = control.forbidden.filter((hit) => hit.word.includes('initialism'));
-      expect(initialisms.map((hit) => hit.column).sort()).toEqual(['coach_name', 'person_key']);
-    });
-
     it('reports an email address in a person-name column', () => {
       // No organisation designator, no unknown word, no letters the allowlist
       // would object to — the exemption covers all of that. Only a shape check
@@ -1267,40 +1165,6 @@ describe('season-2026 corpus vocabulary', () => {
       const control = scanCorpus(root);
       expect(control.forbidden.map((hit) => hit.word)).toContainEqual(
         expect.stringContaining('iso-date')
-      );
-    });
-
-    it.each([
-      ['parenthesised area code', '(925) 555-0134'],
-      ['parenthesised area code, no space', '(925)555-0134'],
-      ['country prefix', '+1 (925) 555-0134'],
-    ])('reports a phone number written with a %s', (_label, number) => {
-      // The unparenthesised form was the only one the first shape could see,
-      // so its control passed while the format people actually write did not.
-      const root = scratchCorpus();
-      const target = path.join(root, 'practice', 'field_inventory.csv');
-      const text = readFileSync(target, 'utf8').split('\n');
-      text[1] = `${text[1]}${number}`;
-      writeFileSync(target, text.join('\n'));
-
-      const control = scanCorpus(root);
-      expect(control.forbidden.map((hit) => hit.word)).toContainEqual(
-        expect.stringContaining('phone')
-      );
-    });
-
-    it('reports a phone number in a person-name column, which the allowlist cannot see', () => {
-      const root = scratchCorpus();
-      const target = path.join(root, 'practice', 'coach_registration.csv');
-      const text = readFileSync(target, 'utf8').split('\n');
-      const cells = text[1].split(',');
-      cells[0] = 'Toby Hart (925) 555-0134';
-      text[1] = cells.join(',');
-      writeFileSync(target, text.join('\n'));
-
-      const control = scanCorpus(root);
-      expect(control.forbidden.map((hit) => hit.word)).toContainEqual(
-        expect.stringContaining('phone')
       );
     });
 

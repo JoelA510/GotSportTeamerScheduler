@@ -166,7 +166,7 @@ The real→pseudonym map is **not** in this repo and must not be committed.
 - Two slot regimes and no third: 45 minutes at 16:00/16:45/17:30, and 60 minutes
   at 16:00/17:00/18:00. Duration is derived from slot spacing, not asserted.
 - Practices run Monday–Friday. **19 rows are Friday.**
-- 201 coach registrations; 19 of them name a second player, i.e. coach two teams.
+- 201 coach registrations; 19 of them name a second player, and so coach two teams.
 - 1153 players, 29 of them playing up.
 - 13 constraint rows; 3 venues are closed for effectively the whole season
   (`Fivepines Park` reseeding, `Quarrywood Park` and `Cedarbrook Park` offline).
