@@ -10,7 +10,11 @@ import {
 } from './utils/date.js';
 
 /**
- * Expand practice slots into season-phase aware "effective" slots that account for daylight adjustments.
+ * Expand practice slots into season-phase aware "effective" slots.
+ *
+ * This applies only the explicit per-phase overrides described below. It takes no sunset,
+ * daylight or field-lighting input and makes no such adjustment on its own; a league that
+ * shortens or shifts practices as evenings darken must express that as `seasonOverrides`.
  *
  * Each input slot represents a canonical weekly time window (e.g., Monday 7–8pm). Season phases describe
  * the early/late season boundaries so slots can be split into separate records when their validity ranges

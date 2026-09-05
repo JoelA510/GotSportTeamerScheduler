@@ -166,10 +166,15 @@ export function runScheduleEvaluations({ practice, games, schoolDayEnd, timezone
     }
 
     for (const conflict of coachConflicts) {
+      // One issue per overlapping pair; the pair may share more than one coach.
+      const coaches = conflict.coachIds ?? [conflict.coachId];
       issues.push({
         category: 'practice',
         severity: 'error',
-        message: `Coach ${conflict.coachId} has overlapping practices`,
+        message:
+          coaches.length > 1
+            ? `Coaches ${coaches.join(', ')} have overlapping practices`
+            : `Coach ${coaches[0]} has overlapping practices`,
         details: conflict,
       });
     }

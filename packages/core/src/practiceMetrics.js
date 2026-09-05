@@ -1,15 +1,33 @@
 import { SlotSchema, TeamSchema } from './schemas/index.js';
+import { listTeamCoachIds } from './practiceScheduling.js';
+
+/**
+ * Key for one overlapping pair of assignments, the same whichever side is named first, so the
+ * pair merges across coaches regardless of the order each coach's list produced it.
+ *
+ * @param {{ teamId: string, slotId: string }} a
+ * @param {{ teamId: string, slotId: string }} b
+ * @returns {string}
+ */
+export function conflictPairKey(a, b) {
+  return [`${a.teamId}::${a.slotId}`, `${b.teamId}::${b.slotId}`].sort().join('|');
+}
 
 /**
  * Evaluate the quality of practice schedule assignments and emit metrics
  * used by the admin dashboard and regression tests.
+ *
+ * `coachConflicts` carries one entry per overlapping pair of assignments, so a pair of teams
+ * sharing two coaches (head plus assistant) is one conflict, charged once by the optimizer's
+ * fitness and once as a pipeline issue; `coachIds` lists every coach the pair shares and
+ * `coachId` the first of them. `coachLoad` still counts each coach's own load.
  *
  * @param {Object} params
  * @param {Array<{ teamId: string, slotId: string }>} params.assignments -
  *   Array of practice assignments linking teams to slots.
  * @param {Array<{ teamId: string, reason: string }>} [params.unassigned=[]] -
  *   Teams that could not be scheduled automatically.
- * @param {Array<{ id: string, division: string, coachId?: string | null }>} params.teams -
+ * @param {Array<{ id: string, division: string, coachId?: string | null, assistantCoachIds?: string[] | null }>} params.teams -
  *   Teams participating in the scheduling run. Each team must provide an `id` and `division`.
  * @param {Array<{ id: string, capacity: number, start: string | Date, end: string | Date, day?: string | null }>} params.slots -
  *   Slot catalogue with capacity and timing metadata.
@@ -51,6 +69,7 @@ import { SlotSchema, TeamSchema } from './schemas/index.js';
  *   }>,
  *   coachConflicts: Array<{
  *     coachId: string,
+ *     coachIds: Array<string>,
  *     teams: Array<{ teamId: string, slotId: string }>,
  *     reason: string,
  *   }>,
@@ -167,6 +186,7 @@ export function evaluatePracticeSchedule({
       id: team.id,
       division: team.division,
       coachId: team.coachId ?? null,
+      coachIds: listTeamCoachIds(team),
     });
   }
 
@@ -284,10 +304,10 @@ export function evaluatePracticeSchedule({
     divisionAssignments.push({ team, slot });
     assignmentsByDivision.set(team.division, divisionAssignments);
 
-    if (team.coachId) {
-      const coachAssignments = assignmentsByCoach.get(team.coachId) ?? [];
+    for (const coachId of team.coachIds) {
+      const coachAssignments = assignmentsByCoach.get(coachId) ?? [];
       coachAssignments.push({ teamId: team.id, slot });
-      assignmentsByCoach.set(team.coachId, coachAssignments);
+      assignmentsByCoach.set(coachId, coachAssignments);
     }
 
     const baseSlotId = slot.baseSlotId;
@@ -475,7 +495,7 @@ export function evaluatePracticeSchedule({
   const fairnessConcerns = calculateFairnessConcerns(baseSlotDistribution, assignmentsByDivision);
 
   const coachLoad = {};
-  const coachConflicts = [];
+  const conflictsByPair = new Map();
   for (const [coachId, coachAssignments] of assignmentsByCoach.entries()) {
     const sortedAssignments = coachAssignments
       .map(({ teamId, slot }) => ({
@@ -493,7 +513,6 @@ export function evaluatePracticeSchedule({
       distinctDays: distinctDays.size,
     };
 
-    const conflicts = [];
     for (let i = 0; i < sortedAssignments.length - 1; i += 1) {
       const current = sortedAssignments[i];
       for (let j = i + 1; j < sortedAssignments.length; j += 1) {
@@ -501,8 +520,15 @@ export function evaluatePracticeSchedule({
         if (candidate.start >= current.end) {
           break;
         }
-        conflicts.push({
+        const pairKey = conflictPairKey(current, candidate);
+        const existing = conflictsByPair.get(pairKey);
+        if (existing) {
+          existing.coachIds.push(coachId);
+          continue;
+        }
+        conflictsByPair.set(pairKey, {
           coachId,
+          coachIds: [coachId],
           teams: [
             { teamId: current.teamId, slotId: current.slotId },
             { teamId: candidate.teamId, slotId: candidate.slotId },
@@ -511,10 +537,8 @@ export function evaluatePracticeSchedule({
         });
       }
     }
-    if (conflicts.length > 0) {
-      coachConflicts.push(...conflicts);
-    }
   }
+  const coachConflicts = [...conflictsByPair.values()];
 
   const totalTeams = teams.length;
   const assignedTeams = assignedTeamIds.size;
