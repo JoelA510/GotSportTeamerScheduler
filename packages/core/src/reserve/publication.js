@@ -39,7 +39,11 @@
  */
 
 import { SCHEDULE_EXPORT_COLUMNS, SCHEDULE_EXPORT_HEADERS } from '../outputGeneration.js';
-import { coachExportCells, coachesOfTeamRow } from '../people/coachList.js';
+import {
+  COACH_SOURCE_DISAGREEMENT_CODES,
+  coachExportCells,
+  coachesOfTeamRow,
+} from '../people/coachList.js';
 
 import {
   FIXTURE_SIDE,
@@ -180,7 +184,7 @@ function fillTeam(row, teamId, displayName, directory, divisionLabel, coachCells
  * Project reserved slots and unplaced fixtures into export rows.
  *
  * @param {{ slots?: ReadonlyArray<import('./types.js').ReservedSlot>, unplaced?: ReadonlyArray<import('./types.js').UnplacedFixture>, teams?: ReadonlyArray<Object> }} input
- * @returns {{ rows: import('./types.js').PublicationRow[], columns: ReadonlyArray<string>, findings: import('./types.js').ReserveFinding[], coachFindings: Array<import('../people/types.js').PeopleFinding>, status: string, meta: import('./types.js').ReserveMeta }}
+ * @returns {{ rows: import('./types.js').PublicationRow[], columns: ReadonlyArray<string>, findings: import('./types.js').ReserveFinding[], status: string, meta: import('./types.js').ReserveMeta }}
  */
 export function publicationRowsFor(input) {
   const meta = createReserveMeta();
@@ -193,18 +197,37 @@ export function publicationRowsFor(input) {
   // Reconciled **once per team**, not once per row. A team with five unplaced
   // fixtures produces five rows, and reconciling inside `fillTeam()` reported
   // its one disagreement five times — a finding count that scaled with the
-  // export rather than with the facts. People findings also stay out of
-  // `findings`: that list is the reserve vocabulary and `deriveReserveStatus()`
-  // reads it.
-  /** @type {Array<import('../people/types.js').PeopleFinding>} */
-  const coachFindings = [];
+  // export rather than with the facts.
+  //
+  // The disagreement lands in `findings`, in **this** module's vocabulary.
+  // Carrying it out on a separate `coachFindings` key made it inert: produced
+  // here, read by nothing, and therefore silently dropped on the reserve /
+  // TIME TBD path while its twin in `outputGeneration.js` reached an operator.
+  // `deriveReserveStatus()` reads `findings`, so every existing consumer of
+  // this projection sees it with no new reader to write.
   /** @type {Map<string, { coaches: string, emails: string }>} */
   const coachCells = new Map();
   for (const team of input.teams ?? []) {
     const reconciled = coachesOfTeamRow(team);
-    coachFindings.push(...reconciled.findings);
+    const disagreements = reconciled.findings.filter((finding) =>
+      COACH_SOURCE_DISAGREEMENT_CODES.has(finding.code)
+    );
+    if (disagreements.length > 0) {
+      findings.push(
+        makeReserveFinding(
+          RESERVE_REASON.TEAM_COACH_SOURCES_DISAGREE,
+          `team "${team.id}" has ${disagreements.length} coach-source disagreement(s) (${[...new Set(disagreements.map((finding) => finding.code))].sort().join(', ')}); every coach is exported and none is treated as the team's primary`,
+          {
+            teamId: String(team.id),
+            codes: [...new Set(disagreements.map((finding) => finding.code))].sort(),
+            disagreements: disagreements.length,
+          }
+        )
+      );
+    }
     coachCells.set(String(team.id), coachExportCells(reconciled.coaches));
   }
+
   const slots = input.slots ?? [];
   const unplaced = input.unplaced ?? [];
 
@@ -318,7 +341,6 @@ export function publicationRowsFor(input) {
     rows,
     columns: SCHEDULE_EXPORT_COLUMNS,
     findings,
-    coachFindings,
     status: deriveReserveStatus(findings),
     meta,
   };

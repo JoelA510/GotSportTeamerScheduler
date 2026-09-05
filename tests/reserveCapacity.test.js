@@ -472,6 +472,43 @@ describe('acceptance 1 :: assigning teams to an unnamed slot leaves its time and
     expect(clash.meta.slotsMoved).toBe(0);
   });
 
+  it('reports a team whose two sources disagree about its coaches, in this vocabulary', () => {
+    // 8.2. The publication projection reconciles each team's coaches through
+    // `people/coachList.js`, and a disagreement between two sources used to
+    // leave on a separate `coachFindings` key that nothing read — produced
+    // here and silently dropped, in the artifact path that task exists to fix.
+    // It is re-expressed as a reserve code so `deriveReserveStatus()` and every
+    // existing consumer of this projection see it.
+    const one = unnamed[0];
+    const contested = {
+      id: 'contested-team',
+      name: 'a team this test constructed',
+      coachId: 'from-the-legacy-columns',
+      coachName: 'From The Legacy Columns',
+      coaches: [{ personId: 'from-the-reconciled-list', displayName: 'Reconciled', slot: 1 }],
+    };
+    const projection = publicationRowsFor({ slots: [one], teams: [contested] });
+    const reported = observe(projection.findings).filter(
+      (finding) => finding.code === RESERVE_REASON.TEAM_COACH_SOURCES_DISAGREE
+    );
+    expect(reported).toHaveLength(1);
+    expect(reported[0].details.teamId).toBe('contested-team');
+    expect(reported[0].severity).toBe(RESERVE_SEVERITY.COMPROMISE);
+
+    // POSITIVE CONTROL: one source, no disagreement — so the code is about the
+    // data and not about every team that reaches this projection.
+    const settled = publicationRowsFor({
+      slots: [one],
+      teams: [{ id: 'settled-team', name: 'settled', coachId: 'c1', coachName: 'One' }],
+    });
+    expect(
+      settled.findings.filter(
+        (finding) => finding.code === RESERVE_REASON.TEAM_COACH_SOURCES_DISAGREE
+      )
+    ).toEqual([]);
+    expect(settled.rows.length).toBeGreaterThan(0);
+  });
+
   it('publishes a bound slot and an unbound one, and both keep their field and time', () => {
     const one = unnamed[0];
     const bound = /** @type {Object} */ (result.slots.find((entry) => entry.id === one.id));

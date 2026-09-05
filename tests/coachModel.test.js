@@ -40,7 +40,11 @@ import {
   teamCoachSources,
   teamsWithCoachSourceDisagreement,
 } from '@squadlogic/core/people/index.js';
-import { makeUnplacedFixture, publicationRowsFor } from '@squadlogic/core/reserve/index.js';
+import {
+  RESERVE_REASON,
+  makeUnplacedFixture,
+  publicationRowsFor,
+} from '@squadlogic/core/reserve/index.js';
 
 /** Codes present on a reconciliation result. */
 const codesOf = (result) => result.findings.map((finding) => finding.code);
@@ -466,38 +470,81 @@ describe('coach model :: the schedule export truncates no team against the corpu
     expect(missing.every((pair) => pair.startsWith(`${rosterTeams[0].teamId}|`))).toBe(true);
   });
 
-  it('reconciles each team once, however many rows it produces', () => {
-    const team = rosterTeams[0];
-    const one = publicationRowsFor({
+  it('reconciles each team once and reports its disagreement once, however many rows', () => {
+    // A team whose two sources genuinely disagree, so the equality below is
+    // about the per-team hoist and not about two runs that both found nothing.
+    const disagreeing = [
+      {
+        id: 'contested',
+        name: 'contested',
+        division: 'derived-at-test-time',
+        coachId: 'from-the-legacy-columns',
+        coachName: 'From The Legacy Columns',
+        coaches: [{ personId: 'from-the-reconciled-list', displayName: 'Reconciled', slot: 1 }],
+      },
+    ];
+    const project = (count) =>
+      publicationRowsFor({
+        slots: [],
+        unplaced: Array.from({ length: count }, (_, index) =>
+          makeUnplacedFixture({
+            fixtureId: `f${index}`,
+            label: `fixture ${index}`,
+            homeTeamId: 'contested',
+            reason: 'a fixture constructed by this test',
+          })
+        ),
+        teams: disagreeing,
+      });
+
+    const one = project(1);
+    const five = project(5);
+    const coachCodes = (result) =>
+      result.findings.filter(
+        (finding) => finding.code === RESERVE_REASON.TEAM_COACH_SOURCES_DISAGREE
+      );
+
+    // Meta-assertion first: without a disagreement the equality is vacuous.
+    expect(coachCodes(one)).toHaveLength(1);
+    expect(five.rows.length).toBe(one.rows.length * 5);
+    // Five times the rows, the same facts. Reconciling inside the row builder
+    // multiplied one team's findings by its row count.
+    expect(coachCodes(five)).toHaveLength(1);
+    expect(coachCodes(one)[0].details.teamId).toBe('contested');
+    // Surfaced in the reserve vocabulary, so it reaches `deriveReserveStatus()`
+    // and every existing consumer, rather than sitting on an inert key.
+    expect(coachCodes(one)[0].severity).toBe('compromise');
+    expect(one.status).toBe('compromised');
+  });
+
+  it('POSITIVE CONTROL: a team whose sources agree raises no reserve coach finding', () => {
+    const agreeing = [
+      {
+        id: 'settled',
+        name: 'settled',
+        division: 'derived-at-test-time',
+        coaches: [{ personId: 'p1', displayName: 'One', slot: 1 }],
+      },
+    ];
+    const projected = publicationRowsFor({
       slots: [],
       unplaced: [
         makeUnplacedFixture({
           fixtureId: 'f1',
           label: 'one',
-          homeTeamId: team.teamId,
+          homeTeamId: 'settled',
           reason: 'a fixture constructed by this test',
         }),
       ],
-      teams: exportTeams,
+      teams: agreeing,
     });
-    const five = publicationRowsFor({
-      slots: [],
-      unplaced: [1, 2, 3, 4, 5].map((n) =>
-        makeUnplacedFixture({
-          fixtureId: `f${n}`,
-          label: `fixture ${n}`,
-          homeTeamId: team.teamId,
-          reason: 'a fixture constructed by this test',
-        })
-      ),
-      teams: exportTeams,
-    });
-    // Five times the rows, the same facts. Reconciling inside the row builder
-    // multiplied one team's findings by its row count.
-    expect(five.rows.length).toBe(one.rows.length * 5);
-    expect(five.coachFindings.length).toBe(one.coachFindings.length);
-    // Meta-assertion: a run with no findings at all would satisfy the equality.
-    expect(one.coachFindings.length).toBeGreaterThan(0);
+    expect(
+      projected.findings.filter(
+        (finding) => finding.code === RESERVE_REASON.TEAM_COACH_SOURCES_DISAGREE
+      )
+    ).toEqual([]);
+    // …and the projection did run, so the empty result is a fact about the data.
+    expect(projected.rows.length).toBeGreaterThan(0);
   });
 
   it('the reserved-slot projection prints the same coaches as the schedule export', () => {

@@ -1,8 +1,8 @@
 /**
  * Repo-wide reachability audit for every frozen reason-code table in
  * `packages/core/src` — the generalisation of the per-module audit
- * `tests/attribution.test.js` already carries. 19 vocabularies, 429 codes, of
- * which 418 are shown to be producible and 11 are named as holes.
+ * `tests/attribution.test.js` already carries. 19 vocabularies, 430 codes, of
+ * which 419 are shown to be producible and 11 are named as holes.
  *
  * **The defect this exists to catch.** Four times now, in four unrelated
  * modules, a reason code has been declared, given a severity, documented, and
@@ -2704,10 +2704,19 @@ harvest(
   accountForFixtures({ expectedFixtureIds: [], placedFixtureIds: [], unplaced: [] })
 );
 harvest(
-  'publicationRowsFor(a bound slot, an unbound one and an unplaced fixture)',
+  'publicationRowsFor(a bound slot, an unbound one, an unplaced fixture and a team whose two sources disagree about its coaches)',
   publicationRowsFor({
     slots: [unnamedSlots[0], boundSlots.slots[0]],
     unplaced: [unplacedFixture],
+    teams: [
+      {
+        id: unplacedFixture.homeTeamId,
+        name: 'a team the reason-code reachability audit constructed',
+        coachId: 'from-the-legacy-columns',
+        coachName: 'From The Legacy Columns',
+        coaches: [{ personId: 'from-the-reconciled-list', displayName: 'Reconciled', slot: 1 }],
+      },
+    ],
   })
 );
 harvest(
