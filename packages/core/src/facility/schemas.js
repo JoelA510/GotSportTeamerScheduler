@@ -26,7 +26,12 @@ export const FacilityVenueSchema = z
   .object({
     id: IdSchema,
     name: z.string().min(1),
-    lit: z.boolean().default(false),
+    /**
+     * `null` is "no source states it" — the practice-only venues of the
+     * season-2026 corpus (GAP-05). Distinct from `false`, which is a stated
+     * fact; `availability/` reports the difference as `LIGHTING_UNDECLARED`.
+     */
+    lit: z.boolean().nullable().default(false),
     notes: z.string().nullable().default(null),
     /** The site's own prose about its overlap geometry, carried for audit. */
     overlapNote: z.string().nullable().default(null),

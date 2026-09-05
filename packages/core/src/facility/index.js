@@ -78,6 +78,13 @@ export {
 } from './venueComplex.js';
 
 export {
+  PRACTICE_SURFACE_RESOLUTION,
+  practiceSurfaceName,
+  resolvePracticeSurface,
+  resolvePracticeVenue,
+} from './practiceSurfaces.js';
+
+export {
   SEASON_2026_FORMAT_EQUIPMENT,
   SEASON_2026_VENUE_COMPLEXES,
   buildFacilityGraphFromSeason2026,
@@ -87,3 +94,10 @@ export {
   season2026VenueId,
   toSeason2026FacilityGraphInput,
 } from './adapters/season2026Geometry.js';
+
+export {
+  SEASON_2026_PRACTICE_LAYER,
+  buildSeason2026PracticeFacilityGraph,
+  extendFacilityGraphInputWithSeason2026PracticeLayer,
+  season2026PracticeSurfaceId,
+} from './adapters/season2026PracticeGeometry.js';
