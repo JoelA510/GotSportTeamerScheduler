@@ -37,7 +37,11 @@
  *   it. They are excluded by their **exact relative path**, not by shape: any
  *   other file under the corpus root is scanned, and one this guard does not
  *   know how to read fails rather than being skipped — a third `README.md`
- *   included.
+ *   included. The exclusion is from the **allowlist only**. Every list-free
+ *   rule — every shape above — still runs on them, because the stated reason
+ *   (their vocabulary would drown the list) is a reason about the list and
+ *   about nothing else. There are two contracts here, `allowlist-exempt` and
+ *   `shape-checked`; prose gets the first, and no file gets a third.
  *
  * The subject set is a **recursive** walk of the corpus root, never a list in
  * this file, so a CSV added to a subdirectory that does not exist yet is still
@@ -121,6 +125,13 @@ const MIN_PERSON_CELLS_SCANNED = 3000;
 const MIN_DATES_CHECKED = 2000;
 
 /**
+ * A floor on the dates read out of the two prose files, which is what proves
+ * the list-free rules reached their *contents* rather than only their paths.
+ * The corpus prose quotes 6 dates.
+ */
+const MIN_PROSE_DATES = 6;
+
+/**
  * Reviewed prose, not data. Excluded by **exact relative path** rather than by
  * extension or basename: an exclusion keyed on shape would skip any future
  * `README.md` anywhere under the corpus root, including one holding the names
@@ -178,7 +189,15 @@ const FORBIDDEN_PATTERNS = Object.freeze([
  */
 const DATE_SHAPES = Object.freeze([
   { name: 'iso-date', pattern: /(\d{4})-\d{1,2}-\d{1,2}/g, yearGroup: 1 },
-  { name: 'slash-date', pattern: /\d{1,2}\/\d{1,2}\/(\d{2,4})/g, yearGroup: 1 },
+  // The month and day are bounded so that a triple of plain numbers is not
+  // read as a date: the corpus prose describes a field as `60/50/40`, which the
+  // unbounded shape reported as a date in year 40. Bounding costs nothing —
+  // all 1,267 slash dates in the corpus still match, and still only in 2026.
+  {
+    name: 'slash-date',
+    pattern: /\b(?:0?[1-9]|1[0-2])\/(?:0?[1-9]|[12]\d|3[01])\/(\d{2,4})\b/g,
+    yearGroup: 1,
+  },
   { name: 'dot-date', pattern: /\d{1,2}\.\d{1,2}\.(\d{2,4})/g, yearGroup: 1 },
 ]);
 
@@ -735,6 +754,8 @@ function filesUnder(root) {
  * @returns {{
  *   files: string[],
  *   pathsChecked: number,
+ *   proseChecked: string[],
+ *   proseDatesChecked: number,
  *   patternCellsScanned: number,
  *   datesChecked: number,
  *   proseFiles: string[],
@@ -758,6 +779,9 @@ function scanCorpus(root) {
   const files = [];
   /** @type {string[]} */
   const proseFiles = [];
+  /** @type {string[]} */
+  const proseChecked = [];
+  let proseDatesChecked = 0;
   /** @type {string[]} */
   const unreadableFiles = [];
   const unknown = [];
@@ -822,6 +846,15 @@ function scanCorpus(root) {
   for (const rel of filesUnder(root)) {
     if (EXCLUDED_FILES.includes(rel)) {
       proseFiles.push(rel);
+      // Allowlist-exempt, not check-exempt. Reviewed prose is the reason these
+      // two are off the *list*; it is no reason at all to skip the rules that
+      // need no list, and these are the two files most likely to describe the
+      // real season in sentences.
+      const before = datesChecked;
+      for (const segment of rel.split('/')) checkPatterns(rel, '(path)', 0, segment);
+      checkPatterns(rel, '(prose)', 1, readFileSync(path.join(root, rel), 'utf8'));
+      proseDatesChecked += datesChecked - before;
+      proseChecked.push(rel);
       continue;
     }
     const extension = path.extname(rel);
@@ -910,6 +943,8 @@ function scanCorpus(root) {
   return {
     files,
     pathsChecked,
+    proseChecked,
+    proseDatesChecked,
     patternCellsScanned,
     datesChecked,
     proseFiles,
@@ -951,6 +986,16 @@ describe('season-2026 corpus vocabulary', () => {
       // Excluded by identity, not by shape: exactly these two paths, so a
       // third `README.md` anywhere under the corpus root is not skipped.
       expect([...scan.proseFiles].sort()).toEqual([...EXCLUDED_FILES].sort());
+    });
+
+    it('runs every list-free rule on the prose it keeps off the allowlist', () => {
+      // Compared against the constant, not against the scan's own file list,
+      // so dropping the prose checks leaves this empty rather than agreeing
+      // with itself.
+      expect([...scan.proseChecked].sort()).toEqual([...EXCLUDED_FILES].sort());
+      // And it read their contents, not merely their paths: the corpus prose
+      // quotes dates, and those dates went through the year gate.
+      expect(scan.proseDatesChecked).toBeGreaterThanOrEqual(MIN_PROSE_DATES);
     });
 
     it('checked the path of every file it read, not only its contents', () => {
@@ -1386,6 +1431,28 @@ describe('season-2026 corpus vocabulary', () => {
       expect(hits.length).toBeGreaterThan(0);
       expect(hits.every((hit) => hit.column === '(path)')).toBe(true);
     });
+
+    it.each([['README.md'], ['practice/README.md']])(
+      'reports a leak written into the prose of %s',
+      (proseFile) => {
+        // The excluded files are the two most likely to describe the real
+        // season in sentences, and the exclusion once covered every rule
+        // rather than only the allowlist.
+        const root = scratchCorpus();
+        const target = path.join(root, proseFile);
+        writeFileSync(
+          target,
+          `${readFileSync(target, 'utf8')}\nContact zzq@zzqfictional.example or (925) 555-0134.\n`
+        );
+
+        const control = scanCorpus(root);
+        const words = control.forbidden
+          .filter((hit) => hit.file === proseFile)
+          .map((hit) => hit.word);
+        expect(words).toContainEqual(expect.stringContaining('email'));
+        expect(words).toContainEqual(expect.stringContaining('phone'));
+      }
+    );
 
     it('reports a README dropped into a subdirectory rather than skipping it', () => {
       // Excluding by shape would swallow this file whole. Excluding by exact
