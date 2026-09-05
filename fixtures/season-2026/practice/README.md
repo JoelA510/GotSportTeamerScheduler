@@ -39,10 +39,59 @@ identities replaced. Concretely:
 - **Dropped entirely:** email addresses, phone numbers, exact dates of birth,
   URLs, and the name of anyone who verified a constraint. Birth **year** is kept
   because age-group placement needs it.
-- **Every file passes two independent leak audits** — one inside the writer that
-  refuses to emit a cell still containing a real token, and one that re-scans the
-  written files for full names, name tokens, organisation names, emails, URLs and
-  date-of-birth patterns. Both report zero.
+- **Two leak audits ran at authoring time, and both were denylists.** One sat
+  inside the writer and refused to emit a cell still holding a token from the
+  real→pseudonym map; the other re-scanned the written files for full names,
+  name tokens, organisation names, emails, URLs and date-of-birth patterns. Both
+  reported zero, and that zero was true of what they could see. **A denylist only
+  recognises a name someone already enumerated.** The map covered the club's own
+  people, teams and venues, so every _opposing_ club and every town the source
+  named was invisible to both passes. The second audit's "organisation names"
+  were the organisation names on that list, not organisation names in general;
+  the sentence this replaces claimed the general thing, and that claim was wrong.
+
+  The 8.0 loader review found the gap in `game_change_log.csv`; a survey of all
+  21 corpus CSVs for this fix found one more, in a free-text column of a second
+  file. What is now true:
+  - **18 rows across 2 files and 3 columns were scrubbed** — 5 identifying
+    entities (4 opposing clubs, 1 town) written as 10 distinct source tokens
+    over 44 occurrences, each token mapped 1:1 to the same invented name
+    everywhere it appears, in the same texture as the rest of the corpus. One of
+    those tokens is two words where its replacement is two as well, so 58
+    replacement words were written in all. Row counts, column counts, ordering,
+    dates, times and the distinct-value count of every column of every file are
+    unchanged. The doubled club token and the upper/lower-case variant the
+    source export produced are preserved: they are a parsing hazard worth
+    keeping.
+  - **The standing guard is an allowlist, not a denylist.**
+    [`tests/season2026CorpusVocabulary.test.js`](../../../tests/season2026CorpusVocabulary.test.js)
+    writes down every alphabetic word the corpus may contain outside its
+    person-name columns and fails on any word that is not on it. A leak no
+    longer has to be recognised to be caught — it only has to be new, which is
+    what catches the organisation name nobody has thought of yet. It walks the
+    corpus root **recursively**, so a file dropped into a subdirectory that does
+    not exist yet is still scanned; it reads `../facility_geometry.json` as well
+    as the CSVs and refuses any other extension rather than skipping it; it
+    checks column headers whether or not the column's cells are exempt; and it
+    proves it read whole files rather than the columns a header-keyed parse
+    happened to return. The two corpus `README.md` files are the one deliberate
+    exclusion — reviewed prose, whose vocabulary would drown the list. Adding a
+    legitimate word to the corpus fails the guard until a human puts that word
+    on the list. That is the point.
+  - **What would still get through, stated plainly.** The allowlist does not
+    cover the person-name columns — 1,400-odd invented names would swamp it — so
+    a real person's name substituted into a name column passes, and only the
+    organisation-designator rule (`FC`, `Academy`, `League`, …) would notice an
+    organisation placed there. A real name that happens to already be a word on
+    the allowlist passes too. Neither the scrub nor the guard proves a negative
+    about a name it has never seen; what the guard proves is that no _unseen_
+    word is in the corpus.
+  - **One real token is knowingly retained.** `field_equipment.csv`'s `item`
+    column names a goal brand rather than a party to the season, and three
+    fixtures elsewhere in the repo carry that brand and two others, so it is a
+    repo-wide convention rather than this corpus's decision. It is on the
+    allowlist and named here so the retention is visible; removing it is an
+    operator call, not a silent one.
 
 The real→pseudonym map is **not** in this repo and must not be committed.
 
