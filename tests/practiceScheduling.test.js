@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
 
-import { schedulePractices } from '../packages/core/src/practiceScheduling.js';
+import { listTeamCoachIds, schedulePractices } from '../packages/core/src/practiceScheduling.js';
 
 function createSlot({ id, day, startHour, endHour, capacity = 1, baseSlotId = undefined }) {
   const start = new Date(`2024-08-05T${String(startHour).padStart(2, '0')}:00:00.000Z`);
@@ -461,4 +461,193 @@ test('does not relocate locked teams when resolving unassigned entries', () => {
   assert.equal(result.unassigned[0].teamId, 'T2');
   const assignmentMap = new Map(result.assignments.map((entry) => [entry.teamId, entry.slotId]));
   assert.equal(assignmentMap.get('T1'), 'wed');
+});
+
+// ---------------------------------------------------------------------------
+// 8.1 -- every coach on a team enters the conflict check, not only the head coach.
+// `createSlot` pins every slot to one calendar day, so two slots overlap in time
+// exactly when their hours overlap; the `day` label plays no part.
+// ---------------------------------------------------------------------------
+
+test('listTeamCoachIds lists head and assistants once each and drops empty ids', () => {
+  assert.deepEqual(listTeamCoachIds({ id: 'T1', coachId: 'head-1' }), ['head-1']);
+  assert.deepEqual(listTeamCoachIds({ id: 'T1', coachId: null, assistantCoachIds: null }), []);
+  assert.deepEqual(
+    listTeamCoachIds({
+      id: 'T1',
+      coachId: 'head-1',
+      assistantCoachIds: ['assistant-1', 'head-1', '', null, 'assistant-1'],
+    }),
+    ['head-1', 'assistant-1']
+  );
+});
+
+test('listTeamCoachIds reads the teams-column spelling assistant_coach_ids as well', () => {
+  assert.deepEqual(
+    listTeamCoachIds({ id: 'T1', coachId: 'head-1', assistant_coach_ids: ['assistant-1'] }),
+    ['head-1', 'assistant-1']
+  );
+  // The engine spelling wins when both are present, as in teamSnapshot.js.
+  assert.deepEqual(
+    listTeamCoachIds({
+      id: 'T1',
+      coachId: null,
+      assistantCoachIds: ['assistant-1'],
+      assistant_coach_ids: ['assistant-2'],
+    }),
+    ['assistant-1']
+  );
+});
+
+test("an assistant coach's unavailability blocks the slot as a hard constraint", () => {
+  const teams = [{ id: 'T1', division: 'U10', coachId: null, assistantCoachIds: ['assistant-1'] }];
+  const slots = [createSlot({ id: 'mon', day: 'Mon', startHour: 17, endHour: 18 })];
+
+  const result = schedulePractices({
+    teams,
+    slots,
+    coachPreferences: { 'assistant-1': { unavailableSlotIds: ['mon'] } },
+  });
+
+  assert.deepEqual(result.assignments, []);
+  assert.equal(result.unassigned.length, 1);
+  assert.equal(result.unassigned[0].reason, 'coach availability excludes all slots');
+});
+
+test('a present but non-array assistantCoachIds is rejected, never read as "no assistants"', () => {
+  const slots = [createSlot({ id: 'mon', day: 'Mon', startHour: 17, endHour: 18 })];
+  assert.throws(
+    () =>
+      schedulePractices({
+        teams: [{ id: 'T1', division: 'U10', coachId: 'head-1', assistantCoachIds: 'assistant-1' }],
+        slots,
+      }),
+    /assistantCoachIds must be an array/
+  );
+});
+
+test('two teams sharing an assistant coach with only overlapping slots: the second is reported as a coach conflict', () => {
+  const teams = [
+    { id: 'T1', division: 'U10', coachId: 'head-1', assistantCoachIds: ['assistant-shared'] },
+    { id: 'T2', division: 'U12', coachId: 'head-2', assistantCoachIds: ['assistant-shared'] },
+  ];
+  const slots = [
+    createSlot({ id: 'mon-a', day: 'Mon', startHour: 17, endHour: 18, capacity: 2 }),
+    createSlot({ id: 'mon-b', day: 'Mon', startHour: 17, endHour: 18, capacity: 2 }),
+  ];
+
+  const result = schedulePractices({ teams, slots });
+
+  assert.equal(result.assignments.length, 1);
+  assert.equal(result.unassigned.length, 1);
+  assert.equal(result.unassigned[0].reason, 'coach schedule conflicts on all slots');
+});
+
+test('control: the same two teams with distinct assistants both fit the overlapping slots', () => {
+  const teams = [
+    { id: 'T1', division: 'U10', coachId: 'head-1', assistantCoachIds: ['assistant-1'] },
+    { id: 'T2', division: 'U12', coachId: 'head-2', assistantCoachIds: ['assistant-2'] },
+  ];
+  const slots = [
+    createSlot({ id: 'mon-a', day: 'Mon', startHour: 17, endHour: 18, capacity: 1 }),
+    createSlot({ id: 'mon-b', day: 'Mon', startHour: 17, endHour: 18, capacity: 1 }),
+  ];
+
+  const result = schedulePractices({ teams, slots });
+
+  assert.equal(result.assignments.length, 2);
+  assert.deepEqual(result.unassigned, []);
+});
+
+test('a team with no head coach still enters the conflict check through its assistant coach', () => {
+  // Proves the check reads past `coachId`: T1 has no head coach at all, so a head-only check
+  // would skip it and place both teams at the same hour.
+  const teams = [
+    { id: 'T1', division: 'U10', coachId: null, assistantCoachIds: ['assistant-shared'] },
+    { id: 'T2', division: 'U12', coachId: 'head-2', assistantCoachIds: ['assistant-shared'] },
+  ];
+  const slots = [
+    createSlot({ id: 'mon-a', day: 'Mon', startHour: 17, endHour: 18, capacity: 2 }),
+    createSlot({ id: 'mon-b', day: 'Mon', startHour: 17, endHour: 18, capacity: 2 }),
+  ];
+
+  const result = schedulePractices({ teams, slots });
+
+  assert.equal(result.assignments.length, 1);
+  assert.equal(result.unassigned.length, 1);
+  assert.equal(result.unassigned[0].reason, 'coach schedule conflicts on all slots');
+});
+
+test('two teams sharing an assistant coach are steered onto non-overlapping slots when one exists', () => {
+  const teams = [
+    { id: 'T1', division: 'U10', coachId: 'head-1', assistantCoachIds: ['assistant-shared'] },
+    { id: 'T2', division: 'U12', coachId: 'head-2', assistantCoachIds: ['assistant-shared'] },
+  ];
+  const slots = [
+    createSlot({ id: 'mon-a', day: 'Mon', startHour: 17, endHour: 18, capacity: 1 }),
+    createSlot({ id: 'mon-b', day: 'Mon', startHour: 17, endHour: 18, capacity: 1 }),
+    createSlot({ id: 'tue', day: 'Tue', startHour: 19, endHour: 20, capacity: 1 }),
+  ];
+
+  const result = schedulePractices({ teams, slots });
+
+  assert.equal(result.assignments.length, 2);
+  assert.deepEqual(result.unassigned, []);
+  const slotById = new Map(slots.map((slot) => [slot.id, slot]));
+  const [first, second] = result.assignments.map((entry) => slotById.get(entry.slotId));
+  const overlap = first.start < second.end && second.start < first.end;
+  assert.equal(
+    overlap,
+    false,
+    `shared assistant double-booked across ${first.id} and ${second.id}`
+  );
+});
+
+test('a locked assignment books every coach on the locked team, not only its head coach', () => {
+  const teams = [
+    { id: 'T1', division: 'U10', coachId: 'head-1', assistantCoachIds: ['assistant-shared'] },
+    { id: 'T2', division: 'U12', coachId: 'head-2', assistantCoachIds: ['assistant-shared'] },
+  ];
+  const slots = [
+    createSlot({ id: 'mon-a', day: 'Mon', startHour: 17, endHour: 18, capacity: 2 }),
+    createSlot({ id: 'mon-b', day: 'Mon', startHour: 17, endHour: 18, capacity: 1 }),
+    createSlot({ id: 'tue', day: 'Tue', startHour: 19, endHour: 20, capacity: 1 }),
+  ];
+
+  const result = schedulePractices({
+    teams,
+    slots,
+    lockedAssignments: [{ teamId: 'T1', slotId: 'mon-a' }],
+  });
+
+  const assignmentMap = new Map(result.assignments.map((entry) => [entry.teamId, entry.slotId]));
+  assert.equal(assignmentMap.get('T1'), 'mon-a');
+  assert.equal(assignmentMap.get('T2'), 'tue');
+  assert.deepEqual(result.unassigned, []);
+});
+
+test('teams are processed busiest-coach-first across head and assistant coaches, ties by id', () => {
+  // a-shared coaches three teams (T1, T2 and T6, which has no head coach), h3 coaches two, the
+  // rest one; processing order follows that load, ties broken by id.
+  const teams = [
+    { id: 'T5', division: 'U10', coachId: 'h5', assistantCoachIds: [] },
+    { id: 'T3', division: 'U10', coachId: 'h3' },
+    { id: 'T6', division: 'U10', coachId: null, assistantCoachIds: ['a-shared'] },
+    { id: 'T1', division: 'U10', coachId: 'h1', assistantCoachIds: ['a-shared'] },
+    { id: 'T4', division: 'U10', coachId: 'h3' },
+    { id: 'T2', division: 'U10', coachId: 'h2', assistantCoachIds: ['a-shared'] },
+  ];
+  const slots = [8, 9, 10, 11, 12, 13].map((hour) =>
+    createSlot({ id: `h${hour}`, day: 'Mon', startHour: hour, endHour: hour + 1 })
+  );
+
+  const result = schedulePractices({ teams, slots });
+
+  // `assignments` is returned sorted by team id, so processing order is read off the slots:
+  // every slot scores equally and the earliest start goes to whichever team is processed first.
+  assert.deepEqual(
+    Object.fromEntries(result.assignments.map((entry) => [entry.teamId, entry.slotId])),
+    { T1: 'h8', T2: 'h9', T6: 'h10', T3: 'h11', T4: 'h12', T5: 'h13' }
+  );
+  assert.deepEqual(result.unassigned, []);
 });

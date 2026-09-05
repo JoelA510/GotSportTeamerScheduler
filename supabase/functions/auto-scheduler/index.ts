@@ -12,8 +12,14 @@
 
 import { serve } from 'https://deno.land/std@0.223.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.3';
-import { z } from 'https://esm.sh/zod@3.23.8';
 import { evaluatePracticeSchedule } from '../_shared/engines/scoring-engine.ts';
+import { AutoSchedulerInputSchema } from '../_shared/schemas/auto-scheduler.ts';
+import {
+  checkHardConstraints,
+  prepareTeam,
+  type PreparedTeam,
+  type TimeWindow,
+} from '../_shared/engines/practice-coaches.ts';
 import {
   getUserFromRequest,
   getUserOrgIds,
@@ -24,76 +30,6 @@ import {
 } from '../_shared/auth.ts';
 import { checkRateLimit } from '../_shared/rateLimit.ts';
 import { edgeLogger } from '../_shared/logtail.ts';
-
-// ---------------------------------------------------------------------------
-// Input schema
-// ---------------------------------------------------------------------------
-
-const TeamSchema = z
-  .object({
-    id: z.string(),
-    division: z.string(),
-    coachId: z.string().nullable().optional(),
-  })
-  .passthrough();
-
-const SlotSchema = z
-  .object({
-    id: z.string(),
-    day: z.string().nullable().optional(),
-    start: z.string().or(z.date()),
-    end: z.string().or(z.date()),
-    capacity: z.number().int().min(0),
-    baseSlotId: z.string().optional(),
-  })
-  .passthrough();
-
-const CoachPreferenceSchema = z
-  .object({
-    preferredDays: z.array(z.string()).optional(),
-    preferredSlotIds: z.array(z.string()).optional(),
-    unavailableSlotIds: z.array(z.string()).optional(),
-  })
-  .passthrough();
-
-const AutoSchedulerInputSchema = z.object({
-  organizationId: z.string().uuid(),
-  seasonSettingsId: z.string().uuid().optional(),
-  teams: z.array(TeamSchema).min(1),
-  slots: z.array(SlotSchema).min(1),
-  coachPreferences: z.record(z.string(), CoachPreferenceSchema).optional().default({}),
-  divisionPreferences: z
-    .record(
-      z.string(),
-      z
-        .object({
-          preferredDays: z.array(z.string()).optional(),
-        })
-        .passthrough()
-    )
-    .optional()
-    .default({}),
-  lockedAssignments: z
-    .array(
-      z.object({
-        teamId: z.string(),
-        slotId: z.string(),
-      })
-    )
-    .optional()
-    .default([]),
-  scoringWeights: z.record(z.string(), z.number()).optional().default({}),
-  schoolDayEnd: z.string().optional(),
-  timezone: z.string().optional(),
-  config: z
-    .object({
-      timeBudgetMs: z.number().int().min(1000).max(25000).optional().default(25000),
-      maxIterations: z.number().int().min(10).max(5000).optional().default(2000),
-      seed: z.number().int().optional().default(42),
-    })
-    .optional()
-    .default({}),
-});
 
 // ---------------------------------------------------------------------------
 // Seeded PRNG (mulberry32)
@@ -113,30 +49,7 @@ function createPRNG(seed: number): () => number {
 // Hard constraint checking
 // ---------------------------------------------------------------------------
 
-interface TimeWindow {
-  start: Date;
-  end: Date;
-  teamId?: string;
-  slotId?: string;
-}
-
-function checkHardConstraints(
-  team: { id: string; coachId?: string | null },
-  slot: { id: string; start: Date; end: Date },
-  coachAssignments: Map<string, TimeWindow[]>,
-  slotCapacity: Map<string, number>,
-  coachPreferences: Record<string, { unavailableSlotIds?: string[] }>
-): boolean {
-  if ((slotCapacity.get(slot.id) ?? 0) <= 0) return false;
-  if (!team.coachId) return true;
-  const prefs = coachPreferences[team.coachId];
-  if (prefs?.unavailableSlotIds?.includes(slot.id)) return false;
-  const existing = coachAssignments.get(team.coachId) ?? [];
-  for (const a of existing) {
-    if (slot.start < a.end && slot.end > a.start) return false;
-  }
-  return true;
-}
+type SchedulerTeam = PreparedTeam & { division: string };
 
 // ---------------------------------------------------------------------------
 // Scoring wrapper
@@ -150,7 +63,7 @@ interface ScoringResult {
 function scoreSchedule(
   assignments: Array<{ teamId: string; slotId: string; source: string }>,
   unassigned: Array<{ teamId: string; reason: string }>,
-  teams: Array<{ id: string; division: string; coachId?: string | null }>,
+  teams: Array<SchedulerTeam>,
   slots: Array<{ id: string; day?: string | null; start: Date; end: Date; capacity: number }>
 ): ScoringResult {
   const evaluation = evaluatePracticeSchedule({
@@ -183,7 +96,7 @@ interface OptimizerState {
     string,
     { id: string; start: Date; end: Date; capacity: number; day?: string | null }
   >;
-  teamsById: Map<string, { id: string; division: string; coachId?: string | null }>;
+  teamsById: Map<string, SchedulerTeam>;
   slotCapacity: Map<string, number>;
   coachAssignments: Map<string, TimeWindow[]>;
   coachPreferences: Record<string, { unavailableSlotIds?: string[] }>;
@@ -193,7 +106,7 @@ interface OptimizerState {
 function buildState(
   assignments: Array<{ teamId: string; slotId: string; source: string }>,
   unassigned: Array<{ teamId: string }>,
-  teams: Array<{ id: string; division: string; coachId?: string | null }>,
+  teams: Array<SchedulerTeam>,
   slots: Array<{ id: string; start: Date; end: Date; capacity: number; day?: string | null }>,
   coachPreferences: Record<string, { unavailableSlotIds?: string[] }>
 ): OptimizerState {
@@ -222,10 +135,11 @@ function buildState(
   for (const [teamId, slotId] of assignmentMap) {
     const team = teamsById.get(teamId);
     const slot = slotsById.get(slotId);
-    if (team?.coachId && slot) {
-      const existing = coachAssignments.get(team.coachId) ?? [];
+    if (!team || !slot) continue;
+    for (const coachId of team.coachIds) {
+      const existing = coachAssignments.get(coachId) ?? [];
       existing.push({ teamId, slotId, start: slot.start, end: slot.end });
-      coachAssignments.set(team.coachId, existing);
+      coachAssignments.set(coachId, existing);
     }
   }
 
@@ -273,10 +187,11 @@ function tryMutate(
     newMap.delete(teamId);
     newCap.set(slotId, (newCap.get(slotId) ?? 0) + 1);
     const team = teamsById.get(teamId);
-    if (team?.coachId) {
-      const entries = newCoach.get(team.coachId) ?? [];
+    if (!team) return;
+    for (const coachId of team.coachIds) {
+      const entries = newCoach.get(coachId) ?? [];
       newCoach.set(
-        team.coachId,
+        coachId,
         entries.filter((e) => e.teamId !== teamId)
       );
     }
@@ -289,10 +204,10 @@ function tryMutate(
     if (!checkHardConstraints(team, slot, newCoach, newCap, coachPreferences)) return false;
     newMap.set(teamId, slotId);
     newCap.set(slotId, (newCap.get(slotId) ?? 0) - 1);
-    if (team.coachId) {
-      const entries = newCoach.get(team.coachId) ?? [];
+    for (const coachId of team.coachIds) {
+      const entries = newCoach.get(coachId) ?? [];
       entries.push({ teamId, slotId, start: slot.start, end: slot.end });
-      newCoach.set(team.coachId, entries);
+      newCoach.set(coachId, entries);
     }
     return true;
   };
@@ -356,7 +271,7 @@ function tryMutate(
 // ---------------------------------------------------------------------------
 
 function generateGreedySeed(
-  teams: Array<{ id: string; division: string; coachId?: string | null }>,
+  teams: Array<SchedulerTeam>,
   slots: Array<{ id: string; start: Date; end: Date; capacity: number; day?: string | null }>,
   lockedAssignments: Array<{ teamId: string; slotId: string }>,
   coachPreferences: Record<string, { unavailableSlotIds?: string[] }>
@@ -378,10 +293,10 @@ function generateGreedySeed(
     assignments.push({ teamId, slotId, source });
     assignedTeamIds.add(teamId);
     slotCapacity.set(slotId, (slotCapacity.get(slotId) ?? 0) - 1);
-    if (team.coachId) {
-      const existing = coachAssignments.get(team.coachId) ?? [];
+    for (const coachId of team.coachIds) {
+      const existing = coachAssignments.get(coachId) ?? [];
       existing.push({ teamId, slotId, start: slot.start, end: slot.end });
-      coachAssignments.set(team.coachId, existing);
+      coachAssignments.set(coachId, existing);
     }
   };
 
@@ -395,13 +310,19 @@ function generateGreedySeed(
   // 2. Sort by coach load (multi-team coaches first)
   const coachTeamCounts = new Map<string, number>();
   for (const team of teams) {
-    if (team.coachId) {
-      coachTeamCounts.set(team.coachId, (coachTeamCounts.get(team.coachId) ?? 0) + 1);
+    for (const coachId of team.coachIds) {
+      coachTeamCounts.set(coachId, (coachTeamCounts.get(coachId) ?? 0) + 1);
     }
   }
+  const busiestCoachCount = new Map(
+    teams.map((team) => [
+      team.id,
+      Math.max(0, ...team.coachIds.map((coachId) => coachTeamCounts.get(coachId) ?? 0)),
+    ])
+  );
   const sorted = [...teams].sort((a, b) => {
-    const ac = a.coachId ? (coachTeamCounts.get(a.coachId) ?? 0) : 0;
-    const bc = b.coachId ? (coachTeamCounts.get(b.coachId) ?? 0) : 0;
+    const ac = busiestCoachCount.get(a.id) ?? 0;
+    const bc = busiestCoachCount.get(b.id) ?? 0;
     return bc - ac || a.id.localeCompare(b.id);
   });
 
@@ -505,11 +426,7 @@ serve(async (req) => {
     const startTime = Date.now();
 
     // 7. Prepare data
-    const teams = input.teams.map((t) => ({
-      id: t.id,
-      division: t.division,
-      coachId: t.coachId ?? null,
-    }));
+    const teams = input.teams.map((t) => prepareTeam(t));
 
     const slots = input.slots.map((s) => ({
       id: s.id,

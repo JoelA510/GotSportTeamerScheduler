@@ -1,4 +1,5 @@
 import type { Team, Slot, PracticeAssignment, GameAssignment } from '../schemas/scoring.ts';
+import { conflictPairKey, listTeamCoachIds } from './practice-coaches.ts';
 
 export type Severity = 'info' | 'warning' | 'error';
 
@@ -120,11 +121,17 @@ export function evaluatePracticeSchedule(params: {
   });
 
   // 3. Coach Load & Conflicts
+  // One entry per overlapping pair of assignments; `coachIds` lists every coach the pair shares
+  // (head plus assistants). Mirrors packages/core/src/practiceMetrics.js: each coach's assignments
+  // are sorted, every overlapping pair is visited, and the same pair merges across coaches.
   const coachConflicts: Array<{
     coachId: string;
+    coachIds: string[];
     teams: Array<{ teamId: string; slotId: string }>;
     reason: string;
+    day: string;
   }> = [];
+  const conflictsByPair = new Map<string, (typeof coachConflicts)[number]>();
   const coachSchedules = new Map<
     string,
     Array<{ teamId: string; slotId: string; start: Date; end: Date; day: string }>
@@ -133,37 +140,69 @@ export function evaluatePracticeSchedule(params: {
   assignments.forEach((a) => {
     const team = teamsById.get(a.teamId);
     const slot = slotsById.get(a.slotId);
-    if (!team?.coachId || !slot) return;
-
-    if (!coachSchedules.has(team.coachId)) coachSchedules.set(team.coachId, []);
-    const schedule = coachSchedules.get(team.coachId)!;
+    if (!team || !slot) return;
 
     const start = new Date(slot.start);
     const end = new Date(slot.end);
     const day = slot.day || start.toLocaleDateString('en-US', { weekday: 'long' });
 
-    // Check for overlap
-    const conflict = schedule.find((s) => start < s.end && end > s.start);
-    if (conflict) {
-      const conflictMsg = `Coach ${team.coachId} has overlapping practices on ${day}`;
-      coachConflicts.push({
-        coachId: team.coachId,
-        teams: [
-          { teamId: a.teamId, slotId: a.slotId },
-          { teamId: conflict.teamId, slotId: conflict.slotId },
-        ],
-        reason: conflictMsg,
-      });
-      issues.push({
-        category: 'coach-conflict',
-        severity: 'error',
-        message: conflictMsg,
-        details: { coachId: team.coachId, day } as Record<string, unknown>,
-      });
+    // Recomputed from the validated fields on every call: a request-supplied `coachIds` key
+    // would otherwise pass through the schema and override the conflict set.
+    for (const coachId of listTeamCoachIds(team)) {
+      if (!coachSchedules.has(coachId)) coachSchedules.set(coachId, []);
+      coachSchedules.get(coachId)!.push({ teamId: a.teamId, slotId: a.slotId, start, end, day });
     }
-
-    schedule.push({ teamId: a.teamId, slotId: a.slotId, start, end, day });
   });
+
+  for (const [coachId, schedule] of coachSchedules) {
+    const sorted = [...schedule].sort(
+      (x, y) => x.start.getTime() - y.start.getTime() || x.slotId.localeCompare(y.slotId)
+    );
+    for (let i = 0; i < sorted.length - 1; i += 1) {
+      const current = sorted[i];
+      for (let j = i + 1; j < sorted.length; j += 1) {
+        const candidate = sorted[j];
+        if (candidate.start >= current.end) break;
+        const pairKey = conflictPairKey(current, candidate);
+        const existing = conflictsByPair.get(pairKey);
+        if (existing) {
+          existing.coachIds.push(coachId);
+          continue;
+        }
+        const entry = {
+          coachId,
+          coachIds: [coachId],
+          teams: [
+            { teamId: current.teamId, slotId: current.slotId },
+            { teamId: candidate.teamId, slotId: candidate.slotId },
+          ],
+          reason: '', // finalised below, once every coach the pair shares is known
+          day: current.day,
+        };
+        conflictsByPair.set(pairKey, entry);
+        coachConflicts.push(entry);
+      }
+    }
+  }
+
+  // Reason and issue are built once the pair is fully merged, so each names every coach it shares.
+  for (const conflict of coachConflicts) {
+    const label =
+      conflict.coachIds.length > 1
+        ? `Coaches ${conflict.coachIds.join(', ')} have`
+        : `Coach ${conflict.coachIds[0]} has`;
+    conflict.reason = `${label} overlapping practices on ${conflict.day}`;
+    issues.push({
+      category: 'coach-conflict',
+      severity: 'error',
+      message: conflict.reason,
+      details: {
+        coachId: conflict.coachId,
+        coachIds: conflict.coachIds,
+        day: conflict.day,
+      } as Record<string, unknown>,
+    });
+  }
 
   // Fairness Score Calculation
   const conflictPenalty = coachConflicts.length * 0.15;
@@ -231,6 +270,7 @@ export function evaluateGameSchedule(params: { assignments: GameAssignment[]; te
       if (!teamAssignments.has(teamId)) teamAssignments.set(teamId, []);
       teamAssignments.get(teamId)!.push({ ...a, start, end });
 
+      // Game coach conflicts remain head-coach-only pending 8.2 (games' coach model).
       if (team.coachId) {
         if (!coachAssignments.has(team.coachId)) coachAssignments.set(team.coachId, []);
         coachAssignments.get(team.coachId)!.push({ ...a, start, end });

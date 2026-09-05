@@ -129,6 +129,7 @@ export function evaluateGameSchedule({
         fieldKey,
         weekIndex,
       });
+      // Game coach conflicts remain head-coach-only pending 8.2 (games' coach model).
       if (teamRecord.coachId) {
         const coachBucket = coachAssignments.get(teamRecord.coachId) ?? [];
         coachBucket.push({

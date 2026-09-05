@@ -438,3 +438,42 @@ test('practice day concentration triggers a warning for limited coverage', () =>
   assert.equal(dayWarning.details.totalAssignments, 3);
   assert.equal(dayWarning.details.dominantCount, 3);
 });
+
+test('one overlapping pair is one practice issue whether it shares one coach or two', () => {
+  const slots = [
+    { id: 'slot-a', capacity: 1, start: BASE_TIME, end: addMinutes(BASE_TIME, 60), day: 'Mon' },
+    { id: 'slot-b', capacity: 1, start: BASE_TIME, end: addMinutes(BASE_TIME, 60), day: 'Mon' },
+  ];
+  const assignments = [
+    { teamId: 'team-1', slotId: 'slot-a' },
+    { teamId: 'team-2', slotId: 'slot-b' },
+  ];
+  const overlapIssues = (teams) =>
+    runScheduleEvaluations({
+      practice: { assignments, teams, slots },
+      schoolDayEnd: '16:00',
+      timezone: 'UTC',
+    }).issues.filter((issue) => issue.message.includes('overlapping practices'));
+
+  const twoCoaches = overlapIssues([
+    { id: 'team-1', division: 'U10', coachId: 'coach-h', assistantCoachIds: ['coach-a'] },
+    { id: 'team-2', division: 'U10', coachId: 'coach-h', assistantCoachIds: ['coach-a'] },
+  ]);
+  assert.equal(twoCoaches.length, 1);
+  assert.equal(twoCoaches[0].severity, 'error');
+  assert.equal(twoCoaches[0].message, 'Coaches coach-h, coach-a have overlapping practices');
+
+  const oneCoach = overlapIssues([
+    { id: 'team-1', division: 'U10', coachId: 'coach-h', assistantCoachIds: [] },
+    { id: 'team-2', division: 'U10', coachId: 'coach-h', assistantCoachIds: [] },
+  ]);
+  assert.equal(oneCoach.length, 1);
+  assert.equal(oneCoach[0].message, 'Coach coach-h has overlapping practices');
+
+  // Positive control: the filter finds nothing when there is no overlap to report.
+  const noClash = overlapIssues([
+    { id: 'team-1', division: 'U10', coachId: 'coach-1' },
+    { id: 'team-2', division: 'U10', coachId: 'coach-2' },
+  ]);
+  assert.equal(noClash.length, 0);
+});

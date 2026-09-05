@@ -14,7 +14,7 @@
  * - Random restarts escape local optima when score stalls.
  */
 
-import { schedulePractices } from './practiceScheduling.js';
+import { listTeamCoachIds, schedulePractices } from './practiceScheduling.js';
 import { evaluatePracticeSchedule } from './practiceMetrics.js';
 
 // ---------------------------------------------------------------------------
@@ -145,7 +145,8 @@ export function computeFitness(evaluation) {
  * Reuses the same logic as practiceScheduling.js without importing private functions.
  *
  * @param {Object} params
- * @param {Object} params.team
+ * @param {{ id: string, coachId?: string | null, coachIds: string[] }} params.team - Carries
+ *   `coachIds` (head plus assistants) precomputed by `optimizePracticeSchedule`.
  * @param {Object} params.slot
  * @param {Map<string, Array<{ start: Date, end: Date }>>} params.coachAssignments
  * @param {Map<string, number>} params.slotCapacityMap - Remaining capacity per slot.
@@ -158,21 +159,20 @@ function checkHardConstraints({ team, slot, coachAssignments, slotCapacityMap, c
     return { valid: false, reason: 'no-capacity' };
   }
 
-  if (!team.coachId) {
-    return { valid: true };
+  // Coach unavailability, for every coach on the team (head plus assistants)
+  for (const coachId of team.coachIds) {
+    if (coachPreferences[coachId]?.unavailableSlotIds?.includes(slot.id)) {
+      return { valid: false, reason: 'coach-unavailable' };
+    }
   }
 
-  // Coach unavailability
-  const prefs = coachPreferences[team.coachId];
-  if (prefs?.unavailableSlotIds?.includes(slot.id)) {
-    return { valid: false, reason: 'coach-unavailable' };
-  }
-
-  // Coach time overlap
-  const existing = coachAssignments.get(team.coachId) ?? [];
-  for (const a of existing) {
-    if (slot.start < a.end && slot.end > a.start) {
-      return { valid: false, reason: 'coach-conflict' };
+  // Coach time overlap, for every coach on the team
+  for (const coachId of team.coachIds) {
+    const existing = coachAssignments.get(coachId) ?? [];
+    for (const a of existing) {
+      if (slot.start < a.end && slot.end > a.start) {
+        return { valid: false, reason: 'coach-conflict' };
+      }
     }
   }
 
@@ -214,10 +214,11 @@ function buildState(result, teams, slots, coachPreferences) {
   for (const [teamId, slotId] of assignmentMap) {
     const team = teamsById.get(teamId);
     const slot = slotsById.get(slotId);
-    if (team?.coachId && slot) {
-      const existing = coachAssignments.get(team.coachId) ?? [];
+    if (!team || !slot) continue;
+    for (const coachId of team.coachIds) {
+      const existing = coachAssignments.get(coachId) ?? [];
       existing.push({ teamId, slotId, start: new Date(slot.start), end: new Date(slot.end) });
-      coachAssignments.set(team.coachId, existing);
+      coachAssignments.set(coachId, existing);
     }
   }
 
@@ -279,10 +280,11 @@ function mutate(state, rand) {
     newAssignmentMap.delete(teamId);
     newSlotCapacity.set(slotId, (newSlotCapacity.get(slotId) ?? 0) + 1);
     const team = teamsById.get(teamId);
-    if (team?.coachId) {
-      const entries = newCoachAssignments.get(team.coachId) ?? [];
+    if (!team) return;
+    for (const coachId of team.coachIds) {
+      const entries = newCoachAssignments.get(coachId) ?? [];
       newCoachAssignments.set(
-        team.coachId,
+        coachId,
         entries.filter((e) => e.teamId !== teamId)
       );
     }
@@ -304,10 +306,10 @@ function mutate(state, rand) {
 
     newAssignmentMap.set(teamId, slotId);
     newSlotCapacity.set(slotId, (newSlotCapacity.get(slotId) ?? 0) - 1);
-    if (team.coachId) {
-      const entries = newCoachAssignments.get(team.coachId) ?? [];
+    for (const coachId of team.coachIds) {
+      const entries = newCoachAssignments.get(coachId) ?? [];
       entries.push({ teamId, slotId, start: new Date(slot.start), end: new Date(slot.end) });
-      newCoachAssignments.set(team.coachId, entries);
+      newCoachAssignments.set(coachId, entries);
     }
     return true;
   };
@@ -481,6 +483,8 @@ export function optimizePracticeSchedule({
     start: new Date(s.start),
     end: new Date(s.end),
   }));
+  // Every coach per team (head plus assistants), resolved once rather than per mutation.
+  const preparedTeams = teams.map((t) => ({ ...t, coachIds: listTeamCoachIds(t) }));
 
   // 3. Hill Climbing loop
   while (iteration < cfg.maxIterations) {
@@ -494,7 +498,7 @@ export function optimizePracticeSchedule({
     // Build mutable state from current schedule
     const state = buildState(
       { assignments: currentAssignments, unassigned: currentUnassigned },
-      teams,
+      preparedTeams,
       preparedSlots,
       coachPreferences
     );
