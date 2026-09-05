@@ -50,7 +50,11 @@
  *
  * Both a **file's path** and its **contents** are checked: every segment of
  * every scanned file's relative path goes through the same allowlist, with `_`
- * and `-` read as word separators.
+ * and `-` read as word separators. And because a name can leak without using a
+ * letter, every cell — person-name columns included — is additionally matched
+ * against a small set of shapes the corpus does not contain: an email address,
+ * a URL scheme or host, a grouped phone number, a run of five or more digits,
+ * and any full date whose year is not on `ALLOWED_YEARS`.
  */
 
 import {
@@ -85,6 +89,14 @@ const MIN_CELLS_SCANNED = 30000;
 const MIN_PERSON_CELLS_SCANNED = 3000;
 
 /**
+ * A floor on the dates the year gate actually read. `ALLOWED_YEARS` is only a
+ * rule if something is measured against it; a run that year-checks nothing
+ * would pass the gate by never reaching it. The corpus carries 2,081 dates
+ * across its two written shapes.
+ */
+const MIN_DATES_CHECKED = 2000;
+
+/**
  * Reviewed prose, not data. Excluded by **exact relative path** rather than by
  * extension or basename: an exclusion keyed on shape would skip any future
  * `README.md` anywhere under the corpus root, including one holding the names
@@ -92,6 +104,41 @@ const MIN_PERSON_CELLS_SCANNED = 3000;
  * failure, README-shaped or not. The skip is asserted by name.
  */
 const EXCLUDED_FILES = Object.freeze(['README.md', 'practice/README.md']);
+
+/**
+ * Years a full date in the corpus may carry. The corpus is one season, so any
+ * other year in a date shape is either a leaked date of birth or a date from
+ * somewhere this corpus does not describe. A bare four-digit number is *not* a
+ * date — birth **year** is a kept column — so only the full shapes below are
+ * gated.
+ */
+const ALLOWED_YEARS = Object.freeze(['2026']);
+
+/**
+ * Shapes that carry identity without using a letter, which is why `words()`
+ * cannot see them and why these run over **every** cell, person-name columns
+ * included. Each was measured against the corpus before being added: it holds
+ * no `@`, no `://`, no host-shaped dotted token, no grouped phone number and no
+ * run of five or more digits, so each of these matching anything at all is new
+ * data rather than an existing value the rule mis-reads.
+ */
+const FORBIDDEN_PATTERNS = Object.freeze([
+  { name: 'email', pattern: /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+/ },
+  { name: 'url-scheme', pattern: /[A-Za-z][A-Za-z0-9+.-]*:\/\// },
+  { name: 'url-host', pattern: /\b[A-Za-z0-9-]+\.(?:com|net|org|edu|gov|io|co|us|uk|info|biz)\b/i },
+  { name: 'phone', pattern: /\d{3}[\s.-]\d{3}[\s.-]\d{4}/ },
+  { name: 'digit-run', pattern: /\d{5,}/ },
+]);
+
+/**
+ * Full date shapes, with the capture group holding the year. Matched globally
+ * so every date in a cell is year-checked, not just the first.
+ */
+const DATE_SHAPES = Object.freeze([
+  { name: 'iso-date', pattern: /(\d{4})-\d{1,2}-\d{1,2}/g, yearGroup: 1 },
+  { name: 'slash-date', pattern: /\d{1,2}\/\d{1,2}\/(\d{2,4})/g, yearGroup: 1 },
+  { name: 'dot-date', pattern: /\d{1,2}\.\d{1,2}\.(\d{2,4})/g, yearGroup: 1 },
+]);
 
 /**
  * Columns holding invented people, keyed by the file's path **relative to the
@@ -613,6 +660,8 @@ function filesUnder(root) {
  * @returns {{
  *   files: string[],
  *   pathsChecked: number,
+ *   patternCellsScanned: number,
+ *   datesChecked: number,
  *   proseFiles: string[],
  *   unreadableFiles: string[],
  *   cellsScanned: number,
@@ -622,7 +671,9 @@ function filesUnder(root) {
  *   orgInPersonColumn: Array<{file:string, column:string, line:number, word:string}>,
  *   columnsNotReturned: Array<{file:string, column:string}>,
  *   columnsNotDeclared: Array<{file:string, column:string}>,
+ *   forbidden: Array<{file:string, column:string, line:number, word:string}>,
  *   usedAllowed: Set<string>,
+ *   usedYears: Set<string>,
  *   exemptedColumnsMissing: Array<{file:string, column:string}>,
  * }}
  */
@@ -635,12 +686,16 @@ function scanCorpus(root) {
   /** @type {string[]} */
   const unreadableFiles = [];
   const unknown = [];
+  const forbidden = [];
   const orgInPersonColumn = [];
   const columnsNotReturned = [];
   const columnsNotDeclared = [];
   const exemptedColumnsMissing = [];
   const usedAllowed = new Set();
+  const usedYears = new Set();
   let pathsChecked = 0;
+  let patternCellsScanned = 0;
+  let datesChecked = 0;
   let cellsScanned = 0;
   let personCellsScanned = 0;
   let columnsClassified = 0;
@@ -655,6 +710,37 @@ function scanCorpus(root) {
     for (const word of words(value)) {
       if (ALLOWED.has(word)) usedAllowed.add(word);
       else unknown.push({ file, column, line, word });
+    }
+  };
+
+  /**
+   * Shape checks, run over every cell including the person-name columns the
+   * allowlist cannot cover. A leak with no letters in it is still a leak.
+   *
+   * @param {string} file
+   * @param {string} column
+   * @param {number} line
+   * @param {string} value
+   */
+  const checkPatterns = (file, column, line, value) => {
+    const text = String(value ?? '');
+    patternCellsScanned += 1;
+    for (const { name, pattern } of FORBIDDEN_PATTERNS) {
+      const hit = text.match(pattern);
+      if (hit) forbidden.push({ file, column, line, word: `${name}: ${hit[0]}` });
+    }
+    for (const { name, pattern, yearGroup } of DATE_SHAPES) {
+      // A fresh regex per use: the shapes are global, and a shared `lastIndex`
+      // would make a match depend on the cell scanned before it.
+      const scanner = new RegExp(pattern.source, pattern.flags);
+      let match = scanner.exec(text);
+      while (match !== null) {
+        datesChecked += 1;
+        const year = match[yearGroup];
+        if (ALLOWED_YEARS.includes(year)) usedYears.add(year);
+        else forbidden.push({ file, column, line, word: `${name}: ${match[0]}` });
+        match = scanner.exec(text);
+      }
     }
   };
 
@@ -676,6 +762,7 @@ function scanCorpus(root) {
     pathsChecked += 1;
     for (const segment of rel.split('/')) {
       checkVocabulary(rel, '(path)', 0, segment.split(/[_-]+/).join(' '));
+      checkPatterns(rel, '(path)', 0, segment);
     }
 
     const text = readFileSync(path.join(root, rel), 'utf8');
@@ -684,6 +771,7 @@ function scanCorpus(root) {
       // No columns: the whole document is vocabulary-checked, keys included.
       cellsScanned += 1;
       checkVocabulary(rel, '(json)', 1, text);
+      checkPatterns(rel, '(json)', 1, text);
       continue;
     }
 
@@ -696,6 +784,7 @@ function scanCorpus(root) {
       // Headers are checked whatever the column holds — a person-name exemption
       // covers the names in the cells, never the name of the column.
       checkVocabulary(rel, '(header)', 1, header);
+      checkPatterns(rel, '(header)', 1, header);
     }
 
     const exempt = PERSON_COLUMNS[rel] ?? [];
@@ -710,6 +799,8 @@ function scanCorpus(root) {
       for (const [column, value] of Object.entries(row)) {
         columns.add(column);
         const line = index + 2;
+        // Shapes run over every cell; only the allowlist has an exemption.
+        checkPatterns(rel, column, line, value);
         if (personColumns.has(column)) {
           personCellsScanned += 1;
           for (const word of words(value)) {
@@ -740,16 +831,20 @@ function scanCorpus(root) {
   return {
     files,
     pathsChecked,
+    patternCellsScanned,
+    datesChecked,
     proseFiles,
     unreadableFiles,
     cellsScanned,
     personCellsScanned,
     columnsClassified,
     unknown,
+    forbidden,
     orgInPersonColumn,
     columnsNotReturned,
     columnsNotDeclared,
     usedAllowed,
+    usedYears,
     exemptedColumnsMissing,
   };
 }
@@ -792,6 +887,13 @@ describe('season-2026 corpus vocabulary', () => {
       expect(scan.columnsClassified).toBeGreaterThan(0);
     });
 
+    it('ran the shape checks over every cell, person columns included', () => {
+      // Strictly more cells than the allowlist saw, because the shape checks
+      // also cover the person columns the allowlist is exempt from.
+      expect(scan.patternCellsScanned).toBeGreaterThan(scan.cellsScanned + scan.personCellsScanned);
+      expect(scan.datesChecked).toBeGreaterThanOrEqual(MIN_DATES_CHECKED);
+    });
+
     it('scanned exactly the columns each header line declares', () => {
       // A column the header-keyed parse never returns would take its cells out
       // of the scan silently, and a column it invents means a row is wider
@@ -821,6 +923,19 @@ describe('season-2026 corpus vocabulary', () => {
 
     it('has an allowlist with no duplicate entries', () => {
       expect(ALLOWED_WORDS.length).toBe(ALLOWED.size);
+    });
+  });
+
+  describe('the shapes letters cannot show are absent too', () => {
+    it('carries no email, URL, phone number, long digit run or foreign-year date', () => {
+      expect(render(scan.forbidden)).toEqual([]);
+    });
+
+    it('uses every entry of the allowed-year list', () => {
+      // Same no-padding rule as the allowlist: a year nothing measures against
+      // is a rule that never runs.
+      const unused = ALLOWED_YEARS.filter((year) => !scan.usedYears.has(year));
+      expect(unused).toEqual([]);
     });
   });
 
@@ -981,6 +1096,93 @@ describe('season-2026 corpus vocabulary', () => {
         file: 'practice/select_coaches.csv',
         column: 'person_key',
       });
+    });
+
+    it('reports an email address in a person-name column', () => {
+      // No organisation designator, no unknown word, no letters the allowlist
+      // would object to — the exemption covers all of that. Only a shape check
+      // that ignores the exemption can see this.
+      const root = scratchCorpus();
+      const target = path.join(root, 'practice', 'coach_registration.csv');
+      const text = readFileSync(target, 'utf8').split('\n');
+      const cells = text[1].split(',');
+      cells[0] = 'zzq@zzqfictional.example';
+      text[1] = cells.join(',');
+      writeFileSync(target, text.join('\n'));
+
+      const control = scanCorpus(root);
+      expect(control.forbidden.map((hit) => hit.word)).toContainEqual(
+        expect.stringContaining('email')
+      );
+    });
+
+    it('reports a date of birth in a person-name column', () => {
+      const root = scratchCorpus();
+      const target = path.join(root, 'practice', 'player_registration.csv');
+      const text = readFileSync(target, 'utf8').split('\n');
+      const cells = text[1].split(',');
+      cells[0] = '2011-03-14';
+      text[1] = cells.join(',');
+      writeFileSync(target, text.join('\n'));
+
+      const control = scanCorpus(root);
+      expect(control.forbidden.map((hit) => hit.word)).toContainEqual(
+        expect.stringContaining('iso-date')
+      );
+    });
+
+    it('reports a phone number and a long digit run in a scanned cell', () => {
+      const root = scratchCorpus();
+      const target = path.join(root, 'practice', 'field_inventory.csv');
+      const text = readFileSync(target, 'utf8').split('\n');
+      text[1] = `${text[1]}555-555-0134 1234567`;
+      writeFileSync(target, text.join('\n'));
+
+      const control = scanCorpus(root);
+      const words = control.forbidden.map((hit) => hit.word);
+      expect(words).toContainEqual(expect.stringContaining('phone'));
+      expect(words).toContainEqual(expect.stringContaining('digit-run'));
+    });
+
+    it('reports a URL in a scanned cell', () => {
+      const root = scratchCorpus();
+      const target = path.join(root, 'practice', 'field_inventory.csv');
+      const text = readFileSync(target, 'utf8').split('\n');
+      text[1] = `${text[1]}https://zzqfictional.example`;
+      writeFileSync(target, text.join('\n'));
+
+      const control = scanCorpus(root);
+      expect(control.forbidden.map((hit) => hit.word)).toContainEqual(
+        expect.stringContaining('url-scheme')
+      );
+    });
+
+    it('reads a date on the allowed-year list without reporting it', () => {
+      // The other half of the year gate: it must discriminate, not merely
+      // fire. The date is read — `datesChecked` rises — and passes.
+      const root = scratchCorpus();
+      const target = path.join(root, 'practice', 'field_inventory.csv');
+      const text = readFileSync(target, 'utf8').split('\n');
+      text[1] = `${text[1]}2026-08-22`;
+      writeFileSync(target, text.join('\n'));
+
+      const control = scanCorpus(root);
+      expect(control.forbidden).toEqual([]);
+      expect(control.usedYears.has('2026')).toBe(true);
+      expect(control.datesChecked).toBeGreaterThan(scan.datesChecked);
+    });
+
+    it('reports an allowed year the corpus never uses', () => {
+      // The no-padding rule on ALLOWED_YEARS, shown able to fail: a corpus
+      // with no dates in it leaves every allowed year unused.
+      const root = mkdtempSync(path.join(tmpdir(), 'sl-corpus-'));
+      scratchRoots.push(root);
+      writeFileSync(path.join(root, 'sheet.csv'), 'venue,note\nAlder Park,practice\n');
+
+      const control = scanCorpus(root);
+      expect(control.datesChecked).toBe(0);
+      const unused = ALLOWED_YEARS.filter((year) => !control.usedYears.has(year));
+      expect(unused).toEqual([...ALLOWED_YEARS]);
     });
 
     it('reports an unknown word in a directory name', () => {
