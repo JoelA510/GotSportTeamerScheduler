@@ -214,7 +214,7 @@ export function parseCsv(text, label = 'csv') {
   return /** @type {Array<Record<string, string>>} */ (result.data);
 }
 
-const trim = (value) => String(value ?? '').trim();
+export const trim = (value) => String(value ?? '').trim();
 
 /* -------------------------------------------------------------------------- */
 /* game_formats.csv                                                            */
