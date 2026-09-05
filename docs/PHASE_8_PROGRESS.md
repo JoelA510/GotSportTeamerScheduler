@@ -260,3 +260,135 @@ but uncommitted. The third attempt ran in a plain clone outside the harness's
 cleanup path and committed after each individual fix. That is the durable
 lesson: when a mechanism fails twice the same way, change the mechanism, and
 make the unit of loss one fix rather than one round.
+
+---
+
+## 8.2 — One coach model, and counts that name their unit — **merged**
+
+- **PR:** [#368](https://github.com/JoelA510/SquadLogic/pull/368), branch
+  `feat/phase8-2-coach-model`, squash-merged as `883058a`.
+- **Tests:** 2243 / 34 / 6 (main before 8.2) → **2390 / 34 / 6** (166 files),
+  of which +37 came from the corpus scrub merging in mid-task. Deno mirror
+  17 → **21** cases. Season fixture suite 141 / 141 throughout. E2E 76 / 76.
+- **Review rounds:** 5 in total — three by the agent before opening (11, 8,
+  10 findings) and two supervisor rounds (5, then 10). The loop stopped there:
+  the second supervisor round's identity-key cluster was a new class, but the
+  rest were recurring shapes, and a third round would have been chasing the
+  next seam out.
+
+### The operator tension, and what the corpus said about it
+
+The fixture README said _"Coach Slot 1 = the team's primary coach"_.
+`people/schemas.js` said _"slot 1 is the primary coach"_ in prose. But
+`roster.js` uses the slot for exactly one thing — breaking a clash — and
+defends it as an **order**, not a role. Nothing in the model reads a role.
+
+The corpus settles which reading is _safe_ without settling which is _true_:
+`select_coaches.csv` also ranks coaches and disagrees with `coach_roster.csv` on
+**8 of 14 Select teams** (9 slots filled by different people, 1 person ranked
+differently). Under a role reading those eight teams have two head coaches and
+no rule to choose. The PR implemented the plan's directive as written — slot
+stays the clash-breaker, the role stops being rendered, every coach is exported,
+disagreement is surfaced — and left the ruling to the operator, with what a
+role ruling would have to add back stated in both the PR and the fixture README.
+**Not resolved; open for the operator.**
+
+### The solver change, and why it stayed
+
+The agent widened `gameScheduling.js` — `indexTeams()` and `scheduleMatchup()`
+— from head-coach-only to every coach, during a review round, without the plan
+and approval CLAUDE.md §3 requires for solver changes. The supervisor kept it
+rather than reverting: a head-coach-only solver beside an every-coach metric is
+exactly the 8.1 defect, a report raising a clash no rerun can clear. What was
+required instead was that it be **finished** (round 4 found it half-applied,
+protecting a team or not according to which shape it arrived in) and called out
+under its own heading in the PR with before/after season-fixture evidence. That
+evidence: bit-identical — 0 corpus fixtures share any coach across sides, so
+the widening changes no behaviour this corpus exercises. Its reach is the 19
+people who coach more than one team, 7 of whom hold a non-first slot somewhere.
+
+### Claims
+
+| Claim                                                                         | Result                                                                                                                                                                                                                                                                         |
+| ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `people/` orders by slot, used only to break clashes, defended in `roster.js` | HELD as mechanism; DID NOT HOLD as a modelled fact — no code reads a role, two docstrings asserted one                                                                                                                                                                         |
+| Legacy path and frontend render order as a role; frontend knows no slot       | HELD — 7 sites; zero occurrences of slot in `frontend/src`                                                                                                                                                                                                                     |
+| `LIGHTING_SOURCE_DISAGREES` is the shape to follow                            | HELD — followed, severity raised to compromise because here the order _is_ the clash-breaker                                                                                                                                                                                   |
+| `fairness/` has a three-valued subject kind                                   | HELD — `team` / `division` / `age-group`                                                                                                                                                                                                                                       |
+| "132 must say 132 of what"                                                    | HELD, and worse: **six** readings (132 roster, 131 with a game, 140 named sides, 88 with a practice slot, 457 practice rows, 136 unreconciled from 8.0) behind one `totalTeams`                                                                                                |
+| GAP-24 bites 8.2 directly                                                     | DID NOT HOLD — neither half is keyed on division. It bit once, indirectly: a division called `Div. A` split the count-path walker's dotted key and made `assertCountsLabelled()` throw on a well-formed report. Fixed by escaping; the label-vs-key defect itself is untouched |
+
+### Defects the review found in the fix itself
+
+Every one passed its own tests first.
+
+- **A crash.** `legacyTeamCoachSource()` called `.map()` on a Postgres
+  `uuid[]` arriving as the string `'{c2,c3}'` and killed the whole export; a
+  refactor had dropped the `Array.isArray` guard both siblings still had.
+- **A wrong-recipient defect.** `formatCoachEmails()` dropped addressless
+  coaches while `formatCoachList()` kept them, so `Coaches: "Ada; Bo; Cy"` sat
+  beside `Coach Emails: "ada@x; cy@x"` and a mail merge would pair Bo with Cy's
+  address.
+- **Identity by array index.** A `coaches` entry with no id, email or name was
+  keyed by its position, so unrelated coaches on different teams became "the
+  same person" and their matchups were refused. The Deno mirror keyed the same
+  entry differently, so the two engines disagreed about whether a coach was
+  shared — the exact "protected or not by spelling" defect the mirror fix
+  claimed to close.
+- **Name as identity reaching the solver.** A null `coachId` with
+  `coachName: 'Coach Mike'` now keyed by name, so two different Mikes blocked
+  each other. The PR's own "left open" had named only the opposite direction.
+- **A reader that could not fire.** The export panel's "sources disagree"
+  message was unreachable: the frontend reconciled both spellings before the
+  core ever saw two sources.
+- **A subject set too wide.** The reserve path emitted a disagreement finding
+  for every team in the directory, not just teams on an exported row, so a
+  clean two-team TIME TBD publication read as `compromise`. Narrowing it
+  exposed two existing assertions that had been passing only because of the
+  too-wide set.
+
+### The identity rule, as it now stands
+
+`coachIdentityKey()` in `people/coachList.js`, mirrored exactly in the Deno
+engine and proven by a shared 19-row parity fixture that both suites import:
+**id, else email, else name, else dropped** — never the list index. Only an
+id-kind key is corroborated; solvers and metrics compare corroborated ids only,
+so uncorroborated is never folded into "same person". Email- and name-keyed
+coaches stay on every artifact and raise `COACH_IDENTITY_UNCORROBORATED`, so
+unknown is never folded into "no clash" either. A meta-assertion proves all 132
+coached corpus teams are fully id-keyed, so no corpus figure moved.
+
+### Live defects on the shipped app, found and fixed on the same seam
+
+- `PracticeOverridePanel` gated on `team.headCoach`, which nothing in the repo
+  produces outside the mock client's seeds — its conflict check returned `null`
+  for every override on real data. The same live zero-records class as #364.
+  Fixed and driven through the rendered panel with teams built by the page's
+  own `normalizeTeam()`.
+- The roster CSV printed one coach per team and read `coach_id` through
+  `profiles` when both id columns reference `coaches`; the embed was already
+  wrong on `main`.
+- Coach welcome emails addressed one coach per team.
+
+### Deliberately left open
+
+- The slot-1 role question, for the operator.
+- `coach-maximum-gap` still `RULE_CONSTRAINT_UNENFORCED`; the three capacity
+  codes still readable only on `capacities`. Neither module in this diff.
+- `field-hour` is declared and used by nothing, with the reason asserted in
+  both directions: `SlotSchema` has no field, so nothing here can honestly
+  count ground. 8.3.
+- GAP-24, as above.
+- The `AdminReportingDashboard` query change is the least-covered hunk:
+  verified against the migration and a working sibling query, but E2E runs in
+  mock mode and the page has no integration test. Statically reviewed only.
+
+### Process notes
+
+- Two agents on this task hit session rate limits mid-round; both times the
+  pushed state was clean and the work resumed from the PR body, which had been
+  kept as a full spec. A thorough PR body is what makes an agent replaceable.
+- Two pushes in this task family went out red on formatting alone.
+  `npm run lint` covers `supabase/functions/**` even though those files are
+  outside `tsconfig` and only execute under Deno; run it before every push, not
+  at the end of a round.
