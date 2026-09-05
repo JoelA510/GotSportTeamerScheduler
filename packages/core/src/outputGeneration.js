@@ -1,4 +1,4 @@
-import { coachesOfTeamRow, formatCoachEmails, formatCoachList } from './people/coachList.js';
+import { coachExportCells, coachesOfTeamRow } from './people/coachList.js';
 
 /**
  * The schedule exports: one row per team per event, in a fixed column order.
@@ -98,12 +98,16 @@ export function generateScheduleExports({
     const reconciled = coachesOfTeamRow(team);
     coachFindings.push(...reconciled.findings);
 
+    // Both cells from one producer, which refuses a pair that does not line
+    // up: two functions with two rules about which coaches to skip is how the
+    // name cell and the address cell came to disagree.
+    const cells = coachExportCells(reconciled.coaches);
     const sanitized = {
       id: team.id,
       name: team.name ?? team.id,
       division: team.division ?? '',
-      coaches: formatCoachList(reconciled.coaches),
-      coachEmails: formatCoachEmails(reconciled.coaches),
+      coaches: cells.coaches,
+      coachEmails: cells.emails,
     };
     teamDirectory.set(team.id, sanitized);
   }

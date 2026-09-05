@@ -39,7 +39,7 @@
  */
 
 import { SCHEDULE_EXPORT_COLUMNS, SCHEDULE_EXPORT_HEADERS } from '../outputGeneration.js';
-import { coachesOfTeamRow, formatCoachEmails, formatCoachList } from '../people/coachList.js';
+import { coachExportCells, coachesOfTeamRow } from '../people/coachList.js';
 
 import {
   FIXTURE_SIDE,
@@ -203,10 +203,7 @@ export function publicationRowsFor(input) {
   for (const team of input.teams ?? []) {
     const reconciled = coachesOfTeamRow(team);
     coachFindings.push(...reconciled.findings);
-    coachCells.set(String(team.id), {
-      coaches: formatCoachList(reconciled.coaches),
-      emails: formatCoachEmails(reconciled.coaches),
-    });
+    coachCells.set(String(team.id), coachExportCells(reconciled.coaches));
   }
   const slots = input.slots ?? [];
   const unplaced = input.unplaced ?? [];

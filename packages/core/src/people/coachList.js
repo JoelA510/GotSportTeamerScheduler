@@ -328,6 +328,26 @@ export function coachDisplayText(coach) {
   return coach.displayName ?? coach.personId;
 }
 
+/** The separator between coaches in an export cell. */
+export const COACH_CELL_SEPARATOR = '; ';
+
+/**
+ * One value, safe to put in a `; `-separated cell.
+ *
+ * A value containing the separator would split into two entries and shift
+ * every coach after it against the parallel email cell — the misalignment this
+ * pair of functions exists to prevent, arriving through the data instead of
+ * through the code. Replaced rather than escaped, because the cell's contract
+ * is "split on `; `" and a reader that has to know an escaping scheme is a
+ * reader who will get it wrong.
+ *
+ * @param {string} value
+ * @returns {string}
+ */
+function cellSafe(value) {
+  return value.includes(';') ? value.replace(/;/g, ',') : value;
+}
+
 /**
  * A team's coaches as one export cell: every coach, in order, `; `-separated.
  *
@@ -340,21 +360,54 @@ export function coachDisplayText(coach) {
  * @returns {string}
  */
 export function formatCoachList(coaches) {
-  return coaches.map(coachDisplayText).join('; ');
+  return coaches.map((coach) => cellSafe(coachDisplayText(coach))).join(COACH_CELL_SEPARATOR);
 }
 
 /**
- * A team's coach emails as one export cell, in the same order, skipping the
- * coaches with no email on file.
+ * A team's coach emails as one export cell, **positionally beside the names**.
+ *
+ * A coach with no address on file contributes an **empty slot**, not nothing.
+ * Dropping them shortened this cell against its sibling, so the two no longer
+ * lined up: `Coaches: "Ada; Bo; Cy"` beside `Coach Emails: "ada@x; cy@x"` sends
+ * the second coach's mail to the third coach's address. That is a
+ * wrong-recipient defect in a family-facing artifact, produced by two functions
+ * with two different rules about what to skip.
+ *
+ * There is now one rule — every coach occupies one position in both cells — and
+ * {@link coachExportCells} refuses to emit a pair that does not.
  *
  * @param {ReadonlyArray<{ email: string|null }>} coaches
  * @returns {string}
  */
 export function formatCoachEmails(coaches) {
   return coaches
-    .map((coach) => coach.email)
-    .filter((email) => email != null && email !== '')
-    .join('; ');
+    .map((coach) => (coach.email == null ? '' : cellSafe(coach.email)))
+    .join(COACH_CELL_SEPARATOR);
+}
+
+/**
+ * **The pair, produced together and checked against each other.**
+ *
+ * Every export builds both cells here rather than calling the two formatters
+ * itself, so no projection can acquire its own opinion about which coaches to
+ * skip. The check is on the cells a consumer will actually split, not on the
+ * list they came from: a list-length comparison would be trivially true and
+ * would have said nothing about the defect it exists to catch.
+ *
+ * @param {ReadonlyArray<{ personId: string, displayName: string|null, email: string|null }>} coaches
+ * @returns {Readonly<{ coaches: string, emails: string }>}
+ */
+export function coachExportCells(coaches) {
+  const names = formatCoachList(coaches);
+  const emails = formatCoachEmails(coaches);
+  const nameCount = names.split(COACH_CELL_SEPARATOR).length;
+  const emailCount = emails.split(COACH_CELL_SEPARATOR).length;
+  if (nameCount !== emailCount) {
+    throw new Error(
+      `people: a team's coach cells do not line up — ${nameCount} name slot(s) against ${emailCount} address slot(s) (${JSON.stringify(names)} / ${JSON.stringify(emails)}); a consumer splitting both on "${COACH_CELL_SEPARATOR}" would pair a coach with somebody else's address`
+    );
+  }
+  return Object.freeze({ coaches: names, emails });
 }
 
 /**

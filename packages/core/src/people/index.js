@@ -78,8 +78,10 @@ export {
 } from './schemas.js';
 
 export {
+  COACH_CELL_SEPARATOR,
   COACH_ORDER_DISAGREEMENT,
   coachDisplayText,
+  coachExportCells,
   coachesOfTeamRow,
   compareCoaches,
   formatCoachEmails,

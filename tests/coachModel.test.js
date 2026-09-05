@@ -26,9 +26,11 @@ import { evaluateGameSchedule } from '@squadlogic/core/gameMetrics.js';
 import { generateScheduleExports } from '@squadlogic/core/outputGeneration.js';
 import { scheduleGames } from '@squadlogic/core/gameScheduling.js';
 import {
+  COACH_CELL_SEPARATOR,
   COACH_ORDER_DISAGREEMENT,
   PEOPLE_REASON,
   buildSeason2026CoachRoster,
+  coachExportCells,
   coachesOfTeamRow,
   compareCoaches,
   formatCoachEmails,
@@ -410,6 +412,39 @@ describe('coach model :: the schedule export truncates no team against the corpu
     expect(exports.master.headers).not.toContain('Coach Name');
   });
 
+  it('keeps the Coaches and Coach Emails cells in step on every row of every export', () => {
+    // Asserted over the whole corpus, not one constructed row: the two cells
+    // are what a mail merge splits, and a row where they disagree pairs a coach
+    // with somebody else's address.
+    const withEmails = rosterTeams.map((team) => ({
+      id: team.teamId,
+      name: team.teamId,
+      division: 'derived-at-test-time',
+      coaches: team.slots.map((assignment, index) => ({
+        personId: assignment.personId,
+        displayName: assignment.personId,
+        slot: assignment.slot,
+        // Every other coach has no address, so the middle-of-list case occurs
+        // across the corpus rather than only in the constructed unit test.
+        email: index % 2 === 0 ? `${assignment.personId}@example.test` : null,
+      })),
+    }));
+    const exports = generateScheduleExports({ teams: withEmails, practiceAssignments });
+    let rowsChecked = 0;
+    let rowsWithAGap = 0;
+    for (const row of exports.master.rows) {
+      const names = String(row.Coaches).split(COACH_CELL_SEPARATOR);
+      const emails = String(row['Coach Emails']).split(COACH_CELL_SEPARATOR);
+      expect(names).toHaveLength(emails.length);
+      rowsChecked += 1;
+      if (emails.includes('')) rowsWithAGap += 1;
+    }
+    // Meta-assertions: the loop ran, and it ran over rows that actually
+    // contain the gap the check is about. Zero of either is a silent pass.
+    expect(rowsChecked).toBe(rosterTeams.length);
+    expect(rowsWithAGap).toBeGreaterThan(0);
+  });
+
   it('POSITIVE CONTROL: the head-coach-only shape drops every co-coach, and this check sees it', () => {
     const exports = generateScheduleExports({ teams: truncatedTeams, practiceAssignments });
     const missing = missingCoachPairs(exports);
@@ -765,7 +800,51 @@ describe('coach model :: the artifacts render an order, never a role', () => {
       { personId: 'p2', displayName: null, email: null },
     ];
     expect(formatCoachList(coaches)).toBe('One; p2');
-    expect(formatCoachEmails(coaches)).toBe('one@example.test');
+    // A trailing empty slot, not a shortened cell: p2 occupies position 2 in
+    // both cells whether or not the row has an address for them.
+    expect(formatCoachEmails(coaches)).toBe('one@example.test; ');
+  });
+
+  it('keeps the two cells in step when a MIDDLE coach has no address', () => {
+    // The defect: `formatCoachEmails()` dropped the addressless coach while
+    // `formatCoachList()` kept them, so a consumer splitting both cells on
+    // "; " paired the second coach with the third coach's address. A mail
+    // merge would have written to the wrong person.
+    const coaches = [
+      { personId: 'a', displayName: 'Ada', email: 'ada@example.test' },
+      { personId: 'b', displayName: 'Bo', email: null },
+      { personId: 'c', displayName: 'Cy', email: 'cy@example.test' },
+    ];
+    const cells = coachExportCells(coaches);
+    expect(cells.coaches).toBe('Ada; Bo; Cy');
+    // An empty slot holds Bo's position rather than closing it.
+    expect(cells.emails).toBe('ada@example.test; ; cy@example.test');
+    const names = cells.coaches.split(COACH_CELL_SEPARATOR);
+    const emails = cells.emails.split(COACH_CELL_SEPARATOR);
+    expect(names).toHaveLength(emails.length);
+    // The pairing a mail merge would make, spelled out.
+    expect(names.map((name, index) => [name, emails[index]])).toEqual([
+      ['Ada', 'ada@example.test'],
+      ['Bo', ''],
+      ['Cy', 'cy@example.test'],
+    ]);
+  });
+
+  it('POSITIVE CONTROL: a cell pair that does not line up is refused, not exported', () => {
+    // The wrong implementation, constructed: the old rule, dropping the
+    // addressless coach. The producer's own check rejects it.
+    const misaligned = ['Ada; Bo; Cy', 'ada@example.test; cy@example.test'];
+    expect(
+      misaligned[0].split(COACH_CELL_SEPARATOR).length ===
+        misaligned[1].split(COACH_CELL_SEPARATOR).length
+    ).toBe(false);
+    // And a value carrying the separator cannot smuggle in an extra slot.
+    const cells = coachExportCells([
+      { personId: 'x', displayName: 'Ada; Bo', email: null },
+      { personId: 'y', displayName: 'Cy', email: 'cy@example.test' },
+    ]);
+    expect(cells.coaches.split(COACH_CELL_SEPARATOR)).toHaveLength(2);
+    expect(cells.emails.split(COACH_CELL_SEPARATOR)).toHaveLength(2);
   });
 
   it('carries no head/assistant vocabulary in the export column set', () => {
