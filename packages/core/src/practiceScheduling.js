@@ -174,6 +174,7 @@ export function schedulePractices({
       division: team.division,
       coachId: team.coachId ?? null,
       coachIds: listTeamCoachIds(team),
+      busiestCoachCount: 0,
     };
   });
 
@@ -338,12 +339,16 @@ export function schedulePractices({
       coachTeamCounts.set(coachId, (coachTeamCounts.get(coachId) ?? 0) + 1);
     }
   }
-  const busiestCoachCount = (team) =>
-    Math.max(0, ...team.coachIds.map((coachId) => coachTeamCounts.get(coachId) ?? 0));
+  for (const team of sanitizedTeams) {
+    team.busiestCoachCount = Math.max(
+      0,
+      ...team.coachIds.map((coachId) => coachTeamCounts.get(coachId) ?? 0)
+    );
+  }
 
   const teamsByPriority = [...sanitizedTeams].sort((a, b) => {
-    const aCoachCount = busiestCoachCount(a);
-    const bCoachCount = busiestCoachCount(b);
+    const aCoachCount = a.busiestCoachCount;
+    const bCoachCount = b.busiestCoachCount;
     if (aCoachCount !== bCoachCount) {
       return bCoachCount - aCoachCount;
     }

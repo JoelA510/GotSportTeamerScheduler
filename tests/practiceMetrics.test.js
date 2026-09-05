@@ -369,6 +369,7 @@ test('evaluatePracticeSchedule flags coach conflicts', () => {
   assert.equal(report.coachConflicts.length, 1);
   assert.deepEqual(report.coachConflicts[0], {
     coachId: 'coach-a',
+    coachIds: ['coach-a'],
     teams: [
       { teamId: 'team-1', slotId: 'slot-early-mon' },
       { teamId: 'team-3', slotId: 'slot-late-mon' },
@@ -765,6 +766,7 @@ test('evaluatePracticeSchedule flags a conflict on a shared assistant coach', ()
   assert.deepEqual(report.coachConflicts, [
     {
       coachId: 'assistant-x',
+      coachIds: ['assistant-x'],
       teams: [
         { teamId: 'team-1', slotId: 'slot-early-mon' },
         { teamId: 'team-2', slotId: 'slot-late-mon' },
@@ -821,6 +823,41 @@ test('control: distinct assistants on the same overlapping slots raise no confli
     'coach-a': { assignedTeams: 1, distinctDays: 1 },
     'assistant-x': { assignedTeams: 1, distinctDays: 1 },
     'assistant-y': { assignedTeams: 1, distinctDays: 1 },
+  });
+});
+
+test('a pair sharing a head coach and an assistant is one conflict naming both coaches', () => {
+  const teams = [
+    { id: 'team-1', division: 'U10', coachId: 'coach-a', assistantCoachIds: ['assistant-x'] },
+    { id: 'team-2', division: 'U12', coachId: 'coach-a', assistantCoachIds: ['assistant-x'] },
+  ];
+
+  const report = evaluatePracticeSchedule({
+    assignments: [
+      { teamId: 'team-1', slotId: 'slot-early-mon' },
+      { teamId: 'team-2', slotId: 'slot-late-mon' },
+    ],
+    teams,
+    slots: SAMPLE_SLOTS,
+    schoolDayEnd: '16:00',
+    timezone: 'UTC',
+  });
+
+  assert.deepEqual(report.coachConflicts, [
+    {
+      coachId: 'coach-a',
+      coachIds: ['coach-a', 'assistant-x'],
+      teams: [
+        { teamId: 'team-1', slotId: 'slot-early-mon' },
+        { teamId: 'team-2', slotId: 'slot-late-mon' },
+      ],
+      reason: 'overlapping slots',
+    },
+  ]);
+  // Each coach's own load is still counted per coach.
+  assert.deepEqual(report.coachLoad, {
+    'coach-a': { assignedTeams: 2, distinctDays: 1 },
+    'assistant-x': { assignedTeams: 2, distinctDays: 1 },
   });
 });
 

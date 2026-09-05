@@ -625,3 +625,29 @@ test('a locked assignment books every coach on the locked team, not only its hea
   assert.equal(assignmentMap.get('T2'), 'tue');
   assert.deepEqual(result.unassigned, []);
 });
+
+test('teams are processed busiest-coach-first across head and assistant coaches, ties by id', () => {
+  // a-shared coaches three teams (T1, T2 and T6, which has no head coach), h3 coaches two, the
+  // rest one; processing order follows that load, ties broken by id.
+  const teams = [
+    { id: 'T5', division: 'U10', coachId: 'h5', assistantCoachIds: [] },
+    { id: 'T3', division: 'U10', coachId: 'h3' },
+    { id: 'T6', division: 'U10', coachId: null, assistantCoachIds: ['a-shared'] },
+    { id: 'T1', division: 'U10', coachId: 'h1', assistantCoachIds: ['a-shared'] },
+    { id: 'T4', division: 'U10', coachId: 'h3' },
+    { id: 'T2', division: 'U10', coachId: 'h2', assistantCoachIds: ['a-shared'] },
+  ];
+  const slots = [8, 9, 10, 11, 12, 13].map((hour) =>
+    createSlot({ id: `h${hour}`, day: 'Mon', startHour: hour, endHour: hour + 1 })
+  );
+
+  const result = schedulePractices({ teams, slots });
+
+  // `assignments` is returned sorted by team id, so processing order is read off the slots:
+  // every slot scores equally and the earliest start goes to whichever team is processed first.
+  assert.deepEqual(
+    Object.fromEntries(result.assignments.map((entry) => [entry.teamId, entry.slotId])),
+    { T1: 'h8', T2: 'h9', T6: 'h10', T3: 'h11', T4: 'h12', T5: 'h13' }
+  );
+  assert.deepEqual(result.unassigned, []);
+});

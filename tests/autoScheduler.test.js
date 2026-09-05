@@ -6,6 +6,7 @@ import {
   computeFitness,
   createPRNG,
 } from '../packages/core/src/autoScheduler.js';
+import { evaluatePracticeSchedule } from '../packages/core/src/practiceMetrics.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -114,6 +115,48 @@ describe('computeFitness', () => {
       ],
     };
     assert.ok(computeFitness(noConflicts) > computeFitness(twoConflicts));
+  });
+
+  test('one overlap is charged once whether the pair shares one coach or two', () => {
+    const slots = [
+      createSlot({ id: 'early', day: 'Monday', startHour: 17, endHour: 18, capacity: 1 }),
+      createSlot({ id: 'overlap', day: 'Monday', startHour: 17, endHour: 18, capacity: 1 }),
+    ];
+    const assignments = [
+      { teamId: 'T1', slotId: 'early' },
+      { teamId: 'T2', slotId: 'overlap' },
+    ];
+    const evaluate = (teams) =>
+      evaluatePracticeSchedule({
+        assignments,
+        teams,
+        slots,
+        schoolDayEnd: '16:00',
+        timezone: 'UTC',
+      });
+
+    const oneSharedCoach = computeFitness(
+      evaluate([
+        { id: 'T1', division: 'U10', coachId: 'h1', assistantCoachIds: ['shared'] },
+        { id: 'T2', division: 'U10', coachId: 'h2', assistantCoachIds: ['shared'] },
+      ])
+    );
+    const twoSharedCoaches = computeFitness(
+      evaluate([
+        { id: 'T1', division: 'U10', coachId: 'h', assistantCoachIds: ['shared'] },
+        { id: 'T2', division: 'U10', coachId: 'h', assistantCoachIds: ['shared'] },
+      ])
+    );
+    const noClash = computeFitness(
+      evaluate([
+        { id: 'T1', division: 'U10', coachId: 'h1', assistantCoachIds: ['a1'] },
+        { id: 'T2', division: 'U10', coachId: 'h2', assistantCoachIds: ['a2'] },
+      ])
+    );
+
+    assert.equal(twoSharedCoaches, oneSharedCoach);
+    // Positive control: the conflict is charged at all.
+    assert.ok(noClash > oneSharedCoach, `${noClash} should exceed ${oneSharedCoach}`);
   });
 
   test('penalizes fairness concerns', () => {

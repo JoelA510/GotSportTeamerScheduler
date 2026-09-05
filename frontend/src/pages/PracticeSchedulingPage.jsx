@@ -116,7 +116,7 @@ function normalizePracticeSlot(row, seasonSetting) {
   };
 }
 
-function normalizeTeam(team) {
+export function normalizeTeam(team) {
   const id = team?.id ?? team?.teamId;
   if (!id) return null;
   const division =
@@ -132,6 +132,8 @@ function normalizeTeam(team) {
     name: team.name ?? `Team ${id}`,
     division,
     coachId: team.coachId ?? team.coach_id ?? team.coach?.id ?? null,
+    // The auto-scheduler function reads `assistantCoachIds`; team rows carry either spelling.
+    assistantCoachIds: team.assistantCoachIds ?? team.assistant_coach_ids ?? [],
     divisions: team.divisions ?? { name: division },
   };
 }
