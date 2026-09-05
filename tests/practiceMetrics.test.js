@@ -54,10 +54,14 @@ test('evaluatePracticeSchedule summarises utilization and division distribution'
     timezone: 'UTC',
   });
 
+  // Three rostered teams hold a slot and three assignments were read: the two
+  // numbers coincide here and deliberately do not in the multi-slot case below.
   assert.deepEqual(report.summary, {
     totalTeams: 4,
     assignedTeams: 3,
     unassignedTeams: 1,
+    assignmentsRead: 3,
+    assignmentsCounted: 3,
     assignmentRate: 0.75,
     manualFollowUpRate: 0.25,
   });
@@ -474,10 +478,14 @@ test('evaluatePracticeSchedule correctly counts teams assigned to multiple slots
     timezone: 'UTC',
   });
 
+  // One team, two assignments — the whole reason the report has to say which
+  // unit each number is in.
   assert.deepEqual(report.summary, {
     totalTeams: 4,
     assignedTeams: 1,
     unassignedTeams: 3,
+    assignmentsRead: 2,
+    assignmentsCounted: 2,
     assignmentRate: 0.25,
     manualFollowUpRate: 0.75,
   });

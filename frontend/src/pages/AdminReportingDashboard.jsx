@@ -17,6 +17,7 @@ import {
 } from 'recharts';
 import { Download, Users, ShieldCheck, MapPin, Activity } from 'lucide-react';
 import { logger } from '../lib/logger.js';
+import { formatTeamCoaches } from '../utils/teamCoaches.js';
 
 export default function AdminReportingDashboard() {
   const { currentOrganization } = useOrganization();
@@ -106,14 +107,38 @@ export default function AdminReportingDashboard() {
       const teamsData = await fetchAllPages(() =>
         supabase
           .from('teams')
-          .select(
-            `
-            id, name, division, coach_id,
-            coach:profiles!coach_id (first_name, last_name, email)
-          `
-          )
+          .select('id, name, division, coach_id, assistant_coach_ids')
           .eq('organization_id', currentOrganization.id)
       );
+      // 8.2: the roster export used to print `coach_id` alone, so every
+      // co-coach was missing from the artifact the club hands out.
+      //
+      // Both id columns reference `coaches`, not `profiles` — see
+      // `20260331000000_definitive_schema.sql`, where `teams.coach_id` is
+      // `REFERENCES public.coaches(id)` and `assistant_coach_ids` is the
+      // matching `uuid[]`. The embed here used to read `profiles!coach_id`,
+      // which resolves to nothing; it printed a blank coach column before this
+      // change and would have printed raw UUIDs after it. `TeamRecordPage`
+      // already queries `coaches` and is the contract adopted here.
+      const coachIds = [
+        ...new Set(
+          teamsData
+            .flatMap((team) => [team.coach_id, ...(team.assistant_coach_ids ?? [])])
+            .filter(Boolean)
+        ),
+      ];
+      // Chunked: `fetchAllPages` pages the *response*, not the filter, and a
+      // club with a few hundred coaches would otherwise put every UUID in one
+      // query string and take the whole export down with a 414.
+      const COACH_ID_BATCH = 200;
+      const coachById = new Map();
+      for (let start = 0; start < coachIds.length; start += COACH_ID_BATCH) {
+        const batch = coachIds.slice(start, start + COACH_ID_BATCH);
+        const coachRows = await fetchAllPages(() =>
+          supabase.from('coaches').select('id, full_name, email').in('id', batch)
+        );
+        for (const coach of coachRows) coachById.set(coach.id, coach);
+      }
       const playersData = await fetchAllPages(() =>
         supabase
           .from('players')
@@ -127,7 +152,7 @@ export default function AdminReportingDashboard() {
         'Team ID',
         'Team Name',
         'Division',
-        'Coach Name',
+        'Coaches',
         'Player First Name',
         'Player Last Name',
       ];
@@ -135,15 +160,29 @@ export default function AdminReportingDashboard() {
 
       teamsData.forEach((team) => {
         const teamPlayers = playersData.filter((p) => p.team_id === team.id);
-        const coach = Array.isArray(team.coach) ? team.coach[0] : team.coach;
-        const coachName = coach ? `${coach.first_name} ${coach.last_name}` : '';
+        const assistantIds = team.assistant_coach_ids ?? [];
+        const coaches = formatTeamCoaches({
+          id: team.id,
+          coach_id: team.coach_id,
+          coachName: coachById.get(team.coach_id)?.full_name ?? team.coach_id ?? null,
+          coachEmail: coachById.get(team.coach_id)?.email ?? null,
+          assistant_coach_ids: assistantIds,
+          // Positional, beside the ids: a coach the `coaches` table does not
+          // hold (deleted row, or filtered by RLS) keeps their **id** in the
+          // cell rather than vanishing from it. This is an admin-only export
+          // that an operator can join on, so an id beats both a blank and a
+          // silently shorter list; the on-screen helper makes the opposite call
+          // for the same reason, and says so.
+          assistant_coaches: assistantIds.map((id) => coachById.get(id)?.full_name ?? id),
+          assistant_coach_emails: assistantIds.map((id) => coachById.get(id)?.email ?? null),
+        });
 
         if (teamPlayers.length === 0) {
           rows.push({
             'Team ID': team.id,
             'Team Name': team.name,
             Division: team.division || '',
-            'Coach Name': coachName,
+            Coaches: coaches,
             'Player First Name': 'No Players',
             'Player Last Name': '',
           });
@@ -153,7 +192,7 @@ export default function AdminReportingDashboard() {
               'Team ID': team.id,
               'Team Name': team.name,
               Division: team.division || '',
-              'Coach Name': coachName,
+              Coaches: coaches,
               'Player First Name': p.first_name,
               'Player Last Name': p.last_name,
             });

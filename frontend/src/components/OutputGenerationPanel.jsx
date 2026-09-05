@@ -3,6 +3,11 @@ import { generateScheduleExports } from '@squadlogic/core/outputGeneration.js';
 import { uploadScheduleExport } from '@squadlogic/core/storageSupabase.js';
 import { IS_MOCK_MODE } from '../config.js';
 import { logger } from '../lib/logger.js';
+import {
+  teamsWithCoachSourceDisagreement,
+  teamsWithUncorroboratedCoachIdentity,
+} from '@squadlogic/core/people/coachList.js';
+import { teamCoachFields, teamCoaches } from '../utils/teamCoaches.js';
 
 const MOCK_UPLOAD = IS_MOCK_MODE;
 const DAY_INDEX = {
@@ -54,10 +59,13 @@ function normalizeTeamForExport(team) {
     id,
     name: team.name ?? team.teamName ?? id,
     division,
-    coachName: team.headCoach ?? team.coachName ?? team.coach_name ?? team.coach?.name ?? '',
-    coachEmail:
-      team.coachEmail ?? team.coach_email ?? team.headCoachEmail ?? team.coach?.email ?? '',
-    assistantCoaches: team.assistantCoaches ?? team.assistant_coaches ?? [],
+    // 8.2: the row's coach fields under one spelling, **both sources intact**,
+    // so `generateScheduleExports()` reconciles them and its `coachFindings`
+    // carry any disagreement. Reconciling here and passing the settled list
+    // left the core one source to read, and the message below could never
+    // fire — the export said "generated successfully" for a team whose two
+    // sources named different people in slot 1.
+    ...teamCoachFields(team),
   };
 }
 
@@ -187,44 +195,53 @@ export default function OutputGenerationPanel({
           ? teamSummary.teams
           : [];
 
-    const drafts = sourceTeams
-      .map((team) => ({
-        team,
-        coachName:
-          team.headCoach ||
-          team.coachName ||
-          team.coach_name ||
-          team.coach?.name ||
-          team.coach?.full_name ||
-          null,
-        coachEmail:
-          team.coachEmail || team.coach_email || team.coach?.email || team.headCoachEmail || null,
-      }))
-      .filter(({ coachName, coachEmail }) => coachName && coachEmail)
-      .map((team) => {
-        const teamPractices = practiceAssignments.filter((p) =>
-          [p.teamId, p.team_id].some((teamId) => String(teamId) === String(team.team.id))
-        );
-        const scheduleStr =
-          teamPractices.length > 0
-            ? teamPractices
-                .map((p) => `${p.day} at ${p.slotId.split('_').pop().slice(0, 5)} on ${p.fieldId}`)
-                .join(' and ')
-            : 'TBD';
+    // 8.2: one draft per coach, not one per team. The old shape addressed
+    // `headCoach` and every co-coach got nothing — the same truncation the
+    // export carried, in the artifact that actually reaches a person.
+    //
+    // A coach with no address on file still gets no draft, and that is
+    // **counted and reported** rather than absorbed: most team rows the app
+    // holds carry one email, so a silent "42 drafts" would look exactly like a
+    // run that reached everybody.
+    // Keyed by coach, not by coach-team pair: one assistant with no address who
+    // coaches three teams is one person, and reporting "3 coaches" would be the
+    // same unit confusion the count exists to end.
+    const coachesWithoutDraft = new Set();
+    const drafts = sourceTeams.flatMap((team) => {
+      const teamPractices = practiceAssignments.filter((p) =>
+        [p.teamId, p.team_id].some((teamId) => String(teamId) === String(team.id))
+      );
+      const scheduleStr =
+        teamPractices.length > 0
+          ? teamPractices
+              .map((p) => `${p.day} at ${p.slotId.split('_').pop().slice(0, 5)} on ${p.fieldId}`)
+              .join(' and ')
+          : 'TBD';
 
-        const subject = `Welcome to the season, Coach ${team.coachName}!`;
-        const body = `Hi Coach ${team.coachName},\n\nThank you for volunteering to coach ${team.team.name} in the ${team.team.division || team.team.divisionName} division this season! Your roster has been finalized.\n\nYour assigned practice schedule is:\n${scheduleStr}\n\nPlease let us know if you have any questions.\n\nBest,\nLeague Admin`;
-        return {
-          teamId: team.team.id,
-          coachName: team.coachName,
-          coachEmail: team.coachEmail,
-          subject,
-          body,
-        };
-      });
+      const coaches = teamCoaches(team);
+      // Everybody a draft cannot reach, whether the row lacks their address or
+      // their name. Counting only the named ones left a team whose rows carry
+      // ids and no names reporting "0 drafts" with nobody named as skipped.
+      for (const coach of coaches) {
+        if (!coach.displayName || !coach.email) coachesWithoutDraft.add(coach.personId);
+      }
+      return coaches
+        .filter((coach) => coach.displayName && coach.email)
+        .map((coach) => ({
+          teamId: team.id,
+          coachName: coach.displayName,
+          coachEmail: coach.email,
+          subject: `Welcome to the season, Coach ${coach.displayName}!`,
+          body: `Hi Coach ${coach.displayName},\n\nThank you for volunteering to coach ${team.name} in the ${team.division || team.divisionName} division this season! Your roster has been finalized.\n\nYour assigned practice schedule is:\n${scheduleStr}\n\nPlease let us know if you have any questions.\n\nBest,\nLeague Admin`,
+        }));
+    });
 
     setEmails(drafts);
-    setMessage(`Generated ${drafts.length} email drafts.`);
+    setMessage(
+      coachesWithoutDraft.size === 0
+        ? `Generated ${drafts.length} email drafts, one per coach.`
+        : `Generated ${drafts.length} email drafts, one per coach. ${coachesWithoutDraft.size} coach(es) have no name or address on file and were not written to.`
+    );
   };
 
   const handleGenerate = () => {
@@ -246,7 +263,36 @@ export default function OutputGenerationPanel({
         });
         setGenerated(exports);
         setStatus('idle');
-        setMessage('CSVs generated successfully.');
+        // The reconciliation's findings are surfaced, not discarded. A
+        // `COACH_ORDER_SOURCE_DISAGREES` is two sources contradicting each
+        // other about a team's coach order; producing that and dropping it here
+        // would make the export look clean for a team nobody has reconciled —
+        // the "declared is not enforced" shape, in the artifact this change
+        // exists to fix.
+        //
+        // Filtered on the codes that mean disagreement, **not on severity**:
+        // `COACH_SLOT_UNDECLARED` is also `compromise` and fires for the
+        // ordinary app row, so a severity filter told the operator that sources
+        // disagreed about teams where only one source was ever read.
+        //
+        // `COACH_IDENTITY_UNCORROBORATED` is the other silence refused: a coach
+        // no row carries an id for is exported but cannot be clash-checked, and
+        // the operator is told so rather than shown a clean sheet.
+        const teamsWithDisagreement = teamsWithCoachSourceDisagreement(exports.coachFindings);
+        const teamsUncorroborated = teamsWithUncorroboratedCoachIdentity(exports.coachFindings);
+        setMessage(
+          [
+            'CSVs generated successfully.',
+            teamsWithDisagreement.length === 0
+              ? null
+              : `${teamsWithDisagreement.length} team(s) have sources that disagree about their coaches; every coach is exported and none is treated as the primary.`,
+            teamsUncorroborated.length === 0
+              ? null
+              : `${teamsUncorroborated.length} team(s) have a coach with no id on file; they are exported, but no clash check can cover them until a row carries their id.`,
+          ]
+            .filter(Boolean)
+            .join(' ')
+        );
       } catch (err) {
         logger.error('Generation error:', err);
         setStatus('error');

@@ -13,6 +13,10 @@ import {
   type TimeWindow,
 } from '../engines/practice-coaches.ts';
 import { evaluatePracticeSchedule } from '../engines/scoring-engine.ts';
+import {
+  COACH_IDENTITY_PARITY_CASES,
+  firstMirrorClashKeys,
+} from '../../../../tests/fixtures/coachIdentityParityCases.js';
 import { AutoSchedulerInputSchema } from '../schemas/auto-scheduler.ts';
 import {
   type PracticeAssignment,
@@ -54,6 +58,86 @@ Deno.test('listTeamCoachIds - head plus assistants once each, empty ids dropped'
     listTeamCoachIds({ id: 'T1', coachId: 'h1', assistantCoachIds: ['a1', 'h1', '', 'a1'] }),
     ['h1', 'a1']
   );
+});
+
+Deno.test('listTeamCoachIds - reads the reconciled 8.2 `coaches` shape as well', () => {
+  // The core helper became a call on people/coachList.js in 8.2, which reads
+  // both shapes. A mirror that read only the legacy columns would leave a team
+  // that arrives as `coaches` conflict-free here while the core engine sees
+  // every one of its coaches — protected or not by spelling.
+  assertEquals(listTeamCoachIds({ id: 'T1', coaches: [{ personId: 'c1', slot: 1 }] }), ['c1']);
+  // Union, not replacement, and deduplicated across the two.
+  assertEquals(
+    listTeamCoachIds({
+      id: 'T1',
+      coachId: 'c1',
+      assistantCoachIds: ['a1'],
+      coaches: [
+        { personId: 'c1', slot: 1 },
+        { personId: 'c2', slot: 2 },
+      ],
+    }),
+    ['c1', 'c2', 'a1']
+  );
+  // A malformed list is refused rather than read as "no coaches".
+  assertThrows(
+    () => listTeamCoachIds({ id: 'T1', coaches: 'nope' as unknown as [] }),
+    TypeError,
+    'team T1 coaches must be an array when provided'
+  );
+});
+
+Deno.test('listTeamCoachIds - the identity rule, held to the same case table as the core', () => {
+  // `tests/coachModel.test.js` asserts the core's `listTeamCoachIds()` against
+  // this table; asserting the mirror against the same rows makes parity a
+  // proven fact at every fallback branch rather than a claim in a comment.
+  // The first mirror keyed a `coaches` entry by `displayName` where the core
+  // keyed it by list index, and no test covered either branch.
+  //
+  // Meta-assertions: the table reaches every side of the rule, and it
+  // discriminates — the first mirror's derivation fails it.
+  const sides = new Set(COACH_IDENTITY_PARITY_CASES.map((c) => c.side.split(':')[0]));
+  assertEquals([...sides].sort(), ['email', 'id', 'name', 'nobody', 'nothing']);
+  const divergent = COACH_IDENTITY_PARITY_CASES.filter(
+    (c) => [...firstMirrorClashKeys(c.team)].sort().join() !== [...c.clashKeys].sort().join()
+  ).map((c) => c.label);
+  assertEquals(divergent.includes('coaches[].displayName only'), true);
+
+  for (const parityCase of COACH_IDENTITY_PARITY_CASES) {
+    assertEquals(
+      [...listTeamCoachIds(parityCase.team as Parameters<typeof listTeamCoachIds>[0])].sort(),
+      [...parityCase.clashKeys].sort(),
+      parityCase.label
+    );
+  }
+});
+
+Deno.test('checkHardConstraints - two name-only teams are never refused as one coach', () => {
+  // Uncorroborated identity feeds no clash key here, as in the core: the
+  // scheduler must not refuse a slot because two rows spell the same name.
+  const named = (id: string, displayName: string) =>
+    prepareTeam({ id, division: 'U10', coaches: [{ displayName, slot: 1 }] });
+  const t1 = named('T1', 'Coach Mike');
+  const t2 = named('T2', 'Coach Mike');
+  assertEquals(t1.coachIds, []);
+  assertEquals(checkHardConstraints(t2, overlap, book(t1, early), capacity(), {}), true);
+  // POSITIVE CONTROL: the same two rows carrying one id are one person.
+  const byId = (id: string) =>
+    prepareTeam({ id, division: 'U10', coaches: [{ personId: 'mike', slot: 1 }] });
+  assertEquals(
+    checkHardConstraints(byId('T2'), overlap, book(byId('T1'), early), capacity(), {}),
+    false
+  );
+});
+
+Deno.test('prepareTeam - carries `coaches` through, so the evaluator can recompute from it', () => {
+  const prepared = prepareTeam({
+    id: 'T1',
+    division: 'U10',
+    coaches: [{ personId: 'c1', slot: 1 }],
+  });
+  assertEquals(prepared.coaches, [{ personId: 'c1', slot: 1 }]);
+  assertEquals(prepared.coachIds, ['c1']);
 });
 
 Deno.test('listTeamCoachIds - reads the teams-column spelling assistant_coach_ids as well', () => {

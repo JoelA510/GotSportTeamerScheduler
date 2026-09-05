@@ -16,5 +16,5 @@ Feature: Output Operationalization
   Scenario: Generating coach welcome emails
     Given the team rosters have been generated and finalized
     When I access the communication tools
-    Then I should be able to generate a batch of draft emails for all head coaches
+    Then I should be able to generate a batch of draft emails for every coach
     And each draft should include the coach's name, team name, and assigned practice schedule

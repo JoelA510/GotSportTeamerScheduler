@@ -62,8 +62,10 @@ export const PersonSchema = z
 /**
  * One person's appointment to one team (GAP-20, GAP-23).
  *
- * `slot` has a minimum of 1 because slot 1 *is* the primary coach and a slot 0
- * would silently outrank it. `status` is required with a default of `assigned`
+ * `slot` has a minimum of 1 because the order starts at 1 and a slot 0 would
+ * silently outrank the first coach the club declared. It is an *order*, not a
+ * role: `people/coachList.js` keeps it as the clash-breaker `roster.js` defends
+ * and no artifact renders it as head-versus-assistant (8.2). `status` is required with a default of `assigned`
  * — the corpus's only value — rather than optional, so a producer that means
  * "declined" has to say so.
  *
@@ -176,6 +178,53 @@ export const CoachRosterInputSchema = z
   .object({
     people: z.array(PersonSchema).default([]),
     assignments: z.array(CoachAssignmentSchema).default([]),
+  })
+  .strict();
+
+/**
+ * One coach as one source states them, for `reconcileTeamCoaches()`.
+ *
+ * `slot` is nullable here and non-null on {@link CoachAssignmentSchema},
+ * because a source may name a coach without ranking them at all — the frontend
+ * team row is exactly that — and the reconciliation reports the missing rank
+ * rather than inventing one. Where a slot *is* given it carries the same
+ * minimum of 1 as an assignment's, so the two spellings of the order cannot
+ * disagree about where it starts.
+ *
+ * `keyKind` says what `personId` *is*: an id, an email address or a display
+ * name. It defaults to `id` because a source built from a people table (the
+ * corpus adapters, `roster.js`) keys by person id and says nothing else; the
+ * row-shaped producers in `coachList.js` state the kind they fell back to.
+ * Only an `id` key is corroborated — see `COACH_KEY_KIND`.
+ */
+export const CoachListEntrySchema = z
+  .object({
+    personId: IdSchema,
+    keyKind: z.enum(['id', 'email', 'name']).default('id'),
+    displayName: z.string().min(1).nullable().default(null),
+    email: z.string().min(1).nullable().default(null),
+    slot: z.number().int().min(1).nullable().default(null),
+  })
+  .strict();
+
+/** One source's whole statement about one team's coaches. */
+export const CoachListSourceSchema = z
+  .object({
+    sourceId: z.string().min(1),
+    coaches: z.array(CoachListEntrySchema).default([]),
+  })
+  .strict();
+
+/**
+ * Plain input accepted by `reconcileTeamCoaches()`.
+ *
+ * `sources` has no default: a reconciliation called with no sources at all is a
+ * caller bug, not an empty team, and the two must not look alike.
+ */
+export const CoachListSourcesSchema = z
+  .object({
+    teamId: IdSchema,
+    sources: z.array(CoachListSourceSchema),
   })
   .strict();
 

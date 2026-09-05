@@ -1,3 +1,4 @@
+import { listTeamCoachIds } from './practiceScheduling.js';
 import { SlotSchema, TeamSchema } from './schemas/index.js';
 
 /** @typedef {import('./types.js').Team} Team */
@@ -238,7 +239,13 @@ function indexTeams(teams) {
     teamsById.set(team.id, {
       id: team.id,
       division: team.division,
-      coachId: team.coachId ?? null,
+      // 8.2: every coach on the team, through the same producer the practice
+      // solver and both metric modules use. Leaving the solver on `coachId`
+      // while `gameMetrics.evaluateGameSchedule()` checks every coach would
+      // have the solver book a clash the report then raises and no rerun can
+      // clear — the half-migrated state 8.1 avoided on the practice side by
+      // widening solver and metric together.
+      coachIds: listTeamCoachIds(team),
     });
   }
 
@@ -394,7 +401,11 @@ function scheduleMatchup({
     return;
   }
 
-  if (homeTeam.coachId && homeTeam.coachId === awayTeam.coachId) {
+  // 8.2: **any** coach in common, not only the first one on each row. A person
+  // who is one side's second coach and the other's first is just as unable to
+  // stand on both touchlines.
+  const sharedCoachIds = homeTeam.coachIds.filter((coachId) => awayTeam.coachIds.includes(coachId));
+  if (sharedCoachIds.length > 0) {
     unscheduled.push({
       weekIndex,
       division,
@@ -414,7 +425,7 @@ function scheduleMatchup({
     coachAssignments,
     teamIds: [homeTeamId, awayTeamId],
     teamStartPreferences,
-    coaches: [homeTeam.coachId, awayTeam.coachId],
+    coaches: [...homeTeam.coachIds, ...awayTeam.coachIds],
     slotCapacityMap,
   });
 
@@ -431,28 +442,24 @@ function scheduleMatchup({
   slotCapacityMap.set(selectedSlot.id, slotCapacityMap.get(selectedSlot.id) - 1);
   teamWeekAssignments.add(teamWeekKeyHome);
   teamWeekAssignments.add(teamWeekKeyAway);
-  recordCoachAssignment({
-    coachAssignments,
-    coachId: homeTeam.coachId,
-    assignment: {
-      slotId: selectedSlot.id,
-      start: selectedSlot.start,
-      end: selectedSlot.end,
-      weekIndex,
-      teamId: homeTeamId,
-    },
-  });
-  recordCoachAssignment({
-    coachAssignments,
-    coachId: awayTeam.coachId,
-    assignment: {
-      slotId: selectedSlot.id,
-      start: selectedSlot.start,
-      end: selectedSlot.end,
-      weekIndex,
-      teamId: awayTeamId,
-    },
-  });
+  for (const [team, teamId] of [
+    [homeTeam, homeTeamId],
+    [awayTeam, awayTeamId],
+  ]) {
+    for (const coachId of team.coachIds) {
+      recordCoachAssignment({
+        coachAssignments,
+        coachId,
+        assignment: {
+          slotId: selectedSlot.id,
+          start: selectedSlot.start,
+          end: selectedSlot.end,
+          weekIndex,
+          teamId,
+        },
+      });
+    }
+  }
 
   if (!selectedSlot.division) {
     recordSharedSlotUsage({

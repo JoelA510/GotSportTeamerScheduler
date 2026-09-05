@@ -1,8 +1,8 @@
 /**
  * Repo-wide reachability audit for every frozen reason-code table in
  * `packages/core/src` — the generalisation of the per-module audit
- * `tests/attribution.test.js` already carries. 19 vocabularies, 424 codes, of
- * which 413 are shown to be producible and 11 are named as holes.
+ * `tests/attribution.test.js` already carries. 19 vocabularies, 431 codes, of
+ * which 420 are shown to be producible and 11 are named as holes.
  *
  * **The defect this exists to catch.** Four times now, in four unrelated
  * modules, a reason code has been declared, given a severity, documented, and
@@ -192,11 +192,13 @@ import {
   PEOPLE_REASON,
   applyIdentityDecisions,
   buildCoachRoster,
+  coachesOfTeamRow,
   buildIdentityReviewQueue,
   buildPersonDays,
   buildPersonalConstraintPolicy,
   buildSeason2026CoachRoster,
   createTimelineSet,
+  reconcileTeamCoaches,
   deriveMustAttend,
   evaluatePersonDays,
   findAttendanceClashes,
@@ -1682,6 +1684,49 @@ harvest(
   })
 );
 
+// The one coach model. Two sources for one team that disagree about the order,
+// disagree about the membership, and leave one coach unranked; plus a team
+// nobody names at all, so the vacuous-scan code has a path too.
+harvest(
+  'reconcileTeamCoaches(two sources that disagree about order and membership)',
+  reconcileTeamCoaches({
+    teamId: 'team-a',
+    sources: [
+      {
+        sourceId: 'roster-sheet',
+        coaches: [
+          { personId: 'p1', slot: 1 },
+          { personId: 'p2', slot: 2 },
+        ],
+      },
+      {
+        sourceId: 'select-sheet',
+        coaches: [
+          { personId: 'p2', slot: 1 },
+          { personId: 'p3', slot: null },
+        ],
+      },
+    ],
+  })
+);
+harvest(
+  'reconcileTeamCoaches(one source, so the order is unchecked rather than agreed)',
+  reconcileTeamCoaches({
+    teamId: 'team-b',
+    sources: [{ sourceId: 'roster-sheet', coaches: [{ personId: 'p1', slot: 1 }] }],
+  })
+);
+harvest(
+  'reconcileTeamCoaches(no source at all)',
+  reconcileTeamCoaches({ teamId: 'team-c', sources: [] })
+);
+// A row that can only name its coach: exported, and excluded from the clash
+// keys with the reason said out loud.
+harvest(
+  'coachesOfTeamRow(a legacy row carrying a coach name and no id)',
+  coachesOfTeamRow({ id: 'team-d', coachId: null, coachName: 'Only A Name' })
+);
+
 /** A roster whose one team has a coach who is alone on two teams. */
 const soleRoster = buildCoachRoster({
   people: [person('p1', 'Ada', 'Stone'), person('p2', 'Bo', 'Stone')],
@@ -2665,11 +2710,29 @@ harvest(
   'accountForFixtures(nothing reconciled at all)',
   accountForFixtures({ expectedFixtureIds: [], placedFixtureIds: [], unplaced: [] })
 );
+// The disagreeing team is **on a row**: `TEAM_COACH_SOURCES_DISAGREE` is
+// defined on the exported rows, and the audit's fixture used to name no team,
+// so the code fired here only because the producer swept the whole directory.
+const contestedFixture = makeUnplacedFixture({
+  fixtureId: 'constructed-contested',
+  label: 'contested v control',
+  homeTeamId: 'audit-contested-team',
+  reason: 'no candidate slot on the date was legal for it',
+});
 harvest(
-  'publicationRowsFor(a bound slot, an unbound one and an unplaced fixture)',
+  'publicationRowsFor(a bound slot, an unbound one, an unplaced fixture and a team whose two sources disagree about its coaches)',
   publicationRowsFor({
     slots: [unnamedSlots[0], boundSlots.slots[0]],
-    unplaced: [unplacedFixture],
+    unplaced: [unplacedFixture, contestedFixture],
+    teams: [
+      {
+        id: contestedFixture.homeTeamId,
+        name: 'a team the reason-code reachability audit constructed',
+        coachId: 'from-the-legacy-columns',
+        coachName: 'From The Legacy Columns',
+        coaches: [{ personId: 'from-the-reconciled-list', displayName: 'Reconciled', slot: 1 }],
+      },
+    ],
   })
 );
 harvest(

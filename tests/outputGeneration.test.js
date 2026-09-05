@@ -45,7 +45,12 @@ test('generateScheduleExports builds master and per-team exports', () => {
 
   const exports = generateScheduleExports({ teams, practiceAssignments, gameAssignments });
 
-  assert.equal(exports.master.headers.length, 14);
+  // 8.2 replaced `Coach Name` / `Coach Email` / `Assistant Coaches` with one
+  // `Coaches` column and one `Coach Emails` column, so the header count drops
+  // by one and no column asserts which coach is the head.
+  assert.equal(exports.master.headers.length, 13);
+  assert.ok(!exports.master.headers.includes('Assistant Coaches'));
+  assert.ok(exports.master.headers.includes('Coaches'));
   assert.equal(exports.master.rows.length, 3, 'one practice plus two game entries');
   assert.equal(exports.perTeam.length, 2, 'two teams represented');
 
@@ -145,7 +150,10 @@ test('generateScheduleExports localizes dates when timezone is provided', () => 
   });
 
   const row = exports.master.rows[0];
-  assert.equal(row['Assistant Coaches'], 'Coach A; Coach B');
+  // Both coaches, in the order the legacy shape declared them, and nothing
+  // saying either is the head: the team row named no `coachName`, so position 1
+  // is vacant and the two named coaches keep positions 2 and 3.
+  assert.equal(row.Coaches, 'Coach A; Coach B');
   assert.match(row.Start, /6:00:00 PM/);
   assert.match(row.End, /7:00:00 PM/);
 });
