@@ -204,7 +204,7 @@
  * The resolved lighting position for one surface.
  *
  * @typedef {Object} ResolvedLighting
- * @property {boolean} lit
+ * @property {boolean|null} lit - `null` when nothing states it
  * @property {number|null} lightsOffMinutes
  * @property {'surface'|'ancestor-surface'|'venue'} source
  * @property {string|null} recordId
@@ -224,7 +224,7 @@
  * @property {number} kickoffMinutes
  * @property {number|null} occupancyMinutes
  * @property {number|null} endMinutes
- * @property {boolean} lit
+ * @property {boolean|null} lit - `null` when nothing states it
  * @property {ResolvedLighting|null} lighting
  * @property {ResolvedPermit|null} permit
  * @property {number|null} sunsetMinutes

@@ -142,6 +142,16 @@ export const AVAILABILITY_REASON = Object.freeze({
   /** A permit row's `Lit` column contradicts the resolved lighting. */
   LIGHTING_SOURCE_DISAGREES: 'LIGHTING_SOURCE_DISAGREES',
   /**
+   * No record and no venue flag: nothing states whether the ground is lit.
+   * The practice-only venues of the season-2026 corpus arrive this way
+   * (`field_inventory.csv` has no lighting column, GAP-05). `compromise` for
+   * the same reason `PERMIT_UNDECLARED` is: "nobody has said" is not "unlit",
+   * and reading it as unlit would be an absence wearing a fact's clothes. The
+   * sunset rule still carries the ground, as it does for unlit ground, so the
+   * conservative bound applies while the gap is reported.
+   */
+  LIGHTING_UNDECLARED: 'LIGHTING_UNDECLARED',
+  /**
    * Two lighting records claim the same surface and disagree. The more
    * restrictive one is applied *and* this is emitted — the same contract the
    * permit and sunset paths keep, so lighting is not the one place a duplicate
@@ -203,6 +213,7 @@ export const AVAILABILITY_REASON_SEVERITY = Object.freeze({
   [AVAILABILITY_REASON.LIGHTING_FROM_ANCESTOR]: AVAILABILITY_SEVERITY.INFO,
   [AVAILABILITY_REASON.LIGHTING_FROM_VENUE]: AVAILABILITY_SEVERITY.INFO,
   [AVAILABILITY_REASON.LIGHTING_SOURCE_DISAGREES]: AVAILABILITY_SEVERITY.INFO,
+  [AVAILABILITY_REASON.LIGHTING_UNDECLARED]: AVAILABILITY_SEVERITY.COMPROMISE,
   [AVAILABILITY_REASON.LIGHTING_PRECEDENCE_AMBIGUOUS]: AVAILABILITY_SEVERITY.INFO,
   [AVAILABILITY_REASON.LIGHTS_OFF_UNDECLARED]: AVAILABILITY_SEVERITY.INFO,
   [AVAILABILITY_REASON.LIGHTS_OFF_EXCEEDED]: AVAILABILITY_SEVERITY.BLOCKING,

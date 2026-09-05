@@ -307,6 +307,7 @@ function permitConstraint(calendar, resolved, ctx, findings) {
  */
 function lightingConstraint(lighting, permit, ctx, findings) {
   const base = { surfaceId: ctx.surfaceId, date: ctx.date, lit: lighting.lit };
+  const litWord = lighting.lit === null ? 'undeclared' : lighting.lit ? 'lit' : 'unlit';
 
   const provenance = {
     surface: AVAILABILITY_REASON.LIGHTING_FROM_SURFACE,
@@ -317,13 +318,25 @@ function lightingConstraint(lighting, permit, ctx, findings) {
     makeAvailabilityFinding(
       provenance,
       lighting.source === 'venue'
-        ? `lighting for this field is taken from its venue's flag (${lighting.lit ? 'lit' : 'unlit'}); the corpus records no per-field lighting`
-        : `lighting for this field is taken from a record on ${lighting.recordId} (${lighting.lit ? 'lit' : 'unlit'})`,
+        ? `lighting for this field is taken from its venue's flag (${litWord}); the corpus records no per-field lighting`
+        : `lighting for this field is taken from a record on ${lighting.recordId} (${litWord})`,
       { ...base, source: lighting.source, recordId: lighting.recordId }
     )
   );
 
-  if (permit && permit.lit !== null && permit.lit !== lighting.lit) {
+  if (lighting.lit === null) {
+    // Nothing states it. Reported, and then carried by the sunset rule
+    // exactly as unlit ground is: the conservative bound, with the gap visible.
+    findings.push(
+      makeAvailabilityFinding(
+        AVAILABILITY_REASON.LIGHTING_UNDECLARED,
+        'no record and no venue flag states whether this field is lit; the sunset rule is applied as for unlit ground',
+        { ...base, source: lighting.source, recordId: lighting.recordId }
+      )
+    );
+  }
+
+  if (permit && permit.lit !== null && lighting.lit !== null && permit.lit !== lighting.lit) {
     findings.push(
       makeAvailabilityFinding(
         AVAILABILITY_REASON.LIGHTING_SOURCE_DISAGREES,
@@ -333,12 +346,15 @@ function lightingConstraint(lighting, permit, ctx, findings) {
     );
   }
 
-  if (!lighting.lit) {
+  if (lighting.lit !== true) {
     return makeConstraint(AVAILABILITY_CONSTRAINT.LIGHTING, {
       applicable: false,
       detail: {
         ...base,
-        reason: 'unlit ground has no lights-off time; the sunset rule carries it',
+        reason:
+          lighting.lit === null
+            ? 'lighting is undeclared, so no lights-off time exists; the sunset rule carries it'
+            : 'unlit ground has no lights-off time; the sunset rule carries it',
       },
     });
   }
@@ -391,7 +407,7 @@ function sunsetConstraint(calendar, lighting, ctx, findings) {
   const base = { surfaceId: ctx.surfaceId, date: ctx.date };
   const record = sunsetOn(calendar, ctx.date);
 
-  if (lighting.lit) {
+  if (lighting.lit === true) {
     findings.push(
       makeAvailabilityFinding(
         AVAILABILITY_REASON.SUNSET_NOT_BINDING_WHEN_LIT,
