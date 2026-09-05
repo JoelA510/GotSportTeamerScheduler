@@ -19,7 +19,13 @@ identities replaced. Concretely:
   pseudonyms read off the published corpus. That join produced a 1:1 map with
   **zero ambiguity** on all four axes: 6 venues, 22 fields, 136 team codes, and
   215 coach assignments resolving to 196 distinct people — the same 215/196 the
-  game corpus states. No corpus pseudonym was changed.
+  game corpus states. No corpus pseudonym was changed. The 215/196 reconcile.
+  The 6 / 22 / 136 are **unreconciled** against the published game corpus,
+  which has 7 venues and 24 field ids in play in `../combined_schedule.csv`
+  and 132 roster teams. 136 admits two readings: (a) 131 roster teams with a
+  game plus 5 visiting-club labels, or (b) 132 roster teams plus 4 Minis
+  sessions. No reading of 6 or 22 was found.
+  `tests/season2026PracticeCorpus.test.js` records this rather than choosing.
 - **People not in the game corpus** (registrants who coach no team, all players)
   were minted fresh with unique surnames, so a shared surname never implies a
   family that the source did not state. The 53 shared surnames in the combined
@@ -61,7 +67,14 @@ The real→pseudonym map is **not** in this repo and must not be committed.
 ## Known-good invariants (assert these)
 
 - 457 practice rows across 7 source sheets; 88 distinct teams hold a practice
-  slot; 65 teams that play a game hold none in the parsed sheets.
+  slot. The source claimed **65** teams that play a game hold none in the
+  parsed sheets; that figure does not derive from the corpus. Enumerated from
+  `../coach_roster.csv` (131 roster teams appear in `../combined_schedule.csv`,
+  87 of them hold a slot) it is **44**; enumerated from every named side of
+  `../combined_schedule.csv`, Minis sessions and visiting-club labels included
+  (140 sides), it is **53**. The loader emits the 44 as
+  `ROSTER_TEAM_HOLDS_NO_PRACTICE` findings; the 53 is computed in
+  `tests/season2026PracticeCorpus.test.js`, which asserts both.
 - Exactly one practice team (`16BSelect02`) plays no game in
   `../combined_schedule.csv` — it is a Select team whose league layer is
   unassigned slots.
