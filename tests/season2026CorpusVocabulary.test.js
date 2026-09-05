@@ -158,9 +158,21 @@ const ALLOWED_YEARS = Object.freeze(['2026']);
  * data rather than an existing value the rule mis-reads.
  */
 const FORBIDDEN_PATTERNS = Object.freeze([
-  { name: 'email', pattern: /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+/ },
-  { name: 'url-scheme', pattern: /[A-Za-z][A-Za-z0-9+.-]*:\/\// },
-  { name: 'url-host', pattern: /\b[A-Za-z0-9-]+\.(?:com|net|org|edu|gov|io|co|us|uk|info|biz)\b/i },
+  {
+    name: 'email',
+    pattern: /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+/,
+    samples: ['zzq@zzqfictional.example'],
+  },
+  {
+    name: 'url-scheme',
+    pattern: /[A-Za-z][A-Za-z0-9+.-]*:\/\//,
+    samples: ['https://zzqfictional.example'],
+  },
+  {
+    name: 'url-host',
+    pattern: /\b[A-Za-z0-9-]+\.(?:com|net|org|edu|gov|io|co|us|uk|info|biz)\b/i,
+    samples: ['zzqfictional.com'],
+  },
   // A separator after the area code was once mandatory, which let the single
   // most common North-American spelling — `(925) 555-0134` — match neither this
   // shape nor `digit-run`, whose longest run in it is four. The parenthesised
@@ -169,26 +181,44 @@ const FORBIDDEN_PATTERNS = Object.freeze([
   {
     name: 'phone',
     pattern: /(?:\+\d{1,3}[\s.-]?)?(?:\(\d{3}\)|\b\d{3})[\s.-]?\d{3}[\s.-]?\d{4}\b/,
+    samples: ['(925) 555-0134', '(925)555-0134', '+1 (925) 555-0134', '925-555-0134'],
   },
-  { name: 'digit-run', pattern: /\d{5,}/ },
+  { name: 'digit-run', pattern: /\d{5,}/, samples: ['1234567'] },
   // The corpus is ASCII by construction — measured at 0 non-ASCII letters
   // across all 22 scanned files and both READMEs — so any letter outside ASCII
   // is new data. Letters only, deliberately: the corpus and its prose carry 45
   // non-ASCII *punctuation* marks (em dashes, arrows, `≤`) that are not names.
-  { name: 'non-ascii-letter', pattern: /(?!\p{ASCII})\p{L}/u },
+  {
+    name: 'non-ascii-letter',
+    pattern: /(?!\p{ASCII})\p{L}/u,
+    samples: ['\u0414\u0438\u043d\u0430\u043c\u043e'],
+  },
   // A dotted initialism is the letter-by-letter spelling `words()` throws away.
   // Case-insensitive and with no exception list, which the corpus affords: it
   // holds no dotted initialism at all, in data or in prose. Only *single*
   // letters count, so `St.` and `Ave.` are not initialisms and do not match.
-  { name: 'initialism', pattern: /(?:[A-Za-z]\.){2,}/ },
+  { name: 'initialism', pattern: /(?:[A-Za-z]\.){2,}/, samples: ['S.R.F.C.'] },
 ]);
 
 /**
+ * Date shapes the corpus does not currently write. Declared rather than left to
+ * be inferred from a count: a shape that reads nothing contributes nothing to
+ * the year gate, and an aggregate floor cannot tell a dead shape from a live
+ * one. The declaration is enforced in both directions — a shape named here that
+ * starts matching fails, and a shape not named here that matches nothing fails
+ * — so this list is the one place the fact is recorded, and it cannot go stale.
+ */
+const DATE_SHAPES_ABSENT_FROM_CORPUS = Object.freeze(['dot-date']);
+
+/**
  * Full date shapes, with the capture group holding the year. Matched globally
- * so every date in a cell is year-checked, not just the first.
+ * so every date in a cell is year-checked, not just the first. Each carries a
+ * sample with a year the corpus does not cover, so every shape has a control
+ * proving it both reads and rejects — including the one the corpus never
+ * exercises.
  */
 const DATE_SHAPES = Object.freeze([
-  { name: 'iso-date', pattern: /(\d{4})-\d{1,2}-\d{1,2}/g, yearGroup: 1 },
+  { name: 'iso-date', pattern: /(\d{4})-\d{1,2}-\d{1,2}/g, yearGroup: 1, samples: ['2011-03-14'] },
   // The month and day are bounded so that a triple of plain numbers is not
   // read as a date: the corpus prose describes a field as `60/50/40`, which the
   // unbounded shape reported as a date in year 40. Bounding costs nothing —
@@ -197,8 +227,14 @@ const DATE_SHAPES = Object.freeze([
     name: 'slash-date',
     pattern: /\b(?:0?[1-9]|1[0-2])\/(?:0?[1-9]|[12]\d|3[01])\/(\d{2,4})\b/g,
     yearGroup: 1,
+    samples: ['03/14/2011'],
   },
-  { name: 'dot-date', pattern: /\d{1,2}\.\d{1,2}\.(\d{2,4})/g, yearGroup: 1 },
+  {
+    name: 'dot-date',
+    pattern: /\d{1,2}\.\d{1,2}\.(\d{2,4})/g,
+    yearGroup: 1,
+    samples: ['14.03.2011'],
+  },
 ]);
 
 /**
@@ -758,6 +794,7 @@ function filesUnder(root) {
  *   proseDatesChecked: number,
  *   patternCellsScanned: number,
  *   datesChecked: number,
+ *   datesByShape: Record<string, number>,
  *   proseFiles: string[],
  *   unreadableFiles: string[],
  *   cellsScanned: number,
@@ -795,6 +832,8 @@ function scanCorpus(root) {
   let pathsChecked = 0;
   let patternCellsScanned = 0;
   let datesChecked = 0;
+  /** @type {Record<string, number>} */
+  const datesByShape = Object.fromEntries(DATE_SHAPES.map((shape) => [shape.name, 0]));
   let cellsScanned = 0;
   let personCellsScanned = 0;
   let columnsClassified = 0;
@@ -835,6 +874,7 @@ function scanCorpus(root) {
       let match = scanner.exec(text);
       while (match !== null) {
         datesChecked += 1;
+        datesByShape[name] += 1;
         const year = match[yearGroup];
         if (ALLOWED_YEARS.includes(year)) usedYears.add(year);
         else forbidden.push({ file, column, line, word: `${name}: ${match[0]}` });
@@ -947,6 +987,7 @@ function scanCorpus(root) {
     proseDatesChecked,
     patternCellsScanned,
     datesChecked,
+    datesByShape,
     proseFiles,
     unreadableFiles,
     cellsScanned,
@@ -1018,6 +1059,24 @@ describe('season-2026 corpus vocabulary', () => {
       expect(scan.datesChecked).toBeGreaterThanOrEqual(MIN_DATES_CHECKED);
     });
 
+    it('has no date shape that quietly reads nothing', () => {
+      // An aggregate floor cannot distinguish a dead shape from a live one, so
+      // each shape is counted on its own and measured against the declaration.
+      const absent = DATE_SHAPES.filter((shape) => scan.datesByShape[shape.name] === 0);
+      expect(absent.map((shape) => shape.name).sort()).toEqual(
+        [...DATE_SHAPES_ABSENT_FROM_CORPUS].sort()
+      );
+    });
+
+    it('declares no absent date shape that the corpus has started using', () => {
+      // The other direction, so the declaration cannot go stale: naming a shape
+      // absent is a claim about the corpus, and it is checked.
+      for (const name of DATE_SHAPES_ABSENT_FROM_CORPUS) {
+        expect(scan.datesByShape).toHaveProperty(name);
+        expect(scan.datesByShape[name]).toBe(0);
+      }
+    });
+
     it('scanned exactly the columns each header line declares', () => {
       // A column the header-keyed parse never returns would take its cells out
       // of the scan silently, and a column it invents means a row is wider
@@ -1047,6 +1106,35 @@ describe('season-2026 corpus vocabulary', () => {
 
     it('has an allowlist with no duplicate entries', () => {
       expect(ALLOWED_WORDS.length).toBe(ALLOWED.size);
+    });
+  });
+
+  describe('every declared shape is an enforced shape', () => {
+    it('gives every forbidden shape at least one sample to be proved with', () => {
+      // Declared is not enforced. A shape with no sample has no control, and a
+      // rule nothing exercises is indistinguishable from a rule that is broken.
+      const unsampled = FORBIDDEN_PATTERNS.filter((shape) => (shape.samples ?? []).length === 0);
+      expect(unsampled.map((shape) => shape.name)).toEqual([]);
+    });
+
+    it('gives every date shape at least one sample to be proved with', () => {
+      const unsampled = DATE_SHAPES.filter((shape) => (shape.samples ?? []).length === 0);
+      expect(unsampled.map((shape) => shape.name)).toEqual([]);
+    });
+
+    it('has a sample that its own shape actually matches', () => {
+      // A sample that does not match would make its control pass on someone
+      // else's hit, which is the shape of a control that proves nothing.
+      for (const { name, pattern, samples } of [...FORBIDDEN_PATTERNS, ...DATE_SHAPES]) {
+        for (const sample of samples) {
+          const scanner = new RegExp(pattern.source, pattern.flags.replace('g', ''));
+          expect({ name, sample, matched: scanner.test(sample) }).toEqual({
+            name,
+            sample,
+            matched: true,
+          });
+        }
+      }
     });
   });
 
@@ -1315,22 +1403,25 @@ describe('season-2026 corpus vocabulary', () => {
       );
     });
 
-    it.each([
-      ['parenthesised area code', '(925) 555-0134'],
-      ['parenthesised area code, no space', '(925)555-0134'],
-      ['country prefix', '+1 (925) 555-0134'],
-    ])('reports a phone number written with a %s', (_label, number) => {
-      // The unparenthesised form was the only one the first shape could see,
-      // so its control passed while the format people actually write did not.
+    // One control per shape per sample, generated from the shape table itself,
+    // so a shape added without a control cannot exist: the sample is required
+    // above, and every sample is planted here. This is what `url-host`,
+    // `slash-date` and `dot-date` had none of, and what the phone shape had
+    // only for the one format it could already see.
+    it.each(
+      [...FORBIDDEN_PATTERNS, ...DATE_SHAPES].flatMap(({ name, samples }) =>
+        samples.map((sample) => [name, sample])
+      )
+    )('reports %s written as %s', (name, sample) => {
       const root = scratchCorpus();
       const target = path.join(root, 'practice', 'field_inventory.csv');
       const text = readFileSync(target, 'utf8').split('\n');
-      text[1] = `${text[1]}${number}`;
+      text[1] = `${text[1]} ${sample}`;
       writeFileSync(target, text.join('\n'));
 
       const control = scanCorpus(root);
       expect(control.forbidden.map((hit) => hit.word)).toContainEqual(
-        expect.stringContaining('phone')
+        expect.stringContaining(`${name}: `)
       );
     });
 
@@ -1346,32 +1437,6 @@ describe('season-2026 corpus vocabulary', () => {
       const control = scanCorpus(root);
       expect(control.forbidden.map((hit) => hit.word)).toContainEqual(
         expect.stringContaining('phone')
-      );
-    });
-
-    it('reports a phone number and a long digit run in a scanned cell', () => {
-      const root = scratchCorpus();
-      const target = path.join(root, 'practice', 'field_inventory.csv');
-      const text = readFileSync(target, 'utf8').split('\n');
-      text[1] = `${text[1]}555-555-0134 1234567`;
-      writeFileSync(target, text.join('\n'));
-
-      const control = scanCorpus(root);
-      const words = control.forbidden.map((hit) => hit.word);
-      expect(words).toContainEqual(expect.stringContaining('phone'));
-      expect(words).toContainEqual(expect.stringContaining('digit-run'));
-    });
-
-    it('reports a URL in a scanned cell', () => {
-      const root = scratchCorpus();
-      const target = path.join(root, 'practice', 'field_inventory.csv');
-      const text = readFileSync(target, 'utf8').split('\n');
-      text[1] = `${text[1]}https://zzqfictional.example`;
-      writeFileSync(target, text.join('\n'));
-
-      const control = scanCorpus(root);
-      expect(control.forbidden.map((hit) => hit.word)).toContainEqual(
-        expect.stringContaining('url-scheme')
       );
     });
 
