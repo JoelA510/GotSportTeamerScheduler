@@ -16,7 +16,7 @@ import { evaluatePracticeSchedule } from '../_shared/engines/scoring-engine.ts';
 import { AutoSchedulerInputSchema } from '../_shared/schemas/auto-scheduler.ts';
 import {
   checkHardConstraints,
-  listTeamCoachIds,
+  prepareTeam,
   type PreparedTeam,
   type TimeWindow,
 } from '../_shared/engines/practice-coaches.ts';
@@ -426,12 +426,7 @@ serve(async (req) => {
     const startTime = Date.now();
 
     // 7. Prepare data
-    const teams = input.teams.map((t) => ({
-      id: t.id,
-      division: t.division,
-      coachId: t.coachId ?? null,
-      coachIds: listTeamCoachIds(t),
-    }));
+    const teams = input.teams.map((t) => prepareTeam(t));
 
     const slots = input.slots.map((s) => ({
       id: s.id,

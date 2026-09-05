@@ -1,11 +1,5 @@
 import type { Team, Slot, PracticeAssignment, GameAssignment } from '../schemas/scoring.ts';
-import { listTeamCoachIds } from './practice-coaches.ts';
-
-/** The auto-scheduler puts `coachIds` on each team once at input preparation; honour it. */
-function coachIdsOf(team: Team): string[] {
-  const precomputed = (team as { coachIds?: unknown }).coachIds;
-  return Array.isArray(precomputed) ? (precomputed as string[]) : listTeamCoachIds(team);
-}
+import { conflictPairKey, listTeamCoachIds } from './practice-coaches.ts';
 
 export type Severity = 'info' | 'warning' | 'error';
 
@@ -152,7 +146,9 @@ export function evaluatePracticeSchedule(params: {
     const end = new Date(slot.end);
     const day = slot.day || start.toLocaleDateString('en-US', { weekday: 'long' });
 
-    for (const coachId of coachIdsOf(team)) {
+    // Recomputed from the validated fields on every call: a request-supplied `coachIds` key
+    // would otherwise pass through the schema and override the conflict set.
+    for (const coachId of listTeamCoachIds(team)) {
       if (!coachSchedules.has(coachId)) coachSchedules.set(coachId, []);
       coachSchedules.get(coachId)!.push({ teamId: a.teamId, slotId: a.slotId, start, end, day });
     }
@@ -167,7 +163,7 @@ export function evaluatePracticeSchedule(params: {
       for (let j = i + 1; j < sorted.length; j += 1) {
         const candidate = sorted[j];
         if (candidate.start >= current.end) break;
-        const pairKey = `${current.teamId}::${current.slotId}::${candidate.teamId}::${candidate.slotId}`;
+        const pairKey = conflictPairKey(current, candidate);
         const existing = conflictsByPair.get(pairKey);
         if (existing) {
           existing.coachIds.push(coachId);
@@ -274,6 +270,7 @@ export function evaluateGameSchedule(params: { assignments: GameAssignment[]; te
       if (!teamAssignments.has(teamId)) teamAssignments.set(teamId, []);
       teamAssignments.get(teamId)!.push({ ...a, start, end });
 
+      // Game coach conflicts remain head-coach-only pending 8.2 (games' coach model).
       if (team.coachId) {
         if (!coachAssignments.has(team.coachId)) coachAssignments.set(team.coachId, []);
         coachAssignments.get(team.coachId)!.push({ ...a, start, end });

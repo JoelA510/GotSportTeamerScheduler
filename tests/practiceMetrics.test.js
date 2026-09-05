@@ -1,6 +1,7 @@
 import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import {
+  conflictPairKey,
   evaluatePracticeSchedule,
   MANUAL_FOLLOW_UP_CATEGORIES,
 } from '../packages/core/src/practiceMetrics.js';
@@ -872,4 +873,38 @@ test('a coach listed as both head and assistant of one team is counted once and 
 
   assert.deepEqual(report.coachConflicts, []);
   assert.deepEqual(report.coachLoad, { 'coach-a': { assignedTeams: 1, distinctDays: 1 } });
+});
+
+test('conflictPairKey is the same whichever side is named first, and either assignment order merges to one conflict', () => {
+  const x = { teamId: 'team-2', slotId: 'slot-late-mon' };
+  const y = { teamId: 'team-1', slotId: 'slot-early-mon' };
+  assert.equal(conflictPairKey(x, y), conflictPairKey(y, x));
+  // Positive control: the un-canonicalised form this replaces does depend on the order, so
+  // the assertion above fails against it (proven by substituting it into the source).
+  const raw = (p, q) => `${p.teamId}::${p.slotId}::${q.teamId}::${q.slotId}`;
+  assert.notEqual(raw(x, y), raw(y, x));
+
+  // Regression guard, not a discriminating control: every coach's list is a subsequence of the
+  // same assignment order and is sorted by the same comparator, so today both key forms merge
+  // this pair. The guard is structural — it holds the merge correct if that ever stops being so.
+
+  const teams = [
+    { id: 'team-1', division: 'U10', coachId: 'coach-a', assistantCoachIds: ['assistant-x'] },
+    { id: 'team-2', division: 'U12', coachId: 'coach-a', assistantCoachIds: ['assistant-x'] },
+  ];
+  const forward = [
+    { teamId: 'team-1', slotId: 'slot-early-mon' },
+    { teamId: 'team-2', slotId: 'slot-late-mon' },
+  ];
+  for (const assignments of [forward, [...forward].reverse()]) {
+    const report = evaluatePracticeSchedule({
+      assignments,
+      teams,
+      slots: SAMPLE_SLOTS,
+      schoolDayEnd: '16:00',
+      timezone: 'UTC',
+    });
+    assert.equal(report.coachConflicts.length, 1);
+    assert.deepEqual(report.coachConflicts[0].coachIds, ['coach-a', 'assistant-x']);
+  }
 });

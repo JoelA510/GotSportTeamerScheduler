@@ -46,6 +46,36 @@ export function listTeamCoachIds(team: CoachedTeam): string[] {
 }
 
 /**
+ * The narrow team the optimiser seats and the evaluator scores: request passthrough keys dropped,
+ * the assistant list normalised onto the engine spelling, and the coach set resolved once.
+ * `assistantCoachIds` must survive the projection — the evaluator recomputes the conflict set from
+ * it rather than trusting a `coachIds` key a request could supply, so dropping it here would
+ * silently narrow that check back to head coaches.
+ */
+export function prepareTeam<T extends CoachedTeam & { division: string }>(
+  team: T
+): PreparedTeam & { division: string } {
+  return {
+    id: team.id,
+    division: team.division,
+    coachId: team.coachId ?? null,
+    assistantCoachIds: team.assistantCoachIds ?? team.assistant_coach_ids ?? null,
+    coachIds: listTeamCoachIds(team),
+  };
+}
+
+/**
+ * Key for one overlapping pair of assignments, the same whichever side is named first, so the
+ * pair merges across coaches regardless of the order each coach's list produced it.
+ */
+export function conflictPairKey(
+  a: { teamId: string; slotId: string },
+  b: { teamId: string; slotId: string }
+): string {
+  return [`${a.teamId}::${a.slotId}`, `${b.teamId}::${b.slotId}`].sort().join('|');
+}
+
+/**
  * Capacity, then unavailability and time overlap for every coach on the team.
  */
 export function checkHardConstraints(

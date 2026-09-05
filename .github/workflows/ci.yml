@@ -208,6 +208,40 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
+  # ── Deno mirror tests (push and PR only) ─────────────────────
+  # The auto-scheduler Edge Function is a Deno port of the core practice
+  # scheduler; its assistant-coach conflict seam (Phase 8.1) is covered by
+  # supabase/functions/_shared/tests/practice-coaches_test.ts. Only that file
+  # runs here: scoring-engine_test.ts's "coach conflict detection" case is
+  # red on main (it expects 'Time overlap' in a reason the engine has never
+  # produced) and is excluded until that expectation is reconciled. The file
+  # list is explicit for that reason, so a new _shared/tests/*_test.ts file has
+  # to be added here to run at all.
+  deno-mirror-tests:
+    if: github.event_name != 'schedule'
+    name: Deno Mirror Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: '2.9.6'
+
+      - name: Practice-coaches seam tests
+        # DENO_NO_PACKAGE_JSON: the root package.json declares a `frontend`
+        # workspace member with no package.json of its own, which Deno's
+        # discovery rejects.
+        env:
+          DENO_NO_PACKAGE_JSON: '1'
+        run: >-
+          deno test
+          --import-map supabase/functions/import_map.json
+          supabase/functions/_shared/tests/practice-coaches_test.ts
+
   # ── Deploy Edge Functions (main only) ────────────────────────
   # Prevents edge-function drift: redeploys all Supabase edge functions whenever
   # main changes and CI is green (the import-validation outage was caused by the
@@ -217,7 +251,9 @@ jobs:
   deploy-edge-functions:
     name: Deploy Edge Functions
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: build-and-test
+    # Both gates: the Deno job is the only CI coverage of the seam these
+    # functions ship, so a red mirror test must not deploy.
+    needs: [build-and-test, deno-mirror-tests]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

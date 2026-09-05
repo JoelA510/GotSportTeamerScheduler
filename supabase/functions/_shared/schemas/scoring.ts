@@ -10,6 +10,9 @@ export const TeamSchema = z
     division: z.string(),
     coachId: z.string().nullable().optional(),
     assistantCoachIds: z.array(z.string()).nullable().optional(),
+    // The `teams` column spelling; validated here so it cannot bypass the gate on its way to
+    // listTeamCoachIds, which reads it when assistantCoachIds is absent.
+    assistant_coach_ids: z.array(z.string()).nullable().optional(),
     organization_id: z.string().uuid().optional(),
   })
   .passthrough();

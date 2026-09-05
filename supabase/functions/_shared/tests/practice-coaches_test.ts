@@ -6,13 +6,21 @@
 import { assertEquals, assertThrows } from 'https://deno.land/std@0.203.0/assert/mod.ts';
 import {
   checkHardConstraints,
+  conflictPairKey,
   listTeamCoachIds,
+  prepareTeam,
   type PreparedTeam,
   type TimeWindow,
 } from '../engines/practice-coaches.ts';
 import { evaluatePracticeSchedule } from '../engines/scoring-engine.ts';
 import { AutoSchedulerInputSchema } from '../schemas/auto-scheduler.ts';
-import { type PracticeAssignment, type Slot, type Team, TeamSchema } from '../schemas/scoring.ts';
+import {
+  type PracticeAssignment,
+  ScoringInputSchema,
+  type Slot,
+  type Team,
+  TeamSchema,
+} from '../schemas/scoring.ts';
 
 const hour = (h: number) => new Date(`2026-04-06T${String(h).padStart(2, '0')}:00:00Z`);
 const slotAt = (id: string, startHour: number) => ({
@@ -279,16 +287,126 @@ Deno.test(
   }
 );
 
-Deno.test('scoring-engine - a precomputed coachIds list is honoured over the raw fields', () => {
-  const teams: Team[] = [
-    { id: 'T1', division: 'U10', coachId: 'h1', assistantCoachIds: ['raw'], coachIds: ['pre'] },
-    { id: 'T2', division: 'U12', coachId: 'h2', assistantCoachIds: ['raw'], coachIds: ['pre'] },
-  ];
+Deno.test(
+  'fairness-scoring - a request-supplied coachIds key cannot suppress a real conflict',
+  () => {
+    // The whole request path: TeamSchema is passthrough, so `coachIds: []` survives validation
+    // and reaches the evaluator exactly as fairness-scoring/index.ts hands it over. The evaluator
+    // must recompute from the validated coach fields rather than honour the request's key.
+    // (The app's own caller sends no teams at all today — see the PR's raised-not-fixed list.)
+    const parsed = ScoringInputSchema.safeParse({
+      organizationId: '11111111-1111-4111-8111-111111111111',
+      practice: {
+        teams: [
+          { id: 'T1', division: 'U10', coachId: 'h', assistantCoachIds: ['shared'], coachIds: [] },
+          { id: 'T2', division: 'U12', coachId: 'h', assistantCoachIds: ['shared'], coachIds: [] },
+        ],
+        slots: scoringSlots,
+        assignments: scoringAssignments,
+      },
+      games: null,
+    });
+    assertEquals(parsed.success, true, JSON.stringify(parsed.success ? null : parsed.error.issues));
+    if (!parsed.success || !parsed.data.practice) return;
+    // The key really did survive validation — otherwise this test could not detect honouring it.
+    assertEquals((parsed.data.practice.teams[0] as { coachIds?: unknown }).coachIds, []);
+    const result = evaluatePracticeSchedule({
+      teams: parsed.data.practice.teams,
+      slots: parsed.data.practice.slots,
+      assignments: parsed.data.practice.assignments,
+    });
+    assertEquals(result.coachConflicts.length, 1);
+    assertEquals(result.coachConflicts[0].coachIds, ['h', 'shared']);
+    // And the score the function publishes reflects the conflict rather than a clean sheet.
+    assertEquals(result.summary.fairnessScore < 1, true);
+  }
+);
+
+Deno.test('prepareTeam - the projection index.ts seats teams through keeps every coach', () => {
+  // index.ts narrows each request team before the optimiser and the evaluator see it. The
+  // evaluator recomputes from `assistantCoachIds`, so the projection has to carry it across —
+  // including from the snake spelling, which is the only one this row has.
+  const raw = { id: 'T1', division: 'U10', coachId: 'h', assistant_coach_ids: ['shared'] };
+  const prepared = prepareTeam(raw);
+  assertEquals(prepared.coachIds, ['h', 'shared']);
+  assertEquals(prepared.assistantCoachIds, ['shared']);
+  assertEquals(listTeamCoachIds(prepared), prepared.coachIds);
+
+  // Positive control: the projection that drops the assistant list still reports the right
+  // `coachIds`, and yet narrows the evaluator's recomputed set back to the head coach.
+  const dropped = {
+    id: raw.id,
+    division: raw.division,
+    coachId: raw.coachId,
+    coachIds: ['h', 'shared'],
+  };
+  assertEquals(listTeamCoachIds(dropped), ['h']);
+
+  // Through the evaluator: two teams sharing only the assistant.
+  const teams = [
+    prepareTeam({ id: 'T1', division: 'U10', coachId: 'h1', assistant_coach_ids: ['shared'] }),
+    prepareTeam({ id: 'T2', division: 'U12', coachId: null, assistant_coach_ids: ['shared'] }),
+  ] as unknown as Team[];
   const result = evaluatePracticeSchedule({
     teams,
     slots: scoringSlots,
     assignments: scoringAssignments,
   });
   assertEquals(result.coachConflicts.length, 1);
-  assertEquals(result.coachConflicts[0].coachIds, ['pre']);
+  assertEquals(result.coachConflicts[0].coachIds, ['shared']);
+});
+
+Deno.test('schemas - assistant_coach_ids is validated, not passed through', () => {
+  const request = (assistant_coach_ids: unknown) => ({
+    organizationId: '11111111-1111-4111-8111-111111111111',
+    teams: [{ id: 'T1', division: 'U10', coachId: 'h1', assistant_coach_ids }],
+    slots: [
+      { id: 'early', start: '2026-04-06T17:00:00Z', end: '2026-04-06T18:00:00Z', capacity: 1 },
+    ],
+  });
+  assertEquals(AutoSchedulerInputSchema.safeParse(request('a1')).success, false);
+  assertEquals(AutoSchedulerInputSchema.safeParse(request([123])).success, false);
+  assertEquals(
+    TeamSchema.safeParse({ id: 'T1', division: 'U10', assistant_coach_ids: 'a1' }).success,
+    false
+  );
+  // The fairness-scoring request composes the same TeamSchema, so its gate closes too.
+  const scoringRequest = (assistant_coach_ids: unknown) => ({
+    organizationId: '11111111-1111-4111-8111-111111111111',
+    practice: {
+      teams: [{ id: 'T1', division: 'U10', coachId: 'h1', assistant_coach_ids }],
+      slots: scoringSlots,
+      assignments: [{ teamId: 'T1', slotId: 'early' }],
+    },
+    games: null,
+  });
+  assertEquals(ScoringInputSchema.safeParse(scoringRequest('a1')).success, false);
+  assertEquals(ScoringInputSchema.safeParse(scoringRequest([123])).success, false);
+  // Controls: the valid shapes still pass.
+  assertEquals(AutoSchedulerInputSchema.safeParse(request(['a1'])).success, true);
+  assertEquals(AutoSchedulerInputSchema.safeParse(request(null)).success, true);
+  assertEquals(ScoringInputSchema.safeParse(scoringRequest(['a1'])).success, true);
+  assertEquals(ScoringInputSchema.safeParse(scoringRequest(null)).success, true);
+});
+
+Deno.test('conflictPairKey - the same key whichever side is named first', () => {
+  const x = { teamId: 'T2', slotId: 's2' };
+  const y = { teamId: 'T1', slotId: 's1' };
+  assertEquals(conflictPairKey(x, y), conflictPairKey(y, x));
+  // Positive control: the un-canonicalised form this replaces does depend on the order, so
+  // the assertion above fails against it (proven by substituting it into the source).
+  const raw = (p: typeof x, q: typeof x) => `${p.teamId}::${p.slotId}::${q.teamId}::${q.slotId}`;
+  assertEquals(raw(x, y) === raw(y, x), false);
+  // Regression guard, not a discriminating control: every coach's list is a subsequence of the
+  // same assignment order and is sorted by the same comparator, so today both key forms merge
+  // this pair. The guard is structural — it holds the merge correct if that ever stops being so.
+  const teams: Team[] = [
+    { id: 'T1', division: 'U10', coachId: 'h', assistantCoachIds: ['shared'] },
+    { id: 'T2', division: 'U12', coachId: 'h', assistantCoachIds: ['shared'] },
+  ];
+  for (const assignments of [scoringAssignments, [...scoringAssignments].reverse()]) {
+    const result = evaluatePracticeSchedule({ teams, slots: scoringSlots, assignments });
+    assertEquals(result.coachConflicts.length, 1);
+    assertEquals(result.coachConflicts[0].coachIds, ['h', 'shared']);
+  }
 });

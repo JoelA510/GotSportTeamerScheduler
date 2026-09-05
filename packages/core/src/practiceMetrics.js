@@ -2,6 +2,18 @@ import { SlotSchema, TeamSchema } from './schemas/index.js';
 import { listTeamCoachIds } from './practiceScheduling.js';
 
 /**
+ * Key for one overlapping pair of assignments, the same whichever side is named first, so the
+ * pair merges across coaches regardless of the order each coach's list produced it.
+ *
+ * @param {{ teamId: string, slotId: string }} a
+ * @param {{ teamId: string, slotId: string }} b
+ * @returns {string}
+ */
+export function conflictPairKey(a, b) {
+  return [`${a.teamId}::${a.slotId}`, `${b.teamId}::${b.slotId}`].sort().join('|');
+}
+
+/**
  * Evaluate the quality of practice schedule assignments and emit metrics
  * used by the admin dashboard and regression tests.
  *
@@ -508,7 +520,7 @@ export function evaluatePracticeSchedule({
         if (candidate.start >= current.end) {
           break;
         }
-        const pairKey = `${current.teamId}::${current.slotId}::${candidate.teamId}::${candidate.slotId}`;
+        const pairKey = conflictPairKey(current, candidate);
         const existing = conflictsByPair.get(pairKey);
         if (existing) {
           existing.coachIds.push(coachId);
