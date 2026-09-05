@@ -146,7 +146,15 @@ const FORBIDDEN_PATTERNS = Object.freeze([
   { name: 'email', pattern: /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+/ },
   { name: 'url-scheme', pattern: /[A-Za-z][A-Za-z0-9+.-]*:\/\// },
   { name: 'url-host', pattern: /\b[A-Za-z0-9-]+\.(?:com|net|org|edu|gov|io|co|us|uk|info|biz)\b/i },
-  { name: 'phone', pattern: /\d{3}[\s.-]\d{3}[\s.-]\d{4}/ },
+  // A separator after the area code was once mandatory, which let the single
+  // most common North-American spelling — `(925) 555-0134` — match neither this
+  // shape nor `digit-run`, whose longest run in it is four. The parenthesised
+  // area code, the optional country prefix and optional separators are all in
+  // now; measured at 0 matches across the corpus and both READMEs.
+  {
+    name: 'phone',
+    pattern: /(?:\+\d{1,3}[\s.-]?)?(?:\(\d{3}\)|\b\d{3})[\s.-]?\d{3}[\s.-]?\d{4}\b/,
+  },
   { name: 'digit-run', pattern: /\d{5,}/ },
 ]);
 
@@ -1165,6 +1173,40 @@ describe('season-2026 corpus vocabulary', () => {
       const control = scanCorpus(root);
       expect(control.forbidden.map((hit) => hit.word)).toContainEqual(
         expect.stringContaining('iso-date')
+      );
+    });
+
+    it.each([
+      ['parenthesised area code', '(925) 555-0134'],
+      ['parenthesised area code, no space', '(925)555-0134'],
+      ['country prefix', '+1 (925) 555-0134'],
+    ])('reports a phone number written with a %s', (_label, number) => {
+      // The unparenthesised form was the only one the first shape could see,
+      // so its control passed while the format people actually write did not.
+      const root = scratchCorpus();
+      const target = path.join(root, 'practice', 'field_inventory.csv');
+      const text = readFileSync(target, 'utf8').split('\n');
+      text[1] = `${text[1]}${number}`;
+      writeFileSync(target, text.join('\n'));
+
+      const control = scanCorpus(root);
+      expect(control.forbidden.map((hit) => hit.word)).toContainEqual(
+        expect.stringContaining('phone')
+      );
+    });
+
+    it('reports a phone number in a person-name column, which the allowlist cannot see', () => {
+      const root = scratchCorpus();
+      const target = path.join(root, 'practice', 'coach_registration.csv');
+      const text = readFileSync(target, 'utf8').split('\n');
+      const cells = text[1].split(',');
+      cells[0] = 'Toby Hart (925) 555-0134';
+      text[1] = cells.join(',');
+      writeFileSync(target, text.join('\n'));
+
+      const control = scanCorpus(root);
+      expect(control.forbidden.map((hit) => hit.word)).toContainEqual(
+        expect.stringContaining('phone')
       );
     });
 
