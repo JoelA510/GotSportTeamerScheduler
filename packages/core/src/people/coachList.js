@@ -376,6 +376,37 @@ function blankToNull(value) {
 }
 
 /**
+ * A field that must be a list of coach values, refused **by name** when it is
+ * not one.
+ *
+ * `practiceScheduling.listTeamCoachIds()` throws
+ * `team <id> assistantCoachIds must be an array when provided` for exactly this,
+ * "so a malformed team never passes as conflict-free", and the app-side
+ * `utils/teamCoaches.js` adopted the same contract. This function is the third
+ * site and takes the same one rather than inventing another.
+ *
+ * The shape that made it necessary is not hypothetical: a Postgres `uuid[]`
+ * read through a client that does not parse array literals arrives as the
+ * **string** `'{c2,c3}'`. A bare `.map()` on it threw a raw `TypeError` from
+ * inside the export and took the whole artifact down; spreading it instead
+ * would have been worse, producing one coach per character.
+ *
+ * @param {unknown} value
+ * @param {string} field - for the message only
+ * @param {Object} team - for the message only
+ * @returns {unknown[]}
+ */
+function coachFieldList(value, field, team) {
+  if (value === null || value === undefined) return [];
+  if (!Array.isArray(value)) {
+    throw new TypeError(
+      `team ${team?.id ?? '(unidentified)'} ${field} must be an array when provided; received ${typeof value === 'string' ? JSON.stringify(value) : typeof value}`
+    );
+  }
+  return value;
+}
+
+/**
  * The legacy `{ coachId, assistantCoachIds }` / `{ coachName, assistantCoaches }`
  * team shape as one {@link reconcileTeamCoaches} source.
  *
@@ -397,18 +428,30 @@ function blankToNull(value) {
 export function legacyTeamCoachSource(team, sourceId) {
   const ids = [
     blankToNull(team.coachId ?? team.coach_id),
-    ...(team.assistantCoachIds ?? team.assistant_coach_ids ?? []).map(blankToNull),
+    ...coachFieldList(
+      team.assistantCoachIds ?? team.assistant_coach_ids,
+      'assistantCoachIds',
+      team
+    ).map(blankToNull),
   ];
   const names = [
     blankToNull(team.coachName),
-    ...(team.assistantCoaches ?? team.assistant_coaches ?? []).map(blankToNull),
+    ...coachFieldList(
+      team.assistantCoaches ?? team.assistant_coaches,
+      'assistantCoaches',
+      team
+    ).map(blankToNull),
   ];
   // Co-coach addresses, positionally beside the assistant ids. Without this the
   // per-coach email drafts could only ever reach the first coach, which is the
   // same truncation in the artifact that actually reaches a person.
   const emails = [
     blankToNull(team.coachEmail),
-    ...(team.assistantCoachEmails ?? team.assistant_coach_emails ?? []).map(blankToNull),
+    ...coachFieldList(
+      team.assistantCoachEmails ?? team.assistant_coach_emails,
+      'assistantCoachEmails',
+      team
+    ).map(blankToNull),
   ];
 
   // `emails` counts toward the length: a row carrying an address for somebody it

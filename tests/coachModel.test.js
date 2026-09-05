@@ -282,6 +282,43 @@ describe('coach model :: reconcileTeamCoaches surfaces disagreement instead of p
     );
   });
 
+  it('refuses a non-array coach list by name, and does not die of a raw TypeError', () => {
+    // A Postgres `uuid[]` read through a client that does not parse array
+    // literals arrives as the string '{c2,c3}'. A bare `.map()` on it threw a
+    // raw TypeError from inside the export and took the whole artifact down;
+    // spreading it would have produced one coach per character. Both siblings —
+    // `listTeamCoachIds()` and the app's `asList()` — throw a named error, and
+    // this is the third site taking the same contract.
+    for (const malformed of ['{c2,c3}', 42, { a: 1 }]) {
+      expect(() =>
+        generateScheduleExports({
+          teams: [{ id: 'T1', coachId: 'c1', assistant_coach_ids: malformed }],
+          practiceAssignments: [
+            { teamId: 'T1', start: '2026-09-14T22:00:00Z', end: '2026-09-14T23:00:00Z' },
+          ],
+        })
+      ).toThrow(/team T1 assistantCoachIds must be an array when provided/);
+    }
+    expect(() => legacyTeamCoachSource({ id: 'T1', assistantCoaches: 'Bo' }, 'x')).toThrow(
+      /team T1 assistantCoaches must be an array when provided/
+    );
+    expect(() => legacyTeamCoachSource({ id: 'T1', assistant_coach_emails: 'bo@x' }, 'x')).toThrow(
+      /team T1 assistantCoachEmails must be an array when provided/
+    );
+
+    // POSITIVE CONTROL: the well-formed shape still exports both coaches, so
+    // the guard rejects the malformed input rather than everything.
+    const exports = generateScheduleExports({
+      teams: [{ id: 'T1', coachId: 'c1', assistantCoachIds: ['c2'] }],
+      practiceAssignments: [
+        { teamId: 'T1', start: '2026-09-14T22:00:00Z', end: '2026-09-14T23:00:00Z' },
+      ],
+    });
+    expect(exports.master.rows[0].Coaches).toBe('c1; c2');
+    // Absent is still absent, not an error.
+    expect(legacyTeamCoachSource({ id: 'T1', coachId: 'c1' }, 'x').coaches).toHaveLength(1);
+  });
+
   it('keeps a hole in the legacy list rather than promoting somebody into it', () => {
     const source = legacyTeamCoachSource(
       { id: 't', coachId: null, assistantCoachIds: ['a1'] },
