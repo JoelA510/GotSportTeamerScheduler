@@ -346,3 +346,58 @@ export function buildSeason2026PracticeFacilityGraph(geometry, options = {}) {
     )
   );
 }
+
+/**
+ * The names the two decoder rings go by in the alias layer. Named for the
+ * workbook each came from, exactly as the corpus README does.
+ */
+export const SEASON_2026_ALIAS_RINGS = Object.freeze({
+  PRACTICE_SHEET: 'practice-sheet',
+  FIELDS_SHEET: 'fields-sheet',
+});
+
+/**
+ * Translate the corpus loader's two decoder rings into `buildFieldAliasMap()`
+ * input. Takes the already-parsed records (`practice.fieldAliases`,
+ * `practice.fieldCodeNames`) and reads nothing from disk.
+ *
+ * The fields sheet writes one `remainder` cell (`Turf 2A`, `Field 1`, `Upper`,
+ * or nothing) rather than a field and a sub-unit; it is passed as the field
+ * name **as written**. Splitting `Turf 2A` into `Turf 2` + `A` would be a
+ * grammar the sheet does not state, and `Rookerie Park` does not resolve
+ * anyway: it is the spelling variant the README keeps on purpose.
+ *
+ * @param {ReadonlyArray<{ displayName: string, actualLabel: string|null, venue: string|null, field: string|null, subunit: string|null, rowIndex: number }>} fieldAliases
+ * @param {ReadonlyArray<{ codeName: string, actualLabel: string, venue: string, remainder: string|null, uncertain: boolean, rowIndex: number }>} fieldCodeNames
+ * @returns {{ rings: Array<{ ring: string, entries: Array<Object> }> }}
+ */
+export function toSeason2026AliasRings(fieldAliases, fieldCodeNames) {
+  return {
+    rings: [
+      {
+        ring: SEASON_2026_ALIAS_RINGS.PRACTICE_SHEET,
+        entries: fieldAliases.map((row) => ({
+          displayName: row.displayName,
+          label: row.actualLabel,
+          venue: row.venue,
+          field: row.field,
+          subunit: row.subunit,
+          uncertain: false,
+          source: `practice_field_aliases.csv#${row.rowIndex}`,
+        })),
+      },
+      {
+        ring: SEASON_2026_ALIAS_RINGS.FIELDS_SHEET,
+        entries: fieldCodeNames.map((row) => ({
+          displayName: row.codeName,
+          label: row.actualLabel,
+          venue: row.venue,
+          field: row.remainder,
+          subunit: null,
+          uncertain: row.uncertain,
+          source: `field_code_names.csv#${row.rowIndex}`,
+        })),
+      },
+    ],
+  };
+}

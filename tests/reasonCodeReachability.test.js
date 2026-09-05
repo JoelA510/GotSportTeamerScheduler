@@ -1,8 +1,8 @@
 /**
  * Repo-wide reachability audit for every frozen reason-code table in
  * `packages/core/src` — the generalisation of the per-module audit
- * `tests/attribution.test.js` already carries. 19 vocabularies, 431 codes, of
- * which 420 are shown to be producible and 11 are named as holes.
+ * `tests/attribution.test.js` already carries. 19 vocabularies, 440 codes, of
+ * which 429 are shown to be producible and 11 are named as holes.
  *
  * **The defect this exists to catch.** Four times now, in four unrelated
  * modules, a reason code has been declared, given a severity, documented, and
@@ -116,12 +116,15 @@ import {
   FACILITY_REASON,
   buildFacilityGraph,
   buildFacilityGraphFromSeason2026,
+  buildFieldAliasMap,
   buildSeason2026VenueComplexMap,
+  buildVenueComplexMap,
   toSeason2026FacilityGraphInput,
   checkBooking,
   checkEquipment,
   checkLining,
   checkSizeEligibility,
+  lookupFieldAlias,
   makeFinding as makeFacilityFinding,
   season2026SurfaceId,
   season2026VenueId,
@@ -737,6 +740,60 @@ for (const [label, windows] of /** @type {Array<[string, Array<Object>]>} */ ([
 }
 
 /* -- timing --------------------------------------------------------------- */
+
+/* -- the alias layer ------------------------------------------------------ */
+
+/**
+ * Two venues declared as one complex, each with a `Field 1`, so a practice
+ * spelling that names the complex fits two surfaces. Same constructor the
+ * season adapter uses; the rig is input.
+ */
+const aliasRig = buildFacilityGraph({
+  venues: [
+    { id: 'twin-a', name: 'Twin A' },
+    { id: 'twin-b', name: 'Twin B' },
+  ],
+  surfaces: [
+    { id: 'twin-a/field-1', venueId: 'twin-a', name: 'Field 1' },
+    { id: 'twin-a/field-2', venueId: 'twin-a', name: 'Field 2' },
+    { id: 'twin-b/field-1', venueId: 'twin-b', name: 'Field 1' },
+  ],
+});
+const aliasComplexes = buildVenueComplexMap({
+  complexes: [{ id: 'twin', name: 'Twin', venueIds: ['twin-a', 'twin-b'] }],
+});
+const aliasMap = harvest(
+  'buildFieldAliasMap(every unresolved shape)',
+  buildFieldAliasMap(aliasRig, aliasComplexes, {
+    rings: [
+      {
+        ring: 'one',
+        entries: [
+          { displayName: 'Blank' },
+          { displayName: 'Lost', label: 'Nowhere Field 1', venue: 'Nowhere', field: 'Field 1' },
+          { displayName: 'Vague', label: 'Twin Field 1', venue: 'Twin', field: 'Field 1' },
+          { displayName: 'Whole', label: 'Twin A', venue: 'Twin A' },
+          {
+            displayName: 'Doubt',
+            label: 'Twin A Field 9?',
+            venue: 'Twin A',
+            field: 'Field 9?',
+            uncertain: true,
+          },
+          { displayName: 'Split', label: 'Twin A Field 1', venue: 'Twin A', field: 'Field 1' },
+          { displayName: 'Split', label: 'Twin A Field 2', venue: 'Twin A', field: 'Field 2' },
+        ],
+      },
+      {
+        ring: 'two',
+        entries: [
+          { displayName: 'Split', label: 'Twin A Field 2', venue: 'Twin A', field: 'Field 2' },
+        ],
+      },
+    ],
+  })
+);
+harvest('lookupFieldAlias(unknown name)', lookupFieldAlias(aliasMap, 'Nobody Field 1'));
 
 /** A well-formed format row; each case below breaks exactly one field of it. */
 const rigFormat = (overrides = {}) => ({
