@@ -39,10 +39,147 @@ identities replaced. Concretely:
 - **Dropped entirely:** email addresses, phone numbers, exact dates of birth,
   URLs, and the name of anyone who verified a constraint. Birth **year** is kept
   because age-group placement needs it.
-- **Every file passes two independent leak audits** — one inside the writer that
-  refuses to emit a cell still containing a real token, and one that re-scans the
-  written files for full names, name tokens, organisation names, emails, URLs and
-  date-of-birth patterns. Both report zero.
+- **Two leak audits ran at authoring time, and both were denylists.** One sat
+  inside the writer and refused to emit a cell still holding a token from the
+  real→pseudonym map; the other re-scanned the written files for full names,
+  name tokens, organisation names, emails, URLs and date-of-birth patterns. Both
+  reported zero, and that zero was true of what they could see. **A denylist only
+  recognises a name someone already enumerated.** The map covered the club's own
+  people, teams and venues, so every _opposing_ club and every town the source
+  named was invisible to both passes. The second audit's "organisation names"
+  were the organisation names on that list, not organisation names in general;
+  the sentence this replaces claimed the general thing, and that claim was wrong.
+
+  The 8.0 loader review found the gap in `game_change_log.csv`; a survey of all
+  21 corpus CSVs for this fix found one more, in a free-text column of a second
+  file. What is now true:
+  - **18 rows across 2 files and 3 columns were scrubbed** — 5 identifying
+    entities (4 opposing clubs, 1 town) written as 10 distinct source tokens
+    over 44 occurrences, each token mapped 1:1 to the same invented name
+    everywhere it appears, in the same texture as the rest of the corpus. One of
+    those tokens is two words where its replacement is two as well, so 58
+    replacement words were written in all. Row counts, column counts, ordering,
+    dates, times and the distinct-value count of every column of every file are
+    unchanged. The doubled club token and the upper/lower-case variant the
+    source export produced are preserved: they are a parsing hazard worth
+    keeping.
+  - **The standing guard is an allowlist, not a denylist.**
+    [`tests/season2026CorpusVocabulary.test.js`](../../../tests/season2026CorpusVocabulary.test.js)
+    writes down every alphabetic word the corpus may contain outside its
+    person-name columns and fails on any word that is not on it. A leak no
+    longer has to be recognised to be caught — it only has to be new, which is
+    what catches the organisation name nobody has thought of yet. It walks the
+    corpus root **recursively**, so a file dropped into a subdirectory that does
+    not exist yet is still scanned; it reads `../facility_geometry.json` as well
+    as the CSVs and refuses any other extension rather than skipping it; it
+    checks column headers whether or not the column's cells are exempt; and it
+    proves it read whole files rather than the columns a header-keyed parse
+    happened to return. Both the **path** and the **contents** are checked:
+    every segment of every scanned file's relative path goes through the same
+    allowlist, with `_` and `-` read as word separators, so a directory or file
+    named for a real club fails as loudly as a cell does. And because a name can
+    leak without spelling itself in ASCII letters, **every** cell — person-name
+    columns included — is matched against shapes the corpus does not contain: an
+    email address, a URL scheme or host, a phone number in any of the common
+    North-American formats, a run of five or more digits, any full date whose
+    year is not the season's, **any letter outside ASCII**, and **any dotted
+    initialism**. The last two close the class `words()` cannot see at all: it
+    splits on `[^A-Za-z]+` and drops one-character tokens, so a name in another
+    script produces no words, and a club acronym spelled letter by letter with a
+    dot after each letter produces none either. Dotted initialisms are also
+    collapsed before the split, so a dotted `FC` reaches the allowlist and the
+    organisation-designator rule as the word `FC` rather than as nothing. This
+    paragraph is written the long way round on purpose: the prose is itself
+    shape-checked now, and a literal dotted initialism here would fail the
+    guard — which is the rule doing its job on the file it is describing. A bare four-digit number is deliberately not read as a date,
+    because birth year is a kept column and its values span sixteen years, and a
+    slash date's month and day are bounded so a triple of plain numbers such as
+    a `60/50/40` field size is not read as a date either. Every shape carries
+    its own planted samples and the controls are generated from them, so a shape
+    cannot be declared without being proved; a date shape the corpus does not
+    write is declared absent by name, and that declaration is enforced in both
+    directions. The two corpus `README.md` files are the one deliberate
+    exclusion — reviewed prose, whose vocabulary would drown the list — and they
+    are excluded by their **exact relative path**, not by being README-shaped,
+    so a third `README.md` anywhere under the corpus root is read rather than
+    skipped. That exclusion is from the **allowlist only**: every rule that
+    needs no list still runs on their paths and their contents. Adding a
+    legitimate word to the corpus fails the guard until a human puts that word
+    on the list. That is the point.
+  - **The pattern worth naming, because it recurred.** The guard's own first
+    version repeated the failure of the denylists it replaces. It was airtight
+    along the axis it was aimed at and silent one step off it, in four
+    directions at once: it read file **contents** and never the **path** those
+    contents sat at; it excluded prose by **shape** (`.md`) rather than by
+    **identity**, so a `README.md` full of real names was skipped for being
+    README-shaped; it saw **letters** and nothing else, so a phone number, an
+    email address and a date of birth were all invisible; and it compared a
+    **trimmed** header against an **untrimmed** parse key, so one half of a
+    single comparison disagreed with the other. Three of the four were shown by
+    planting real organisation names that a fully green run did not mention.
+
+    A second review found the same thing one level out again, and it is worth
+    recording as a progression rather than as three unrelated bug reports. The
+    original audits were blind outside their **list**. The first guard was blind
+    outside its **dimension** — it read contents and not paths, letters and not
+    digits. The second was blind outside its **alphabet**: every content rule
+    ran through `words()`, which sees only ASCII letters in runs of two or more,
+    so a name in Cyrillic and a club acronym spelled letter by letter with dots
+    were invisible to all of them at once, including the designator rule that is
+    the only content check on the exempt person columns. The shape checks that were supposed to cover
+    "identity without letters" covered only the five numeric shapes, and the
+    most common way to write a phone number was not among them.
+
+    An instrument reports zero either because there is nothing there or because
+    it cannot see, and the two look identical from outside. Each round the blind
+    spot sat one step further out than the round before, and each time it was
+    invisible from inside the rule that had just been strengthened. When adding
+    a rule here, ask what dimension and what alphabet it does not cover before
+    asking whether it works — and prove a coverage counter by writing the broken
+    implementation it is supposed to catch, because a counter incremented beside
+    the thing it measures cannot fail.
+
+  - **What would still get through, stated plainly.** Every line below was run
+    against the guard as it now stands and the result recorded; none is
+    reasoned about. Each says _passes silently_ only because a plant of exactly
+    that shape produced no finding of any kind.
+    - A **bare real person's name in a person-name column passes.** The
+      allowlist does not cover those columns — 1,400-odd invented names would
+      swamp it — so only the organisation-designator rule and the shape checks
+      can see anything there, and a plain given name and surname trip neither.
+    - A **real club name with no designator in a person-name column passes**,
+      for the same reason: a single ASCII word in an exempt column is checked
+      against nothing that could recognise it.
+    - An **organisation whose designator is not one of the fifteen listed
+      tokens passes** in a person-name column. The designator rule is a
+      denylist, and it is the one denylist left in this guard.
+    - A **real name already on the allowlist passes anywhere.** Matching is
+      case-sensitive, so it passes in the case the list carries it in: a word
+      listed capitalised passes in a cell, while its lowercase form in a path
+      is reported, and the reverse holds too.
+    - An **organisation named only for existing corpus venues passes**, because
+      every word of it is already on the list.
+    - A **bare organisation name written into one of the two excluded
+      `README.md` files passes.** Their contents now go through every list-free
+      rule — an email address or a phone number in that prose is reported — but
+      they are off the allowlist by design, and a plain English club name is
+      caught by nothing else.
+
+    Two limits on this list itself. First, neither the scrub nor the guard
+    proves a negative about a name it has never seen; what the guard proves is
+    that no _unseen_ word is in the corpus. Second, and less comfortably, **this
+    list can only be as complete as the classes someone has thought to test.**
+    Three rounds of review have each found a class the previous round could not
+    see, and each was invisible from inside the rules that had just been
+    strengthened. Read the list as the failures that are known, not as the
+    failures that exist.
+
+  - **One real token is knowingly retained.** `field_equipment.csv`'s `item`
+    column names a goal brand rather than a party to the season, and three
+    fixtures elsewhere in the repo carry that brand and two others, so it is a
+    repo-wide convention rather than this corpus's decision. It is on the
+    allowlist and named here so the retention is visible; removing it is an
+    operator call, not a silent one.
 
 The real→pseudonym map is **not** in this repo and must not be committed.
 
@@ -81,7 +218,7 @@ The real→pseudonym map is **not** in this repo and must not be committed.
 - Two slot regimes and no third: 45 minutes at 16:00/16:45/17:30, and 60 minutes
   at 16:00/17:00/18:00. Duration is derived from slot spacing, not asserted.
 - Practices run Monday–Friday. **19 rows are Friday.**
-- 201 coach registrations; 19 of them name a second player, i.e. coach two teams.
+- 201 coach registrations; 19 of them name a second player, and so coach two teams.
 - 1153 players, 29 of them playing up.
 - 13 constraint rows; 3 venues are closed for effectively the whole season
   (`Fivepines Park` reseeding, `Quarrywood Park` and `Cedarbrook Park` offline).
