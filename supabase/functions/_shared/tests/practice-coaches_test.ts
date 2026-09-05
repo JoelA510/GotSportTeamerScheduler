@@ -68,7 +68,10 @@ Deno.test('listTeamCoachIds - reads the reconciled 8.2 `coaches` shape as well',
       id: 'T1',
       coachId: 'c1',
       assistantCoachIds: ['a1'],
-      coaches: [{ personId: 'c1', slot: 1 }, { personId: 'c2', slot: 2 }],
+      coaches: [
+        { personId: 'c1', slot: 1 },
+        { personId: 'c2', slot: 2 },
+      ],
     }),
     ['c1', 'c2', 'a1']
   );
