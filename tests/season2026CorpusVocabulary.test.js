@@ -790,6 +790,8 @@ function filesUnder(root) {
  * @returns {{
  *   files: string[],
  *   pathsChecked: number,
+ *   pathSegmentsChecked: number,
+ *   pathWords: Set<string>,
  *   proseChecked: string[],
  *   proseDatesChecked: number,
  *   patternCellsScanned: number,
@@ -830,6 +832,9 @@ function scanCorpus(root) {
   const usedAllowed = new Set();
   const usedYears = new Set();
   let pathsChecked = 0;
+  let pathSegmentsChecked = 0;
+  /** @type {Set<string>} Words the *path* check contributed, and only it. */
+  const pathWords = new Set();
   let patternCellsScanned = 0;
   let datesChecked = 0;
   /** @type {Record<string, number>} */
@@ -909,7 +914,10 @@ function scanCorpus(root) {
     // label on someone else's finding.
     pathsChecked += 1;
     for (const segment of rel.split('/')) {
-      checkVocabulary(rel, '(path)', 0, segment.split(/[_-]+/).join(' '));
+      pathSegmentsChecked += 1;
+      const spelled = segment.split(/[_-]+/).join(' ');
+      for (const word of words(spelled)) pathWords.add(word);
+      checkVocabulary(rel, '(path)', 0, spelled);
       checkPatterns(rel, '(path)', 0, segment);
     }
 
@@ -983,6 +991,8 @@ function scanCorpus(root) {
   return {
     files,
     pathsChecked,
+    pathSegmentsChecked,
+    pathWords,
     proseChecked,
     proseDatesChecked,
     patternCellsScanned,
@@ -1039,17 +1049,51 @@ describe('season-2026 corpus vocabulary', () => {
       expect(scan.proseDatesChecked).toBeGreaterThanOrEqual(MIN_PROSE_DATES);
     });
 
-    it('checked the path of every file it read, not only its contents', () => {
-      expect(scan.pathsChecked).toBe(scan.files.length);
-      // A word that only ever occurs in a path, so the path check is provably
-      // feeding the allowlist rather than merely running.
-      expect(scan.usedAllowed.has('csv')).toBe(true);
+    it('checked every segment of every path, directories included', () => {
+      // `pathsChecked` on its own could not fail: it was incremented next to
+      // the push it was compared against, so deleting the whole path loop kept
+      // it true. And a companion asserting `csv` was reached said nothing —
+      // `csv` is the file extension, so narrowing the loop to the last segment
+      // and dropping every directory name kept that true as well.
+      //
+      // The expectation is derived from the file list, which is built before
+      // the path loop runs and so survives a break in it.
+      const expectedSegments = scan.files.reduce(
+        (total, file) => total + file.split('/').length,
+        0
+      );
+      expect(scan.pathSegmentsChecked).toBe(expectedSegments);
+      // And the corpus really does nest, so the comparison above is not two
+      // ways of counting the same flat list.
+      expect(expectedSegments).toBeGreaterThan(scan.files.length);
+
+      // The words the path check contributed, against the same independently
+      // derived subject set: empty if the loop is gone.
+      const expectedPathWords = new Set(
+        scan.files.flatMap((file) =>
+          file.split('/').flatMap((segment) => words(segment.split(/[_-]+/).join(' ')))
+        )
+      );
+      expect([...scan.pathWords].sort()).toEqual([...expectedPathWords].sort());
+      expect(scan.pathWords.size).toBeGreaterThan(0);
     });
 
     it('read both the vocabulary-checked and the person-name cells', () => {
       expect(scan.cellsScanned).toBeGreaterThanOrEqual(MIN_CELLS_SCANNED);
       expect(scan.personCellsScanned).toBeGreaterThanOrEqual(MIN_PERSON_CELLS_SCANNED);
-      expect(scan.columnsClassified).toBeGreaterThan(0);
+      // `> 0` could not fail either. The count is compared against the columns
+      // the header lines on disk declare, read here rather than taken from the
+      // scan, so classifying fewer files or fewer columns per file is visible.
+      const declaredColumns = scan.files
+        .filter((file) => file.endsWith('.csv'))
+        .reduce(
+          (total, file) =>
+            total +
+            readFileSync(path.join(CORPUS_ROOT, file), 'utf8').split('\n')[0].split(',').length,
+          0
+        );
+      expect(scan.columnsClassified).toBe(declaredColumns);
+      expect(declaredColumns).toBeGreaterThan(0);
     });
 
     it('ran the shape checks over every cell, person columns included', () => {
