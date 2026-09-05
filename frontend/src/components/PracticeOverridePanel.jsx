@@ -2,28 +2,7 @@ import React, { useMemo, useState } from 'react';
 import PropTypes from 'prop-types';
 import { AlertCircle, Plus, Check } from 'lucide-react';
 import Button from './ui/Button.jsx';
-import {
-  coachKeysByTeamId,
-  formatTeamCoaches,
-  sharedCoachNames,
-  teamCoaches,
-} from '../utils/teamCoaches.js';
-
-/**
- * A team's coaches for the picker, all of them and none of them labelled head.
- *
- * The count is **every** coach, named or not, so a team with one name on file
- * and two more coaches does not read as having one coach.
- *
- * @param {any} team
- * @returns {string}
- */
-function coachLabel(team) {
-  const coaches = teamCoaches(team);
-  if (coaches.length === 0) return 'No coach on file';
-  const text = formatTeamCoaches(team, '');
-  return `${coaches.length === 1 ? 'Coach' : 'Coaches'}: ${text}`;
-}
+import { coachKeysByTeamId, coachLabel, sharedCoachNames } from '../utils/teamCoaches.js';
 
 /**
  * How to name the coaches two teams share, in a sentence.
@@ -83,6 +62,12 @@ export default function PracticeOverridePanel({
   // meant a `.strict()` Zod parse per team per staged assignment per render.
   const teamById = useMemo(() => new Map(teams.map((team) => [String(team.id), team])), [teams]);
   const coachKeys = useMemo(() => coachKeysByTeamId(teams), [teams]);
+  // The picker's labels, once per team list rather than once per team per
+  // render: `coachLabel()` is a reconciliation, and it was running in JSX.
+  const coachLabels = useMemo(
+    () => new Map(teams.map((team) => [String(team.id), coachLabel(team)])),
+    [teams]
+  );
 
   const checkForConflict = (teamId, slotId) => {
     const team = teamById.get(String(teamId));
@@ -153,7 +138,7 @@ export default function PracticeOverridePanel({
             <option value="">-- Choose Team --</option>
             {teams.map((t) => (
               <option key={t.id} value={t.id}>
-                {t.name} ({t.division}) - {coachLabel(t)}
+                {t.name} ({t.division}) - {coachLabels.get(String(t.id))}
               </option>
             ))}
           </select>

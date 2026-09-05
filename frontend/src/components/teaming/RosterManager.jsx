@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   DndContext,
   DragOverlay,
@@ -19,7 +19,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { GripVertical, User, ShieldAlert, ArrowRight } from 'lucide-react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useConflicts } from '../../hooks/useConflicts.js';
-import { formatTeamCoaches, teamCoachNames } from '../../utils/teamCoaches.js';
+import { coachLabel } from '../../utils/teamCoaches.js';
 
 /**
  * @param {{ player: any }} props
@@ -85,6 +85,9 @@ export const SortablePlayer = React.memo(PlayerCard);
 
 export function TeamColumn({ team, players }) {
   const parentRef = useRef(null);
+  // 8.2: every coach, none of them labelled head — from the one producer the
+  // override picker uses, reconciled once per team rather than on every render.
+  const coachText = useMemo(() => coachLabel(team, 'Coach: Vacant'), [team]);
 
   // CRITICAL: Virtualizer mapping for 60FPS roster interaction
   const rowVirtualizer = useVirtualizer({
@@ -122,11 +125,7 @@ export function TeamColumn({ team, players }) {
           </span>
         </div>
         <p className="text-xs text-text-muted">{team.division}</p>
-        <div className="text-xs mt-2 text-text-secondary">
-          {/* 8.2: every coach, none of them labelled head. */}
-          {teamCoachNames(team).length > 1 ? 'Coaches' : 'Coach'}:{' '}
-          {formatTeamCoaches(team, 'Vacant')}
-        </div>
+        <div className="text-xs mt-2 text-text-secondary">{coachText}</div>
       </div>
 
       <div className="flex-1 overflow-y-auto p-3 relative h-full" ref={parentRef} role="list">

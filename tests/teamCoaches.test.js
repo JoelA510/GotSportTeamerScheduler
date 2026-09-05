@@ -19,6 +19,7 @@ import { describe, expect, it } from 'vitest';
 import { normalizeTeam } from '../frontend/src/pages/PracticeSchedulingPage.jsx';
 import {
   coachKeysByTeamId,
+  coachLabel,
   formatTeamCoaches,
   sharedCoachKeys,
   sharedCoachNames,
@@ -248,5 +249,19 @@ describe('teamCoaches :: identity, on the app side of the one rule', () => {
     });
     expect(fields.coachId).toBe('c2');
     expect(fields.coaches).toHaveLength(2);
+  });
+
+  it('labels "Coaches" by counting every coach, named or not', () => {
+    const team = { id: 't', coach_id: 'a', coachName: 'Ada', assistant_coach_ids: ['b', 'c'] };
+    expect(coachLabel(team)).toBe('Coaches: Ada + 2 more (2 names not loaded)');
+    // The wrong implementation, constructed: counting only the named ones
+    // read "Coach" for a team of three.
+    const namedOnly = teamCoachNames(team).length > 1 ? 'Coaches' : 'Coach';
+    expect(namedOnly).toBe('Coach');
+    expect(unnamedTeamCoachCount(team)).toBe(2);
+    // The other two shapes.
+    expect(coachLabel({ id: 't', coach_id: 'a', coachName: 'Ada' })).toBe('Coach: Ada');
+    expect(coachLabel({ id: 't' })).toBe('No coach on file');
+    expect(coachLabel({ id: 't' }, 'Coach: Vacant')).toBe('Coach: Vacant');
   });
 });

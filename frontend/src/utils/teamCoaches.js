@@ -204,23 +204,56 @@ export function unnamedTeamCoachCount(team) {
 }
 
 /**
- * A team's coaches as one human-readable string.
+ * An already-reconciled coach list as one human-readable string.
  *
  * A coach the row cannot name is **counted, never printed as an id and never
  * dropped**: "Ada Stone + 1 more (name not loaded)" says the team has two
  * coaches, which neither a UUID nor a silently shorter list does.
+ *
+ * Takes the list rather than the team so a caller that already reconciled
+ * once can format without reconciling again: each `teamCoaches()` call is a
+ * `.strict()` Zod parse, and the picker was running three per team per render.
+ *
+ * @param {ReadonlyArray<{ displayName: string|null }>} coaches
+ * @param {string} [fallback] - what to print when the list is empty
+ * @returns {string}
+ */
+export function formatCoachListText(coaches, fallback = '') {
+  const names = coaches.filter((coach) => coach.displayName).map(coachDisplayText);
+  const unnamed = coaches.length - names.length;
+  const unnamedText = `${unnamed} ${unnamed === 1 ? 'name' : 'names'} not loaded`;
+  if (names.length === 0) return unnamed === 0 ? fallback : `${unnamed} on file, ${unnamedText}`;
+  if (unnamed === 0) return names.join(', ');
+  return `${names.join(', ')} + ${unnamed} more (${unnamedText})`;
+}
+
+/**
+ * A team's coaches as one human-readable string. See {@link formatCoachListText}.
  *
  * @param {any} team
  * @param {string} [fallback] - what to print when the team has no coach at all
  * @returns {string}
  */
 export function formatTeamCoaches(team, fallback = '') {
-  const names = teamCoachNames(team);
-  const unnamed = unnamedTeamCoachCount(team);
-  const unnamedText = `${unnamed} ${unnamed === 1 ? 'name' : 'names'} not loaded`;
-  if (names.length === 0) return unnamed === 0 ? fallback : `${unnamed} on file, ${unnamedText}`;
-  if (unnamed === 0) return names.join(', ');
-  return `${names.join(', ')} + ${unnamed} more (${unnamedText})`;
+  return formatCoachListText(teamCoaches(team), fallback);
+}
+
+/**
+ * "Coach: …" or "Coaches: …", from **one** reconciliation.
+ *
+ * The plural counts **every** coach, named or not: one named coach beside two
+ * id-only assistants is three coaches, and a label that counted only the
+ * names read "Coach: Ada + 2 more". The one producer for the roster card and
+ * the override picker, so the two cannot disagree about what a coach is.
+ *
+ * @param {any} team
+ * @param {string} [fallback] - the whole label when the team has no coach on file
+ * @returns {string}
+ */
+export function coachLabel(team, fallback = 'No coach on file') {
+  const coaches = teamCoaches(team);
+  if (coaches.length === 0) return fallback;
+  return `${coaches.length === 1 ? 'Coach' : 'Coaches'}: ${formatCoachListText(coaches)}`;
 }
 
 /**
