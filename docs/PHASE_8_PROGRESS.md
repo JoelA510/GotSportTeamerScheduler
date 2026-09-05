@@ -5,14 +5,14 @@ the task's PR merges. This file is the only durable record across supervisor
 sessions: resume from the first task not marked **merged**; never redo one that is.
 
 Test counts are `npm run test` totals (passed / skipped / todo). Baseline on
-`main` at b048022 before 8.0: **2165 / 34 / 6** across 158 files.
+`main` at 798524f before 8.0: **2165 / 34 / 6** across 158 files.
 
 ---
 
 ## 8.0 — Corpus loader and integrity test — **merged**
 
 - **PR:** [#359](https://github.com/JoelA510/SquadLogic/pull/359), branch
-  `feat/phase8-0-corpus-loader`, squash-merged as `ce59da7`.
+  `feat/phase8-0-corpus-loader`, squash-merged as `4ea9459`.
 - **Tests:** 2165 / 34 / 6 → **2216 / 34 / 6** (159 files). Season fixture suite
   unchanged at 34/34; new `tests/season2026PracticeCorpus.test.js` 49;
   `tests/reasonCodeReachability.test.js` 26 → 27.
@@ -75,7 +75,7 @@ Test counts are `npm run test` totals (passed / skipped / todo). Baseline on
 ## 8.1 — Two live defects on the shipped practice path — **merged**
 
 - **PR:** [#363](https://github.com/JoelA510/SquadLogic/pull/363), branch
-  `feat/phase8-1-practice-defects`, squash-merged as `7846722`.
+  `feat/phase8-1-practice-defects`, squash-merged as `55033a4`.
 - **Tests:** 2216 / 34 / 6 → **2243 / 34 / 6**, plus **17 Deno cases** in
   `supabase/functions/_shared/tests/practice-coaches_test.ts`, which now run in
   CI as a new `Deno Mirror Tests` job.
@@ -168,7 +168,7 @@ Not a numbered Phase 8 task. Raised by the 8.0 review, ruled on by the operator,
 and worth recording because of what it says about how a guarantee fails.
 
 - **PR:** [#366](https://github.com/JoelA510/SquadLogic/pull/366), branch
-  `fix/corpus-scrub-change-log-org-names`, squash-merged as `f6d379c`.
+  `fix/corpus-scrub-change-log-org-names`, squash-merged as `514fd1a`.
 - **Tests:** 2263 → **2300 passed** / 34 skipped / 6 todo. The new guard,
   `tests/season2026CorpusVocabulary.test.js`, went 20 → 34 → **57** cases across
   two review rounds.
@@ -266,7 +266,7 @@ make the unit of loss one fix rather than one round.
 ## 8.2 — One coach model, and counts that name their unit — **merged**
 
 - **PR:** [#368](https://github.com/JoelA510/SquadLogic/pull/368), branch
-  `feat/phase8-2-coach-model`, squash-merged as `883058a`.
+  `feat/phase8-2-coach-model`, squash-merged as `114b3df`.
 - **Tests:** 2243 / 34 / 6 (main before 8.2) → **2390 / 34 / 6** (166 files),
   of which +37 came from the corpus scrub merging in mid-task. Deno mirror
   17 → **21** cases. Season fixture suite 141 / 141 throughout. E2E 76 / 76.
@@ -392,3 +392,44 @@ coached corpus teams are fully id-keyed, so no corpus figure moved.
   `npm run lint` covers `supabase/functions/**` even though those files are
   outside `tsconfig` and only execute under Deno; run it before every push, not
   at the end of a round.
+
+---
+
+## History rewrite — organisation and place names purged from git history — **done**
+
+Not a numbered task. Follows the corpus scrub above; ruled on by the operator.
+
+- **What:** the nine commits from the corpus drop to the 8.2 progress entry were
+  rewritten so that no commit in `main`'s history carries the real organisation
+  or place names the scrub removed from the working tree. `main` was
+  force-pushed. Every clone and fork must re-clone or hard-reset;
+  `git pull` will not converge.
+- **Scope, proven before the push:** exactly 9 commits changed; the other 642
+  are byte-identical and the pre-corpus ancestor keeps its SHA; the rewritten
+  tip's tree is identical to the tree it replaced; a word-bounded search for
+  every real token finds zero introducing commits under `fixtures/` and zero
+  anywhere for the ten distinct tokens; the one three-letter token that is also
+  a legitimate English word keeps its seven non-corpus uses untouched.
+- **SHAs in this log** were rewritten to the new history in the same commit as
+  this entry. Pre-rewrite SHAs quoted in merged PR bodies and on GitHub's PR
+  pages are unreachable from `main` by design. GitHub may retain the old
+  objects behind `refs/pull/*` until it garbage-collects; if the names must be
+  unretrievable by SHA as well, that needs a GitHub Support purge, which is the
+  operator's call.
+- **Three dry runs failed their own verification before anything was pushed**,
+  and each is a recognisable shape:
+  1. A literal `--replace-text` map matched **substrings** of ordinary words in
+     115 files and a legitimate **whole word** in 7 non-corpus files — a
+     denylist applied without a boundary, the same failure the scrub's audit
+     had. Caught by "rewritten tip tree must equal current tip tree".
+  2. Scoping by CSV header content collided with a test file that begins with
+     the same header line. Caught by the same gate.
+  3. Scoping by the exact blob ids of the two affected files was correct, but
+     `git fast-export` drops `gpgsig`, so every GitHub-signed commit (152 of the
+     167 checked) was re-imported unsigned and changed SHA, cascading through
+     600 descendants. Caught by "pre-corpus ancestor must keep its SHA" and
+     "changed commits must be 9". Fixed by exporting only the corpus range.
+     A rewrite verified only by "the names are gone" would have passed all three.
+- The real-to-pseudonym map was reconstructed from the scrub commit's own diff,
+  validated by exact round-trip of both CSVs, used, and deleted. It is not in
+  the repo, this log, or any PR.
