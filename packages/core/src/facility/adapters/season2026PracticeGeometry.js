@@ -60,7 +60,7 @@ import {
  *
  * @typedef {Object} PracticeLayerVenue
  * @property {string} name - the corpus spelling
- * @property {null} lit - undeclared: no corpus file states lighting for it
+ * @property {boolean|null} lit - `null` unless a cited source states it; none does this season
  * @property {string|null} notes
  * @property {PracticeLayerSource[]} sources
  */
