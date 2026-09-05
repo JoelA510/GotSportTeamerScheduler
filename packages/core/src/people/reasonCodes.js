@@ -317,6 +317,19 @@ export const PEOPLE_REASON = Object.freeze({
    */
   COACH_LIST_SCAN_VACUOUS: 'COACH_LIST_SCAN_VACUOUS',
   /**
+   * A coach is known by an email address or a display name and by no id, so
+   * nothing corroborates *who* they are: two rows spelling "Coach Mike" may be
+   * one person or two, and a row's address may be a shared family inbox. They
+   * are exported and reported like any other coach, and **excluded from the
+   * clash keys** — `listTeamCoachIds()` hands the solvers only id-keyed
+   * coaches. Said out loud because both silences are wrong: keying them in
+   * folds "uncorroborated" into "same person" and refuses matchups on the
+   * strength of a spelling; keying them out and saying nothing folds
+   * "unknown" into "no clash". `compromise`: a clash involving this coach
+   * cannot be detected until a row carries their id.
+   */
+  COACH_IDENTITY_UNCORROBORATED: 'COACH_IDENTITY_UNCORROBORATED',
+  /**
    * An active assignment carries an effective window and the roster was built
    * with no as-of date, so the window could not be applied. The assignment is
    * still counted active — dropping a coach on a window nobody judged would be
@@ -458,6 +471,7 @@ export const PEOPLE_REASON_SEVERITY = Object.freeze({
   [PEOPLE_REASON.COACH_LIST_UNCORROBORATED]: PEOPLE_SEVERITY.INFO,
   [PEOPLE_REASON.COACH_SLOT_UNDECLARED]: PEOPLE_SEVERITY.COMPROMISE,
   [PEOPLE_REASON.COACH_LIST_SCAN_VACUOUS]: PEOPLE_SEVERITY.COMPROMISE,
+  [PEOPLE_REASON.COACH_IDENTITY_UNCORROBORATED]: PEOPLE_SEVERITY.COMPROMISE,
 
   [PEOPLE_REASON.TIMELINE_SOURCE_NOT_INGESTED]: PEOPLE_SEVERITY.BLOCKING,
   [PEOPLE_REASON.TIMELINE_SOURCE_EMPTY]: PEOPLE_SEVERITY.COMPROMISE,

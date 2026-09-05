@@ -1,8 +1,8 @@
 /**
  * Repo-wide reachability audit for every frozen reason-code table in
  * `packages/core/src` — the generalisation of the per-module audit
- * `tests/attribution.test.js` already carries. 19 vocabularies, 430 codes, of
- * which 419 are shown to be producible and 11 are named as holes.
+ * `tests/attribution.test.js` already carries. 19 vocabularies, 431 codes, of
+ * which 420 are shown to be producible and 11 are named as holes.
  *
  * **The defect this exists to catch.** Four times now, in four unrelated
  * modules, a reason code has been declared, given a severity, documented, and
@@ -192,6 +192,7 @@ import {
   PEOPLE_REASON,
   applyIdentityDecisions,
   buildCoachRoster,
+  coachesOfTeamRow,
   buildIdentityReviewQueue,
   buildPersonDays,
   buildPersonalConstraintPolicy,
@@ -1718,6 +1719,12 @@ harvest(
 harvest(
   'reconcileTeamCoaches(no source at all)',
   reconcileTeamCoaches({ teamId: 'team-c', sources: [] })
+);
+// A row that can only name its coach: exported, and excluded from the clash
+// keys with the reason said out loud.
+harvest(
+  'coachesOfTeamRow(a legacy row carrying a coach name and no id)',
+  coachesOfTeamRow({ id: 'team-d', coachId: null, coachName: 'Only A Name' })
 );
 
 /** A roster whose one team has a coach who is alone on two teams. */

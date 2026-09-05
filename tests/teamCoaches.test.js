@@ -206,3 +206,33 @@ describe('teamCoaches :: a shared co-coach is a shared coach', () => {
     expect(teamCoaches(null)).toEqual([]);
   });
 });
+
+describe('teamCoaches :: identity, on the app side of the one rule', () => {
+  it('reads the id off an array-embedded `coach` row, so the same person shares a key', () => {
+    // The defect: the embed was unwrapped for the name and the address and
+    // `id` was read off the array itself — `undefined` — so this coach keyed
+    // by name while the same person on another team keyed by id.
+    const embedded = [{ id: 'c1', full_name: 'Ada' }];
+    expect(/** @type {any} */ (embedded).id).toBeUndefined();
+    const viaEmbed = { id: 'A', coach: embedded };
+    const viaIds = { id: 'B', assistant_coach_ids: ['c1'] };
+    expect(teamCoachKeys(viaEmbed)).toEqual(['c1']);
+    expect(sharedCoachKeys(viaEmbed, viaIds)).toEqual(['c1']);
+    expect(teamCoachNames(viaEmbed)).toEqual(['Ada']);
+  });
+
+  it('keeps a name-only coach on the card and out of the clash keys', () => {
+    // Two rows reading "Coach Mike" with no id may be one person or two. The
+    // panel must not warn that they clash; the roster card must still show them.
+    const A = { id: 'A', coachName: 'Coach Mike' };
+    const B = { id: 'B', coachName: 'Coach Mike' };
+    expect(teamCoaches(A).map((c) => [c.personId, c.keyKind])).toEqual([['Coach Mike', 'name']]);
+    expect(teamCoachKeys(A)).toEqual([]);
+    expect(sharedCoachKeys(A, B)).toEqual([]);
+    expect(formatTeamCoaches(A)).toBe('Coach Mike');
+    // POSITIVE CONTROL: the same two rows with the same id share a key.
+    expect(sharedCoachKeys({ ...A, coach_id: 'mike' }, { ...B, coach_id: 'mike' })).toEqual([
+      'mike',
+    ]);
+  });
+});

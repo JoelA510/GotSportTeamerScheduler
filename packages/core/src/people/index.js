@@ -79,10 +79,12 @@ export {
 
 export {
   COACH_CELL_SEPARATOR,
+  COACH_KEY_KIND,
   COACH_ORDER_DISAGREEMENT,
   COACH_SOURCE_DISAGREEMENT_CODES,
   coachDisplayText,
   coachExportCells,
+  coachIdentityKey,
   coachesOfTeamRow,
   compareCoaches,
   formatCoachEmails,
@@ -91,6 +93,7 @@ export {
   reconcileTeamCoaches,
   teamCoachSources,
   teamsWithCoachSourceDisagreement,
+  teamsWithUncorroboratedCoachIdentity,
 } from './coachList.js';
 
 export {

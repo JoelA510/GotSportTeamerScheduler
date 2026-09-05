@@ -116,6 +116,7 @@
  *
  * @typedef {Object} ReconciledCoach
  * @property {string} personId
+ * @property {string} keyKind - what `personId` is: `id`, `email` or `name` (`COACH_KEY_KIND`); only `id` is corroborated
  * @property {string|null} displayName
  * @property {string|null} email
  * @property {number|null} slot - lowest slot any source gives them; null when none does
@@ -128,7 +129,8 @@
  * @typedef {Object} TeamCoachList
  * @property {string} teamId
  * @property {ReadonlyArray<ReconciledCoach>} coaches - slot ascending, unslotted last, ties by id
- * @property {ReadonlyArray<string>} personIds - the same order
+ * @property {ReadonlyArray<string>} personIds - the same order, every coach
+ * @property {ReadonlyArray<string>} corroboratedPersonIds - the same order, id-keyed coaches only: the clash keys `listTeamCoachIds()` hands the solvers
  * @property {boolean} orderCrossChecked - two or more sources ranked this team, agreeing or not
  * @property {PeopleFinding[]} findings
  * @property {PeopleMeta} meta

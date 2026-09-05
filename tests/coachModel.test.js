@@ -27,10 +27,12 @@ import { generateScheduleExports } from '@squadlogic/core/outputGeneration.js';
 import { scheduleGames } from '@squadlogic/core/gameScheduling.js';
 import {
   COACH_CELL_SEPARATOR,
+  COACH_KEY_KIND,
   COACH_ORDER_DISAGREEMENT,
   PEOPLE_REASON,
   buildSeason2026CoachRoster,
   coachExportCells,
+  coachIdentityKey,
   coachesOfTeamRow,
   compareCoaches,
   formatCoachEmails,
@@ -39,7 +41,13 @@ import {
   reconcileTeamCoaches,
   teamCoachSources,
   teamsWithCoachSourceDisagreement,
+  teamsWithUncorroboratedCoachIdentity,
 } from '@squadlogic/core/people/index.js';
+import { listTeamCoachIds } from '@squadlogic/core/practiceScheduling.js';
+import {
+  COACH_IDENTITY_PARITY_CASES,
+  firstMirrorClashKeys,
+} from './fixtures/coachIdentityParityCases.js';
 import {
   RESERVE_REASON,
   makeUnplacedFixture,
@@ -245,7 +253,9 @@ describe('coach model :: reconcileTeamCoaches surfaces disagreement instead of p
     // A blank id beside a real name keys by the name rather than by `''`.
     expect(
       legacyTeamCoachSource({ id: 't', coachId: '', coachName: 'Only Name' }, 'x').coaches
-    ).toEqual([{ personId: 'Only Name', displayName: 'Only Name', email: null, slot: 1 }]);
+    ).toEqual([
+      { personId: 'Only Name', keyKind: 'name', displayName: 'Only Name', email: null, slot: 1 },
+    ]);
     // A row that is blank throughout contributes nobody at all.
     expect(legacyTeamCoachSource({ id: 't', coachId: '', coachName: '' }, 'x').coaches).toEqual([]);
   });
@@ -331,7 +341,9 @@ describe('coach model :: reconcileTeamCoaches surfaces disagreement instead of p
       { id: 't', coachId: null, assistantCoachIds: ['a1'] },
       'team-row'
     );
-    expect(source.coaches).toEqual([{ personId: 'a1', displayName: null, email: null, slot: 2 }]);
+    expect(source.coaches).toEqual([
+      { personId: 'a1', keyKind: 'id', displayName: null, email: null, slot: 2 },
+    ]);
   });
 });
 
@@ -838,10 +850,209 @@ describe('coach model :: game coach conflicts are no longer head-coach-only', ()
 });
 
 /* ========================================================================== */
-/* The reserve disagreement's subject set is the exported rows                 */
+/* Identity: which side each fallback lands on                                  */
 /* ========================================================================== */
 
-describe('coach model :: the publication reports a disagreement only for a team it printed', () => {
+describe('coach model :: an uncorroborated identity feeds display, never a refusal', () => {
+  /** The solver on one matchup; the reasons it refuses, if any. */
+  const refusalsOf = (teams) =>
+    scheduleGames({
+      teams,
+      roundRobinByDivision: {
+        U10: [{ weekIndex: 1, matchups: [{ homeTeamId: 'A', awayTeamId: 'B' }], byes: [] }],
+      },
+      slots: [
+        {
+          id: 'slot-1',
+          division: 'U10',
+          weekIndex: 1,
+          capacity: 1,
+          start: '2026-09-12T14:00:00Z',
+          end: '2026-09-12T15:00:00Z',
+        },
+      ],
+    }).unscheduled.map((entry) => entry.reason);
+
+  const uncorroboratedOf = (team) =>
+    withCode(coachesOfTeamRow(team).findings, PEOPLE_REASON.COACH_IDENTITY_UNCORROBORATED);
+
+  it('keys a `coaches` entry by id, else email, else name — never by its list index', () => {
+    // The defect: two teams' unrelated first coaches, neither carrying an id,
+    // were both keyed `'1'`, so `listTeamCoachIds()` returned `['1']` for each
+    // and the solver refused their fixture as "coach coaches both teams".
+    const A = {
+      id: 'A',
+      name: 'A',
+      division: 'U10',
+      coaches: [{ displayName: 'Ada', email: 'ada@example.test' }],
+    };
+    const B = {
+      id: 'B',
+      name: 'B',
+      division: 'U10',
+      coaches: [{ displayName: 'Bo', email: 'bo@example.test' }],
+    };
+    // The wrong implementation, constructed: the index fallback collides.
+    const indexKeyed = (coach, index) => coach.personId ?? coach.id ?? coach.name ?? index + 1;
+    expect(String(indexKeyed(A.coaches[0], 0))).toBe(String(indexKeyed(B.coaches[0], 0)));
+
+    // Under the rule: the address is the key (an address distinguishes
+    // namesakes), the kind says it is uncorroborated, and nothing reaches the
+    // solver — so nothing is refused.
+    expect(coachesOfTeamRow(A).coaches.map((c) => [c.personId, c.keyKind])).toEqual([
+      ['ada@example.test', COACH_KEY_KIND.EMAIL],
+    ]);
+    expect(listTeamCoachIds(A)).toEqual([]);
+    expect(listTeamCoachIds(B)).toEqual([]);
+    expect(refusalsOf([A, B])).toEqual([]);
+    // …and the silence is not folded into "no clash": each team says so.
+    expect(uncorroboratedOf(A).map((f) => f.details)).toEqual([
+      { teamId: 'A', personId: 'ada@example.test', keyKind: COACH_KEY_KIND.EMAIL },
+    ]);
+    expect(uncorroboratedOf(B)).toHaveLength(1);
+    // Every coach is still on the artifact.
+    expect(coachesOfTeamRow(A).personIds).toEqual(['ada@example.test']);
+  });
+
+  it('does not refuse two teams whose rows both read "Coach Mike" with no id', () => {
+    // Before 8.2 a blank `coachId` meant no coach and no refusal. The first
+    // 8.2 draft keyed the name and refused: two different people called Mike
+    // could not play each other. A name proves nothing about sameness.
+    const A = { id: 'A', name: 'A', division: 'U10', coachId: null, coachName: 'Coach Mike' };
+    const B = { id: 'B', name: 'B', division: 'U10', coachId: null, coachName: 'Coach Mike' };
+    expect(refusalsOf([A, B])).toEqual([]);
+    expect(uncorroboratedOf(A).map((f) => f.details.keyKind)).toEqual([COACH_KEY_KIND.NAME]);
+    expect(uncorroboratedOf(A)[0].severity).toBe('compromise');
+    expect(uncorroboratedOf(A)[0].message).toMatch(/cannot be detected/);
+    expect(uncorroboratedOf(A)[0].message).toMatch(/never refused on the strength of a name/);
+
+    // POSITIVE CONTROL, the other direction: the same two rows carrying the
+    // same id ARE one person, and the refusal stands.
+    const byId = [A, B].map((team) => ({ ...team, coachId: 'mike' }));
+    expect(refusalsOf(byId)).toEqual(['coach-coaches-both-teams']);
+    expect(uncorroboratedOf(byId[0])).toEqual([]);
+  });
+
+  it('reports, rather than silently misses, a person carried by id on one row and by name on another', () => {
+    // The PR's "left open" note, now loud. The clash is still undetectable —
+    // nothing corroborates that "Mike" is `uuid-mike` — but the name-only row
+    // says so instead of reading as conflict-free.
+    const A = { id: 'A', name: 'A', division: 'U10', coachId: 'uuid-mike', coachName: 'Mike' };
+    const B = { id: 'B', name: 'B', division: 'U10', coachId: null, coachName: 'Mike' };
+    expect(refusalsOf([A, B])).toEqual([]);
+    expect(uncorroboratedOf(A)).toEqual([]);
+    expect(uncorroboratedOf(B).map((f) => f.details.personId)).toEqual(['Mike']);
+  });
+
+  it('keeps the strongest kind any source keyed a person by', () => {
+    // One source has only their name; another has their id under the same
+    // string. The person is corroborated — by the id — and the name-only
+    // source does not demote them.
+    const result = reconcileTeamCoaches({
+      teamId: 't',
+      sources: [
+        { sourceId: 'names', coaches: [{ personId: 'p1', keyKind: 'name', slot: 1 }] },
+        { sourceId: 'ids', coaches: [{ personId: 'p1', slot: 1 }] },
+      ],
+    });
+    expect(result.coaches.map((c) => c.keyKind)).toEqual([COACH_KEY_KIND.ID]);
+    expect(result.corroboratedPersonIds).toEqual(['p1']);
+    expect(codesOf(result)).not.toContain(PEOPLE_REASON.COACH_IDENTITY_UNCORROBORATED);
+    // Control: the same two sources both name-keyed stay uncorroborated.
+    const namesOnly = reconcileTeamCoaches({
+      teamId: 't',
+      sources: [
+        { sourceId: 'names', coaches: [{ personId: 'p1', keyKind: 'name', slot: 1 }] },
+        { sourceId: 'more-names', coaches: [{ personId: 'p1', keyKind: 'name', slot: 1 }] },
+      ],
+    });
+    expect(namesOnly.corroboratedPersonIds).toEqual([]);
+    expect(codesOf(namesOnly)).toContain(PEOPLE_REASON.COACH_IDENTITY_UNCORROBORATED);
+  });
+
+  it('honours the kind a reconciled entry declares, so a second pass cannot promote an address to an id', () => {
+    const readBack = coachesOfTeamRow({
+      id: 't',
+      coaches: [{ personId: 'ada@example.test', keyKind: 'email', slot: 1 }],
+    });
+    expect(readBack.corroboratedPersonIds).toEqual([]);
+    expect(readBack.coaches[0].keyKind).toBe(COACH_KEY_KIND.EMAIL);
+    // The derivation itself, at every branch.
+    expect(coachIdentityKey({ id: 'x', email: 'e', name: 'n' })).toEqual({
+      personId: 'x',
+      keyKind: 'id',
+    });
+    expect(coachIdentityKey({ email: 'e', name: 'n' })).toEqual({
+      personId: 'e',
+      keyKind: 'email',
+    });
+    expect(coachIdentityKey({ name: 'n' })).toEqual({ personId: 'n', keyKind: 'name' });
+    expect(coachIdentityKey({})).toBeNull();
+    // An entry with nothing to key on is dropped, and a blank id is no id.
+    expect(teamCoachSources({ id: 't', coaches: [{ slot: 1 }] })).toHaveLength(1);
+    expect(teamCoachSources({ id: 't', coaches: [{ slot: 1 }] })[0].sourceId).not.toBe(
+      'team.coaches'
+    );
+    expect(
+      teamCoachSources({ id: 't', coaches: [{ personId: '', displayName: 'Ada' }] })[0].coaches
+    ).toEqual([{ personId: 'Ada', keyKind: 'name', displayName: 'Ada', email: null, slot: null }]);
+  });
+
+  it('holds the core to the same case table as the Deno mirror, at every fallback branch', () => {
+    // Meta-assertions first: the table covers every side of the rule, and it
+    // discriminates — the first mirror's derivation fails it somewhere, or a
+    // table any implementation passes would prove parity with nothing.
+    const sides = new Set(COACH_IDENTITY_PARITY_CASES.map((c) => c.side.split(':')[0]));
+    expect([...sides].sort()).toEqual(['email', 'id', 'name', 'nobody', 'nothing']);
+    const divergent = COACH_IDENTITY_PARITY_CASES.filter(
+      (c) => [...firstMirrorClashKeys(c.team)].sort().join() !== [...c.clashKeys].sort().join()
+    );
+    expect(divergent.map((c) => c.label)).toContain('coaches[].displayName only');
+
+    for (const parityCase of COACH_IDENTITY_PARITY_CASES) {
+      expect([...listTeamCoachIds(parityCase.team)].sort(), parityCase.label).toEqual(
+        [...parityCase.clashKeys].sort()
+      );
+    }
+  });
+
+  it('names the teams carrying an uncorroborated coach, through the export', () => {
+    const exports = generateScheduleExports({
+      teams: [
+        { id: 'T1', coachId: 'c1' },
+        { id: 'T2', coachName: 'Name Only' },
+      ],
+      practiceAssignments: [
+        { teamId: 'T1', start: '2026-09-14T22:00:00Z', end: '2026-09-14T23:00:00Z' },
+        { teamId: 'T2', start: '2026-09-14T22:00:00Z', end: '2026-09-14T23:00:00Z' },
+      ],
+    });
+    expect(teamsWithUncorroboratedCoachIdentity(exports.coachFindings)).toEqual(['T2']);
+    // …and it is not a disagreement: one source, one reading.
+    expect(teamsWithCoachSourceDisagreement(exports.coachFindings)).toEqual([]);
+  });
+
+  it('excludes nobody from the season-2026 corpus, whose every coach is carried by person key', () => {
+    // The rule moves no corpus-derived figure: every roster assignment keys by
+    // `Person Key`, an id, so the clash keys and the person ids coincide on
+    // every one of the 132 teams. Asserted, not assumed.
+    const roster = buildSeason2026CoachRoster(loadCoachRoster());
+    const teams = [...roster.teams.values()].filter((team) => team.personIds.length > 0);
+    expect(teams.length).toBeGreaterThan(100);
+    let coachesChecked = 0;
+    for (const team of teams) {
+      const row = {
+        id: team.teamId,
+        coaches: team.slots.map((a) => ({ personId: a.personId, slot: a.slot })),
+      };
+      const reconciled = coachesOfTeamRow(row);
+      coachesChecked += reconciled.coaches.length;
+      expect(reconciled.corroboratedPersonIds).toEqual(reconciled.personIds);
+      expect(codesOf(reconciled)).not.toContain(PEOPLE_REASON.COACH_IDENTITY_UNCORROBORATED);
+    }
+    expect(coachesChecked).toBe(teams.reduce((n, team) => n + team.personIds.length, 0));
+  });
+
   it('emits the reserve disagreement only for a team some row names', () => {
     // `TEAM_COACH_SOURCES_DISAGREE` is defined on the exported rows. A
     // 132-team directory with disagreeing teams and a two-fixture TIME TBD

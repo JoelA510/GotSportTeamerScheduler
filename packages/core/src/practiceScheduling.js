@@ -101,16 +101,21 @@ function getDivisionDayKey(slot, division) {
  *   never passes as conflict-free. The message now names the offending value as
  *   well as the field.
  *
- * What it gains: a coach the row can only name (an id-less `coachName`) is a
- * coach, keyed by that name. The export has always listed them; now the
- * conflict checks see them too, rather than treating an unidentified coach as
- * no coach at all.
+ * What it hands back are the **clash keys**: the coaches an id corroborates.
+ * A coach the row can only name or address (an id-less `coachName`, a bare
+ * email) is still a coach — the export lists them and the reconciliation
+ * reports them — but nothing proves two such rows are one person, so they are
+ * not compared here: a matchup is never refused on the strength of a spelling.
+ * Nor is their absence silent: `people/coachList.js` raises
+ * `COACH_IDENTITY_UNCORROBORATED` for each one, saying a clash involving them
+ * cannot be detected. The rule and the reason for each fallback are in that
+ * module's header.
  *
  * @param {{ id?: unknown, coachId?: string | null, assistantCoachIds?: string[] | null, assistant_coach_ids?: string[] | null, coaches?: Array<Object> | null }} team
  * @returns {string[]}
  */
 export function listTeamCoachIds(team) {
-  return [...coachesOfTeamRow(team).personIds];
+  return [...coachesOfTeamRow(team).corroboratedPersonIds];
 }
 
 export function schedulePractices({

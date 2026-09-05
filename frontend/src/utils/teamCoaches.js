@@ -29,7 +29,11 @@
  * @module utils/teamCoaches
  */
 
-import { coachDisplayText, coachesOfTeamRow } from '@squadlogic/core/people/coachList.js';
+import {
+  COACH_KEY_KIND,
+  coachDisplayText,
+  coachesOfTeamRow,
+} from '@squadlogic/core/people/coachList.js';
 
 /**
  * A value as text, keeping `null` as `null`.
@@ -92,6 +96,12 @@ function profileName(profile) {
  */
 function normalizeTeamCoachFields(team) {
   const profile = team?.coach;
+  // The joined `coach` embed arrives as a row or, through some selects, as a
+  // one-element array. Unwrapped **once** for every field read from it: the
+  // first draft unwrapped it for the name and the address and read `id` off
+  // the array itself, so an array-embedded coach lost their id, keyed by name,
+  // and no longer matched the same person carried by id on another team.
+  const profileRow = Array.isArray(profile) ? profile[0] : profile;
   const assistantCoachIds = asList(
     team?.assistantCoachIds ?? team?.assistant_coach_ids,
     'assistantCoachIds'
@@ -106,15 +116,12 @@ function normalizeTeamCoachFields(team) {
     return list;
   };
   return {
-    coachId: text(team?.coachId ?? team?.coach_id ?? profile?.id),
+    coachId: text(team?.coachId ?? team?.coach_id ?? profileRow?.id),
     assistantCoachIds,
     coachName:
       team?.headCoach ?? team?.coachName ?? team?.coach_name ?? profileName(profile) ?? null,
     coachEmail: text(
-      team?.coachEmail ??
-        team?.coach_email ??
-        team?.headCoachEmail ??
-        (Array.isArray(profile) ? profile[0]?.email : profile?.email)
+      team?.coachEmail ?? team?.coach_email ?? team?.headCoachEmail ?? profileRow?.email
     ),
     assistantCoaches: pad(team?.assistantCoaches ?? team?.assistant_coaches, 'assistantCoaches'),
     assistantCoachEmails: pad(
@@ -132,7 +139,7 @@ function normalizeTeamCoachFields(team) {
  * Every coach on a team, ordered, through the core reconciliation.
  *
  * @param {any} team
- * @returns {Array<{ personId: string, displayName: string|null, email: string|null, slot: number|null }>}
+ * @returns {Array<{ personId: string, keyKind: string, displayName: string|null, email: string|null, slot: number|null }>}
  */
 export function teamCoaches(team) {
   if (!team) return [];
@@ -140,17 +147,24 @@ export function teamCoaches(team) {
 }
 
 /**
- * Every coach's identity key on a team, ordered.
+ * Every coach's **clash key** on a team, ordered: the coaches an id corroborates.
  *
- * These are what a conflict check compares. A coach known only by name keys by
- * that name — which is weaker than an id and is exactly what the old model hid,
- * so it is included rather than dropped.
+ * These are what a conflict check compares, and the app applies the core's
+ * identity rule (`people/coachList.js`, header): a coach known only by name or
+ * address is on the roster card and in the export, and is **not** a clash key.
+ * Two teams whose rows both read "Coach Mike" with no id may share a coach or
+ * may not; warning that they do folds "uncorroborated" into "same person".
+ * The core raises `COACH_IDENTITY_UNCORROBORATED` for each such coach, and
+ * the export panel reports the count so the silence is not mistaken for
+ * "no clash".
  *
  * @param {any} team
  * @returns {string[]}
  */
 export function teamCoachKeys(team) {
-  return teamCoaches(team).map((coach) => coach.personId);
+  return teamCoaches(team)
+    .filter((coach) => coach.keyKind === COACH_KEY_KIND.ID)
+    .map((coach) => coach.personId);
 }
 
 /**

@@ -14,12 +14,19 @@ export interface TimeWindow {
   slotId?: string;
 }
 
-/** One coach as the reconciled 8.2 shape states them. */
+/**
+ * One coach as the reconciled 8.2 shape states them. `name`, `displayName` and
+ * `email` are carried for display and are **never** clash keys — see
+ * `listTeamCoachIds`. `keyKind` is what a reconciled entry read back in says
+ * its `personId` is; anything but `'id'` is uncorroborated.
+ */
 export interface ReconciledCoach {
   personId?: string | null;
   id?: string | null;
+  keyKind?: string | null;
   name?: string | null;
   displayName?: string | null;
+  email?: string | null;
   slot?: number | null;
 }
 
@@ -43,11 +50,20 @@ export interface PreparedTeam extends CoachedTeam {
 }
 
 /**
- * Head coach plus assistants, deduplicated, empty ids dropped. The assistant list is read as
- * `assistantCoachIds` first, then `assistant_coach_ids`, the precedence the core helper applies.
- * An absent or null list means no assistants (the same contract `if (team.coachId)` applies to a
- * missing head coach); a list that is present and not an array is rejected rather than read as
- * "no coaches".
+ * The team's **clash keys**: every coach an id corroborates, deduplicated, empty ids dropped.
+ * The assistant list is read as `assistantCoachIds` first, then `assistant_coach_ids`, the
+ * precedence the core helper applies. An absent or null list means no assistants (the same
+ * contract `if (team.coachId)` applies to a missing head coach); a list that is present and not
+ * an array is rejected rather than read as "no coaches".
+ *
+ * **The identity rule, mirrored from `people/coachList.js`.** A `coaches` entry is keyed by
+ * `personId`, else `id`, and by nothing else: an entry carrying only a name or an address is an
+ * uncorroborated coach — two rows spelling "Coach Mike" may be one person or two — and is
+ * excluded here rather than folded into "same person" and refusing a slot on the strength of a
+ * spelling. The core reports each such coach as `COACH_IDENTITY_UNCORROBORATED`; this mirror
+ * has no findings channel and relies on that. An entry with nothing to key on is dropped, never
+ * keyed by its list index. `tests/fixtures/coachIdentityParityCases.js` holds both engines to
+ * one table over every branch.
  */
 export function listTeamCoachIds(team: CoachedTeam): string[] {
   const assistants = team.assistantCoachIds ?? team.assistant_coach_ids;
@@ -63,12 +79,18 @@ export function listTeamCoachIds(team: CoachedTeam): string[] {
   // sorted and unranked entries keep their position, which is the same order
   // for every input the Edge Function can actually receive.
   for (const coach of team.coaches ?? []) {
-    const key = coach?.personId ?? coach?.id ?? coach?.displayName ?? coach?.name;
-    if (key) ids.add(String(key));
+    // A reconciled entry read back in says what its key is; an address or a
+    // name must not become an id by passing through a second engine.
+    if (coach?.keyKind != null && coach.keyKind !== 'id') continue;
+    const key = String(coach?.personId ?? '').trim() || String(coach?.id ?? '').trim();
+    if (key) ids.add(key);
   }
-  if (team.coachId) ids.add(team.coachId);
+  // Blank-normalised as the core's `blankToNull` does: a padded id is the same id.
+  const head = String(team.coachId ?? '').trim();
+  if (head) ids.add(head);
   for (const id of assistants ?? []) {
-    if (id) ids.add(id);
+    const trimmed = String(id ?? '').trim();
+    if (trimmed) ids.add(trimmed);
   }
   return [...ids];
 }

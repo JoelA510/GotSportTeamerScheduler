@@ -190,10 +190,17 @@ export const CoachRosterInputSchema = z
  * rather than inventing one. Where a slot *is* given it carries the same
  * minimum of 1 as an assignment's, so the two spellings of the order cannot
  * disagree about where it starts.
+ *
+ * `keyKind` says what `personId` *is*: an id, an email address or a display
+ * name. It defaults to `id` because a source built from a people table (the
+ * corpus adapters, `roster.js`) keys by person id and says nothing else; the
+ * row-shaped producers in `coachList.js` state the kind they fell back to.
+ * Only an `id` key is corroborated — see `COACH_KEY_KIND`.
  */
 export const CoachListEntrySchema = z
   .object({
     personId: IdSchema,
+    keyKind: z.enum(['id', 'email', 'name']).default('id'),
     displayName: z.string().min(1).nullable().default(null),
     email: z.string().min(1).nullable().default(null),
     slot: z.number().int().min(1).nullable().default(null),

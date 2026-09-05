@@ -53,6 +53,43 @@
  * import('./reasonCodes.js').PEOPLE_REASON.COACH_LIST_UNCORROBORATED}, because
  * "nothing contradicted it" and "two sources agreed" are different facts.
  *
+ * ## Identity: one rule, and which side each fallback lands on
+ *
+ * A row can name a coach by id, by email address, by display name, or by
+ * nothing at all. {@link coachIdentityKey} is the one derivation every producer
+ * here uses, in that order, and {@link COACH_KEY_KIND} records which it fell
+ * back to. The rule the kinds carry:
+ *
+ * - **`id` is corroborated identity.** An id is a reference into a people
+ *   table; two rows carrying the same id are the same person by construction.
+ *   Only id-keyed coaches reach {@link TeamCoachList.corroboratedPersonIds},
+ *   which is what `listTeamCoachIds()` hands both solvers, both metric modules
+ *   and the app's conflict check.
+ * - **`email` and `name` are uncorroborated.** Two rows spelling "Coach Mike"
+ *   may be one person or two; an address may be a shared family inbox. Keying
+ *   them into the solver folds *uncorroborated* into *same person* and refuses
+ *   matchups on the strength of a spelling — before 8.2 a blank `coachId`
+ *   meant no refusal, and a name must not silently become one. So they feed
+ *   display, export and disagreement reporting, **not** clash detection, and
+ *   every one raises {@link
+ *   import('./reasonCodes.js').PEOPLE_REASON.COACH_IDENTITY_UNCORROBORATED}
+ *   saying a clash involving them cannot be detected. That is the other
+ *   silence refused: keying them out and saying nothing folds *unknown* into
+ *   *no clash*.
+ * - **Nothing to key on is not a coach.** An entry carrying no id, address or
+ *   name cannot be exported, named or compared, and is dropped — the contract
+ *   {@link legacyTeamCoachSource} already applied to a blank row. It is never
+ *   keyed by its position in the list: a list index is the same string for the
+ *   first entry of every team, and two teams' unrelated first coaches were
+ *   refusing each other's fixtures as one person.
+ *
+ * Email is tried before name because an address distinguishes two people who
+ * share a name, and a name cannot. Both are still uncorroborated.
+ *
+ * `supabase/functions/_shared/engines/practice-coaches.ts` mirrors the clash
+ * half of this rule; `tests/fixtures/coachIdentityParityCases.js` is the one
+ * case table both runtimes are held to.
+ *
  * @module people/coachList
  */
 
@@ -82,6 +119,49 @@ export const COACH_ORDER_DISAGREEMENT = Object.freeze({
 });
 
 /**
+ * What a coach's `personId` is, and therefore what a match on it proves.
+ *
+ * Ordered strongest first. Only {@link COACH_KEY_KIND.ID} corroborates identity;
+ * the module header says why the other two do not.
+ *
+ * @readonly
+ * @enum {string}
+ */
+export const COACH_KEY_KIND = Object.freeze({
+  /** A reference into a people table. Two rows with the same id are one person. */
+  ID: 'id',
+  /** An address, and nothing else. Distinguishes namesakes; may be shared. */
+  EMAIL: 'email',
+  /** A display name, and nothing else. Two spellings may be one person or two. */
+  NAME: 'name',
+});
+
+/** Strength rank, for keeping the strongest kind any source keyed a person by. */
+const KEY_KIND_RANK = Object.freeze({
+  [COACH_KEY_KIND.ID]: 0,
+  [COACH_KEY_KIND.EMAIL]: 1,
+  [COACH_KEY_KIND.NAME]: 2,
+});
+
+/**
+ * **The one identity derivation.** Id, else email, else name, else nothing.
+ *
+ * Every producer of a coach entry in this module keys through here, so a
+ * `coaches` entry and a legacy `coachName` cell that carry the same facts get
+ * the same key and the same kind. Returns `null` when the entry carries nothing
+ * to key on; the caller drops it, never numbers it.
+ *
+ * @param {{ id?: string|null, email?: string|null, name?: string|null }} facts - already blank-normalised
+ * @returns {{ personId: string, keyKind: string }|null}
+ */
+export function coachIdentityKey({ id = null, email = null, name = null }) {
+  if (id !== null) return { personId: String(id), keyKind: COACH_KEY_KIND.ID };
+  if (email !== null) return { personId: String(email), keyKind: COACH_KEY_KIND.EMAIL };
+  if (name !== null) return { personId: String(name), keyKind: COACH_KEY_KIND.NAME };
+  return null;
+}
+
+/**
  * Order two coaches: lower slot first, unslotted last, ties by person id.
  *
  * Unslotted last rather than first, and by a `null` test rather than by
@@ -109,7 +189,7 @@ export function compareCoaches(a, b) {
  * marked head, primary or assistant, because this model does not carry that
  * fact and inventing it is the defect.
  *
- * @param {{ teamId: string, sources: ReadonlyArray<{ sourceId: string, coaches: ReadonlyArray<{ personId: string, displayName?: string|null, email?: string|null, slot?: number|null }> }> }} input
+ * @param {{ teamId: string, sources: ReadonlyArray<{ sourceId: string, coaches: ReadonlyArray<{ personId: string, keyKind?: string, displayName?: string|null, email?: string|null, slot?: number|null }> }> }} input
  * @returns {import('./types.js').TeamCoachList}
  */
 export function reconcileTeamCoaches(input) {
@@ -119,7 +199,7 @@ export function reconcileTeamCoaches(input) {
   const findings = [];
   meta.coachListsExamined += 1;
 
-  /** @type {Map<string, { personId: string, displayName: string|null, email: string|null, slot: number|null, sourceIds: string[], slotBySource: Map<string, number> }>} */
+  /** @type {Map<string, { personId: string, keyKind: string, displayName: string|null, email: string|null, slot: number|null, sourceIds: string[], slotBySource: Map<string, number> }>} */
   const byPerson = new Map();
   /** Sources that gave at least one coach a slot — the ones that ranked anything. */
   /** @type {string[]} */
@@ -132,6 +212,7 @@ export function reconcileTeamCoaches(input) {
       const existing = byPerson.get(coach.personId);
       const entry = existing ?? {
         personId: coach.personId,
+        keyKind: coach.keyKind,
         displayName: null,
         email: null,
         slot: null,
@@ -145,6 +226,11 @@ export function reconcileTeamCoaches(input) {
         entry.displayName = coach.displayName;
       }
       if (entry.email === null && coach.email != null) entry.email = coach.email;
+      // The strongest kind any source keyed them by: a person one source carries
+      // by id is corroborated even if another source only had their name.
+      if (KEY_KIND_RANK[coach.keyKind] < KEY_KIND_RANK[entry.keyKind]) {
+        entry.keyKind = coach.keyKind;
+      }
       if (coach.slot != null) {
         ranked = true;
         entry.slotBySource.set(source.sourceId, coach.slot);
@@ -159,6 +245,7 @@ export function reconcileTeamCoaches(input) {
   const coaches = [...byPerson.values()].sort(compareCoaches).map((entry) =>
     Object.freeze({
       personId: entry.personId,
+      keyKind: entry.keyKind,
       displayName: entry.displayName,
       email: entry.email,
       slot: entry.slot,
@@ -194,6 +281,19 @@ export function reconcileTeamCoaches(input) {
         )
       );
     }
+  }
+
+  // Identity: a coach no row carries an id for is on every artifact and in
+  // no clash key. Both silences are refused — see the module header.
+  for (const coach of coaches) {
+    if (coach.keyKind === COACH_KEY_KIND.ID) continue;
+    findings.push(
+      makePeopleFinding(
+        PEOPLE_REASON.COACH_IDENTITY_UNCORROBORATED,
+        `coach "${coach.personId}" on team "${parsed.teamId}" is known by ${coach.keyKind} only and by no id, so nothing corroborates who they are; they are exported and excluded from the clash keys, so a clash involving them cannot be detected and a matchup is never refused on the strength of a ${coach.keyKind} alone`,
+        { teamId: parsed.teamId, personId: coach.personId, keyKind: coach.keyKind }
+      )
+    );
   }
 
   // Order disagreement, first shape: **one person, two slots.** Two sources
@@ -305,6 +405,9 @@ export function reconcileTeamCoaches(input) {
     teamId: parsed.teamId,
     coaches: Object.freeze(coaches),
     personIds: Object.freeze(coaches.map((coach) => coach.personId)),
+    corroboratedPersonIds: Object.freeze(
+      coaches.filter((coach) => coach.keyKind === COACH_KEY_KIND.ID).map((coach) => coach.personId)
+    ),
     orderCrossChecked,
     findings,
     meta,
@@ -363,6 +466,25 @@ export function teamsWithCoachSourceDisagreement(findings) {
     ...new Set(
       (findings ?? [])
         .filter((finding) => COACH_SOURCE_DISAGREEMENT_CODES.has(finding.code))
+        .map((finding) => String(finding.details?.teamId ?? ''))
+        .filter((teamId) => teamId !== '')
+    ),
+  ].sort();
+}
+
+/**
+ * The teams carrying a coach nothing corroborates, from a projection's
+ * `coachFindings`. The reader for `COACH_IDENTITY_UNCORROBORATED`; the same
+ * one-producer reasoning as {@link teamsWithCoachSourceDisagreement}.
+ *
+ * @param {ReadonlyArray<{ code: string, details?: Record<string, unknown> }>} findings
+ * @returns {string[]} team ids, sorted
+ */
+export function teamsWithUncorroboratedCoachIdentity(findings) {
+  return [
+    ...new Set(
+      (findings ?? [])
+        .filter((finding) => finding.code === PEOPLE_REASON.COACH_IDENTITY_UNCORROBORATED)
         .map((finding) => String(finding.details?.teamId ?? ''))
         .filter((teamId) => teamId !== '')
     ),
@@ -511,13 +633,15 @@ function coachFieldList(value, field, team) {
  *
  * Ids, names and emails are zipped positionally, which is the only
  * correspondence the legacy shape offers. When one list is longer the extra
- * entries are still exported, keyed by whichever half exists, because a coach
- * with a name and no id is still a coach on that team. Blank cells are absent
- * values, not empty names: see {@link blankToNull}.
+ * entries are still exported, keyed by whichever half exists through
+ * {@link coachIdentityKey}, because a coach with a name and no id is still a
+ * coach on that team — an *uncorroborated* one, which the key's kind records
+ * and the module header rules on. Blank cells are absent values, not empty
+ * names: see {@link blankToNull}.
  *
  * @param {Object} team
  * @param {string} sourceId
- * @returns {{ sourceId: string, coaches: Array<{ personId: string, displayName: string|null, email: string|null, slot: number }> }}
+ * @returns {{ sourceId: string, coaches: Array<{ personId: string, keyKind: string, displayName: string|null, email: string|null, slot: number }> }}
  */
 export function legacyTeamCoachSource(team, sourceId) {
   const ids = [
@@ -553,15 +677,16 @@ export function legacyTeamCoachSource(team, sourceId) {
   // truncation this whole change is about. Such an entry keys off the address,
   // which is the only identity the row offers for them.
   const length = Math.max(ids.length, names.length, emails.length);
-  /** @type {Array<{ personId: string, displayName: string|null, email: string|null, slot: number }>} */
+  /** @type {Array<{ personId: string, keyKind: string, displayName: string|null, email: string|null, slot: number }>} */
   const coaches = [];
   for (let index = 0; index < length; index += 1) {
     const id = ids[index] ?? null;
     const name = names[index] ?? null;
     const email = emails[index] ?? null;
-    if (id === null && name === null && email === null) continue;
+    const key = coachIdentityKey({ id, email, name });
+    if (key === null) continue;
     coaches.push({
-      personId: String(id ?? name ?? email),
+      ...key,
       displayName: name,
       email,
       // The position in the legacy list, holes kept. A team whose `coachId` is
@@ -594,20 +719,26 @@ export function teamCoachSources(team) {
   /** @type {Array<{ sourceId: string, coaches: Array<Object> }>} */
   const sources = [];
   if (Array.isArray(team?.coaches) && team.coaches.length > 0) {
-    sources.push({
-      sourceId: 'team.coaches',
-      coaches: team.coaches.map((/** @type {any} */ coach, /** @type {number} */ index) => ({
-        personId: String(
-          blankToNull(coach.personId) ??
-            blankToNull(coach.id) ??
-            blankToNull(coach.name) ??
-            index + 1
-        ),
-        displayName: blankToNull(coach.displayName ?? coach.name),
-        email: blankToNull(coach.email),
-        slot: coach.slot ?? null,
-      })),
-    });
+    /** @type {Array<Object>} */
+    const coaches = [];
+    for (const /** @type {any} */ coach of team.coaches) {
+      const displayName = blankToNull(coach.displayName ?? coach.name);
+      const email = blankToNull(coach.email);
+      // An entry that already states its kind is a reconciled coach being read
+      // back in, and its `personId` is whatever it says it is — an address or a
+      // name must not be promoted to an id by passing through here twice.
+      const declared = Object.values(COACH_KEY_KIND).includes(coach.keyKind) ? coach.keyKind : null;
+      const personId = blankToNull(coach.personId) ?? blankToNull(coach.id);
+      const key =
+        declared !== null && personId !== null
+          ? { personId, keyKind: declared }
+          : coachIdentityKey({ id: personId, email, name: displayName });
+      // Nothing to key on is not a coach — see the module header. Never the
+      // list index.
+      if (key === null) continue;
+      coaches.push({ ...key, displayName, email, slot: coach.slot ?? null });
+    }
+    if (coaches.length > 0) sources.push({ sourceId: 'team.coaches', coaches });
   }
   // Pushed **even when empty**: "this row names nobody" is a reading, and
   // dropping it would leave the reconciliation with zero sources, which is the
