@@ -55,6 +55,26 @@
  * against a small set of shapes the corpus does not contain: an email address,
  * a URL scheme or host, a grouped phone number, a run of five or more digits,
  * and any full date whose year is not on `ALLOWED_YEARS`.
+ *
+ * ## The failure shape this guard was rebuilt around
+ *
+ * The first version of this file was strong in exactly the dimension it was
+ * aimed at and silent immediately beside it. Four holes, one pattern:
+ *
+ * - it read file **contents** and never the **path** those contents sat at;
+ * - it excluded prose by **shape** (`.md`) rather than by **identity**, so a
+ *   new `README.md` full of real names was skipped for being README-shaped;
+ * - it saw **letters** and nothing else, so a phone number, an email address
+ *   and a date of birth were all invisible;
+ * - it compared a **trimmed** header against an **untrimmed** parse key, so
+ *   one half of a single comparison disagreed with the other.
+ *
+ * That is the same failure as the denylist audits this file replaces: an
+ * instrument that is airtight along its own axis and blind one step off it,
+ * reporting zero because it cannot see rather than because there is nothing
+ * there. It is worth naming, because the fix for each hole was easy and
+ * noticing it was not. When adding a rule here, ask what dimension it does not
+ * cover before asking whether it works.
  */
 
 import {
@@ -633,6 +653,19 @@ function words(text) {
 }
 
 /**
+ * One spelling of a column name, used for the declared headers, the person-name
+ * exemption list and the keys the CSV parse returns alike. Trimming only one
+ * side of that comparison is how a header written `player_name , player_key`
+ * un-exempted a person column while still matching the exemption by name.
+ *
+ * @param {string} column
+ * @returns {string}
+ */
+function normaliseColumn(column) {
+  return String(column ?? '').trim();
+}
+
+/**
  * Every file under one directory, recursively, as `/`-separated relative paths.
  *
  * @param {string} root
@@ -779,7 +812,7 @@ function scanCorpus(root) {
     // Header cells in this corpus are unquoted; a quoted one would make the
     // naive split wrong, so it is refused rather than mis-read.
     expect(headerLine).not.toContain('"');
-    const headers = headerLine.split(',').map((cell) => cell.trim());
+    const headers = headerLine.split(',').map(normaliseColumn);
     for (const header of headers) {
       // Headers are checked whatever the column holds — a person-name exemption
       // covers the names in the cells, never the name of the column.
@@ -787,7 +820,7 @@ function scanCorpus(root) {
       checkPatterns(rel, '(header)', 1, header);
     }
 
-    const exempt = PERSON_COLUMNS[rel] ?? [];
+    const exempt = (PERSON_COLUMNS[rel] ?? []).map(normaliseColumn);
     for (const column of exempt) {
       if (!headers.includes(column)) exemptedColumnsMissing.push({ file: rel, column });
     }
@@ -796,7 +829,11 @@ function scanCorpus(root) {
     const rows = parseCsv(text, rel);
     const columns = new Set();
     rows.forEach((row, index) => {
-      for (const [column, value] of Object.entries(row)) {
+      for (const [rawColumn, value] of Object.entries(row)) {
+        // One spelling of the column name for the exemption lookup and for the
+        // structural comparison below, or the two disagree on whitespace and
+        // the exemption silently lapses.
+        const column = normaliseColumn(rawColumn);
         columns.add(column);
         const line = index + 2;
         // Shapes run over every cell; only the allowlist has an exemption.
@@ -1228,6 +1265,24 @@ describe('season-2026 corpus vocabulary', () => {
       const control = scanCorpus(root);
       expect(control.unreadableFiles).toContain('practice/archive/README.md');
       expect([...control.proseFiles].sort()).toEqual([...EXCLUDED_FILES].sort());
+    });
+
+    it('keeps a person exemption when the header carries stray whitespace', () => {
+      // Trimming the declared headers but not the parse keys made this header
+      // un-exempt a person column: 4,598 spurious unknown words and 460 fewer
+      // person cells scanned, with the real diagnosis buried under them.
+      const root = scratchCorpus();
+      const target = path.join(root, 'practice', 'player_registration.csv');
+      const text = readFileSync(target, 'utf8').split('\n');
+      text[0] = text[0].replace('player_name,player_key', 'player_name , player_key');
+      writeFileSync(target, text.join('\n'));
+
+      const control = scanCorpus(root);
+      expect(render(control.unknown)).toEqual([]);
+      expect(control.columnsNotReturned).toEqual([]);
+      expect(control.columnsNotDeclared).toEqual([]);
+      expect(control.exemptedColumnsMissing).toEqual([]);
+      expect(control.personCellsScanned).toBe(scan.personCellsScanned);
     });
 
     it('reports an allowlist entry the corpus stopped using', () => {
