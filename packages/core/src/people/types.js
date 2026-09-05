@@ -38,6 +38,9 @@
  * @property {number} soleCoachTeams
  * @property {number} uncoachedTeams
  * @property {number} multiTeamPeople
+ * @property {number} coachListsExamined
+ * @property {number} coachesExported
+ * @property {number} coachListSourcesRead
  * @property {number} commitmentsIngested
  * @property {number} commitmentsExamined
  * @property {number} sourcesDeclared
@@ -105,6 +108,31 @@
  * @property {string} teamId
  * @property {ReadonlyArray<CoachAssignment>} slots - sorted by slot ascending; empty when uncoached
  * @property {ReadonlyArray<string>} personIds - sorted by slot ascending; empty when uncoached
+ */
+
+/**
+ * One coach on a reconciled team coach list. `slot` is the club's declared
+ * order and is `null` when no source gave one; it is a tie-break, never a role.
+ *
+ * @typedef {Object} ReconciledCoach
+ * @property {string} personId
+ * @property {string|null} displayName
+ * @property {string|null} email
+ * @property {number|null} slot - lowest slot any source gives them; null when none does
+ * @property {ReadonlyArray<string>} sourceIds - every source naming them, sorted
+ */
+
+/**
+ * A team's coaches as every source together sees them.
+ *
+ * @typedef {Object} TeamCoachList
+ * @property {string} teamId
+ * @property {ReadonlyArray<ReconciledCoach>} coaches - slot ascending, unslotted last, ties by id
+ * @property {ReadonlyArray<string>} personIds - the same order
+ * @property {boolean} orderCrossChecked - two or more sources ranked this team, agreeing or not
+ * @property {PeopleFinding[]} findings
+ * @property {PeopleMeta} meta
+ * @property {string} status
  */
 
 /**

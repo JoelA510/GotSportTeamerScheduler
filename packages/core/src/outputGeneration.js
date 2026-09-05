@@ -1,9 +1,29 @@
+import { coachesOfTeamRow, formatCoachEmails, formatCoachList } from './people/coachList.js';
+
+/**
+ * The schedule exports: one row per team per event, in a fixed column order.
+ *
+ * ## Why there is no `Coach Name` column any more (8.2)
+ *
+ * There used to be three coach columns: `Coach Name`, `Coach Email` and
+ * `Assistant Coaches`. That shape states a hierarchy — one named coach, and
+ * everybody else filed under "assistant" — which the rec league this corpus
+ * comes from does not run, and which nothing in the model can actually
+ * substantiate. The coach *order* is real and survives: it is the club's
+ * declared order and `people/roster.js` uses it to break clashes. The *role* is
+ * not, so it is gone from the artifact.
+ *
+ * Every coach is now exported, in order, in one `Coaches` column, through the
+ * single producer in `people/coachList.js`. A team with three coaches prints
+ * three; the old shape printed one in `Coach Name` and hoped whoever read the
+ * CSV noticed the last column.
+ */
 const HEADERS = {
   TEAM_ID: 'Team ID',
   TEAM_NAME: 'Team Name',
   DIVISION: 'Division',
-  COACH_NAME: 'Coach Name',
-  COACH_EMAIL: 'Coach Email',
+  COACHES: 'Coaches',
+  COACH_EMAILS: 'Coach Emails',
   EVENT_TYPE: 'Event Type',
   OPPONENT: 'Opponent',
   ROLE: 'Role',
@@ -23,26 +43,29 @@ const MASTER_HEADERS = Object.values(HEADERS);
  * Added for `packages/core/src/reserve/publication.js`, which projects reserved
  * slots and TIME TBD fixtures into these columns. `generateScheduleExports()`
  * below now builds its header list from the same constant rather than repeating
- * it, so the two sides cannot drift into two spellings of the same column — the
- * only behavioural change here, and it produces an identical list.
+ * it, so the two sides cannot drift into two spellings of the same column.
  */
-export const SCHEDULE_EXPORT_HEADERS = Object.freeze({
-  ...HEADERS,
-  ASSISTANT_COACHES: 'Assistant Coaches',
-});
+export const SCHEDULE_EXPORT_HEADERS = Object.freeze({ ...HEADERS });
 
 /** The master export's columns, in order. */
-export const SCHEDULE_EXPORT_COLUMNS = Object.freeze([...MASTER_HEADERS, 'Assistant Coaches']);
+export const SCHEDULE_EXPORT_COLUMNS = Object.freeze([...MASTER_HEADERS]);
 
 /**
  * Generate flattened schedule exports for practices and games.
+ *
+ * A team may state its coaches as a `coaches` list (`{ personId, displayName,
+ * email, slot }`), as the legacy `coachName` / `coachEmail` /
+ * `assistantCoaches` fields, or as both. Both are read as *sources* and
+ * reconciled by `people/coachList.js`: the union is exported and any
+ * disagreement between them comes back in `coachFindings` rather than being
+ * settled here.
  *
  * @param {Object} params
  * @param {Array<Object>} params.teams
  * @param {Array<Object>} [params.practiceAssignments=[]]
  * @param {Array<Object>} [params.gameAssignments=[]]
  * @param {string} [params.timezone]
- * @returns {{ master: { headers: Array<string>, rows: Array<Object>, csv: string }, perTeam: Array<{ teamId: string, headers: Array<string>, rows: Array<Object>, csv: string }> }}
+ * @returns {{ master: { headers: Array<string>, rows: Array<Object>, csv: string }, perTeam: Array<{ teamId: string, headers: Array<string>, rows: Array<Object>, csv: string }>, coachFindings: Array<Object> }}
  */
 export function generateScheduleExports({
   teams,
@@ -62,6 +85,8 @@ export function generateScheduleExports({
   }
 
   const teamDirectory = new Map();
+  /** @type {Array<Object>} */
+  const coachFindings = [];
   for (const team of teams) {
     if (!team || typeof team !== 'object') {
       throw new TypeError('each team must be an object');
@@ -70,15 +95,15 @@ export function generateScheduleExports({
       throw new TypeError('each team requires an id');
     }
 
+    const reconciled = coachesOfTeamRow(team);
+    coachFindings.push(...reconciled.findings);
+
     const sanitized = {
       id: team.id,
       name: team.name ?? team.id,
       division: team.division ?? '',
-      coachName: team.coachName ?? '',
-      coachEmail: team.coachEmail ?? '',
-      assistantCoaches: Array.isArray(team.assistantCoaches)
-        ? team.assistantCoaches.join('; ')
-        : '',
+      coaches: formatCoachList(reconciled.coaches),
+      coachEmails: formatCoachEmails(reconciled.coaches),
     };
     teamDirectory.set(team.id, sanitized);
   }
@@ -179,6 +204,7 @@ export function generateScheduleExports({
         rows: rows.map((row) => ({ ...row })),
         csv: formatCsv(headers, rows),
       })),
+    coachFindings,
   };
 }
 
@@ -230,9 +256,8 @@ function formatRow({
     [HEADERS.TEAM_ID]: team.id,
     [HEADERS.TEAM_NAME]: team.name,
     [HEADERS.DIVISION]: team.division,
-    [HEADERS.COACH_NAME]: team.coachName,
-    [HEADERS.COACH_EMAIL]: team.coachEmail,
-    ['Assistant Coaches']: team.assistantCoaches, // Mapped new field
+    [HEADERS.COACHES]: team.coaches,
+    [HEADERS.COACH_EMAILS]: team.coachEmails,
     [HEADERS.EVENT_TYPE]: eventType,
     [HEADERS.OPPONENT]: opponent,
     [HEADERS.ROLE]: role,

@@ -39,6 +39,7 @@
  */
 
 import { SCHEDULE_EXPORT_COLUMNS, SCHEDULE_EXPORT_HEADERS } from '../outputGeneration.js';
+import { coachesOfTeamRow, formatCoachEmails, formatCoachList } from '../people/coachList.js';
 
 import {
   FIXTURE_SIDE,
@@ -150,30 +151,36 @@ function sideText(side, teamId, label, directory) {
 /**
  * Fill a row's team columns from the directory, or from the id alone.
  *
+ * The coach columns come from the same reconciliation
+ * `generateScheduleExports()` uses, so a team prints the same coaches whichever
+ * of the two projections produced the row. 8.2: one `Coaches` column carrying
+ * every coach in the club's declared order, and no column asserting which of
+ * them is the head — see `people/coachList.js` for why that claim is gone.
+ *
  * @param {Record<string, string>} row
  * @param {string|null} teamId
  * @param {string} displayName
  * @param {Map<string, Object>} directory
  * @param {string|null} divisionLabel
+ * @param {Map<string, { coaches: string, emails: string }>} [coachCells] - built once per team
  * @returns {void}
  */
-function fillTeam(row, teamId, displayName, directory, divisionLabel) {
+function fillTeam(row, teamId, displayName, directory, divisionLabel, coachCells) {
   const team = teamId ? directory.get(teamId) : null;
   row[SCHEDULE_EXPORT_HEADERS.TEAM_ID] = teamId ?? '';
   row[SCHEDULE_EXPORT_HEADERS.TEAM_NAME] = String(team?.name ?? displayName);
   row[SCHEDULE_EXPORT_HEADERS.DIVISION] = String(team?.division ?? divisionLabel ?? '');
-  row[SCHEDULE_EXPORT_HEADERS.COACH_NAME] = String(team?.coachName ?? '');
-  row[SCHEDULE_EXPORT_HEADERS.COACH_EMAIL] = String(team?.coachEmail ?? '');
-  row[SCHEDULE_EXPORT_HEADERS.ASSISTANT_COACHES] = Array.isArray(team?.assistantCoaches)
-    ? team.assistantCoaches.join('; ')
-    : '';
+
+  const cell = team && coachCells ? coachCells.get(String(team.id ?? teamId)) : undefined;
+  row[SCHEDULE_EXPORT_HEADERS.COACHES] = cell?.coaches ?? '';
+  row[SCHEDULE_EXPORT_HEADERS.COACH_EMAILS] = cell?.emails ?? '';
 }
 
 /**
  * Project reserved slots and unplaced fixtures into export rows.
  *
  * @param {{ slots?: ReadonlyArray<import('./types.js').ReservedSlot>, unplaced?: ReadonlyArray<import('./types.js').UnplacedFixture>, teams?: ReadonlyArray<Object> }} input
- * @returns {{ rows: import('./types.js').PublicationRow[], columns: ReadonlyArray<string>, findings: import('./types.js').ReserveFinding[], status: string, meta: import('./types.js').ReserveMeta }}
+ * @returns {{ rows: import('./types.js').PublicationRow[], columns: ReadonlyArray<string>, findings: import('./types.js').ReserveFinding[], coachFindings: Array<import('../people/types.js').PeopleFinding>, status: string, meta: import('./types.js').ReserveMeta }}
  */
 export function publicationRowsFor(input) {
   const meta = createReserveMeta();
@@ -183,6 +190,24 @@ export function publicationRowsFor(input) {
   const rows = [];
 
   const directory = new Map((input.teams ?? []).map((team) => [String(team.id), team]));
+  // Reconciled **once per team**, not once per row. A team with five unplaced
+  // fixtures produces five rows, and reconciling inside `fillTeam()` reported
+  // its one disagreement five times — a finding count that scaled with the
+  // export rather than with the facts. People findings also stay out of
+  // `findings`: that list is the reserve vocabulary and `deriveReserveStatus()`
+  // reads it.
+  /** @type {Array<import('../people/types.js').PeopleFinding>} */
+  const coachFindings = [];
+  /** @type {Map<string, { coaches: string, emails: string }>} */
+  const coachCells = new Map();
+  for (const team of input.teams ?? []) {
+    const reconciled = coachesOfTeamRow(team);
+    coachFindings.push(...reconciled.findings);
+    coachCells.set(String(team.id), {
+      coaches: formatCoachList(reconciled.coaches),
+      emails: formatCoachEmails(reconciled.coaches),
+    });
+  }
   const slots = input.slots ?? [];
   const unplaced = input.unplaced ?? [];
 
@@ -223,7 +248,7 @@ export function publicationRowsFor(input) {
       // this field and this kickoff, and a schedule that omitted it would show
       // the ground as free.
       const row = base();
-      fillTeam(row, null, slot.label, directory, slot.divisionLabel);
+      fillTeam(row, null, slot.label, directory, slot.divisionLabel, coachCells);
       row[SCHEDULE_EXPORT_HEADERS.OPPONENT] = sideText(
         slot.awaySide,
         slot.awayTeamId,
@@ -239,7 +264,7 @@ export function publicationRowsFor(input) {
       const other = side === 'home' ? 'away' : 'home';
       const teamId = slot[`${side}TeamId`];
       const row = base();
-      fillTeam(row, teamId, String(teamId), directory, slot.divisionLabel);
+      fillTeam(row, teamId, String(teamId), directory, slot.divisionLabel, coachCells);
       row[SCHEDULE_EXPORT_HEADERS.ROLE] = side === 'home' ? 'Home' : 'Away';
       row[SCHEDULE_EXPORT_HEADERS.OPPONENT] = sideText(
         slot[`${other}Side`],
@@ -270,7 +295,7 @@ export function publicationRowsFor(input) {
 
     if (named.length === 0) {
       const row = base();
-      fillTeam(row, null, fixture.label, directory, fixture.divisionLabel);
+      fillTeam(row, null, fixture.label, directory, fixture.divisionLabel, coachCells);
       rows.push({ row, subjectId: fixture.fixtureId, teamId: null });
       meta.rowsEmitted += 1;
       continue;
@@ -280,7 +305,7 @@ export function publicationRowsFor(input) {
       const other = side === 'home' ? 'away' : 'home';
       const teamId = /** @type {string} */ (fixture[`${side}TeamId`]);
       const row = base();
-      fillTeam(row, teamId, teamId, directory, fixture.divisionLabel);
+      fillTeam(row, teamId, teamId, directory, fixture.divisionLabel, coachCells);
       row[SCHEDULE_EXPORT_HEADERS.ROLE] = side === 'home' ? 'Home' : 'Away';
       row[SCHEDULE_EXPORT_HEADERS.OPPONENT] = String(
         fixture[`${other}TeamId`] ?? fixture[`${other}Label`] ?? PUBLICATION_TBD.OPPONENT
@@ -296,6 +321,7 @@ export function publicationRowsFor(input) {
     rows,
     columns: SCHEDULE_EXPORT_COLUMNS,
     findings,
+    coachFindings,
     status: deriveReserveStatus(findings),
     meta,
   };

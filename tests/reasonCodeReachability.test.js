@@ -1,8 +1,8 @@
 /**
  * Repo-wide reachability audit for every frozen reason-code table in
  * `packages/core/src` — the generalisation of the per-module audit
- * `tests/attribution.test.js` already carries. 19 vocabularies, 424 codes, of
- * which 413 are shown to be producible and 11 are named as holes.
+ * `tests/attribution.test.js` already carries. 19 vocabularies, 429 codes, of
+ * which 418 are shown to be producible and 11 are named as holes.
  *
  * **The defect this exists to catch.** Four times now, in four unrelated
  * modules, a reason code has been declared, given a severity, documented, and
@@ -197,6 +197,7 @@ import {
   buildPersonalConstraintPolicy,
   buildSeason2026CoachRoster,
   createTimelineSet,
+  reconcileTeamCoaches,
   deriveMustAttend,
   evaluatePersonDays,
   findAttendanceClashes,
@@ -1680,6 +1681,43 @@ harvest(
       assignment('p1', 'team-b', 1, { id: 'windowed', effectiveTo: '2026-09-30' }),
     ],
   })
+);
+
+// The one coach model. Two sources for one team that disagree about the order,
+// disagree about the membership, and leave one coach unranked; plus a team
+// nobody names at all, so the vacuous-scan code has a path too.
+harvest(
+  'reconcileTeamCoaches(two sources that disagree about order and membership)',
+  reconcileTeamCoaches({
+    teamId: 'team-a',
+    sources: [
+      {
+        sourceId: 'roster-sheet',
+        coaches: [
+          { personId: 'p1', slot: 1 },
+          { personId: 'p2', slot: 2 },
+        ],
+      },
+      {
+        sourceId: 'select-sheet',
+        coaches: [
+          { personId: 'p2', slot: 1 },
+          { personId: 'p3', slot: null },
+        ],
+      },
+    ],
+  })
+);
+harvest(
+  'reconcileTeamCoaches(one source, so the order is unchecked rather than agreed)',
+  reconcileTeamCoaches({
+    teamId: 'team-b',
+    sources: [{ sourceId: 'roster-sheet', coaches: [{ personId: 'p1', slot: 1 }] }],
+  })
+);
+harvest(
+  'reconcileTeamCoaches(no source at all)',
+  reconcileTeamCoaches({ teamId: 'team-c', sources: [] })
 );
 
 /** A roster whose one team has a coach who is alone on two teams. */

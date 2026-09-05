@@ -359,18 +359,20 @@ When('I access the communication tools', async ({ page }) => {
   await step6.click({ force: true });
 });
 
-Then(
-  'I should be able to generate a batch of draft emails for all head coaches',
-  async ({ page }) => {
-    await expect(page.locator('article[aria-label="Teams Formed"]').first()).toContainText('1', {
-      timeout: 15000,
-    });
-    const generateEmailsButton = page.getByTestId('generate-emails-btn').first();
-    await expect(generateEmailsButton).toBeVisible({ timeout: 15000 });
-    await generateEmailsButton.click();
-    await expect(page.getByText('Generated 1 email drafts.')).toBeVisible({ timeout: 10000 });
-  }
-);
+Then('I should be able to generate a batch of draft emails for every coach', async ({ page }) => {
+  await expect(page.locator('article[aria-label="Teams Formed"]').first()).toContainText('1', {
+    timeout: 15000,
+  });
+  const generateEmailsButton = page.getByTestId('generate-emails-btn').first();
+  await expect(generateEmailsButton).toBeVisible({ timeout: 15000 });
+  await generateEmailsButton.click();
+  // 8.2: one draft per coach rather than one per team, and the panel names
+  // any coach it could not write to instead of leaving the count to imply a
+  // full run.
+  await expect(page.getByText(/Generated \d+ email drafts, one per coach\./)).toBeVisible({
+    timeout: 10000,
+  });
+});
 
 Then(
   "each draft should include the coach's name, team name, and assigned practice schedule",

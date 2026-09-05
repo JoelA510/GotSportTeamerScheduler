@@ -475,12 +475,17 @@ function evaluateSlotsForTeam(
   const slotScores = [];
   const viableSlots = [];
   const blockedSlots = [];
-  const coachPref = coachPreferences[team.coachId] ?? {};
   const divisionPref = divisionPreferences[team.division] ?? {};
-  const preferredCoachDays = new Set(coachPref.preferredDays ?? []);
-  const preferredCoachSlots = new Set(coachPref.preferredSlotIds ?? []);
-  // Unavailability is a hard constraint, so it is unioned over every coach on the team;
-  // preferred days and slots are scoring hints and still follow the head coach only.
+  // 8.2: every coach's preferences count, not just the one the legacy shape calls the head.
+  // Unavailability was already unioned over the whole team; preferred days and slots were
+  // read from `team.coachId` alone, which gave coach slot 1 a say the others did not have —
+  // the coach *order* is a clash-breaker, never a rank of whose preferences matter.
+  const preferredCoachDays = new Set(
+    team.coachIds.flatMap((coachId) => coachPreferences[coachId]?.preferredDays ?? [])
+  );
+  const preferredCoachSlots = new Set(
+    team.coachIds.flatMap((coachId) => coachPreferences[coachId]?.preferredSlotIds ?? [])
+  );
   const unavailableCoachSlots = new Set(
     team.coachIds.flatMap((coachId) => coachPreferences[coachId]?.unavailableSlotIds ?? [])
   );

@@ -13,13 +13,45 @@ fixtures is presumed wrong until shown otherwise.**
 |---|---|
 | `published_rec_schedule.csv` | The 567 rec games (4v4/5v5/7v7/9v9/Minis) exactly as published to families across 9 Saturdays. Treat as immutable ground truth. |
 | `combined_schedule.csv` | All 679 rows: the published rec games plus the Select (11v11) layer — 8 external seeding games, weekly reserved league slots (teams TBD), scrimmages, and one field reservation. |
-| `coach_roster.csv` | 215 coach assignments across 132 teams. `Coach Slot` 1 = the team's primary coach. `Person Key` is the identity key. |
+| `coach_roster.csv` | 215 coach assignments across 132 teams. `Coach Slot` is the club's declared **order**, not a role — see "What `Coach Slot` 1 means" below. `Person Key` is the identity key. |
 | `coach_roster_v1.csv` | An earlier roster revision, identical except one person appears as "Nate Deverell" on one team and "Nathaniel Deverell" on the other — the identity-resolution test case. |
 | `external_fixtures_published.csv` | The external league's 8 seeding fixtures **as they published them** (10:30/12:30 both days). The final agreement moved the 08/22 pair to 10:00/12:00; 08/23 stayed as published. The delta is the import-impact test case. |
 | `facility_geometry.json` | Venue/field graph: parent-child field configurations, size and lining eligibility, lighting, and the overlap pairs that forbid concurrent play. |
 | `facility_permits.csv` | Per-venue availability windows including the exceptions (one venue opens early on 09/12 and has **no permit at all on 09/19**). |
 | `sunsets.csv` | Sunset per scheduled date. Unlit games must end 15 min before sunset. |
 | `game_formats.csv` | Per-format timing: halves, halftime, occupancy, block, turnover floors. Note 11v11 occupancy is a range scheduled at its worst case. |
+
+## What `Coach Slot` 1 means — open for the operator
+
+This line used to read "`Coach Slot` 1 = the team's primary coach". That claim
+and the model are in tension, and 8.2 did **not** resolve it — it made the code
+consistent under either reading and left the ruling to the club.
+
+What the sources actually say:
+
+- `packages/core/src/people/roster.js` uses the slot for exactly one thing:
+  breaking a clash. The lower slot keeps the person; `coCoachesOf()` returns
+  co-coaches in slot order. Nothing in the model consumes a *role*.
+- The corpus itself: every one of the 132 teams has exactly one slot-1
+  assignment, 82 have a slot 2 and one a slot 3. That is consistent with slot 1
+  being a role, and equally consistent with it being the first entry in an
+  ordered list that is never empty.
+- `fixtures/season-2026/practice/select_coaches.csv` also ranks coaches, and it
+  disagrees with `coach_roster.csv` on **eight of its fourteen Select teams**:
+  nine slots the two sheets fill with different people, and one person the two
+  sheets rank differently. If slot 1 were a role, those eight teams would have
+  two head coaches and no way to choose.
+
+What 8.2 did: kept the slot as the clash-breaker, stopped rendering it as a role
+in every artifact, exported every coach on every artifact, and reported the
+disagreements as `COACH_ORDER_SOURCE_DISAGREES` rather than picking a sheet.
+
+**If the operator rules that slot 1 *is* a role**, what would have to come back:
+a first-class role field on the coach assignment (not inferred from the slot), a
+producer for it on the legacy `teams.coach_id` path, a rule deciding which sheet
+wins for those eight teams, and a role column in the exports. None of that is
+implemented, and none of it should be until the club says which reading is
+right.
 
 ## Known-good invariants (assert these in fixture-integrity tests)
 

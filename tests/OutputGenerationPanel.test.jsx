@@ -10,6 +10,11 @@ const teams = [
     division: 'U10',
     coachName: 'Alex Coach',
     coachEmail: 'alex@example.com',
+    // 8.2: a co-coach with an address of their own gets their own draft; one
+    // with none is counted and reported rather than silently skipped.
+    assistantCoachIds: ['coach-2', 'coach-3'],
+    assistantCoaches: ['Robin Coach', 'Sam Coach'],
+    assistantCoachEmails: ['robin@example.com', ''],
   },
 ];
 
@@ -71,8 +76,16 @@ describe('OutputGenerationPanel', () => {
 
     fireEvent.click(emailButton);
 
-    expect(screen.getByText('Generated 1 email drafts.')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Generated 2 email drafts, one per coach. 1 coach(es) have no name or address on file and were not written to.'
+      )
+    ).toBeInTheDocument();
     expect(screen.getByText(/To: Alex Coach <alex@example\.com>/)).toBeInTheDocument();
-    expect(screen.getByText(/Your assigned practice schedule is:/)).toBeInTheDocument();
+    // The co-coach who used to get nothing.
+    expect(screen.getByText(/To: Robin Coach <robin@example\.com>/)).toBeInTheDocument();
+    // …and the one with no address is named in the count, not dropped in silence.
+    expect(screen.queryByText(/To: Sam Coach/)).toBeNull();
+    expect(screen.getAllByText(/Your assigned practice schedule is:/).length).toBe(2);
   });
 });

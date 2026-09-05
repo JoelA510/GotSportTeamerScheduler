@@ -66,6 +66,9 @@ export {
 
 export {
   CoachAssignmentSchema,
+  CoachListEntrySchema,
+  CoachListSourceSchema,
+  CoachListSourcesSchema,
   CoachRosterInputSchema,
   IdentityDecisionSchema,
   PersonCommitmentSchema,
@@ -73,6 +76,18 @@ export {
   PersonalConstraintPolicyInputSchema,
   PersonalConstraintSchema,
 } from './schemas.js';
+
+export {
+  COACH_ORDER_DISAGREEMENT,
+  coachDisplayText,
+  coachesOfTeamRow,
+  compareCoaches,
+  formatCoachEmails,
+  formatCoachList,
+  legacyTeamCoachSource,
+  reconcileTeamCoaches,
+  teamCoachSources,
+} from './coachList.js';
 
 export {
   buildCoachRoster,
