@@ -162,9 +162,20 @@ export function projectWeeklyAvailability(weeklyAvailability, graph, complexMap)
 
     const reading = WEEKLY_INTERPRETATIONS.get(record.interpretation ?? '');
     if (!reading) {
-      throw new Error(
-        `fieldAdmin weekly availability: row ${rowIndex} carries interpretation ${JSON.stringify(record.interpretation)}, which is not declared; add it beside its neighbours in WEEKLY_INTERPRETATIONS (${WEEKLY_INTERPRETATION_VALUES.map((value) => JSON.stringify(value)).join(', ')})`
-      );
+      // **The twin of the permits defect, found by sweeping for it rather than
+      // by being told.** An interpretation nobody declared is data, and this
+      // threw - losing all five change sets for one unexpected cell. Reported
+      // as unresolvable with the raw row, like every other cell this module
+      // cannot read.
+      return projectedRow({
+        sourceFile: SOURCE_FILE,
+        rowIndex,
+        subjectKey,
+        interpretation: INTERPRETATION.UNRESOLVABLE,
+        interpretationReason: `the row carries interpretation ${JSON.stringify(record.interpretation)}, which is not declared; the declared values are ${WEEKLY_INTERPRETATION_VALUES.map((value) => JSON.stringify(value)).join(', ')}`,
+        raw,
+        record: null,
+      });
     }
 
     if (reading.interpretation === INTERPRETATION.UNRESOLVABLE) {

@@ -226,6 +226,63 @@ function consumersOf(functionNames, ownPath) {
 }
 
 /**
+ * The roots that hold production code: everything scanned that is not a test.
+ *
+ * A single prefix, because the repository keeps every test under `tests/` --
+ * asserted below rather than assumed, since the day a `*.test.js` lands beside
+ * the code it tests is the day this predicate starts calling it production.
+ *
+ * @param {string} file - repo-relative, `/`-separated
+ * @returns {boolean}
+ */
+function isProductionFile(file) {
+  return !file.startsWith('tests/');
+}
+
+/**
+ * The production half of `consumersOf()`, **derived, not written down**.
+ *
+ * This is the fourth version of a check in this file, and the previous three
+ * were each wrong in a way the check itself could not see. The one this
+ * replaces was the plainest: `productionConsumers` was a hand-written literal
+ * asserted against itself, so a new production consumer meant editing
+ * `consumers` and the "no production consumer" claim stayed green beside it.
+ *
+ * So the set now comes out of the same scan the importer half uses, and the
+ * literal in `LAYERS` survives only as the value the derivation is compared
+ * against -- which is what makes a new production consumer a failure someone
+ * has to answer for rather than an edit that quietly agrees with itself.
+ *
+ * @param {ReadonlyArray<string>} functionNames
+ * @param {string} ownPath
+ * @returns {string[]}
+ */
+function productionConsumersOf(functionNames, ownPath) {
+  return consumersOf(functionNames, ownPath).filter(isProductionFile);
+}
+
+/**
+ * The production consumers that sit **outside the module's own package
+ * directory**.
+ *
+ * A narrower set than `productionConsumersOf()`, and the distinction is not
+ * pedantry: it is the exact claim `CLOSURE_SET_UNWIRED` makes ("a production
+ * consumer outside this module"), and the two sets differ today. Deriving the
+ * broad set is what surfaced that -- the hand-written literal this replaced
+ * named one file where the scan finds two, because `availability/adapters/`
+ * calls `buildClosureSet()` from inside the layer. The literal had quietly
+ * adopted the narrow reading while being labelled with the broad one.
+ *
+ * @param {ReadonlyArray<string>} functionNames
+ * @param {string} modulePath - repo-relative path of the layer module
+ * @returns {string[]}
+ */
+function externalProductionConsumersOf(functionNames, modulePath) {
+  const own = `${path.posix.dirname(modulePath)}/`;
+  return productionConsumersOf(functionNames, modulePath).filter((file) => !file.startsWith(own));
+}
+
+/**
  * Remove block and line comments.
  *
  * Deliberately crude, and safe in the crude direction: it can only *under*
@@ -272,7 +329,11 @@ const LAYERS = Object.freeze([
       'tests/facilityClosures.test.js',
       'tests/reasonCodeReachability.test.js',
     ]),
-    productionConsumers: Object.freeze([]),
+    // Compared against `productionConsumersOf()`, never against itself. Empty
+    // is the claim ALIAS_LAYER_UNWIRED makes, and the derivation is what would
+    // contradict it.
+    expectedProductionConsumers: Object.freeze([]),
+    expectedExternalProductionConsumers: Object.freeze([]),
   }),
   Object.freeze({
     layer: 'availability/closures.js',
@@ -304,7 +365,19 @@ const LAYERS = Object.freeze([
     // directly is what "standalone" means; it is not enforcement. This list is
     // the one that would have to empty before either declaration could claim
     // the layer is untouched by production code.
-    productionConsumers: Object.freeze(['packages/core/src/fieldAdmin/projectors/constraints.js']),
+    // **Two, not one.** The literal this replaced named only the second, which
+    // is the file the declaration talks about; the season adapter calls
+    // `buildClosureSet()` from inside the layer's own directory and was missing
+    // from a list labelled "production consumers". Nothing caught that while
+    // the list was compared against itself.
+    expectedProductionConsumers: Object.freeze([
+      'packages/core/src/availability/adapters/season2026Closures.js',
+      'packages/core/src/fieldAdmin/projectors/constraints.js',
+    ]),
+    // The subset the CLOSURE_SET_UNWIRED message actually claims.
+    expectedExternalProductionConsumers: Object.freeze([
+      'packages/core/src/fieldAdmin/projectors/constraints.js',
+    ]),
   }),
 ]);
 
@@ -459,11 +532,75 @@ describe('unwired layers :: who imports each layer is a checked list', () => {
 });
 
 describe('unwired layers :: who consults each layer is a checked list', () => {
-  for (const { layer, modulePath, functions, consumers } of LAYERS) {
+  for (const {
+    layer,
+    modulePath,
+    functions,
+    consumers,
+    expectedProductionConsumers,
+    expectedExternalProductionConsumers,
+  } of LAYERS) {
     it(`pins the consumers of ${layer}, in both directions`, () => {
       expect(consumersOf(functions, modulePath)).toEqual([...consumers]);
     });
+
+    it(`derives the production consumers of ${layer} from the source tree`, () => {
+      // The subject set comes out of the scan; the literal is only the expected
+      // value. A new production caller changes the left side and fails here,
+      // where the old literal-against-itself version stayed green.
+      expect(productionConsumersOf(functions, modulePath)).toEqual([
+        ...expectedProductionConsumers,
+      ]);
+      expect(externalProductionConsumersOf(functions, modulePath)).toEqual([
+        ...expectedExternalProductionConsumers,
+      ]);
+    });
   }
+
+  it('splits a consumer list into production and test halves that recompose it', () => {
+    // The derivation is a filter, so the two halves must add back up to the
+    // whole. A predicate that answered `false` for everything would make every
+    // production list empty and every "no production consumer" claim green;
+    // this is what stops that, and it is checked per layer rather than once.
+    for (const { layer, modulePath, functions, consumers } of LAYERS) {
+      const production = productionConsumersOf(functions, modulePath);
+      const tests = consumersOf(functions, modulePath).filter((file) => !isProductionFile(file));
+      expect({ layer, recomposed: [...production, ...tests].sort() }).toEqual({
+        layer,
+        recomposed: [...consumers],
+      });
+      // Each layer's consumers include at least one test, so a predicate that
+      // answered `true` for everything would be caught here too.
+      expect({ layer, hasTestConsumer: tests.length > 0 }).toEqual({
+        layer,
+        hasTestConsumer: true,
+      });
+    }
+  });
+
+  it('finds a production consumer when there is one to find', () => {
+    // The positive control for the derivation itself. `buildFacilityGraph()` is
+    // called from production code all over the repo, so a `productionConsumersOf`
+    // that could only return `[]` -- the answer that makes the alias layer's
+    // claim true -- is caught here rather than believed.
+    const found = productionConsumersOf(['buildFacilityGraph'], '');
+    expect(found.length).toBeGreaterThan(0);
+    expect(found.every(isProductionFile)).toBe(true);
+  });
+
+  it('keeps every test under `tests/`, which is what `isProductionFile` assumes', () => {
+    // `isProductionFile` is one prefix test. That is only correct while the
+    // repository keeps its tests in one place, so the assumption is asserted
+    // rather than left as a comment: a `*.test.js` beside the code it tests
+    // would be counted as production and silently inflate every list above.
+    const strays = FILES.filter(
+      (file) => !file.startsWith('tests/') && /\.(test|spec)\.[jt]sx?$/.test(file)
+    );
+    expect(strays).toEqual([]);
+    // ... and the scan really did walk `tests/`, or the filter above found
+    // nothing because there was nothing to find.
+    expect(FILES.filter((file) => file.startsWith('tests/')).length).toBeGreaterThan(20);
+  });
 });
 
 describe('unwired layers :: the declarations describe the repository', () => {
@@ -475,7 +612,7 @@ describe('unwired layers :: the declarations describe the repository', () => {
     const aliasLayer = LAYERS[0];
     expect(aliasLayer.importers).toContain('packages/core/src/fieldAdmin/projectors/rings.js');
     expect(aliasLayer.consumers).not.toContain('packages/core/src/fieldAdmin/projectors/rings.js');
-    expect(aliasLayer.productionConsumers).toEqual([]);
+    expect(productionConsumersOf(aliasLayer.functions, aliasLayer.modulePath)).toEqual([]);
     // ... and the message says so.
     const message = readFileSync(path.join(REPO_ROOT, aliasLayer.modulePath), 'utf8');
     expect(message).toContain('imports the ALIAS_LABEL_AGREEMENT vocabulary and consults no map');
@@ -486,9 +623,17 @@ describe('unwired layers :: the declarations describe the repository', () => {
     // against the code in Phase 8.4 and all three still hold. What changed is
     // that the set now has a production consumer, which the message names.
     const closureLayer = LAYERS[1];
-    expect(closureLayer.productionConsumers).toEqual([
+    // The message says "outside this module", so that is the set checked --
+    // and it is checked against a derivation that can, and today does, differ
+    // from the broader production set pinned above.
+    expect(externalProductionConsumersOf(closureLayer.functions, closureLayer.modulePath)).toEqual([
       'packages/core/src/fieldAdmin/projectors/constraints.js',
     ]);
+    expect(
+      productionConsumersOf(closureLayer.functions, closureLayer.modulePath).length
+    ).toBeGreaterThan(
+      externalProductionConsumersOf(closureLayer.functions, closureLayer.modulePath).length
+    );
     const declaration = readFileSync(
       path.join(REPO_ROOT, 'packages/core/src/availability/reasonCodes.js'),
       'utf8'

@@ -32,6 +32,7 @@ import {
   FIELD_REGISTRY_DOCUMENT_VERSION,
   SUBJECT_KINDS,
   buildFieldRegistry,
+  everySubject,
   columnsFor,
   fromCsv,
   importSeason2026Fields,
@@ -53,7 +54,7 @@ const imported = importSeason2026Fields({ practice, graph, complexMap });
 
 /** Every record a change set proposes, for one subject. */
 const recordsOf = (changeSet) =>
-  [...changeSet.buckets.matched, ...changeSet.buckets.differing, ...changeSet.buckets.added]
+  everySubject(changeSet)
     .flatMap((subject) => subject.rows)
     .map((row) => row.record)
     .filter((record) => record !== null);
@@ -285,12 +286,10 @@ describe('fieldAdmin round trip :: a re-import of an export changes nothing', ()
       // say: a map that last-won on a duplicate identity satisfied that
       // assertion while dropping 20 of 47 alias records with nothing naming
       // them. Summing what each subject stands for is what catches it.
-      const heldAccounted = [
-        ...reimported.buckets.matched,
-        ...reimported.buckets.differing,
-        ...reimported.buckets.added,
-        ...reimported.buckets.removed,
-      ].reduce((sum, subject) => sum + subject.heldCount, 0);
+      const heldAccounted = everySubject(reimported).reduce(
+        (sum, subject) => sum + subject.heldCount,
+        0
+      );
       expect({ subject: name, heldAccounted }).toEqual({
         subject: name,
         heldAccounted: held.length,

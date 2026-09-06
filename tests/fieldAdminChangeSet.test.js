@@ -21,6 +21,7 @@ import {
   BLACKOUT_REASON,
   BLACKOUT_SCOPE,
   BlackoutWindowSchema,
+  BUCKET_OF,
   DISPOSITION,
   FIELD_ADMIN_REASON,
   FIELD_ADMIN_SEVERITY,
@@ -33,7 +34,9 @@ import {
   assertFieldAdminFindings,
   buildChangeSet,
   changeSetPartitionFindings,
+  assertEveryDispositionCovered,
   deriveFieldAdminStatus,
+  everySubject,
   renderValue,
   splitByInterpretation,
   subjectIdentity,
@@ -44,6 +47,7 @@ import {
   findIdentityShapes,
   withoutCommonAbbreviations,
 } from '@squadlogic/core/privacy/index.js';
+import { compareParityRows } from '@squadlogic/core/publication/index.js';
 
 /* -------------------------------------------------------------------------- */
 /* Builders                                                                    */
@@ -141,20 +145,31 @@ describe('fieldAdmin :: the four dispositions', () => {
         row('new', blackout('new')),
       ]
     );
-    const buckets = {
-      matched: set.buckets.matched.map((subject) => subject.key),
-      differing: set.buckets.differing.map((subject) => subject.key),
-      added: set.buckets.added.map((subject) => subject.key),
-      removed: set.buckets.removed.map((subject) => subject.key),
-    };
+    // **Enumerated through `BUCKET_OF`, not written out.** This assertion used
+    // to inspect four buckets by name, so when the fifth arrived a subject
+    // sitting in two of them passed. Reading the bucket names out of the enum
+    // means a sixth disposition cannot escape it either.
+    const buckets = Object.fromEntries(
+      Object.values(BUCKET_OF).map((name) => [
+        name,
+        set.buckets[name].map((subject) => subject.key),
+      ])
+    );
     expect(buckets).toEqual({
       matched: ['same'],
       differing: ['changed'],
       added: ['new'],
       removed: ['gone'],
+      uncompared: [],
     });
     const everyKey = Object.values(buckets).flat();
     expect(everyKey).toHaveLength(new Set(everyKey).size);
+    // ... and the one producer sees exactly the same subjects.
+    expect(
+      everySubject(set)
+        .map((subject) => subject.key)
+        .sort()
+    ).toEqual(everyKey.sort());
   });
 });
 
@@ -589,6 +604,114 @@ describe('fieldAdmin :: renderValue is the one comparison rule', () => {
     expect(renderValue(undefined)).toBe('');
     expect(renderValue(true)).toBe('true');
     expect(renderValue(false)).toBe('false');
+  });
+});
+
+describe('fieldAdmin :: every disposition has a bucket, and one producer sees all of them', () => {
+  it('covers every declared disposition, in both directions', () => {
+    // The check that makes the fifth (and a sixth) impossible to forget: the
+    // bucket map is held to the enum rather than edited beside it.
+    const { dispositions, buckets } = assertEveryDispositionCovered();
+    expect(dispositions).toEqual(['added', 'differing', 'matched', 'removed', 'uncompared']);
+    expect(buckets).toEqual(['added', 'differing', 'matched', 'removed', 'uncompared']);
+  });
+
+  it('gathers a subject from every bucket, including the fifth', () => {
+    // 13 of 16 hand-written spreads silently covered four of five when
+    // `uncompared` arrived. `everySubject()` is why there is now one.
+    const rec = (id, note) => ({ id, note });
+    const set = buildChangeSet({
+      subject: 'all five',
+      keyFields: ['id'],
+      comparedFields: ['note'],
+      current: {
+        label: 'held',
+        records: [rec('same', 'x'), rec('changed', 'x'), rec('gone', 'x'), rec('bare', null)],
+      },
+      proposed: {
+        label: 'proposed',
+        rows: [
+          row('same', rec('same', 'x')),
+          row('changed', rec('changed', 'y')),
+          row('new', rec('new', 'x')),
+          row('bare', rec('bare', null)),
+        ],
+      },
+    });
+    const seen = everySubject(set)
+      .map((subject) => subject.disposition)
+      .sort();
+    expect(seen).toEqual(['added', 'differing', 'matched', 'removed', 'uncompared']);
+    // Every declared disposition really did occur, so this is not passing over
+    // a set that happens to be missing one.
+    expect(new Set(seen).size).toBe(Object.values(DISPOSITION).length);
+  });
+
+  it('refuses a partition missing any bucket, not just the four it used to check', () => {
+    // The fifth bucket was the only lenient one: `partition.uncompared ?? []`
+    // and `Array.isArray(bucket) ? bucket : []` meant a partition built without
+    // it reconciled to zero and came back clean, while a partition missing any
+    // of the other four threw. Every bucket is now strict, and the case is
+    // built for each one **enumerated from `BUCKET_OF`** rather than for the
+    // fifth alone -- a hand-written list here would repeat the original defect.
+    const full = Object.fromEntries(Object.values(BUCKET_OF).map((name) => [name, []]));
+    expect(everySubject(full)).toEqual([]);
+    for (const name of Object.values(BUCKET_OF)) {
+      const { [name]: _omitted, ...missing } = full;
+      expect({
+        name,
+        threw: (() => {
+          try {
+            everySubject(missing);
+            return false;
+          } catch {
+            return true;
+          }
+        })(),
+      }).toEqual({ name, threw: true });
+      // Named, so an operator learns which bucket, not merely that one is gone.
+      expect(() => everySubject(missing)).toThrow(new RegExp(name));
+    }
+    // The loop really ran over five buckets, not zero.
+    expect(Object.values(BUCKET_OF)).toHaveLength(5);
+  });
+
+  it('refuses a subject with no heldCount, the twin of the tolerant fifth bucket', () => {
+    // `heldCount` was the other tolerant default in the same function, reading
+    // `?? 0` for a field `types.js` declares required and all four construction
+    // sites set. Left alone it would have under-counted the held side and
+    // reported a partition hole that is not one.
+    const buckets = Object.fromEntries(Object.values(BUCKET_OF).map((name) => [name, []]));
+    const subject = { key: 'b1', rows: [], after: null, disposition: DISPOSITION.REMOVED };
+    const partition = /** @type {any} */ ({
+      ...buckets,
+      removed: [subject],
+      unresolvable: [],
+      fieldComparisons: 0,
+    });
+    const counts = { sourceRowsRead: 0, currentSubjectsRead: 1, projectedSubjects: 0 };
+    expect(() => changeSetPartitionFindings(partition, counts)).toThrow(/heldCount/);
+    // ... and with the field present it reconciles rather than throwing, so the
+    // assertion above is about the missing field and not about the shape.
+    partition.removed = [{ ...subject, heldCount: 1 }];
+    expect(changeSetPartitionFindings(partition, counts)).toEqual([]);
+  });
+
+  it('reconciles a partition through the same strictness', () => {
+    // `changeSetPartitionFindings()` read four buckets directly and the fifth
+    // with a tolerant default. It now goes through the one producer, so the
+    // same missing bucket is a throw there too rather than a silent zero.
+    const partition = /** @type {any} */ ({
+      ...Object.fromEntries(Object.values(BUCKET_OF).map((name) => [name, []])),
+      unresolvable: [],
+      fieldComparisons: 0,
+    });
+    const counts = { sourceRowsRead: 0, currentSubjectsRead: 0, projectedSubjects: 0 };
+    expect(changeSetPartitionFindings(partition, counts)).toEqual([]);
+    const { uncompared: _gone, ...withoutFifth } = partition;
+    expect(() => changeSetPartitionFindings(/** @type {any} */ (withoutFifth), counts)).toThrow(
+      /uncompared/
+    );
   });
 });
 
@@ -1039,5 +1162,77 @@ describe('fieldAdmin :: the blackout schema refuses a half-stated window', () =>
   it('refuses an unrecognised key', () => {
     // `.strict()`, for the reason `facility/schemas.js` states.
     expect(() => blackout('b1', { unexpected: true })).toThrow();
+  });
+});
+
+describe('fieldAdmin change set :: the fifth disposition, against parity itself', () => {
+  it('shows parity putting an all-absent pair in `matched`, which is why this has five', () => {
+    // The docstrings on DISPOSITION.UNCOMPARED and `changeSet.js` both rest on
+    // a factual claim about a *different* module: that parity reaches the
+    // nothing-was-compared case and answers it with `matched` plus a
+    // PARITY_FIELD_ABSENT finding, rather than being unable to reach it. That
+    // claim is the reason `uncompared` is called an extension and not a
+    // renaming, and left as prose it would go stale silently the day parity
+    // grew a fifth bucket of its own. So it is executed here.
+    // Real `ParityRow`s with real `PARITY_FIELD_ORDER` fields, so this exercises
+    // the comparator the docstrings talk about rather than a look-alike.
+    const parityRow = (overrides) => ({
+      rowId: 'r1',
+      sourceLabel: 'published',
+      date: null,
+      startMinutes: null,
+      venue: null,
+      field: null,
+      format: null,
+      division: null,
+      home: 'A',
+      away: 'B',
+      participant: null,
+      ...overrides,
+    });
+    const partition = compareParityRows({
+      published: [parityRow({})],
+      current: [parityRow({ sourceLabel: 'current' })],
+      keyFields: ['home', 'away'],
+      comparedFields: ['startMinutes', 'venue'],
+    });
+    expect(partition.matched.length).toBe(1);
+    expect(partition.differing.length).toBe(0);
+    // Nothing was compared, and parity says so on the pair rather than in the
+    // bucket -- the exact division of labour the fifth disposition departs from.
+    expect(partition.matched[0].changedFields).toEqual([]);
+    expect(partition.matched[0].absentFields.sort()).toEqual(['startMinutes', 'venue']);
+    expect(partition.fieldComparisons).toBe(0);
+    expect(partition.absentFieldCells.length).toBeGreaterThan(0);
+  });
+
+  it('compares fields when they are present, so the pair above proves absence', () => {
+    // The positive control for the case above: the same call shape with values
+    // present must actually compare them. Without this, a `compareParityRows()`
+    // that compared nothing at all would satisfy every assertion above and the
+    // claim would rest on a comparator that had stopped working.
+    const present = (overrides) => ({
+      rowId: 'r1',
+      sourceLabel: 'published',
+      date: '2026-09-01',
+      startMinutes: 600,
+      venue: 'X',
+      field: null,
+      format: null,
+      division: null,
+      home: 'A',
+      away: 'B',
+      participant: null,
+      ...overrides,
+    });
+    const partition = compareParityRows({
+      published: [present({})],
+      current: [present({ sourceLabel: 'current', startMinutes: 660 })],
+      keyFields: ['home', 'away'],
+      comparedFields: ['startMinutes', 'venue'],
+    });
+    expect(partition.differing.length).toBe(1);
+    expect(partition.differing[0].changedFields).toEqual(['startMinutes']);
+    expect(partition.fieldComparisons).toBe(2);
   });
 });

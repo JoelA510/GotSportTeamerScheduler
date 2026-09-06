@@ -51,9 +51,12 @@ export {
 } from './schemas.js';
 
 export {
+  BUCKET_OF,
+  assertEveryDispositionCovered,
   buildChangeSet,
   changeSetPartitionFindings,
   defaultDisagreementKind,
+  everySubject,
   renderValue,
   splitByInterpretation,
   subjectIdentity,

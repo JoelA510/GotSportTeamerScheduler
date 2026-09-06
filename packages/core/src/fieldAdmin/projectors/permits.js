@@ -140,17 +140,28 @@ export function permitFacilityKey(venue, facility) {
  *
  * @param {string} venue - as the permit writes it
  * @param {string} facility - as the permit writes it
- * @returns {{ surfaces: string[], note: string }}
+ * @returns {{ surfaces: string[], note: string, undeclared: boolean }}
  */
 export function readPermitFacility(venue, facility) {
   const key = permitFacilityKey(venue, facility);
   const reading = PERMIT_FACILITY_READINGS.get(key);
   if (!reading) {
-    throw new Error(
-      `fieldAdmin permits: no declared reading for ${JSON.stringify(key)}; add one beside its neighbours in PERMIT_FACILITY_READINGS (${PERMIT_FACILITY_LABELS.length} declared)`
-    );
+    // **A pair nobody declared is data, not a producer bug**, so it must not
+    // throw. It used to, and the blast radius was the whole import: one
+    // unexpected `venue | facility` cell lost all five change sets. That is the
+    // same shape the ring accessor had - and the permits carry a third naming
+    // vocabulary that neither decoder ring resolves, so an undeclared pair is
+    // the *expected* kind of surprise here rather than a hypothetical one.
+    //
+    // A throw is still right for a producer bug: a `CLOSURE_SCOPE` with no arm
+    // or a broken `projectedRow` invariant cannot be caused by a cell. This can.
+    return {
+      surfaces: [],
+      note: `no reading is declared for ${JSON.stringify(key)}; the ${PERMIT_FACILITY_LABELS.length} declared pairs do not cover it, so the grant is carried and its ground is left unnamed`,
+      undeclared: true,
+    };
   }
-  return { surfaces: [...reading.surfaces], note: reading.note };
+  return { surfaces: [...reading.surfaces], note: reading.note, undeclared: false };
 }
 
 /**

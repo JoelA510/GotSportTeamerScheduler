@@ -26,7 +26,10 @@
  *                                                    (interpreted rows only)
  * ```
  *
- * The disposition words are `publication/parity.js`'s four, unrenamed. The plan
+ * The first four disposition words are `publication/parity.js`'s, unrenamed;
+ * `uncompared` is a fifth added beside them for a case parity answers with a
+ * finding rather than a bucket, and {@link DISPOSITION.UNCOMPARED} says why at
+ * length. The plan
  * asked to reuse parity's vocabulary and then named a different four-word list;
  * renaming `matched` to `unchanged` and `added` to `new` *is* the second
  * vocabulary the plan forbids. The plan's words are synonyms:
@@ -113,15 +116,26 @@ export const DISPOSITION = Object.freeze({
    * was absent on one side or the other, so the subject is neither a match nor
    * a difference - it is a question nobody answered.
    *
-   * A fifth value, and `publication/parity.js` has no equivalent, which is
-   * worth saying rather than leaving as an apparent departure: parity's rows
-   * come from `outputGeneration.js`'s export columns, which the game corpus
-   * populates, so a pair with nothing to compare does not arise there. Here the
-   * columns are a working sheet's, and most of them are empty on most rows.
+   * **A fifth value: an extension of parity's vocabulary, not a renaming of
+   * it.** The four above are spelled as `PARITY_BUCKET` spells them and mean
+   * what parity means. This one names a case parity *does* reach and answers
+   * differently - checked against `compareParityRows()` rather than assumed,
+   * because the tidier story (that parity's declared field set is always
+   * compared, so the case cannot arise there) is not what its code does. Parity
+   * skips a compared field whose cell is absent on either side, and a pair with
+   * every compared field skipped leaves `changedFields` empty and lands in
+   * `matched`, with the absence carried on `pair.absentFields` and re-reported
+   * as `PUBLICATION_REASON.PARITY_FIELD_ABSENT`. So the *case* is not
+   * new here. The *bucket* is.
    *
-   * Calling such a subject `matched` was the half of fix 7 that was missed: it
-   * stopped being *applicable* and went on being counted and reported as a
-   * match, in a set that still came back `clean`.
+   * It earns a bucket here because a change set is read for its buckets. A
+   * parity report is read beside its findings, where "matched, and here is
+   * every absent cell" is a complete answer. Here {@link
+   * FIELD_ADMIN_REASON.SUBJECTS_MATCHED} counts a bucket and says those
+   * subjects agree - and a pair that compared nothing agreed about nothing.
+   * Folding it into `matched` was the half of fix 7 that was missed: it had
+   * already stopped being *applicable*, and went on being counted and reported
+   * as a match, in a set that still came back `clean`.
    */
   UNCOMPARED: 'uncompared',
 });

@@ -37,9 +37,19 @@
  *
  * Disposition carries **five** values, not parity's four. `uncompared` is the
  * fifth: both sides hold the subject and every compared field was absent, so it
- * is neither a match nor a difference. Parity has no equivalent because its
- * columns are the game corpus's export columns, which are populated; here they
- * are a working sheet's, and most are empty on most rows.
+ * is neither a match nor a difference.
+ *
+ * **Why five here and four there**, since the shape is otherwise parity's:
+ * `uncompared` is an *extension* for a case parity answers with a finding
+ * instead of a bucket, not a renaming of any of parity's four. Read out of
+ * `compareParityRows()` rather than assumed - it skips a compared field whose
+ * cell is absent on either side, so a pair with every field skipped has an
+ * empty `changedFields` and goes to `matched`, with the absence on
+ * `pair.absentFields` and a `PARITY_FIELD_ABSENT` finding. That is a complete
+ * answer in a report read beside its findings. It is not one here, where
+ * `SUBJECTS_MATCHED` counts a bucket and asserts those subjects agree. The
+ * four shared names keep parity's meanings exactly; the fifth is added beside
+ * them.
  *
  * ## Where two sources disagree, both are carried
  *
@@ -276,6 +286,94 @@ export function renderValue(value) {
 }
 
 /**
+ * **Every subject a change set holds, in one place.**
+ *
+ * When `uncompared` arrived, sixteen places across the module and its tests
+ * spread the disposition buckets by hand, and **thirteen of the sixteen
+ * silently kept covering four of five** - each one a place where a subject
+ * could sit in a bucket nobody looked in. (A measurement of that moment, not a
+ * standing count: a live total in a docstring is prose that goes stale, which
+ * is the failure this module is otherwise built against.) Patching thirteen
+ * call sites leaves the seventeenth to be written wrong; one producer does
+ * not.
+ *
+ * Built from {@link DISPOSITION} rather than from a written-out list, so a
+ * sixth value cannot be added without this function carrying it - and
+ * {@link assertEveryDispositionCovered} proves that in a test.
+ *
+ * @param {{ buckets: Object }|Object} changeSetOrPartition - a change set or a bare partition
+ * @returns {import('./types.js').ChangeSetSubject[]}
+ */
+export function everySubject(changeSetOrPartition) {
+  const buckets = assertEveryBucketPresent(
+    /** @type {Object} */ (changeSetOrPartition).buckets ?? changeSetOrPartition
+  );
+  return Object.values(DISPOSITION).flatMap((disposition) => buckets[BUCKET_OF[disposition]]);
+}
+
+/**
+ * Every bucket {@link BUCKET_OF} names is present and is an array.
+ *
+ * **The fifth bucket used to be the only lenient one.** `matched`, `differing`,
+ * `added` and `removed` were read straight off the partition and would throw on
+ * a missing one; `uncompared` was read as `partition.uncompared ?? []`, and
+ * `everySubject()` skipped any bucket that was not an array. A partition built
+ * without the fifth bucket therefore reconciled to zero and came back clean --
+ * the four-strict-one-lenient split the twin sweep exists to find, in the one
+ * function written to stop exactly that.
+ *
+ * @param {Object} buckets
+ * @returns {Record<string, import('./types.js').ChangeSetSubject[]>}
+ */
+function assertEveryBucketPresent(buckets) {
+  const missing = Object.values(BUCKET_OF).filter(
+    (name) => !Array.isArray(/** @type {Record<string, unknown>} */ (buckets)[name])
+  );
+  if (missing.length > 0) {
+    throw new Error(
+      `fieldAdmin: partition is missing the bucket(s) [${missing.join(', ')}]; every disposition in [${Object.values(DISPOSITION).join(', ')}] must have one`
+    );
+  }
+  return /** @type {Record<string, import('./types.js').ChangeSetSubject[]>} */ (buckets);
+}
+
+/**
+ * The bucket name each disposition lives in.
+ *
+ * They are the same word today and this map exists so they need not stay that
+ * way - and so {@link everySubject} reads the buckets *through* the enum rather
+ * than beside it, which is what makes a missing bucket a loud failure.
+ *
+ * @type {Readonly<Record<string, string>>}
+ */
+export const BUCKET_OF = Object.freeze({
+  [DISPOSITION.MATCHED]: 'matched',
+  [DISPOSITION.DIFFERING]: 'differing',
+  [DISPOSITION.ADDED]: 'added',
+  [DISPOSITION.REMOVED]: 'removed',
+  [DISPOSITION.UNCOMPARED]: 'uncompared',
+});
+
+/**
+ * Every disposition has a bucket, and every bucket a disposition.
+ *
+ * Exported so a test can hold {@link BUCKET_OF} to {@link DISPOSITION} in both
+ * directions rather than trusting that the two were edited together.
+ *
+ * @returns {{ dispositions: string[], buckets: string[] }}
+ */
+export function assertEveryDispositionCovered() {
+  const dispositions = Object.values(DISPOSITION).sort();
+  const buckets = Object.keys(BUCKET_OF).sort();
+  if (dispositions.join(',') !== buckets.join(',')) {
+    throw new Error(
+      `fieldAdmin: BUCKET_OF covers [${buckets.join(', ')}] but DISPOSITION declares [${dispositions.join(', ')}]`
+    );
+  }
+  return { dispositions, buckets: Object.values(BUCKET_OF).sort() };
+}
+
+/**
  * Does the partition account for every input exactly once, on **both** axes?
  *
  * **Exported, and given its counts as arguments** rather than closing over the
@@ -292,23 +390,30 @@ export function renderValue(value) {
  * @returns {import('./types.js').FieldAdminFinding[]}
  */
 export function changeSetPartitionFindings(partition, counts) {
+  // First, so a partition missing a bucket is named rather than surfacing as a
+  // `TypeError` from whichever line happens to read it first.
+  assertEveryBucketPresent(partition);
   const matched = partition.matched.length;
   const differing = partition.differing.length;
   const added = partition.added.length;
   const removed = partition.removed.length;
-  const uncompared = (partition.uncompared ?? []).length;
+  const uncompared = partition.uncompared.length;
   const unresolvable = partition.unresolvable.length;
 
   /** @type {import('./types.js').FieldAdminFinding[]} */
   const findings = [];
 
   /* -- axis 1: every source row is interpreted, doubtful or unresolvable -- */
+  // Every subject that came from a source row, derived rather than spelled out.
+  // `removed` is the one disposition excluded, because a removed subject is
+  // named by no source row and carries none; every other disposition -- a sixth
+  // included -- is counted here by default. The hand-written version of this
+  // sum named four buckets and would have been the next one to keep covering
+  // four of five.
   const rowsAccounted =
-    partition.matched.reduce((sum, subject) => sum + subject.rows.length, 0) +
-    partition.differing.reduce((sum, subject) => sum + subject.rows.length, 0) +
-    partition.added.reduce((sum, subject) => sum + subject.rows.length, 0) +
-    (partition.uncompared ?? []).reduce((sum, subject) => sum + subject.rows.length, 0) +
-    unresolvable;
+    everySubject(partition)
+      .filter((subject) => subject.disposition !== DISPOSITION.REMOVED)
+      .reduce((sum, subject) => sum + subject.rows.length, 0) + unresolvable;
   if (rowsAccounted !== counts.sourceRowsRead) {
     findings.push(
       makeFieldAdminFinding(
@@ -333,18 +438,28 @@ export function changeSetPartitionFindings(partition, counts) {
   // subject stands on. Counting the sides directly says what is actually meant
   // - every held subject is accounted for exactly once, and so is every
   // proposed one - and it keeps working whatever the bucket rules become.
-  const everySubject = [
-    ...partition.matched,
-    ...partition.differing,
-    ...partition.added,
-    ...partition.removed,
-    ...(partition.uncompared ?? []),
-  ];
+  // Through the one producer, so a sixth disposition cannot be forgotten here.
+  const subjects = everySubject(partition);
   // **Held *records*, not held subjects.** A key that two held records share is
   // one subject carrying both, so counting subjects would leave the surplus
   // unaccounted for and report a partition hole that is not one. `heldCount` is
   // what each subject actually stands for on the held side.
-  const currentAccounted = everySubject.reduce((sum, subject) => sum + (subject.heldCount ?? 0), 0);
+  //
+  // Read **strictly**, the same as the buckets a few lines up. `heldCount` was
+  // read as `subject.heldCount ?? 0`, and `types.js` declares it a required
+  // `number`: all four construction sites set it, so the default only ever
+  // covered a state the production path cannot reach -- while silently
+  // under-counting the held side and reporting a partition hole that is not
+  // one if anything ever did reach it. The twin of the tolerant fifth bucket,
+  // one function away from it.
+  const currentAccounted = subjects.reduce((sum, subject) => {
+    if (typeof subject.heldCount !== 'number') {
+      throw new Error(
+        `fieldAdmin: subject "${subject.key}" carries no heldCount, so the held side cannot be reconciled`
+      );
+    }
+    return sum + subject.heldCount;
+  }, 0);
   if (currentAccounted !== counts.currentSubjectsRead) {
     findings.push(
       makeFieldAdminFinding(
@@ -365,7 +480,7 @@ export function changeSetPartitionFindings(partition, counts) {
     );
   }
 
-  const proposedAccounted = everySubject.filter((subject) => subject.after !== null).length;
+  const proposedAccounted = subjects.filter((subject) => subject.after !== null).length;
   if (proposedAccounted !== counts.projectedSubjects) {
     findings.push(
       makeFieldAdminFinding(
@@ -380,6 +495,7 @@ export function changeSetPartitionFindings(partition, counts) {
           differing,
           added,
           removed,
+          uncompared,
         }
       )
     );
@@ -733,6 +849,21 @@ export function buildChangeSet(input) {
     fieldComparisons,
   };
 
+  /**
+   * Every subject that came from a source row.
+   *
+   * **Written as the exclusion of the one disposition that cannot, not as a
+   * list of the ones that can.** `removed` means held and named by no source
+   * row, so it can carry no source disagreement; every other disposition came
+   * from a row and can. A sixth disposition therefore joins this set by
+   * default, and leaving it out would take an edit someone has to justify --
+   * which is the opposite of the four hand-written spreads this replaces, where
+   * `uncompared` was silently missing from three of them.
+   */
+  const sourcedSubjects = everySubject(partition).filter(
+    (entry) => entry.disposition !== DISPOSITION.REMOVED
+  );
+
   meta.subjectsMatched = matched.length;
   meta.subjectsDiffering = differing.length;
   meta.subjectsAdded = added.length;
@@ -740,12 +871,10 @@ export function buildChangeSet(input) {
   meta.subjectsUncompared = uncompared.length;
   meta.fieldComparisons = fieldComparisons;
   meta.sourceComparisons = tally.sourceComparisons;
-  meta.subjectsWithSourceDisagreement = [...matched, ...differing, ...added, ...uncompared].filter(
+  meta.subjectsWithSourceDisagreement = sourcedSubjects.filter(
     (entry) => entry.sourceDisagreement !== null
   ).length;
-  meta.subjectsApplicable = [...matched, ...differing, ...added, ...removed, ...uncompared].filter(
-    (entry) => entry.applicable
-  ).length;
+  meta.subjectsApplicable = everySubject(partition).filter((entry) => entry.applicable).length;
 
   findings.push(
     ...changeSetPartitionFindings(partition, {
@@ -774,11 +903,24 @@ export function buildChangeSet(input) {
   }
 
   // One finding per differing subject and per removal: each needs a person.
+  //
+  // **Both messages that name sources go through `sourceLabel()`.** This one
+  // used to `sources.join(' and ')` raw, so the corpus emitted `"Willowmead
+  // Park" is described differently by field_inventory.csv and
+  // field_inventory.csv` - the same file twice, saying nothing about which row.
+  // Its twin `SOURCES_DISAGREE` was corrected in the previous round and this
+  // was not, which is the half-application shape this PR keeps producing.
   for (const entry of differing) {
     const what =
       entry.changedFields.length > 0
         ? `differs from ${current.label} in ${entry.changedFields.join(', ')}`
-        : `is described differently by ${entry.sourceDisagreement?.sources.join(' and ') ?? 'two sources'}`;
+        : `is described differently by ${
+            entry.sourceDisagreement
+              ? entry.sourceDisagreement.values
+                  .map((_value, index) => sourceLabel(entry, index))
+                  .join(' and ')
+              : 'two sources'
+          }`;
     findings.push(
       makeFieldAdminFinding(
         FIELD_ADMIN_REASON.SUBJECT_DIFFERS,
@@ -814,7 +956,7 @@ export function buildChangeSet(input) {
   }
 
   // Where two sources disagree, **surface both and refuse to pick**.
-  for (const entry of [...matched, ...differing, ...added, ...uncompared]) {
+  for (const entry of sourcedSubjects) {
     if (entry.sourceDisagreement === null) continue;
     const { kind, field, sources, values } = entry.sourceDisagreement;
     // **`field` is named**, and it was computed and never read until the review

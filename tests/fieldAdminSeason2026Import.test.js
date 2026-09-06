@@ -37,6 +37,7 @@ import {
   INTERPRETATION,
   PERMIT_FACILITY_LABELS,
   SEASON_2026_SUBJECTS,
+  everySubject,
   WEEKLY_INTERPRETATIONS_ABSENT_FROM_CORPUS,
   WEEKLY_INTERPRETATION_VALUES,
   importSeason2026Fields,
@@ -161,10 +162,7 @@ describe('season-2026 field import :: the two decoder rings', () => {
     // 40 is 2 records compared over 20 shared codes: the ring subject compares
     // one field, and every shared code contributes one comparison per ring.
     expect(rings.meta.sourceComparisons).toBe(
-      2 *
-        [...rings.buckets.matched, ...rings.buckets.differing, ...rings.buckets.added].filter(
-          (subject) => subject.rows.length === 2
-        ).length
+      2 * everySubject(rings).filter((subject) => subject.rows.length === 2).length
     );
     // ... and no comparison against held state happened, because a first import
     // holds nothing. That is what makes `sourceComparisons` load-bearing.
@@ -175,7 +173,7 @@ describe('season-2026 field import :: the two decoder rings', () => {
     // The universe, enumerated from the rings rather than from the
     // disagreements: a code dropped by a projector shows up here as a smaller
     // universe rather than as a silently smaller disagreement count.
-    const shared = [...rings.buckets.matched, ...rings.buckets.differing, ...rings.buckets.added]
+    const shared = everySubject(rings)
       .filter((subject) => subject.rows.length === 2)
       .map((subject) => subject.key);
     expect(shared).toHaveLength(20);
@@ -238,11 +236,10 @@ describe('season-2026 field import :: the two decoder rings', () => {
     // the twelfth disagreement with it.
     expect(rings.buckets.unresolvable).toEqual([]);
     expect(rings.meta.rowsUnresolvable).toBe(0);
-    const rowsOnSubjects = [
-      ...rings.buckets.matched,
-      ...rings.buckets.differing,
-      ...rings.buckets.added,
-    ].reduce((sum, subject) => sum + subject.rows.length, 0);
+    const rowsOnSubjects = everySubject(rings).reduce(
+      (sum, subject) => sum + subject.rows.length,
+      0
+    );
     expect(rowsOnSubjects).toBe(rings.meta.sourceRowsRead);
   });
 
@@ -273,11 +270,7 @@ describe('season-2026 field import :: the Excel corruption, in both files', () =
   it('imports all 15 weekly rows with their raw value intact', () => {
     // **15 rows across three venues, not the one the README quotes.**
     const windows = imported.recurringWindows;
-    const corrupted = [
-      ...windows.buckets.matched,
-      ...windows.buckets.differing,
-      ...windows.buckets.added,
-    ]
+    const corrupted = everySubject(windows)
       .flatMap((subject) => subject.rows)
       .filter((row) => row.interpretationReason?.includes('Excel'));
     expect(corrupted).toHaveLength(15);
@@ -292,7 +285,7 @@ describe('season-2026 field import :: the Excel corruption, in both files', () =
 
   it('spreads them across the three venues the sheet corrupts', () => {
     const windows = imported.recurringWindows;
-    const corrupted = [...windows.buckets.added]
+    const corrupted = everySubject(windows)
       .flatMap((subject) => subject.rows)
       .filter((row) => row.interpretationReason?.includes('Excel'));
     expect(tally(corrupted, (row) => String(row.raw.venue))).toEqual({
@@ -323,9 +316,7 @@ describe('season-2026 field import :: the Excel corruption, in both files', () =
     // matters more, because that file becomes blackouts and a blackout on the
     // wrong ground closes it for real.
     const blackouts = imported.blackouts;
-    const rows = [...blackouts.buckets.added, ...blackouts.buckets.differing].flatMap(
-      (subject) => subject.rows
-    );
+    const rows = everySubject(blackouts).flatMap((subject) => subject.rows);
     const gardening = rows.filter((row) => String(row.raw.fields).startsWith('2026-'));
     expect(gardening).toHaveLength(1);
     expect(gardening[0].raw.fields).toBe('2026-01-07');
@@ -414,11 +405,7 @@ describe('season-2026 field import :: nothing is silently dropped', () => {
   it('accounts for every source row on one axis or the other', () => {
     for (const name of subjects) {
       const set = imported[name];
-      const onSubjects = [
-        ...set.buckets.matched,
-        ...set.buckets.differing,
-        ...set.buckets.added,
-      ].reduce((sum, subject) => sum + subject.rows.length, 0);
+      const onSubjects = everySubject(set).reduce((sum, subject) => sum + subject.rows.length, 0);
       expect({ name, accounted: onSubjects + set.buckets.unresolvable.length }).toEqual({
         name,
         accounted: set.meta.sourceRowsRead,
@@ -459,11 +446,7 @@ describe('season-2026 field import :: nothing is silently dropped', () => {
     const files = new Set();
     for (const name of subjects) {
       const set = imported[name];
-      for (const subject of [
-        ...set.buckets.matched,
-        ...set.buckets.differing,
-        ...set.buckets.added,
-      ]) {
+      for (const subject of everySubject(set)) {
         for (const row of subject.rows) files.add(row.sourceFile);
       }
       for (const row of set.buckets.unresolvable) files.add(row.sourceFile);
@@ -683,15 +666,13 @@ describe('season-2026 field import :: the inventory is venue-keyed prose', () =>
   it('carries the size prose verbatim rather than parsing it into numbers', () => {
     // There is no grammar in `11v11 (4) 9v9 (8)`, only shorthand, and inventing
     // capacity from it would put a guess into a scheduler.
-    const alder = [...attributes.buckets.added, ...attributes.buckets.differing].find(
-      (subject) => subject.key === 'Alder Park'
-    );
+    const alder = everySubject(attributes).find((subject) => subject.key === 'Alder Park');
     expect(alder.after.fieldSizesText).toBe('11v11 (4) 9v9 (8)');
   });
 
   it('marks the sentinel cells doubtful rather than reading a shrug as data', () => {
-    const doubtful = [...attributes.buckets.added, ...attributes.buckets.differing].filter(
-      (subject) => subject.rows.some((row) => row.interpretation === INTERPRETATION.DOUBTFUL)
+    const doubtful = everySubject(attributes).filter((subject) =>
+      subject.rows.some((row) => row.interpretation === INTERPRETATION.DOUBTFUL)
     );
     expect(doubtful.map((subject) => subject.key).sort()).toEqual(['Alder Park', 'Foxglove Park']);
     for (const subject of doubtful) expect(subject.applicable).toBe(false);
@@ -873,18 +854,9 @@ describe('season-2026 field import :: one definition of every subject', () => {
   it('puts every subject in exactly one bucket, on every change set', () => {
     for (const name of Object.keys(SEASON_2026_SUBJECTS)) {
       const set = imported[name];
-      const keys = [
-        ...set.buckets.matched,
-        ...set.buckets.differing,
-        ...set.buckets.added,
-        ...set.buckets.removed,
-      ].map((subject) => subject.key);
+      const keys = everySubject(set).map((subject) => subject.key);
       expect({ name, unique: keys.length === new Set(keys).size }).toEqual({ name, unique: true });
-      const dispositions = new Set(
-        [...set.buckets.matched, ...set.buckets.differing, ...set.buckets.added].map(
-          (subject) => subject.disposition
-        )
-      );
+      const dispositions = new Set(everySubject(set).map((subject) => subject.disposition));
       for (const disposition of dispositions) {
         expect(Object.values(DISPOSITION)).toContain(disposition);
       }
