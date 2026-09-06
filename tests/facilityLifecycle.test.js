@@ -15,8 +15,12 @@ import {
   FACILITY_REASON,
   buildFacilityGraph,
   checkBooking,
+  checkEquipment,
   checkFacilityLifecycle,
   checkFieldEligibility,
+  checkLining,
+  checkOccupancy,
+  checkSizeEligibility,
   isDatedNode,
   isLiveOn,
   retiredOn,
@@ -196,12 +200,15 @@ describe('facility lifecycle :: the corpus is undated, and says so', () => {
 
 describe('facility lifecycle :: a count nobody made is not a count of zero', () => {
   it('reports null from checks that never counted, and a number from the one that does', () => {
-    // **Finding 11's family: nine `createMeta()` sites, one counter.** Only the
-    // lifecycle check counts; the other eight used to publish a literal 0,
-    // which reads as "counted, found none" when nothing counted. The ruling to
-    // publish the count even at zero was written against exactly that, so the
-    // uncounted state is `null` and the counted state is a number -- including
-    // 0, which is what the corpus gives.
+    // **The invariant, with no tally in it.** This comment used to say "nine
+    // `createMeta()` sites"; the source said ten in one line and eleven in the
+    // next; `grep -c` said something else again. Three hand-kept numbers for
+    // one enumeration, none of them recomputable, and the fifth miscount in
+    // this series. The number was never the claim -- the claim is that a check
+    // which did not count publishes `null` and the one that did publishes a
+    // number, including 0 when the graph genuinely has none. That is asserted
+    // below by calling the checks, so it cannot drift the way a written count
+    // does.
     const dated = graphWith({ effectiveTo: '2026-06-30' });
 
     // An unknown surface never reaches the lifecycle check.
@@ -221,6 +228,28 @@ describe('facility lifecycle :: a count nobody made is not a count of zero', () 
     // ... and 0 when the graph really has none, which is the ruling's case.
     const undated = checkFieldEligibility(graphWith(), { surfaceId: 's1', format: '9v9' });
     expect(undated.meta.datedNodeCount).toBe(0);
+
+    // **Every check that does not count, checked -- not a sample of one.**
+    // Asserting `null` on a single non-counting path is what let three
+    // different tallies coexist: nobody had to look at the others. These are
+    // the exported checks that never consult the lifecycle module, and each
+    // must leave the counter untouched rather than publish a confident 0.
+    const nonCounting = [
+      () => checkSizeEligibility(dated, { surfaceId: 's1', format: '9v9' }),
+      () => checkLining(dated, { surfaceId: 's1', format: '9v9' }),
+      () => checkEquipment(dated, { surfaceId: 's1', format: '9v9', date: '2026-05-01' }),
+      () =>
+        checkOccupancy(
+          dated,
+          { id: 'b1', surfaceId: 's1', date: '2026-05-01', startMinutes: 600, endMinutes: 700 },
+          []
+        ),
+    ];
+    // The list is not empty, or the loop asserts nothing.
+    expect(nonCounting.length).toBeGreaterThan(3);
+    for (const run of nonCounting) {
+      expect(run().meta.datedNodeCount).toBeNull();
+    }
   });
 });
 
@@ -325,6 +354,51 @@ describe('facility lifecycle :: a sub-surface of a retired surface is retired', 
     // depth for a surface it never found.
     const missing = checkFacilityLifecycle(graph, { asOf: '2026-05-01', surfaceId: 'nope' });
     expect(missing.meta.lifecycleNodesJudged).toBe(0);
+  });
+
+  it('names the node that closed, not the one being reported', () => {
+    // **Round 3 finding 4, and the third time on this same pair of twins.** The
+    // whole-graph arm attributed an ancestor's or a venue's retirement to the
+    // SURFACE, emitting `surface "quarter" is effective always onward and
+    // 2026-09-01 falls outside it` -- a sentence that contradicts itself, with
+    // null bounds in `details`. An operator would go hunting for a date on the
+    // pitch that does not exist. The scoped twin has always named the ancestor.
+    const graph = nested();
+    const whole = checkFacilityLifecycle(graph, { asOf: '2026-09-01' });
+    const quarter = whole.findings.find((f) => f.details.id === 'quarter');
+    expect(quarter).toBeDefined();
+
+    // The surface genuinely has no window of its own, so a message quoting one
+    // is quoting nothing.
+    expect(quarter.details.effectiveTo).toBeNull();
+    expect(quarter.details.causeId).toBe('full');
+    expect(quarter.details.causeKind).toBe('surface');
+    expect(quarter.details.causeEffectiveTo).toBe('2026-06-30');
+    expect(quarter.message).toContain('because surface "full"');
+    // ... and it does NOT claim the surface's own window excludes the date.
+    expect(quarter.message).not.toContain('always onward and');
+
+    // A surface that closed on its OWN dates is its own cause, and its message
+    // is the direct one -- so the fix did not simply reword every finding.
+    const full = whole.findings.find((f) => f.details.id === 'full');
+    expect(full.details.causeId).toBe('full');
+    expect(full.message).toContain('is effective');
+    expect(full.message).not.toContain('because');
+
+    // A venue is always its own cause.
+    const closedSite = buildFacilityGraph({
+      venues: [{ id: 'v1', name: 'Closed', effectiveTo: '2026-06-30' }],
+      surfaces: [{ id: 's1', venueId: 'v1', name: 'Pitch' }],
+    });
+    const siteWide = checkFacilityLifecycle(closedSite, { asOf: '2026-09-01' });
+    const venue = siteWide.findings.find((f) => f.details.kind === 'venue');
+    expect(venue.details.causeId).toBe('v1');
+    expect(venue.details.causeKind).toBe('venue');
+    // ... and the surface under it points at the venue, across the other edge.
+    const surface = siteWide.findings.find((f) => f.details.kind === 'surface');
+    expect(surface.details.causeId).toBe('v1');
+    expect(surface.details.causeKind).toBe('venue');
+    expect(surface.message).toContain('because venue "v1"');
   });
 
   it('reaches the eligibility check, on both of its paths', () => {

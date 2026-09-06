@@ -137,6 +137,39 @@ function surfaceIsLiveOn(graph, surfaceId, asOf, retiredVenues) {
 }
 
 /**
+ * **Why is this surface not live on `asOf`?** The nearest node that excludes it.
+ *
+ * A surface with no window of its own can be retired by a parent surface or by
+ * its venue, and the whole-graph arm was reporting those as the SURFACE's own
+ * retirement: `surface "s1" is effective always onward and 2026-09-01 falls
+ * outside it`, with null bounds in `details` -- a sentence that contradicts
+ * itself, naming a window that excludes nothing. An operator reading it would
+ * go looking for a date on the pitch that does not exist.
+ *
+ * This walk existed once before, was never called, and was deleted as dead code
+ * in round 2. It is back because the arm that needed it is now the caller: the
+ * lesson was not "do not write the helper", it was "do not leave it unwired".
+ *
+ * `lineage` is self-first, so a surface with its own expired window is its own
+ * cause and the message is unchanged for that case.
+ *
+ * @param {import('./types.js').FacilityGraph} graph
+ * @param {string} surfaceId
+ * @param {string} asOf
+ * @returns {{ kind: string, node: any }|null} null when the surface IS live
+ */
+function retirementCause(graph, surfaceId, asOf) {
+  const surface = graph.surfaces[surfaceId];
+  if (surface === undefined) return null;
+  for (const id of surface.lineage) {
+    if (!isLiveOn(graph.surfaces[id], asOf)) return { kind: 'surface', node: graph.surfaces[id] };
+  }
+  const venue = graph.venues[surface.venueId];
+  if (!isLiveOn(venue, asOf)) return { kind: 'venue', node: venue };
+  return null;
+}
+
+/**
  * **The lifecycle verdict for one query.**
  *
  * @param {import('./types.js').FacilityGraph} graph
@@ -189,16 +222,43 @@ export function checkFacilityLifecycle(graph, query = {}) {
     ])) {
       for (const id of ids) {
         const node = kind === 'venue' ? graph.venues[id] : graph.surfaces[id];
+        // **Name the node that actually closed, not the one being reported.**
+        // A venue is always its own cause. A surface may be retired by an
+        // ancestor or by its venue, and attributing that to the surface
+        // produced `is effective always onward and ... falls outside it` --
+        // self-contradictory, with null bounds in `details`. The scoped twin at
+        // the bottom of this function has always named the ancestor; this arm
+        // did not, and that pair was round 2 finding 4. One arm corrected and
+        // its twin not, for the second time on the same pair.
+        const cause = kind === 'venue' ? { kind, node } : retirementCause(graph, id, asOf);
+        // `retiredOn()` put this id in the list, so something excludes `asOf`.
+        // A null cause here means the two disagree, which is a defect in one of
+        // them and never something to paper over with the node's own window.
+        if (cause === null) {
+          throw new Error(
+            `facility: "${id}" is reported retired on ${asOf} but no node in its lineage or venue excludes that date`
+          );
+        }
+        const bySelf = cause.node.id === id;
         findings.push(
           makeFinding(
             FACILITY_REASON.NODE_RETIRED,
-            `${kind} "${id}" is effective ${describeWindow(node)} and ${asOf} falls outside it`,
+            bySelf
+              ? `${kind} "${id}" is effective ${describeWindow(node)} and ${asOf} falls outside it`
+              : `${kind} "${id}" is retired on ${asOf} because ${cause.kind} "${cause.node.id}" is effective ${describeWindow(cause.node)}`,
             {
               kind,
               id,
               asOf,
               effectiveFrom: node.effectiveFrom,
               effectiveTo: node.effectiveTo,
+              // The node whose window is the reason. Equal to `id`/`kind` when
+              // the surface closed on its own dates, so a consumer reading only
+              // the cause fields is never wrong, merely redundant.
+              causeKind: cause.kind,
+              causeId: cause.node.id,
+              causeEffectiveFrom: cause.node.effectiveFrom,
+              causeEffectiveTo: cause.node.effectiveTo,
             }
           )
         );

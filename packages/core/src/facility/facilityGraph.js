@@ -41,20 +41,21 @@ export function createMeta() {
     bookingPairsCompared: 0,
     // Lifecycle counters.
     //
-    // **`datedNodeCount` starts at `null`, not 0.** TEN call sites build a meta
-    // -- eligibility x5, occupancy x4, lifecycle x1 -- and only the lifecycle
-    // one ever counts; a literal 0 on the other nine reads as "I counted and
-    // found none" when nothing counted at all.
-    //
-    // (I said nine. That is the third enumeration in this PR miscounted by one,
-    // after "four writers of fields.active" which was five, and "11 view
-    // columns" which was 12. The counts are now taken from the code --
-    // `grep -c 'createMeta()'` returns 11, one of which is this definition --
-    // rather than from reading down a list, which is how all three went wrong.)
-    // That is the exact shape the ruling to publish the count was written
-    // against, so `null` means *not counted* and a number means somebody did.
+    // **`datedNodeCount` starts at `null`, not 0.** Many checks build a meta and
+    // only the lifecycle one ever counts dated nodes; a literal 0 everywhere
+    // else reads as "I counted and found none" when nothing counted at all --
+    // the exact shape the ruling to publish the count was written against. So
+    // `null` means *nobody counted* and a number means somebody did.
     // `checkFacilityLifecycle()` still publishes 0 when the graph really has
     // none, which is what the ruling asked for.
+    //
+    // **There is deliberately no number in this comment.** It said ten, a
+    // parenthetical beside it said eleven, and a test said nine -- three
+    // hand-maintained figures for one enumeration, the fifth miscount in this
+    // series. A count nobody can recompute is not a fact, it is a guess that
+    // ages. The claim that carries weight is the INVARIANT, not the tally, and
+    // `tests/facilityLifecycle.test.js` asserts it behaviourally: a check that
+    // never counted publishes `null`, the one that counts publishes a number.
     datedNodeCount: null,
     lifecycleNodesJudged: 0,
   };
