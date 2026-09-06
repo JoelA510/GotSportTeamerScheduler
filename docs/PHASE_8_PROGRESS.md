@@ -580,3 +580,111 @@ than it was re-read. The response was a sweep rather than another five patches:
 checked against the code, **16 wrong**. Where a statement could become an
 assertion it did — the scope table is now read back out of the module source, so
 a wrong count word or a removed row fails a test rather than a reader.
+
+---
+
+## 8.4 — Field and blackout administration — **PR 1 of 3 merged; 8.4 not complete**
+
+Split into three PRs on the agent's proposal and the supervisor's approval: PR 1
+the core module, PR 2 persistence and lifecycle, PR 3 the UI. 8.3 needed six
+review rounds at roughly half the size of the whole task, so one PR was past the
+size at which review finds things. **Do not treat 8.4 as done until PR 3 merges.**
+
+### PR 1 — `fieldAdmin` core: import, export, change set — **merged**
+
+- **PR:** [#374](https://github.com/JoelA510/SquadLogic/pull/374), branch
+  `feat/phase8-4-field-import-export`, squash-merged as `fdeac67`.
+- **Tests:** 2493 / 34 / 6 (main before) → **2698** (172 files). Season fixture
+  suite 141 → **228**. Main entry unchanged at 131.04 KB gz.
+- **Review rounds:** the agent's own `/code-review` (9 findings) plus a CodeQL
+  high, then four supervisor rounds of **11, 8, 6, 8** (33 findings), then a
+  confirm-only check. Persists nothing and applies nothing.
+
+### What the plan got wrong
+
+- **`field_inventory.csv` and `field_equipment.csv` are venue-keyed**, not
+  surface-keyed. `field_inventory.csv` has no field column at all; its
+  `field_sizes` is prose with sentinel cells and a **duplicated venue key**.
+- **"`facility/schemas.js` carries no date fields at all" is false as written** —
+  it defines `IsoDateSchema` and uses it. The real gap is that
+  `FacilityVenueSchema` and `FacilitySurfaceInputSchema` carry none.
+- **The permits carry a third naming vocabulary** neither decoder ring resolves,
+  and one cell (`Field - Soccer 1A/1B`) names two sub-surfaces.
+- **The Excel corruption is 15 rows across three venues, not one**, and a
+  **16th** sits in `field_constraints.csv` — the file 8.4 turns into blackouts —
+  where it already reads as `CLOSURE_SCOPE.UNREADABLE`.
+- **`interpretation = "unparsed"`, which the 8.0 prompt names as a class, matches
+  zero rows.** A class with no members that nothing announces is the same shape
+  as a check that matches nothing.
+- 8.6 does not exist, so the "show what the repair proposes" clause cannot be
+  satisfied; a named `REPAIR_PROPOSAL_UNAVAILABLE` state says so rather than
+  rendering an empty section that reads as "nothing is affected".
+
+### Two dispositions the plan did not have
+
+`removed`, because an import that cannot say "current state holds this and no
+source mentions it" silently means everything unmentioned is fine. And
+`uncompared`, so a subject nothing compared cannot report as applicable — added
+under review pressure, and kept as a **disposition** rather than a flag on
+`matched` because every switch in this repo throws on `default:`, so a fifth
+member forces consumers to handle it while a boolean is the
+field-parsed-and-never-read hazard.
+
+### The recurring shapes, and what finally worked
+
+- **Three hollow guarantees, two of them the supervisor asked for by name.** The
+  privacy guard **accepted the NFD form of a string it refused in NFC**; the
+  importer audit missed extensionless and aliased specifiers; the round trip was
+  asserted on bytes only, so `''` → `null` was invisible. Asking for a guarantee
+  is not enough: the failing case must be built first and watched to fail.
+- **A fix applied to one arm and not its twin, in every single round.** Naming
+  twins individually caught roughly a third of them. What worked was changing the
+  question from _what is its twin_ to **what is the complete set of places that
+  do this job** — the sweep then examined 41 pairs and found 13 siblings that had
+  not carried their correction, 9 new in that pass. Even that missed one, because
+  the family had **three** members and the third was two calls away in another
+  package.
+- **Mutation testing every fix.** 30 mutated, 7 reverted green, 2 genuinely
+  unpinned. A fix that reverts green is one the next PR can silently undo.
+- **Sweep prose after the change rounds, not before.** 1,309 behavioural
+  statements checked, 8 wrong — and **four of the eight were introduced by the
+  fix rounds themselves.** The fix round is when defects enter.
+
+### Supervisor claims corrected by the agent — running tally now 10
+
+Two more, both asserted without executing anything:
+
+- The proposal to report the one `BLANK_VS_LABEL` ring disagreement as parity's
+  `added` (recorded in the 8.3 amendment above).
+- **The premise that `publication/parity.js` cannot reach the uncompared case.**
+  `compareParityRows()` (`parity.js:209-238`) skips a field absent on either
+  side into `absentFields`, so an all-absent pair lands in `matched` with
+  `PARITY_FIELD_ABSENT` beside it. The suggested docstring wording would have
+  been false. A test now pins parity to that so the premise cannot go stale.
+
+The agent corrected itself twice the same way: the permit undeclared arm is
+**defensive, not corpus-reachable** (all 8 pairs declared; all 223 unresolvable
+rows are the declared-but-empty case), and `readCell('label', '')` returns
+`null` — the code was right and the assertion about it was not.
+
+### Still open
+
+- **Both 8.3 layers remain unwired**, and PR 1 does not change that: the importer
+  consumes them directly, which is the clause `CLOSURE_SET_UNWIRED` already
+  allows. Verified rather than assumed. `ALIAS_LAYER_UNWIRED`'s message was
+  corrected and the "who imports this" half is now **enforced** rather than
+  prose — closing the gap 8.3 recorded as declared-but-unchecked. Deriving that
+  set immediately proved the hand-written literal wrong:
+  `availability/adapters/season2026Closures.js` was a production consumer missing
+  from a list labelled "production consumers".
+- **Rule-engine wiring stays out of scope**, on the agent's reasoning rather than
+  the supervisor's: the acceptance criterion "a blackout makes the affected games
+  and practices show as conflicts" lands on `gameMetrics.js` `detectConflicts()`
+  from `GameSchedulingPage.jsx` — the shipped MVP path — so routing it through
+  `runRuleEngine()` would buy the 55-call-site `requireResource()` blast radius
+  and still not reach the surface the criterion names.
+- **CodeQL reports `neutral` with "1 configuration not found" before `Analyze`
+  finishes**, and an early `neutral` is indistinguishable at a glance from a
+  genuine clean run. Anything automated reading that check will read the wrong
+  one. Not this PR's to fix; recorded because it nearly was read as green.
+- PR 2 (persistence, lifecycle, RLS, RPCs) and PR 3 (UI) outstanding.
