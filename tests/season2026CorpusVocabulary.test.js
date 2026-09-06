@@ -101,6 +101,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, it, expect, afterEach } from 'vitest';
 
 import { parseCsv } from '@squadlogic/core/fixtures/index.js';
+import { IDENTITY_SHAPES, collapseInitialisms, words } from '@squadlogic/core/privacy/index.js';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const CORPUS_ROOT = path.join(REPO_ROOT, 'fixtures', 'season-2026');
@@ -152,52 +153,75 @@ const ALLOWED_YEARS = Object.freeze(['2026']);
 /**
  * Shapes that carry identity without using a letter, which is why `words()`
  * cannot see them and why these run over **every** cell, person-name columns
- * included. Each was measured against the corpus before being added: it holds
- * no `@`, no `://`, no host-shaped dotted token, no grouped phone number and no
- * run of five or more digits, so each of these matching anything at all is new
- * data rather than an existing value the rule mis-reads.
+ * included.
+ *
+ * **Lifted, not copied.** The table now lives in
+ * `packages/core/src/privacy/textShapes.js`, because Phase 8.4 validates an
+ * operator-written blackout note against exactly these shapes and a test cannot
+ * be imported by production code. A second copy beside a reconciliation test
+ * would drift the moment one side was strengthened, which is the failure mode
+ * this whole file exists to catch. `matches the shape table this file carried
+ * before the lift` below pins every pattern's source and flags against the
+ * literals this file used to hold, so the lift is proved behaviour-preserving
+ * rather than asserted to be.
  */
-const FORBIDDEN_PATTERNS = Object.freeze([
-  {
+const FORBIDDEN_PATTERNS = IDENTITY_SHAPES;
+
+/**
+ * Every pattern this file held before the lift, as `source` and `flags`.
+ *
+ * This is the proof that moving the table changed nothing: a regex edited in
+ * `privacy/textShapes.js` fails here, naming the shape. Recorded as strings
+ * rather than as `RegExp` literals on purpose - two `RegExp` objects are never
+ * `===`, and rebuilding them from the module would compare it against itself.
+ */
+const SHAPES_BEFORE_THE_LIFT = Object.freeze([
+  Object.freeze({
     name: 'email',
-    pattern: /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+/,
+    source: '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+',
+    flags: '',
     samples: ['zzq@zzqfictional.example'],
-  },
-  {
+  }),
+  Object.freeze({
     name: 'url-scheme',
-    pattern: /[A-Za-z][A-Za-z0-9+.-]*:\/\//,
+    source: '[A-Za-z][A-Za-z0-9+.-]*:\\/\\/',
+    flags: '',
     samples: ['https://zzqfictional.example'],
-  },
-  {
+  }),
+  Object.freeze({
     name: 'url-host',
-    pattern: /\b[A-Za-z0-9-]+\.(?:com|net|org|edu|gov|io|co|us|uk|info|biz)\b/i,
+    source: '\\b[A-Za-z0-9-]+\\.(?:com|net|org|edu|gov|io|co|us|uk|info|biz)\\b',
+    flags: 'i',
     samples: ['zzqfictional.com'],
-  },
-  // A separator after the area code was once mandatory, which let the single
-  // most common North-American spelling — `(925) 555-0134` — match neither this
-  // shape nor `digit-run`, whose longest run in it is four. The parenthesised
-  // area code, the optional country prefix and optional separators are all in
-  // now; measured at 0 matches across the corpus and both READMEs.
-  {
+  }),
+  Object.freeze({
     name: 'phone',
-    pattern: /(?:\+\d{1,3}[\s.-]?)?(?:\(\d{3}\)|\b\d{3})[\s.-]?\d{3}[\s.-]?\d{4}\b/,
+    source: '(?:\\+\\d{1,3}[\\s.-]?)?(?:\\(\\d{3}\\)|\\b\\d{3})[\\s.-]?\\d{3}[\\s.-]?\\d{4}\\b',
+    flags: '',
     samples: ['(925) 555-0134', '(925)555-0134', '+1 (925) 555-0134', '925-555-0134'],
-  },
-  { name: 'digit-run', pattern: /\d{5,}/, samples: ['1234567'] },
-  // The corpus is ASCII by construction — measured at 0 non-ASCII letters
-  // across all 22 scanned files and both READMEs — so any letter outside ASCII
-  // is new data. Letters only, deliberately: the corpus and its prose carry 45
-  // non-ASCII *punctuation* marks (em dashes, arrows, `≤`) that are not names.
-  {
+  }),
+  Object.freeze({
+    name: 'digit-run',
+    source: '\\d{5,}',
+    flags: '',
+    samples: ['1234567'],
+  }),
+  Object.freeze({
+    // Widened in the 8.4 review to `[\\p{L}\\p{M}]`: a decomposed name is
+    // letters plus combining marks, and `\\p{L}` alone matched neither. The
+    // corpus is ASCII, so this reads exactly as much of it as before - the
+    // pinned source is updated deliberately rather than the assertion relaxed.
     name: 'non-ascii-letter',
-    pattern: /(?!\p{ASCII})\p{L}/u,
-    samples: ['\u0414\u0438\u043d\u0430\u043c\u043e'],
-  },
-  // A dotted initialism is the letter-by-letter spelling `words()` throws away.
-  // Case-insensitive and with no exception list, which the corpus affords: it
-  // holds no dotted initialism at all, in data or in prose. Only *single*
-  // letters count, so `St.` and `Ave.` are not initialisms and do not match.
-  { name: 'initialism', pattern: /(?:[A-Za-z]\.){2,}/, samples: ['S.R.F.C.'] },
+    source: '(?!\\p{ASCII})[\\p{L}\\p{M}]',
+    flags: 'u',
+    samples: ['\u0414\u0438\u043d\u0430\u043c\u043e', 'e\u0308'],
+  }),
+  Object.freeze({
+    name: 'initialism',
+    source: '(?:[A-Za-z]\\.){2,}',
+    flags: '',
+    samples: ['S.R.F.C.'],
+  }),
 ]);
 
 /**
@@ -718,38 +742,6 @@ const ALLOWED_WORDS = Object.freeze([
 const ALLOWED = new Set(ALLOWED_WORDS);
 
 /**
- * Rewrite a dotted initialism as the word it spells: `S.R.F.C.` -> `SRFC`.
- *
- * This is the root of the hole `non-ascii-letter` and `initialism` cover from
- * the outside. `words()` drops one-character tokens, so every letter of a
- * punctuated initialism was discarded and the token vanished before any rule
- * saw it — from the allowlist, and from the organisation-designator rule that
- * is the *only* content check on the exempt person-name columns. Fixing the
- * shared feeder fixes both, rather than giving each its own patch.
- *
- * A no-op on the corpus as it stands: 0 dotted initialisms in 22 scanned files.
- *
- * @param {string} text
- * @returns {string}
- */
-function collapseInitialisms(text) {
-  return String(text ?? '').replace(/(?:[A-Za-z]\.){2,}/g, (run) => run.replace(/\./g, ''));
-}
-
-/**
- * Alphabetic words of two or more letters in a string, with dotted initialisms
- * collapsed first so `F.C.` reads as the word `FC` rather than as nothing.
- *
- * @param {string} text
- * @returns {string[]}
- */
-function words(text) {
-  return collapseInitialisms(text)
-    .split(/[^A-Za-z]+/)
-    .filter((word) => word.length >= 2);
-}
-
-/**
  * One spelling of a column name, used for the declared headers, the person-name
  * exemption list and the keys the CSV parse returns alike. Trimming only one
  * side of that comparison is how a header written `player_name , player_key`
@@ -1150,6 +1142,55 @@ describe('season-2026 corpus vocabulary', () => {
 
     it('has an allowlist with no duplicate entries', () => {
       expect(ALLOWED_WORDS.length).toBe(ALLOWED.size);
+    });
+  });
+
+  describe('the lifted shape table is the table this file used to carry', () => {
+    it('matches the shape table this file carried before the lift', () => {
+      // The behaviour-preservation proof for moving FORBIDDEN_PATTERNS into
+      // `packages/core/src/privacy/textShapes.js`. Source and flags are
+      // compared as strings against literals recorded here, so the comparison
+      // cannot be satisfied by the module agreeing with itself: editing a
+      // pattern in the module fails this and names the shape.
+      const lifted = FORBIDDEN_PATTERNS.map(({ name, pattern, samples }) => ({
+        name,
+        source: pattern.source,
+        flags: pattern.flags,
+        samples: [...samples],
+      }));
+      const before = SHAPES_BEFORE_THE_LIFT.map(({ name, source, flags, samples }) => ({
+        name,
+        source,
+        flags,
+        samples: [...samples],
+      }));
+      expect(lifted).toEqual(before);
+    });
+
+    it('can fail, on a pattern that differs only in one character', () => {
+      // The control for the assertion above. `digit-run` widened from five
+      // digits to four is the smallest edit that weakens a rule, and the kind
+      // a reviewer skims past; the comparison must reject it.
+      const weakened = FORBIDDEN_PATTERNS.map(({ name, pattern }) =>
+        name === 'digit-run'
+          ? { name, source: /\d{4,}/.source, flags: pattern.flags }
+          : { name, source: pattern.source, flags: pattern.flags }
+      );
+      const before = SHAPES_BEFORE_THE_LIFT.map(({ name, source, flags }) => ({
+        name,
+        source,
+        flags,
+      }));
+      expect(weakened).not.toEqual(before);
+    });
+
+    it('feeds the collapse helper the module exports, not a local copy', () => {
+      // `words()` and `collapseInitialisms()` moved with the table. If a local
+      // shadow were reintroduced, the dotted initialism would stop reaching the
+      // allowlist as a word and the designator rule would go quiet on person
+      // columns again - the exact regression the corpus README records.
+      expect(collapseInitialisms('S.R.F.C.')).toBe('SRFC');
+      expect(words('S.R.F.C. United')).toEqual(['SRFC', 'United']);
     });
   });
 

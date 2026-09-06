@@ -84,5 +84,6 @@ export {
   SEASON_2026_CONSTRAINT_FIELDS_READINGS,
   buildSeason2026ClosureSet,
   readSeason2026ConstraintFields,
+  readSeason2026ConstraintFieldsOrNull,
   toSeason2026ClosureInput,
 } from './adapters/season2026Closures.js';

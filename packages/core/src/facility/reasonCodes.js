@@ -143,15 +143,26 @@ export const FACILITY_REASON = Object.freeze({
   /** One ring lists the same code twice; the first occurrence is read. */
   ALIAS_CODE_DUPLICATED: 'ALIAS_CODE_DUPLICATED',
   /**
-   * **Nothing enforces this alias map.** Nothing outside `facility/aliases.js`
-   * and its tests calls `buildFieldAliasMap()`, `lookupFieldAlias()` or
-   * `surfacesOfAlias()`, and no rule and no registry constraint claims an
-   * `ALIAS_*` code -- `ALIAS_UNKNOWN` at blocking included. Every map says so
-   * on itself, the same way a closure set carries `CLOSURE_SET_UNWIRED` and
-   * an unwired fairness objective carries `FAIRNESS_OBJECTIVE_UNWIRED`, and
-   * `tests/helpers/unwiredLayer.js` checks the claim against the enforcement
-   * paths for both layers with one assertion: the day something claims one of
-   * these codes, the declaration has to go with it.
+   * **Nothing enforces this alias map.** No rule and no registry constraint
+   * claims an `ALIAS_*` code -- `ALIAS_UNKNOWN` at blocking included -- and
+   * nothing outside `facility/aliases.js` and its tests calls
+   * `buildFieldAliasMap()`, `lookupFieldAlias()` or `surfacesOfAlias()`.
+   *
+   * **One thing outside the module now imports it, and it is not a caller.**
+   * Phase 8.4's `fieldAdmin/projectors/rings.js` imports
+   * `ALIAS_LABEL_AGREEMENT` -- the *vocabulary* -- so that a ring disagreement
+   * is named with this layer's words rather than a third enum beside them. It
+   * consults no map. The distinction is worth the sentence: "imports the
+   * module" and "consults the map" are different claims, this declaration
+   * makes only the second, and `tests/unwiredLayerImporters.test.js` now holds
+   * both to the repository rather than to prose.
+   *
+   * Every map says so on itself, the same way a closure set carries
+   * `CLOSURE_SET_UNWIRED` and an unwired fairness objective carries
+   * `FAIRNESS_OBJECTIVE_UNWIRED`, and `tests/helpers/unwiredLayer.js` checks
+   * the claim against the enforcement paths for both layers with one
+   * assertion: the day something claims one of these codes, the declaration
+   * has to go with it.
    */
   ALIAS_LAYER_UNWIRED: 'ALIAS_LAYER_UNWIRED',
 });

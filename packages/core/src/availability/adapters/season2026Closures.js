@@ -78,6 +78,39 @@ export const SEASON_2026_CONSTRAINT_FIELDS_READINGS = Object.freeze({
  * @returns {{ kind: string, surface?: string, source: string }}
  */
 export function readSeason2026ConstraintFields(fields) {
+  const reading = readSeason2026ConstraintFieldsOrNull(fields);
+  if (reading === null) {
+    throw new Error(
+      `season2026 closures adapter: no declared reading for fields cell ${JSON.stringify(fields)}`
+    );
+  }
+  return reading;
+}
+
+/**
+ * The same reading, answering `null` where {@link readSeason2026ConstraintFields}
+ * throws.
+ *
+ * **One producer, two callers that fail differently, because they are not in
+ * the same position.** The closure layer is handed a curated list and a cell it
+ * cannot read there is a producer bug, so it keeps the throw. The field-admin
+ * projector is handed the corpus, where an undeclared cell is *data*: the third
+ * member of a family whose first two members already knew this. `permits.js`
+ * carries an undeclared `venue | facility` pair as an unresolvable row and
+ * `weeklyAvailability.js` does the same for an undeclared interpretation --
+ * this one went on throwing, and one unrecognised `fields` cell lost **all
+ * five** change sets, measured.
+ *
+ * It is not the *sibling* of either of those, which is why a sweep looking for
+ * twins walked past it: it is a third site doing the same job, in a different
+ * package, reached through two calls. The question that finds it is "what is
+ * the complete set of places that read a source cell through a declared
+ * table", not "what is this one's twin".
+ *
+ * @param {string} fields - the cell as written
+ * @returns {{ kind: string, surface?: string, source: string }|null}
+ */
+export function readSeason2026ConstraintFieldsOrNull(fields) {
   // The same pattern the corpus parser reports the cell under
   // (CONSTRAINT_FIELDS_EXCEL_DATE_CORRUPTION), so the two verdicts fall on
   // the same cell by construction.
@@ -87,18 +120,9 @@ export function readSeason2026ConstraintFields(fields) {
       source: 'field_constraints.csv: the cell is an ISO date; Excel corrupted a field range',
     };
   }
-  const reading = Object.prototype.hasOwnProperty.call(
-    SEASON_2026_CONSTRAINT_FIELDS_READINGS,
-    fields
-  )
+  return Object.prototype.hasOwnProperty.call(SEASON_2026_CONSTRAINT_FIELDS_READINGS, fields)
     ? SEASON_2026_CONSTRAINT_FIELDS_READINGS[fields]
     : null;
-  if (!reading) {
-    throw new Error(
-      `season2026 closures adapter: no declared reading for fields cell ${JSON.stringify(fields)}`
-    );
-  }
-  return reading;
 }
 
 /**
