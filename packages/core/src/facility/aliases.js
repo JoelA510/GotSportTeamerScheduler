@@ -263,7 +263,7 @@ export function buildFieldAliasMap(graph, complexMap, input) {
           c.resolution === PRACTICE_SURFACE_RESOLUTION.RESOLVED ||
           c.resolution === PRACTICE_SURFACE_RESOLUTION.AMBIGUOUS
       )
-      .map((c) => c.surfaceIds.join(' '));
+      .map((c) => c.surfaceIds.join('\u0000'));
     if (resolvedSets.length < alias.candidates.length) {
       alias.groundAgreement = ALIAS_GROUND_AGREEMENT.UNDECIDABLE;
     } else {
