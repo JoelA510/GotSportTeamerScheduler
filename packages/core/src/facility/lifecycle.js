@@ -128,13 +128,58 @@ export function checkFacilityLifecycle(graph, query = {}) {
     return { status: deriveFacilityStatus(findings), findings, meta };
   }
 
-  meta.lifecycleNodesJudged = surfaceId === null ? graph.stats.datedNodeCount : 1;
+  if (surfaceId === null) {
+    // **A whole-graph query judges the whole graph.**
+    //
+    // The first draft set `lifecycleNodesJudged` to the graph's dated count and
+    // then judged nothing, because every judgement sat inside the
+    // `surfaceId !== null` branch. Measured: a graph whose every surface was
+    // retired came back `findings: []`, `status: 'allowed'`,
+    // `lifecycleNodesJudged: 2` -- a clean verdict on an estate that did not
+    // exist, with a counter asserting two nodes had been examined. That is the
+    // meta-assertion-that-cannot-fail shape exactly, in the counter written to
+    // prevent it.
+    //
+    // `retiredOn()` already enumerates from the registries, so it is the one
+    // producer here too rather than a second walk.
+    const retired = retiredOn(graph, asOf);
+    for (const [kind, ids] of /** @type {Array<[string, string[]]>} */ ([
+      ['venue', retired.venueIds],
+      ['surface', retired.surfaceIds],
+    ])) {
+      for (const id of ids) {
+        const node = kind === 'venue' ? graph.venues[id] : graph.surfaces[id];
+        findings.push(
+          makeFinding(
+            FACILITY_REASON.NODE_RETIRED,
+            `${kind} "${id}" is effective ${describeWindow(node)} and ${asOf} falls outside it`,
+            {
+              kind,
+              id,
+              asOf,
+              effectiveFrom: node.effectiveFrom,
+              effectiveTo: node.effectiveTo,
+            }
+          )
+        );
+      }
+    }
+    // Every node was looked at, which is what the count now means.
+    meta.lifecycleNodesJudged = graph.venueIds.length + graph.surfaceIds.length;
+    return { status: deriveFacilityStatus(findings), findings, meta };
+  }
 
-  if (surfaceId !== null) {
+  {
     const surface = graph.surfaces[surfaceId];
     // An unknown surface is `SURFACE_UNKNOWN`'s business, not this module's;
-    // answering here would give one question two owners.
-    if (surface !== undefined) {
+    // answering here would give one question two owners. **The counter says
+    // zero in that case**, because nothing was judged -- reporting 1 would be
+    // the same false testimony the whole-graph path used to give.
+    if (surface === undefined) {
+      meta.lifecycleNodesJudged = 0;
+    } else {
+      // The surface and its venue: two nodes examined, so the count says two.
+      meta.lifecycleNodesJudged = 2;
       const venue = graph.venues[surface.venueId];
       // **The venue is checked too.** A surface with no window of its own sits
       // inside a venue that may have one, and a check that looked only at the

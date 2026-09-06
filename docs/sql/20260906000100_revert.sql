@@ -8,7 +8,7 @@
 -- operator entered by hand and keeps the ones the importer wrote.
 --
 -- The COMMENT ON TABLE freeze on field_blackout_windows is restored to NULL,
--- which removes the sentence but not the freeze: tests/fieldBlackoutFreeze.js
+-- which removes the sentence but not the freeze: tests/fieldBlackoutFreeze.test.js
 -- is what enforces it, and reverting this migration without reverting that test
 -- leaves the test failing -- deliberately, since a frozen table with no new
 -- table to write instead is a state somebody has to decide about.

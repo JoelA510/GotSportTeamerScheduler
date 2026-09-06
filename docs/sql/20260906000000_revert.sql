@@ -13,11 +13,12 @@ BEGIN;
 DROP FUNCTION IF EXISTS public.admin_unretire_field(uuid, uuid);
 DROP FUNCTION IF EXISTS public.admin_retire_field(uuid, uuid, date, boolean);
 
-DROP INDEX IF EXISTS public.idx_fields_effective_window;
+DROP TRIGGER IF EXISTS fields_retirement_deactivates ON public.fields;
+DROP FUNCTION IF EXISTS public.enforce_field_retirement_deactivates();
 
-ALTER TABLE public.fields DROP CONSTRAINT IF EXISTS fields_effective_window_check;
+DROP INDEX IF EXISTS public.idx_fields_effective_to;
+
 ALTER TABLE public.fields DROP COLUMN IF EXISTS effective_to;
-ALTER TABLE public.fields DROP COLUMN IF EXISTS effective_from;
 
 COMMENT ON COLUMN public.fields.active IS NULL;
 

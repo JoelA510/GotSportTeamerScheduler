@@ -114,7 +114,11 @@ describe('facility lifecycle :: UNJUDGED fires on the dated graph and only there
       date: '2026-05-01',
     });
     expect(lifecycleCodes(inside)).toEqual([]);
-    expect(inside.meta.lifecycleNodesJudged).toBe(1);
+    // **Two, not one: the surface and its venue.** This asserted 1 while the
+    // counter was reporting work that had not been done -- the code-review
+    // finding. The number now means "nodes actually examined", so a
+    // surface-scoped query says 2 and an unknown surface says 0.
+    expect(inside.meta.lifecycleNodesJudged).toBe(2);
 
     const outside = checkFieldEligibility(dated, {
       surfaceId: 's1',
@@ -123,6 +127,40 @@ describe('facility lifecycle :: UNJUDGED fires on the dated graph and only there
     });
     expect(lifecycleCodes(outside)).toEqual([FACILITY_REASON.NODE_RETIRED]);
     expect(outside.status).toBe('rejected');
+  });
+
+  it('judges the whole estate when no surface is named, and counts what it judged', () => {
+    // **The finding this pins.** The counter used to be set to the graph's
+    // dated count while every judgement sat behind `surfaceId !== null`, so a
+    // whole-graph query on an estate where every surface was retired came back
+    // `allowed` with zero findings and a counter claiming two nodes examined.
+    const dated = buildFacilityGraph({
+      venues: [{ id: 'v1', name: 'V' }],
+      surfaces: [
+        { id: 's1', venueId: 'v1', name: 'A', effectiveTo: '2026-06-30' },
+        { id: 's2', venueId: 'v1', name: 'B', effectiveTo: '2026-06-30' },
+      ],
+    });
+    const result = checkFacilityLifecycle(dated, { asOf: '2026-09-01' });
+    expect(result.findings.map((f) => f.details.id).sort()).toEqual(['s1', 's2']);
+    expect(result.status).toBe('rejected');
+    // One venue plus two surfaces really were looked at.
+    expect(result.meta.lifecycleNodesJudged).toBe(3);
+
+    // Inside the window the same query is clean, and still counts three -- so
+    // the count is "examined", not "found wanting".
+    const live = checkFacilityLifecycle(dated, { asOf: '2026-05-01' });
+    expect(live.findings).toEqual([]);
+    expect(live.meta.lifecycleNodesJudged).toBe(3);
+  });
+
+  it('claims no work for a surface it cannot find', () => {
+    // An unknown surface is SURFACE_UNKNOWN's business. This module judges
+    // nothing and says so, rather than reporting 1 node judged.
+    const dated = graphWith({ effectiveTo: '2026-06-30' });
+    const result = checkFacilityLifecycle(dated, { asOf: '2026-09-01', surfaceId: 'nope' });
+    expect(result.findings).toEqual([]);
+    expect(result.meta.lifecycleNodesJudged).toBe(0);
   });
 
   it('reports a live surface at a closed venue', () => {

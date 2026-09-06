@@ -108,8 +108,11 @@ describe('field lifecycle RPCs :: retirement writes active and effective_to toge
     expect(error).toBeNull();
     expect(data.retired).toBe(false);
     expect(data.reason).toBe('bookings_after_effective_to');
-    expect(data.affected_count).toBe(slots.length);
-    expect(data.affected.length).toBe(slots.length);
+    expect(data.affected_count).toBeGreaterThanOrEqual(slots.length);
+    expect(data.affected.length).toBe(data.affected_count);
+    // Game slots AND practice slots -- a retirement strands practice exactly as
+    // it strands games, and the first draft counted only games.
+    expect(data.affected.every((a) => ['game_slot', 'practice_slot'].includes(a.kind))).toBe(true);
 
     // **Nothing was written.** A refusal that half-applied would be worse than
     // no guard at all.
@@ -118,20 +121,44 @@ describe('field lifecycle RPCs :: retirement writes active and effective_to toge
     expect(after.active).not.toBe(false);
   });
 
-  it('counts an undated booking as affected rather than dropping it', async () => {
-    // `game_slots.start` is nullable. A slot with no start date cannot be
-    // judged against the retirement date, and excluding it would retire ground
-    // out from under a booking nobody was warned about.
+  it('reads a game slot date from slot_date, not only from start', async () => {
+    // **The defect the first draft shipped.** `game_slots.start` is nullable
+    // AND the import path never populates it -- it writes slot_date/start_time.
+    // Reading `start` alone called every import-created slot "undated" and
+    // refused every retirement of an imported field with a warning that was
+    // false. A slot dated well before the retirement must not be affected.
     const field = someField();
-    const db = getMockData('game_slots');
-    const undated = {
-      ...db[0],
-      id: 'slot-undated',
-      field_id: field.id,
+    await supabase.from('game_slots').insert({
+      id: 'slot-imported',
       organization_id: ORG,
+      field_id: field.id,
+      slot_date: '2020-01-01',
       start: null,
-    };
-    await supabase.from('game_slots').insert(undated);
+      week_index: 1,
+    });
+
+    const { data } = await supabase.rpc('admin_retire_field', {
+      p_organization_id: ORG,
+      p_field_id: field.id,
+      p_effective_to: '2099-12-31',
+      p_confirm: false,
+    });
+    const imported = (data.affected || []).find((a) => String(a.id) === 'slot-imported');
+    expect(imported).toBeUndefined();
+  });
+
+  it('counts a genuinely undated booking as affected rather than dropping it', async () => {
+    // A row with neither slot_date nor start cannot be judged against the
+    // retirement date at all. Carried and flagged, never dropped.
+    const field = someField();
+    await supabase.from('game_slots').insert({
+      id: 'slot-undated',
+      organization_id: ORG,
+      field_id: field.id,
+      slot_date: null,
+      start: null,
+      week_index: 1,
+    });
 
     const { data } = await supabase.rpc('admin_retire_field', {
       p_organization_id: ORG,
@@ -140,9 +167,10 @@ describe('field lifecycle RPCs :: retirement writes active and effective_to toge
       p_confirm: false,
     });
     expect(data.retired).toBe(false);
-    const carried = data.affected.find((a) => String(a.game_slot_id) === 'slot-undated');
+    const carried = data.affected.find((a) => String(a.id) === 'slot-undated');
     expect(carried).toBeDefined();
     expect(carried.undated).toBe(true);
+    expect(carried.kind).toBe('game_slot');
   });
 });
 
@@ -190,6 +218,70 @@ describe('field lifecycle RPCs :: blackouts are scoped to exactly one thing', ()
     });
     expect(neither.error).not.toBeNull();
     // Neither call wrote anything.
+    expect(getMockData('field_blackouts').length).toBe(0);
+  });
+
+  it('refuses rows the database CHECK constraints would reject', async () => {
+    // The mock is the client the E2E suite runs against, so a mock that
+    // accepted rows Postgres refuses lets PR 3's UI pass every test and fail in
+    // production. Each of the three table CHECKs has a case here.
+    const field = someField();
+    const base = {
+      p_organization_id: ORG,
+      p_location_id: null,
+      p_field_id: field.id,
+      p_blackout_from: '2026-08-01',
+      p_blackout_until: '2026-08-31',
+    };
+    const inverted = await supabase.rpc('admin_create_field_blackout', {
+      ...base,
+      p_blackout_until: '2026-07-01',
+    });
+    expect(inverted.error).not.toBeNull();
+
+    const halfTimed = await supabase.rpc('admin_create_field_blackout', {
+      ...base,
+      p_start_minutes: 540,
+    });
+    expect(halfTimed.error).not.toBeNull();
+
+    const backwards = await supabase.rpc('admin_create_field_blackout', {
+      ...base,
+      p_start_minutes: 900,
+      p_end_minutes: 540,
+    });
+    expect(backwards.error).not.toBeNull();
+
+    expect(getMockData('field_blackouts').length).toBe(0);
+
+    // ... and a well-formed timed blackout is accepted, so the three refusals
+    // are about their defects and not about times generally.
+    const ok = await supabase.rpc('admin_create_field_blackout', {
+      ...base,
+      p_start_minutes: 540,
+      p_end_minutes: 900,
+    });
+    expect(ok.error).toBeNull();
+    expect(ok.data.start_minutes).toBe(540);
+    expect(ok.data.end_minutes).toBe(900);
+  });
+
+  it('cascades blackouts when the field they scope to is deleted', async () => {
+    // field_blackouts.field_id is ON DELETE CASCADE. A mock leaving orphans
+    // would show an E2E scenario closures production would not have.
+    const field = someField();
+    await supabase.rpc('admin_create_field_blackout', {
+      p_organization_id: ORG,
+      p_location_id: null,
+      p_field_id: field.id,
+      p_blackout_from: '2026-08-01',
+      p_blackout_until: '2026-08-31',
+    });
+    expect(getMockData('field_blackouts').length).toBe(1);
+    await supabase.rpc('admin_delete_field', {
+      p_organization_id: ORG,
+      p_field_id: field.id,
+    });
     expect(getMockData('field_blackouts').length).toBe(0);
   });
 

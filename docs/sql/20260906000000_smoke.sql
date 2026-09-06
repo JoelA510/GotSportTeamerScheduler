@@ -1,21 +1,21 @@
 -- Smoke checks for 20260906000000_field_effective_dating.sql
 
--- 1. Columns exist with the right types. Expect two rows, both date.
-select 'fields effective columns (expect 2 rows, type date)' as check,
+-- 1. The column exists with the right type. Expect one row, type date.
+--    (Only effective_to: an effective_from with no writer and no reader was
+--    dropped from the migration rather than shipped as decoration.)
+select 'fields.effective_to column (expect 1 row, type date)' as check,
        column_name, data_type, is_nullable
 from information_schema.columns
 where table_schema = 'public' and table_name = 'fields'
-  and column_name in ('effective_from', 'effective_to')
+  and column_name in ('effective_from', 'effective_to')  -- effective_from must NOT appear
 order by column_name;
 
--- 2. The ordering constraint exists. Expect true.
-select 'fields_effective_window_check present (expect true)' as check,
+-- 2. The partial index on effective_to exists. Expect true.
+select 'idx_fields_effective_to present (expect true)' as check,
        count(*) = 1 as present
-from pg_constraint c
-join pg_class t on t.oid = c.conrelid
-join pg_namespace n on n.oid = t.relnamespace
-where n.nspname = 'public' and t.relname = 'fields'
-  and c.conname = 'fields_effective_window_check';
+from pg_indexes
+where schemaname = 'public' and tablename = 'fields'
+  and indexname = 'idx_fields_effective_to';
 
 -- 3. Both RPCs are SECURITY DEFINER with a pinned search_path, and gate on
 --    is_org_admin. Expect true across the board.
@@ -58,17 +58,40 @@ from pg_proc p
 join pg_namespace n on n.oid = p.pronamespace
 where n.nspname = 'public' and p.proname = 'admin_retire_field';
 
--- 7. **THE HAZARD CHECK.** fields.active and fields.effective_to must never
---    disagree. A retired field (effective_to in the past) that is still active,
---    or an active-false field with no effective_to, is the two-columns-one-fact
---    hazard this migration deliberately accepted.
+-- 7. **THE HAZARD CHECK, and it is ONE-DIRECTIONAL.**
 --
---    Expect ZERO rows. Any row here is the hazard having materialised.
-select 'fields where active disagrees with effective_to (expect 0 rows)' as check,
+--    A field retired on a past date must not be active. The converse is NOT
+--    asserted: `active = false` with a NULL effective_to is ordinary
+--    deactivation through admin_update_field, it predates this migration, and
+--    it is a healthy state. The first draft of this check asserted the
+--    biconditional and would have reported every pre-existing deactivated
+--    field as a defect on a healthy database.
+--
+--    Expect ZERO rows. Any row here is the invariant having been broken --
+--    which should be impossible, since the trigger enforces it on every write
+--    rather than trusting the four RPCs that write `active`.
+select 'retired fields that are still active (expect 0 rows)' as check,
        id, organization_id, name, active, effective_to
 from public.fields
-where (effective_to is not null and effective_to < current_date and active is true)
-   or (active is false and effective_to is null);
+where effective_to is not null
+  and effective_to < current_date
+  and active is true;
+
+-- 7b. The trigger that makes check 7 impossible to fail exists. Expect true.
+select 'fields_retirement_deactivates trigger present (expect true)' as check,
+       count(*) = 1 as present
+from pg_trigger t
+join pg_class c on c.oid = t.tgrelid
+join pg_namespace n on n.oid = c.relnamespace
+where n.nspname = 'public' and c.relname = 'fields'
+  and t.tgname = 'fields_retirement_deactivates';
+
+-- 7c. Ordinary deactivation is untouched -- reported, not asserted, so a reader
+--     can see the state check 7 deliberately does NOT call a defect.
+select 'fields deactivated without a retirement date (reported, not asserted)' as check,
+       count(*) as deactivated_without_date
+from public.fields
+where active is false and effective_to is null;
 
 -- 8. Meta-assertion for check 7: it ran against a non-empty table. A check that
 --    matches zero records because there are no records is not a pass.

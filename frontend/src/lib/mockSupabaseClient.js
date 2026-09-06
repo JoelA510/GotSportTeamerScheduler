@@ -2069,6 +2069,39 @@ export const mockSupabase = {
         ) {
           return { data: null, error: { message: 'Field not found in organization' } };
         }
+        // **The table's CHECK constraints, mirrored.** The E2E suite is the
+        // only place this path runs, so a mock that accepted rows the database
+        // refuses would let PR 3's UI pass every test and fail in production.
+        if (String(p.p_blackout_until) < String(p.p_blackout_from)) {
+          return {
+            data: null,
+            error: { message: 'blackout_until must not precede blackout_from' },
+          };
+        }
+        const timeCount = [p.p_start_minutes, p.p_end_minutes].filter(
+          (value) => value !== null && value !== undefined
+        ).length;
+        if (timeCount === 1) {
+          return {
+            data: null,
+            error: { message: 'start_minutes and end_minutes are both-or-neither' },
+          };
+        }
+        if (
+          timeCount === 2 &&
+          !(
+            p.p_start_minutes >= 0 &&
+            p.p_start_minutes <= 1440 &&
+            p.p_end_minutes >= 0 &&
+            p.p_end_minutes <= 1440 &&
+            p.p_end_minutes > p.p_start_minutes
+          )
+        ) {
+          return {
+            data: null,
+            error: { message: 'blackout times must be within 0..1440 and ordered' },
+          };
+        }
         const hasTimes =
           p.p_start_minutes !== null &&
           p.p_start_minutes !== undefined &&
@@ -2127,12 +2160,42 @@ export const mockSupabase = {
         // **The refusal is here, not in the UI.** A slot with no start date
         // cannot be judged against the retirement date, so it counts as
         // affected rather than being dropped -- the same reading the SQL takes.
-        const affected = (db.game_slots || []).filter(
-          (slot) =>
-            String(slot.organization_id) === String(orgId) &&
-            String(slot.field_id) === String(p.p_field_id) &&
-            (!slot.start || String(slot.start).slice(0, 10) > String(p.p_effective_to))
-        );
+        // Mirrors the SQL: a game slot's date is `slot_date` falling back to
+        // `start`, because the import path writes slot_date and never start.
+        // Practice slots are enumerated too -- a retirement strands them
+        // exactly as it strands games.
+        const gameDate = (slot) =>
+          slot.slot_date || (slot.start ? String(slot.start).slice(0, 10) : null);
+        const affected = [
+          ...(db.game_slots || [])
+            .filter(
+              (slot) =>
+                String(slot.organization_id) === String(orgId) &&
+                String(slot.field_id) === String(p.p_field_id) &&
+                (!gameDate(slot) || gameDate(slot) > String(p.p_effective_to))
+            )
+            .map((slot) => ({
+              kind: 'game_slot',
+              id: slot.id,
+              on_date: gameDate(slot),
+              week_index: slot.week_index ?? null,
+              undated: !gameDate(slot),
+            })),
+          ...(db.practice_slots || [])
+            .filter(
+              (slot) =>
+                String(slot.organization_id) === String(orgId) &&
+                String(slot.field_id) === String(p.p_field_id) &&
+                (!slot.valid_until || String(slot.valid_until) > String(p.p_effective_to))
+            )
+            .map((slot) => ({
+              kind: 'practice_slot',
+              id: slot.id,
+              on_date: slot.valid_until ?? null,
+              week_index: null,
+              undated: !slot.valid_until,
+            })),
+        ];
         if (affected.length > 0 && !p.p_confirm) {
           audit('field', field.id, 'updated', {
             operation: 'admin_retire_field',
@@ -2146,12 +2209,7 @@ export const mockSupabase = {
               retired: false,
               reason: 'bookings_after_effective_to',
               affected_count: affected.length,
-              affected: affected.map((slot) => ({
-                game_slot_id: slot.id,
-                starts_at: slot.start ?? null,
-                week_index: slot.week_index ?? null,
-                undated: !slot.start,
-              })),
+              affected,
             },
             error: null,
           };
@@ -2217,6 +2275,13 @@ export const mockSupabase = {
       }
 
       syncMockFieldSubunits(db, field, false);
+      // `field_blackouts.field_id` is ON DELETE CASCADE, so deleting a field
+      // deletes its blackouts in Postgres. Without this the mock leaves orphans
+      // pointing at nothing and an E2E scenario sees closures production would
+      // not have.
+      db.field_blackouts = (db.field_blackouts || []).filter(
+        (item) => String(item.field_id) !== String(p.p_field_id)
+      );
       db.fields = (db.fields || []).filter((item) => String(item.id) !== String(p.p_field_id));
       audit('field', field.id, 'deleted', { previous: field });
       saveDB(db);
