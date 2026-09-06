@@ -21,11 +21,15 @@
  * The layer holds **no booking state** and reads nothing from disk: rings
  * arrive as plain records, the corpus loader's or anyone else's.
  *
- * **Nothing consumes it yet.** No scheduling path calls this module and
+ * **Nothing consumes the map yet.** No scheduling path calls this module and
  * neither enforcement path claims an `ALIAS_*` code, so every map it builds
  * carries {@link FACILITY_REASON.ALIAS_LAYER_UNWIRED} saying so;
  * `tests/helpers/unwiredLayer.js` holds the check to it and to its sibling
- * closure layer alike.
+ * closure layer alike. Phase 8.4's `fieldAdmin/projectors/rings.js` imports
+ * {@link ALIAS_LABEL_AGREEMENT} from here so a ring disagreement is named with
+ * this layer's words rather than a third enum, but it consults no map -
+ * importing the vocabulary and consulting the map are different things, and
+ * `tests/unwiredLayerImporters.test.js` keeps them apart.
  *
  * @module facility/aliases
  */
@@ -334,7 +338,7 @@ export function buildFieldAliasMap(graph, complexMap, input) {
   findings.push(
     makeFinding(
       FACILITY_REASON.ALIAS_LAYER_UNWIRED,
-      `this alias map is not consulted by any scheduling path: no rule or registry constraint claims an ALIAS_* code, and nothing outside facility/aliases.js calls it; ${stats.aliasCount} published name(s) are resolved only where a caller asks directly`,
+      `this alias map is not consulted by any scheduling path: no rule or registry constraint claims an ALIAS_* code, and nothing outside facility/aliases.js and its tests calls buildFieldAliasMap(), lookupFieldAlias() or surfacesOfAlias() - fieldAdmin/projectors/rings.js imports the ALIAS_LABEL_AGREEMENT vocabulary and consults no map; ${stats.aliasCount} published name(s) are resolved only where a caller asks directly`,
       { aliasCount: stats.aliasCount, ringCount: stats.ringCount, entryCount: stats.entryCount }
     )
   );

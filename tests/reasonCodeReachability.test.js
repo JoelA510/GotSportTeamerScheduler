@@ -1,8 +1,8 @@
 /**
  * Repo-wide reachability audit for every frozen reason-code table in
  * `packages/core/src` — the generalisation of the per-module audit
- * `tests/attribution.test.js` already carries. 19 vocabularies, 451 codes, of
- * which 440 are shown to be producible and 11 are named as holes.
+ * `tests/attribution.test.js` already carries. 20 vocabularies, 463 codes, of
+ * which 452 are shown to be producible and 11 are named as holes.
  *
  * **The defect this exists to catch.** Four times now, in four unrelated
  * modules, a reason code has been declared, given a severity, documented, and
@@ -114,6 +114,17 @@ import {
   retypeConstraint,
   whatIfConstraintType,
 } from '@squadlogic/core/constraints/index.js';
+import {
+  BLACKOUT_REASON,
+  BLACKOUT_SCOPE,
+  BlackoutWindowSchema,
+  FIELD_ADMIN_REASON,
+  INTERPRETATION,
+  RECORD_SOURCE,
+  buildChangeSet,
+  buildFieldRegistry,
+  changeSetPartitionFindings,
+} from '@squadlogic/core/fieldAdmin/index.js';
 import {
   FACILITY_REASON,
   buildFacilityGraph,
@@ -333,6 +344,7 @@ const TABLES = Object.freeze({
   CONSTRAINT_REASON,
   EXTERNAL_IMPORT_REASON,
   FACILITY_REASON,
+  FIELD_ADMIN_REASON,
   FAIRNESS_REASON,
   FEASIBILITY_REASON,
   FREEZE_REASON,
@@ -362,6 +374,8 @@ const NOT_A_FINDING_TABLE = Object.freeze({
     'the three verdicts detectDormantWaivers() gives a waiver (never-matched, not-status-bearing, load-bearing). It is a classification carried on a dormancy row, not a finding code: the findings that report it are WAIVER_DORMANT and WAIVER_NOT_STATUS_BEARING, and both are audited above.',
   IDENTITY_SIGNAL:
     'a similarity-signal enum carried on identity proposals, weighted by IDENTITY_SIGNAL_WEIGHT; it never appears as a finding code and has no severity table',
+  BLACKOUT_REASON:
+    "the enumerated reason a blackout closes ground (closure, school-event, maintenance, reseeding, weather, permit-not-granted, adjacency, third-party-booking, other). It is a *domain field* on BlackoutWindowSchema, deliberately an enum rather than free text so an operator's prose is not the place a family's name lands; it is never a finding code and has no severity table.",
 });
 
 /**
@@ -5210,6 +5224,112 @@ harvest(
     },
     season
   )
+);
+
+/* -------------------------------------------------------------------------- */
+/* fieldAdmin: import as a proposal                                            */
+/* -------------------------------------------------------------------------- */
+
+/** A blackout record, valid by construction. */
+const fieldAdminBlackout = (id, overrides = {}) =>
+  BlackoutWindowSchema.parse({
+    id,
+    scope: BLACKOUT_SCOPE.VENUE,
+    venueIds: ['venue-a'],
+    surfaceIds: [],
+    fromDate: '2026-09-01',
+    toDate: '2026-09-01',
+    startMinutes: null,
+    endMinutes: null,
+    reason: BLACKOUT_REASON.CLOSURE,
+    note: null,
+    source: RECORD_SOURCE.CONSTRAINT_SHEET,
+    ...overrides,
+  });
+
+/** A projected row wrapping a record. */
+const fieldAdminRow = (subjectKey, record, overrides = {}) => ({
+  sourceFile: 'driver.csv',
+  rowIndex: 0,
+  subjectKey,
+  interpretation: INTERPRETATION.INTERPRETED,
+  interpretationReason: null,
+  raw: { key: subjectKey },
+  record,
+  ...overrides,
+});
+
+const fieldAdminChangeSet = (records, rows) =>
+  buildChangeSet({
+    subject: 'driver blackouts',
+    keyFields: ['id'],
+    comparedFields: ['fromDate', 'toDate', 'reason'],
+    current: { label: 'held', records },
+    proposed: { label: 'proposed', rows },
+  });
+
+// One change set reaching matched, differing, added, removed, doubtful,
+// unresolvable, the two aggregates and the always-emitted proposal notice.
+harvest(
+  'buildChangeSet(a set holding every disposition at once)',
+  fieldAdminChangeSet(
+    [fieldAdminBlackout('same'), fieldAdminBlackout('changed'), fieldAdminBlackout('gone')],
+    [
+      fieldAdminRow('same', fieldAdminBlackout('same')),
+      fieldAdminRow('changed', fieldAdminBlackout('changed', { toDate: '2026-09-09' })),
+      fieldAdminRow('added-a', fieldAdminBlackout('added-a'), {
+        interpretation: INTERPRETATION.DOUBTFUL,
+        interpretationReason: 'Excel ate the cell',
+      }),
+      fieldAdminRow('unplaceable', null, {
+        interpretation: INTERPRETATION.UNRESOLVABLE,
+        interpretationReason: 'the venue is not in the graph',
+      }),
+    ]
+  )
+);
+
+// Two sources describing one subject and disagreeing.
+harvest(
+  'buildChangeSet(two sources describing one subject)',
+  fieldAdminChangeSet(
+    [],
+    [
+      fieldAdminRow('shared', fieldAdminBlackout('shared'), { sourceFile: 'a.csv' }),
+      fieldAdminRow('shared', fieldAdminBlackout('shared', { toDate: '2026-09-09' }), {
+        sourceFile: 'b.csv',
+        rowIndex: 1,
+      }),
+    ]
+  )
+);
+
+// A change set over nothing, and a first load that compares nothing.
+harvest('buildChangeSet(nothing at all)', fieldAdminChangeSet([], []));
+harvest(
+  'buildChangeSet(a first load with one source)',
+  fieldAdminChangeSet([], [fieldAdminRow('only', fieldAdminBlackout('only'))])
+);
+
+// The reconciliation, handed a partition that does not add up. Called directly
+// because a sound builder cannot produce one - which is the whole reason it is
+// exported.
+harvest(
+  'changeSetPartitionFindings(a partition with a subject dropped)',
+  changeSetPartitionFindings(
+    { matched: [], differing: [], added: [], removed: [], unresolvable: [], fieldComparisons: 0 },
+    { sourceRowsRead: 1, currentSubjectsRead: 1, projectedSubjects: 1 }
+  )
+);
+
+harvest(
+  'buildFieldRegistry(a registry that persists nothing)',
+  buildFieldRegistry({
+    registryId: 'driver',
+    label: 'driver',
+    kind: 'blackout',
+    records: [fieldAdminBlackout('b1')],
+  })
 );
 
 /* -------------------------------------------------------------------------- */

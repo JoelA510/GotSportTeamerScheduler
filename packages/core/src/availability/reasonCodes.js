@@ -238,6 +238,16 @@ export const AVAILABILITY_REASON = Object.freeze({
    * not call them, and neither enforcement path claims a `CLOSURE_*` code —
    * no standing rule in `ruleEngine/rules.js` and no registry constraint — so
    * a kickoff inside a closed window comes back with no closure code at all.
+   *
+   * **Consumed is not enforced.** Phase 8.4's
+   * `fieldAdmin/projectors/constraints.js` calls `buildClosureSet()` to turn
+   * the constraint log into blackout windows, so the set now has a production
+   * consumer outside this module. That does not touch any clause above: it is
+   * a caller asking directly, which is exactly what "standalone" means here,
+   * and it adds no `CLOSURE_*` claim to either enforcement path.
+   * `tests/unwiredLayerImporters.test.js` pins the list of consumers so this
+   * paragraph cannot quietly go stale.
+   *
    * Every set says so on itself, the way `FAIRNESS_OBJECTIVE_UNWIRED` does for
    * the unwired scoring functions, and `tests/helpers/unwiredLayer.js` checks
    * the claim against both paths rather than trusting it, for this layer and
