@@ -1,0 +1,7 @@
+# Harness stub for pgTAP. NOT the real extension: the migration set only
+# ENABLES pgtap; the actual pgTAP suite runs against Supabase via `npm run
+# test:db`, not here. This provides an empty extension so CREATE EXTENSION
+# succeeds without pretending the assertions exist.
+comment = 'harness stub for pgtap'
+default_version = '1.0'
+relocatable = false

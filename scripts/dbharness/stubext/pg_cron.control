@@ -1,0 +1,7 @@
+# Harness stub for pg_cron. NOT the real extension: it provides the schema and
+# the two functions the migration set calls so that CREATE EXTENSION succeeds
+# and the scheduling statements apply. Nothing is ever scheduled or run.
+comment = 'harness stub for pg_cron'
+default_version = '1.0'
+relocatable = false
+schema = pg_catalog
