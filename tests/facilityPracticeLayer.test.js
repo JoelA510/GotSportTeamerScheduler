@@ -32,6 +32,7 @@ import {
   AVAILABILITY_STATUS,
   buildAvailabilityCalendarFromSeason2026,
   checkKickoffAvailability,
+  latestLegalKickoff,
   resolveLighting,
 } from '@squadlogic/core/availability/index.js';
 
@@ -1009,4 +1010,95 @@ describe('practice layer :: the sunset rule claims LIGHTING_UNDECLARED, so the e
       )
     ).toBe(false);
   });
+
+  it('answers lit: null for ground the graph does not hold, and counts it nowhere', () => {
+    // Round 2, finding 4. The early-return template shipped `lit: false`, so a
+    // kickoff on a surface the graph has never heard of reported the ground
+    // unlit -- an absence wearing a fact's clothes -- and `scanKickoffs()`
+    // counted it toward `unlitGamesExamined`, the sunset rule's own exercise
+    // minimum. A schedule whose only "unlit" games stood on unknown ground
+    // would clear that floor having examined none.
+    const nowhere = 'no-such-venue/no-such-field';
+    expect(graph.surfaces[nowhere]).toBeUndefined();
+    const answer = checkKickoffAvailability(graph, table, calendar, {
+      surfaceId: nowhere,
+      date: base.games[0].date,
+      kickoffMinutes: 600,
+      format: base.games[0].format,
+    });
+    expect(answer.lit).toBeNull();
+    expect(answer.lighting).toBeNull();
+    expect(answer.findings.map((f) => f.code)).toContain(FACILITY_REASON.SURFACE_UNKNOWN);
+    // The sibling answers the same way on the same query.
+    const latest = latestLegalKickoff(graph, table, calendar, {
+      surfaceId: nowhere,
+      date: base.games[0].date,
+      format: base.games[0].format,
+      notAfterMinutes: 1200,
+    });
+    expect(latest.lit).toBeNull();
+
+    // The other half of the contract: on ground that *is* in the graph but has
+    // no lighting flag, `latestLegalKickoff()` reads `lit` with `=== true` /
+    // `!== true`, as its sibling `lightingConstraint()` does, so the daylight
+    // limit applies exactly as it does to declared-unlit ground.
+    // A format with a timing row, so the search runs rather than returning on
+    // FORMAT_TIMING_UNDEFINED.
+    const timed = base.games.find((game) => table.formats?.[game.format]);
+    expect(timed).toBeTruthy();
+    const ceilingOn = (surfaceId) =>
+      latestLegalKickoff(graph, table, calendar, {
+        surfaceId,
+        date: timed.date,
+        format: timed.format,
+        notAfterMinutes: 22 * 60,
+      });
+    const undeclared = ceilingOn(cedarbrook);
+    const unlit = ceilingOn(sid(ALDER, 'Pitch 2'));
+    expect(undeclared.lit).toBeNull();
+    expect(unlit.lit).toBe(false);
+    const dusk = (undeclared.sunsetMinutes ?? 0) - calendar.sunsetMarginMinutes;
+    expect(undeclared.searchedToMinutes).toBe(dusk - (undeclared.occupancyMinutes ?? 0));
+    // The same ceiling declared-unlit ground gets, which is the whole claim.
+    expect(undeclared.searchedToMinutes).toBe(unlit.searchedToMinutes);
+    // Non-vacuous: the ceiling really is daylight and not the caller's own.
+    expect(dusk).toBeLessThan(22 * 60);
+
+    // ... and the rule engine's counters move accordingly: one more game on
+    // unknown ground is one more *undeclared*, not one more unlit.
+    const lost = base.games[1];
+    const strayed = {
+      ...base,
+      name: 'season-2026 with one game on ground the graph does not hold',
+      games: base.games.map((game) => (game === lost ? { ...game, surfaceId: nowhere } : game)),
+      surfaceUniverse: [...new Set([...base.surfaceUniverse, nowhere])].sort(),
+    };
+    const before = runRuleEngine(base, { registry, resources }).byRuleId[RULE_ID.SUNSET_MARGIN];
+    const after = runRuleEngine(strayed, { registry, resources }).byRuleId[RULE_ID.SUNSET_MARGIN];
+    // Meta-assertion: the baseline really does count unlit games, so "did not
+    // move" is a fact about this game rather than about an empty counter.
+    expect(before.exercise.counters.unlitGamesExamined).toBeGreaterThan(0);
+    expect(after.exercise.counters.unlitGamesExamined).toBe(
+      before.exercise.counters.unlitGamesExamined -
+        (litOf(base, lost, table, calendar) === false ? 1 : 0)
+    );
+    expect(after.exercise.counters.lightingUndeclaredGamesExamined).toBe(
+      before.exercise.counters.lightingUndeclaredGamesExamined + 1
+    );
+    expect(
+      after.exercise.counters.litGamesExamined +
+        after.exercise.counters.unlitGamesExamined +
+        after.exercise.counters.lightingUndeclaredGamesExamined
+    ).toBe(strayed.games.length);
+  });
+
+  /** What the graph says about the ground one game stands on, before it strays. */
+  function litOf(schedule, game, timingTable, seasonCalendar) {
+    return checkKickoffAvailability(graph, timingTable, seasonCalendar, {
+      surfaceId: game.surfaceId,
+      date: game.date,
+      kickoffMinutes: game.startMinutes,
+      format: game.format,
+    }).lit;
+  }
 });

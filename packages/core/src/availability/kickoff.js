@@ -588,7 +588,14 @@ export function checkKickoffAvailability(graph, table, calendar, rawQuery, optio
     kickoffMinutes: query.kickoffMinutes,
     occupancyMinutes: null,
     endMinutes: null,
-    lit: false,
+    // Tri-state (GAP-05), and `null` is the honest start. This template is what
+    // an early return ships -- an unknown surface, an unknown format -- and
+    // those answers have consulted no lighting at all. Shipping `false` made
+    // "nobody looked" read as "the ground is unlit", which `scanKickoffs()`
+    // then counted toward the sunset rule's `unlitGamesExamined` minimum: a
+    // schedule whose only unlit games stood on ground the graph does not hold
+    // would satisfy the rule's exercise floor on games it never examined.
+    lit: null,
     lighting: null,
     permit: null,
     sunsetMinutes: null,
@@ -765,7 +772,8 @@ export function latestLegalKickoff(graph, table, calendar, rawQuery, options = {
     kickoffMinutes: null,
     occupancyMinutes: null,
     endMinutes: null,
-    lit: false,
+    /** Tri-state, and `null` until something states it; see the template in `checkKickoffAvailability()`. */
+    lit: null,
     lighting: null,
     permit: null,
     sunsetMinutes: null,
@@ -860,10 +868,14 @@ export function latestLegalKickoff(graph, table, calendar, rawQuery, options = {
   if (resolvedPermit.window !== null && resolvedPermit.window.closeMinutes !== null) {
     hardLimits.push(resolvedPermit.window.closeMinutes);
   }
-  if (lighting.lit && lighting.lightsOffMinutes !== null) {
+  // `=== true` / `!== true`, the contract its sibling `lightingConstraint()`
+  // moved to: undeclared ground takes the daylight limit as unlit ground does,
+  // and reading it by truthiness would be folding "unknown" into "false" one
+  // more time.
+  if (lighting.lit === true && lighting.lightsOffMinutes !== null) {
     hardLimits.push(lighting.lightsOffMinutes);
   }
-  if (!lighting.lit) {
+  if (lighting.lit !== true) {
     const daylight = daylightLimitMinutes(calendar, query.date);
     if (daylight !== null) hardLimits.push(daylight);
   }
