@@ -81,20 +81,48 @@ const SEPARATOR = '\u0000';
 const INTERPRETATION_VALUES = Object.freeze(Object.values(INTERPRETATION));
 
 /**
- * Group projected rows by the subject they name.
+ * **The one key space.** A record's identity under the subject's key fields.
  *
- * A `Map` rather than an object: a subject key is built from data cells, and
+ * Both sides of every comparison go through this, and that is the whole point.
+ * An earlier version keyed the held side on `keyFields` and the proposed side
+ * on each projector's own `subjectKey` string. The two agreed on the decoder
+ * rings by coincidence -- `keyFields: ['displayName']` and a `subjectKey` of
+ * the display name -- and could never agree anywhere else: `blackouts` keys on
+ * `id` (`field_constraints.csv#3`) while its projector composed
+ * `` `${venue} ${fromDate} ${toDate} ${fieldsRaw}` ``. Re-importing an export
+ * of the corpus reported **11 removed and 11 added for identical input**, with
+ * eleven blocking `SUBJECT_REMOVED` findings, and nothing caught it because
+ * every test held an empty current state.
+ *
+ * `subjectKey` survives as what it always should have been: a **label** for a
+ * human, used in findings and on unresolvable rows, which have no record to key
+ * on at all. It is never an identity again.
+ *
+ * A `Map` rather than an object: a key is built from data cells, and
  * `__proto__` must be a key like any other.
  *
+ * @param {Record<string, unknown>} record
+ * @param {ReadonlyArray<string>} keyFields
+ * @returns {string}
+ */
+export function subjectIdentity(record, keyFields) {
+  return keyFields.map((field) => renderValue(record[field])).join(SEPARATOR);
+}
+
+/**
+ * Group projected rows by the identity of the record they carry.
+ *
  * @param {ReadonlyArray<import('./types.js').ProjectedRow>} rows
+ * @param {ReadonlyArray<string>} keyFields
  * @returns {Map<string, import('./types.js').ProjectedRow[]>}
  */
-function groupBySubject(rows) {
+function groupBySubject(rows, keyFields) {
   /** @type {Map<string, import('./types.js').ProjectedRow[]>} */
   const grouped = new Map();
   for (const row of rows) {
-    const bucket = grouped.get(row.subjectKey);
-    if (bucket === undefined) grouped.set(row.subjectKey, [row]);
+    const key = subjectIdentity(/** @type {Record<string, unknown>} */ (row.record), keyFields);
+    const bucket = grouped.get(key);
+    if (bucket === undefined) grouped.set(key, [row]);
     else bucket.push(row);
   }
   return grouped;
@@ -195,6 +223,18 @@ export function renderValue(value) {
   if (value === null || value === undefined) return '';
   if (Array.isArray(value)) return value.map((item) => renderValue(item)).join(SEPARATOR);
   if (typeof value === 'boolean') return value ? 'true' : 'false';
+  // **A plain object must render its contents, not its type.** `String({})` is
+  // `"[object Object]"`, which makes every object equal to every other one: an
+  // `equipment` list of `{item, value}` pairs compared clean while a quantity
+  // changed underneath it, and the subject was then reported applicable. Keys
+  // are sorted so two objects written in different key orders still compare
+  // equal, because for a record they are the same record.
+  if (typeof value === 'object') {
+    return Object.keys(/** @type {Record<string, unknown>} */ (value))
+      .sort()
+      .map((key) => `${key}=${renderValue(/** @type {Record<string, unknown>} */ (value)[key])}`)
+      .join(SEPARATOR);
+  }
   return String(value);
 }
 
@@ -444,13 +484,12 @@ export function buildChangeSet(input) {
     );
   }
 
+  // Both sides through `subjectIdentity()`. See its docstring for the defect
+  // that made two key spaces worth a paragraph.
   const heldByKey = new Map(
-    current.records.map((record) => [
-      keyFields.map((field) => renderValue(record[field])).join(SEPARATOR),
-      record,
-    ])
+    current.records.map((record) => [subjectIdentity(record, keyFields), record])
   );
-  const proposedByKey = groupBySubject(split.usable);
+  const proposedByKey = groupBySubject(split.usable, keyFields);
   meta.projectedSubjects = proposedByKey.size;
 
   /** @type {import('./types.js').ChangeSetSubject[]} */
@@ -477,6 +516,8 @@ export function buildChangeSet(input) {
       // reported, and it is never applied.
       removed.push({
         key,
+        // A held subject no source names has no source row to take a label
+        // from, so the identity is the best label available.
         label: key,
         disposition: DISPOSITION.REMOVED,
         changedFields: [],
@@ -494,9 +535,22 @@ export function buildChangeSet(input) {
 
     const disagreement = disagreementAcross(rows, comparedFields, disagreementKind, tally);
     const doubtful = rows.some((row) => row.interpretation === INTERPRETATION.DOUBTFUL);
-    // The first row is read as the proposal, exactly as `compareDecoderRings()`
-    // reads the first ring; the others are carried on the subject so nothing is
-    // hidden, and a disagreement across them blocks application outright.
+    // **The first row is the proposal; the rest are carried, not applied.**
+    //
+    // Exactly as `compareDecoderRings()` reads the first ring while looking the
+    // code up in the other. The others stay on `subject.rows`, so nothing is
+    // hidden, and any disagreement between them over a compared field is
+    // reported as `SOURCES_DISAGREE` and makes the subject non-applicable.
+    //
+    // **The bound this puts on a subject definition**, stated because it is not
+    // obvious: a subject whose `keyFields` do not identify one record turns two
+    // real records into one proposal plus a finding. That is right for the
+    // decoder rings, where two rings describe one published name on purpose. It
+    // would be wrong for, say, two permit reservations on one permit, date and
+    // facility at different hours - so `permitWindows` keys on the row's own
+    // `id`, which is unique by construction. A subject added here must key on
+    // something that identifies a record, and `PARITY_KEY_AMBIGUOUS` one module
+    // over is the same hazard under its own name.
     const record = /** @type {Record<string, unknown>} */ (rows[0].record);
 
     if (held === null) {
@@ -513,7 +567,7 @@ export function buildChangeSet(input) {
       // keeps the seven fields-ring-only codes where they belong.
       const entry = {
         key,
-        label: key,
+        label: rows[0].subjectKey,
         disposition: disagreement === null ? DISPOSITION.ADDED : DISPOSITION.DIFFERING,
         changedFields: [],
         absentFields: [],
@@ -539,7 +593,7 @@ export function buildChangeSet(input) {
     /** @type {import('./types.js').ChangeSetSubject} */
     const entry = {
       key,
-      label: key,
+      label: rows[0].subjectKey,
       disposition: isDifferent ? DISPOSITION.DIFFERING : DISPOSITION.MATCHED,
       changedFields: comparison.changedFields,
       absentFields: comparison.absentFields,

@@ -135,20 +135,29 @@ export const COLUMNS = Object.freeze({
 });
 
 /**
- * Columns holding a list of strings, which round-trip through a space-joined
- * cell. Ids and service names hold no spaces in this corpus, and the reader
- * refuses one that does rather than splitting it wrongly.
+ * Columns holding structured data: a list of strings, or a list of records.
+ *
+ * **Written as JSON, after a space-joined encoding silently corrupted the
+ * corpus.** The first version joined list members with a space and split on
+ * one, with a comment claiming service names hold no spaces and that the reader
+ * refused any that did. Both halves were false: all three service values the
+ * permits carry - `Field Lights`, `Restroom Use`, `Custodian Open/Close` -
+ * contain a space, and no refusal existed. `['Restroom Use']` came back as
+ * `['Restroom', 'Use']`, `PermitWindowSchema` accepted it because both halves
+ * are non-empty strings, and the round-trip test could not see it: re-rendering
+ * the broken value produced the same bytes, so **the file was stable while the
+ * record was wrong**.
+ *
+ * JSON has no such ambiguity, needs no separator nobody may type, and the CSV
+ * quoting rule already handles the commas and quotes it introduces.
  */
-const LIST_COLUMNS = new Set(['venueIds', 'surfaceIds', 'services']);
+const STRUCTURED_COLUMNS = new Set(['venueIds', 'surfaceIds', 'services', 'equipment']);
 
 /** Columns holding an integer or the empty string. */
 const NUMBER_COLUMNS = new Set(['startMinutes', 'endMinutes', 'isoWeekday']);
 
 /** Columns holding `true` / `false`. */
 const BOOLEAN_COLUMNS = new Set(['available', 'uncertain']);
-
-/** The one column holding structured data, written as `item=value` pairs. */
-const EQUIPMENT_COLUMN = 'equipment';
 
 /** The schema per subject kind, for validation in both directions. */
 /** @type {Array<[string, import('zod').ZodTypeAny]>} */
@@ -198,12 +207,7 @@ export function columnsFor(kind) {
  */
 export function renderCell(column, value) {
   if (value === null || value === undefined) return '';
-  if (column === EQUIPMENT_COLUMN) {
-    return /** @type {Array<{ item: string, value: string }>} */ (value)
-      .map((entry) => `${entry.item}=${entry.value}`)
-      .join('; ');
-  }
-  if (LIST_COLUMNS.has(column)) return /** @type {string[]} */ (value).join(' ');
+  if (STRUCTURED_COLUMNS.has(column)) return JSON.stringify(value);
   if (BOOLEAN_COLUMNS.has(column)) return value ? 'true' : 'false';
   return String(value);
 }
@@ -216,19 +220,16 @@ export function renderCell(column, value) {
  * @returns {unknown}
  */
 export function readCell(column, cell) {
-  if (column === EQUIPMENT_COLUMN) {
+  if (STRUCTURED_COLUMNS.has(column)) {
     if (cell === '') return [];
-    return cell.split('; ').map((entry) => {
-      const at = entry.indexOf('=');
-      if (at < 0) {
-        throw new Error(
-          `fieldAdmin serialise: equipment entry ${JSON.stringify(entry)} carries no "="; the writer emits "item=value"`
-        );
-      }
-      return { item: entry.slice(0, at), value: entry.slice(at + 1) };
-    });
+    try {
+      return JSON.parse(cell);
+    } catch (error) {
+      throw new Error(
+        `fieldAdmin serialise: ${column} cell ${JSON.stringify(cell)} is not JSON (${/** @type {Error} */ (error).message})`
+      );
+    }
   }
-  if (LIST_COLUMNS.has(column)) return cell === '' ? [] : cell.split(' ');
   if (BOOLEAN_COLUMNS.has(column)) {
     if (cell === 'true') return true;
     if (cell === 'false') return false;
@@ -263,20 +264,65 @@ export function quoteCell(cell) {
  * domain logic and the fixtures barrel is an IO layer. The grammar is the
  * writer's own, so the two cannot disagree about it.
  *
+ * Kept for a single line with no embedded newline; {@link splitCsvRecords} is
+ * what `fromCsv()` uses, because a line is not a record.
+ *
  * @param {string} line
  * @returns {string[]}
  */
 export function splitCsvLine(line) {
+  const records = splitCsvRecords(line);
+  if (records.length !== 1) {
+    throw new Error(
+      `fieldAdmin serialise: ${JSON.stringify(line)} is ${records.length} record(s), not one; use splitCsvRecords()`
+    );
+  }
+  return records[0];
+}
+
+/**
+ * Split whole CSV text into records, **honouring quotes across newlines**.
+ *
+ * `quoteCell()` deliberately quotes a cell containing `\n` or `\r`, which says
+ * an embedded newline is a value this format supports. The reader used to
+ * `text.split('\n')` first and hand each fragment to a line splitter, so any
+ * cell the writer was willing to quote that way came back as an unterminated
+ * quote or a cell-count mismatch. Nothing in `NoteSchema` or
+ * `VenueAttributesSchema` forbids a newline, so the asserted
+ * `export -> import -> export` identity did not hold for records the writer
+ * would happily produce. Scanning once, with the quote state carried across
+ * line breaks, is the only reading under which the writer and the reader
+ * describe the same format.
+ *
+ * @param {string} text
+ * @returns {string[][]}
+ */
+export function splitCsvRecords(text) {
+  /** @type {string[][]} */
+  const records = [];
   /** @type {string[]} */
-  const cells = [];
+  let cells = [];
   let cell = '';
   let quoted = false;
-  for (let index = 0; index < line.length; index += 1) {
-    const char = line[index];
+  let started = false;
+
+  const endCell = () => {
+    cells.push(cell);
+    cell = '';
+  };
+  const endRecord = () => {
+    endCell();
+    records.push(cells);
+    cells = [];
+    started = false;
+  };
+
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
     if (quoted) {
       if (char !== '"') {
         cell += char;
-      } else if (line[index + 1] === '"') {
+      } else if (text[index + 1] === '"') {
         cell += '"';
         index += 1;
       } else {
@@ -284,17 +330,32 @@ export function splitCsvLine(line) {
       }
       continue;
     }
-    if (char === '"' && cell === '') quoted = true;
-    else if (char === ',') {
-      cells.push(cell);
-      cell = '';
-    } else cell += char;
+    if (char === '"' && cell === '') {
+      quoted = true;
+      started = true;
+    } else if (char === ',') {
+      started = true;
+      endCell();
+    } else if (char === '\n') {
+      endRecord();
+    } else if (char === '\r') {
+      // A bare CR inside an unquoted cell is not something the writer emits;
+      // swallowing it here keeps a file that has been through a CRLF tool
+      // readable rather than failing on an invisible byte.
+      continue;
+    } else {
+      started = true;
+      cell += char;
+    }
   }
   if (quoted) {
-    throw new Error(`fieldAdmin serialise: unterminated quote in ${JSON.stringify(line)}`);
+    throw new Error(
+      `fieldAdmin serialise: unterminated quote in ${JSON.stringify(text.slice(0, 120))}`
+    );
   }
-  cells.push(cell);
-  return cells;
+  // A trailing newline ends the last record rather than starting an empty one.
+  if (started || cell !== '' || cells.length > 0) endRecord();
+  return records;
 }
 
 /**
@@ -365,7 +426,18 @@ export function serialiseFieldRegistry(registry) {
     kind: registry.kind,
     // Sorted by id, so input order cannot reach the output.
     records: [...registry.records]
-      .sort((a, b) => String(a.id).localeCompare(String(b.id)))
+      // **Code-unit order, not `localeCompare`.** The contract of this file is
+      // byte stability across runs, and `localeCompare` varies with the
+      // runtime's default locale and ICU build - notably in how it weights
+      // `#`, `_` and `.`, which every id here contains
+      // (`field_constraints.csv#10` against `#2`). A declared ordering has to
+      // be one the machine cannot have an opinion about.
+      .sort((a, b) => {
+        const left = String(a.id);
+        const right = String(b.id);
+        if (left < right) return -1;
+        return left > right ? 1 : 0;
+      })
       .map((record) => {
         /** @type {Record<string, unknown>} */
         const row = {};
@@ -424,13 +496,12 @@ export function toCsv(document) {
  */
 export function fromCsv(text, identity) {
   const columns = columnsFor(identity.kind);
-  const lines = text.split(LINE_ENDING);
-  if (lines.length > 0 && lines[lines.length - 1] === '') lines.pop();
-  if (lines.length === 0) {
+  const records = splitCsvRecords(text);
+  if (records.length === 0) {
     throw new Error(`fieldAdmin serialise: ${identity.registryId} has no header line`);
   }
 
-  const header = splitCsvLine(lines[0]);
+  const header = records[0];
   if (header.join(',') !== columns.join(',')) {
     // Checked whole rather than per cell, and against the frozen order: a
     // header-only mismatch is how a column silently stops being read.
@@ -439,8 +510,7 @@ export function fromCsv(text, identity) {
     );
   }
 
-  const records = lines.slice(1).map((line, index) => {
-    const cells = splitCsvLine(line);
+  const rows = records.slice(1).map((cells, index) => {
     if (cells.length !== columns.length) {
       throw new Error(
         `fieldAdmin serialise: ${identity.registryId} row ${index} has ${cells.length} cell(s) for ${columns.length} column(s)`
@@ -460,7 +530,7 @@ export function fromCsv(text, identity) {
       registryId: identity.registryId,
       label: identity.label,
       kind: identity.kind,
-      records,
+      records: rows,
     })
   );
 }

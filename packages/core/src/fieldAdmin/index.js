@@ -56,6 +56,7 @@ export {
   defaultDisagreementKind,
   renderValue,
   splitByInterpretation,
+  subjectIdentity,
 } from './changeSet.js';
 
 export {
@@ -71,6 +72,7 @@ export {
   renderCell,
   serialiseFieldRegistry,
   splitCsvLine,
+  splitCsvRecords,
   toCsv,
 } from './serialise.js';
 
@@ -93,6 +95,7 @@ export {
 
 export {
   WEEKLY_INTERPRETATIONS,
+  WEEKLY_INTERPRETATIONS_ABSENT_FROM_CORPUS,
   WEEKLY_INTERPRETATION_VALUES,
   projectWeeklyAvailability,
 } from './projectors/weeklyAvailability.js';

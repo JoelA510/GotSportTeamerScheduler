@@ -144,6 +144,57 @@ export function words(text) {
 }
 
 /**
+ * Ordinary English abbreviations that the `initialism` shape cannot tell from a
+ * club acronym.
+ *
+ * `/(?:[A-Za-z]\.){2,}/` matches `p.m.` exactly as it matches `S.R.F.C.`, and
+ * that is correct for the corpus - which contains neither - but wrong for prose
+ * a person types into a form. "closed after 6 p.m." is the most ordinary
+ * sentence an operator could write about a blackout, and refusing it with a
+ * message about personal data is a false accusation that teaches people to work
+ * around the guard.
+ *
+ * **This list narrows nothing for the corpus scanner.**
+ * `tests/season2026CorpusVocabulary.test.js` reads {@link IDENTITY_SHAPES}
+ * directly and never calls {@link findIdentityShapes}, so the corpus keeps the
+ * strictest reading. Only a caller that asks for it - the blackout note - gets
+ * the narrower one, and it asks explicitly.
+ *
+ * Deliberately short and specific. Every entry is a fixed lowercase token with
+ * no letters beyond the ones shown, so it cannot swallow a real acronym: `U.S.`
+ * is here, `U.S.C.` is not and still trips the shape.
+ */
+export const COMMON_ABBREVIATIONS = Object.freeze([
+  'a.m.',
+  'p.m.',
+  'e.g.',
+  'i.e.',
+  'etc.',
+  'u.s.',
+  'no.',
+]);
+
+/**
+ * Remove the abbreviations above, so what is left can be tested for shapes.
+ *
+ * @param {string} text
+ * @returns {string}
+ */
+function withoutCommonAbbreviations(text) {
+  let remaining = text;
+  for (const abbreviation of COMMON_ABBREVIATIONS) {
+    // Case-insensitive, whole-token: a `p.m.` inside `Xp.m.` is not an
+    // abbreviation and is left where the shape can still see it.
+    const pattern = new RegExp(
+      `(^|[^A-Za-z.])${abbreviation.replace(/\./g, '\\.')}(?![A-Za-z.])`,
+      'gi'
+    );
+    remaining = remaining.replace(pattern, '$1');
+  }
+  return remaining;
+}
+
+/**
  * Every identity shape a string matches, with what matched.
  *
  * Returns **all** hits rather than the first, so a caller reporting a rejected
@@ -153,10 +204,13 @@ export function words(text) {
  * operator about what tripped.
  *
  * @param {string} text
+ * @param {{ allowCommonAbbreviations?: boolean }} [options] - set by the
+ *   blackout-note path only; the corpus scanner never passes it
  * @returns {Array<{ shape: string, match: string }>}
  */
-export function findIdentityShapes(text) {
-  const value = String(text ?? '');
+export function findIdentityShapes(text, options = {}) {
+  const raw = String(text ?? '');
+  const value = options.allowCommonAbbreviations ? withoutCommonAbbreviations(raw) : raw;
   /** @type {Array<{ shape: string, match: string }>} */
   const hits = [];
   for (const { name, pattern } of IDENTITY_SHAPES) {

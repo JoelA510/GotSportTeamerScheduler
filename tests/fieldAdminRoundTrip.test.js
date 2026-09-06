@@ -36,9 +36,12 @@ import {
   fromCsv,
   importSeason2026Fields,
   quoteCell,
+  readCell,
   readFieldRegistry,
+  renderCell,
   serialiseFieldRegistry,
   splitCsvLine,
+  splitCsvRecords,
   toCsv,
 } from '@squadlogic/core/fieldAdmin/index.js';
 
@@ -69,6 +72,9 @@ const SUBJECTS = Object.freeze([
  * the projectors, except on the ring subjects where two rings legitimately
  * describe one code - those carry a ring-qualified id already.
  */
+/** Every permit record, for the service-value enumeration below. */
+const permitRecords = recordsOf(imported.permitWindows);
+
 const registries = new Map(
   SUBJECTS.map(({ name, kind }) => [
     name,
@@ -164,6 +170,104 @@ describe('fieldAdmin round trip :: export then import is the identity', () => {
       records: [...registry.records].reverse(),
     });
     expect(toCsv(serialiseFieldRegistry(reversed))).toBe(toCsv(serialiseFieldRegistry(registry)));
+  });
+});
+
+describe('fieldAdmin round trip :: a re-import of an export changes nothing', () => {
+  // **The regression test for the two-key-space defect.** `buildChangeSet()`
+  // once keyed the held side on `keyFields` and the proposed side on each
+  // projector's own `subjectKey` string. The two could never collide for
+  // `blackouts`, `recurringWindows` or `permitWindows`, so re-importing the
+  // corpus against its own output reported every subject as both `removed` and
+  // `added` - eleven blocking findings for identical input. Every test held an
+  // empty current state, so nothing saw it.
+  //
+  // This is the shape that catches it: hand the importer what it just produced
+  // and require the change set to be a no-op.
+  for (const { name } of SUBJECTS) {
+    it(`re-imports ${name} as entirely matched`, () => {
+      const changeSet = imported[name];
+      const held = recordsOf(changeSet);
+      const reimported = importSeason2026Fields({
+        practice,
+        graph,
+        complexMap,
+        held: { [name]: held },
+      })[name];
+
+      // Nothing vanished and nothing appeared.
+      expect({
+        subject: name,
+        removed: reimported.buckets.removed.length,
+        added: reimported.buckets.added.length,
+      }).toEqual({ subject: name, removed: 0, added: 0 });
+
+      // ... and the comparison actually ran, so this is not passing by
+      // comparing an empty set against an empty set.
+      expect(reimported.meta.currentSubjectsRead).toBe(held.length);
+      expect(reimported.meta.fieldComparisons).toBeGreaterThan(0);
+    });
+  }
+
+  it('can fail, when the held records are perturbed', () => {
+    // The control for the four assertions above: a held set that genuinely
+    // differs must not come back clean, or "removed: 0" would prove nothing.
+    const held = recordsOf(imported.blackouts).map((record, index) =>
+      index === 0 ? { ...record, id: 'a-record-no-source-names' } : record
+    );
+    const reimported = importSeason2026Fields({
+      practice,
+      graph,
+      complexMap,
+      held: { blackouts: held },
+    }).blackouts;
+    expect(reimported.buckets.removed.length).toBe(1);
+    expect(reimported.buckets.added.length).toBe(1);
+  });
+});
+
+describe('fieldAdmin round trip :: structured cells survive their own values', () => {
+  it('round-trips a service name containing a space', () => {
+    // The space-joined encoding turned `['Restroom Use']` into
+    // `['Restroom', 'Use']`, which `PermitWindowSchema` accepted because both
+    // halves are non-empty. The round-trip test could not see it: re-rendering
+    // the broken value produced the same bytes, so the file was stable while
+    // the record was wrong. Every service value in the corpus contains a space.
+    const services = ['Restroom Use', 'Field Lights', 'Custodian Open/Close'];
+    expect(readCell('services', renderCell('services', services))).toEqual(services);
+  });
+
+  it('round-trips every service value the corpus actually writes', () => {
+    // Enumerated from the permits rather than from the three above, so a value
+    // this test does not happen to name is still covered.
+    const written = new Set(
+      permitRecords.flatMap((record) => /** @type {string[]} */ (record.services))
+    );
+    expect(written.size).toBeGreaterThan(0);
+    for (const service of written) {
+      expect(readCell('services', renderCell('services', [service]))).toEqual([service]);
+    }
+  });
+
+  it('round-trips an equipment list, quantities included', () => {
+    const equipment = [
+      { item: 'PUGG Goals (blue)', value: '12.0' },
+      { item: 'Storage Container', value: '2.0' },
+    ];
+    expect(readCell('equipment', renderCell('equipment', equipment))).toEqual(equipment);
+  });
+
+  it('round-trips a cell containing a comma, a quote and a newline', () => {
+    // `quoteCell()` quotes all three, which says the format supports them. The
+    // reader used to split on newlines before parsing quotes, so a record the
+    // writer would happily produce could not be read back.
+    const awkward = 'closed,\n"see" the notice';
+    const text = `notesText\n${quoteCell(awkward)}\n`;
+    expect(splitCsvRecords(text)).toEqual([['notesText'], [awkward]]);
+  });
+
+  it('refuses a structured cell that is not JSON, rather than guessing', () => {
+    expect(() => readCell('services', 'Restroom Use')).toThrow(/is not JSON/);
   });
 });
 

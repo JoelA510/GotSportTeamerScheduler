@@ -87,7 +87,41 @@ export const WEEKLY_INTERPRETATIONS = new Map([
       expectsWindow: false,
     },
   ],
+  [
+    // **Declared, and matched by nothing in this corpus.**
+    //
+    // `AVAILABILITY_INTERPRETATIONS` in `season2026PracticeParsers.js` accepts
+    // `unparsed`, so a sheet may legitimately carry one. Omitting an arm here
+    // did not make that impossible - it made it fatal: the lookup threw, which
+    // aborted `importSeason2026Fields()` entirely and lost **all five** change
+    // sets rather than reporting one row. Every other unreadable cell in this
+    // module is carried as `unresolvable` with its raw value, and this is no
+    // different.
+    //
+    // The corpus writes zero of these. That is stated by name in
+    // `tests/fieldAdminSeason2026Import.test.js` rather than left to be
+    // inferred from a count, which is the same discipline
+    // `DATE_SHAPES_ABSENT_FROM_CORPUS` uses in the corpus vocabulary guard.
+    'unparsed',
+    {
+      available: false,
+      interpretation: INTERPRETATION.UNRESOLVABLE,
+      reason:
+        'the parser could not read the cell at all; the raw value is carried so a person can say what it meant',
+      expectsWindow: false,
+    },
+  ],
 ]);
+
+/**
+ * Interpretations declared here that the season-2026 corpus does not write.
+ *
+ * Declared rather than inferred: a value that reads nothing contributes nothing,
+ * and a bare count cannot tell a dead arm from a live one. Enforced in both
+ * directions by the test - a value named here that starts matching fails, and
+ * one not named here that matches nothing fails too.
+ */
+export const WEEKLY_INTERPRETATIONS_ABSENT_FROM_CORPUS = Object.freeze(['unparsed']);
 
 /** Every declared interpretation value, sorted, for a message and a test. */
 export const WEEKLY_INTERPRETATION_VALUES = Object.freeze(
@@ -126,6 +160,18 @@ export function projectWeeklyAvailability(weeklyAvailability, graph, complexMap)
       throw new Error(
         `fieldAdmin weekly availability: row ${rowIndex} carries interpretation ${JSON.stringify(record.interpretation)}, which is not declared; add it beside its neighbours in WEEKLY_INTERPRETATIONS (${WEEKLY_INTERPRETATION_VALUES.map((value) => JSON.stringify(value)).join(', ')})`
       );
+    }
+
+    if (reading.interpretation === INTERPRETATION.UNRESOLVABLE) {
+      return projectedRow({
+        sourceFile: SOURCE_FILE,
+        rowIndex,
+        subjectKey,
+        interpretation: INTERPRETATION.UNRESOLVABLE,
+        interpretationReason: reading.reason,
+        raw,
+        record: null,
+      });
     }
 
     const isoWeekday = ISO_WEEKDAY_BY_CODE.get(/** @type {string} */ (record.weekday));

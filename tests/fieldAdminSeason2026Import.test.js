@@ -37,6 +37,7 @@ import {
   INTERPRETATION,
   PERMIT_FACILITY_LABELS,
   SEASON_2026_SUBJECTS,
+  WEEKLY_INTERPRETATIONS_ABSENT_FROM_CORPUS,
   WEEKLY_INTERPRETATION_VALUES,
   importSeason2026Fields,
   isInventorySentinel,
@@ -276,9 +277,61 @@ describe('season-2026 field import :: the Excel corruption, in both files', () =
     // a class nobody checked - which is exactly what the 8.0 prompt's
     // `interpretation = "unparsed"` turned out to be. Every declared value must
     // match a row, and every row's value must be declared.
+    // So the declaration is held to the data both ways: every value the corpus
+    // writes must be declared, and every declared value must either match a row
+    // or be named as absent.
     const written = new Set(practice.weeklyAvailability.map((row) => row.interpretation ?? ''));
-    expect([...written].sort()).toEqual([...WEEKLY_INTERPRETATION_VALUES]);
-    expect(written.has('unparsed')).toBe(false);
+    const declared = new Set(WEEKLY_INTERPRETATION_VALUES);
+    const absent = new Set(WEEKLY_INTERPRETATIONS_ABSENT_FROM_CORPUS);
+
+    for (const value of written) {
+      expect({ value, declared: declared.has(value) }).toEqual({ value, declared: true });
+    }
+    for (const value of declared) {
+      // Declared and unwritten is allowed only when it is named as absent.
+      expect({ value, accounted: written.has(value) || absent.has(value) }).toEqual({
+        value,
+        accounted: true,
+      });
+    }
+    // ... and a value named absent that starts appearing fails here rather than
+    // ageing the declaration.
+    for (const value of absent) {
+      expect({ value, present: written.has(value) }).toEqual({ value, present: false });
+    }
+    expect([...absent]).toEqual(['unparsed']);
+  });
+
+  it('carries an unparsed row as unresolvable instead of aborting the whole import', () => {
+    // The arm was missing, and its absence was not "unparsed is impossible" but
+    // "unparsed is fatal": the lookup threw, which took all five change sets
+    // down rather than reporting one row. Constructed, because the corpus
+    // writes none.
+    const withUnparsed = {
+      ...practice,
+      weeklyAvailability: [
+        ...practice.weeklyAvailability,
+        {
+          rowIndex: 999,
+          venue: 'Alder Park',
+          day: 'Mon',
+          weekday: 'MON',
+          rawValue: 'something nobody could read',
+          startMinutes: null,
+          endMinutes: null,
+          interpretation: 'unparsed',
+          raw: { venue: 'Alder Park', day: 'Mon', raw_value: 'something nobody could read' },
+        },
+      ],
+    };
+    const rebuilt = importSeason2026Fields({ practice: withUnparsed, graph, complexMap });
+    // Every other subject survived.
+    expect(rebuilt.aliases.buckets.differing).toHaveLength(12);
+    // ... and the row is reported with its raw value, not dropped.
+    const unresolvable = rebuilt.recurringWindows.buckets.unresolvable;
+    expect(unresolvable).toHaveLength(1);
+    expect(unresolvable[0].interpretationReason).toMatch(/could not read the cell/);
+    expect(unresolvable[0].raw.raw_value).toBe('something nobody could read');
   });
 });
 

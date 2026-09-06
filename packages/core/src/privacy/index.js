@@ -12,6 +12,7 @@
  */
 
 export {
+  COMMON_ABBREVIATIONS,
   IDENTITY_SHAPES,
   IDENTITY_SHAPE_NAMES,
   collapseInitialisms,

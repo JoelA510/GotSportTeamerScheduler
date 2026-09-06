@@ -59,7 +59,12 @@ export const NoteSchema = z
   .string()
   .max(NOTE_MAX_LENGTH, { message: `a note may be at most ${NOTE_MAX_LENGTH} characters` })
   .superRefine((value, ctx) => {
-    for (const { shape, match } of findIdentityShapes(value)) {
+    // `allowCommonAbbreviations` is asked for here and nowhere else: the corpus
+    // scanner keeps the strict reading, and an operator writing "closed after
+    // 6 p.m." is not accused of leaking personal data.
+    for (const { shape, match } of findIdentityShapes(value, {
+      allowCommonAbbreviations: true,
+    })) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: `a note may not carry ${shape}-shaped text (${JSON.stringify(match)}); personal data is out of scope per CLAUDE.md section 2`,

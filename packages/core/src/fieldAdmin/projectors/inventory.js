@@ -83,12 +83,26 @@ export function isInventorySentinel(cell) {
 export function projectVenueAttributes(fieldInventory, fieldEquipment, graph, complexMap) {
   /** @type {Map<string, Array<{ item: string, value: string }>>} */
   const equipmentByVenue = new Map();
+  /**
+   * The first equipment row index per venue.
+   *
+   * Kept because an equipment-only subject has to cite a real row: stamping
+   * `rowIndex: -1` made every such finding read `field_equipment.csv row -1`,
+   * so with more than one equipment-only venue an operator could not get back
+   * to the source of any of them.
+   *
+   * @type {Map<string, number>}
+   */
+  const firstEquipmentRow = new Map();
   for (const row of fieldEquipment) {
     const record = /** @type {Object} */ (row);
     const venue = /** @type {string} */ (record.venue);
     const held = equipmentByVenue.get(venue) ?? [];
     held.push({ item: /** @type {string} */ (record.item), value: String(record.value) });
     equipmentByVenue.set(venue, held);
+    if (!firstEquipmentRow.has(venue)) {
+      firstEquipmentRow.set(venue, /** @type {number} */ (record.rowIndex));
+    }
   }
 
   /** @type {import('../types.js').ProjectedRow[]} */
@@ -165,11 +179,12 @@ export function projectVenueAttributes(fieldInventory, fieldEquipment, graph, co
     if (venuesWithInventory.has(venue)) continue;
     const ground = resolveGround(graph, complexMap, { venue, field: null, subunit: null });
     const raw = { venue, item: '(equipment only)', value: String(equipment.length) };
+    const equipmentRowIndex = /** @type {number} */ (firstEquipmentRow.get(venue));
     if (ground.interpretation === INTERPRETATION.UNRESOLVABLE) {
       rows.push(
         projectedRow({
           sourceFile: 'field_equipment.csv',
-          rowIndex: -1,
+          rowIndex: equipmentRowIndex,
           subjectKey: venue,
           interpretation: INTERPRETATION.UNRESOLVABLE,
           interpretationReason: ground.reason,
@@ -182,7 +197,7 @@ export function projectVenueAttributes(fieldInventory, fieldEquipment, graph, co
     rows.push(
       projectedRow({
         sourceFile: 'field_equipment.csv',
-        rowIndex: -1,
+        rowIndex: equipmentRowIndex,
         subjectKey: venue,
         interpretation: INTERPRETATION.DOUBTFUL,
         interpretationReason:

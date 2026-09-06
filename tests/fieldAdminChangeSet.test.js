@@ -32,8 +32,9 @@ import {
   deriveFieldAdminStatus,
   renderValue,
   splitByInterpretation,
+  subjectIdentity,
 } from '@squadlogic/core/fieldAdmin/index.js';
-import { IDENTITY_SHAPES } from '@squadlogic/core/privacy/index.js';
+import { IDENTITY_SHAPES, findIdentityShapes } from '@squadlogic/core/privacy/index.js';
 
 /* -------------------------------------------------------------------------- */
 /* Builders                                                                    */
@@ -445,6 +446,68 @@ describe('fieldAdmin :: renderValue is the one comparison rule', () => {
   });
 });
 
+describe('fieldAdmin :: one key space, on both sides', () => {
+  it('keys the proposed side on the record, not on the projector’s label', () => {
+    // The defect this replaces: the held side was keyed on `keyFields` and the
+    // proposed side on each projector's `subjectKey` string, so for three of
+    // the five season subjects the two key spaces could never collide and a
+    // re-import reported everything as removed *and* added.
+    const held = blackout('b1');
+    const set = build([held], [row('a label that is nothing like the id', blackout('b1'))]);
+    expect(set.buckets.matched.map((subject) => subject.key)).toEqual(['b1']);
+    expect(set.buckets.removed).toHaveLength(0);
+    expect(set.buckets.added).toHaveLength(0);
+  });
+
+  it('keeps subjectKey as the human label it always should have been', () => {
+    const set = build([], [row('Alder Park 2026-09-19', blackout('b1'))]);
+    expect(set.buckets.added[0].key).toBe('b1');
+    expect(set.buckets.added[0].label).toBe('Alder Park 2026-09-19');
+  });
+
+  it('derives the same identity from a held record and a proposed one', () => {
+    const record = blackout('b1');
+    expect(subjectIdentity(record, ['id'])).toBe(subjectIdentity({ ...record }, ['id']));
+    expect(subjectIdentity(record, ['id'])).not.toBe(
+      subjectIdentity({ ...record, id: 'b2' }, ['id'])
+    );
+  });
+});
+
+describe('fieldAdmin :: renderValue sees inside a record', () => {
+  it('compares two objects by their contents, not by their type', () => {
+    // `String({})` is `"[object Object]"`, which made every object equal to
+    // every other one: an equipment quantity could change under a comparison
+    // that reported the subject unchanged and applicable.
+    expect(renderValue({ item: 'Goals', value: '4' })).not.toBe(
+      renderValue({ item: 'Goals', value: '99' })
+    );
+    expect(renderValue({ item: 'Goals', value: '4' })).not.toContain('[object Object]');
+  });
+
+  it('reads two records written in different key orders as the same record', () => {
+    expect(renderValue({ a: 1, b: 2 })).toBe(renderValue({ b: 2, a: 1 }));
+  });
+
+  it('reports a changed quantity inside a list of records', () => {
+    // The end-to-end shape of the same defect, through the comparator.
+    const withEquipment = (quantity) => ({
+      id: 'venue-a',
+      equipment: [{ item: 'Goals', value: quantity }],
+    });
+    const set = buildChangeSet({
+      subject: 'equipment',
+      keyFields: ['id'],
+      comparedFields: ['equipment'],
+      current: { label: 'held', records: [withEquipment('4')] },
+      proposed: { label: 'proposed', rows: [row('venue-a', withEquipment('99'))] },
+    });
+    expect(set.buckets.differing).toHaveLength(1);
+    expect(set.buckets.differing[0].changedFields).toEqual(['equipment']);
+    expect(set.buckets.differing[0].applicable).toBe(false);
+  });
+});
+
 describe('fieldAdmin :: severity is looked up, never passed in', () => {
   it('registers a severity for every declared code', () => {
     const codes = Object.values(FIELD_ADMIN_REASON);
@@ -510,6 +573,40 @@ describe('fieldAdmin :: the privacy guard on an operator-written note', () => {
   it('bounds the length', () => {
     expect(NoteSchema.safeParse('x'.repeat(NOTE_MAX_LENGTH)).success).toBe(true);
     expect(NoteSchema.safeParse('x'.repeat(NOTE_MAX_LENGTH + 1)).success).toBe(false);
+  });
+
+  it('accepts ordinary abbreviations an operator would actually write', () => {
+    // `/(?:[A-Za-z]\.){2,}/` matches `p.m.` exactly as it matches `S.R.F.C.`.
+    // Refusing "closed after 6 p.m." with a message about personal data is a
+    // false accusation, and it teaches people to work around the guard.
+    for (const note of [
+      'closed after 6 p.m.',
+      'open from 8 a.m.',
+      'gates locked, e.g. weekends',
+      'contractor on site, i.e. no access',
+    ]) {
+      expect({ note, ok: NoteSchema.safeParse(note).success }).toEqual({ note, ok: true });
+    }
+  });
+
+  it('still refuses an acronym the abbreviation list does not name', () => {
+    // The narrowing is a short list of fixed tokens, not a rule about dots, so
+    // it cannot swallow a real club acronym.
+    for (const note of ['S.R.F.C. tournament', 'U.S.C. event', 'closed for A.B.C.']) {
+      expect({ note, ok: NoteSchema.safeParse(note).success }).toEqual({ note, ok: false });
+    }
+  });
+
+  it('narrows nothing for the corpus scanner', () => {
+    // The corpus keeps the strictest reading: `findIdentityShapes()` only
+    // relaxes when a caller asks, and `tests/season2026CorpusVocabulary.test.js`
+    // reads IDENTITY_SHAPES directly and never calls it.
+    expect(findIdentityShapes('closed after 6 p.m.').map((hit) => hit.shape)).toEqual([
+      'initialism',
+    ]);
+    expect(findIdentityShapes('closed after 6 p.m.', { allowCommonAbbreviations: true })).toEqual(
+      []
+    );
   });
 
   it('names what tripped, so an operator can fix the value', () => {
