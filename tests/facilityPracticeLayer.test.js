@@ -659,6 +659,94 @@ describe('practice layer :: lighting nobody has stated is reported, not read as 
   });
 });
 
+describe('practice layer :: declaration order carries no meaning', () => {
+  // Round 3, finding 6. Composition resolved each node's parent as it went, so
+  // a child written above its parent threw `names parent "...", which no layer
+  // declares` -- about a parent declared on the next line. Latent on today's
+  // corpus and actively misleading to whoever hit it.
+  const reversed = {
+    ...SEASON_2026_PRACTICE_LAYER,
+    surfaces: [...SEASON_2026_PRACTICE_LAYER.surfaces].reverse(),
+  };
+
+  /** The graph reduced to what composition decides, order stripped out. */
+  const shapeOf = (subject) =>
+    [...subject.surfaceIds].sort().map((id) => ({
+      id,
+      venueId: subject.surfaces[id].venueId,
+      name: subject.surfaces[id].name,
+      parentId: subject.surfaces[id].parentId,
+      childIds: [...subject.surfaces[id].childIds].sort(),
+    }));
+
+  it('has a child declared after its parent to reorder (meta-assertion)', () => {
+    // Non-vacuous: reversing really does put at least one child above its
+    // parent, so the check below is about the case it claims to be about.
+    const positionOf = new Map(
+      reversed.surfaces.map((node, index) => [
+        season2026PracticeSurfaceId(node.venue, node.field, node.subunit),
+        index,
+      ])
+    );
+    const inverted = reversed.surfaces.filter((node, index) => {
+      const parentName = node.subunit === null ? node.parent : node.field;
+      if (parentName === null) return false;
+      const parentIndex = positionOf.get(season2026SurfaceId(node.venue, parentName));
+      return parentIndex !== undefined && parentIndex > index;
+    });
+    expect(inverted.length).toBeGreaterThan(0);
+    // ... and the single-pass rule, written out, refuses exactly those.
+    const seen = new Set(toSeason2026FacilityGraphInput(geometry).surfaces.map((e) => e.id));
+    const refused = [];
+    for (const node of reversed.surfaces) {
+      const parentName = node.subunit === null ? node.parent : node.field;
+      const parentId = parentName === null ? null : season2026SurfaceId(node.venue, parentName);
+      if (parentId !== null && !seen.has(parentId)) refused.push(parentId);
+      seen.add(season2026PracticeSurfaceId(node.venue, node.field, node.subunit));
+    }
+    expect(refused.length).toBeGreaterThan(0);
+    // Every parent it would have refused is one the layer does declare, which
+    // is what made the message a lie.
+    const declaredIds = new Set(
+      reversed.surfaces.map((node) =>
+        season2026PracticeSurfaceId(node.venue, node.field, node.subunit)
+      )
+    );
+    for (const id of refused) expect(declaredIds.has(id), id).toBe(true);
+  });
+
+  it('builds the identical graph from a reversed declaration', () => {
+    const base = buildFacilityGraph(
+      extendFacilityGraphInputWithSeason2026PracticeLayer(toSeason2026FacilityGraphInput(geometry))
+    );
+    const flipped = buildFacilityGraph(
+      extendFacilityGraphInputWithSeason2026PracticeLayer(
+        toSeason2026FacilityGraphInput(geometry),
+        reversed
+      )
+    );
+    expect(shapeOf(flipped)).toEqual(shapeOf(base));
+    expect(shapeOf(base).length).toBe(graph.surfaceIds.length);
+    expect(flipped.stats).toEqual(base.stats);
+  });
+
+  it('still refuses a parent no layer declares, and says which (positive control)', () => {
+    const orphan = {
+      ...SEASON_2026_PRACTICE_LAYER,
+      surfaces: [
+        ...SEASON_2026_PRACTICE_LAYER.surfaces,
+        { venue: ALDER, field: 'Pitch 9Z', subunit: null, parent: 'Pitch 9', sources: [] },
+      ],
+    };
+    expect(() =>
+      extendFacilityGraphInputWithSeason2026PracticeLayer(
+        toSeason2026FacilityGraphInput(geometry),
+        orphan
+      )
+    ).toThrow(/names parent "Pitch 9", which no layer declares/);
+  });
+});
+
 /* -------------------------------------------------------------------------- */
 /* The composed graph, seen by the modules that consume graphs                 */
 /* -------------------------------------------------------------------------- */

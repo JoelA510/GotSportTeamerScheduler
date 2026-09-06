@@ -285,6 +285,17 @@ export function extendFacilityGraphInputWithSeason2026PracticeLayer(
     venues.push({ id, name: venue.name, lit: venue.lit, notes: venue.notes, overlapNote: null });
   }
 
+  // **Two passes, so declaration order carries no meaning.** A single pass
+  // resolved each node's parent through `surfaceById` as it went, so a child
+  // written above its parent threw `names parent "...", which no layer
+  // declares` about a parent declared on the next line -- a message that sends
+  // the reader looking for a missing node rather than at the order. Every node
+  // is created first; parents are linked afterwards, when the whole layer is
+  // visible. Nothing else about the layer becomes order-dependent: `surfaces`
+  // and every `childIds` list are still built in declaration order.
+  /** @type {Array<{ node: Object, entry: Object }>} */
+  const declared = [];
+
   for (const node of layer.surfaces) {
     const venueId = season2026VenueId(node.venue);
     if (!venueIds.has(venueId)) {
@@ -295,14 +306,6 @@ export function extendFacilityGraphInputWithSeason2026PracticeLayer(
     if (node.subunit !== null && node.parent !== null) {
       throw new Error(
         `season2026 practice layer: "${node.venue}" / "${node.field}" / "${node.subunit}" names parent "${node.parent}"; a sub-unit's parent is its field`
-      );
-    }
-    const parentName = node.subunit === null ? node.parent : node.field;
-    const parentId = parentName === null ? null : season2026SurfaceId(node.venue, parentName);
-    const parent = parentId === null ? null : surfaceById.get(parentId);
-    if (parentId !== null && !parent) {
-      throw new Error(
-        `season2026 practice layer: "${node.venue}" / "${practiceSurfaceName(node.field, node.subunit)}" names parent "${parentName}", which no layer declares`
       );
     }
     const id = season2026PracticeSurfaceId(node.venue, node.field, node.subunit);
@@ -317,14 +320,28 @@ export function extendFacilityGraphInputWithSeason2026PracticeLayer(
       // inherited. A half of an 11v11 pitch is not an 11v11 pitch.
       sizes: [],
       lined: [],
-      parentId,
+      parentId: null,
       childIds: [],
       bookable: true,
       note: null,
     };
-    if (parent) parent.childIds.push(id);
     surfaces.push(entry);
     surfaceById.set(id, entry);
+    declared.push({ node, entry });
+  }
+
+  for (const { node, entry } of declared) {
+    const parentName = node.subunit === null ? node.parent : node.field;
+    if (parentName === null) continue;
+    const parentId = season2026SurfaceId(node.venue, parentName);
+    const parent = surfaceById.get(parentId);
+    if (!parent) {
+      throw new Error(
+        `season2026 practice layer: "${node.venue}" / "${practiceSurfaceName(node.field, node.subunit)}" names parent "${parentName}", which no layer declares`
+      );
+    }
+    entry.parentId = parentId;
+    parent.childIds.push(entry.id);
   }
 
   return /** @type {import('../types.js').FacilityGraphInput} */ ({
