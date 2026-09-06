@@ -126,10 +126,15 @@ CREATE INDEX IF NOT EXISTS idx_fields_effective_to
 -- RPC had just reported as unaffected. The RPC contradicted its own report.
 --
 -- `active` follows the DATE, not the intent to retire.
+-- **STABLE, not IMMUTABLE.** It reads `current_date` when `p_on` is omitted.
+-- Declared IMMUTABLE it would be legal in an index expression and in a CHECK
+-- constraint, and PostgreSQL may constant-fold it into a cached plan -- a wrong
+-- answer that outlives the transaction that computed it. The smoke asserts the
+-- volatility rather than trusting this comment.
 CREATE OR REPLACE FUNCTION public.field_is_live_on(p_effective_to date, p_on date DEFAULT NULL)
 RETURNS boolean
 LANGUAGE sql
-IMMUTABLE
+STABLE
 SET search_path = public
 AS $$
   SELECT p_effective_to IS NULL OR p_effective_to >= COALESCE(p_on, current_date);
@@ -206,70 +211,85 @@ BEGIN
             USING ERRCODE = 'P0002';
     END IF;
 
-    -- **Every booking a retirement would strand.** Enumerated from the booking
-    -- tables, which are what the change corrupts -- not from the field row,
-    -- which a retirement leaves intact and which would therefore report
-    -- nothing.
+    -- **Every booking a retirement would strand -- all FOUR tables.**
     --
-    -- TWO tables, not one. `practice_slots.field_id` is NOT NULL REFERENCES
-    -- fields with its own valid_from/valid_until, so a retirement strands
-    -- practice exactly as it strands games. The first draft enumerated only
-    -- game_slots and would have retired a field with live practice on it
-    -- reporting `affected_count: 0`.
+    -- The family, enumerated from the schema by script rather than from memory.
+    -- SEVEN tables in this repo carry a `field_id`, not five as an earlier
+    -- draft of this comment claimed -- the enumeration was itself miscounted,
+    -- which is the same failure it was written to prevent. Four are bookings
+    -- and are read below:
+    --   * game_slots          (NOT NULL FK, ON DELETE CASCADE)
+    --   * practice_slots      (NOT NULL FK, ON DELETE CASCADE)
+    --   * game_assignments    (FK ON DELETE SET NULL, added 20260503030000)
+    --   * practice_assignments(no FK at all -- a bare uuid column)
+    -- Three are not, and each is excluded for a stated reason rather than by
+    -- having been forgotten:
+    --   * field_subunits              -- the estate's own structure. A subunit
+    --     is part of the field, not a booking on it, and it cascades on delete.
+    --     Note practice_slots.field_subunit_id: a practice slot scoped to a
+    --     HALF pitch still carries the parent's field_id (NOT NULL), so it is
+    --     caught by the practice_slots arm and needs no separate one.
+    --   * field_availability_profiles -- import metadata describing the ground,
+    --     not a use of it. A retirement does not strand a description.
+    --   * field_blackouts             -- a closure, not a booking. Retiring a
+    --     field cannot strand the statement that it was already shut, and the
+    --     rows cascade with the field.
     --
-    -- **A game slot's date is `slot_date`, falling back to `start`.**
-    -- `game_slots.start` is nullable AND the import path never populates it --
-    -- it writes slot_date/start_time (20260503070000:738). Reading `start`
-    -- alone therefore called every import-created slot "undated" and refused
-    -- every retirement of an imported field with a warning that was false.
-    -- `coalesce(slot_date, start::date)` is the reading
-    -- 20260504070000_team_portal_communication_rpcs.sql:138 already uses.
+    -- The first two drafts consulted the SLOT tables only. The ASSIGNMENT
+    -- tables are where the persisted schedule lives -- `useGameAssignments.js`
+    -- reads game_assignments directly -- so a retirement could report
+    -- `affected_count: 0` while stranding every assigned game on that ground.
+    -- That guts the acceptance criterion: "refused with the list of affected
+    -- bookings" means nothing if the RPC does not look where bookings are.
     --
-    -- A row that still has no date after the coalesce cannot be judged against
-    -- p_effective_to at all. It is carried, flagged `undated`, and counted --
-    -- never dropped, because dropping it retires ground out from under a
-    -- booking nobody was warned about.
+    -- Dates: a game slot's is `slot_date` falling back to `start` (the import
+    -- writes slot_date and never start, 20260503070000:738); an assignment's is
+    -- its own `start`; a practice slot's is `valid_until`; a practice
+    -- assignment's is the upper bound of its `effective_date_range`.
+    --
+    -- `undated` means COULD NOT BE JUDGED. `unbounded` means runs forever and
+    -- is therefore CERTAINLY stranded -- a different answer, not a missing one.
     WITH affected AS (
-      SELECT
-        'game_slot'::text AS kind,
-        gs.id,
-        COALESCE(gs.slot_date, gs.start::date) AS on_date,
-        gs.week_index::integer AS week_index,
-        -- A game slot with no date on either column genuinely cannot be judged.
-        COALESCE(gs.slot_date, gs.start::date) IS NULL AS undated
+      SELECT 'game_slot'::text AS kind, gs.id,
+             COALESCE(gs.slot_date, gs.start::date) AS on_date,
+             gs.week_index::integer AS week_index,
+             COALESCE(gs.slot_date, gs.start::date) IS NULL AS undated,
+             false AS unbounded
       FROM public.game_slots gs
-      WHERE gs.organization_id = p_organization_id
-        AND gs.field_id = p_field_id
-        AND (
-          COALESCE(gs.slot_date, gs.start::date) IS NULL
-          OR COALESCE(gs.slot_date, gs.start::date) > p_effective_to
-        )
+      WHERE gs.organization_id = p_organization_id AND gs.field_id = p_field_id
+        AND (COALESCE(gs.slot_date, gs.start::date) IS NULL
+             OR COALESCE(gs.slot_date, gs.start::date) > p_effective_to)
       UNION ALL
-      SELECT
-        'practice_slot'::text AS kind,
-        ps.id,
-        ps.valid_until AS on_date,
-        NULL::integer AS week_index,
-        -- **`valid_until IS NULL` is UNBOUNDED, not unjudged.** A practice slot
-        -- with no end date runs forever, so it is CERTAINLY stranded by any
-        -- retirement -- the opposite of "could not be judged". Flagging it
-        -- `undated` conflated a certain answer with an absent one.
-        false AS undated
+      SELECT 'game_assignment'::text, ga.id,
+             ga.start::date, ga.week_index::integer,
+             ga.start IS NULL, false
+      FROM public.game_assignments ga
+      WHERE ga.organization_id = p_organization_id AND ga.field_id = p_field_id
+        AND (ga.start IS NULL OR ga.start::date > p_effective_to)
+      UNION ALL
+      SELECT 'practice_slot'::text, ps.id,
+             ps.valid_until, NULL::integer,
+             false, ps.valid_until IS NULL
       FROM public.practice_slots ps
-      WHERE ps.organization_id = p_organization_id
-        AND ps.field_id = p_field_id
+      WHERE ps.organization_id = p_organization_id AND ps.field_id = p_field_id
         AND (ps.valid_until IS NULL OR ps.valid_until > p_effective_to)
+      UNION ALL
+      SELECT 'practice_assignment'::text, pa.id,
+             upper(pa.effective_date_range), NULL::integer,
+             false,
+             pa.effective_date_range IS NULL OR upper_inf(pa.effective_date_range)
+      FROM public.practice_assignments pa
+      WHERE pa.organization_id = p_organization_id AND pa.field_id = p_field_id
+        AND (pa.effective_date_range IS NULL
+             OR upper_inf(pa.effective_date_range)
+             OR upper(pa.effective_date_range) > p_effective_to)
     )
     SELECT
       COALESCE(
         jsonb_agg(
           jsonb_build_object(
-            'kind', a.kind,
-            'id', a.id,
-            'on_date', a.on_date,
-            'week_index', a.week_index,
-            'undated', a.undated,
-            'unbounded', a.kind = 'practice_slot' AND a.on_date IS NULL
+            'kind', a.kind, 'id', a.id, 'on_date', a.on_date,
+            'week_index', a.week_index, 'undated', a.undated, 'unbounded', a.unbounded
           )
           ORDER BY a.on_date NULLS FIRST, a.kind, a.id
         ),
@@ -331,15 +351,22 @@ BEGIN
         )
     );
 
-    -- **`active` follows the date, through the one producer.**
+    -- **A retirement can only ever REMOVE activity. It never grants it.**
     --
-    -- A FUTURE-dated retirement leaves the field active until the date
-    -- arrives. Setting `active = false` here unconditionally -- which the first
-    -- draft did -- pulled the field out of the scheduler immediately, for the
-    -- whole period this same call had just told the operator was unaffected.
+    -- Two drafts got this wrong in opposite directions. The first set
+    -- `active = false` unconditionally, so a retirement dated six months out
+    -- pulled the field from the scheduler today -- for the very period this
+    -- call had just reported unaffected. The second wrote
+    -- `active = field_is_live_on(...)`, which is the BICONDITIONAL the header
+    -- refuses: retiring an ALREADY-DEACTIVATED field set `active` back to true
+    -- and handed it to the scheduler. Retiring something is not a way to
+    -- un-deactivate it.
+    --
+    -- `v_before.active AND live` is the only reading that is one-directional in
+    -- the same sense the trigger is: it can turn activity off and never on.
     UPDATE public.fields
     SET effective_to = p_effective_to,
-        active = public.field_is_live_on(p_effective_to),
+        active = v_before.active AND public.field_is_live_on(p_effective_to),
         updated_at = timezone('utc', now())
     WHERE id = p_field_id AND organization_id = p_organization_id
     RETURNING * INTO v_after;
@@ -414,11 +441,21 @@ BEGIN
         )
     );
 
+    -- **Unretiring clears the DATE and leaves `active` alone.**
+    --
+    -- It wrote a constant `true`, which made it not the inverse of retire: a
+    -- field an operator had deactivated for its own reasons, then retired, came
+    -- back ACTIVE -- the unretire silently discarded a decision it never made.
+    -- `v_before` was in hand and unread.
+    --
+    -- We cannot know whether the inactivity came from the retirement or from an
+    -- earlier ordinary deactivation, and inventing an answer is how a fact
+    -- nobody recorded gets asserted. So this reverses exactly what it can: the
+    -- date. Putting the field back in the scheduler is `admin_update_field`,
+    -- which is the existing audited path for that decision.
     UPDATE public.fields
     SET effective_to = NULL,
-        -- Through the same producer: a NULL window is live, so this is `true`
-        -- by derivation rather than by a second hand-written rule.
-        active = public.field_is_live_on(NULL),
+        active = v_before.active,
         updated_at = timezone('utc', now())
     WHERE id = p_field_id AND organization_id = p_organization_id
     RETURNING * INTO v_after;
@@ -444,6 +481,6 @@ GRANT EXECUTE ON FUNCTION public.admin_unretire_field(uuid, uuid) TO authenticat
 COMMENT ON FUNCTION public.admin_retire_field(uuid, uuid, date, boolean) IS
   'Org-admin retirement of a field. Refuses with the affected booking list and writes nothing when bookings outlive p_effective_to and p_confirm is false. Writes fields.active and fields.effective_to together. Audits before and after, including the refusal.';
 COMMENT ON FUNCTION public.admin_unretire_field(uuid, uuid) IS
-  'Org-admin reversal of admin_retire_field. Clears effective_to and restores active in one statement so the two cannot disagree. Audits before and after.';
+  'Org-admin reversal of admin_retire_field. Clears effective_to and leaves fields.active exactly as it was -- it cannot know whether an inactive field was deactivated by the retirement or beforehand, and inventing that answer would discard a decision it never made. Re-activating is admin_update_field. Audits before and after.';
 
 COMMIT;
