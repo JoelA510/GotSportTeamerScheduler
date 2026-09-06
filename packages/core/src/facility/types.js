@@ -22,6 +22,8 @@
  * @property {boolean|null} lit - `null` when no source states it
  * @property {string|null} notes
  * @property {string|null} overlapNote
+ * @property {string|null} effectiveFrom - inclusive `YYYY-MM-DD`, or `null` for "always"
+ * @property {string|null} effectiveTo - inclusive `YYYY-MM-DD`, or `null` for "always"
  */
 
 /**
@@ -87,6 +89,8 @@
  * @property {string[]} cells - atomic leaf ids under this surface (self when a leaf)
  * @property {string[]} lineage - self plus every ancestor, nearest first
  * @property {number} depth - 0 for a root surface
+ * @property {string|null} effectiveFrom - inclusive `YYYY-MM-DD`, or `null` for "always"
+ * @property {string|null} effectiveTo - inclusive `YYYY-MM-DD`, or `null` for "always"
  */
 
 /**
@@ -149,6 +153,10 @@
  * @property {number} overlapPairsConsulted
  * @property {number} equipmentWindowsConsulted
  * @property {number} bookingPairsCompared
+ * @property {number|null} datedNodeCount - nodes carrying an effective window;
+ *   the universe a lifecycle check had to judge. `null` means NOBODY COUNTED --
+ *   only the lifecycle check does. A number, including 0, means it was counted
+ * @property {number} lifecycleNodesJudged - how many of them it actually judged
  */
 
 /**
@@ -222,6 +230,8 @@
  * @property {number} overlapPairCount
  * @property {number} equipmentWindowCount
  * @property {number} formatEquipmentCount
+ * @property {number} datedNodeCount - venues plus surfaces carrying an
+ *   effective window; zero on today's corpus
  */
 
 export {};

@@ -21,7 +21,10 @@
     "test:e2e:ui": "bddgen && playwright test --ui",
     "test:e2e:codegen": "playwright codegen http://localhost:5173",
     "test:db": "supabase test db",
-    "test:db:once": "supabase test db supabase/tests/_fixtures.sql"
+    "test:db:once": "supabase test db supabase/tests/_fixtures.sql",
+    "test:db:local": "bash scripts/dbharness/run.sh",
+    "test:db:local:prove": "bash scripts/dbharness/prove.sh",
+    "test:db:local:prove:mock": "node scripts/dbharness/prove-mock.mjs"
   },
   "directories": {
     "doc": "docs"

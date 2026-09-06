@@ -522,6 +522,7 @@ const initialMockData = {
   field_availability_profiles: [],
   field_availability_profile_formats: [],
   field_blackout_windows: [],
+  field_blackouts: [],
   field_equipment_requirements: [],
   field_availability_scenarios: [],
   field_availability_scenario_members: [],
@@ -677,6 +678,29 @@ const markMockDeleted = (db, table, keys) => {
   db.__deleted__[table] = Array.from(new Set([...existing, ...keys.map(String)]));
 };
 
+/**
+ * `public.fields_retirement_deactivates`, the BEFORE INSERT OR UPDATE trigger.
+ *
+ * **A trigger fires on every write, and this only fired inside the RPC block.**
+ * `from('fields').insert()` and `.update()` bypassed it entirely, so a row
+ * written directly could sit `active = true` with a retirement already in the
+ * past -- a state the database makes unreachable. The shared scenario table
+ * seeds its `before` states through `.insert()`, so a case like
+ * `{active: true, effectiveTo: -1}` landed as one thing in Postgres and another
+ * in the mock, and the two runners were quietly testing different scenarios.
+ *
+ * One producer at module scope, called from every write path including the
+ * RPCs, rather than a copy per call site.
+ *
+ * @param {Record<string, any>} row - mutated in place, as a BEFORE trigger does
+ * @returns {Record<string, any>} `row`
+ */
+const applyFieldRetirementTrigger = (row) => {
+  const today = new Date().toISOString().slice(0, 10);
+  if (row && row.effective_to && String(row.effective_to) < today) row.active = false;
+  return row;
+};
+
 const saveDB = (db) => {
   if (typeof window !== 'undefined') {
     window.__MOCK_DB__ = db;
@@ -720,9 +744,76 @@ if (typeof window !== 'undefined') {
   window.__MOCK_DB__ = getDB();
 }
 
+/**
+ * `public.field_closures`, derived the way the SQL view derives it.
+ *
+ * **Without this, PR 3 has no way to obey the single-reader rule in the mock.**
+ * The view is the only sanctioned answer to "is this ground closed on this
+ * date", and a mock with no counterpart forces the UI either to query the two
+ * tables directly -- reintroducing the two-answers defect the view exists to
+ * remove -- or to ship a view nothing exercises.
+ *
+ * The column split is the SQL's, deliberately: `closes_*` is SCOPE, and
+ * `field_location_id` is the site the closed field sits on, which is a
+ * different fact. They were one column once and a location filter closed every
+ * other pitch on the site.
+ *
+ * @param {Object} db
+ * @returns {Array<Object>}
+ */
+const deriveFieldClosures = (db) => {
+  const fields = db.fields || [];
+  const profiles = db.field_availability_profiles || [];
+  const fieldById = new Map(fields.map((f) => [String(f.id), f]));
+
+  const admin = (db.field_blackouts || []).map((b) => ({
+    id: b.id,
+    organization_id: b.organization_id,
+    closes_location_id: b.location_id ?? null,
+    closes_field_id: b.field_id ?? null,
+    field_location_id: b.field_id ? (fieldById.get(String(b.field_id))?.location_id ?? null) : null,
+    blackout_from: b.blackout_from,
+    blackout_until: b.blackout_until,
+    start_minutes: b.start_minutes ?? null,
+    end_minutes: b.end_minutes ?? null,
+    reason: b.reason ?? null,
+    note: b.note ?? null,
+    source_reason_text: null,
+    source: 'field_blackouts',
+  }));
+
+  const imported = (db.field_blackout_windows || []).flatMap((w) => {
+    const profile = profiles.find((p) => String(p.id) === String(w.profile_id));
+    if (!profile) return [];
+    const field = profile.field_id ? fieldById.get(String(profile.field_id)) : undefined;
+    return [
+      {
+        id: w.id,
+        organization_id: w.organization_id,
+        // NULL, not the field's site: an import window closes its profile's
+        // ground and is not site-scoped.
+        closes_location_id: null,
+        closes_field_id: profile.field_id ?? null,
+        field_location_id: field?.location_id ?? null,
+        blackout_from: w.blackout_from,
+        blackout_until: w.blackout_until,
+        start_minutes: null,
+        end_minutes: null,
+        // No structured reason on this arm; its own words are their own column.
+        reason: null,
+        note: null,
+        source_reason_text: w.reason ?? null,
+        source: 'field_blackout_windows',
+      },
+    ];
+  });
+
+  return [...admin, ...imported];
+};
+
 export const getMockData = (table, col, val) => {
   const db = getDB();
-  let results = db[table] || [];
+  let results = table === 'field_closures' ? deriveFieldClosures(db) : db[table] || [];
 
   if (col && val) {
     results = results.filter((item) => {
@@ -1158,7 +1249,9 @@ export const mockSupabase = {
               organization_id: r.organization_id || 'org-1',
             });
           }
-          return { id, created_at: new Date().toISOString(), ...r };
+          const built = { id, created_at: new Date().toISOString(), ...r };
+          if (table === 'fields') applyFieldRetirementTrigger(built);
+          return built;
         });
         db[table] = [...(db[table] || []), ...newRecords];
         saveDB(db);
@@ -1205,7 +1298,9 @@ export const mockSupabase = {
           const oldRecord = idx >= 0 ? { ...existing[idx] } : null;
           if (idx >= 0) {
             existing[idx] = { ...existing[idx], ...rec };
+            if (table === 'fields') applyFieldRetirementTrigger(existing[idx]);
           } else {
+            if (table === 'fields') applyFieldRetirementTrigger(rec);
             existing.push(rec);
           }
 
@@ -1275,6 +1370,7 @@ export const mockSupabase = {
               db[table] = db[table].map((item) => {
                 if (String(item[col]) === String(val)) {
                   updatedItem = { ...item, ...updates };
+                  if (table === 'fields') applyFieldRetirementTrigger(updatedItem);
 
                   if (table === 'games' && updates.score_home !== undefined) {
                     db.view_league_standings = db.view_league_standings || [];
@@ -1933,6 +2029,10 @@ export const mockSupabase = {
         'admin_create_field',
         'admin_update_field',
         'admin_delete_field',
+        'admin_retire_field',
+        'admin_unretire_field',
+        'admin_create_field_blackout',
+        'admin_delete_field_blackout',
       ].includes(name)
     ) {
       const p = params || {};
@@ -1949,6 +2049,41 @@ export const mockSupabase = {
       if (!['admin', 'tenant_admin'].includes(String(member?.role || ''))) {
         return { data: null, error: { message: 'Admin role is required' } };
       }
+
+      // **The retirement trigger, mirrored.** Without this an ordinary field
+      // edit un-retires ground in the mock while the real database silently
+      // refuses -- and PR 3's UI would be built against the fiction.
+      const todayIso = () => new Date().toISOString().slice(0, 10);
+
+      // `public.field_is_live_on(p_effective_to)` with the default `p_on`.
+      // Inclusive on the end date; NULL means unbounded and therefore live.
+      const fieldIsLiveOn = (effectiveTo) =>
+        effectiveTo === null || effectiveTo === undefined || String(effectiveTo) >= todayIso();
+
+      // Delegates to the module-scope producer rather than reimplementing it;
+      // two copies of a trigger is how one write path came to have it and the
+      // others did not.
+      const applyRetirementTrigger = applyFieldRetirementTrigger;
+
+      // **`upper()` on a daterange, mirrored.** PostgreSQL normalizes a
+      // discrete range to `[lower, upper)`, so `upper('[a,b]')` is b + 1 and
+      // `upper('[a,b)')` is b. Both spellings appear in this repo's fixtures,
+      // and reading the closing literal as "the last day covered" would judge
+      // an inclusive range one day short -- an assignment on the retirement
+      // date itself would be reported unaffected. Returns null when there is
+      // no upper bound at all, which is what `upper_inf` is true for.
+      const rangeUpperBound = (range) => {
+        const text = String(range || '');
+        const match = /^[[(]([^,]*),([^,]*)([\])])$/.exec(text);
+        if (match === null) return null;
+        const end = match[2].trim();
+        if (end === '') return null;
+        if (match[3] === ')') return end;
+        const next = new Date(`${end}T00:00:00Z`);
+        if (Number.isNaN(next.getTime())) return null;
+        next.setUTCDate(next.getUTCDate() + 1);
+        return next.toISOString().slice(0, 10);
+      };
 
       const audit = (resourceType, resourceId, operation, payload) => {
         db.audit_log = db.audit_log || [];
@@ -1990,7 +2125,15 @@ export const mockSupabase = {
           String(item.id) === String(p.p_location_id) &&
           String(item.organization_id) === String(orgId)
       );
-      if (name !== 'admin_delete_field' && !location) {
+      // **Only the RPCs that take a location are held to one.** This guard used
+      // to be "every name in the block except admin_delete_field", which was
+      // correct while the block held four names that all carried a
+      // p_location_id. The 8.4 lifecycle RPCs do not: a retirement names a
+      // field, and a blackout may be scoped to a field instead. Naming the
+      // RPCs that require a location is the reading that stays true as the
+      // block grows.
+      const REQUIRES_LOCATION = ['admin_create_field', 'admin_update_field'];
+      if (REQUIRES_LOCATION.includes(name) && !location) {
         return { data: null, error: { message: 'Location is outside organization' } };
       }
 
@@ -2022,12 +2165,353 @@ export const mockSupabase = {
         return { data: field, error: null };
       }
 
+      if (name === 'admin_create_field_blackout') {
+        // Mirrors the RPC's scope rule: exactly one of location or field. The
+        // mock enforces it because the E2E suite is the only place this path
+        // runs, so a mock that accepted both would let a defect the database
+        // would refuse pass every test.
+        const scopeCount = [p.p_location_id, p.p_field_id].filter(
+          (value) => value !== null && value !== undefined
+        ).length;
+        if (scopeCount !== 1) {
+          return {
+            data: null,
+            error: {
+              code: '22023',
+              message: 'exactly one of p_location_id and p_field_id must be set',
+            },
+          };
+        }
+        if (
+          p.p_location_id &&
+          !(db.locations || []).some(
+            (item) =>
+              String(item.id) === String(p.p_location_id) &&
+              String(item.organization_id) === String(orgId)
+          )
+        ) {
+          return {
+            data: null,
+            error: { code: 'P0002', message: 'Location not found in organization' },
+          };
+        }
+        if (
+          p.p_field_id &&
+          !(db.fields || []).some(
+            (item) =>
+              String(item.id) === String(p.p_field_id) &&
+              String(item.organization_id) === String(orgId)
+          )
+        ) {
+          return {
+            data: null,
+            error: { code: 'P0002', message: 'Field not found in organization' },
+          };
+        }
+        // **The table's constraints, mirrored -- all of them.** The E2E suite is
+        // the only place this path runs, and the mock is the contract PR 3 is
+        // written against, so a mock looser than the database is a defect
+        // generator for the next PR. The first draft mirrored three CHECKs and
+        // missed the reason enum and the NOT NULL dates.
+        if (!p.p_blackout_from || !p.p_blackout_until) {
+          return {
+            data: null,
+            error: { code: '22023', message: 'blackout_from and blackout_until are required' },
+          };
+        }
+        const REASONS = ['maintenance', 'weather', 'event', 'permit', 'closed', 'other'];
+        if (p.p_reason !== null && p.p_reason !== undefined && !REASONS.includes(p.p_reason)) {
+          return {
+            data: null,
+            error: { code: '23514', message: `reason must be one of ${REASONS.join(', ')}` },
+          };
+        }
+        if (String(p.p_blackout_until) < String(p.p_blackout_from)) {
+          return {
+            data: null,
+            error: { code: '23514', message: 'blackout_until must not precede blackout_from' },
+          };
+        }
+        const timeCount = [p.p_start_minutes, p.p_end_minutes].filter(
+          (value) => value !== null && value !== undefined
+        ).length;
+        if (timeCount === 1) {
+          return {
+            data: null,
+            error: { code: '23514', message: 'start_minutes and end_minutes are both-or-neither' },
+          };
+        }
+        if (
+          timeCount === 2 &&
+          !(
+            p.p_start_minutes >= 0 &&
+            p.p_start_minutes <= 1440 &&
+            p.p_end_minutes >= 0 &&
+            p.p_end_minutes <= 1440 &&
+            p.p_end_minutes > p.p_start_minutes
+          )
+        ) {
+          return {
+            data: null,
+            error: { code: '23514', message: 'blackout times must be within 0..1440 and ordered' },
+          };
+        }
+        const hasTimes =
+          p.p_start_minutes !== null &&
+          p.p_start_minutes !== undefined &&
+          p.p_end_minutes !== null &&
+          p.p_end_minutes !== undefined;
+        const blackout = {
+          id: mockId(),
+          organization_id: orgId,
+          location_id: p.p_location_id ?? null,
+          field_id: p.p_field_id ?? null,
+          blackout_from: p.p_blackout_from,
+          blackout_until: p.p_blackout_until,
+          start_minutes: hasTimes ? p.p_start_minutes : null,
+          end_minutes: hasTimes ? p.p_end_minutes : null,
+          reason: p.p_reason || 'other',
+          note: p.p_note ?? null,
+          // The migration's column, which the mock omitted -- a row shape the
+          // database produces and the mock did not.
+          created_by: session?.user?.id ?? null,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+        db.field_blackouts = db.field_blackouts || [];
+        // Before/after phases, matching the RPC. The mock recorded a single
+        // undifferentiated entry, so nothing exercised the audit shape the
+        // migration is explicit about.
+        audit('field_blackout', null, 'created', {
+          operation: 'admin_create_field_blackout',
+          phase: 'before',
+          requested: {
+            location_id: p.p_location_id ?? null,
+            field_id: p.p_field_id ?? null,
+            blackout_from: p.p_blackout_from,
+            blackout_until: p.p_blackout_until,
+          },
+        });
+        db.field_blackouts.push(blackout);
+        audit('field_blackout', blackout.id, 'created', {
+          operation: 'admin_create_field_blackout',
+          phase: 'after',
+          current: blackout,
+        });
+        saveDB(db);
+        return { data: blackout, error: null };
+      }
+
+      if (name === 'admin_delete_field_blackout') {
+        const existing = (db.field_blackouts || []).find(
+          (item) =>
+            String(item.id) === String(p.p_blackout_id) &&
+            String(item.organization_id) === String(orgId)
+        );
+        if (!existing) {
+          return { data: null, error: { message: 'Blackout not found in organization' } };
+        }
+        db.field_blackouts = (db.field_blackouts || []).filter(
+          (item) => String(item.id) !== String(p.p_blackout_id)
+        );
+        audit('field_blackout', existing.id, 'deleted', {
+          operation: 'admin_delete_field_blackout',
+          phase: 'before',
+          previous: existing,
+        });
+        audit('field_blackout', existing.id, 'deleted', {
+          operation: 'admin_delete_field_blackout',
+          phase: 'after',
+          deleted: true,
+        });
+        saveDB(db);
+        return { data: { deleted: true, blackout: existing }, error: null };
+      }
+
       const field = (db.fields || []).find(
         (item) =>
           String(item.id) === String(p.p_field_id) && String(item.organization_id) === String(orgId)
       );
       if (!field) {
-        return { data: null, error: { message: 'Field not found in organization' } };
+        return {
+          data: null,
+          error: { code: 'P0002', message: 'Field not found in organization' },
+        };
+      }
+
+      if (name === 'admin_retire_field') {
+        if (!p.p_effective_to) {
+          return { data: null, error: { message: 'p_effective_to is required' } };
+        }
+        // **The refusal is here, not in the UI.** A slot with no start date
+        // cannot be judged against the retirement date, so it counts as
+        // affected rather than being dropped -- the same reading the SQL takes.
+        // Mirrors the SQL: a game slot's date is `slot_date` falling back to
+        // `start`, because the import path writes slot_date and never start.
+        // Practice slots are enumerated too -- a retirement strands them
+        // exactly as it strands games.
+        const gameDate = (slot) =>
+          slot.slot_date || (slot.start ? String(slot.start).slice(0, 10) : null);
+        const affected = [
+          ...(db.game_slots || [])
+            .filter(
+              (slot) =>
+                String(slot.organization_id) === String(orgId) &&
+                String(slot.field_id) === String(p.p_field_id) &&
+                (!gameDate(slot) || gameDate(slot) > String(p.p_effective_to))
+            )
+            .map((slot) => ({
+              kind: 'game_slot',
+              id: slot.id,
+              on_date: gameDate(slot),
+              week_index: slot.week_index ?? null,
+              undated: !gameDate(slot),
+              unbounded: false,
+            })),
+          ...(db.practice_slots || [])
+            .filter(
+              (slot) =>
+                String(slot.organization_id) === String(orgId) &&
+                String(slot.field_id) === String(p.p_field_id) &&
+                (!slot.valid_until || String(slot.valid_until) > String(p.p_effective_to))
+            )
+            .map((slot) => ({
+              kind: 'practice_slot',
+              id: slot.id,
+              on_date: slot.valid_until ?? null,
+              week_index: null,
+              // Unbounded, therefore CERTAINLY stranded -- not unjudged.
+              undated: false,
+              unbounded: !slot.valid_until,
+            })),
+          // **The assignment tables, mirroring the SQL's four-way union.**
+          // The mock enumerated the two SLOT tables only, so the E2E client
+          // reported `affected_count: 0` for a field with every game assigned
+          // to it -- the migration's own header calls that out as gutting the
+          // acceptance criterion, and the mock reproduced the defect the SQL
+          // had already been fixed for. A mock that disagrees with the
+          // database about who is affected is a second answer to a question
+          // that is supposed to have one.
+          ...(db.game_assignments || [])
+            .filter(
+              (row) =>
+                String(row.organization_id) === String(orgId) &&
+                String(row.field_id) === String(p.p_field_id) &&
+                (!row.start || String(row.start).slice(0, 10) > String(p.p_effective_to))
+            )
+            .map((row) => ({
+              kind: 'game_assignment',
+              id: row.id,
+              on_date: row.start ? String(row.start).slice(0, 10) : null,
+              week_index: row.week_index ?? null,
+              undated: !row.start,
+              unbounded: false,
+            })),
+          ...(db.practice_assignments || [])
+            .filter((row) => {
+              if (String(row.organization_id) !== String(orgId)) return false;
+              if (String(row.field_id) !== String(p.p_field_id)) return false;
+              const upper = rangeUpperBound(row.effective_date_range);
+              // `null` upper covers both "no range at all" and an unbounded
+              // one; the SQL treats both as running forever.
+              return upper === null || upper > String(p.p_effective_to);
+            })
+            .map((row) => {
+              const upper = rangeUpperBound(row.effective_date_range);
+              return {
+                kind: 'practice_assignment',
+                id: row.id,
+                on_date: upper,
+                week_index: null,
+                undated: false,
+                unbounded: upper === null,
+              };
+            }),
+        ];
+        if (affected.length > 0 && !p.p_confirm) {
+          audit('field', field.id, 'updated', {
+            operation: 'admin_retire_field',
+            phase: 'refused',
+            affected_count: affected.length,
+            previous: { ...field },
+          });
+          saveDB(db);
+          return {
+            data: {
+              retired: false,
+              reason: 'bookings_after_effective_to',
+              affected_count: affected.length,
+              affected,
+            },
+            error: null,
+          };
+        }
+        const previous = { ...field };
+        audit('field', field.id, 'updated', {
+          operation: 'admin_retire_field',
+          phase: 'before',
+          effective_to: p.p_effective_to,
+          confirmed: Boolean(p.p_confirm),
+          affected_count: affected.length,
+          affected,
+          before: previous,
+        });
+        // **A retirement can only ever REMOVE activity. It never grants it.**
+        // `v_before.active AND field_is_live_on(p_effective_to)`, exactly as
+        // the SQL writes it. This said `active: true` unconditionally, so
+        // retiring an ALREADY-DEACTIVATED field with a future date handed it
+        // back to the scheduler -- while `docs/sql/20260906000000_smoke.sql`
+        // asserted the opposite in Postgres. The mock was the arm that did not
+        // get round 2's fix.
+        Object.assign(field, {
+          effective_to: p.p_effective_to,
+          active: previous.active !== false && fieldIsLiveOn(p.p_effective_to),
+          updated_at: new Date().toISOString(),
+        });
+        applyRetirementTrigger(field);
+        audit('field', field.id, 'updated', {
+          operation: 'admin_retire_field',
+          phase: 'after',
+          effective_to: p.p_effective_to,
+          confirmed: Boolean(p.p_confirm),
+          affected_count: affected.length,
+          previous,
+          current: field,
+        });
+        saveDB(db);
+        return {
+          data: { retired: true, affected_count: affected.length, field },
+          error: null,
+        };
+      }
+
+      if (name === 'admin_unretire_field') {
+        const previous = { ...field };
+        audit('field', field.id, 'updated', {
+          operation: 'admin_unretire_field',
+          phase: 'before',
+          before: previous,
+        });
+        // **Unretiring clears the date and leaves `active` exactly as it was.**
+        // `active = v_before.active` in the SQL. This wrote `active: true`, so
+        // unretiring an ORDINARILY deactivated field -- one nobody ever retired
+        // -- silently reactivated it. Worse than a divergence: the suite
+        // asserted `after.active === true` right after an unretire, so a
+        // passing test certified the bug rather than catching it.
+        Object.assign(field, {
+          effective_to: null,
+          active: previous.active !== false,
+          updated_at: new Date().toISOString(),
+        });
+        applyRetirementTrigger(field);
+        audit('field', field.id, 'updated', {
+          operation: 'admin_unretire_field',
+          phase: 'after',
+          previous,
+          current: field,
+        });
+        saveDB(db);
+        return { data: { retired: false, field }, error: null };
       }
 
       if (name === 'admin_update_field') {
@@ -2048,6 +2532,7 @@ export const mockSupabase = {
           active: p.p_active !== false,
           updated_at: new Date().toISOString(),
         });
+        applyRetirementTrigger(field);
         syncMockFieldSubunits(db, field, field.supports_halves);
         audit('field', field.id, 'updated', { previous, current: field });
         saveDB(db);
@@ -2055,6 +2540,13 @@ export const mockSupabase = {
       }
 
       syncMockFieldSubunits(db, field, false);
+      // `field_blackouts.field_id` is ON DELETE CASCADE, so deleting a field
+      // deletes its blackouts in Postgres. Without this the mock leaves orphans
+      // pointing at nothing and an E2E scenario sees closures production would
+      // not have.
+      db.field_blackouts = (db.field_blackouts || []).filter(
+        (item) => String(item.field_id) !== String(p.p_field_id)
+      );
       db.fields = (db.fields || []).filter((item) => String(item.id) !== String(p.p_field_id));
       audit('field', field.id, 'deleted', { previous: field });
       saveDB(db);

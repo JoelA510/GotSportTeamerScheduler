@@ -1,8 +1,8 @@
 /**
  * Repo-wide reachability audit for every frozen reason-code table in
  * `packages/core/src` — the generalisation of the per-module audit
- * `tests/attribution.test.js` already carries. 20 vocabularies, 465 codes, of
- * which 454 are shown to be producible and 11 are named as holes.
+ * `tests/attribution.test.js` already carries. 20 vocabularies, 467 codes, of
+ * which 456 are shown to be producible and 11 are named as holes.
  *
  * **The defect this exists to catch.** Four times now, in four unrelated
  * modules, a reason code has been declared, given a severity, documented, and
@@ -129,6 +129,7 @@ import {
   FACILITY_REASON,
   buildFacilityGraph,
   buildFacilityGraphFromSeason2026,
+  checkFacilityLifecycle,
   buildFieldAliasMap,
   buildSeason2026VenueComplexMap,
   buildVenueComplexMap,
@@ -712,6 +713,35 @@ harvest(
   checkSizeEligibility(rig, { surfaceId: 'rig/bare', format: '9v9' })
 );
 harvest('checkLining(undeclared)', checkLining(rig, { surfaceId: 'rig/half', format: '9v9' }));
+
+/* -- facility lifecycle ---------------------------------------------------- */
+// **A constructed graph, because the corpus cannot reach these.** Nothing in
+// season-2026 carries an effective window (`tests/facilityLifecycle.test.js`
+// asserts `datedNodeCount === 0` against the real graph), so both codes are
+// driven from a graph built here. That is the honest exercise, not a shortcut:
+// the finding exists for estates that change shape, and this repo does not
+// have one yet.
+const datedRig = buildFacilityGraph({
+  venues: [{ id: 'dated/v', name: 'Dated Venue' }],
+  surfaces: [
+    {
+      id: 'dated/s',
+      venueId: 'dated/v',
+      name: 'Retiring Pitch',
+      sizes: ['9v9'],
+      lined: ['9v9'],
+      effectiveTo: '2026-06-30',
+    },
+  ],
+});
+harvest(
+  'checkFacilityLifecycle(no asOf, dated graph)',
+  checkFacilityLifecycle(datedRig, { surfaceId: 'dated/s' })
+);
+harvest(
+  'checkFacilityLifecycle(asOf after the window)',
+  checkFacilityLifecycle(datedRig, { surfaceId: 'dated/s', asOf: '2026-09-01' })
+);
 harvest(
   'checkEquipment(assumed available)',
   checkEquipment(rig, { surfaceId: 'rig/half', format: '9v9', date: '2026-08-15' })

@@ -114,3 +114,5 @@ export {
   season2026PracticeSurfaceId,
   toSeason2026AliasRings,
 } from './adapters/season2026PracticeGeometry.js';
+
+export { checkFacilityLifecycle, isDatedNode, isLiveOn, retiredOn } from './lifecycle.js';

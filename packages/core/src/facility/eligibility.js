@@ -25,6 +25,7 @@ import {
   makeFinding,
 } from './reasonCodes.js';
 import { FacilityBookingSchema } from './schemas.js';
+import { checkFacilityLifecycle } from './lifecycle.js';
 
 /**
  * Ordering of the season's formats by how much ground they need.
@@ -397,6 +398,13 @@ export function checkFieldEligibility(graph, { surfaceId, format, date = null },
   const findings = [];
 
   if (format === null || format === undefined) {
+    // Still a lifecycle question: "is this ground part of the estate" does not
+    // depend on a format, and returning early without asking would make the
+    // count silently absent on exactly the path a caller uses to ask about a
+    // surface generally.
+    const bare = checkFacilityLifecycle(graph, { asOf: date, surfaceId });
+    findings.push(...bare.findings);
+    mergeMeta(meta, bare.meta);
     meta.surfacesConsidered = 1;
     return { status: deriveFacilityStatus(findings), findings, meta };
   }
@@ -414,6 +422,18 @@ export function checkFieldEligibility(graph, { surfaceId, format, date = null },
     findings.push(...equipment.findings);
     mergeMeta(meta, equipment.meta);
   }
+
+  // **The lifecycle axis, asked on every path including the dateless one.**
+  //
+  // `date` is optional here and required on a booking, which is why this is the
+  // entry point that can be underspecified at all: a caller asking "does this
+  // pitch fit 9v9" with no date is asking about an estate that may have more
+  // than one shape. `checkFacilityLifecycle()` publishes `datedNodeCount`
+  // either way, so a report cannot confuse "nothing was dated" with "nothing
+  // was checked".
+  const lifecycle = checkFacilityLifecycle(graph, { asOf: date, surfaceId });
+  findings.push(...lifecycle.findings);
+  mergeMeta(meta, lifecycle.meta);
 
   // The three sub-checks each counted the same surface.
   meta.surfacesConsidered = 1;

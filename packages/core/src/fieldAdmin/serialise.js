@@ -24,6 +24,29 @@
  * would destroy the evidence. So the export writes the **domain model's own**
  * CSV, and the raw cells travel beside the readings rather than through them.
  *
+ * ## Why this file **throws** where the projectors carry a row
+ *
+ * A reader here refuses the whole document on an unrecognised token -
+ * `readCell` on a non-JSON structured cell or a non-`true`/`false` boolean, a
+ * duplicate record id, a row whose cell count does not match the header. The
+ * projectors in `projectors/` do the opposite: an undeclared `venue | facility`
+ * pair, an undeclared weekly interpretation and an undeclared `fields` cell
+ * each become an unresolvable row carrying its reason, because losing four
+ * unrelated change sets to one unreadable cell is worse than reporting it.
+ *
+ * **The two are not the same case, and the difference is who wrote the value.**
+ * A projector reads a *source cell* - a working sheet a club filled in by hand,
+ * where an unmodelled value is ordinary news and the right answer is to carry
+ * the row unapplied. This file reads *a document this module wrote*. An
+ * unrecognised token here means the file is corrupt or came from another
+ * version, which is a producer bug, and degrading it silently would invent a
+ * record nobody wrote from bytes nobody can explain.
+ *
+ * So do not "fix" this by pattern-matching the projectors: they belong to
+ * different families. Version skew belongs at {@link FIELD_REGISTRY_DOCUMENT_VERSION}, where a
+ * refusal can name the version it found and the version it wanted - not at a
+ * per-value reader, which knows only that one cell made no sense.
+ *
  * ## What makes it byte-stable
  *
  * Five rules, each one of them load-bearing and none of them a default:

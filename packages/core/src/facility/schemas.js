@@ -35,6 +35,22 @@ export const FacilityVenueSchema = z
     notes: z.string().nullable().default(null),
     /** The site's own prose about its overlap geometry, carried for audit. */
     overlapNote: z.string().nullable().default(null),
+    /**
+     * **Effective dating: when this node is part of the estate.**
+     *
+     * `null` on both sides is "always", and it is the default, so every graph
+     * built before 8.4 keeps its exact meaning. A node with either side set is
+     * a *dated* node, and `lifecycle.js` counts them: a query that names no
+     * `asOf` against a graph holding dated nodes is answering about an estate
+     * that has more than one shape, which is what
+     * `FACILITY_LIFECYCLE_UNJUDGED` says.
+     *
+     * Both bounds are **inclusive**, matching `blackout_from`/`blackout_until`
+     * and `available_from`/`available_until` on the tables this mirrors, so a
+     * reader does not have to remember which of three conventions applies.
+     */
+    effectiveFrom: IsoDateSchema.nullable().default(null),
+    effectiveTo: IsoDateSchema.nullable().default(null),
   })
   .strict();
 
@@ -57,6 +73,9 @@ export const FacilitySurfaceInputSchema = z
      */
     bookable: z.boolean().default(true),
     note: z.string().nullable().default(null),
+    /** @see {@link FacilityVenueSchema} `effectiveFrom` -- same contract, same defaults. */
+    effectiveFrom: IsoDateSchema.nullable().default(null),
+    effectiveTo: IsoDateSchema.nullable().default(null),
   })
   .strict();
 

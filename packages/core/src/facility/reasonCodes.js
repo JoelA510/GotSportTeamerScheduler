@@ -60,6 +60,24 @@ export const FACILITY_REASON = Object.freeze({
   /** The surface exists but is flagged as not directly bookable. */
   SURFACE_NOT_BOOKABLE: 'SURFACE_NOT_BOOKABLE',
 
+  /* -- lifecycle -------------------------------------------------------- */
+  /**
+   * **The graph holds dated nodes and the caller named no date.**
+   *
+   * Not "this ground is retired" -- that is a fact, and `FACILITY_NODE_RETIRED`
+   * states it. This says the *question* was underspecified: the estate has more
+   * than one shape over time and the caller asked about none of them, so the
+   * answer describes an estate that may not exist on the date they care about.
+   *
+   * Fires only when `stats.datedNodeCount > 0`, because on a graph where every
+   * node is undated there is exactly one estate and omitting `asOf` costs
+   * nothing. The count is published either way, so a report reading zero says
+   * the universe was empty rather than that the check passed.
+   */
+  LIFECYCLE_UNJUDGED: 'FACILITY_LIFECYCLE_UNJUDGED',
+  /** The node exists in the graph and its effective window excludes `asOf`. */
+  NODE_RETIRED: 'FACILITY_NODE_RETIRED',
+
   /* -- occupancy -------------------------------------------------------- */
   /** Both bookings want the identical surface. */
   OCCUPIED_SAME_SURFACE: 'OCCUPIED_SAME_SURFACE',
@@ -179,6 +197,12 @@ export const FACILITY_REASON = Object.freeze({
 export const FACILITY_REASON_SEVERITY = Object.freeze({
   [FACILITY_REASON.SURFACE_UNKNOWN]: FACILITY_SEVERITY.BLOCKING,
   [FACILITY_REASON.SURFACE_NOT_BOOKABLE]: FACILITY_SEVERITY.BLOCKING,
+
+  // Underspecified question, not a refusal: the caller gets an answer and a
+  // note that it is about an estate they did not pin down.
+  [FACILITY_REASON.LIFECYCLE_UNJUDGED]: FACILITY_SEVERITY.COMPROMISE,
+  // Booking ground that does not exist on the day is not a compromise.
+  [FACILITY_REASON.NODE_RETIRED]: FACILITY_SEVERITY.BLOCKING,
 
   [FACILITY_REASON.OCCUPIED_SAME_SURFACE]: FACILITY_SEVERITY.BLOCKING,
   [FACILITY_REASON.OCCUPIED_PARENT_CHILD]: FACILITY_SEVERITY.BLOCKING,
