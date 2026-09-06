@@ -34,7 +34,24 @@
     "The JS runner used to accept ANY error while the SQL runner restricted the",
     "class, so five blackout cases could have stopped exercising their constraint",
     "and stayed green. The mock now carries `error.code`, which is what PostgREST",
-    "puts there, so one contract is expressible for both."
+    "puts there, so one contract is expressible for both.",
+    "",
+    "DELETE SCENARIOS (LIVE-1). `admin_delete_field` had no booking guard at all;",
+    "it now carries the one `admin_retire_field` already had. Its cases add two",
+    "keys the retirement cases do not need: `bookings`, the kinds to seed on the",
+    "field before the call, and `expect.deleted`/`expect.exists`, because a",
+    "deletion's outcome is whether the row survives rather than what its columns",
+    "say. `expect.auditPhases` is stated on every accepted field case -- a refused",
+    "delete records `refused` where an accepted one records `before` and `after`,",
+    "and hard-coding that in each runner is how the two came to disagree before.",
+    "",
+    "What these cases do NOT cover, stated rather than left implied: what happens",
+    "to each booking ROW after a confirmed delete -- the two CASCADE kinds",
+    "destroyed and the two SET NULL kinds kept and unassigned. That is schema",
+    "behaviour rather than RPC outcome, and it is pinned in",
+    "docs/sql/20260907000000_smoke.sql, supabase/tests/field_delete_booking_guard.sql",
+    "and tests/fieldDeleteGuard.test.js. A refusal writing NOTHING is covered here,",
+    "on both runners, because that is the guard's whole promise."
   ],
   "version": 1,
   "fieldScenarios": [
@@ -53,7 +70,8 @@
       "expect": {
         "ok": true,
         "active": true,
-        "effectiveTo": 30
+        "effectiveTo": 30,
+        "auditPhases": ["after", "before"]
       }
     },
     {
@@ -71,7 +89,8 @@
       "expect": {
         "ok": true,
         "active": false,
-        "effectiveTo": -1
+        "effectiveTo": -1,
+        "auditPhases": ["after", "before"]
       }
     },
     {
@@ -89,7 +108,8 @@
       "expect": {
         "ok": true,
         "active": true,
-        "effectiveTo": 0
+        "effectiveTo": 0,
+        "auditPhases": ["after", "before"]
       }
     },
     {
@@ -107,7 +127,8 @@
       "expect": {
         "ok": true,
         "active": false,
-        "effectiveTo": 30
+        "effectiveTo": 30,
+        "auditPhases": ["after", "before"]
       }
     },
     {
@@ -125,7 +146,8 @@
       "expect": {
         "ok": true,
         "active": false,
-        "effectiveTo": -1
+        "effectiveTo": -1,
+        "auditPhases": ["after", "before"]
       }
     },
     {
@@ -143,7 +165,8 @@
       "expect": {
         "ok": true,
         "active": true,
-        "effectiveTo": 60
+        "effectiveTo": 60,
+        "auditPhases": ["after", "before"]
       }
     },
     {
@@ -158,7 +181,8 @@
       "expect": {
         "ok": true,
         "active": true,
-        "effectiveTo": null
+        "effectiveTo": null,
+        "auditPhases": ["after", "before"]
       }
     },
     {
@@ -173,7 +197,8 @@
       "expect": {
         "ok": true,
         "active": false,
-        "effectiveTo": null
+        "effectiveTo": null,
+        "auditPhases": ["after", "before"]
       }
     },
     {
@@ -188,7 +213,8 @@
       "expect": {
         "ok": true,
         "active": false,
-        "effectiveTo": null
+        "effectiveTo": null,
+        "auditPhases": ["after", "before"]
       }
     },
     {
@@ -203,7 +229,8 @@
       "expect": {
         "ok": true,
         "active": true,
-        "effectiveTo": null
+        "effectiveTo": null,
+        "auditPhases": ["after", "before"]
       }
     },
     {
@@ -217,6 +244,153 @@
       "args": {
         "effectiveTo": 30,
         "confirm": false,
+        "foreignOrg": true
+      },
+      "expect": {
+        "ok": false,
+        "sqlstate": "P0002"
+      }
+    },
+    {
+      "id": "delete-unbooked",
+      "why": "LIVE-1. Ground nothing is booked on deletes with no confirmation. Without this case the guard could be 'refuse everything', which satisfies every refusal case below and is not the contract -- admin_delete_field keeps existing because a genuine mistake still needs a delete.",
+      "rpc": "admin_delete_field",
+      "before": {
+        "active": true,
+        "effectiveTo": null
+      },
+      "bookings": [],
+      "args": {
+        "confirm": false
+      },
+      "expect": {
+        "ok": true,
+        "deleted": true,
+        "affectedCount": 0,
+        "exists": false,
+        "auditPhases": ["after", "before"]
+      }
+    },
+    {
+      "id": "delete-booked-game-slot-refused",
+      "why": "LIVE-1. game_slots.field_id is ON DELETE CASCADE, so the slot is destroyed with the field. One kind per case: an arm dropped from the RPC's four-way union fails the case for THAT table rather than being absorbed by the other three.",
+      "rpc": "admin_delete_field",
+      "before": {
+        "active": true,
+        "effectiveTo": null
+      },
+      "bookings": ["game_slot"],
+      "args": {
+        "confirm": false
+      },
+      "expect": {
+        "ok": true,
+        "deleted": false,
+        "reason": "bookings_exist",
+        "affectedCount": 1,
+        "dispositions": ["deleted"],
+        "exists": true,
+        "auditPhases": ["refused"]
+      }
+    },
+    {
+      "id": "delete-booked-game-assignment-refused",
+      "why": "LIVE-1. game_assignments.field_id is ON DELETE SET NULL, so a SCHEDULED GAME survives having silently lost its venue. The mock enumerated the two slot tables only in PR 2 and reported affected_count 0 for a field with every game assigned to it.",
+      "rpc": "admin_delete_field",
+      "before": {
+        "active": true,
+        "effectiveTo": null
+      },
+      "bookings": ["game_assignment"],
+      "args": {
+        "confirm": false
+      },
+      "expect": {
+        "ok": true,
+        "deleted": false,
+        "reason": "bookings_exist",
+        "affectedCount": 1,
+        "dispositions": ["unassigned"],
+        "exists": true,
+        "auditPhases": ["refused"]
+      }
+    },
+    {
+      "id": "delete-booked-practice-slot-refused",
+      "why": "LIVE-1. practice_slots.field_id is ON DELETE CASCADE.",
+      "rpc": "admin_delete_field",
+      "before": {
+        "active": true,
+        "effectiveTo": null
+      },
+      "bookings": ["practice_slot"],
+      "args": {
+        "confirm": false
+      },
+      "expect": {
+        "ok": true,
+        "deleted": false,
+        "reason": "bookings_exist",
+        "affectedCount": 1,
+        "dispositions": ["deleted"],
+        "exists": true,
+        "auditPhases": ["refused"]
+      }
+    },
+    {
+      "id": "delete-booked-practice-assignment-refused",
+      "why": "LIVE-1, the sharpest form. practice_assignments.field_id had NO foreign key at all, so a delete left the uuid DANGLING at a row that no longer exists -- worse than SET NULL, because nothing downstream could tell it from a live venue. 20260907000000 adds the constraint and this case is why.",
+      "rpc": "admin_delete_field",
+      "before": {
+        "active": true,
+        "effectiveTo": null
+      },
+      "bookings": ["practice_assignment"],
+      "args": {
+        "confirm": false
+      },
+      "expect": {
+        "ok": true,
+        "deleted": false,
+        "reason": "bookings_exist",
+        "affectedCount": 1,
+        "dispositions": ["unassigned"],
+        "exists": true,
+        "auditPhases": ["refused"]
+      }
+    },
+    {
+      "id": "delete-booked-all-four-confirmed",
+      "why": "One booking in each of the four tables that carry a field_id, and p_confirm true. The count must be 4: a union that lost an arm reports 3 here as well as passing the wrong single-kind case. Both disposition words must appear, because two of the four cascade and two are unassigned.",
+      "rpc": "admin_delete_field",
+      "before": {
+        "active": true,
+        "effectiveTo": null
+      },
+      "bookings": ["game_slot", "game_assignment", "practice_slot", "practice_assignment"],
+      "args": {
+        "confirm": true
+      },
+      "expect": {
+        "ok": true,
+        "deleted": true,
+        "affectedCount": 4,
+        "dispositions": ["deleted", "unassigned"],
+        "exists": false,
+        "auditPhases": ["after", "before"]
+      }
+    },
+    {
+      "id": "delete-field-of-another-org",
+      "why": "The org gate, on the delete arm as well as the retire arm. A SECURITY DEFINER RPC bypasses RLS, so this check is the only thing between an admin of one organisation and another's ground -- and a guard that refuses bookings while letting a stranger through would be worse than none.",
+      "rpc": "admin_delete_field",
+      "before": {
+        "active": true,
+        "effectiveTo": null
+      },
+      "bookings": [],
+      "args": {
+        "confirm": true,
         "foreignOrg": true
       },
       "expect": {
