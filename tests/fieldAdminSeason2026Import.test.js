@@ -42,6 +42,7 @@ import {
   importSeason2026Fields,
   isInventorySentinel,
   permitFacilityKey,
+  projectFieldConstraints,
 } from '@squadlogic/core/fieldAdmin/index.js';
 
 const season = loadSeason2026();
@@ -438,6 +439,67 @@ describe('season-2026 field import :: the constraint log becomes blackouts', () 
     expect(blackouts.meta.sourceRowsRead).toBe(13);
     expect(blackouts.buckets.added).toHaveLength(11);
     expect(blackouts.buckets.unresolvable).toHaveLength(2);
+  });
+
+  it('joins each constraint row to its own closure, not to the one beside it', () => {
+    // **A positional join guarded by a length check cannot see a reordering** -
+    // the counts still match when two rows swap, so the guard was derived from
+    // the property the break would leave intact. Both sides carry a distinct
+    // `id`, so the join uses it.
+    //
+    // **The control has to construct the break.** Reversing the constraint list
+    // alone proves nothing: the closure set is derived from that same list, so
+    // both sides move together and a positional join still lines up. The
+    // reordering has to be on *one* side, which is why `projectFieldConstraints`
+    // takes an injectable closure set.
+    const built = projectFieldConstraints(practice.fieldConstraints, graph, complexMap).closureSet;
+    const shuffled = {
+      ...built,
+      closures: [...built.closures].reverse(),
+    };
+    const { rows: joined } = projectFieldConstraints(practice.fieldConstraints, graph, complexMap, {
+      closureSet: shuffled,
+    });
+    for (const [index, constraint] of practice.fieldConstraints.entries()) {
+      // Each row is built from its own constraint's closure, whatever position
+      // that closure now occupies. Under a positional join every row but the
+      // middle one would carry someone else's venue.
+      expect({ index, rowIndex: joined[index].rowIndex }).toEqual({
+        index,
+        rowIndex: constraint.rowIndex,
+      });
+      expect({ index, venue: joined[index].raw.venue }).toEqual({
+        index,
+        venue: constraint.raw.venue,
+      });
+    }
+    // The interpretation each row reaches is unchanged by the shuffle.
+    const forwardRows = projectFieldConstraints(practice.fieldConstraints, graph, complexMap).rows;
+    expect(joined.map((row) => row.interpretation)).toEqual(
+      forwardRows.map((row) => row.interpretation)
+    );
+
+    // ... and the input order of the constraints themselves is carried through.
+    const reversed = [...practice.fieldConstraints].reverse();
+    const { rows } = projectFieldConstraints(reversed, graph, complexMap);
+    expect(rows).toHaveLength(reversed.length);
+    for (const [index, constraint] of reversed.entries()) {
+      // Each projected row carries the raw cells of the constraint it was
+      // built from - not of whatever sat at that position in the closure list.
+      expect({ index, venue: rows[index].raw.venue }).toEqual({
+        index,
+        venue: constraint.raw.venue,
+      });
+      expect({ index, rowIndex: rows[index].rowIndex }).toEqual({
+        index,
+        rowIndex: constraint.rowIndex,
+      });
+    }
+    // ... and the same rows resolve the same way regardless of input order.
+    const forward = projectFieldConstraints(practice.fieldConstraints, graph, complexMap).rows;
+    const byRowIndex = (list) =>
+      Object.fromEntries(list.map((entry) => [entry.rowIndex, entry.interpretation]));
+    expect(byRowIndex(rows)).toEqual(byRowIndex(forward));
   });
 
   it('refuses to make a blackout of the car park or the adjacency rule', () => {

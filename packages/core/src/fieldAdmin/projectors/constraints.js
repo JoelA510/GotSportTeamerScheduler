@@ -176,27 +176,50 @@ export function readClosureScope(closure) {
  * @param {ReadonlyArray<Object>} fieldConstraints - `practice.fieldConstraints` from the loader
  * @param {import('../../facility/types.js').FacilityGraph} graph
  * @param {import('../../facility/types.js').VenueComplexMap} complexMap
+ * @param {{ closureSet?: Object }} [options] - `closureSet` overrides the set
+ *   this function would build. It exists so a test can hand in a set whose
+ *   **order differs** from the constraint list: the adapter is a 1:1 `.map`
+ *   today, so a reordering cannot otherwise be constructed, and a join defect
+ *   that cannot be constructed cannot be controlled for. Production passes
+ *   nothing.
  * @returns {{ rows: import('../types.js').ProjectedRow[], closureSet: Object }}
  */
-export function projectFieldConstraints(fieldConstraints, graph, complexMap) {
-  const closureSet = buildClosureSet(
-    graph,
-    toSeason2026ClosureInput(fieldConstraints, graph, complexMap)
-  );
+export function projectFieldConstraints(fieldConstraints, graph, complexMap, options = {}) {
+  const closureSet =
+    options.closureSet ??
+    buildClosureSet(graph, toSeason2026ClosureInput(fieldConstraints, graph, complexMap));
 
-  // Enumerated from the **parsed constraint rows**, not from the closures the
-  // adapter produced. Deriving the universe from the adapter's output would let
-  // a row the adapter silently dropped go unnoticed - which is the "never
-  // derive a check's subject set from the data a break would corrupt" rule
-  // applied to a producer rather than to a test.
-  if (closureSet.closures.length !== fieldConstraints.length) {
-    throw new Error(
-      `fieldAdmin constraints: the closure adapter returned ${closureSet.closures.length} closure(s) for ${fieldConstraints.length} constraint row(s); every row must reach a closure, even an unresolvable one`
-    );
+  // **Joined on the `id` both sides carry, not on position.**
+  //
+  // The first version indexed `closureSet.closures[index]` and guarded it with
+  // a length check. That guard is derived from the property a reordering would
+  // leave intact - the counts still match when two rows swap - so it was a
+  // check that could not see the break it existed for. Safe today only because
+  // the adapter happens to be a 1:1 `.map`, which is a fact about the adapter
+  // rather than a contract this module is entitled to assume.
+  //
+  // Both sides carry `field_constraints.csv#<rowIndex>`, distinct on each.
+  // A missing or duplicated id throws, naming the row: a constraint that
+  // reached no closure must not be silently paired with someone else's.
+  /** @type {Map<string, Object>} */
+  const closureById = new Map();
+  for (const closure of closureSet.closures) {
+    if (closureById.has(closure.id)) {
+      throw new Error(
+        `fieldAdmin constraints: the closure adapter returned two closures with id "${closure.id}"; the join needs one closure per constraint row`
+      );
+    }
+    closureById.set(closure.id, closure);
   }
 
-  const rows = fieldConstraints.map((constraint, index) => {
-    const closure = closureSet.closures[index];
+  const rows = fieldConstraints.map((constraint) => {
+    const constraintId = /** @type {string} */ (/** @type {Object} */ (constraint).id);
+    const closure = closureById.get(constraintId);
+    if (closure === undefined) {
+      throw new Error(
+        `fieldAdmin constraints: constraint row "${constraintId}" reached no closure; every row must reach one, even an unresolvable one`
+      );
+    }
     const scope = readClosureScope(closure);
     const raw = /** @type {Record<string, unknown>} */ (
       /** @type {Object} */ (constraint).raw ?? {}
