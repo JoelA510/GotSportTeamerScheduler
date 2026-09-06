@@ -28,8 +28,18 @@ import { describe, it, expect } from 'vitest';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
-/** Roots holding first-party source that could write a table. */
-const SCAN_ROOTS = Object.freeze(['packages', 'frontend', 'supabase', 'scripts', 'tests']);
+/**
+ * Roots holding first-party source that could write a table.
+ *
+ * `docs` is in the list because `docs/sql/` holds 104 SQL files -- the reverts
+ * and smokes every migration in this repo is required to ship with -- and they
+ * are as capable of an `INSERT INTO` as a migration is. Leaving it out made the
+ * "derived, not written down" claim slightly false: the walk was the source
+ * tree minus a directory full of SQL, which is a curated subset wearing a
+ * scan's clothes. It is scanned, and the one file in it that writes either
+ * table is named in the expected sets below like any other writer.
+ */
+const SCAN_ROOTS = Object.freeze(['packages', 'frontend', 'supabase', 'scripts', 'tests', 'docs']);
 
 const SCANNED_EXTENSIONS = Object.freeze(['.js', '.jsx', '.ts', '.tsx', '.mjs', '.cjs', '.sql']);
 
@@ -138,6 +148,9 @@ describe('blackout freeze :: the scan examined the repository', () => {
     // a repository that does not contain the thing being frozen.
     expect(FILES).toContain('supabase/migrations/20260906000100_field_blackouts.sql');
     expect(FILES).toContain('supabase/migrations/20260522120000_field_availability_phase1.sql');
+    // ... and so is the `docs/sql` root, whose absence is what made the walk a
+    // subset. A root that silently vanishes takes its writers with it.
+    expect(FILES).toContain('docs/sql/20260906000100_smoke.sql');
   });
 
   it('can see a writer when there is one', () => {
@@ -164,8 +177,16 @@ describe('blackout freeze :: who may write each table is a checked list', () => 
    * Three migrations define `finalize_field_availability_import_job` in
    * sequence -- the live definition is the last -- and the mock client mirrors
    * it for the E2E suite. All four are the import path.
+   *
+   * The fifth is M2's own smoke, which seeds a window so it can assert what
+   * `field_closures` reports for the import arm. It is a writer by the
+   * matcher's definition and is listed rather than excepted: an operator script
+   * that runs against a database is exactly the kind of writer a freeze wants
+   * visible. It is not a producer -- nothing it writes outlives the `DELETE
+   * FROM public.organizations` that ends the block.
    */
   const EXPECTED_FROZEN_WRITERS = Object.freeze([
+    'docs/sql/20260906000100_smoke.sql',
     'frontend/src/lib/mockSupabaseClient.js',
     'supabase/migrations/20260522120000_field_availability_phase1.sql',
     'supabase/migrations/20260522153000_field_availability_finalize_hardening.sql',
@@ -183,18 +204,24 @@ describe('blackout freeze :: who may write each table is a checked list', () => 
     // The other half. "Nothing new writes the frozen table" is satisfied by
     // writing neither, so the new table's writers are pinned too.
     expect(writersOf('field_blackouts')).toEqual([
+      'docs/sql/20260906000100_smoke.sql',
       'frontend/src/lib/mockSupabaseClient.js',
       'supabase/migrations/20260906000100_field_blackouts.sql',
     ]);
   });
 
   it('keeps the two writer sets disjoint apart from the mock client', () => {
-    // The claim the COMMENT ON TABLE makes, checked rather than read. The mock
-    // client is the one file in both, because it stands in for the database
-    // itself rather than for a producer.
+    // The claim the COMMENT ON TABLE makes, checked rather than read. Two files
+    // are in both sets and neither is a producer: the mock client stands in for
+    // the database itself, and M2's smoke seeds both arms so it can assert what
+    // the single reader unions. Exact, so a genuine third writer of both -- the
+    // thing the freeze exists to prevent -- fails here.
     const frozen = new Set(writersOf('field_blackout_windows'));
     const shared = writersOf('field_blackouts').filter((file) => frozen.has(file));
-    expect(shared).toEqual(['frontend/src/lib/mockSupabaseClient.js']);
+    expect(shared).toEqual([
+      'docs/sql/20260906000100_smoke.sql',
+      'frontend/src/lib/mockSupabaseClient.js',
+    ]);
   });
 
   it('states the freeze on the table itself, so a reader of the schema sees it', () => {

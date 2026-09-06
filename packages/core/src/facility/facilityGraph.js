@@ -41,9 +41,16 @@ export function createMeta() {
     bookingPairsCompared: 0,
     // Lifecycle counters.
     //
-    // **`datedNodeCount` starts at `null`, not 0.** Nine call sites build a
-    // meta and only the lifecycle check ever counts; a literal 0 on the other
-    // eight reads as "I counted and found none" when nothing counted at all.
+    // **`datedNodeCount` starts at `null`, not 0.** TEN call sites build a meta
+    // -- eligibility x5, occupancy x4, lifecycle x1 -- and only the lifecycle
+    // one ever counts; a literal 0 on the other nine reads as "I counted and
+    // found none" when nothing counted at all.
+    //
+    // (I said nine. That is the third enumeration in this PR miscounted by one,
+    // after "four writers of fields.active" which was five, and "11 view
+    // columns" which was 12. The counts are now taken from the code --
+    // `grep -c 'createMeta()'` returns 11, one of which is this definition --
+    // rather than from reading down a list, which is how all three went wrong.)
     // That is the exact shape the ruling to publish the count was written
     // against, so `null` means *not counted* and a number means somebody did.
     // `checkFacilityLifecycle()` still publishes 0 when the graph really has
