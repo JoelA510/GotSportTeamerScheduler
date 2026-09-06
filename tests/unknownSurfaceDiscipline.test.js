@@ -666,20 +666,29 @@ describe('unknown-surface discipline :: modules passing only graph-derived ids',
     for (const format of formats) {
       expect(() => replacementSurfacesFor(graph, { format })).not.toThrow();
     }
-    // Non-vacuous: it really did look at the whole graph.
-    // A surface relocation may offer is a leaf or a parent that states sizes
-    // of its own (a whole pitch is bookable whole) — the predicate
-    // `replacementSurfacesFor()` applies since Phase 8.3.
+    // Non-vacuous: it really did look at the whole graph, and the expected set
+    // is **stated** rather than filtered with the production predicate. (It was
+    // filtered with it, in the predicate's own words, until round 2 -- so a
+    // change to the rule moved both sides of the equality at once.) This is the
+    // *game* graph: its only parents are Alder Pitch 1 and Pitch 4, whose halves
+    // are themselves 9v9 ground, so relocation offers the halves and not the
+    // parents.
+    const OFFERABLE_PARENT_IDS = [];
     const offerable = (id) =>
-      graph.surfaces[id].childIds.length === 0 || graph.surfaces[id].sizes.length > 0;
-    expect(replacementSurfacesFor(graph, { format: '9v9', maxGradesAbove: 9 }).length).toBe(
-      graph.surfaceIds.filter(offerable).length -
-        graph.surfaceIds.filter(
-          (id) =>
-            offerable(id) &&
-            !graph.surfaces[id].sizes.some((size) => ['9v9', '11v11'].includes(size))
-        ).length
-    );
+      graph.surfaces[id].childIds.length === 0 || OFFERABLE_PARENT_IDS.includes(id);
+    const bigEnough = (id) =>
+      graph.surfaces[id].sizes.some((size) => ['9v9', '11v11'].includes(size));
+    const expected = graph.surfaceIds.filter((id) => offerable(id) && bigEnough(id)).sort();
+    expect(replacementSurfacesFor(graph, { format: '9v9', maxGradesAbove: 9 })).toEqual(expected);
+    // ... and the ground the statement withholds is real ground, so "leaves
+    // plus a named list" is a restriction and not a synonym for "everything".
+    const parents = graph.surfaceIds.filter((id) => graph.surfaces[id].childIds.length > 0);
+    expect(parents.sort()).toEqual(['alder-park/pitch-1', 'alder-park/pitch-4']);
+    for (const id of parents) {
+      expect(bigEnough(id), id).toBe(true);
+      expect(expected, id).not.toContain(id);
+    }
+    expect(expected.length).toBeGreaterThan(5);
   });
 });
 

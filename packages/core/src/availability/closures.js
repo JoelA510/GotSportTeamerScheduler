@@ -399,6 +399,12 @@ export function checkClosures(graph, closureSet, rawBooking) {
     const { covers, coverage } = closureCoversSurface(graph, closure, surface);
     if (!covers) continue;
     const meets = closureMeetsBooking(closure, booking);
+    // Decided-and-clear leaves before anything is built. Every date-matching,
+    // ground-covering closure a booking does *not* meet used to pay for this
+    // object and the string below only to have them dropped one branch later.
+    // The undecidable answer needs them, so they are built after the null check
+    // is possible and before the switch that reads them.
+    if (meets === false) continue;
     const details = {
       /** How the closure's ground reached this surface: a FACILITY_REASON occupancy code, or null for venue-wide scopes. */
       coverage,
@@ -431,7 +437,6 @@ export function checkClosures(graph, closureSet, rawBooking) {
       );
       continue;
     }
-    if (!meets) continue;
     meta.closuresApplied += 1;
     switch (closure.scope.kind) {
       case CLOSURE_SCOPE.VENUE:
