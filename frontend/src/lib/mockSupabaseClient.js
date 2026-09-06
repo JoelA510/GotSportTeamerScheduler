@@ -1955,6 +1955,15 @@ export const mockSupabase = {
         return { data: null, error: { message: 'Admin role is required' } };
       }
 
+      // **The retirement trigger, mirrored.** Without this an ordinary field
+      // edit un-retires ground in the mock while the real database silently
+      // refuses -- and PR 3's UI would be built against the fiction.
+      const applyRetirementTrigger = (row) => {
+        const todayIso = new Date().toISOString().slice(0, 10);
+        if (row.effective_to && String(row.effective_to) < todayIso) row.active = false;
+        return row;
+      };
+
       const audit = (resourceType, resourceId, operation, payload) => {
         db.audit_log = db.audit_log || [];
         db.audit_log.push({
@@ -2069,9 +2078,24 @@ export const mockSupabase = {
         ) {
           return { data: null, error: { message: 'Field not found in organization' } };
         }
-        // **The table's CHECK constraints, mirrored.** The E2E suite is the
-        // only place this path runs, so a mock that accepted rows the database
-        // refuses would let PR 3's UI pass every test and fail in production.
+        // **The table's constraints, mirrored -- all of them.** The E2E suite is
+        // the only place this path runs, and the mock is the contract PR 3 is
+        // written against, so a mock looser than the database is a defect
+        // generator for the next PR. The first draft mirrored three CHECKs and
+        // missed the reason enum and the NOT NULL dates.
+        if (!p.p_blackout_from || !p.p_blackout_until) {
+          return {
+            data: null,
+            error: { message: 'blackout_from and blackout_until are required' },
+          };
+        }
+        const REASONS = ['maintenance', 'weather', 'event', 'permit', 'closed', 'other'];
+        if (p.p_reason !== null && p.p_reason !== undefined && !REASONS.includes(p.p_reason)) {
+          return {
+            data: null,
+            error: { message: `reason must be one of ${REASONS.join(', ')}` },
+          };
+        }
         if (String(p.p_blackout_until) < String(p.p_blackout_from)) {
           return {
             data: null,
@@ -2180,6 +2204,7 @@ export const mockSupabase = {
               on_date: gameDate(slot),
               week_index: slot.week_index ?? null,
               undated: !gameDate(slot),
+              unbounded: false,
             })),
           ...(db.practice_slots || [])
             .filter(
@@ -2193,7 +2218,9 @@ export const mockSupabase = {
               id: slot.id,
               on_date: slot.valid_until ?? null,
               week_index: null,
-              undated: !slot.valid_until,
+              // Unbounded, therefore CERTAINLY stranded -- not unjudged.
+              undated: false,
+              unbounded: !slot.valid_until,
             })),
         ];
         if (affected.length > 0 && !p.p_confirm) {
@@ -2215,12 +2242,16 @@ export const mockSupabase = {
           };
         }
         const previous = { ...field };
-        // `active` and `effective_to` together, never one without the other.
+        // **`active` follows the DATE**, mirroring field_is_live_on(). A
+        // future-dated retirement leaves the field live until the date
+        // arrives; setting false unconditionally pulled it from the scheduler
+        // for the whole period this call just reported as unaffected.
         Object.assign(field, {
           effective_to: p.p_effective_to,
-          active: false,
+          active: true,
           updated_at: new Date().toISOString(),
         });
+        applyRetirementTrigger(field);
         audit('field', field.id, 'updated', {
           operation: 'admin_retire_field',
           phase: 'after',
@@ -2241,6 +2272,7 @@ export const mockSupabase = {
           active: true,
           updated_at: new Date().toISOString(),
         });
+        applyRetirementTrigger(field);
         audit('field', field.id, 'updated', {
           operation: 'admin_unretire_field',
           previous,
@@ -2268,6 +2300,7 @@ export const mockSupabase = {
           active: p.p_active !== false,
           updated_at: new Date().toISOString(),
         });
+        applyRetirementTrigger(field);
         syncMockFieldSubunits(db, field, field.supports_halves);
         audit('field', field.id, 'updated', { previous, current: field });
         saveDB(db);

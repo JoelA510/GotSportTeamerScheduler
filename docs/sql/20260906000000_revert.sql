@@ -15,6 +15,7 @@ DROP FUNCTION IF EXISTS public.admin_retire_field(uuid, uuid, date, boolean);
 
 DROP TRIGGER IF EXISTS fields_retirement_deactivates ON public.fields;
 DROP FUNCTION IF EXISTS public.enforce_field_retirement_deactivates();
+DROP FUNCTION IF EXISTS public.field_is_live_on(date, date);
 
 DROP INDEX IF EXISTS public.idx_fields_effective_to;
 

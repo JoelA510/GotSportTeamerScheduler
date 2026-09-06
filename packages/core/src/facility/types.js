@@ -153,8 +153,9 @@
  * @property {number} overlapPairsConsulted
  * @property {number} equipmentWindowsConsulted
  * @property {number} bookingPairsCompared
- * @property {number} datedNodeCount - nodes carrying an effective window; the
- *   universe a lifecycle check had to judge, published even at zero
+ * @property {number|null} datedNodeCount - nodes carrying an effective window;
+ *   the universe a lifecycle check had to judge. `null` means NOBODY COUNTED --
+ *   only the lifecycle check does. A number, including 0, means it was counted
  * @property {number} lifecycleNodesJudged - how many of them it actually judged
  */
 

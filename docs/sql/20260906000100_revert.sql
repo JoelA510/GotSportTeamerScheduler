@@ -24,6 +24,7 @@ DROP INDEX IF EXISTS public.idx_field_blackouts_location_date;
 DROP INDEX IF EXISTS public.idx_field_blackouts_field_date;
 
 DROP POLICY IF EXISTS "Field Blackouts: members select" ON public.field_blackouts;
+DROP TRIGGER IF EXISTS field_blackouts_set_timestamp ON public.field_blackouts;
 DROP TABLE IF EXISTS public.field_blackouts;
 
 COMMENT ON TABLE public.field_blackout_windows IS NULL;

@@ -14,15 +14,27 @@
 -- scheduler's list of bookable ground. Until that read is repointed -- PR 3's
 -- work, not this one -- the two columns must agree.
 --
--- Two columns saying one thing is a hazard, and the first draft of this
--- migration bounded it wrongly. It claimed the two RPCs below are "the only
--- writers of `active`" and are therefore enough. Enumerating the family rather
--- than the pair shows FOUR pre-existing writers of `fields.active`:
+-- Two columns saying one thing is a hazard, and this migration has now bounded
+-- it wrongly twice. The first draft claimed the two RPCs below are "the only
+-- writers of `active`". The second said FOUR pre-existing writers and then
+-- listed three, counting only UPDATE sites and forgetting that an INSERT
+-- writes the column too.
 --
---   * 20260503070000_field_import_apply_rollback.sql:518   (import apply)
---   * 20260503070000_field_import_apply_rollback.sql:1088  (import rollback)
---   * 20260504060000_admin_facility_mutation_rpcs.sql:273  (admin_update_field)
---   * and the two RPCs in this file.
+-- **FIVE pre-existing writers of `fields.active`, two of them INSERTs:**
+--
+--   * 20260503070000_field_import_apply_rollback.sql:445   INSERT (import apply)
+--   * 20260503070000_field_import_apply_rollback.sql:509   UPDATE (import apply)
+--   * 20260503070000_field_import_apply_rollback.sql:1079  UPDATE (import rollback)
+--   * 20260504060000_admin_facility_mutation_rpcs.sql:154  INSERT (admin_create_field)
+--   * 20260504060000_admin_facility_mutation_rpcs.sql:266  UPDATE (admin_update_field)
+--   * plus the two RPCs in this file -- seven in total.
+--
+-- The behaviour was already right, because the trigger fires on INSERT as well
+-- as UPDATE. But the ENUMERATION was the justification for the trigger, and a
+-- miscounted enumeration is a weaker argument than no enumeration -- it invites
+-- the reader to trust a number nobody checked. Recorded plainly because
+-- enumerating the family late is the lesson this phase keeps re-learning, and
+-- the enumerations need checking as carefully as the fixes.
 --
 -- `admin_update_field(p_active => true)` on a retired field would set it active
 -- while `effective_to` stayed in the past -- putting formally retired ground
@@ -30,7 +42,23 @@
 -- is exactly the "one rule, N call sites" shape this phase keeps finding.
 --
 -- So the invariant is enforced by the DATABASE, once, in a trigger -- not by
--- convention across four RPCs and whatever writes `fields` next.
+-- convention across the RPCs and whatever writes `fields` next.
+--
+-- **What the trigger does NOT give you, stated because the first draft claimed
+-- it did.** The trigger fires on write; its predicate reads `current_date`. A
+-- field retired with a FUTURE date is written `active = true` and stays that
+-- way until something writes the row again -- so on the day the retirement
+-- takes effect, `active` is stale until the next write. `active` is therefore
+-- a WRITE-TIME CACHE of the date, not a continuously-true derivation, and the
+-- authoritative answer to "is this field live on date D" is
+-- `field_is_live_on(effective_to, D)` -- the same reading `isLiveOn()` gives in
+-- `packages/core/src/facility/lifecycle.js`. Repointing the scheduler onto that
+-- is PR 3's work; until then a future-dated retirement is honoured by the
+-- lifecycle layer and not yet by the `.eq('active', true)` filter.
+--
+-- The smoke therefore checks what is true -- the invariant holds for
+-- retirements already in the past -- rather than the "impossible to fail"
+-- the first draft claimed.
 --
 -- The invariant is ONE-DIRECTIONAL, and saying so matters: a field whose
 -- `effective_to` has passed must not be active. The converse is NOT required.
@@ -89,6 +117,27 @@ CREATE INDEX IF NOT EXISTS idx_fields_effective_to
 -- One-directional by design. `active = false` with a NULL effective_to is
 -- ordinary deactivation and is left exactly alone.
 
+-- **The one producer of "is this field live, given its dates".**
+--
+-- Three arms derived this independently in the first draft -- the trigger, the
+-- retire RPC and the unretire RPC -- and the retire arm got it wrong: it set
+-- `active = false` unconditionally, so a retirement dated six months out
+-- removed the field from the scheduler TODAY, for the entire period the same
+-- RPC had just reported as unaffected. The RPC contradicted its own report.
+--
+-- `active` follows the DATE, not the intent to retire.
+CREATE OR REPLACE FUNCTION public.field_is_live_on(p_effective_to date, p_on date DEFAULT NULL)
+RETURNS boolean
+LANGUAGE sql
+IMMUTABLE
+SET search_path = public
+AS $$
+  SELECT p_effective_to IS NULL OR p_effective_to >= COALESCE(p_on, current_date);
+$$;
+
+COMMENT ON FUNCTION public.field_is_live_on(date, date) IS
+  'The single reading of a field effective window in SQL, mirroring isLiveOn() in packages/core/src/facility/lifecycle.js. Inclusive: a field retired ON a date is live that day.';
+
 CREATE OR REPLACE FUNCTION public.enforce_field_retirement_deactivates()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -96,7 +145,7 @@ SECURITY INVOKER
 SET search_path = public
 AS $$
 BEGIN
-    IF NEW.effective_to IS NOT NULL AND NEW.effective_to < current_date THEN
+    IF NOT public.field_is_live_on(NEW.effective_to) THEN
         NEW.active := false;
     END IF;
     RETURN NEW;
@@ -109,7 +158,7 @@ CREATE TRIGGER fields_retirement_deactivates
   FOR EACH ROW EXECUTE FUNCTION public.enforce_field_retirement_deactivates();
 
 COMMENT ON FUNCTION public.enforce_field_retirement_deactivates() IS
-  'Holds fields.active and fields.effective_to to their one-directional invariant: a field retired on a past date is never active. Enforced here rather than in each of the four RPCs that write active.';
+  'Holds fields.active and fields.effective_to to their one-directional invariant: a field retired on a past date is never active. Enforced here, on INSERT and UPDATE, rather than in each of the seven sites that write fields.active.';
 
 -- ---------------------------------------------------------------------------
 -- 3. admin_retire_field
@@ -185,7 +234,9 @@ BEGIN
         'game_slot'::text AS kind,
         gs.id,
         COALESCE(gs.slot_date, gs.start::date) AS on_date,
-        gs.week_index::integer AS week_index
+        gs.week_index::integer AS week_index,
+        -- A game slot with no date on either column genuinely cannot be judged.
+        COALESCE(gs.slot_date, gs.start::date) IS NULL AS undated
       FROM public.game_slots gs
       WHERE gs.organization_id = p_organization_id
         AND gs.field_id = p_field_id
@@ -198,7 +249,12 @@ BEGIN
         'practice_slot'::text AS kind,
         ps.id,
         ps.valid_until AS on_date,
-        NULL::integer AS week_index
+        NULL::integer AS week_index,
+        -- **`valid_until IS NULL` is UNBOUNDED, not unjudged.** A practice slot
+        -- with no end date runs forever, so it is CERTAINLY stranded by any
+        -- retirement -- the opposite of "could not be judged". Flagging it
+        -- `undated` conflated a certain answer with an absent one.
+        false AS undated
       FROM public.practice_slots ps
       WHERE ps.organization_id = p_organization_id
         AND ps.field_id = p_field_id
@@ -212,7 +268,8 @@ BEGIN
             'id', a.id,
             'on_date', a.on_date,
             'week_index', a.week_index,
-            'undated', a.on_date IS NULL
+            'undated', a.undated,
+            'unbounded', a.kind = 'practice_slot' AND a.on_date IS NULL
           )
           ORDER BY a.on_date NULLS FIRST, a.kind, a.id
         ),
@@ -274,11 +331,15 @@ BEGIN
         )
     );
 
-    -- **`active` and `effective_to` in one statement.** They cannot disagree
-    -- because there is no path that writes one without the other.
+    -- **`active` follows the date, through the one producer.**
+    --
+    -- A FUTURE-dated retirement leaves the field active until the date
+    -- arrives. Setting `active = false` here unconditionally -- which the first
+    -- draft did -- pulled the field out of the scheduler immediately, for the
+    -- whole period this same call had just told the operator was unaffected.
     UPDATE public.fields
     SET effective_to = p_effective_to,
-        active = false,
+        active = public.field_is_live_on(p_effective_to),
         updated_at = timezone('utc', now())
     WHERE id = p_field_id AND organization_id = p_organization_id
     RETURNING * INTO v_after;
@@ -355,7 +416,9 @@ BEGIN
 
     UPDATE public.fields
     SET effective_to = NULL,
-        active = true,
+        -- Through the same producer: a NULL window is live, so this is `true`
+        -- by derivation rather than by a second hand-written rule.
+        active = public.field_is_live_on(NULL),
         updated_at = timezone('utc', now())
     WHERE id = p_field_id AND organization_id = p_organization_id
     RETURNING * INTO v_after;

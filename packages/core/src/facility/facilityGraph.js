@@ -39,10 +39,16 @@ export function createMeta() {
     overlapPairsConsulted: 0,
     equipmentWindowsConsulted: 0,
     bookingPairsCompared: 0,
-    // Lifecycle counters. `datedNodeCount` is the universe a lifecycle check
-    // had to judge and `lifecycleNodesJudged` is how many it actually judged;
-    // the pair is what stops "no finding" reading as "checked and clean".
-    datedNodeCount: 0,
+    // Lifecycle counters.
+    //
+    // **`datedNodeCount` starts at `null`, not 0.** Nine call sites build a
+    // meta and only the lifecycle check ever counts; a literal 0 on the other
+    // eight reads as "I counted and found none" when nothing counted at all.
+    // That is the exact shape the ruling to publish the count was written
+    // against, so `null` means *not counted* and a number means somebody did.
+    // `checkFacilityLifecycle()` still publishes 0 when the graph really has
+    // none, which is what the ruling asked for.
+    datedNodeCount: null,
     lifecycleNodesJudged: 0,
   };
 }
@@ -62,7 +68,14 @@ export function mergeMeta(target, source) {
   target.bookingPairsCompared += source.bookingPairsCompared;
   // **Not summed.** `datedNodeCount` is a property of the graph, not of the
   // work done, so adding two sub-checks' copies would report twice the estate.
-  target.datedNodeCount = Math.max(target.datedNodeCount, source.datedNodeCount);
+  // A `null` on either side means that side did not count, and a real count
+  // from the other side wins; two nulls stay null.
+  if (source.datedNodeCount !== null) {
+    target.datedNodeCount =
+      target.datedNodeCount === null
+        ? source.datedNodeCount
+        : Math.max(target.datedNodeCount, source.datedNodeCount);
+  }
   target.lifecycleNodesJudged += source.lifecycleNodesJudged;
   return target;
 }

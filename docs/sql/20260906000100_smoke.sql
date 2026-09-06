@@ -16,9 +16,12 @@ join pg_class c on c.oid = pol.polrelid
 join pg_namespace n on n.oid = c.relnamespace
 where n.nspname = 'public' and c.relname = 'field_blackouts';
 
--- 2. The scope rule is enforced by the database, not only by the RPC. Expect
---    all four constraints present.
-select 'field_blackouts constraints (expect 4 rows)' as check, c.conname
+-- 2. The scope rule is enforced by the database, not only by the RPC.
+--    **Expect FIVE rows, not four.** The first draft said four and forgot that
+--    the inline `reason IN (...)` CHECK is named field_blackouts_reason_check
+--    and matches this pattern too -- so a correct run returned 5 and an
+--    operator reading the header would have concluded the migration was wrong.
+select 'field_blackouts constraints (expect 5 rows)' as check, c.conname
 from pg_constraint c
 join pg_class t on t.oid = c.conrelid
 join pg_namespace n on n.oid = t.relnamespace
@@ -91,12 +94,35 @@ select 'blackout RPC grants (expect public false, authenticated true)' as check,
        has_function_privilege('public', 'public.admin_delete_field_blackout(uuid, uuid)', 'EXECUTE') as delete_public,
        has_function_privilege('authenticated', 'public.admin_delete_field_blackout(uuid, uuid)', 'EXECUTE') as delete_authenticated;
 
--- 9. **The unattributable-closure count.** Import rows whose profile resolved
---    to no field come through field_closures with a NULL field_id. They are
---    surfaced rather than filtered, so this number is visible rather than
---    silently zero -- it is the defect that blocks collapsing the two tables.
---    NOT expected to be zero; expected to be *reported*.
-select 'closures no field-scoped query can attribute (reported, not asserted)' as check,
-       count(*) filter (where field_id is null) as unattributable,
+-- 9. **The unattributable-closure count, counting what it claims.**
+--
+--    The first draft counted every row with a NULL field_id, which swept in
+--    every legitimate SITE-WIDE admin blackout -- those have no field by
+--    design. The number offered as the evidence for keeping two tables was
+--    therefore dominated by correct rows.
+--
+--    The defect is import-derived windows whose PROFILE resolved to no field:
+--    closures that exist, display under the profile in the UI, and are
+--    invisible to every field-scoped query. That is the import arm, and only
+--    the import arm.
+--
+--    Reported, not asserted -- it is evidence for a decision, not a gate.
+select 'import closures no field-scoped query can attribute (the unification blocker)' as check,
+       count(*) filter (
+         where source = 'field_blackout_windows' and closes_field_id is null
+       ) as unattributable_import_closures,
+       count(*) filter (where source = 'field_blackout_windows') as import_closures,
+       count(*) filter (
+         where source = 'field_blackouts' and closes_location_id is not null
+       ) as site_wide_admin_closures,
        count(*) as total
 from public.field_closures;
+
+-- 9b. The view's scope columns and its derived column are distinct facts, and
+--     the scope rule survives the union: every admin row closes exactly one of
+--     a site or a field. Expect 0 rows.
+select 'closures whose scope is neither or both (expect 0 rows)' as check,
+       id, source, closes_location_id, closes_field_id
+from public.field_closures
+where source = 'field_blackouts'
+  and num_nonnulls(closes_location_id, closes_field_id) <> 1;

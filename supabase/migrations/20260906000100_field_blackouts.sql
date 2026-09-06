@@ -94,6 +94,14 @@ CREATE INDEX IF NOT EXISTS idx_field_blackouts_field_date
 CREATE INDEX IF NOT EXISTS idx_field_blackouts_location_date
   ON public.field_blackouts (organization_id, location_id, blackout_from, blackout_until);
 
+-- `updated_at` is maintained the way every sibling table maintains it. Without
+-- this the column is written once at insert and never again -- a field that
+-- reads as "when this last changed" and is not.
+DROP TRIGGER IF EXISTS field_blackouts_set_timestamp ON public.field_blackouts;
+CREATE TRIGGER field_blackouts_set_timestamp
+  BEFORE UPDATE ON public.field_blackouts
+  FOR EACH ROW EXECUTE FUNCTION public.trigger_set_timestamp();
+
 COMMENT ON TABLE public.field_blackouts IS
   'Admin-authored closures, scoped to a location or a single field, with optional minutes-past-midnight times. Sole producer of new blackouts. Read through public.field_closures, never directly.';
 
@@ -141,8 +149,18 @@ WITH (security_invoker = true) AS
   SELECT
     b.id,
     b.organization_id,
-    b.location_id,
-    b.field_id,
+    -- **`closes_location_id` is the SCOPE: the site this closure shuts.**
+    -- Renamed from `location_id`, which the first draft filled with the
+    -- blackout's scope on this arm and with the FIELD'S location on the other.
+    -- One column, two meanings across a union: a location-filtered query
+    -- therefore closed every other pitch on the same site. The single reader
+    -- asked for one answer and gave a wrong one.
+    b.location_id AS closes_location_id,
+    b.field_id AS closes_field_id,
+    -- The site the closed field happens to sit on. A DIFFERENT fact, so a
+    -- different name. Never a scope; present on both arms; NULL when the
+    -- closure is site-scoped or the field is unresolved.
+    fb.location_id AS field_location_id,
     b.blackout_from,
     b.blackout_until,
     b.start_minutes,
@@ -151,17 +169,28 @@ WITH (security_invoker = true) AS
     b.note,
     'field_blackouts'::text AS source
   FROM public.field_blackouts b
+  LEFT JOIN public.fields fb ON fb.id = b.field_id
   UNION ALL
   SELECT
     w.id,
     w.organization_id,
-    f.location_id,
-    p.field_id,
+    -- **NULL, not the field's location.** An import-derived window hangs off a
+    -- profile and closes that profile's ground; it is not site-scoped, and
+    -- reporting the field's site here is what made the column mean two things.
+    NULL::uuid AS closes_location_id,
+    p.field_id AS closes_field_id,
+    f.location_id AS field_location_id,
     w.blackout_from,
     w.blackout_until,
+    -- NULL times mean all-day on BOTH arms -- an import window is a date range
+    -- with no clock, which is all-day. Checked rather than assumed; this pair
+    -- is not a second two-meaning column.
     NULL::integer AS start_minutes,
     NULL::integer AS end_minutes,
-    'other'::text AS reason,
+    -- **NULL, not 'other'.** The import carries no structured reason, and
+    -- fabricating one claims a choice nobody made. Its own free text travels
+    -- in `note`, where it belongs.
+    NULL::text AS reason,
     w.reason AS note,
     'field_blackout_windows'::text AS source
   FROM public.field_blackout_windows w
@@ -169,7 +198,7 @@ WITH (security_invoker = true) AS
   LEFT JOIN public.fields f ON f.id = p.field_id;
 
 COMMENT ON VIEW public.field_closures IS
-  'THE reader for "is this ground closed on this date". Unions admin-authored field_blackouts with import-derived field_blackout_windows so the question has one answer. field_id is NULL for import rows whose profile resolved to no field -- surfaced, not filtered, because a closure nobody can attribute is the thing an inner join would hide. The union is temporary: it collapses to field_blackouts alone once finalize_field_availability_import_job resolves a profile to a field reliably.';
+  'THE reader for "is this ground closed on this date". Unions admin-authored field_blackouts with import-derived field_blackout_windows so the question has one answer. SCOPE is closes_location_id / closes_field_id -- what this row shuts. field_location_id is a different fact (the site the closed field sits on) and is never a scope; the two were one column in the first draft and a location filter therefore closed every other pitch on the site. closes_field_id is NULL for import rows whose profile resolved to no field -- surfaced, not filtered, because a closure nobody can attribute is what an inner join would hide. reason is NULL on the import arm because the import carries no structured reason. The union is temporary: it collapses to field_blackouts alone once finalize_field_availability_import_job resolves a profile to a field reliably.';
 
 GRANT SELECT ON public.field_closures TO authenticated;
 

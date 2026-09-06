@@ -52,7 +52,52 @@ describe('field lifecycle RPCs :: retirement writes active and effective_to toge
 
     const after = getMockData('fields').find((f) => String(f.id) === String(field.id));
     expect(after.effective_to).toBe('2099-12-31');
+    // **Still active, because the retirement is in the FUTURE.** The first
+    // draft set active=false unconditionally, so a retirement dated years out
+    // removed the field from the scheduler today -- for the entire period this
+    // same call had just reported as unaffected. `active` follows the date.
+    expect(after.active).toBe(true);
+  });
+
+  it('deactivates immediately only when the retirement date has passed', () => {
+    // The other direction, so the assertion above is about the date and not
+    // about retirement never deactivating.
+    return (async () => {
+      const field = someField();
+      await supabase.rpc('admin_retire_field', {
+        p_organization_id: ORG,
+        p_field_id: field.id,
+        p_effective_to: '2000-01-01',
+        p_confirm: true,
+      });
+      const after = getMockData('fields').find((f) => String(f.id) === String(field.id));
+      expect(after.effective_to).toBe('2000-01-01');
+      expect(after.active).toBe(false);
+    })();
+  });
+
+  it('does not let an ordinary field edit un-retire ground', async () => {
+    // The mock mirrors the database trigger. Without it PR 3's UI would be
+    // built against a mock where renaming a retired field brings it back into
+    // the scheduler while Postgres silently refuses.
+    const field = someField();
+    await supabase.rpc('admin_retire_field', {
+      p_organization_id: ORG,
+      p_field_id: field.id,
+      p_effective_to: '2000-01-01',
+      p_confirm: true,
+    });
+    await supabase.rpc('admin_update_field', {
+      p_organization_id: ORG,
+      p_field_id: field.id,
+      p_location_id: field.location_id,
+      p_name: 'Renamed Pitch',
+      p_active: true,
+    });
+    const after = getMockData('fields').find((f) => String(f.id) === String(field.id));
+    expect(after.name).toBe('Renamed Pitch');
     expect(after.active).toBe(false);
+    expect(after.effective_to).toBe('2000-01-01');
   });
 
   it('never leaves active and effective_to disagreeing, after either RPC', async () => {
@@ -60,14 +105,24 @@ describe('field lifecycle RPCs :: retirement writes active and effective_to toge
     // what bounds it. Asserted over every field in the org after a retire and
     // after an unretire, not just the one touched.
     const field = someField();
+    // **One-directional, matching the migration and the smoke.** The first
+    // draft asserted the biconditional that both of those explicitly refuse:
+    // `active === false` with no effective_to is ordinary deactivation, and
+    // calling it a disagreement made three producers give two answers.
+    //
+    // A PAST retirement implies inactive. A future one does not -- the field
+    // stays live until the date arrives, which is finding 1.
+    const today = new Date().toISOString().slice(0, 10);
     const disagrees = (f) =>
-      (f.effective_to !== null && f.effective_to !== undefined && f.active === true) ||
-      (f.active === false && (f.effective_to === null || f.effective_to === undefined));
+      f.effective_to !== null &&
+      f.effective_to !== undefined &&
+      f.effective_to < today &&
+      f.active === true;
 
     await supabase.rpc('admin_retire_field', {
       p_organization_id: ORG,
       p_field_id: field.id,
-      p_effective_to: '2099-12-31',
+      p_effective_to: '2000-01-01',
       p_confirm: true,
     });
     let all = getMockData('fields').filter((f) => String(f.organization_id) === ORG);
@@ -84,10 +139,13 @@ describe('field lifecycle RPCs :: retirement writes active and effective_to toge
     expect(after.active).toBe(true);
     expect(after.effective_to).toBeNull();
 
-    // The predicate is not vacuous: a hand-built disagreement is caught.
-    expect(disagrees({ active: true, effective_to: '2026-01-01' })).toBe(true);
-    expect(disagrees({ active: false, effective_to: null })).toBe(true);
-    expect(disagrees({ active: false, effective_to: '2026-01-01' })).toBe(false);
+    // The predicate is not vacuous, and it is the one-directional one:
+    // a past retirement left active is a disagreement; ordinary deactivation
+    // and a future retirement are not.
+    expect(disagrees({ active: true, effective_to: '2000-01-01' })).toBe(true);
+    expect(disagrees({ active: false, effective_to: null })).toBe(false);
+    expect(disagrees({ active: true, effective_to: '2099-12-31' })).toBe(false);
+    expect(disagrees({ active: false, effective_to: '2000-01-01' })).toBe(false);
   });
 
   it('refuses, writes nothing, and names the affected bookings', async () => {
@@ -119,6 +177,55 @@ describe('field lifecycle RPCs :: retirement writes active and effective_to toge
     const after = getMockData('fields').find((f) => String(f.id) === String(field.id));
     expect(after.effective_to ?? null).toBeNull();
     expect(after.active).not.toBe(false);
+  });
+
+  it('calls an unbounded practice slot certain, not unjudged', async () => {
+    // **Certain and unjudged are different answers.** A practice slot with no
+    // `valid_until` runs forever, so it is CERTAINLY stranded by any
+    // retirement -- the opposite of "could not be judged". The first draft
+    // flagged it `undated`, conflating a certain answer with an absent one.
+    const field = someField();
+    await supabase.from('practice_slots').insert({
+      id: 'practice-forever',
+      organization_id: ORG,
+      field_id: field.id,
+      day_of_week: 'mon',
+      valid_from: '2026-01-01',
+      valid_until: null,
+    });
+
+    const { data } = await supabase.rpc('admin_retire_field', {
+      p_organization_id: ORG,
+      p_field_id: field.id,
+      p_effective_to: '2099-12-31',
+      p_confirm: false,
+    });
+    const forever = data.affected.find((a) => String(a.id) === 'practice-forever');
+    expect(forever).toBeDefined();
+    expect(forever.kind).toBe('practice_slot');
+    // Not "undated": we know exactly what it does -- it never ends.
+    expect(forever.undated).toBe(false);
+    expect(forever.unbounded).toBe(true);
+
+    // A bounded practice slot past the date is affected and neither flag is set.
+    await supabase.from('practice_slots').insert({
+      id: 'practice-bounded',
+      organization_id: ORG,
+      field_id: field.id,
+      day_of_week: 'tue',
+      valid_from: '2026-01-01',
+      valid_until: '2100-06-30',
+    });
+    const again = await supabase.rpc('admin_retire_field', {
+      p_organization_id: ORG,
+      p_field_id: field.id,
+      p_effective_to: '2099-12-31',
+      p_confirm: false,
+    });
+    const bounded = again.data.affected.find((a) => String(a.id) === 'practice-bounded');
+    expect(bounded).toBeDefined();
+    expect(bounded.undated).toBe(false);
+    expect(bounded.unbounded).toBe(false);
   });
 
   it('reads a game slot date from slot_date, not only from start', async () => {
@@ -264,6 +371,48 @@ describe('field lifecycle RPCs :: blackouts are scoped to exactly one thing', ()
     expect(ok.error).toBeNull();
     expect(ok.data.start_minutes).toBe(540);
     expect(ok.data.end_minutes).toBe(900);
+  });
+
+  it('refuses a reason outside the enum and a missing date', async () => {
+    // **The mock is the contract PR 3 is written against**, so a mock looser
+    // than the database is a defect generator for the next PR. The first draft
+    // mirrored three CHECKs and missed the reason enum and the NOT NULL dates:
+    // `p_reason: 'closure'` and absent dates passed here and are rejected by
+    // Postgres.
+    const field = someField();
+    const base = {
+      p_organization_id: ORG,
+      p_location_id: null,
+      p_field_id: field.id,
+      p_blackout_from: '2026-08-01',
+      p_blackout_until: '2026-08-31',
+    };
+    const badReason = await supabase.rpc('admin_create_field_blackout', {
+      ...base,
+      p_reason: 'closure',
+    });
+    expect(badReason.error).not.toBeNull();
+
+    const noFrom = await supabase.rpc('admin_create_field_blackout', {
+      ...base,
+      p_blackout_from: null,
+    });
+    expect(noFrom.error).not.toBeNull();
+
+    const noUntil = await supabase.rpc('admin_create_field_blackout', {
+      ...base,
+      p_blackout_until: null,
+    });
+    expect(noUntil.error).not.toBeNull();
+    expect(getMockData('field_blackouts').length).toBe(0);
+
+    // Every declared reason is accepted, so the refusal is about the value and
+    // not about the enum being checked at all.
+    for (const reason of ['maintenance', 'weather', 'event', 'permit', 'closed', 'other']) {
+      const ok = await supabase.rpc('admin_create_field_blackout', { ...base, p_reason: reason });
+      expect({ reason, error: ok.error }).toEqual({ reason, error: null });
+    }
+    expect(getMockData('field_blackouts').length).toBe(6);
   });
 
   it('cascades blackouts when the field they scope to is deleted', async () => {

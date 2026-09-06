@@ -93,8 +93,26 @@ select 'fields deactivated without a retirement date (reported, not asserted)' a
 from public.fields
 where active is false and effective_to is null;
 
--- 8. Meta-assertion for check 7: it ran against a non-empty table. A check that
---    matches zero records because there are no records is not a pass.
-select 'fields table is non-empty, so check 7 examined something (expect true)' as check,
-       count(*) > 0 as has_rows
+-- 8. **Meta-assertion for check 7, and it measures the RIGHT set.**
+--
+--    The first draft counted the whole `fields` table, which is non-empty on
+--    any real database -- so it reported "check 7 examined something" while
+--    check 7's actual subject (fields with a PAST retirement date) was empty.
+--    On a freshly migrated database, which is exactly where this runs first,
+--    check 7 passed over zero rows and check 8 said that was fine.
+--
+--    `retired_fields_examined` is the size of check 7's subject. **If it is 0,
+--    check 7 was VACUOUS** -- it has not yet been exercised, and that is a fact
+--    to report, not a pass. Reported rather than asserted, because a database
+--    with no past retirements is a legitimate state on day one.
+select 'the subset check 7 actually examined (0 means check 7 was vacuous)' as check,
+       count(*) filter (where effective_to is not null and effective_to < current_date)
+         as retired_fields_examined,
+       count(*) filter (where effective_to is not null) as dated_fields,
+       count(*) as all_fields
 from public.fields;
+
+-- 8b. Behavioural exercise of the invariant lives in the suite, where a
+--     retirement can be created and read back:
+--     tests/fieldLifecycleRpcs.test.js. That is what makes check 7 meaningful
+--     before any real database has a retirement in it.

@@ -14,6 +14,7 @@ import { describe, it, expect } from 'vitest';
 import {
   FACILITY_REASON,
   buildFacilityGraph,
+  checkBooking,
   checkFacilityLifecycle,
   checkFieldEligibility,
   isDatedNode,
@@ -190,5 +191,63 @@ describe('facility lifecycle :: the corpus is undated, and says so', () => {
     // ... and the graph is not empty, so the zero is a measurement rather than
     // an artefact of having built nothing.
     expect(graph.surfaceIds.length).toBeGreaterThan(0);
+  });
+});
+
+describe('facility lifecycle :: a count nobody made is not a count of zero', () => {
+  it('reports null from checks that never counted, and a number from the one that does', () => {
+    // **Finding 11's family: nine `createMeta()` sites, one counter.** Only the
+    // lifecycle check counts; the other eight used to publish a literal 0,
+    // which reads as "counted, found none" when nothing counted. The ruling to
+    // publish the count even at zero was written against exactly that, so the
+    // uncounted state is `null` and the counted state is a number -- including
+    // 0, which is what the corpus gives.
+    const dated = graphWith({ effectiveTo: '2026-06-30' });
+
+    // An unknown surface never reaches the lifecycle check.
+    const unknown = checkBooking(dated, {
+      id: 'b1',
+      surfaceId: 'not-a-surface',
+      date: '2026-05-01',
+      startMinutes: 600,
+      endMinutes: 700,
+    });
+    expect(unknown.meta.datedNodeCount).toBeNull();
+
+    // The lifecycle check publishes a real number.
+    const counted = checkFacilityLifecycle(dated, { asOf: '2026-05-01', surfaceId: 's1' });
+    expect(counted.meta.datedNodeCount).toBe(1);
+
+    // ... and 0 when the graph really has none, which is the ruling's case.
+    const undated = checkFieldEligibility(graphWith(), { surfaceId: 's1', format: '9v9' });
+    expect(undated.meta.datedNodeCount).toBe(0);
+  });
+});
+
+describe('facility lifecycle :: a surface at a closed site is retired', () => {
+  it('propagates a retired venue to its surfaces in every arm', () => {
+    // **Finding 12: twin arms, one corrected.** The surface-scoped arm always
+    // checked the venue; `retiredOn()` and the whole-graph arm did not, so the
+    // same estate gave two answers depending on the entry point.
+    const closedSite = buildFacilityGraph({
+      venues: [{ id: 'v1', name: 'Closed', effectiveTo: '2026-06-30' }],
+      surfaces: [{ id: 's1', venueId: 'v1', name: 'Pitch' }],
+    });
+    // The surface carries no window of its own.
+    expect(closedSite.surfaces.s1.effectiveTo).toBeNull();
+
+    expect(retiredOn(closedSite, '2026-09-01')).toEqual({
+      venueIds: ['v1'],
+      surfaceIds: ['s1'],
+    });
+    // The whole-graph arm agrees with the surface-scoped arm.
+    const whole = checkFacilityLifecycle(closedSite, { asOf: '2026-09-01' });
+    expect(whole.findings.map((f) => f.details.id).sort()).toEqual(['s1', 'v1']);
+    const scoped = checkFacilityLifecycle(closedSite, { asOf: '2026-09-01', surfaceId: 's1' });
+    expect(scoped.findings.map((f) => f.details.id)).toContain('v1');
+
+    // Inside the window both arms are clean, so the assertions above are about
+    // the closure and not about the venue being checked at all.
+    expect(retiredOn(closedSite, '2026-05-01')).toEqual({ venueIds: [], surfaceIds: [] });
   });
 });

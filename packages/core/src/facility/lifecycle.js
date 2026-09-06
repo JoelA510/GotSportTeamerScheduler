@@ -90,9 +90,19 @@ export function isDatedNode(node) {
  * @returns {{ venueIds: string[], surfaceIds: string[] }}
  */
 export function retiredOn(graph, asOf) {
+  const venueIds = graph.venueIds.filter((id) => !isLiveOn(graph.venues[id], asOf));
+  const retiredVenues = new Set(venueIds);
   return {
-    venueIds: graph.venueIds.filter((id) => !isLiveOn(graph.venues[id], asOf)),
-    surfaceIds: graph.surfaceIds.filter((id) => !isLiveOn(graph.surfaces[id], asOf)),
+    venueIds,
+    // **A surface at a closed site is retired, whatever its own window says.**
+    // The surface-scoped arm of `checkFacilityLifecycle()` has always checked
+    // the venue alongside the surface; this arm did not, so the same estate
+    // gave two answers depending on which entry point was asked -- twin arms,
+    // one corrected. A pitch with no window of its own at a venue that shut in
+    // June was reported live here and retired by the surface check.
+    surfaceIds: graph.surfaceIds.filter(
+      (id) => !isLiveOn(graph.surfaces[id], asOf) || retiredVenues.has(graph.surfaces[id].venueId)
+    ),
   };
 }
 
