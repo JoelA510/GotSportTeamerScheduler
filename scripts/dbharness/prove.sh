@@ -46,17 +46,65 @@ restore_all() {
 # `timeout 20 prove.sh` restored the file and then carried straight on planting.
 # The run outlived its own timeout, and because the LAST plant re-created the
 # backup after the handler had cleared it, the abandoned `.orig` this trap
-# exists to prevent survived anyway. Found by running the control rather than by
-# reading the trap. A signal now kills the in-flight harness, restores, and
-# exits; only the EXIT trap is allowed to return.
+# exists to prevent survived anyway. A signal now restores and EXITS; only the
+# EXIT trap is allowed to return.
+#
+# **The second version's comment was also wrong, and this one was measured.**
+# It ran `pkill -TERM -P $$` and claimed to "kill the in-flight harness". Bash
+# defers a trap until the running FOREGROUND command finishes, so with
+# `out="$(bash run.sh)"` the handler could not run until `run.sh` had already
+# exited -- there was never an in-flight harness left to kill. Measured rather
+# than reasoned about: TERM sent at t+0, handler observed running at t+27, after
+# the 30s foreground command completed. A bare `timeout` hid it, because timeout
+# signals the whole process group and the child dies on its own.
+#
+# `wait` IS interruptible, so `run.sh` is started in the BACKGROUND and waited
+# on. Same measurement, same script: handler at t+0, and it genuinely killed the
+# child. That is worth more than the comment fix -- an interrupted proof now
+# stops in moments rather than after the current two-minute harness run.
+HARNESS_PID=""
+kill_harness() {
+  [ -n "$HARNESS_PID" ] || return 0
+  kill -0 "$HARNESS_PID" 2>/dev/null || return 0
+  # Descendants first: killing the shell alone orphans the psql it is waiting
+  # on, which was visible in the same experiment.
+  pkill -TERM -P "$HARNESS_PID" 2>/dev/null
+  kill -TERM "$HARNESS_PID" 2>/dev/null
+}
 on_signal() {
   trap - EXIT INT TERM
-  pkill -TERM -P $$ 2>/dev/null
+  kill_harness
   restore_all
   exit 130
 }
 trap restore_all EXIT
 trap on_signal INT TERM
+
+# **A green baseline, asserted before anything is planted.**
+#
+# Without this the whole proof has the defect it exists to find. Any harness
+# failure unrelated to a plant -- the cluster refusing to start, a stub
+# extension missing, an unrelated migration breaking -- makes EVERY plant report
+# CAUGHT, and "11 caught, 0 not caught" exits 0. In that mode the proof cannot
+# fail, which is precisely the shape it was written to detect. I found and fixed
+# exactly this in the JS mutation harness last round and did not carry it one
+# directory across.
+#
+# So: the unmutated harness must pass first. If it does not, nothing below is
+# evidence of anything and the run stops rather than printing eleven CAUGHTs.
+echo "=== baseline: the unmutated harness must pass before any plant ==="
+bash "$REPO/scripts/dbharness/run.sh" >/tmp/harness_baseline_out 2>&1 &
+HARNESS_PID=$!
+wait "$HARNESS_PID"; baseline_status=$?
+HARNESS_PID=""
+baseline_out="$(cat /tmp/harness_baseline_out)"
+if [ "$baseline_status" -eq 0 ]; then
+  echo "BASELINE GREEN"
+else
+  echo "BASELINE RED -- refusing to plant. Every plant would report CAUGHT and prove nothing." >&2
+  echo "$baseline_out" | tail -25 >&2
+  exit 3
+fi
 
 plant() { # label file old new
   local label="$1" file="$2" old="$3" new="$4"
@@ -79,7 +127,11 @@ PY
   # migration that fails to APPLY exits early, so the loudest possible catch was
   # recorded as NOT CAUGHT. Six of ten results were wrong for that reason.
   local out status
-  out="$(bash "$REPO/scripts/dbharness/run.sh" 2>&1)"; status=$?
+  bash "$REPO/scripts/dbharness/run.sh" >/tmp/harness_plant_out 2>&1 &
+  HARNESS_PID=$!
+  wait "$HARNESS_PID"; status=$?
+  HARNESS_PID=""
+  out="$(cat /tmp/harness_plant_out)"
   python3 -c "
 import io,os,sys
 f=sys.argv[1]
@@ -88,7 +140,14 @@ io.open(f,'w',encoding='utf8').write(orig); os.remove(f+'.orig')" "$file"
   if [ "$status" -ne 0 ]; then
     printf '%-52s CAUGHT\n' "$label"; PASS=$((PASS+1))
   else
-    printf '%-52s NOT CAUGHT  <-- smoke is hollow\n' "$label"; FAIL=$((FAIL+1))
+    # **Print the transcript on a miss.** `out` was captured and never read --
+    # a field parsed and left unread, in the tool whose whole output is the
+    # evidence. A NOT CAUGHT line on its own says a defect went undetected and
+    # nothing about what the harness actually did, so the next step was always
+    # to re-run by hand. The failing case is the one worth keeping the
+    # transcript of; a catch needs no explanation.
+    printf '%-52s NOT CAUGHT  <-- the check is hollow\n' "$label"; FAIL=$((FAIL+1))
+    echo "$out" | grep -E '^(applied|PASS|FAIL|BASELINE|HARNESS|  \|)' | sed 's/^/    /'
   fi
 }
 
@@ -131,6 +190,28 @@ plant "M2 note carries the import reason again" "$M2" \
     w.reason AS source_reason_text," \
   "    w.reason AS note,
     NULL::text AS source_reason_text,"
+
+# **The scenario table, planted from the SQL side.** The whole point of the
+# table is that a fix landing on one implementation and not the other fails on
+# the side that missed it, so both directions must be shown: these plant against
+# Postgres, and the mutation sweep in the report plants the same two defects
+# against the mock. Both are the round-3 HIGHs, in the arm that had them right.
+plant "SCEN retire un-deactivates an inactive field" "$M1" \
+  "        active = v_before.active AND public.field_is_live_on(p_effective_to)," \
+  "        active = public.field_is_live_on(p_effective_to),"
+plant "SCEN unretire reactivates what it never closed" "$M1" \
+  "        active = v_before.active,
+        updated_at = timezone('utc', now())" \
+  "        active = true,
+        updated_at = timezone('utc', now())"
+plant "SCEN retire stops auditing before" "$M1" \
+  "            'phase', 'before',
+            'effective_to', p_effective_to," \
+  "            'phase', 'after',
+            'effective_to', p_effective_to,"
+plant "M2 the two blackout tables share a policy name" "$M2" \
+  "CREATE POLICY \"Admin field blackouts: members select\"" \
+  "CREATE POLICY \"Field Blackouts: members select\""
 
 # The revert's loss report is code like any other, and the harness plants a
 # future-dated retirement so it cannot pass by iterating zero rows. This proves
