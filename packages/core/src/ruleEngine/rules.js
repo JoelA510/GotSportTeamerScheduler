@@ -448,10 +448,14 @@ function scanKickoffs(context, schedule, codes) {
     //   nothing. That is declared-absent lighting, `LIGHTING_UNDECLARED`, and
     //   the exercise counter the sunset rule reports.
     // - `lighting === null` -- no reading was taken at all, because the answer
-    //   returned before `resolveLighting()` ran (an unknown surface, a format
-    //   with no timing row). Counting those as undeclared would be a counter
-    //   claiming exercise it did not do: the rule would clear its own floor on
-    //   games it never looked at, which is the shape the floor exists to catch.
+    //   returned before `resolveLighting()` ran. In
+    //   `checkKickoffAvailability()` that is the unknown-surface return and
+    //   only that one: a format with no timing row carries on and *is* read
+    //   (its sibling `latestLegalKickoff()` does return early there, which is
+    //   why the template carries `null` rather than a guess). Counting these
+    //   as undeclared would be a counter claiming exercise it did not do: the
+    //   rule would clear its own floor on games it never looked at, which is
+    //   the shape the floor exists to catch.
     //
     // `result.lighting` is the reading itself and is `null` in exactly the
     // early-return templates, so it is what separates them.

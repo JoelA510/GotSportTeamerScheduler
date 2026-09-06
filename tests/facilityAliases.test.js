@@ -45,6 +45,8 @@ import {
   toSeason2026AliasRings,
 } from '@squadlogic/core/facility/index.js';
 
+import { assertLayerUnwired, claimedReasonCodes } from './helpers/index.js';
+
 /* -------------------------------------------------------------------------- */
 /* Corpus, loaded once                                                         */
 /* -------------------------------------------------------------------------- */
@@ -219,7 +221,7 @@ describe('alias layer :: corpus guard', () => {
 
   it('registers a severity for every alias code', () => {
     const aliasCodes = Object.values(FACILITY_REASON).filter((code) => code.startsWith('ALIAS_'));
-    expect(aliasCodes.length).toBe(9);
+    expect(aliasCodes.length).toBe(10);
     for (const code of aliasCodes) {
       expect(Object.values(FACILITY_SEVERITY)).toContain(FACILITY_REASON_SEVERITY[code]);
     }
@@ -366,6 +368,36 @@ describe('alias layer :: carries every ring, follows none', () => {
 /* -------------------------------------------------------------------------- */
 /* The wrong-ground test                                                       */
 /* -------------------------------------------------------------------------- */
+
+describe('alias layer :: nothing enforces this layer, and the map says so', () => {
+  // Round 4, finding 4. The sibling closure layer got `CLOSURE_SET_UNWIRED` and
+  // a biconditional in this same PR; both layers are new here, so the asymmetry
+  // was two identical gaps with one of them declared. The check itself lives in
+  // `tests/helpers/unwiredLayer.js` and is run against both layers, rather than
+  // written out twice and free to drift.
+  const aliasCodes = Object.values(FACILITY_REASON).filter((code) => code.startsWith('ALIAS_'));
+
+  it('declares the gap on every map it builds, and nothing claims an ALIAS_* code', () => {
+    const { enforced, declares } = assertLayerUnwired({
+      layer: 'alias map',
+      findings: map.findings,
+      codes: aliasCodes,
+      declarationCode: FACILITY_REASON.ALIAS_LAYER_UNWIRED,
+    });
+    expect(enforced).toEqual([]);
+    expect(declares).toBe(true);
+
+    const declaration = map.findings.find((f) => f.code === FACILITY_REASON.ALIAS_LAYER_UNWIRED);
+    expect(declaration.severity).toBe(FACILITY_SEVERITY.INFO);
+    expect(declaration.details.aliasCount).toBe(map.stats.aliasCount);
+    // The gap being declared, stated: the layer's loudest code sits at blocking
+    // with no enforcement path able to raise it in a run.
+    expect(FACILITY_REASON_SEVERITY[FACILITY_REASON.ALIAS_UNKNOWN]).toBe(
+      FACILITY_SEVERITY.BLOCKING
+    );
+    expect(claimedReasonCodes().has(FACILITY_REASON.ALIAS_UNKNOWN)).toBe(false);
+  });
+});
 
 describe('alias layer :: a check over the published name is checking the wrong ground', () => {
   const DATE = '2026-09-15';
@@ -533,7 +565,10 @@ describe('alias layer :: the builder refuses what it must and reports what it re
     });
     expect(doubled.aliases.Z.candidates).toHaveLength(1);
     expect(doubled.aliases.Z.candidates[0].label).toBe('first');
-    expect(codesOf(doubled.findings)).toEqual([FACILITY_REASON.ALIAS_CODE_DUPLICATED]);
+    expect(codesOf(doubled.findings)).toEqual([
+      FACILITY_REASON.ALIAS_CODE_DUPLICATED,
+      FACILITY_REASON.ALIAS_LAYER_UNWIRED,
+    ]);
     expect(doubled.stats.entryCount).toBe(2);
     expect(doubled.stats.candidateCount).toBe(1);
   });

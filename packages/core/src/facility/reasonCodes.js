@@ -136,6 +136,18 @@ export const FACILITY_REASON = Object.freeze({
   ALIAS_SOURCE_UNCERTAIN: 'ALIAS_SOURCE_UNCERTAIN',
   /** One ring lists the same code twice; the first occurrence is read. */
   ALIAS_CODE_DUPLICATED: 'ALIAS_CODE_DUPLICATED',
+  /**
+   * **Nothing enforces this alias map.** Nothing outside `facility/aliases.js`
+   * and its tests calls `buildFieldAliasMap()`, `lookupFieldAlias()` or
+   * `surfacesOfAlias()`, and no rule and no registry constraint claims an
+   * `ALIAS_*` code -- `ALIAS_UNKNOWN` at blocking included. Every map says so
+   * on itself, the same way a closure set carries `CLOSURE_SET_UNWIRED` and
+   * an unwired fairness objective carries `FAIRNESS_OBJECTIVE_UNWIRED`, and
+   * `tests/helpers/unwiredLayer.js` checks the claim against the enforcement
+   * paths for both layers with one assertion: the day something claims one of
+   * these codes, the declaration has to go with it.
+   */
+  ALIAS_LAYER_UNWIRED: 'ALIAS_LAYER_UNWIRED',
 });
 
 /**
@@ -180,6 +192,7 @@ export const FACILITY_REASON_SEVERITY = Object.freeze({
   [FACILITY_REASON.ALIAS_VENUE_ONLY]: FACILITY_SEVERITY.INFO,
   [FACILITY_REASON.ALIAS_SOURCE_UNCERTAIN]: FACILITY_SEVERITY.COMPROMISE,
   [FACILITY_REASON.ALIAS_CODE_DUPLICATED]: FACILITY_SEVERITY.COMPROMISE,
+  [FACILITY_REASON.ALIAS_LAYER_UNWIRED]: FACILITY_SEVERITY.INFO,
 });
 
 /**

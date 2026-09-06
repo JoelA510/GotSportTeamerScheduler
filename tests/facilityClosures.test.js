@@ -77,7 +77,7 @@ import {
 
 import { buildFormatTimingTableFromSeason2026 } from '@squadlogic/core/timing/index.js';
 
-import { STANDING_RULES } from '@squadlogic/core/ruleEngine/index.js';
+import { assertLayerUnwired, claimedReasonCodes } from './helpers/index.js';
 
 /* -------------------------------------------------------------------------- */
 /* Corpus, loaded once                                                         */
@@ -761,6 +761,52 @@ describe('closures :: unknowns are reported, never folded into "no closure appli
     ).toBe(2);
   });
 
+  it('refuses a scope kind that reaches an undecidable answer with no code paired to it', () => {
+    // The guard that replaced a dead `?? CLOSURE_OVERLAP_UNDECIDABLE`
+    // fallback, made reachable rather than left as a comment. The set is
+    // hand-built with a scope kind the discriminated union does not carry --
+    // which is exactly the future state the guard is for: a kind added to the
+    // union without a pairing. `checkClosures()` is the real entry point and
+    // the booking goes through the real validator.
+    const future = {
+      closures: [
+        {
+          id: 'new-kind',
+          fromDate: '2026-09-24',
+          toDate: '2026-09-24',
+          startMinutes: 16 * 60,
+          endMinutes: 19 * 60,
+          allDay: false,
+          scope: { kind: 'kind-added-later', venueIds: [season2026VenueId(ALDER)] },
+          reason: 'a scope kind the union gained',
+          fieldsRaw: null,
+          venueName: ALDER,
+          source: null,
+        },
+      ],
+      closureIds: ['new-kind'],
+      source: null,
+      findings: [],
+      stats: { closureCount: 1, allDayCount: 0, byKind: {} },
+    };
+    // Endless, kicking off before the window: the only path to the undecidable
+    // answer.
+    expect(() =>
+      checkClosures(graph, future, booking('b', sid(ALDER, 'Pitch 2'), '2026-09-24', 15 * 60, null))
+    ).toThrow(/kind-added-later/);
+    // Meta-assertion: the same set decided by the clock does not throw, so the
+    // guard is on the undecidable path and not on every row of an unknown kind.
+    expect(() =>
+      checkClosures(graph, future, booking('b', sid(ALDER, 'Pitch 2'), '2026-09-24', 9 * 60, 600))
+    ).not.toThrow();
+    // ... and every kind the union actually declares has a pairing, so this
+    // cannot fire on today's vocabulary.
+    for (const kind of Object.values(CLOSURE_SCOPE)) {
+      if (kind === CLOSURE_SCOPE.VENUE_UNKNOWN) continue;
+      expect(CLOSURE_UNDECIDABLE_CODE_BY_SCOPE[kind], kind).toBeTruthy();
+    }
+  });
+
   it("reports, at build time, a surface reading the row's venue does not hold, instead of throwing", () => {
     // A future `Orchard Park,4,...` row: the readings table says `4` is
     // Pitch 4, and Orchard has no Pitch 4. Every other name-to-ground path in
@@ -1034,14 +1080,9 @@ describe('closures :: unknowns are reported, never folded into "no closure appli
 /* -------------------------------------------------------------------------- */
 
 describe('closures :: nothing enforces this layer, and the set says so', () => {
-  /** Every reason code the standing rule set claims, from the definitions. */
-  const claimedByRules = new Set(STANDING_RULES.flatMap((rule) => rule.reasonCodes));
   const closureCodes = Object.values(AVAILABILITY_REASON).filter((code) =>
     code.startsWith('CLOSURE_')
   );
-  const enforcedCodes = (claimed) => closureCodes.filter((code) => claimed.has(code));
-  const declaresUnwired = (set) =>
-    set.findings.some((f) => f.code === AVAILABILITY_REASON.CLOSURE_SET_UNWIRED);
 
   it('is not consulted by the kickoff path, which is the gap being declared', () => {
     // Round 3, finding 1, reproduced: a 17:00 kickoff on Maplewood Back Field 2
@@ -1068,36 +1109,31 @@ describe('closures :: nothing enforces this layer, and the set says so', () => {
     expect(codesOf(direct)).toContain(AVAILABILITY_REASON.CLOSURE_BLOCKS_BOOKING);
   });
 
-  it('declares the gap on every set it builds, and no rule claims a closure code', () => {
-    expect(declaresUnwired(closures)).toBe(true);
+  it('declares the gap on every set it builds, and nothing claims a CLOSURE_* code', () => {
+    // The same check the alias layer runs, from the same helper: a layer
+    // declares itself unwired exactly while nothing claims one of its codes.
+    // Round 4, finding 4 moved this into `tests/helpers/unwiredLayer.js` so the
+    // two layers cannot drift into two different standards.
+    const { enforced, declares } = assertLayerUnwired({
+      layer: 'closure set',
+      findings: closures.findings,
+      codes: closureCodes,
+      declarationCode: AVAILABILITY_REASON.CLOSURE_SET_UNWIRED,
+    });
+    expect(enforced).toEqual([]);
+    expect(declares).toBe(true);
+
     const declaration = closures.findings.find(
       (f) => f.code === AVAILABILITY_REASON.CLOSURE_SET_UNWIRED
     );
     expect(declaration.severity).toBe(AVAILABILITY_SEVERITY.INFO);
     expect(declaration.details.closureCount).toBe(closures.stats.closureCount);
-    // Meta-assertion: the standing rule set is real and claims codes, so
-    // "claims no closure code" is a fact about closures and not about an empty
-    // set of rules.
-    expect(STANDING_RULES.length).toBeGreaterThan(5);
-    expect(claimedByRules.size).toBeGreaterThan(10);
-    expect(closureCodes.length).toBeGreaterThan(5);
-    expect(enforcedCodes(claimedByRules)).toEqual([]);
-  });
-
-  it('ties the declaration to the rules, so one cannot change without the other', () => {
-    // The biconditional. A closure set declares itself unwired **exactly**
-    // while no standing rule claims a closure code. Wiring a rule without
-    // removing the declaration, or removing the declaration without wiring a
-    // rule, each break this.
-    expect(declaresUnwired(closures)).toBe(enforcedCodes(claimedByRules).length === 0);
-
-    // Positive control: a rule that claims one. The rule is built here rather
-    // than registered, so the assertion is exercised without changing the
-    // engine — and the biconditional is shown to reject the state where the
-    // code gains an evaluator and the declaration stays.
-    const wired = new Set([...claimedByRules, AVAILABILITY_REASON.CLOSURE_BLOCKS_BOOKING]);
-    expect(enforcedCodes(wired)).toEqual([AVAILABILITY_REASON.CLOSURE_BLOCKS_BOOKING]);
-    expect(declaresUnwired(closures) === (enforcedCodes(wired).length === 0)).toBe(false);
+    // The gap being declared, stated: the layer's loudest code sits at blocking
+    // with no enforcement path able to raise it in a run.
+    expect(AVAILABILITY_REASON_SEVERITY[AVAILABILITY_REASON.CLOSURE_BLOCKS_BOOKING]).toBe(
+      AVAILABILITY_SEVERITY.BLOCKING
+    );
+    expect(claimedReasonCodes().has(AVAILABILITY_REASON.CLOSURE_BLOCKS_BOOKING)).toBe(false);
   });
 });
 

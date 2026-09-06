@@ -315,6 +315,24 @@ export function buildFieldAliasMap(graph, complexMap, input) {
     }
   }
 
+  // **The layer declares its own wiring gap, on every map it builds.**
+  //
+  // Nothing outside this module and its tests calls `buildFieldAliasMap()`,
+  // `lookupFieldAlias()` or `surfacesOfAlias()`, and no rule and no registry
+  // constraint claims an `ALIAS_*` code -- so `ALIAS_UNKNOWN` sits at blocking
+  // with nothing able to raise it in a run. Wiring it belongs with 8.4's
+  // import, where a published name reaches the system from outside. Until then
+  // the honest position is the one the sibling closure layer takes with
+  // `CLOSURE_SET_UNWIRED`, and `fairness/objectives.js` before it: say so on
+  // every result, in a code a test can check against the enforcement paths.
+  findings.push(
+    makeFinding(
+      FACILITY_REASON.ALIAS_LAYER_UNWIRED,
+      `this alias map is not consulted by any scheduling path: no rule or registry constraint claims an ALIAS_* code, and nothing outside facility/aliases.js calls it; ${stats.aliasCount} published name(s) are resolved only where a caller asks directly`,
+      { aliasCount: stats.aliasCount, ringCount: stats.ringCount, entryCount: stats.entryCount }
+    )
+  );
+
   const displayNames = Object.keys(aliases).sort();
   return deepFreeze({
     aliases,

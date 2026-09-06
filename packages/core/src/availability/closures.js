@@ -398,8 +398,19 @@ export const CLOSURE_UNDECIDABLE_CODE_BY_SCOPE = Object.freeze({
  */
 function undecidableFinding(scopeKind, message, details) {
   const decidedCode = CLOSURE_DECIDED_CODE_BY_SCOPE[scopeKind] ?? null;
-  const code =
-    CLOSURE_UNDECIDABLE_CODE_BY_SCOPE[scopeKind] ?? AVAILABILITY_REASON.CLOSURE_OVERLAP_UNDECIDABLE;
+  const code = CLOSURE_UNDECIDABLE_CODE_BY_SCOPE[scopeKind];
+  if (!code) {
+    // A scope kind that reaches an undecidable answer with no code paired to
+    // it. `venue-unknown` is the one declared kind without an entry and it
+    // never arrives here -- it is answered on its own branch, where the ground
+    // cannot be compared at all -- so this fires only for a kind added to the
+    // union without a pairing. It replaces a `?? CLOSURE_OVERLAP_UNDECIDABLE`
+    // fallback that was dead once every reachable kind had an entry, and which
+    // would have handed the new kind a severity nobody chose.
+    throw new Error(
+      `closures: scope kind "${scopeKind}" reached the undecidable answer with no code paired to it; add one to CLOSURE_UNDECIDABLE_CODE_BY_SCOPE beside its decided code`
+    );
+  }
   return makeAvailabilityFinding(code, message, {
     ...details,
     decidedCode,
