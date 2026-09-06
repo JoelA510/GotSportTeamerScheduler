@@ -43,8 +43,19 @@ start_cluster() {
 # kind of check this whole phase exists to stop.
 psql_file() {
   local f="$1"
-  cp "$f" "/home/$PGUSER_LOCAL/.harness.sql"
-  chmod 644 "/home/$PGUSER_LOCAL/.harness.sql"
+  local staged="/home/$PGUSER_LOCAL/.harness.sql"
+  # **The staging copy's status was thrown away, and the staging path is
+  # reused.** Every file is copied over the same `~/.harness.sql`, so a `cp`
+  # that failed left the PREVIOUS file in place and psql cheerfully re-ran it
+  # and exited 0 -- a smoke could print PASS having executed the migration
+  # before it. Identical in shape to the `fresh_db` prelude bug fixed last
+  # round, on every call site rather than one. The source must exist, the copy
+  # must succeed, and the staged file is removed first so a failed copy leaves
+  # nothing to run rather than something stale.
+  if [ ! -r "$f" ]; then echo "psql_file: cannot read $f" >&2; return 1; fi
+  rm -f "$staged"
+  if ! cp "$f" "$staged"; then echo "psql_file: failed to stage $f" >&2; return 1; fi
+  if ! chmod 644 "$staged"; then echo "psql_file: failed to chmod $staged" >&2; return 1; fi
   as_pg "psql -v ON_ERROR_STOP=1 -h ~/sock -U postgres -d $DB -q -f ~/.harness.sql"
 }
 psql_cmd() { as_pg "psql -v ON_ERROR_STOP=1 -h ~/sock -U postgres -d $DB -tAc \"$1\""; }
@@ -138,11 +149,24 @@ echo "=== shared scenario table, against Postgres ==="
 # fixes to admin_retire_field and admin_unretire_field landed in the SQL and
 # never reached the mock, and no check existed that would notice -- behaviour
 # cannot be shared across PL/pgSQL and JavaScript, but the EXPECTED OUTCOME can.
-python3 "$REPO/scripts/dbharness/scenarios.py" > /tmp/harness_scenarios.sql || {
-  echo "FAIL generating the scenario script"; STATUS=1;
-}
-if psql_file /tmp/harness_scenarios.sql >/tmp/harness_scen_out 2>&1; then
+# **A failed generation must not fall through to a green run.** The `|| { ...
+# STATUS=1; }` set the status and then carried on, so psql ran the truncated,
+# empty file that the failed redirect had left behind, found nothing to object
+# to, and the harness printed "PASS scenario table" over a script that had
+# executed nothing. The generator itself refuses to emit for an empty table --
+# that guard was fine and this path went round it.
+rm -f /tmp/harness_scenarios.sql
+if ! python3 "$REPO/scripts/dbharness/scenarios.py" > /tmp/harness_scenarios.sql 2>/tmp/harness_scen_gen; then
+  echo "FAIL generating the scenario script"; tail -10 /tmp/harness_scen_gen; STATUS=1
+elif [ ! -s /tmp/harness_scenarios.sql ]; then
+  echo "FAIL the scenario generator produced an empty script"; STATUS=1
+elif psql_file /tmp/harness_scenarios.sql >/tmp/harness_scen_out 2>&1; then
   echo "PASS scenario table"
+  # The NOTICE carries `v_ran` of the table size, so a run that executed
+  # nothing is visible here rather than hiding behind the word PASS.
+  if ! grep -qE 'NOTICE:.*scenarios executed against Postgres' /tmp/harness_scen_out; then
+    echo "FAIL scenario table ran without reporting how many scenarios it executed"; STATUS=1
+  fi
   grep -E '^(psql:[^ ]+ )?NOTICE:' /tmp/harness_scen_out | sed -E 's/^psql:[^ ]+ //; s/^/  | /' || true
 else
   echo "FAIL scenario table"; tail -15 /tmp/harness_scen_out; STATUS=1
