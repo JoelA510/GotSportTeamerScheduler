@@ -466,9 +466,22 @@ end, because round 5's seven were two code defects and five prose drifts. Rounds
   file. The real row is `Adjacent Fields / Spacing`, which names no field
   numbers at all. The adjacency handling was built from the file, not the quote.
 - **The sub-unit level is not Alder-only.** The plan describes sub-units as an
-  Alder Park concern. They span **four venues**, and 28 further rows across the
-  corpus resolve to no surface the graph holds. Amendment A widened the layer
+  Alder Park concern. It is wrong, and so was this entry's first statement of
+  the correction — see the amendment below. Amendment A widened the layer
   accordingly.
+- **Amended 8.4: two figures in the line above were wrong when written.** The
+  8.4 agent tested them and neither held. "Four venues" reaches no reading of
+  the corpus: `practice_grid.csv` carries a sub-unit on **385 of 457 rows across
+  five named venues** — Maplewood (224), Orchard Park (98), Alder Park (21),
+  Larkfield Green (10), Brookside Park (4) — plus 28 in the `(unresolved)`
+  bucket, and the shipped `SEASON_2026_PRACTICE_LAYER` holds **25 sub-unit
+  surfaces across six venues**. And "28 rows resolve to no surface the graph
+  holds" conflated two counts: **28** rows carry `venue = (unresolved)` and
+  resolve `VENUE_UNKNOWN`; **four further** rows (Maplewood / Front / A) also
+  fail to resolve, so **32** is the count of rows not resolving to exactly one
+  surface. `tests/facilityPracticeLayer.test.js:437` had this right all along as
+  `457 - 28 - 4`; the supervisor paraphrased it into the log without checking it
+  against the assertion. Corrected in the 8.4 branch, not silently in place.
 - **Amendment A, and the bridge that was dropped.** A proposed Maplewood bridge
   between the two decoder rings was withdrawn: it would have collapsed **7 of
   the 12** ring disagreements by construction, hiding exactly the disagreements
@@ -511,9 +524,20 @@ Two further supervisor claims were corrected by the agent rather than accepted:
 the constraint registry **cannot** express "declared and unenforced" (a
 `declared-only` constraint must claim no reason codes, so the
 `FAIRNESS_OBJECTIVE_UNWIRED` idiom was the right one), and `c4e5184`'s commit
-message overstates which code path leaves `result.lighting` null. That is five
-supervisor figures or claims corrected by agents across 0.1–8.3, every one caught
-because the figure was handed over as a claim to verify rather than a fact.
+message overstates which code path leaves `result.lighting` null. Three more came
+from the 8.4 agent: the two figures in this entry, corrected above, and the
+supervisor's proposed amendment to 8.4's decoder-ring acceptance criterion —
+routing the one `BLANK_VS_LABEL` into parity's `added` — which the evidence
+refused, because both rings carry a _row_ for `11v11 Field 2` and only the cell
+is blank, and because `added` is already occupied by the seven fields-ring-only
+codes.
+
+That is **eight** supervisor figures or claims corrected by agents across
+0.1–8.4 — five through 8.3, three from 8.4's planning pass — every one caught because the figure was handed over as a claim to
+verify rather than a fact — and the last two only because the next task's agent
+was pointed at the previous task's log and told to test it rather than build on
+it. The two that reached the durable record are the ones that argue for keeping
+that habit: a wrong figure in a merged log is read as settled.
 
 ### Declared, not enforced — the largest thing left open
 
