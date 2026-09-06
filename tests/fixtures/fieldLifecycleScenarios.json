@@ -1,0 +1,178 @@
+{
+  "_comment": [
+    "THE shared behavioural contract for the field-lifecycle and blackout RPCs.",
+    "",
+    "Round 2 made the mock and the migration one contract for the affected-booking",
+    "KIND LITERALS, by parsing them out of the migration text. That worked because",
+    "the literals are text in one file. RPC BEHAVIOUR is not: it lives in PL/pgSQL",
+    "on one side and JavaScript on the other, and no amount of parsing turns one",
+    "into the other. So round 2's fixes to admin_retire_field and",
+    "admin_unretire_field landed in the SQL and not in the mock, and round 3 found",
+    "both -- one of them CERTIFIED by a passing test.",
+    "",
+    "A per-field diff would not have caught them either; the next divergence is a",
+    "field nobody thought to diff. What is shared instead is the OUTCOME: this file",
+    "lists cases and what each must produce, and both implementations are run",
+    "against it and asserted to agree with THIS, not with each other.",
+    "",
+    "  * tests/fieldLifecycleScenarios.test.js   runs them against the mock client",
+    "  * scripts/dbharness/scenarios.py          emits SQL that runs them against",
+    "                                            Postgres, invoked by run.sh",
+    "",
+    "Dates are relative to the day of the run, as offsets in days from today, so",
+    "both sides compute the same absolute date and no scenario expires. `null` is",
+    "an unbounded window. Every field named here is pseudonymous.",
+    "",
+    "Breaking either side must fail the case, in both harnesses. That is proved:",
+    "scripts/dbharness/prove.sh plants against the SQL and the mutation sweep",
+    "against the mock."
+  ],
+  "version": 1,
+  "fieldScenarios": [
+    {
+      "id": "retire-active-future",
+      "why": "A retirement dated ahead leaves the field live until it arrives.",
+      "rpc": "admin_retire_field",
+      "before": { "active": true, "effectiveTo": null },
+      "args": { "effectiveTo": 30, "confirm": false },
+      "expect": { "ok": true, "active": true, "effectiveTo": 30 }
+    },
+    {
+      "id": "retire-active-past",
+      "why": "A retirement already in the past deactivates on the spot.",
+      "rpc": "admin_retire_field",
+      "before": { "active": true, "effectiveTo": null },
+      "args": { "effectiveTo": -1, "confirm": false },
+      "expect": { "ok": true, "active": false, "effectiveTo": -1 }
+    },
+    {
+      "id": "retire-active-today",
+      "why": "Inclusive on the end date: retired FOR today is still live today.",
+      "rpc": "admin_retire_field",
+      "before": { "active": true, "effectiveTo": null },
+      "args": { "effectiveTo": 0, "confirm": false },
+      "expect": { "ok": true, "active": true, "effectiveTo": 0 }
+    },
+    {
+      "id": "retire-inactive-future",
+      "why": "HIGH 1. Retiring something is not a way to un-deactivate it. The mock wrote active:true unconditionally and handed a deactivated field back to the scheduler.",
+      "rpc": "admin_retire_field",
+      "before": { "active": false, "effectiveTo": null },
+      "args": { "effectiveTo": 30, "confirm": false },
+      "expect": { "ok": true, "active": false, "effectiveTo": 30 }
+    },
+    {
+      "id": "retire-inactive-past",
+      "why": "Same, with a past date: still false, by both terms of the conjunction.",
+      "rpc": "admin_retire_field",
+      "before": { "active": false, "effectiveTo": null },
+      "args": { "effectiveTo": -1, "confirm": false },
+      "expect": { "ok": true, "active": false, "effectiveTo": -1 }
+    },
+    {
+      "id": "retire-rewrite-later",
+      "why": "Re-retiring an already future-retired field moves the date and keeps it live.",
+      "rpc": "admin_retire_field",
+      "before": { "active": true, "effectiveTo": 10 },
+      "args": { "effectiveTo": 60, "confirm": false },
+      "expect": { "ok": true, "active": true, "effectiveTo": 60 }
+    },
+    {
+      "id": "unretire-future-retired",
+      "why": "Clears the date; the field was live and stays live.",
+      "rpc": "admin_unretire_field",
+      "before": { "active": true, "effectiveTo": 30 },
+      "args": {},
+      "expect": { "ok": true, "active": true, "effectiveTo": null }
+    },
+    {
+      "id": "unretire-past-retired",
+      "why": "HIGH 2. The field is inactive BECAUSE the retirement passed. Unretire clears the date and leaves activity alone -- it cannot know whether the deactivation was the retirement's doing. Re-activating is admin_update_field.",
+      "rpc": "admin_unretire_field",
+      "before": { "active": false, "effectiveTo": -1 },
+      "args": {},
+      "expect": { "ok": true, "active": false, "effectiveTo": null }
+    },
+    {
+      "id": "unretire-ordinarily-deactivated",
+      "why": "HIGH 2, the sharpest form. Nobody ever retired this field; it was simply switched off. Unretiring it must not switch it back on. The suite asserted active===true here and so certified the bug.",
+      "rpc": "admin_unretire_field",
+      "before": { "active": false, "effectiveTo": null },
+      "args": {},
+      "expect": { "ok": true, "active": false, "effectiveTo": null }
+    },
+    {
+      "id": "unretire-never-retired-active",
+      "why": "The no-op direction. An active, undated field is unchanged.",
+      "rpc": "admin_unretire_field",
+      "before": { "active": true, "effectiveTo": null },
+      "args": {},
+      "expect": { "ok": true, "active": true, "effectiveTo": null }
+    }
+  ],
+  "blackoutScenarios": [
+    {
+      "id": "blackout-location-scoped",
+      "why": "A site-wide closure.",
+      "scope": "location",
+      "args": { "from": 10, "until": 20, "reason": "maintenance" },
+      "expect": { "ok": true }
+    },
+    {
+      "id": "blackout-field-scoped",
+      "why": "A closure on one pitch.",
+      "scope": "field",
+      "args": { "from": 10, "until": 20, "reason": "weather" },
+      "expect": { "ok": true }
+    },
+    {
+      "id": "blackout-timed",
+      "why": "Minutes past midnight, both bounds present.",
+      "scope": "field",
+      "args": { "from": 10, "until": 10, "reason": "event", "startMinutes": 540, "endMinutes": 720 },
+      "expect": { "ok": true }
+    },
+    {
+      "id": "blackout-both-scopes",
+      "why": "num_nonnulls(location_id, field_id) = 1: exactly one, never both.",
+      "scope": "both",
+      "args": { "from": 10, "until": 20, "reason": "maintenance" },
+      "expect": { "ok": false }
+    },
+    {
+      "id": "blackout-no-scope",
+      "why": "... and never neither.",
+      "scope": "neither",
+      "args": { "from": 10, "until": 20, "reason": "maintenance" },
+      "expect": { "ok": false }
+    },
+    {
+      "id": "blackout-undeclared-reason",
+      "why": "The reason is a closed enum, so free text cannot arrive through it.",
+      "scope": "field",
+      "args": { "from": 10, "until": 20, "reason": "closure" },
+      "expect": { "ok": false }
+    },
+    {
+      "id": "blackout-inverted-dates",
+      "why": "blackout_until >= blackout_from.",
+      "scope": "field",
+      "args": { "from": 20, "until": 10, "reason": "maintenance" },
+      "expect": { "ok": false }
+    },
+    {
+      "id": "blackout-half-a-time",
+      "why": "Both minutes or neither; one alone is a window with no other end.",
+      "scope": "field",
+      "args": { "from": 10, "until": 20, "reason": "maintenance", "startMinutes": 540 },
+      "expect": { "ok": false }
+    },
+    {
+      "id": "blackout-inverted-times",
+      "why": "end_minutes > start_minutes.",
+      "scope": "field",
+      "args": { "from": 10, "until": 10, "reason": "maintenance", "startMinutes": 720, "endMinutes": 540 },
+      "expect": { "ok": false }
+    }
+  ]
+}

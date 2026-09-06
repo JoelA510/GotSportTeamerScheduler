@@ -120,6 +120,24 @@ for id in "${NEW_MIGRATIONS[@]}"; do
   fi
 done
 
+echo "=== shared scenario table, against Postgres ==="
+#
+# `tests/fixtures/fieldLifecycleScenarios.json` states what the lifecycle and
+# blackout RPCs must do; `tests/fieldLifecycleScenarios.test.js` runs it against
+# the mock and this runs the same table against a real database. Round 2's
+# fixes to admin_retire_field and admin_unretire_field landed in the SQL and
+# never reached the mock, and no check existed that would notice -- behaviour
+# cannot be shared across PL/pgSQL and JavaScript, but the EXPECTED OUTCOME can.
+python3 "$REPO/scripts/dbharness/scenarios.py" > /tmp/harness_scenarios.sql || {
+  echo "FAIL generating the scenario script"; STATUS=1;
+}
+if psql_file /tmp/harness_scenarios.sql >/tmp/harness_scen_out 2>&1; then
+  echo "PASS scenario table"
+  grep -E '^(psql:[^ ]+ )?NOTICE:' /tmp/harness_scen_out | sed -E 's/^psql:[^ ]+ //; s/^/  | /' || true
+else
+  echo "FAIL scenario table"; tail -15 /tmp/harness_scen_out; STATUS=1
+fi
+
 echo "=== reverts (each applied on a database built up to its own migration) ==="
 #
 # A revert is only meaningful directly after its forward migration. Applying
