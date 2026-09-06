@@ -142,6 +142,16 @@ export const AVAILABILITY_REASON = Object.freeze({
   /** A permit row's `Lit` column contradicts the resolved lighting. */
   LIGHTING_SOURCE_DISAGREES: 'LIGHTING_SOURCE_DISAGREES',
   /**
+   * No record and no venue flag: nothing states whether the ground is lit.
+   * The practice-only venues of the season-2026 corpus arrive this way
+   * (`field_inventory.csv` has no lighting column, GAP-05). `compromise` for
+   * the same reason `PERMIT_UNDECLARED` is: "nobody has said" is not "unlit",
+   * and reading it as unlit would be an absence wearing a fact's clothes. The
+   * sunset rule still carries the ground, as it does for unlit ground, so the
+   * conservative bound applies while the gap is reported.
+   */
+  LIGHTING_UNDECLARED: 'LIGHTING_UNDECLARED',
+  /**
    * Two lighting records claim the same surface and disagree. The more
    * restrictive one is applied *and* this is emitted — the same contract the
    * permit and sunset paths keep, so lighting is not the one place a duplicate
@@ -173,6 +183,69 @@ export const AVAILABILITY_REASON = Object.freeze({
   /** Nothing already booked bounds this kickoff. Provenance. */
   OCCUPANCY_UNBOUNDED: 'OCCUPANCY_UNBOUNDED',
 
+  /* -- closures (the constraint log, Phase 8.3) --------------------------- */
+  /** The booking stands inside a venue- or surface-scoped closure window. */
+  CLOSURE_BLOCKS_BOOKING: 'CLOSURE_BLOCKS_BOOKING',
+  /**
+   * The booking falls in a closure whose `fields` cell cannot be read (the
+   * corpus's Excel-corrupted `2026-01-07` for `1-7`). It may close this
+   * ground; nobody can tell from the sheet. `compromise`, never nothing.
+   */
+  CLOSURE_SCOPE_UNREADABLE: 'CLOSURE_SCOPE_UNREADABLE',
+  /**
+   * The booking has no known end, kicks off before a timed closure opens, and
+   * so may or may not run into it. (One that kicks off inside the window is
+   * decided by its start; one that kicks off after it closes is decided
+   * clean.) Not knowing must never outrank what knowing would carry, and the
+   * scope kinds whose decided answer is *information* get
+   * {@link AVAILABILITY_REASON.CLOSURE_NOTE_UNDECIDABLE} instead of this code
+   * -- so the severity is the table's answer for the code, and no call site
+   * decides one.
+   */
+  CLOSURE_OVERLAP_UNDECIDABLE: 'CLOSURE_OVERLAP_UNDECIDABLE',
+  /**
+   * The same not-knowing, about a row whose *decided* answer is itself
+   * information: the parking note, the adjacency deferral. Split from
+   * `CLOSURE_OVERLAP_UNDECIDABLE` rather than capped at the call site, because
+   * `AVAILABILITY_REASON_SEVERITY` is where a reader must be able to get the
+   * severity -- without knowing which scope kind produced it.
+   */
+  CLOSURE_NOTE_UNDECIDABLE: 'CLOSURE_NOTE_UNDECIDABLE',
+  /** The booking falls in a row that closes something other than a playing surface (`Parking`). */
+  CLOSURE_NOT_GROUND: 'CLOSURE_NOT_GROUND',
+  /** The booking is under an adjacency rule the graph's overlap pairs already enforce. Provenance. */
+  CLOSURE_ADJACENCY_DEFERRED: 'CLOSURE_ADJACENCY_DEFERRED',
+  /**
+   * A closure row names a venue the graph does not hold, so it reaches no
+   * ground at all. Emitted twice over: once on the set at build time, and
+   * again against every booking whose date *and hours* fall inside the window,
+   * because a caller holding only the query answer would read silence as a
+   * clear date. Its `timeMeets` detail says whether the clock decided the
+   * overlap or was itself undecidable.
+   */
+  CLOSURE_VENUE_UNKNOWN: 'CLOSURE_VENUE_UNKNOWN',
+  /**
+   * A closure row names a venue the graph holds and a surface it does not.
+   * Reported on the set at build time, and **applied to the venue** at query
+   * time as a compromise — the contract its sibling `unreadable` already had:
+   * a closure that reached nothing because one cell would not resolve is a
+   * closure that vanishes.
+   */
+  CLOSURE_SURFACE_UNKNOWN: 'CLOSURE_SURFACE_UNKNOWN',
+  /**
+   * **Nothing enforces this closure set.** `checkClosures()` and
+   * `findClosureBreaches()` are standalone: `checkKickoffAvailability()` does
+   * not call them, and neither enforcement path claims a `CLOSURE_*` code —
+   * no standing rule in `ruleEngine/rules.js` and no registry constraint — so
+   * a kickoff inside a closed window comes back with no closure code at all.
+   * Every set says so on itself, the way `FAIRNESS_OBJECTIVE_UNWIRED` does for
+   * the unwired scoring functions, and `tests/helpers/unwiredLayer.js` checks
+   * the claim against both paths rather than trusting it, for this layer and
+   * its sibling `ALIAS_LAYER_UNWIRED` alike: the day something claims one of
+   * these codes, the declaration has to go with it.
+   */
+  CLOSURE_SET_UNWIRED: 'CLOSURE_SET_UNWIRED',
+
   /* -- the derived query -------------------------------------------------- */
   /** Which constraints bind the answer, tightest first. Provenance. */
   LATEST_KICKOFF_BOUND: 'LATEST_KICKOFF_BOUND',
@@ -203,6 +276,7 @@ export const AVAILABILITY_REASON_SEVERITY = Object.freeze({
   [AVAILABILITY_REASON.LIGHTING_FROM_ANCESTOR]: AVAILABILITY_SEVERITY.INFO,
   [AVAILABILITY_REASON.LIGHTING_FROM_VENUE]: AVAILABILITY_SEVERITY.INFO,
   [AVAILABILITY_REASON.LIGHTING_SOURCE_DISAGREES]: AVAILABILITY_SEVERITY.INFO,
+  [AVAILABILITY_REASON.LIGHTING_UNDECLARED]: AVAILABILITY_SEVERITY.COMPROMISE,
   [AVAILABILITY_REASON.LIGHTING_PRECEDENCE_AMBIGUOUS]: AVAILABILITY_SEVERITY.INFO,
   [AVAILABILITY_REASON.LIGHTS_OFF_UNDECLARED]: AVAILABILITY_SEVERITY.INFO,
   [AVAILABILITY_REASON.LIGHTS_OFF_EXCEEDED]: AVAILABILITY_SEVERITY.BLOCKING,
@@ -214,6 +288,16 @@ export const AVAILABILITY_REASON_SEVERITY = Object.freeze({
 
   [AVAILABILITY_REASON.OCCUPANCY_BOUND_BY_BOOKING]: AVAILABILITY_SEVERITY.INFO,
   [AVAILABILITY_REASON.OCCUPANCY_UNBOUNDED]: AVAILABILITY_SEVERITY.INFO,
+
+  [AVAILABILITY_REASON.CLOSURE_BLOCKS_BOOKING]: AVAILABILITY_SEVERITY.BLOCKING,
+  [AVAILABILITY_REASON.CLOSURE_SCOPE_UNREADABLE]: AVAILABILITY_SEVERITY.COMPROMISE,
+  [AVAILABILITY_REASON.CLOSURE_OVERLAP_UNDECIDABLE]: AVAILABILITY_SEVERITY.COMPROMISE,
+  [AVAILABILITY_REASON.CLOSURE_NOTE_UNDECIDABLE]: AVAILABILITY_SEVERITY.INFO,
+  [AVAILABILITY_REASON.CLOSURE_NOT_GROUND]: AVAILABILITY_SEVERITY.INFO,
+  [AVAILABILITY_REASON.CLOSURE_ADJACENCY_DEFERRED]: AVAILABILITY_SEVERITY.INFO,
+  [AVAILABILITY_REASON.CLOSURE_VENUE_UNKNOWN]: AVAILABILITY_SEVERITY.COMPROMISE,
+  [AVAILABILITY_REASON.CLOSURE_SURFACE_UNKNOWN]: AVAILABILITY_SEVERITY.COMPROMISE,
+  [AVAILABILITY_REASON.CLOSURE_SET_UNWIRED]: AVAILABILITY_SEVERITY.INFO,
 
   [AVAILABILITY_REASON.LATEST_KICKOFF_BOUND]: AVAILABILITY_SEVERITY.INFO,
   [AVAILABILITY_REASON.NO_LEGAL_KICKOFF]: AVAILABILITY_SEVERITY.BLOCKING,

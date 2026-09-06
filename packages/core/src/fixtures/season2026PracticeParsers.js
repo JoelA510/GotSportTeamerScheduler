@@ -30,6 +30,7 @@ import { z } from 'zod';
 import { weekdayCodeOf } from '../availability/calendar.js';
 import { isoDayNumber } from '../facility/eligibility.js';
 import { FACILITY_SEVERITY } from '../facility/reasonCodes.js';
+import { ISO_DATE_PATTERN } from '../availability/schemas.js';
 import { formatClockMinutes, parseClockMinutes, parseCsv, trim } from './season2026Parsers.js';
 
 /* -------------------------------------------------------------------------- */
@@ -620,7 +621,8 @@ const MONTH_ABBREVIATIONS = Object.freeze({
   Dec: 12,
 });
 
-const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+/** One reading of "this cell is a date", shared with `availability/` (Phase 8.3). */
+const ISO_DATE_RE = ISO_DATE_PATTERN;
 
 /**
  * Days in a month, Gregorian. `Feb 30` is not a date a regex will refuse.

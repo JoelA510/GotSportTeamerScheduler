@@ -34,13 +34,10 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, it, expect } from 'vitest';
 
-const CORE_SRC = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  '..',
-  'packages',
-  'core',
-  'src'
-);
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const CORE_SRC = path.join(ROOT, 'packages', 'core', 'src');
+/** The tests walk too: a test file merged as a binary blob is as unreadable as a source file. */
+const TESTS_DIR = path.join(ROOT, 'tests');
 
 /**
  * Every `.js` file under one directory, recursively.
@@ -60,7 +57,7 @@ function sourceFilesUnder(dir) {
 }
 
 describe('source hygiene :: no source file under packages/core/src is binary', () => {
-  const files = sourceFilesUnder(CORE_SRC);
+  const files = [...sourceFilesUnder(CORE_SRC), ...sourceFilesUnder(TESTS_DIR)];
 
   it('scans a plausible number of files', () => {
     // The meta-assertion the rest of this file rests on: a walk that found
@@ -81,7 +78,7 @@ describe('source hygiene :: no source file under packages/core/src is binary', (
     /** @type {string[]} */
     const offenders = [];
     for (const file of files) {
-      if (readFileSync(file).includes(0)) offenders.push(path.relative(CORE_SRC, file));
+      if (readFileSync(file).includes(0)) offenders.push(path.relative(ROOT, file));
     }
     expect(
       offenders,

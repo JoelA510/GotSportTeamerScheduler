@@ -1,0 +1,823 @@
+/**
+ * Tests for the alias layer (`facility/aliases.js`, Phase 8.3): the published
+ * field name as a display layer over surface ids.
+ *
+ * Both decoder rings are read from the corpus at test time and every figure
+ * — 27 codes, 20 shared, 12 disagreements as 11 + 1 — is derived, then
+ * compared with the loader's own `compareDecoderRings()` so there is one
+ * producer of the comparison and this file proves the two agree rather than
+ * restating a number.
+ *
+ * The wrong-ground block is the acceptance test the plan asks for: a check
+ * that reasons over the published name is shown to miss a real clash that the
+ * surface-keyed check finds, and its positive control re-points the alias and
+ * watches the clash go.
+ */
+
+import { describe, it, expect } from 'vitest';
+
+import {
+  DECODER_DISAGREEMENT_KIND,
+  compareDecoderRings,
+  loadFacilityGeometry,
+  loadSeason2026,
+  loadSeason2026Practice,
+} from '@squadlogic/core/fixtures/index.js';
+
+import {
+  ALIAS_GROUND_AGREEMENT,
+  ALIAS_LABEL_AGREEMENT,
+  FACILITY_REASON,
+  FACILITY_REASON_SEVERITY,
+  FACILITY_SEVERITY,
+  FieldAliasMapInputSchema,
+  PRACTICE_SURFACE_RESOLUTION,
+  SEASON_2026_ALIAS_RINGS,
+  buildFieldAliasMap,
+  buildSeason2026PracticeFacilityGraph,
+  buildSeason2026VenueComplexMap,
+  findFacilityConflicts,
+  lookupFieldAlias,
+  season2026PracticeSurfaceId,
+  season2026SurfaceId,
+  season2026VenueId,
+  surfacesOfAlias,
+  toSeason2026AliasRings,
+} from '@squadlogic/core/facility/index.js';
+
+import { assertLayerUnwired, claimedReasonCodes } from './helpers/index.js';
+
+/* -------------------------------------------------------------------------- */
+/* Corpus, loaded once                                                         */
+/* -------------------------------------------------------------------------- */
+
+const geometry = loadFacilityGeometry();
+const season = loadSeason2026();
+const practice = loadSeason2026Practice({ season });
+const graph = buildSeason2026PracticeFacilityGraph(geometry);
+const complexes = buildSeason2026VenueComplexMap();
+const rings = toSeason2026AliasRings(practice.fieldAliases, practice.fieldCodeNames);
+const map = buildFieldAliasMap(graph, complexes, rings);
+
+const PRACTICE = SEASON_2026_ALIAS_RINGS.PRACTICE_SHEET;
+const FIELDS = SEASON_2026_ALIAS_RINGS.FIELDS_SHEET;
+const R = PRACTICE_SURFACE_RESOLUTION;
+const ALDER_NAME = 'Alder Park';
+
+const sid = (venue, field) => season2026SurfaceId(venue, field);
+const codesOf = (findings) => findings.map((f) => f.code);
+const candidateOf = (displayName, ring) =>
+  map.aliases[displayName].candidates.find((c) => c.ring === ring);
+
+const booking = (id, surfaceId, date, startMinutes, endMinutes) => ({
+  id,
+  surfaceId,
+  date,
+  startMinutes,
+  endMinutes,
+  format: null,
+  label: id,
+});
+
+/* -------------------------------------------------------------------------- */
+/* Guard                                                                       */
+/* -------------------------------------------------------------------------- */
+
+describe('alias layer :: corpus guard', () => {
+  it('is built from both real rings, not an empty shell', () => {
+    expect(map.rings).toEqual([PRACTICE, FIELDS]);
+    expect(map.stats.entryCount).toBe(
+      practice.fieldAliases.length + practice.fieldCodeNames.length
+    );
+    expect(map.stats.entryCount).toBe(47);
+    expect(map.stats.aliasCount).toBe(27);
+    expect(map.displayNames).toHaveLength(27);
+    expect(map.stats.sharedCount).toBe(20);
+    expect(map.stats.candidateCount).toBe(47);
+    expect(map.stats.resolvedCandidateCount).toBeGreaterThan(30);
+    expect(map.stats.unresolvedCandidateCount).toBeGreaterThan(0);
+    expect(Object.isFrozen(map.aliases)).toBe(true);
+  });
+
+  it('re-derives the ring comparison and agrees with the loader: 12 = 11 label conflicts + 1 blank', () => {
+    const loader = practice.decoderRings;
+    expect(loader.disagreements).toHaveLength(12);
+    expect(map.stats.disagreementCount).toBe(loader.disagreements.length);
+    expect(map.stats.labelConflictCount).toBe(
+      loader.disagreements.filter((d) => d.kind === DECODER_DISAGREEMENT_KIND.LABEL_CONFLICT).length
+    );
+    expect(map.stats.blankVsLabelCount).toBe(
+      loader.disagreements.filter((d) => d.kind === DECODER_DISAGREEMENT_KIND.BLANK_VS_LABEL).length
+    );
+    expect(map.stats.labelConflictCount).toBe(11);
+    expect(map.stats.blankVsLabelCount).toBe(1);
+    // Code by code, the same codes with the same kind.
+    const derived = map.displayNames
+      .filter((name) => map.aliases[name].labelAgreement !== ALIAS_LABEL_AGREEMENT.AGREE)
+      .filter((name) => map.aliases[name].labelAgreement !== ALIAS_LABEL_AGREEMENT.SINGLE_RING)
+      .map((name) => `${name}:${map.aliases[name].labelAgreement}`)
+      .sort();
+    expect(derived).toEqual(loader.disagreements.map((d) => `${d.code}:${d.kind}`).sort());
+    const disagreeFindings = map.findings.filter(
+      (f) => f.code === FACILITY_REASON.ALIAS_RINGS_DISAGREE
+    );
+    expect(disagreeFindings).toHaveLength(12);
+    expect(map.stats.sharedCount).toBe(loader.shared.length);
+  });
+
+  it("decides the disagreement kind by the loader's rule, in all four cells", () => {
+    // Round 2, finding 5. `aliases.js` said BLANK_VS_LABEL whenever *either*
+    // ring was blank; `compareDecoderRings()` says BLANK_VS_LABEL only when the
+    // practice sheet is blank and LABEL_CONFLICT when the fields sheet is. The
+    // corpus never exercises the difference -- the fields parser emits no blank
+    // label today -- so the per-code equality above passed on a rule that does
+    // not match. One rule now, the loader's, because 8.0 asserted it; the
+    // driver is the first ring listed, which is the ring the loader iterates.
+    expect(map.rings[0]).toBe(PRACTICE);
+
+    const practiceRow = (actualLabel) => ({
+      rowIndex: 0,
+      displayName: 'Cell',
+      actualLabel,
+      venue: 'Alder Park',
+      field: 'Pitch 2A',
+      subunit: null,
+      raw: {},
+    });
+    const fieldsRow = (actualLabel) => ({
+      rowIndex: 0,
+      codeName: 'Cell',
+      actualLabel,
+      venue: 'Alder Park',
+      remainder: 'Pitch 2A',
+      uncertain: false,
+      confirmed: null,
+      usedFor: null,
+      raw: {},
+    });
+
+    // `parsePracticeFieldAliases()` writes `orNull()`; `parseFieldCodeNames()`
+    // writes `trim()`. The cells below are what each parser really produces for
+    // a blank, so the two rules are asked about the same row.
+    const cells = [
+      {
+        name: 'both label the code the same way',
+        practice: 'Alder Park Pitch 2A',
+        fields: 'Alder Park Pitch 2A',
+      },
+      {
+        name: 'both label it, differently',
+        practice: 'Alder Park Pitch 2A',
+        fields: 'Alder Park Pitch 3A',
+      },
+      { name: 'the practice sheet is blank', practice: null, fields: 'Alder Park Pitch 2A' },
+      { name: 'the fields sheet is blank', practice: 'Alder Park Pitch 2A', fields: '' },
+      { name: 'both are blank', practice: null, fields: '' },
+    ];
+
+    let compared = 0;
+    for (const cell of cells) {
+      const aliasRecords = [practiceRow(cell.practice)];
+      const codeRecords = [fieldsRow(cell.fields)];
+      const built = buildFieldAliasMap(
+        graph,
+        complexes,
+        toSeason2026AliasRings(aliasRecords, codeRecords)
+      );
+      const loader = compareDecoderRings(aliasRecords, codeRecords);
+      expect(loader.shared, cell.name).toEqual(['Cell']);
+      const loaderKind = loader.disagreements.length === 0 ? null : loader.disagreements[0].kind;
+      const mapKind =
+        built.aliases.Cell.labelAgreement === ALIAS_LABEL_AGREEMENT.AGREE
+          ? null
+          : built.aliases.Cell.labelAgreement;
+      expect(mapKind, cell.name).toBe(loaderKind);
+      expect(built.stats.disagreementCount, cell.name).toBe(loader.disagreements.length);
+      compared += 1;
+    }
+    expect(compared).toBe(cells.length);
+
+    // The cells are not all the same answer: the four kinds the two rules could
+    // have disagreed about are each present.
+    const kinds = cells.map((cell) => {
+      const built = buildFieldAliasMap(
+        graph,
+        complexes,
+        toSeason2026AliasRings([practiceRow(cell.practice)], [fieldsRow(cell.fields)])
+      );
+      return built.aliases.Cell.labelAgreement;
+    });
+    expect(kinds).toEqual([
+      ALIAS_LABEL_AGREEMENT.AGREE,
+      ALIAS_LABEL_AGREEMENT.LABEL_CONFLICT,
+      ALIAS_LABEL_AGREEMENT.BLANK_VS_LABEL,
+      // The cell the old rule got wrong: the *fields* sheet blank is a label
+      // conflict, not a blank-vs-label.
+      ALIAS_LABEL_AGREEMENT.LABEL_CONFLICT,
+      ALIAS_LABEL_AGREEMENT.BLANK_VS_LABEL,
+    ]);
+    expect(DECODER_DISAGREEMENT_KIND.LABEL_CONFLICT).toBe(ALIAS_LABEL_AGREEMENT.LABEL_CONFLICT);
+    expect(DECODER_DISAGREEMENT_KIND.BLANK_VS_LABEL).toBe(ALIAS_LABEL_AGREEMENT.BLANK_VS_LABEL);
+  });
+
+  it('registers a severity for every alias code', () => {
+    const aliasCodes = Object.values(FACILITY_REASON).filter((code) => code.startsWith('ALIAS_'));
+    expect(aliasCodes.length).toBe(10);
+    for (const code of aliasCodes) {
+      expect(Object.values(FACILITY_SEVERITY)).toContain(FACILITY_REASON_SEVERITY[code]);
+    }
+    expect(FACILITY_REASON_SEVERITY[FACILITY_REASON.ALIAS_UNKNOWN]).toBe(
+      FACILITY_SEVERITY.BLOCKING
+    );
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* Following neither ring                                                      */
+/* -------------------------------------------------------------------------- */
+
+describe('alias layer :: carries every ring, follows none', () => {
+  it('holds "7v7 Field 1" as Cedarbrook on one ring and an unresolved, uncertain Larkfield label on the other', () => {
+    const alias = map.aliases['7v7 Field 1'];
+    expect(alias.labelAgreement).toBe(ALIAS_LABEL_AGREEMENT.LABEL_CONFLICT);
+    expect(alias.groundAgreement).toBe(ALIAS_GROUND_AGREEMENT.UNDECIDABLE);
+    expect(candidateOf('7v7 Field 1', PRACTICE)).toMatchObject({
+      label: 'Cedarbrook Park Field 1',
+      resolution: R.RESOLVED,
+      surfaceIds: [sid('Cedarbrook Park', 'Field 1')],
+    });
+    expect(candidateOf('7v7 Field 1', FIELDS)).toMatchObject({
+      label: 'Larkfield Green Field 2?',
+      uncertain: true,
+      resolution: R.SURFACE_UNKNOWN,
+      venueIds: [season2026VenueId('Larkfield Green')],
+      surfaceIds: [],
+    });
+    const named = map.findings.filter((f) => f.details.displayName === '7v7 Field 1');
+    expect(codesOf(named).sort()).toEqual([
+      FACILITY_REASON.ALIAS_RINGS_DISAGREE,
+      FACILITY_REASON.ALIAS_SOURCE_UNCERTAIN,
+      FACILITY_REASON.ALIAS_SURFACE_UNKNOWN,
+    ]);
+    const ground = surfacesOfAlias(map, '7v7 Field 1');
+    expect(ground.surfaces).toEqual([
+      { surfaceId: sid('Cedarbrook Park', 'Field 1'), rings: [PRACTICE] },
+    ]);
+    // The unresolved candidate is counted, so a check over `surfaces` cannot
+    // call itself complete.
+    expect(ground.unresolvedCandidates).toBe(1);
+  });
+
+  it('resolves the practice spelling "Maplewood" to the complex and breaks no tie by ring', () => {
+    // Field 1 exists on both halves: the practice candidate carries both and
+    // says so; the fields candidate names the back explicitly. Neither is
+    // read through the other.
+    const junior1 = map.aliases['Junior Field 1'];
+    expect(candidateOf('Junior Field 1', PRACTICE)).toMatchObject({
+      venue: 'Maplewood',
+      resolution: R.AMBIGUOUS,
+      venueIds: [season2026VenueId('Maplewood Back'), season2026VenueId('Maplewood Front')],
+      surfaceIds: [sid('Maplewood Back', 'Field 1'), sid('Maplewood Front', 'Field 1')],
+    });
+    expect(candidateOf('Junior Field 1', FIELDS)).toMatchObject({
+      venue: 'Maplewood Back',
+      resolution: R.RESOLVED,
+      surfaceIds: [sid('Maplewood Back', 'Field 1')],
+    });
+    expect(junior1.groundAgreement).toBe(ALIAS_GROUND_AGREEMENT.DIFFERENT);
+    expect(junior1.labelAgreement).toBe(ALIAS_LABEL_AGREEMENT.LABEL_CONFLICT);
+    expect(surfacesOfAlias(map, 'Junior Field 1').surfaces).toEqual([
+      { surfaceId: sid('Maplewood Back', 'Field 1'), rings: [PRACTICE, FIELDS] },
+      { surfaceId: sid('Maplewood Front', 'Field 1'), rings: [PRACTICE] },
+    ]);
+    expect(
+      map.findings.filter((f) => f.code === FACILITY_REASON.ALIAS_SURFACE_AMBIGUOUS)
+    ).toHaveLength(1);
+
+    // Field 2-7 exist on the back only, so structure alone resolves them — and
+    // the labels still disagree, exactly as the loader says they do.
+    for (const n of [2, 3, 4, 5, 6, 7]) {
+      const alias = map.aliases[`Junior Field ${n}`];
+      expect(alias.labelAgreement).toBe(ALIAS_LABEL_AGREEMENT.LABEL_CONFLICT);
+      expect(alias.groundAgreement).toBe(ALIAS_GROUND_AGREEMENT.SAME);
+      expect(alias.surfaceIds).toEqual([sid('Maplewood Back', `Field ${n}`)]);
+    }
+  });
+
+  it('places the eight Maplewood aliases at the complex, venue-level, on the practice ring', () => {
+    const maplewood = practice.fieldAliases.filter((row) => row.venue === 'Maplewood');
+    expect(maplewood).toHaveLength(8);
+    for (const row of maplewood) {
+      expect(candidateOf(row.displayName, PRACTICE).venueIds).toEqual([
+        season2026VenueId('Maplewood Back'),
+        season2026VenueId('Maplewood Front'),
+      ]);
+    }
+    // ... and no venue in the graph is spelled `Maplewood`: no third spelling.
+    expect(graph.venueIds.map((id) => graph.venues[id].name)).not.toContain('Maplewood');
+  });
+
+  it('keeps "Rookerie Park" as a venue the graph does not hold rather than bridging the spelling', () => {
+    for (const code of ['9v9 Field 1', '9v9 Field 2']) {
+      expect(candidateOf(code, FIELDS)).toMatchObject({
+        venue: 'Rookerie Park',
+        resolution: R.VENUE_UNKNOWN,
+        surfaceIds: [],
+      });
+      expect(candidateOf(code, PRACTICE).resolution).toBe(R.RESOLVED);
+    }
+    expect(candidateOf('9v9 Field 1', PRACTICE).surfaceIds).toEqual([
+      season2026PracticeSurfaceId('Rookery Park', 'Turf Field 2', 'A'),
+    ]);
+    expect(map.findings.filter((f) => f.code === FACILITY_REASON.ALIAS_VENUE_UNKNOWN)).toHaveLength(
+      2
+    );
+  });
+
+  it('reports the blank code, the venue-only codes and the venue-half named as a field', () => {
+    expect(candidateOf('11v11 Field 2', PRACTICE).resolution).toBe('blank');
+    expect(map.aliases['11v11 Field 2'].labelAgreement).toBe(ALIAS_LABEL_AGREEMENT.BLANK_VS_LABEL);
+    // `11v11 Field 1` has a label and no venue on the practice sheet: blank ground.
+    expect(candidateOf('11v11 Field 1', PRACTICE).resolution).toBe('blank');
+    expect(map.findings.filter((f) => f.code === FACILITY_REASON.ALIAS_BLANK)).toHaveLength(2);
+    const venueOnly = map.findings.filter((f) => f.code === FACILITY_REASON.ALIAS_VENUE_ONLY);
+    expect(venueOnly.map((f) => f.details.displayName).sort()).toEqual([
+      '11v11 Field 3',
+      '7v7 Field 4',
+      '7v7 Field 5',
+      '9v9 Field 5',
+      '9v9 Field 6',
+    ]);
+    // `7v7 Field 2` -> `Maplewood / Front`: a venue half written as a field.
+    expect(candidateOf('7v7 Field 2', PRACTICE).resolution).toBe(R.SURFACE_UNKNOWN);
+    expect(candidateOf('7v7 Field 2', FIELDS).surfaceIds).toEqual([
+      sid('Maplewood Front', 'Field 1'),
+    ]);
+  });
+
+  it('answers an unknown published name with a blocking finding, not an empty success', () => {
+    const missing = lookupFieldAlias(map, 'Senior Field 9');
+    expect(missing.alias).toBeNull();
+    expect(codesOf(missing.findings)).toEqual([FACILITY_REASON.ALIAS_UNKNOWN]);
+    expect(missing.findings[0].severity).toBe(FACILITY_SEVERITY.BLOCKING);
+    expect(surfacesOfAlias(map, 'Senior Field 9').surfaces).toEqual([]);
+    expect(lookupFieldAlias(map, 'constructor').alias).toBeNull();
+    expect(lookupFieldAlias(map, 'Junior Field 1').alias).not.toBeNull();
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* The wrong-ground test                                                       */
+/* -------------------------------------------------------------------------- */
+
+describe('alias layer :: nothing enforces this layer, and the map says so', () => {
+  // Round 4, finding 4. The sibling closure layer got `CLOSURE_SET_UNWIRED` and
+  // a biconditional in this same PR; both layers are new here, so the asymmetry
+  // was two identical gaps with one of them declared. The check itself lives in
+  // `tests/helpers/unwiredLayer.js` and is run against both layers, rather than
+  // written out twice and free to drift.
+  const aliasCodes = Object.values(FACILITY_REASON).filter((code) => code.startsWith('ALIAS_'));
+
+  it('declares the gap on every map it builds, and nothing claims an ALIAS_* code', () => {
+    const { enforced, declares } = assertLayerUnwired({
+      layer: 'alias map',
+      findings: map.findings,
+      codes: aliasCodes,
+      declarationCode: FACILITY_REASON.ALIAS_LAYER_UNWIRED,
+    });
+    expect(enforced).toEqual([]);
+    expect(declares).toBe(true);
+
+    const declaration = map.findings.find((f) => f.code === FACILITY_REASON.ALIAS_LAYER_UNWIRED);
+    expect(declaration.severity).toBe(FACILITY_SEVERITY.INFO);
+    expect(declaration.details.aliasCount).toBe(map.stats.aliasCount);
+    // The gap being declared, stated: the layer's loudest code sits at blocking
+    // with no enforcement path able to raise it in a run.
+    expect(FACILITY_REASON_SEVERITY[FACILITY_REASON.ALIAS_UNKNOWN]).toBe(
+      FACILITY_SEVERITY.BLOCKING
+    );
+    expect(claimedReasonCodes().has(FACILITY_REASON.ALIAS_UNKNOWN)).toBe(false);
+  });
+});
+
+describe('alias layer :: a check over the published name is checking the wrong ground', () => {
+  const DATE = '2026-09-15';
+  const backField2 = sid('Maplewood Back', 'Field 2');
+
+  /**
+   * The check this test exists to condemn: keyed on the label each booking
+   * was made under. It is the shape a name-keyed scheduler has.
+   *
+   * @param {Array<{ id: string, publishedName: string, startMinutes: number, endMinutes: number }>} rows
+   */
+  function nameKeyedClashes(rows) {
+    const clashes = [];
+    for (let i = 0; i < rows.length; i += 1) {
+      for (let j = i + 1; j < rows.length; j += 1) {
+        const a = rows[i];
+        const b = rows[j];
+        const overlap = a.startMinutes < b.endMinutes && b.startMinutes < a.endMinutes;
+        if (overlap && a.publishedName === b.publishedName) clashes.push([a.id, b.id]);
+      }
+    }
+    return clashes;
+  }
+
+  /** The same rows, placed on ground through the alias layer. */
+  function surfaceKeyedClashes(aliasMap, rows) {
+    const bookings = rows.flatMap((row) => {
+      const ground = row.surfaceId
+        ? [{ surfaceId: row.surfaceId, rings: [] }]
+        : surfacesOfAlias(aliasMap, row.publishedName).surfaces;
+      return ground.map(({ surfaceId }) =>
+        booking(`${row.id}@${surfaceId}`, surfaceId, DATE, row.startMinutes, row.endMinutes)
+      );
+    });
+    const scan = findFacilityConflicts(graph, bookings);
+    expect(scan.meta.bookingPairsCompared).toBeGreaterThan(0);
+    return scan.conflicts.map((f) => [f.details.bookingAId, f.details.bookingBId]);
+  }
+
+  it('misses a practice booked by published name against a game on the same ground', () => {
+    const rows = [
+      {
+        id: 'practice',
+        publishedName: 'Junior Field 2',
+        startMinutes: 16 * 60,
+        endMinutes: 17 * 60,
+      },
+      {
+        id: 'game',
+        publishedName: 'Field 2',
+        surfaceId: backField2,
+        startMinutes: 16 * 60,
+        endMinutes: 17 * 60,
+      },
+    ];
+    // The name-keyed check: "Junior Field 2" is not "Field 2", so no clash.
+    expect(nameKeyedClashes(rows)).toEqual([]);
+    // The ground: both stand on Maplewood Back / Field 2 at four o'clock.
+    expect(surfaceKeyedClashes(map, rows)).toEqual([
+      [`practice@${backField2}`, `game@${backField2}`],
+    ]);
+  });
+
+  it('calls two different grounds a clash because they share a published name', () => {
+    // Two rings, one code, two surfaces. Booked at once under the same name.
+    const rows = [
+      { id: 'a', publishedName: '7v7 Field 1', startMinutes: 16 * 60, endMinutes: 17 * 60 },
+      { id: 'b', publishedName: '7v7 Field 1', startMinutes: 16 * 60, endMinutes: 17 * 60 },
+    ];
+    expect(nameKeyedClashes(rows)).toEqual([['a', 'b']]);
+    // Through the layer, each lands on every candidate surface and the clash
+    // is reported *per surface*, naming the ground — which is what an operator
+    // needs, and what the name can never tell them.
+    const clashes = surfaceKeyedClashes(map, rows);
+    expect(clashes).toEqual([
+      [`a@${sid('Cedarbrook Park', 'Field 1')}`, `b@${sid('Cedarbrook Park', 'Field 1')}`],
+    ]);
+    // A ring-constructed twin: the same code on two resolvable grounds.
+    const twin = buildFieldAliasMap(graph, complexes, {
+      rings: [
+        {
+          ring: 'x',
+          entries: [
+            { displayName: 'Q', venue: 'Alder Park', field: 'Pitch 2A', label: 'Alder 2A' },
+          ],
+        },
+        {
+          ring: 'y',
+          entries: [
+            { displayName: 'Q', venue: 'Alder Park', field: 'Pitch 3A', label: 'Alder 3A' },
+          ],
+        },
+      ],
+    });
+    expect(twin.aliases.Q.groundAgreement).toBe(ALIAS_GROUND_AGREEMENT.DIFFERENT);
+    const twinRows = [
+      { id: 'a', publishedName: 'Q', startMinutes: 16 * 60, endMinutes: 17 * 60 },
+      { id: 'b', publishedName: 'Q', startMinutes: 16 * 60, endMinutes: 17 * 60 },
+    ];
+    expect(nameKeyedClashes(twinRows)).toEqual([['a', 'b']]);
+    const perSurface = surfaceKeyedClashes(twin, twinRows);
+    expect(perSurface).toHaveLength(2);
+    expect(perSurface.map(([a]) => String(a).split('@')[1]).sort()).toEqual([
+      season2026PracticeSurfaceId('Alder Park', 'Pitch 2A', null),
+      season2026PracticeSurfaceId('Alder Park', 'Pitch 3A', null),
+    ]);
+  });
+
+  it('proves the surface check reads the alias resolution: re-point the alias and the clash goes (positive control)', () => {
+    const rows = [
+      {
+        id: 'practice',
+        publishedName: 'Junior Field 2',
+        startMinutes: 16 * 60,
+        endMinutes: 17 * 60,
+      },
+      {
+        id: 'game',
+        publishedName: 'Field 2',
+        surfaceId: backField2,
+        startMinutes: 16 * 60,
+        endMinutes: 17 * 60,
+      },
+    ];
+    const rePointed = buildFieldAliasMap(graph, complexes, {
+      rings: [
+        {
+          ring: PRACTICE,
+          entries: [
+            {
+              displayName: 'Junior Field 2',
+              venue: 'Maplewood',
+              field: 'Field 3',
+              label: 'Maplewood Field 3',
+            },
+          ],
+        },
+      ],
+    });
+    expect(surfacesOfAlias(rePointed, 'Junior Field 2').surfaces).toEqual([
+      { surfaceId: sid('Maplewood Back', 'Field 3'), rings: [PRACTICE] },
+    ]);
+    expect(surfaceKeyedClashes(rePointed, rows)).toEqual([]);
+    // ... and the name-keyed check is unmoved by any of it, which is the point.
+    expect(nameKeyedClashes(rows)).toEqual([]);
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* Controls on the builder                                                     */
+/* -------------------------------------------------------------------------- */
+
+describe('alias layer :: the builder refuses what it must and reports what it reads', () => {
+  it('reads the first occurrence of a code listed twice in one ring, and reports the second', () => {
+    const doubled = buildFieldAliasMap(graph, complexes, {
+      rings: [
+        {
+          ring: 'r',
+          entries: [
+            { displayName: 'Z', venue: 'Alder Park', field: 'Pitch 2A', label: 'first' },
+            { displayName: 'Z', venue: 'Alder Park', field: 'Pitch 3A', label: 'second' },
+          ],
+        },
+      ],
+    });
+    expect(doubled.aliases.Z.candidates).toHaveLength(1);
+    expect(doubled.aliases.Z.candidates[0].label).toBe('first');
+    expect(codesOf(doubled.findings)).toEqual([
+      FACILITY_REASON.ALIAS_CODE_DUPLICATED,
+      FACILITY_REASON.ALIAS_LAYER_UNWIRED,
+    ]);
+    expect(doubled.stats.entryCount).toBe(2);
+    expect(doubled.stats.candidateCount).toBe(1);
+  });
+
+  it('reports every resolution status it can produce, and refuses one it cannot', () => {
+    // The twin of the closure switches' guards, one module over: a status with
+    // no arm used to fall through `default: break` and the candidate would be
+    // carried with nothing said about how it resolved. `resolved` is the one
+    // status that legitimately reports nothing, and it now says so explicitly.
+    const codeFor = {
+      [R.VENUE_UNKNOWN]: FACILITY_REASON.ALIAS_VENUE_UNKNOWN,
+      [R.SURFACE_UNKNOWN]: FACILITY_REASON.ALIAS_SURFACE_UNKNOWN,
+      [R.SUBUNIT_UNKNOWN]: FACILITY_REASON.ALIAS_SURFACE_UNKNOWN,
+      [R.AMBIGUOUS]: FACILITY_REASON.ALIAS_SURFACE_AMBIGUOUS,
+      [R.VENUE_ONLY]: FACILITY_REASON.ALIAS_VENUE_ONLY,
+      [R.RESOLVED]: null,
+    };
+    // Meta-assertion: every declared status is accounted for above.
+    expect(Object.keys(codeFor).sort()).toEqual(Object.values(R).sort());
+
+    const entryFor = {
+      [R.VENUE_UNKNOWN]: { venue: 'Nowhere Park', field: 'Field 1' },
+      [R.SURFACE_UNKNOWN]: { venue: ALDER_NAME, field: 'Pitch 9Z' },
+      [R.SUBUNIT_UNKNOWN]: { venue: ALDER_NAME, field: 'Pitch 2', subunit: 'Side 9' },
+      [R.AMBIGUOUS]: { venue: 'Maplewood', field: 'Field 1' },
+      [R.VENUE_ONLY]: { venue: ALDER_NAME, field: null },
+      [R.RESOLVED]: { venue: ALDER_NAME, field: 'Pitch 2A' },
+    };
+    let covered = 0;
+    for (const [status, code] of Object.entries(codeFor)) {
+      const built = buildFieldAliasMap(graph, complexes, {
+        rings: [{ ring: 'r', entries: [{ displayName: 'X', label: 'l', ...entryFor[status] }] }],
+      });
+      expect(built.aliases.X.candidates[0].resolution, status).toBe(status);
+      const mine = built.findings.filter((f) => f.code !== FACILITY_REASON.ALIAS_LAYER_UNWIRED);
+      if (code === null)
+        expect(
+          mine.map((f) => f.code),
+          status
+        ).toEqual([]);
+      else
+        expect(
+          mine.map((f) => f.code),
+          status
+        ).toContain(code);
+      covered += 1;
+    }
+    expect(covered).toBe(Object.values(R).length);
+    expect(covered).toBeGreaterThan(5);
+  });
+
+  it('carries a published name that is also a prototype member', () => {
+    const entry = (displayName) => ({
+      displayName,
+      venue: 'Alder Park',
+      field: 'Pitch 2A',
+      label: 'l',
+    });
+    const built = buildFieldAliasMap(graph, complexes, {
+      rings: [
+        { ring: 'r', entries: [entry('constructor'), entry('__proto__'), entry('hasOwnProperty')] },
+      ],
+    });
+    expect(built.stats.aliasCount).toBe(3);
+    expect(built.displayNames).toEqual(['__proto__', 'constructor', 'hasOwnProperty']);
+    expect(lookupFieldAlias(built, 'constructor').alias.surfaceIds).toEqual([
+      season2026PracticeSurfaceId('Alder Park', 'Pitch 2A', null),
+    ]);
+    expect(lookupFieldAlias(map, 'toString').alias).toBeNull();
+  });
+
+  it('refuses a ring given twice, an unknown key, and no rings at all', () => {
+    const entry = { displayName: 'Z', venue: 'Alder Park', field: 'Pitch 2A', label: 'l' };
+    expect(() =>
+      buildFieldAliasMap(graph, complexes, {
+        rings: [
+          { ring: 'r', entries: [entry] },
+          { ring: 'r', entries: [entry] },
+        ],
+      })
+    ).toThrow(/given twice/);
+    expect(
+      FieldAliasMapInputSchema.safeParse({
+        rings: [{ ring: 'r', entries: [{ ...entry, extra: 1 }] }],
+      }).success
+    ).toBe(false);
+    expect(FieldAliasMapInputSchema.safeParse({ rings: [] }).success).toBe(false);
+    expect(FieldAliasMapInputSchema.safeParse(rings).success).toBe(true);
+  });
+
+  it('reads a blank cell on the fields ring as an absence, as the practice ring does', () => {
+    // Round 2, finding 3. `parseFieldCodeNames()` writes `trim(cell)` where
+    // `parsePracticeFieldAliases()` writes `orNull(cell)`, so an empty `venue`
+    // or `actual_label` reached the adapter as `''`. Passed through, it threw
+    // out of `buildFieldAliasMap()` (`AliasRingEntrySchema` is non-empty or
+    // null) and took the whole map with it -- the ring with the stricter parser
+    // was the one that could not be read, on a shape the practice ring reports
+    // as `ALIAS_BLANK`.
+    //
+    // Round 3, finding 5. Turning the throw into a *blank* was the wrong
+    // answer: a row with no label but a real venue and field names its ground
+    // in the cells the resolver reads. Only the missing venue is unplaceable.
+    const fieldsRow = (over) => ({
+      rowIndex: 0,
+      codeName: 'Blank Cell',
+      actualLabel: 'Alder Park Pitch 2A',
+      venue: 'Alder Park',
+      remainder: 'Pitch 2A',
+      uncertain: false,
+      confirmed: null,
+      usedFor: null,
+      ...over,
+    });
+    const built = (over) =>
+      buildFieldAliasMap(graph, complexes, toSeason2026AliasRings([], [fieldsRow(over)]));
+    const pitch2a = season2026PracticeSurfaceId('Alder Park', 'Pitch 2A', null);
+
+    // A blank venue: no ground is named, nothing can place it.
+    const noVenue = built({ venue: '' });
+    expect(noVenue.aliases['Blank Cell'].candidates[0].surfaceIds).toEqual([]);
+    expect(codesOf(noVenue.findings)).toContain(FACILITY_REASON.ALIAS_BLANK);
+    expect(noVenue.stats.unresolvedCandidateCount).toBe(1);
+    expect(noVenue.stats.aliasCount).toBe(1);
+
+    // A blank label with a real venue and field: the ring has no name for the
+    // ground, and the ground is still exactly where the cells say it is.
+    const noLabel = built({ actualLabel: '' });
+    expect(noLabel.aliases['Blank Cell'].candidates[0].surfaceIds).toEqual([pitch2a]);
+    expect(noLabel.aliases['Blank Cell'].candidates[0].resolution).toBe(R.RESOLVED);
+    expect(noLabel.stats.resolvedCandidateCount).toBe(1);
+    expect(noLabel.stats.unresolvedCandidateCount).toBe(0);
+    // ... and the missing label is still reported, naming which cell is empty.
+    const blank = noLabel.findings.find((f) => f.code === FACILITY_REASON.ALIAS_BLANK);
+    expect(blank).toBeTruthy();
+    expect(blank.details.blankLabel).toBe(true);
+    expect(blank.details.blankVenue).toBe(false);
+    expect(blank.message).not.toContain('no field behind it');
+    // Positive control: "it resolves" is a fact about the ground, not about the
+    // blank. The same row pointed at a field the graph does not hold does not.
+    const nowhere = built({ actualLabel: '', remainder: 'Pitch 9Z' });
+    expect(nowhere.aliases['Blank Cell'].candidates[0].surfaceIds).toEqual([]);
+    expect(codesOf(nowhere.findings)).toContain(FACILITY_REASON.ALIAS_SURFACE_UNKNOWN);
+
+    // The sibling ring answers the same way on the same two shapes.
+    const practiceRow = (over) => ({
+      rowIndex: 0,
+      displayName: 'Blank Cell',
+      actualLabel: 'Alder Park Pitch 2A',
+      venue: 'Alder Park',
+      field: 'Pitch 2A',
+      subunit: null,
+      ...over,
+    });
+    const siblingNoVenue = buildFieldAliasMap(
+      graph,
+      complexes,
+      toSeason2026AliasRings([practiceRow({ venue: null })], [])
+    );
+    expect(codesOf(siblingNoVenue.findings)).toContain(FACILITY_REASON.ALIAS_BLANK);
+    expect(siblingNoVenue.aliases['Blank Cell'].candidates[0].surfaceIds).toEqual([]);
+    const siblingNoLabel = buildFieldAliasMap(
+      graph,
+      complexes,
+      toSeason2026AliasRings([practiceRow({ actualLabel: null })], [])
+    );
+    expect(siblingNoLabel.aliases['Blank Cell'].candidates[0].surfaceIds).toEqual([pitch2a]);
+
+    // Positive control: the empty string reaching the schema is still refused,
+    // so the fix is the adapter's mapping and not a loosened schema.
+    expect(
+      FieldAliasMapInputSchema.safeParse({
+        rings: [{ ring: FIELDS, entries: [{ displayName: 'Blank Cell', venue: '' }] }],
+      }).success
+    ).toBe(false);
+    expect(() =>
+      buildFieldAliasMap(graph, complexes, {
+        rings: [{ ring: FIELDS, entries: [{ displayName: 'Blank Cell', venue: '' }] }],
+      })
+    ).toThrow();
+  });
+
+  it('never describes a field as absent while the row carries one', () => {
+    // Round 4, finding 3. The both-blank arm still read "with no field behind
+    // it" while its predicate was about label and venue, and on the fields ring
+    // `field` comes from `remainder`, which the adapter does not blank. The
+    // message is now a function of the cells, so this is a property over every
+    // combination rather than a check on the one that showed it.
+    const rowFor = (blankLabel, blankVenue, field) => ({
+      rowIndex: 0,
+      codeName: 'Cells',
+      actualLabel: blankLabel ? '' : 'Alder Park Pitch 2A',
+      venue: blankVenue ? '' : 'Alder Park',
+      remainder: field,
+      uncertain: false,
+      confirmed: null,
+      usedFor: null,
+    });
+
+    let checked = 0;
+    let namedTheField = 0;
+    for (const blankLabel of [true, false]) {
+      for (const blankVenue of [true, false]) {
+        for (const field of ['Pitch 2A', null]) {
+          if (!blankLabel && !blankVenue) continue; // not a blank row at all
+          const built = buildFieldAliasMap(
+            graph,
+            complexes,
+            toSeason2026AliasRings([], [rowFor(blankLabel, blankVenue, field)])
+          );
+          const blank = built.findings.find((f) => f.code === FACILITY_REASON.ALIAS_BLANK);
+          const label = `label=${blankLabel} venue=${blankVenue} field=${JSON.stringify(field)}`;
+          expect(blank, label).toBeTruthy();
+          expect(blank.details.blankField, label).toBe(field === null);
+          if (field === null) {
+            expect(blank.message, label).toContain('no field');
+          } else {
+            // The property: no message may say the field is missing when the
+            // row carries one, and the one it carries is named.
+            expect(blank.message, label).not.toContain('no field');
+            expect(blank.message, label).toContain(JSON.stringify(field));
+            namedTheField += 1;
+          }
+          // "Cannot be placed" turns on the venue and on nothing else.
+          expect(blank.message.includes('cannot be placed'), label).toBe(blankVenue);
+          checked += 1;
+        }
+      }
+    }
+    // Meta-assertion: the loop covered the shapes it claims to, including the
+    // both-blank-with-a-field row that finding 3 is about.
+    expect(checked).toBe(6);
+    expect(namedTheField).toBe(3);
+    const bothBlankWithField = buildFieldAliasMap(
+      graph,
+      complexes,
+      toSeason2026AliasRings([], [rowFor(true, true, 'Pitch 2A')])
+    ).findings.find((f) => f.code === FACILITY_REASON.ALIAS_BLANK);
+    expect(bothBlankWithField.message).toContain('no label and no venue');
+    expect(bothBlankWithField.message).toContain('"Pitch 2A"');
+  });
+
+  it('does not mutate its input and returns a frozen map', () => {
+    const input = toSeason2026AliasRings(practice.fieldAliases, practice.fieldCodeNames);
+    const before = JSON.stringify(input);
+    const built = buildFieldAliasMap(graph, complexes, input);
+    expect(JSON.stringify(input)).toBe(before);
+    expect(Object.isFrozen(built)).toBe(true);
+    expect(Object.isFrozen(built.aliases['Junior Field 1'].candidates)).toBe(true);
+    expect(Object.isFrozen(built.findings)).toBe(true);
+  });
+});

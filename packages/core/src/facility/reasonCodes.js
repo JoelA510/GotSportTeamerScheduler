@@ -113,6 +113,47 @@ export const FACILITY_REASON = Object.freeze({
    * a winner silently.
    */
   EQUIPMENT_PRECEDENCE_AMBIGUOUS: 'EQUIPMENT_PRECEDENCE_AMBIGUOUS',
+
+  /* -- the alias layer (Phase 8.3) -------------------------------------- */
+  /** A published field name that no decoder ring carries. */
+  ALIAS_UNKNOWN: 'ALIAS_UNKNOWN',
+  /**
+   * A ring lists the code with an empty cell where the resolver looks: no
+   * label, no venue, or no field. The finding names which — `blankLabel`,
+   * `blankVenue`, `blankField` — because only a missing *venue* makes the row
+   * unplaceable; a row with no label but a real venue and field resolves from
+   * the cells the resolver actually reads.
+   */
+  ALIAS_BLANK: 'ALIAS_BLANK',
+  /**
+   * Two rings carry the code and give it different labels. Both candidates
+   * are carried and every check runs over each; nothing here picks a ring.
+   */
+  ALIAS_RINGS_DISAGREE: 'ALIAS_RINGS_DISAGREE',
+  /** A ring names a venue the graph (and the complex map) does not hold. */
+  ALIAS_VENUE_UNKNOWN: 'ALIAS_VENUE_UNKNOWN',
+  /** A ring names a venue the graph holds and a field it does not. */
+  ALIAS_SURFACE_UNKNOWN: 'ALIAS_SURFACE_UNKNOWN',
+  /** The label fits more than one surface; every one is carried. */
+  ALIAS_SURFACE_AMBIGUOUS: 'ALIAS_SURFACE_AMBIGUOUS',
+  /** A ring names a venue and no field, so the code is not ground. */
+  ALIAS_VENUE_ONLY: 'ALIAS_VENUE_ONLY',
+  /** The source itself marked the row uncertain (`?`). */
+  ALIAS_SOURCE_UNCERTAIN: 'ALIAS_SOURCE_UNCERTAIN',
+  /** One ring lists the same code twice; the first occurrence is read. */
+  ALIAS_CODE_DUPLICATED: 'ALIAS_CODE_DUPLICATED',
+  /**
+   * **Nothing enforces this alias map.** Nothing outside `facility/aliases.js`
+   * and its tests calls `buildFieldAliasMap()`, `lookupFieldAlias()` or
+   * `surfacesOfAlias()`, and no rule and no registry constraint claims an
+   * `ALIAS_*` code -- `ALIAS_UNKNOWN` at blocking included. Every map says so
+   * on itself, the same way a closure set carries `CLOSURE_SET_UNWIRED` and
+   * an unwired fairness objective carries `FAIRNESS_OBJECTIVE_UNWIRED`, and
+   * `tests/helpers/unwiredLayer.js` checks the claim against the enforcement
+   * paths for both layers with one assertion: the day something claims one of
+   * these codes, the declaration has to go with it.
+   */
+  ALIAS_LAYER_UNWIRED: 'ALIAS_LAYER_UNWIRED',
 });
 
 /**
@@ -147,6 +188,17 @@ export const FACILITY_REASON_SEVERITY = Object.freeze({
   [FACILITY_REASON.EQUIPMENT_ASSUMED_AVAILABLE]: FACILITY_SEVERITY.INFO,
   [FACILITY_REASON.EQUIPMENT_UNDECLARED]: FACILITY_SEVERITY.INFO,
   [FACILITY_REASON.EQUIPMENT_PRECEDENCE_AMBIGUOUS]: FACILITY_SEVERITY.INFO,
+
+  [FACILITY_REASON.ALIAS_UNKNOWN]: FACILITY_SEVERITY.BLOCKING,
+  [FACILITY_REASON.ALIAS_BLANK]: FACILITY_SEVERITY.COMPROMISE,
+  [FACILITY_REASON.ALIAS_RINGS_DISAGREE]: FACILITY_SEVERITY.COMPROMISE,
+  [FACILITY_REASON.ALIAS_VENUE_UNKNOWN]: FACILITY_SEVERITY.COMPROMISE,
+  [FACILITY_REASON.ALIAS_SURFACE_UNKNOWN]: FACILITY_SEVERITY.COMPROMISE,
+  [FACILITY_REASON.ALIAS_SURFACE_AMBIGUOUS]: FACILITY_SEVERITY.COMPROMISE,
+  [FACILITY_REASON.ALIAS_VENUE_ONLY]: FACILITY_SEVERITY.INFO,
+  [FACILITY_REASON.ALIAS_SOURCE_UNCERTAIN]: FACILITY_SEVERITY.COMPROMISE,
+  [FACILITY_REASON.ALIAS_CODE_DUPLICATED]: FACILITY_SEVERITY.COMPROMISE,
+  [FACILITY_REASON.ALIAS_LAYER_UNWIRED]: FACILITY_SEVERITY.INFO,
 });
 
 /**

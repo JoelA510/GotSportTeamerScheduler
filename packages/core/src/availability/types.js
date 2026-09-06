@@ -204,7 +204,7 @@
  * The resolved lighting position for one surface.
  *
  * @typedef {Object} ResolvedLighting
- * @property {boolean} lit
+ * @property {boolean|null} lit - `null` when nothing states it
  * @property {number|null} lightsOffMinutes
  * @property {'surface'|'ancestor-surface'|'venue'} source
  * @property {string|null} recordId
@@ -224,7 +224,7 @@
  * @property {number} kickoffMinutes
  * @property {number|null} occupancyMinutes
  * @property {number|null} endMinutes
- * @property {boolean} lit
+ * @property {boolean|null} lit - `null` when nothing states it
  * @property {ResolvedLighting|null} lighting
  * @property {ResolvedPermit|null} permit
  * @property {number|null} sunsetMinutes
@@ -242,6 +242,38 @@
  * is `null` when no legal kickoff exists — never a fabricated one.
  *
  * @typedef {Omit<KickoffAvailabilityResult, 'kickoffMinutes'> & { kickoffMinutes: number|null, searchedFromMinutes: number, searchedToMinutes: number, candidatesTested: number }} LatestKickoffResult
+ */
+
+/**
+ * A closure window: a statement from the constraint log that ground is shut.
+ *
+ * `fromDate`/`toDate` inclusive ISO dates; `startMinutes`/`endMinutes` the
+ * daily window; `allDay` is what `isAllDayWindow()` says of the times and
+ * nothing else. `scope` names the ground by graph id — see `CLOSURE_SCOPE`.
+ *
+ * @typedef {Object} ClosureWindow
+ * @property {string} id
+ * @property {string} fromDate
+ * @property {string} toDate
+ * @property {number} startMinutes
+ * @property {number} endMinutes
+ * @property {boolean} allDay
+ * @property {{ kind: string, venueIds?: string[], surfaceIds?: string[], venueName?: string, surfaceName?: string }} scope
+ * @property {string} reason
+ * @property {string|null} fieldsRaw
+ * @property {string|null} venueName
+ * @property {string|null} source
+ */
+
+/**
+ * The built closure set. Deep-frozen; holds no bookings.
+ *
+ * @typedef {Object} ClosureSet
+ * @property {ClosureWindow[]} closures
+ * @property {string[]} closureIds
+ * @property {string|null} source
+ * @property {AvailabilityFinding[]} findings - build-time findings: an unknown venue or surface named by a row, and the layer's own `CLOSURE_SET_UNWIRED` declaration, which every set carries
+ * @property {{ closureCount: number, allDayCount: number, byKind: Record<string, number> }} stats
  */
 
 export {};

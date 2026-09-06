@@ -19,7 +19,7 @@
  * @typedef {Object} FacilityVenue
  * @property {string} id - opaque
  * @property {string} name - display label
- * @property {boolean} lit
+ * @property {boolean|null} lit - `null` when no source states it
  * @property {string|null} notes
  * @property {string|null} overlapNote
  */

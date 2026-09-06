@@ -307,6 +307,7 @@ function permitConstraint(calendar, resolved, ctx, findings) {
  */
 function lightingConstraint(lighting, permit, ctx, findings) {
   const base = { surfaceId: ctx.surfaceId, date: ctx.date, lit: lighting.lit };
+  const litWord = lighting.lit === null ? 'undeclared' : lighting.lit ? 'lit' : 'unlit';
 
   const provenance = {
     surface: AVAILABILITY_REASON.LIGHTING_FROM_SURFACE,
@@ -317,13 +318,37 @@ function lightingConstraint(lighting, permit, ctx, findings) {
     makeAvailabilityFinding(
       provenance,
       lighting.source === 'venue'
-        ? `lighting for this field is taken from its venue's flag (${lighting.lit ? 'lit' : 'unlit'}); the corpus records no per-field lighting`
-        : `lighting for this field is taken from a record on ${lighting.recordId} (${lighting.lit ? 'lit' : 'unlit'})`,
+        ? `lighting for this field is taken from its venue's flag (${litWord}); the corpus records no per-field lighting`
+        : `lighting for this field is taken from a record on ${lighting.recordId} (${litWord})`,
       { ...base, source: lighting.source, recordId: lighting.recordId }
     )
   );
 
-  if (permit && permit.lit !== null && permit.lit !== lighting.lit) {
+  if (lighting.lit === null) {
+    // Nothing in the graph states it. Reported, and then carried by the
+    // sunset rule exactly as unlit ground is: the conservative bound, with the
+    // gap visible. The permit paperwork's own claim, when it makes one, is
+    // named here rather than applied: it is a claim about the venue, kept
+    // beside the graph's for cross-check and not merged into it.
+    const permitClaim = permit && permit.lit !== null ? permit.lit : null;
+    findings.push(
+      makeAvailabilityFinding(
+        AVAILABILITY_REASON.LIGHTING_UNDECLARED,
+        permitClaim === null
+          ? 'no record and no venue flag states whether this field is lit; the sunset rule is applied as for unlit ground'
+          : `no record and no venue flag states whether this field is lit; the permit record says ${permitClaim ? 'lit' : 'unlit'} and is not applied; the sunset rule is applied as for unlit ground`,
+        {
+          ...base,
+          source: lighting.source,
+          recordId: lighting.recordId,
+          permitId: permit?.id ?? null,
+          permitLit: permitClaim,
+        }
+      )
+    );
+  }
+
+  if (permit && permit.lit !== null && lighting.lit !== null && permit.lit !== lighting.lit) {
     findings.push(
       makeAvailabilityFinding(
         AVAILABILITY_REASON.LIGHTING_SOURCE_DISAGREES,
@@ -333,12 +358,15 @@ function lightingConstraint(lighting, permit, ctx, findings) {
     );
   }
 
-  if (!lighting.lit) {
+  if (lighting.lit !== true) {
     return makeConstraint(AVAILABILITY_CONSTRAINT.LIGHTING, {
       applicable: false,
       detail: {
         ...base,
-        reason: 'unlit ground has no lights-off time; the sunset rule carries it',
+        reason:
+          lighting.lit === null
+            ? 'lighting is undeclared, so no lights-off time exists; the sunset rule carries it'
+            : 'unlit ground has no lights-off time; the sunset rule carries it',
       },
     });
   }
@@ -391,7 +419,7 @@ function sunsetConstraint(calendar, lighting, ctx, findings) {
   const base = { surfaceId: ctx.surfaceId, date: ctx.date };
   const record = sunsetOn(calendar, ctx.date);
 
-  if (lighting.lit) {
+  if (lighting.lit === true) {
     findings.push(
       makeAvailabilityFinding(
         AVAILABILITY_REASON.SUNSET_NOT_BINDING_WHEN_LIT,
@@ -560,7 +588,18 @@ export function checkKickoffAvailability(graph, table, calendar, rawQuery, optio
     kickoffMinutes: query.kickoffMinutes,
     occupancyMinutes: null,
     endMinutes: null,
-    lit: false,
+    // Tri-state (GAP-05), and `null` is the honest start. This template is what
+    // an early return ships, and in this function that is the unknown-surface
+    // return and only that one: a format with no timing row carries on and its
+    // lighting *is* read. (The sibling `latestLegalKickoff()` does return early
+    // on unknown timing, which is why its template carries `null` too rather
+    // than a guess.) Such an answer has consulted no lighting at all. Shipping
+    // `false` made
+    // "nobody looked" read as "the ground is unlit", which `scanKickoffs()`
+    // then counted toward the sunset rule's `unlitGamesExamined` minimum: a
+    // schedule whose only unlit games stood on ground the graph does not hold
+    // would satisfy the rule's exercise floor on games it never examined.
+    lit: null,
     lighting: null,
     permit: null,
     sunsetMinutes: null,
@@ -737,7 +776,8 @@ export function latestLegalKickoff(graph, table, calendar, rawQuery, options = {
     kickoffMinutes: null,
     occupancyMinutes: null,
     endMinutes: null,
-    lit: false,
+    /** Tri-state, and `null` until something states it; see the template in `checkKickoffAvailability()`. */
+    lit: null,
     lighting: null,
     permit: null,
     sunsetMinutes: null,
@@ -832,10 +872,14 @@ export function latestLegalKickoff(graph, table, calendar, rawQuery, options = {
   if (resolvedPermit.window !== null && resolvedPermit.window.closeMinutes !== null) {
     hardLimits.push(resolvedPermit.window.closeMinutes);
   }
-  if (lighting.lit && lighting.lightsOffMinutes !== null) {
+  // `=== true` / `!== true`, the contract its sibling `lightingConstraint()`
+  // moved to: undeclared ground takes the daylight limit as unlit ground does,
+  // and reading it by truthiness would be folding "unknown" into "false" one
+  // more time.
+  if (lighting.lit === true && lighting.lightsOffMinutes !== null) {
     hardLimits.push(lighting.lightsOffMinutes);
   }
-  if (!lighting.lit) {
+  if (lighting.lit !== true) {
     const daylight = daylightLimitMinutes(calendar, query.date);
     if (daylight !== null) hardLimits.push(daylight);
   }

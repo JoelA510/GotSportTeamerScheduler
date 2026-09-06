@@ -83,15 +83,48 @@ const COMPROMISE_CODES = Object.freeze([/** @type {string} */ (FACILITY_REASON.L
 const EXAMPLE_LIMIT = 5;
 
 /**
+ * Does any surface standing on this one state a size of its own?
+ *
+ * The containment forest can be deeper than one level (Alder's
+ * `Pitch 1A -> Pitch 1A Side 1`), so this walks the whole subtree rather than
+ * the immediate children: a sized grandchild is bookable ground under a
+ * sizeless child, and offering the root as well would double-count it.
+ *
+ * @param {import('../facility/types.js').FacilityGraph} graph
+ * @param {import('../facility/types.js').FacilitySurface} surface
+ * @returns {boolean}
+ */
+function hasSizedDescendant(graph, surface) {
+  const stack = [...surface.childIds];
+  const seen = new Set();
+  while (stack.length > 0) {
+    const id = /** @type {string} */ (stack.pop());
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const child = graph.surfaces[id];
+    if (!child) continue;
+    if (child.sizes.length > 0) return true;
+    stack.push(...child.childIds);
+  }
+  return false;
+}
+
+/**
  * Candidate replacement ground for a format, derived rather than typed in.
  *
  * Four filters, each stated:
  *
  * 1. **Not at a withdrawn venue.** Obvious, and the caller names them.
- * 2. **A leaf surface.** A parent pitch is bookable, but booking Alder Pitch 1
- *    takes 1A and 1B with it, so proposing onto a parent is strictly more
- *    disruptive than proposing onto a half. `checkOccupancy()` would refuse the
- *    parent anyway the moment either half is in use.
+ * 2. **A leaf, or a parent no descendant of which states a size.** Booking
+ *    Alder Pitch 1 takes 1A and 1B with it, so proposing onto a parent whose
+ *    halves are themselves bookable ground is strictly more disruptive than
+ *    proposing onto a half — and, worse, counts the same hour once per level:
+ *    see the filter's own comment below for why that is a capacity report
+ *    claiming ground that does not exist rather than a matter of taste.
+ *    `checkOccupancy()` would refuse the parent anyway the moment either half
+ *    is in use. Where the halves state no size of their own, they are not
+ *    bookable ground and the parent is the pitch: Alder Pitch 2 and Pitch 3
+ *    over the practice layer's 2A/2B and 3A/3B.
  * 3. **Big enough, by `checkSizeEligibility()` and not by a second rule.**
  *    Whether a format fits a patch of ground is `facility/eligibility.js`'s
  *    question, and it is asked here rather than answered again. This filter used
@@ -140,26 +173,48 @@ export function replacementSurfacesFor(graph, query) {
   // asked against different orderings.
   const sizeOptions = query.sizeRank ? { sizeRank: query.sizeRank } : {};
 
-  return Object.values(graph.surfaces)
-    .filter((surface) => !excluded.has(surface.venueId))
-    .filter((surface) => surface.childIds.length === 0)
-    .filter((surface) => {
-      const ranks = surface.sizes
-        .map((size) => rankTable[size])
-        .filter((rank) => typeof rank === 'number');
-      // Nothing rankable to measure a grade against; `checkSizeEligibility()`
-      // says `SIZE_UNKNOWN_FORMAT` about the same surface.
-      if (ranks.length === 0) return false;
-      // The ceiling is this module's own policy and nothing else's.
-      if (Math.max(...ranks) > wanted + maxGradesAbove) return false;
-      // "Big enough" is not this module's question.
-      return (
-        checkSizeEligibility(graph, { surfaceId: surface.id, format: query.format }, sizeOptions)
-          .status === FACILITY_STATUS.ALLOWED
-      );
-    })
-    .map((surface) => surface.id)
-    .sort();
+  return (
+    Object.values(graph.surfaces)
+      .filter((surface) => !excluded.has(surface.venueId))
+      // **A leaf, or a parent none of whose descendants states a size.**
+      //
+      // The candidate set must never contain two surfaces where one stands on
+      // the other. Nothing downstream subtracts a parent's occupation from its
+      // children's free slots: `reserve/conditions.js` deliberately omits
+      // `OCCUPIED_PARENT_CHILD` from its slot conditions *because* the ground
+      // it is handed is leaf ground. Offer Pitch 1 alongside 1A and 1B and one
+      // 9v9 kickoff on that pitch is counted three times, so a venue-withdrawal
+      // report claims capacity that does not exist and `proposeRelocations()`
+      // will put three games on one patch of grass at one time.
+      //
+      // "Has sizes of its own" is not the rule, because Pitch 1 (9v9) and its
+      // halves 1A/1B (9v9 each) all state one — it would offer all three. The
+      // rule is about who the bookable ground *is*: where the halves state a
+      // size, they are the ground and the parent is not offered; where they
+      // state none — Alder Pitch 2 and Pitch 3 over 2A/2B and 3A/3B, which the
+      // practice layer (Phase 8.3) added and which are the same 11v11 pitch —
+      // the pitch is the only bookable thing there and is still offered whole.
+      // A sizeless surface is never offered on its own (the ranks check below
+      // drops it), so the two clauses cannot both fire on one lineage.
+      .filter((surface) => !hasSizedDescendant(graph, surface))
+      .filter((surface) => {
+        const ranks = surface.sizes
+          .map((size) => rankTable[size])
+          .filter((rank) => typeof rank === 'number');
+        // Nothing rankable to measure a grade against; `checkSizeEligibility()`
+        // says `SIZE_UNKNOWN_FORMAT` about the same surface.
+        if (ranks.length === 0) return false;
+        // The ceiling is this module's own policy and nothing else's.
+        if (Math.max(...ranks) > wanted + maxGradesAbove) return false;
+        // "Big enough" is not this module's question.
+        return (
+          checkSizeEligibility(graph, { surfaceId: surface.id, format: query.format }, sizeOptions)
+            .status === FACILITY_STATUS.ALLOWED
+        );
+      })
+      .map((surface) => surface.id)
+      .sort()
+  );
 }
 
 /**

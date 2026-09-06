@@ -58,7 +58,10 @@ import { describe, it, expect } from 'vitest';
 
 import {
   buildAvailabilityCalendarFromSeason2026,
+  buildClosureSet,
+  checkClosures,
   checkKickoffAvailability,
+  findClosureBreaches,
   latestLegalKickoff,
   resolveLighting,
 } from '@squadlogic/core/availability/index.js';
@@ -220,7 +223,46 @@ const CENSUS = census();
  *
  * @type {Record<string, Array<{ label: string, run: () => unknown, expectCode: string|null, reason?: string }>>}
  */
+/** One all-day closure over the whole of Alder, so a real booking would be inside it. */
+const closureSet = buildClosureSet(graph, {
+  closures: [
+    {
+      id: 'alder-shut',
+      fromDate: DATE,
+      toDate: DATE,
+      startMinutes: 0,
+      endMinutes: 23 * 60,
+      allDay: true,
+      scope: { kind: 'venue', venueIds: [graph.surfaces[REAL].venueId] },
+      reason: 'census',
+    },
+  ],
+});
+
 const REPORTS = {
+  'availability/closures.js': [
+    {
+      label: 'checkClosures()',
+      expectCode: FACILITY_REASON.SURFACE_UNKNOWN,
+      run: () =>
+        checkClosures(graph, closureSet, {
+          id: 'ghost',
+          surfaceId: GHOST,
+          date: DATE,
+          startMinutes: 600,
+          endMinutes: 660,
+        }),
+    },
+    {
+      label: 'findClosureBreaches()',
+      expectCode: FACILITY_REASON.SURFACE_UNKNOWN,
+      run: () =>
+        findClosureBreaches(graph, closureSet, [
+          { id: 'ghost', surfaceId: GHOST, date: DATE, startMinutes: 600, endMinutes: 660 },
+          { id: 'real', surfaceId: REAL, date: DATE, startMinutes: 600, endMinutes: 660 },
+        ]),
+    },
+  ],
   'availability/kickoff.js': [
     {
       label: 'checkKickoffAvailability()',
@@ -624,15 +666,29 @@ describe('unknown-surface discipline :: modules passing only graph-derived ids',
     for (const format of formats) {
       expect(() => replacementSurfacesFor(graph, { format })).not.toThrow();
     }
-    // Non-vacuous: it really did look at the whole graph.
-    expect(replacementSurfacesFor(graph, { format: '9v9', maxGradesAbove: 9 }).length).toBe(
-      graph.surfaceIds.filter((id) => graph.surfaces[id].childIds.length === 0).length -
-        graph.surfaceIds.filter(
-          (id) =>
-            graph.surfaces[id].childIds.length === 0 &&
-            !graph.surfaces[id].sizes.some((size) => ['9v9', '11v11'].includes(size))
-        ).length
-    );
+    // Non-vacuous: it really did look at the whole graph, and the expected set
+    // is **stated** rather than filtered with the production predicate. (It was
+    // filtered with it, in the predicate's own words, until round 2 -- so a
+    // change to the rule moved both sides of the equality at once.) This is the
+    // *game* graph: its only parents are Alder Pitch 1 and Pitch 4, whose halves
+    // are themselves 9v9 ground, so relocation offers the halves and not the
+    // parents.
+    const OFFERABLE_PARENT_IDS = [];
+    const offerable = (id) =>
+      graph.surfaces[id].childIds.length === 0 || OFFERABLE_PARENT_IDS.includes(id);
+    const bigEnough = (id) =>
+      graph.surfaces[id].sizes.some((size) => ['9v9', '11v11'].includes(size));
+    const expected = graph.surfaceIds.filter((id) => offerable(id) && bigEnough(id)).sort();
+    expect(replacementSurfacesFor(graph, { format: '9v9', maxGradesAbove: 9 })).toEqual(expected);
+    // ... and the ground the statement withholds is real ground, so "leaves
+    // plus a named list" is a restriction and not a synonym for "everything".
+    const parents = graph.surfaceIds.filter((id) => graph.surfaces[id].childIds.length > 0);
+    expect(parents.sort()).toEqual(['alder-park/pitch-1', 'alder-park/pitch-4']);
+    for (const id of parents) {
+      expect(bigEnough(id), id).toBe(true);
+      expect(expected, id).not.toContain(id);
+    }
+    expect(expected.length).toBeGreaterThan(5);
   });
 });
 

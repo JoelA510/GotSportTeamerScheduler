@@ -26,7 +26,12 @@ export const FacilityVenueSchema = z
   .object({
     id: IdSchema,
     name: z.string().min(1),
-    lit: z.boolean().default(false),
+    /**
+     * `null` is "no source states it", and it is the default: an omitted
+     * flag is an absence, not a stated "unlit" (GAP-05). `availability/`
+     * reports the difference as `LIGHTING_UNDECLARED`.
+     */
+    lit: z.boolean().nullable().default(null),
     notes: z.string().nullable().default(null),
     /** The site's own prose about its overlap geometry, carried for audit. */
     overlapNote: z.string().nullable().default(null),

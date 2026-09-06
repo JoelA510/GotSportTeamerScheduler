@@ -4341,10 +4341,27 @@ describe('replacement ground is judged by the size rule the facility model owns'
   const FORMATS = Object.keys(rank).sort((a, b) => rank[a] - rank[b]);
   /** High enough that the "one grade up" ceiling never bites, so only the size predicate is under test. */
   const NO_CEILING = 99;
-  const leaves = graph.surfaceIds
+  /**
+   * The universe this block compares against, **stated rather than derived from
+   * the predicate under test**.
+   *
+   * A round-1 fix widened the production filter and this line was widened with
+   * it, in the same words — so the set was being compared against itself and
+   * could not have failed however the rule moved. The universe is now: the
+   * graph's leaves, plus an explicit list of the parents relocation intends to
+   * offer whole. On this graph (the *game* geometry, `facility_geometry.json`)
+   * that list is empty: its only parents are Alder Pitch 1 and Pitch 4, whose
+   * halves are themselves 9v9 ground, so the halves are what is bookable. The
+   * composed practice graph, where Pitch 2 and Pitch 3 gain sizeless halves and
+   * stay offered whole, is checked in `tests/facilityPracticeLayer.test.js`.
+   */
+  const OFFERABLE_PARENT_IDS = Object.freeze([]);
+  const offerable = graph.surfaceIds
     .map((id) => graph.surfaces[id])
-    .filter((surface) => surface.childIds.length === 0);
-  const multiSized = leaves.filter((surface) => surface.sizes.length > 1);
+    .filter(
+      (surface) => surface.childIds.length === 0 || OFFERABLE_PARENT_IDS.includes(surface.id)
+    );
+  const multiSized = offerable.filter((surface) => surface.sizes.length > 1);
 
   /** The predicate this test is about, asked of the facility model. */
   const sizeEligible = (surfaceId, format) =>
@@ -4354,7 +4371,28 @@ describe('replacement ground is judged by the size rule the facility model owns'
     // The meta-assertion the rest of the block rests on. A corpus in which every
     // surface declared exactly one size would make "smallest" and "largest" the
     // same number, and every assertion below would pass vacuously.
-    expect(leaves.length).toBeGreaterThan(10);
+    expect(offerable.length).toBeGreaterThan(10);
+    // ... and "leaves plus a named list" is a real restriction on this graph
+    // rather than a longer way to write "every surface": there are parents, and
+    // the stated list withholds every one of them.
+    const parents = graph.surfaceIds
+      .map((id) => graph.surfaces[id])
+      .filter((surface) => surface.childIds.length > 0);
+    expect(parents.map((surface) => surface.id).sort()).toEqual([
+      'alder-park/pitch-1',
+      'alder-park/pitch-4',
+    ]);
+    expect(OFFERABLE_PARENT_IDS).toEqual([]);
+    expect(offerable.map((surface) => surface.id)).not.toContain('alder-park/pitch-1');
+    // Each withheld parent is withheld for a stated reason: its halves declare
+    // ground of their own, so the halves are what may be booked.
+    for (const parent of parents) {
+      expect(parent.sizes.length, parent.id).toBeGreaterThan(0);
+      expect(
+        parent.childIds.every((childId) => graph.surfaces[childId].sizes.length > 0),
+        parent.id
+      ).toBe(true);
+    }
     expect(multiSized.length).toBeGreaterThan(0);
     expect(FORMATS.length).toBeGreaterThan(3);
     // …and at least one of them is eligible for a format that is not its
@@ -4373,7 +4411,7 @@ describe('replacement ground is judged by the size rule the facility model owns'
       const offered = new Set(
         replacementSurfacesFor(graph, { format, maxGradesAbove: NO_CEILING })
       );
-      const eligible = leaves
+      const eligible = offerable
         .filter((surface) => sizeEligible(surface.id, format))
         .map((surface) => surface.id)
         .sort();
@@ -4381,11 +4419,45 @@ describe('replacement ground is judged by the size rule the facility model owns'
     }
   });
 
+  it('rejects a rule that offers a parent standing on bookable ground', () => {
+    // The positive control for the universe itself, and the regression round 2
+    // found: a filter reading "a leaf, **or** a surface that states sizes of
+    // its own" admits Alder Pitch 1 and Pitch 4 beside their own halves. Written
+    // out here and run against the stated universe, it disagrees — so the
+    // equality above is an assertion that can fail rather than a set compared
+    // with itself.
+    const widened = graph.surfaceIds
+      .map((id) => graph.surfaces[id])
+      .filter((surface) => surface.childIds.length === 0 || surface.sizes.length > 0);
+    const extra = widened
+      .filter((surface) => !offerable.some((kept) => kept.id === surface.id))
+      .map((surface) => surface.id)
+      .sort();
+    expect(extra).toEqual(['alder-park/pitch-1', 'alder-park/pitch-4']);
+
+    const disagreements = FORMATS.filter((format) => {
+      const stated = offerable
+        .filter((surface) => sizeEligible(surface.id, format))
+        .map((surface) => surface.id)
+        .sort();
+      const wrong = widened
+        .filter((surface) => sizeEligible(surface.id, format))
+        .map((surface) => surface.id)
+        .sort();
+      return JSON.stringify(stated) !== JSON.stringify(wrong);
+    });
+    expect(disagreements).toContain('9v9');
+    // ... and what production actually answers is the stated set, not the
+    // widened one, for the format where they differ.
+    const offered = replacementSurfacesFor(graph, { format: '9v9', maxGradesAbove: NO_CEILING });
+    for (const parent of extra) expect(offered, parent).not.toContain(parent);
+  });
+
   it('rejects the smallest-declared-size rule it used to use', () => {
     // The positive control. The old predicate, written out here, is run against
     // the assertion above; if it passed, the assertion would be proving nothing.
     const oldPredicate = (format) =>
-      leaves
+      offerable
         .filter((surface) => {
           const ranks = surface.sizes
             .map((size) => rank[size])
@@ -4397,7 +4469,7 @@ describe('replacement ground is judged by the size rule the facility model owns'
         .map((surface) => surface.id)
         .sort();
     const disagreements = FORMATS.filter((format) => {
-      const eligible = leaves
+      const eligible = offerable
         .filter((surface) => sizeEligible(surface.id, format))
         .map((surface) => surface.id)
         .sort();

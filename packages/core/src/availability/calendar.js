@@ -364,7 +364,9 @@ export function daylightLimitMinutes(calendar, date) {
  * The season-2026 corpus supplies lighting at **venue level only** — GAP-05 —
  * so every corpus field resolves through the last of those three and reports
  * `LIGHTING_FROM_VENUE`. That is a limitation of the fixture, not of the model,
- * and it is recorded in the result rather than hidden by it.
+ * and it is recorded in the result rather than hidden by it. A venue that
+ * states nothing (`lit: null`, the practice-only venues) resolves to `null`,
+ * which `kickoff.js` reports as `LIGHTING_UNDECLARED`.
  *
  * @param {import('../facility/types.js').FacilityGraph} graph
  * @param {import('./types.js').AvailabilityCalendar} calendar
@@ -390,7 +392,9 @@ export function resolveLighting(graph, calendar, surfaceId) {
 
   const venue = graph.venues[surface.venueId] ?? null;
   return {
-    lit: Boolean(venue?.lit),
+    // A venue whose flag is `null` has declared nothing; that is carried as
+    // `null`, never read as `false` (GAP-05).
+    lit: venue ? venue.lit : null,
     lightsOffMinutes: null,
     source: /** @type {'venue'} */ ('venue'),
     recordId: venue?.id ?? null,
