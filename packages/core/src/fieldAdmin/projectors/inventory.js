@@ -21,12 +21,14 @@
  *    `????Availability UNKNOWN as of 3/26`. Those are a person saying "I do not
  *    know", and reading them as data would be reading a shrug as a number.
  *
- * And a fourth the plan does not mention: **`Willowmead Park` appears twice**,
- * with different `notes`. A venue-keyed subject with a duplicated key needs an
- * answer, and this projector's is to keep both rows on the subject and let the
- * change set report them as a disagreement rather than let the second silently
- * win. A last-wins index is exactly what Phase 8.0's third review round found
- * on the fields-ring side.
+ * And a fourth the plan does not mention: **`Willowmead Park` appears twice**.
+ * The two rows differ in `field_sizes` (`11v11 (2)` against `11v11`) as well as
+ * in `notes`, and `field_sizes` is the one the change set reports, because it
+ * is the first compared field the two disagree on. A venue-keyed subject with a
+ * duplicated key needs an answer, and this projector's is to keep both rows on
+ * the subject and let the change set report them as a disagreement rather than
+ * let the second silently win. A last-wins index is exactly what Phase 8.0's
+ * third review round found on the fields-ring side.
  *
  * So: **venue attributes, carried as text, with the sentinels marked doubtful.**
  * Anything a later reader wants to make of `11v11 (4) 9v9 (8)` is available to

@@ -321,10 +321,23 @@ export function findIdentityShapes(text, options = {}) {
   // adjacency.
   const hits = scanIdentityShapes(raw);
   if (!options.allowCommonAbbreviations) return hits;
-  const strippedHasInitialism = scanIdentityShapes(withoutCommonAbbreviations(raw)).some(
+
+  // **The reported match is the one that survived filtering.**
+  //
+  // `match` used to come from the raw scan even when the verdict came from the
+  // stripped one, so `'closed after 6 p.m. for the S.R.F.C. tournament'` was
+  // refused naming `"p.m."` - the token the guard *allows* - instead of
+  // `S.R.F.C.`, the one that actually tripped it. The verdict was right and the
+  // message sent an operator to edit the wrong words.
+  const strippedInitialism = scanIdentityShapes(withoutCommonAbbreviations(raw)).find(
     (hit) => hit.shape === 'initialism'
   );
-  return strippedHasInitialism ? hits : hits.filter((hit) => hit.shape !== 'initialism');
+  if (strippedInitialism === undefined) {
+    return hits.filter((hit) => hit.shape !== 'initialism');
+  }
+  return hits.map((hit) =>
+    hit.shape === 'initialism' ? { shape: hit.shape, match: strippedInitialism.match } : hit
+  );
 }
 
 /**

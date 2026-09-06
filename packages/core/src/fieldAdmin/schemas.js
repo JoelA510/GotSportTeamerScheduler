@@ -299,8 +299,16 @@ export const AliasRecordSchema = z
   .object({
     id: IdSchema,
     displayName: z.string().min(1),
-    /** The whole label the sheet writes; `null` when the cell is blank. */
-    label: z.string().min(1).nullable().default(null),
+    /**
+     * The whole label the sheet writes; `null` when the cell is blank.
+     *
+     * Through `nullableText` like every other nullable column: it was the one
+     * left out, and `z.string().min(1).nullable()` **throws** on `''` rather
+     * than reading it as the absence it is. A single empty `actual_label` cell
+     * therefore took the whole import down - all five change sets - instead of
+     * producing one blank-labelled alias.
+     */
+    label: nullableText(z.string()),
     venueIds: z.array(IdSchema).default([]),
     surfaceIds: z.array(IdSchema).default([]),
     /** The source's own doubt - the fields ring writes `?`. */

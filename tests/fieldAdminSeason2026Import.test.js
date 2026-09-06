@@ -43,6 +43,8 @@ import {
   isInventorySentinel,
   permitFacilityKey,
   projectFieldConstraints,
+  projectFieldsRing,
+  projectPracticeRing,
 } from '@squadlogic/core/fieldAdmin/index.js';
 
 const season = loadSeason2026();
@@ -50,6 +52,8 @@ const practice = loadSeason2026Practice({ season });
 const graph = buildSeason2026PracticeFacilityGraph(loadFacilityGeometry());
 const complexMap = buildSeason2026VenueComplexMap();
 const imported = importSeason2026Fields({ practice, graph, complexMap });
+/** The ring change set, referenced by more than one block. */
+const rings = imported.aliases;
 
 /** Count by a derived key, as a plain object. */
 const tally = (items, keyOf) => {
@@ -70,8 +74,6 @@ const findingsOf = (changeSet, code) =>
 /* ========================================================================== */
 
 describe('season-2026 field import :: the two decoder rings', () => {
-  const rings = imported.aliases;
-
   it('names exactly 12 disagreements as differing', () => {
     expect(rings.buckets.differing).toHaveLength(12);
   });
@@ -179,6 +181,55 @@ describe('season-2026 field import :: the two decoder rings', () => {
     expect(shared).toHaveLength(20);
     expect(rings.meta.projectedSubjects).toBe(27);
     expect(rings.meta.sourceRowsRead).toBe(47);
+  });
+
+  it('reads an empty label as an absence on both rings, not as a crash', () => {
+    // **A crash path, not a wrong answer.** The practice accessor read
+    // `actualLabel` raw while its fields-ring sibling wrote `|| null`, so an
+    // empty cell reached `z.string().min(1).nullable()` and threw - taking all
+    // five change sets down, not just the row. The sibling-contract divergence
+    // `CLAUDE.md` names, sitting on the one nullable column that was not routed
+    // through `nullableText`.
+    /** @type {Array<{ ringName: string, rows: Object[], key: string, project: Function }>} */
+    const bothRings = [
+      {
+        ringName: 'practice',
+        rows: practice.fieldAliases,
+        key: 'displayName',
+        project: projectPracticeRing,
+      },
+      {
+        ringName: 'fields',
+        rows: practice.fieldCodeNames,
+        key: 'codeName',
+        project: projectFieldsRing,
+      },
+    ];
+    for (const { ringName, rows, key, project } of bothRings) {
+      const withEmpty = rows.map((row, index) => (index === 0 ? { ...row, actualLabel: '' } : row));
+      const projected = project(withEmpty, graph, complexMap);
+      expect({ ringName, rows: projected.length }).toEqual({ ringName, rows: rows.length });
+      const first = projected.find((row) => row.subjectKey === rows[0][key]);
+      expect({ ringName, label: first.record.label }).toEqual({ ringName, label: null });
+    }
+  });
+
+  it('survives an empty label without losing the other four change sets', () => {
+    // The blast radius is what makes this worth its own assertion: one bad cell
+    // in one ring must not cost the blackouts, the windows, the permits and the
+    // venue attributes.
+    const withEmpty = practice.fieldAliases.map((row, index) =>
+      index === 0 ? { ...row, actualLabel: '' } : row
+    );
+    const rebuilt = importSeason2026Fields({
+      practice: { ...practice, fieldAliases: withEmpty },
+      graph,
+      complexMap,
+    });
+    expect(rebuilt.blackouts.buckets.added).toHaveLength(11);
+    expect(rebuilt.recurringWindows.meta.sourceRowsRead).toBe(42);
+    expect(rebuilt.permitWindows.buckets.added).toHaveLength(544);
+    expect(rebuilt.venueAttributes.meta.sourceRowsRead).toBe(14);
   });
 
   it('never drops a ring row: every one reaches a subject', () => {
@@ -736,6 +787,63 @@ describe('season-2026 field import :: the criteria this PR does not reach', () =
     expect(imported.closureSet.findings.map((finding) => finding.code)).toContain(
       'CLOSURE_SET_UNWIRED'
     );
+  });
+});
+
+/* ========================================================================== */
+/* The prose sweep, made behavioural                                          */
+/* ========================================================================== */
+
+describe('season-2026 field import :: the figures the module docstrings state', () => {
+  // 8.3's sweep found 16 wrong statements in 550, and every one of them was
+  // prose nobody could fail. Where a statement is a count, it is asserted here
+  // and read out of the data rather than out of a comment - so the next edit
+  // that changes the data fails a test instead of ageing a docstring.
+  it('states the permit figures the permits projector claims', () => {
+    expect(practice.permitReservations).toHaveLength(767);
+    expect(practice.permits).toHaveLength(4);
+    expect(new Set(practice.permitReservations.map((row) => row.facility)).size).toBe(8);
+    expect(imported.permitWindows.buckets.added).toHaveLength(544);
+    expect(imported.permitWindows.buckets.unresolvable).toHaveLength(223);
+    const dates = practice.permitReservations.map((row) => row.date).sort();
+    expect([dates[0], dates[dates.length - 1]]).toEqual(['2026-08-10', '2026-12-20']);
+  });
+
+  it('states the weekly-sheet figures its projector claims', () => {
+    expect(practice.weeklyAvailability).toHaveLength(42);
+    expect(new Set(practice.weeklyAvailability.map((row) => row.venue)).size).toBe(7);
+    expect(tally(practice.weeklyAvailability, (row) => row.interpretation ?? '')).toEqual({
+      '': 13,
+      'excel-date-corruption': 15,
+      unavailable: 7,
+      'competitive-programme': 7,
+    });
+  });
+
+  it('states the inventory figures its projector claims', () => {
+    expect(practice.fieldInventory).toHaveLength(14);
+    // The duplicate row differs in `field_sizes` as well as `notes`, and
+    // `field_sizes` is the one reported - the docstring used to name only
+    // `notes`.
+    const willowmead = practice.fieldInventory.filter((row) => row.venue === 'Willowmead Park');
+    expect(willowmead).toHaveLength(2);
+    expect(willowmead.map((row) => row.fieldSizes)).toEqual(['11v11 (2)', '11v11']);
+    expect(imported.venueAttributes.buckets.differing[0].sourceDisagreement.field).toBe(
+      'fieldSizesText'
+    );
+  });
+
+  it('states the ring figures its projector claims', () => {
+    expect(rings.meta.sourceRowsRead).toBe(47);
+    expect(rings.meta.projectedSubjects).toBe(27);
+    expect(rings.buckets.differing).toHaveLength(12);
+    expect(rings.buckets.added.filter((subject) => subject.rows.length === 1)).toHaveLength(7);
+  });
+
+  it('states the constraint figures its projector claims', () => {
+    expect(practice.fieldConstraints).toHaveLength(13);
+    expect(imported.blackouts.buckets.added).toHaveLength(11);
+    expect(imported.blackouts.buckets.unresolvable).toHaveLength(2);
   });
 });
 

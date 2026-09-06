@@ -6,12 +6,12 @@
  * `field_code_names.csv` from the fields workbook. Neither is marked
  * authoritative anywhere in the source, so nothing here prefers one.
  *
- * the scope matters and only the adapter used to state it: **12 is the count over
- * `actual_label`** - what each ring *calls* the ground. Including the venue cell
- * gives **13**, because `11v11 Field 1` has both rings writing
- * `Willowmead Park Turf` while the practice ring leaves the venue blank; that
- * thirteenth is reported on the interpretation axis, where a row that names no
- * venue belongs.
+ * **The scope of that 12 matters, and only the adapter used to state it.** The
+ * 12 is a count over `actual_label` - what each ring *calls* the ground.
+ * Including the venue cell gives **13**, because `11v11 Field 1` has both rings
+ * writing `Willowmead Park Turf` while the practice ring leaves the venue
+ * blank; that thirteenth is reported on the interpretation axis, where a row
+ * that names no venue belongs.
  *
  * Labels are the right scope because `compareDecoderRings()` in the corpus
  * loader is the single producer of "decoder-ring disagreement", and it compares
@@ -63,6 +63,23 @@ import { ALIAS_LABEL_AGREEMENT } from '../../facility/aliases.js';
 import { AliasRecordSchema, RECORD_SOURCE } from '../schemas.js';
 import { INTERPRETATION } from '../reasonCodes.js';
 import { projectedRow, resolveGround } from './ground.js';
+
+/**
+ * One reading of an empty cell, shared by both ring accessors.
+ *
+ * **An empty string is an absence**, and the two accessors used to disagree
+ * about that: the fields ring wrote `|| null` and the practice ring did not, so
+ * an `actual_label` of `''` reached `z.string().min(1).nullable()` and threw,
+ * taking all five change sets down. The same reading now lives in one place, so
+ * the two cannot drift again - and it agrees with `nullableText` in
+ * `schemas.js` and with 8.3's `59db087`, which settled the same question for
+ * the fields ring.
+ *
+ * @param {unknown} cell
+ * @returns {string|null}
+ */
+const blank = (cell) =>
+  cell === '' || cell === undefined ? null : /** @type {string|null} */ (cell);
 
 /** Which file each ring comes from, for provenance on every row. */
 export const RING_SOURCE_FILE = Object.freeze({
@@ -182,10 +199,14 @@ export function projectPracticeRing(rows, graph, complexMap) {
     complexMap,
     read: (row) => ({
       displayName: /** @type {string} */ (/** @type {Object} */ (row).displayName),
-      label: /** @type {string|null} */ (/** @type {Object} */ (row).actualLabel),
-      venue: /** @type {string|null} */ (/** @type {Object} */ (row).venue),
-      field: /** @type {string|null} */ (/** @type {Object} */ (row).field),
-      subunit: /** @type {string|null} */ (/** @type {Object} */ (row).subunit),
+      // `blank()` on every nullable cell, exactly as the fields-ring accessor
+      // does. This one used to read `actualLabel` raw while its sibling wrote
+      // `|| null`, which is the sibling-contract divergence `CLAUDE.md` names -
+      // and here it was a crash path, not a wrong answer.
+      label: blank(/** @type {Object} */ (row).actualLabel),
+      venue: blank(/** @type {Object} */ (row).venue),
+      field: blank(/** @type {Object} */ (row).field),
+      subunit: blank(/** @type {Object} */ (row).subunit),
       // The practice sheet has no doubt column at all; it writes no `?`.
       uncertain: false,
     }),
@@ -213,9 +234,9 @@ export function projectFieldsRing(rows, graph, complexMap) {
     complexMap,
     read: (row) => ({
       displayName: /** @type {string} */ (/** @type {Object} */ (row).codeName),
-      label: /** @type {string|null} */ (/** @type {Object} */ (row).actualLabel) || null,
-      venue: /** @type {string|null} */ (/** @type {Object} */ (row).venue) || null,
-      field: /** @type {string|null} */ (/** @type {Object} */ (row).remainder),
+      label: blank(/** @type {Object} */ (row).actualLabel),
+      venue: blank(/** @type {Object} */ (row).venue),
+      field: blank(/** @type {Object} */ (row).remainder),
       subunit: null,
       uncertain: Boolean(/** @type {Object} */ (row).uncertain),
     }),

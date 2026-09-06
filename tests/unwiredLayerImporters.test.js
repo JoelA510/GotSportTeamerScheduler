@@ -327,31 +327,77 @@ describe('unwired layers :: the scan examined the repository', () => {
     }
   });
 
-  it('resolves every alias the build resolves, checked against the config', () => {
-    // The alias table is written here because both config files build absolute
-    // paths at load time. Held to them so an alias added to the build and not
-    // here silently opens a hole.
+  it('reads the same alias set out of each config, exactly', () => {
+    // **Three versions of this check have now been wrong**: bypassable
+    // specifiers, then the fix, then the guard on the fix - which counted a
+    // *third* regex (`/packages\/core\/src/g`) rather than either of the two
+    // loops it claimed to protect, so both could iterate an empty set while it
+    // passed. The tsconfig loop had no guard at all.
+    //
+    // So this stops adding a layer. Each config is parsed to a **set** and
+    // compared to an exact expected set. A regex that matches nothing yields
+    // an empty set, which is not equal to the expected one - the universe
+    // cannot be empty and pass, by construction rather than by a floor.
+    const expected = ['@', '@squadlogic/core', 'src'];
+
     const vite = readFileSync(path.join(REPO_ROOT, 'vite.config.js'), 'utf8');
+    const viteAliases = [
+      ...vite.matchAll(/'([^']+)'\s*:\s*path\.resolve\(__dirname,\s*'\.\/packages\/core\/src'\)/g),
+    ]
+      .map((match) => match[1])
+      .concat(
+        [
+          ...vite.matchAll(
+            /(?:^|[{,]\s*)([A-Za-z_$][\w$]*)\s*:\s*path\.resolve\(__dirname,\s*'\.\/packages\/core\/src'\)/g
+          ),
+        ].map((match) => match[1])
+      );
+    expect([...new Set(viteAliases)].sort()).toEqual(expected);
+
     const tsconfig = readFileSync(path.join(REPO_ROOT, 'tsconfig.json'), 'utf8');
+    const tsconfigAliases = [
+      ...tsconfig.matchAll(/"([^"]+)\/\*"\s*:\s*\[\s*"packages\/core\/src\/\*"/g),
+    ].map((match) => match[1]);
+    // tsconfig declares two of the three; `@` is a Vite-only alias.
+    expect([...new Set(tsconfigAliases)].sort()).toEqual(['@squadlogic/core', 'src']);
+
+    // Every alias either config declares is one the resolver knows.
     const declared = new Set(PATH_ALIASES.map(([prefix]) => prefix.replace(/\/$/, '')));
-    // Every alias `vite.config.js` maps onto the core package must be declared.
-    for (const match of vite.matchAll(
-      /'?([@\w/-]+)'?\s*:\s*path\.resolve\(__dirname,\s*'\.\/packages\/core\/src'\)/g
-    )) {
-      expect({ alias: match[1], declared: declared.has(match[1]) }).toEqual({
-        alias: match[1],
-        declared: true,
+    for (const alias of [...viteAliases, ...tsconfigAliases]) {
+      expect({ alias, known: declared.has(alias) }).toEqual({ alias, known: true });
+    }
+    // ... and the resolver knows no alias neither config declares, so the
+    // table cannot quietly grow a mapping the build does not have.
+    expect([...declared].sort()).toEqual(expected);
+  });
+
+  it('resolves a known alias to a known path, not merely to something', () => {
+    // The second half of "impossible to be empty": a set comparison proves the
+    // parse found the right *names*, and this proves the table those names sit
+    // in actually resolves. A resolver returning `null` for everything would
+    // satisfy every assertion above.
+    expect(resolveSpecifier('@squadlogic/core/facility/aliases.js', 'tests')).toBe(
+      'packages/core/src/facility/aliases.js'
+    );
+    expect(resolveSpecifier('src/availability/closures.js', 'frontend/src')).toBe(
+      'packages/core/src/availability/closures.js'
+    );
+    expect(resolveSpecifier('@/privacy/textShapes.js', 'packages/core/src/fieldAdmin')).toBe(
+      'packages/core/src/privacy/textShapes.js'
+    );
+  });
+
+  it('fails loudly when a config cannot be read, rather than iterating nothing', () => {
+    // A missing or unreadable config is a broken check, not a clean run. Both
+    // reads are asserted to have produced the file they name.
+    for (const config of ['vite.config.js', 'tsconfig.json']) {
+      const text = readFileSync(path.join(REPO_ROOT, config), 'utf8');
+      expect({ config, empty: text.length === 0 }).toEqual({ config, empty: false });
+      expect({ config, mapsCore: text.includes('packages/core/src') }).toEqual({
+        config,
+        mapsCore: true,
       });
     }
-    for (const match of tsconfig.matchAll(/"([@\w/-]+)\/\*":\s*\[\s*"packages\/core\/src\/\*"/g)) {
-      expect({ alias: match[1], declared: declared.has(match[1]) }).toEqual({
-        alias: match[1],
-        declared: true,
-      });
-    }
-    // Meta-assertion: a regex that matched nothing would make both loops pass
-    // over an empty set.
-    expect([...vite.matchAll(/packages\/core\/src/g)].length).toBeGreaterThan(2);
   });
 
   it('resolves an extensionless, an aliased and a directory specifier', () => {

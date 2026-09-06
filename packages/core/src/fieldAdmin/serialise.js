@@ -26,15 +26,19 @@
  *
  * ## What makes it byte-stable
  *
- * Four rules, each one of them load-bearing and none of them a default:
+ * Five rules, each one of them load-bearing and none of them a default:
  *
  * 1. **Column order is frozen**, read from {@link COLUMNS} rather than from
  *    `Object.keys()` of whatever the first record happened to hold.
- * 2. **Row order is a declared sort** on the record id, so two runs over the
- *    same set write the same file regardless of input order.
+ * 2. **Row order is a declared sort** on the record id, in code-unit order so
+ *    the runtime's locale cannot reach it - two runs over the same set write
+ *    the same file regardless of input order.
  * 3. **One quoting rule**, {@link quoteCell} - quote if and only if the cell
  *    holds a comma, a double quote, a newline, or leading/trailing space.
- * 4. **`\n` endings and no BOM.** A trailing newline is written, once.
+ * 4. **Structured columns are JSON**, so a value containing the separator
+ *    cannot be read back as two values - see {@link STRUCTURED_COLUMNS} for
+ *    the corpus data that made that a defect rather than a hypothetical.
+ * 5. **`\n` endings and no BOM.** A trailing newline is written, once.
  *
  * Nothing here persists anything. Every registry carries
  * {@link FIELD_ADMIN_REASON.REGISTRY_NOT_PERSISTED}, in the same position

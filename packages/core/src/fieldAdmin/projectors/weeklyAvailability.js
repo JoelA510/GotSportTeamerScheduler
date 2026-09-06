@@ -2,7 +2,8 @@
  * **The weekly availability sheet into recurring windows.**
  *
  * `field_weekly_availability.csv` states, per venue and weekday, when ground is
- * usable: 42 rows across 8 venues.
+ * usable: 42 rows across **7** venues - five carrying all seven weekdays,
+ * Brookside Park five and Beacon Field two.
  *
  * ## The Excel corruption, measured rather than quoted
  *
@@ -41,10 +42,14 @@ const SOURCE_FILE = 'field_weekly_availability.csv';
  * Every `interpretation` the sheet writes, and how to read each.
  *
  * Declared rather than inferred from the data, and enforced in **both**
- * directions by the test: a value here that matches no row fails, and a row
- * whose value is not here fails. That is what stops a class going quietly
- * empty, and what would have caught `unparsed` being named by a plan and
- * carried by nothing.
+ * directions by the test: a row whose value is not declared here fails, and a
+ * value declared here that matches no row fails **unless it is named in**
+ * {@link WEEKLY_INTERPRETATIONS_ABSENT_FROM_CORPUS}. That exemption is the
+ * point rather than a loophole: `unparsed` is a value the upstream schema
+ * accepts and this corpus never writes, so it needs an arm *and* a statement
+ * that it currently matches nothing. Naming it is what stops a class going
+ * quietly empty - which is exactly what `unparsed` was before, named by a plan
+ * and carried by nothing.
  *
  * A `Map`, because these keys come from a CSV cell.
  */

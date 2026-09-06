@@ -1,8 +1,8 @@
 /**
  * Repo-wide reachability audit for every frozen reason-code table in
  * `packages/core/src` — the generalisation of the per-module audit
- * `tests/attribution.test.js` already carries. 20 vocabularies, 464 codes, of
- * which 453 are shown to be producible and 11 are named as holes.
+ * `tests/attribution.test.js` already carries. 20 vocabularies, 465 codes, of
+ * which 454 are shown to be producible and 11 are named as holes.
  *
  * **The defect this exists to catch.** Four times now, in four unrelated
  * modules, a reason code has been declared, given a severity, documented, and
@@ -5289,6 +5289,31 @@ harvest(
   )
 );
 
+// A subject both sides hold, whose every compared field is absent.
+harvest(
+  'buildChangeSet(a subject nothing could be compared on)',
+  buildChangeSet({
+    subject: 'driver uncompared',
+    keyFields: ['id'],
+    comparedFields: ['fromDate', 'toDate', 'reason'],
+    current: { label: 'held', records: [{ id: 'bare' }] },
+    proposed: {
+      label: 'proposed',
+      rows: [
+        {
+          sourceFile: 'driver.csv',
+          rowIndex: 0,
+          subjectKey: 'bare',
+          interpretation: INTERPRETATION.INTERPRETED,
+          interpretationReason: null,
+          raw: { key: 'bare' },
+          record: { id: 'bare' },
+        },
+      ],
+    },
+  })
+);
+
 // Two held records sharing one identity.
 harvest(
   'buildChangeSet(two held records sharing one identity)',
@@ -5326,7 +5351,15 @@ harvest(
 harvest(
   'changeSetPartitionFindings(a partition with a subject dropped)',
   changeSetPartitionFindings(
-    { matched: [], differing: [], added: [], removed: [], unresolvable: [], fieldComparisons: 0 },
+    {
+      matched: [],
+      differing: [],
+      added: [],
+      removed: [],
+      uncompared: [],
+      unresolvable: [],
+      fieldComparisons: 0,
+    },
     { sourceRowsRead: 1, currentSubjectsRead: 1, projectedSubjects: 1 }
   )
 );

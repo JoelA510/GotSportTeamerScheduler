@@ -159,7 +159,7 @@ describe('fieldAdmin :: the four dispositions', () => {
 });
 
 describe('fieldAdmin :: an absent cell is neither agreement nor difference', () => {
-  it('does not count an absent cell as a match', () => {
+  it('does not count an absent cell as a match, and does not call it one', () => {
     // Folding "we do not know" into "the same" is how a missing value reads as
     // agreement. `compareParityRows()` makes the same distinction.
     const held = blackout('b1', { startMinutes: null, endMinutes: null });
@@ -171,8 +171,13 @@ describe('fieldAdmin :: an absent cell is neither agreement nor difference', () 
       current: { label: 'held', records: [held] },
       proposed: { label: 'proposed', rows: [row('b1', proposed)] },
     });
-    expect(set.buckets.matched).toHaveLength(1);
-    expect(set.buckets.matched[0].absentFields).toEqual(['startMinutes', 'endMinutes']);
+    // This test asked for exactly the behaviour the `uncompared` bucket now
+    // gives, and used to get only half of it: the subject sat in `matched`
+    // carrying its `absentFields`, which is "counted as agreement" wearing a
+    // label that said otherwise.
+    expect(set.buckets.matched).toHaveLength(0);
+    expect(set.buckets.uncompared).toHaveLength(1);
+    expect(set.buckets.uncompared[0].absentFields).toEqual(['startMinutes', 'endMinutes']);
     // ... and the absence is visible rather than silently counted as agreement.
     expect(set.meta.fieldComparisons).toBe(0);
   });
@@ -209,6 +214,34 @@ describe('fieldAdmin :: two sources describing one subject', () => {
     expect(sourceDisagreement.sources).toEqual(['first.csv', 'second.csv']);
     expect(sourceDisagreement.values).toEqual(['2026-09-01', '2026-09-09']);
     expect(sourceDisagreement.field).toBe('toDate');
+  });
+
+  it('names the field and the row, so an operator can find the disagreement', () => {
+    // `SourceDisagreement.field` was computed and never read, and the cost was
+    // visible on real data: the corpus finding read `"11v11 (2)" per
+    // field_inventory.csv and "11v11" per field_inventory.csv` - the same file
+    // twice and no column named.
+    const set = build([], twoSources(blackout('b1'), blackout('b1', { toDate: '2026-09-09' })));
+    const finding = set.findings.find(
+      (entry) => entry.code === FIELD_ADMIN_REASON.SOURCES_DISAGREE
+    );
+    expect(finding.message).toContain('disagrees on toDate');
+    expect(finding.details.field).toBe('toDate');
+  });
+
+  it('disambiguates by row when both sides are the same file', () => {
+    // Two rows of one sheet can disagree with each other - `field_inventory.csv`
+    // lists Willowmead Park twice - and naming the file twice says nothing
+    // about which row.
+    const sameFile = [
+      row('b1', blackout('b1'), { sourceFile: 'one.csv', rowIndex: 11 }),
+      row('b1', blackout('b1', { toDate: '2026-09-09' }), { sourceFile: 'one.csv', rowIndex: 12 }),
+    ];
+    const finding = build([], sameFile).findings.find(
+      (entry) => entry.code === FIELD_ADMIN_REASON.SOURCES_DISAGREE
+    );
+    expect(finding.message).toContain('one.csv row 11');
+    expect(finding.message).toContain('one.csv row 12');
   });
 
   it('takes its kind from the caller, so a kind has one producer', () => {
@@ -288,6 +321,7 @@ describe('fieldAdmin :: the partition reconciliation can fail', () => {
     differing: [],
     added: [],
     removed: [],
+    uncompared: [],
     unresolvable: [],
     fieldComparisons: 3,
   });
@@ -340,6 +374,64 @@ describe('fieldAdmin :: the partition reconciliation can fail', () => {
 });
 
 describe('fieldAdmin :: a subject nothing looked at is not applicable', () => {
+  it('does not count it as a match, and does not leave the set clean', () => {
+    // **The half of the earlier fix that was missed.** Losing `applicable` was
+    // not enough: the subject stayed in `matched`, stayed inside the
+    // `SUBJECTS_MATCHED` count and message, and left the set reading `clean`.
+    //
+    // The mixed case is the one that matters, because a set where *something*
+    // compared does not raise `CHANGE_SET_UNCOMPARED` - so the aggregate guard
+    // could not have caught it.
+    const rec = (id, note) => ({ id, note });
+    const set = buildChangeSet({
+      subject: 'mixed',
+      keyFields: ['id'],
+      comparedFields: ['note'],
+      current: { label: 'held', records: [rec('a', 'same'), rec('b', null)] },
+      proposed: {
+        label: 'proposed',
+        rows: [row('a', rec('a', 'same')), row('b', rec('b', null))],
+      },
+    });
+    expect(set.buckets.matched.map((subject) => subject.key)).toEqual(['a']);
+    expect(set.buckets.uncompared.map((subject) => subject.key)).toEqual(['b']);
+    expect(set.buckets.uncompared[0].disposition).toBe(DISPOSITION.UNCOMPARED);
+    // Counted as one match, not two.
+    expect(
+      set.findings.find((finding) => finding.code === FIELD_ADMIN_REASON.SUBJECTS_MATCHED).message
+    ).toContain('1 subject(s)');
+    // Named on its own, and the set is not clean.
+    expect(
+      set.findings.filter((finding) => finding.code === FIELD_ADMIN_REASON.SUBJECT_UNCOMPARED)
+    ).toHaveLength(1);
+    expect(set.status).toBe(FIELD_ADMIN_STATUS.COMPROMISED);
+    // ... and the aggregate guard is silent here, which is why it could not
+    // have caught this.
+    expect(set.findings.map((finding) => finding.code)).not.toContain(
+      FIELD_ADMIN_REASON.CHANGE_SET_UNCOMPARED
+    );
+  });
+
+  it('accounts for the fifth bucket on both axes of the reconciliation', () => {
+    const rec = (id, note) => ({ id, note });
+    const set = buildChangeSet({
+      subject: 'mixed',
+      keyFields: ['id'],
+      comparedFields: ['note'],
+      current: { label: 'held', records: [rec('a', 'same'), rec('b', null)] },
+      proposed: {
+        label: 'proposed',
+        rows: [row('a', rec('a', 'same')), row('b', rec('b', null))],
+      },
+    });
+    expect(
+      set.findings.filter(
+        (finding) => finding.code === FIELD_ADMIN_REASON.CHANGE_SET_PARTITION_INCOMPLETE
+      )
+    ).toEqual([]);
+    expect(set.meta.subjectsUncompared).toBe(1);
+  });
+
   it('refuses to call a subject applicable when every compared field was absent', () => {
     // Measured: a two-subject set whose compared fields are all absent returned
     // status `clean` and "2 of 2 subject(s) could be applied", having performed
@@ -354,9 +446,10 @@ describe('fieldAdmin :: a subject nothing looked at is not applicable', () => {
       current: { label: 'held', records: [bare('x')] },
       proposed: { label: 'proposed', rows: [row('x', bare('x'))] },
     });
-    expect(set.buckets.matched).toHaveLength(1);
-    expect(set.buckets.matched[0].applicable).toBe(false);
-    expect(set.buckets.matched[0].notApplicableReason).toMatch(/no field could be compared/);
+    expect(set.buckets.matched).toHaveLength(0);
+    expect(set.buckets.uncompared).toHaveLength(1);
+    expect(set.buckets.uncompared[0].applicable).toBe(false);
+    expect(set.buckets.uncompared[0].notApplicableReason).toMatch(/no field could be compared/);
     expect(set.meta.subjectsApplicable).toBe(0);
   });
 
@@ -723,6 +816,18 @@ describe('fieldAdmin :: the privacy guard on an operator-written note', () => {
     ]) {
       expect({ note, ok: NoteSchema.safeParse(note).success }).toEqual({ note, ok: true });
     }
+  });
+
+  it('names the token that actually tripped it, not the one it allows', () => {
+    // The verdict was right and the message sent an operator to edit the wrong
+    // words: `match` came from the raw scan while the verdict came from the
+    // stripped one, so this was refused naming `"p.m."`.
+    const text = 'closed after 6 p.m. for the S.R.F.C. tournament';
+    const hits = findIdentityShapes(text, { allowCommonAbbreviations: true });
+    expect(hits).toEqual([{ shape: 'initialism', match: 'S.R.F.C.' }]);
+    expect(NoteSchema.safeParse(text).error.issues[0].message).toContain('"S.R.F.C."');
+    // ... and the strict path is unchanged, where `p.m.` really is the first hit.
+    expect(findIdentityShapes(text)[0].match).toBe('p.m.');
   });
 
   it('still refuses an acronym the abbreviation list does not name', () => {

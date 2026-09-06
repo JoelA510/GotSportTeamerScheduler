@@ -33,7 +33,13 @@
  * thing. In short: **interpretation** asks whether a source row became a record
  * at all; **disposition** asks how that record compares with what is held. A
  * row that cannot be interpreted has no disposition, and it is reported on its
- * own axis rather than smuggled into the four as a fifth bucket.
+ * own axis rather than as a disposition it does not have.
+ *
+ * Disposition carries **five** values, not parity's four. `uncompared` is the
+ * fifth: both sides hold the subject and every compared field was absent, so it
+ * is neither a match nor a difference. Parity has no equivalent because its
+ * columns are the game corpus's export columns, which are populated; here they
+ * are a working sheet's, and most are empty on most rows.
  *
  * ## Where two sources disagree, both are carried
  *
@@ -42,12 +48,12 @@
  * attaches the disagreement's **kind** so the composition survives the count.
  * It does not pick, and it does not reconcile.
  *
- * the scope matters and only the adapter used to state it: **12 is the count over
- * `actual_label`** - what each ring *calls* the ground. Including the venue cell
- * gives **13**, because `11v11 Field 1` has both rings writing
- * `Willowmead Park Turf` while the practice ring leaves the venue blank; that
- * thirteenth is reported on the interpretation axis, where a row that names no
- * venue belongs.
+ * **The scope of that 12 matters, and only the adapter used to state it.** The
+ * 12 is a count over `actual_label` - what each ring *calls* the ground.
+ * Including the venue cell gives **13**, because `11v11 Field 1` has both rings
+ * writing `Willowmead Park Turf` while the practice ring leaves the venue
+ * blank; that thirteenth is reported on the interpretation axis, where a row
+ * that names no venue belongs.
  *
  * Labels are the right scope because `compareDecoderRings()` in the corpus
  * loader is the single producer of "decoder-ring disagreement", and it compares
@@ -69,6 +75,25 @@ import {
 
 /** How many example keys an aggregate finding carries. */
 const EXAMPLE_LIMIT = 5;
+
+/**
+ * Name one side of a disagreement so an operator can find the row.
+ *
+ * The file alone is not enough when two rows of *one* sheet disagree - which is
+ * the corpus's own case, `field_inventory.csv` listing Willowmead Park twice -
+ * so the row index comes along whenever the files are the same.
+ *
+ * @param {import('./types.js').ChangeSetSubject} entry
+ * @param {number} index - position within the subject's rows
+ * @returns {string}
+ */
+function sourceLabel(entry, index) {
+  const rows = entry.rows.filter((row) => row.record !== null);
+  const row = rows[index];
+  if (row === undefined) return 'an unnamed source';
+  const sameFile = rows.filter((other) => other.sourceFile === row.sourceFile).length > 1;
+  return sameFile ? `${row.sourceFile} row ${row.rowIndex}` : row.sourceFile;
+}
 
 /**
  * The separator between parts of a rendered value or a composite key.
@@ -110,9 +135,6 @@ const INTERPRETATION_VALUES = Object.freeze(Object.values(INTERPRETATION));
  * human, used in findings and on unresolvable rows, which have no record to key
  * on at all. It is never an identity again.
  *
- * A `Map` rather than an object: a key is built from data cells, and
- * `__proto__` must be a key like any other.
- *
  * @param {Record<string, unknown>} record
  * @param {ReadonlyArray<string>} keyFields
  * @returns {string}
@@ -123,6 +145,9 @@ export function subjectIdentity(record, keyFields) {
 
 /**
  * Group projected rows by the identity of the record they carry.
+ *
+ * A `Map` rather than an object: a key is built from data cells, and
+ * `__proto__` must be a key like any other.
  *
  * @param {ReadonlyArray<import('./types.js').ProjectedRow>} rows
  * @param {ReadonlyArray<string>} keyFields
@@ -260,7 +285,7 @@ export function renderValue(value) {
  *
  * Both axes are reconciled, because a partition can be sound on one and broken
  * on the other: rows can go missing between projection and comparison while the
- * four buckets still add up among themselves.
+ * disposition buckets still add up among themselves.
  *
  * @param {import('./types.js').ChangeSetPartition} partition
  * @param {{ sourceRowsRead: number, currentSubjectsRead: number, projectedSubjects: number }} counts
@@ -271,6 +296,7 @@ export function changeSetPartitionFindings(partition, counts) {
   const differing = partition.differing.length;
   const added = partition.added.length;
   const removed = partition.removed.length;
+  const uncompared = (partition.uncompared ?? []).length;
   const unresolvable = partition.unresolvable.length;
 
   /** @type {import('./types.js').FieldAdminFinding[]} */
@@ -281,6 +307,7 @@ export function changeSetPartitionFindings(partition, counts) {
     partition.matched.reduce((sum, subject) => sum + subject.rows.length, 0) +
     partition.differing.reduce((sum, subject) => sum + subject.rows.length, 0) +
     partition.added.reduce((sum, subject) => sum + subject.rows.length, 0) +
+    (partition.uncompared ?? []).reduce((sum, subject) => sum + subject.rows.length, 0) +
     unresolvable;
   if (rowsAccounted !== counts.sourceRowsRead) {
     findings.push(
@@ -311,6 +338,7 @@ export function changeSetPartitionFindings(partition, counts) {
     ...partition.differing,
     ...partition.added,
     ...partition.removed,
+    ...(partition.uncompared ?? []),
   ];
   // **Held *records*, not held subjects.** A key that two held records share is
   // one subject carrying both, so counting subjects would leave the surplus
@@ -321,7 +349,7 @@ export function changeSetPartitionFindings(partition, counts) {
     findings.push(
       makeFieldAdminFinding(
         FIELD_ADMIN_REASON.CHANGE_SET_PARTITION_INCOMPLETE,
-        `the partition accounts for ${currentAccounted} held subject(s) of ${counts.currentSubjectsRead}: matched ${matched}, differing ${differing}, added ${added}, removed ${removed}`,
+        `the partition accounts for ${currentAccounted} held subject(s) of ${counts.currentSubjectsRead}: matched ${matched}, differing ${differing}, added ${added}, removed ${removed}, uncompared ${uncompared}`,
         {
           axis: 'disposition',
           side: 'current',
@@ -331,6 +359,7 @@ export function changeSetPartitionFindings(partition, counts) {
           differing,
           added,
           removed,
+          uncompared,
         }
       )
     );
@@ -341,7 +370,7 @@ export function changeSetPartitionFindings(partition, counts) {
     findings.push(
       makeFieldAdminFinding(
         FIELD_ADMIN_REASON.CHANGE_SET_PARTITION_INCOMPLETE,
-        `the partition accounts for ${proposedAccounted} proposed subject(s) of ${counts.projectedSubjects}: matched ${matched}, differing ${differing}, added ${added}, removed ${removed}`,
+        `the partition accounts for ${proposedAccounted} proposed subject(s) of ${counts.projectedSubjects}: matched ${matched}, differing ${differing}, added ${added}, removed ${removed}, uncompared ${uncompared}`,
         {
           axis: 'disposition',
           side: 'proposed',
@@ -539,6 +568,8 @@ export function buildChangeSet(input) {
   const added = [];
   /** @type {import('./types.js').ChangeSetSubject[]} */
   const removed = [];
+  /** @type {import('./types.js').ChangeSetSubject[]} */
+  const uncompared = [];
   let fieldComparisons = 0;
   /** Comparisons made between two *sources* describing one subject. */
   const tally = { sourceComparisons: 0 };
@@ -660,7 +691,11 @@ export function buildChangeSet(input) {
       key,
       label: rows[0].subjectKey,
       heldCount: heldRecords.length,
-      disposition: isDifferent ? DISPOSITION.DIFFERING : DISPOSITION.MATCHED,
+      disposition: isDifferent
+        ? DISPOSITION.DIFFERING
+        : nothingCompared
+          ? DISPOSITION.UNCOMPARED
+          : DISPOSITION.MATCHED,
       changedFields: comparison.changedFields,
       absentFields: comparison.absentFields,
       before: held,
@@ -678,7 +713,12 @@ export function buildChangeSet(input) {
               ? 'built from a cell whose reading is in doubt'
               : null),
     };
+    // **A subject nothing compared is not a match.** It leaves `matched`
+    // entirely rather than merely losing `applicable`: staying there kept it
+    // inside the `SUBJECTS_MATCHED` count and message, and left the whole set
+    // reading `clean`.
     if (isDifferent) differing.push(entry);
+    else if (nothingCompared) uncompared.push(entry);
     else matched.push(entry);
   }
 
@@ -688,6 +728,7 @@ export function buildChangeSet(input) {
     differing,
     added,
     removed,
+    uncompared,
     unresolvable: split.unresolvable,
     fieldComparisons,
   };
@@ -696,12 +737,13 @@ export function buildChangeSet(input) {
   meta.subjectsDiffering = differing.length;
   meta.subjectsAdded = added.length;
   meta.subjectsRemoved = removed.length;
+  meta.subjectsUncompared = uncompared.length;
   meta.fieldComparisons = fieldComparisons;
   meta.sourceComparisons = tally.sourceComparisons;
-  meta.subjectsWithSourceDisagreement = [...matched, ...differing, ...added].filter(
+  meta.subjectsWithSourceDisagreement = [...matched, ...differing, ...added, ...uncompared].filter(
     (entry) => entry.sourceDisagreement !== null
   ).length;
-  meta.subjectsApplicable = [...matched, ...differing, ...added, ...removed].filter(
+  meta.subjectsApplicable = [...matched, ...differing, ...added, ...removed, ...uncompared].filter(
     (entry) => entry.applicable
   ).length;
 
@@ -751,6 +793,16 @@ export function buildChangeSet(input) {
     );
   }
 
+  for (const entry of uncompared) {
+    findings.push(
+      makeFieldAdminFinding(
+        FIELD_ADMIN_REASON.SUBJECT_UNCOMPARED,
+        `"${entry.label}" is held and proposed, and every compared field (${entry.absentFields.join(', ')}) is absent on one side or the other, so nothing was learned about it; it is neither a match nor a difference`,
+        { subject, key: entry.key, absentFields: entry.absentFields.join(',') }
+      )
+    );
+  }
+
   for (const entry of removed) {
     findings.push(
       makeFieldAdminFinding(
@@ -762,16 +814,33 @@ export function buildChangeSet(input) {
   }
 
   // Where two sources disagree, **surface both and refuse to pick**.
-  for (const entry of [...matched, ...differing, ...added]) {
+  for (const entry of [...matched, ...differing, ...added, ...uncompared]) {
     if (entry.sourceDisagreement === null) continue;
-    const { kind, sources, values } = entry.sourceDisagreement;
+    const { kind, field, sources, values } = entry.sourceDisagreement;
+    // **`field` is named**, and it was computed and never read until the review
+    // pointed at it. The cost was visible on real data: the corpus's own
+    // finding read `"11v11 (2)" per field_inventory.csv and "11v11" per
+    // field_inventory.csv` - the same file twice and no column, which is
+    // exactly what `field` supplies. Honoured rather than deleted, because a
+    // disagreement an operator cannot locate is one they cannot act on.
+    //
+    // The source is disambiguated by position too, for the same reason: two
+    // rows of one sheet can disagree with each other, and naming the file twice
+    // says nothing about which row.
     findings.push(
       makeFieldAdminFinding(
         FIELD_ADMIN_REASON.SOURCES_DISAGREE,
-        `"${entry.label}" is ${values
-          .map((value, index) => `${JSON.stringify(value)} per ${sources[index]}`)
+        `"${entry.label}" disagrees on ${field}: ${values
+          .map((value, index) => `${JSON.stringify(value)} per ${sourceLabel(entry, index)}`)
           .join(' and ')}; every candidate is carried and none is preferred`,
-        { subject, key: entry.key, kind, sources: sources.join(','), values: values.join(' | ') }
+        {
+          subject,
+          key: entry.key,
+          kind,
+          field,
+          sources: sources.join(','),
+          values: values.join(' | '),
+        }
       )
     );
   }
@@ -811,7 +880,8 @@ export function buildChangeSet(input) {
     );
   }
 
-  const subjectsPartitioned = matched.length + differing.length + added.length + removed.length;
+  const subjectsPartitioned =
+    matched.length + differing.length + added.length + removed.length + uncompared.length;
   // **Both kinds of comparison count.** A first import holds nothing, so no
   // `before`/`after` comparison happens at all - and yet comparing the two
   // decoder rings against each other is real work: **40** comparisons on the

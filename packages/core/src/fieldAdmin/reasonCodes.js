@@ -22,7 +22,8 @@
  *
  * ```text
  * interpretation   interpreted | doubtful | unresolvable
- * disposition      matched | differing | added | removed      (interpreted rows only)
+ * disposition      matched | differing | added | removed | uncompared
+ *                                                    (interpreted rows only)
  * ```
  *
  * The disposition words are `publication/parity.js`'s four, unrenamed. The plan
@@ -107,6 +108,22 @@ export const DISPOSITION = Object.freeze({
   ADDED: 'added',
   /** Held in current state and named by no source row. The plan omits this. */
   REMOVED: 'removed',
+  /**
+   * **Both sides hold it and nothing could be compared.** Every compared field
+   * was absent on one side or the other, so the subject is neither a match nor
+   * a difference - it is a question nobody answered.
+   *
+   * A fifth value, and `publication/parity.js` has no equivalent, which is
+   * worth saying rather than leaving as an apparent departure: parity's rows
+   * come from `outputGeneration.js`'s export columns, which the game corpus
+   * populates, so a pair with nothing to compare does not arise there. Here the
+   * columns are a working sheet's, and most of them are empty on most rows.
+   *
+   * Calling such a subject `matched` was the half of fix 7 that was missed: it
+   * stopped being *applicable* and went on being counted and reported as a
+   * match, in a set that still came back `clean`.
+   */
+  UNCOMPARED: 'uncompared',
 });
 
 /**
@@ -149,6 +166,12 @@ export const FIELD_ADMIN_REASON = Object.freeze({
   SUBJECTS_ADDED: 'SUBJECTS_ADDED',
   /** One subject, one finding: current state holds it and no source names it. */
   SUBJECT_REMOVED: 'SUBJECT_REMOVED',
+  /**
+   * One subject, one finding: both sides hold it and every compared field was
+   * absent, so nothing was learned about it. Compromise rather than blocking -
+   * an operator can look and decide - but never silence, and never a match.
+   */
+  SUBJECT_UNCOMPARED: 'SUBJECT_UNCOMPARED',
 
   /* -- two sources, one subject ----------------------------------------- */
   /**
@@ -244,6 +267,7 @@ export const FIELD_ADMIN_REASON_SEVERITY = Object.freeze({
   [FIELD_ADMIN_REASON.SUBJECT_DIFFERS]: FIELD_ADMIN_SEVERITY.BLOCKING,
   [FIELD_ADMIN_REASON.SUBJECTS_ADDED]: FIELD_ADMIN_SEVERITY.INFO,
   [FIELD_ADMIN_REASON.SUBJECT_REMOVED]: FIELD_ADMIN_SEVERITY.BLOCKING,
+  [FIELD_ADMIN_REASON.SUBJECT_UNCOMPARED]: FIELD_ADMIN_SEVERITY.COMPROMISE,
 
   [FIELD_ADMIN_REASON.SOURCES_DISAGREE]: FIELD_ADMIN_SEVERITY.BLOCKING,
   [FIELD_ADMIN_REASON.HELD_KEY_AMBIGUOUS]: FIELD_ADMIN_SEVERITY.BLOCKING,
@@ -343,6 +367,7 @@ export function createFieldAdminMeta() {
     subjectsDiffering: 0,
     subjectsAdded: 0,
     subjectsRemoved: 0,
+    subjectsUncompared: 0,
     /* how much comparing actually happened, in field comparisons */
     fieldComparisons: 0,
     /* comparisons between two sources describing one subject */

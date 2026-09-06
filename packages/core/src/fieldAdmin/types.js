@@ -27,6 +27,7 @@
  * @property {number} subjectsDiffering
  * @property {number} subjectsAdded
  * @property {number} subjectsRemoved
+ * @property {number} subjectsUncompared
  * @property {number} fieldComparisons
  * @property {number} sourceComparisons
  * @property {number} subjectsWithSourceDisagreement
@@ -92,6 +93,7 @@
  * @property {ChangeSetSubject[]} differing
  * @property {ChangeSetSubject[]} added
  * @property {ChangeSetSubject[]} removed
+ * @property {ChangeSetSubject[]} uncompared
  * @property {ProjectedRow[]} unresolvable
  * @property {number} fieldComparisons
  */
