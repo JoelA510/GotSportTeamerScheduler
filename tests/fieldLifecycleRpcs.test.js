@@ -105,6 +105,52 @@ describe('field lifecycle RPCs :: retirement writes active and effective_to toge
     })();
   });
 
+  it('runs the retirement trigger on DIRECT writes, not only inside the RPCs', async () => {
+    // **A trigger fires on every write.** The mock mirrored
+    // `fields_retirement_deactivates` inside the RPC block only, so
+    // `from('fields').insert()` and `.update()` bypassed it and a row written
+    // directly could sit `active = true` with a retirement already past -- a
+    // state Postgres makes unreachable. It mattered beyond tidiness: the shared
+    // scenario table seeds its `before` states through `.insert()`, so the two
+    // runners could have been testing different scenarios under one id.
+    //
+    // No scenario can cover this, because the whole point is that the state is
+    // unreachable through a write. So it is asserted here, on the write path.
+    await supabase.from('fields').insert({
+      id: 'trigger-direct-insert',
+      organization_id: ORG,
+      location_id: someField().location_id,
+      name: 'Direct Insert',
+      active: true,
+      effective_to: '2000-01-01',
+    });
+    const inserted = getMockData('fields').find((f) => String(f.id) === 'trigger-direct-insert');
+    expect(inserted.active).toBe(false);
+
+    // A FUTURE retirement written directly is left alone -- one-directional,
+    // the same as the RPC and the SQL trigger.
+    await supabase.from('fields').insert({
+      id: 'trigger-direct-future',
+      organization_id: ORG,
+      location_id: someField().location_id,
+      name: 'Direct Future',
+      active: true,
+      effective_to: '2099-01-01',
+    });
+    expect(getMockData('fields').find((f) => String(f.id) === 'trigger-direct-future').active).toBe(
+      true
+    );
+
+    // ... and on UPDATE, which is the other half of BEFORE INSERT OR UPDATE.
+    await supabase
+      .from('fields')
+      .update({ effective_to: '2000-01-01' })
+      .eq('id', 'trigger-direct-future');
+    expect(getMockData('fields').find((f) => String(f.id) === 'trigger-direct-future').active).toBe(
+      false
+    );
+  });
+
   it('does not let an ordinary field edit un-retire ground', async () => {
     // The mock mirrors the database trigger. Without it PR 3's UI would be
     // built against a mock where renaming a retired field brings it back into

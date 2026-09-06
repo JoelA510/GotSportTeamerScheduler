@@ -678,6 +678,29 @@ const markMockDeleted = (db, table, keys) => {
   db.__deleted__[table] = Array.from(new Set([...existing, ...keys.map(String)]));
 };
 
+/**
+ * `public.fields_retirement_deactivates`, the BEFORE INSERT OR UPDATE trigger.
+ *
+ * **A trigger fires on every write, and this only fired inside the RPC block.**
+ * `from('fields').insert()` and `.update()` bypassed it entirely, so a row
+ * written directly could sit `active = true` with a retirement already in the
+ * past -- a state the database makes unreachable. The shared scenario table
+ * seeds its `before` states through `.insert()`, so a case like
+ * `{active: true, effectiveTo: -1}` landed as one thing in Postgres and another
+ * in the mock, and the two runners were quietly testing different scenarios.
+ *
+ * One producer at module scope, called from every write path including the
+ * RPCs, rather than a copy per call site.
+ *
+ * @param {Record<string, any>} row - mutated in place, as a BEFORE trigger does
+ * @returns {Record<string, any>} `row`
+ */
+const applyFieldRetirementTrigger = (row) => {
+  const today = new Date().toISOString().slice(0, 10);
+  if (row && row.effective_to && String(row.effective_to) < today) row.active = false;
+  return row;
+};
+
 const saveDB = (db) => {
   if (typeof window !== 'undefined') {
     window.__MOCK_DB__ = db;
@@ -1226,7 +1249,9 @@ export const mockSupabase = {
               organization_id: r.organization_id || 'org-1',
             });
           }
-          return { id, created_at: new Date().toISOString(), ...r };
+          const built = { id, created_at: new Date().toISOString(), ...r };
+          if (table === 'fields') applyFieldRetirementTrigger(built);
+          return built;
         });
         db[table] = [...(db[table] || []), ...newRecords];
         saveDB(db);
@@ -1273,7 +1298,9 @@ export const mockSupabase = {
           const oldRecord = idx >= 0 ? { ...existing[idx] } : null;
           if (idx >= 0) {
             existing[idx] = { ...existing[idx], ...rec };
+            if (table === 'fields') applyFieldRetirementTrigger(existing[idx]);
           } else {
+            if (table === 'fields') applyFieldRetirementTrigger(rec);
             existing.push(rec);
           }
 
@@ -1343,6 +1370,7 @@ export const mockSupabase = {
               db[table] = db[table].map((item) => {
                 if (String(item[col]) === String(val)) {
                   updatedItem = { ...item, ...updates };
+                  if (table === 'fields') applyFieldRetirementTrigger(updatedItem);
 
                   if (table === 'games' && updates.score_home !== undefined) {
                     db.view_league_standings = db.view_league_standings || [];
@@ -2032,10 +2060,10 @@ export const mockSupabase = {
       const fieldIsLiveOn = (effectiveTo) =>
         effectiveTo === null || effectiveTo === undefined || String(effectiveTo) >= todayIso();
 
-      const applyRetirementTrigger = (row) => {
-        if (row.effective_to && !fieldIsLiveOn(row.effective_to)) row.active = false;
-        return row;
-      };
+      // Delegates to the module-scope producer rather than reimplementing it;
+      // two copies of a trigger is how one write path came to have it and the
+      // others did not.
+      const applyRetirementTrigger = applyFieldRetirementTrigger;
 
       // **`upper()` on a daterange, mirrored.** PostgreSQL normalizes a
       // discrete range to `[lower, upper)`, so `upper('[a,b]')` is b + 1 and
@@ -2148,7 +2176,10 @@ export const mockSupabase = {
         if (scopeCount !== 1) {
           return {
             data: null,
-            error: { message: 'exactly one of p_location_id and p_field_id must be set' },
+            error: {
+              code: '22023',
+              message: 'exactly one of p_location_id and p_field_id must be set',
+            },
           };
         }
         if (
@@ -2159,7 +2190,10 @@ export const mockSupabase = {
               String(item.organization_id) === String(orgId)
           )
         ) {
-          return { data: null, error: { message: 'Location not found in organization' } };
+          return {
+            data: null,
+            error: { code: 'P0002', message: 'Location not found in organization' },
+          };
         }
         if (
           p.p_field_id &&
@@ -2169,7 +2203,10 @@ export const mockSupabase = {
               String(item.organization_id) === String(orgId)
           )
         ) {
-          return { data: null, error: { message: 'Field not found in organization' } };
+          return {
+            data: null,
+            error: { code: 'P0002', message: 'Field not found in organization' },
+          };
         }
         // **The table's constraints, mirrored -- all of them.** The E2E suite is
         // the only place this path runs, and the mock is the contract PR 3 is
@@ -2179,20 +2216,20 @@ export const mockSupabase = {
         if (!p.p_blackout_from || !p.p_blackout_until) {
           return {
             data: null,
-            error: { message: 'blackout_from and blackout_until are required' },
+            error: { code: '22023', message: 'blackout_from and blackout_until are required' },
           };
         }
         const REASONS = ['maintenance', 'weather', 'event', 'permit', 'closed', 'other'];
         if (p.p_reason !== null && p.p_reason !== undefined && !REASONS.includes(p.p_reason)) {
           return {
             data: null,
-            error: { message: `reason must be one of ${REASONS.join(', ')}` },
+            error: { code: '23514', message: `reason must be one of ${REASONS.join(', ')}` },
           };
         }
         if (String(p.p_blackout_until) < String(p.p_blackout_from)) {
           return {
             data: null,
-            error: { message: 'blackout_until must not precede blackout_from' },
+            error: { code: '23514', message: 'blackout_until must not precede blackout_from' },
           };
         }
         const timeCount = [p.p_start_minutes, p.p_end_minutes].filter(
@@ -2201,7 +2238,7 @@ export const mockSupabase = {
         if (timeCount === 1) {
           return {
             data: null,
-            error: { message: 'start_minutes and end_minutes are both-or-neither' },
+            error: { code: '23514', message: 'start_minutes and end_minutes are both-or-neither' },
           };
         }
         if (
@@ -2216,7 +2253,7 @@ export const mockSupabase = {
         ) {
           return {
             data: null,
-            error: { message: 'blackout times must be within 0..1440 and ordered' },
+            error: { code: '23514', message: 'blackout times must be within 0..1440 and ordered' },
           };
         }
         const hasTimes =
@@ -2296,7 +2333,10 @@ export const mockSupabase = {
           String(item.id) === String(p.p_field_id) && String(item.organization_id) === String(orgId)
       );
       if (!field) {
-        return { data: null, error: { message: 'Field not found in organization' } };
+        return {
+          data: null,
+          error: { code: 'P0002', message: 'Field not found in organization' },
+        };
       }
 
       if (name === 'admin_retire_field') {

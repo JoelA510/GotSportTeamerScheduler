@@ -47,6 +47,29 @@ const dateAt = (offset) => {
   return d.toISOString().slice(0, 10);
 };
 
+/**
+ * A refusal, checked against the SQLSTATE the table names.
+ *
+ * This side used to accept ANY error as a valid refusal while `scenarios.py`
+ * restricted the class and explicitly excluded `insufficient_privilege` and
+ * `no_data_found`. The mock returned codeless errors, so five of the nine
+ * blackout cases could have stopped exercising their constraint -- refused as
+ * "Field not found in organization" -- and stayed green forever. One contract,
+ * stated once in the table, read by both runners.
+ *
+ * @param {{ code?: string, message?: string }|null} error
+ * @param {{ id: string, expect: { sqlstate?: string } }} scenario
+ */
+const expectRefusal = (error, scenario) => {
+  expect(error, `${scenario.id}: expected a refusal and the call succeeded`).not.toBeNull();
+  // Every refusal scenario names its SQLSTATE, so a scenario that forgot to is
+  // a table defect rather than a free pass.
+  expect(scenario.expect.sqlstate, `${scenario.id}: names no expected sqlstate`).toBeTruthy();
+  expect(error.code, `${scenario.id}: refused as "${error.message}"`).toBe(
+    scenario.expect.sqlstate
+  );
+};
+
 const setMockSession = (userId) => {
   sessionStorage.setItem('__MOCK_SESSION__', JSON.stringify({ user: { id: userId } }));
 };
@@ -80,15 +103,20 @@ describe('scenario table :: the table itself', () => {
     // The meta-assertion. A table that failed to parse, or that lost its
     // entries, would make every `it.each` below run zero cases and the file
     // would pass green having asserted nothing at all.
-    expect(TABLE.fieldScenarios.length).toBe(10);
+    expect(TABLE.fieldScenarios.length).toBe(11);
     expect(TABLE.blackoutScenarios.length).toBe(9);
     const all = [...TABLE.fieldScenarios, ...TABLE.blackoutScenarios];
-    expect(all.length).toBe(19);
+    expect(all.length).toBe(20);
     for (const scenario of all) {
       expect(typeof scenario.id).toBe('string');
       expect(scenario.why.length).toBeGreaterThan(10);
       expect(scenario.expect).toBeTypeOf('object');
       expect(typeof scenario.expect.ok).toBe('boolean');
+      // A refusal without a named SQLSTATE would be checked by neither runner
+      // beyond "some error happened", which is the hole this closes.
+      if (!scenario.expect.ok) {
+        expect(scenario.expect.sqlstate, `${scenario.id}`).toMatch(/^[0-9A-Z]{5}$/);
+      }
     }
     expect(new Set(all.map((s) => s.id)).size).toBe(all.length);
   });
@@ -98,10 +126,13 @@ describe('scenario table :: the table itself', () => {
     // refuses; a table of nothing but refusals by one that never works.
     const outcomes = (list) => new Set(list.map((s) => s.expect.ok));
     expect(outcomes(TABLE.blackoutScenarios)).toEqual(new Set([true, false]));
-    // The field half is all-accept by nature -- the retirement RPCs refuse on
-    // bookings, which `fieldLifecycleRpcs.test.js` covers -- so what is
-    // asserted here is that it exercises both ACTIVITY outcomes instead.
-    const activities = new Set(TABLE.fieldScenarios.map((s) => s.expect.active));
+    // **Both halves, now.** The field half used to be all-accept, which is why
+    // `expect.ok` could go unread there without anything noticing.
+    expect(outcomes(TABLE.fieldScenarios)).toEqual(new Set([true, false]));
+    // ... and it exercises both ACTIVITY outcomes as well.
+    const activities = new Set(
+      TABLE.fieldScenarios.filter((s) => s.expect.ok).map((s) => s.expect.active)
+    );
     expect(activities).toEqual(new Set([true, false]));
   });
 });
@@ -121,7 +152,18 @@ describe('scenario table :: the mock honours it', () => {
       args.p_effective_to = dateAt(scenario.args.effectiveTo);
       args.p_confirm = Boolean(scenario.args.confirm);
     }
+    // **`expect.ok` is read here, on the field half too.** It was validated for
+    // shape on every scenario and read by neither runner for a field case: the
+    // JS side asserted `error` null unconditionally and the SQL side had no
+    // `ok` branch at all. A field parsed and never read, in the table whose one
+    // premise is that both runners read it identically.
+    if (scenario.args.foreignOrg) args.p_field_id = 'not-this-orgs-field';
+
     const { data, error } = await supabase.rpc(scenario.rpc, args);
+    if (!scenario.expect.ok) {
+      expectRefusal(error, scenario);
+      return;
+    }
     expect(error).toBeNull();
     expect(data).not.toBeNull();
 
@@ -180,7 +222,7 @@ describe('scenario table :: the mock honours it', () => {
       expect(phases).toContain('before');
       expect(phases).toContain('after');
     } else {
-      expect(error).not.toBeNull();
+      expectRefusal(error, scenario);
       // **Refused means nothing was written.** A refusal that half-applied
       // would be worse than no constraint at all.
       expect(after).toBe(before);

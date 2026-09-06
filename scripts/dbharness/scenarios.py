@@ -47,6 +47,38 @@ def date_expr(offset):
     return f'(current_date + {int(offset)})'
 
 
+# The PL/pgSQL condition name for each SQLSTATE a scenario may name. Explicit
+# rather than `SQLSTATE '22023'` so an unknown code fails here, in the
+# generator, instead of emitting SQL that catches nothing.
+CONDITION_FOR_SQLSTATE = {
+    '22023': 'invalid_parameter_value',
+    '23514': 'check_violation',
+    'P0002': 'no_data_found',
+    '42501': 'insufficient_privilege',
+}
+
+
+def condition_for(scenario):
+    """The single condition a refusal scenario is allowed to raise.
+
+    The two runners used to disagree: the JS side accepted ANY error while this
+    one accepted a fixed pair, and the mock returned codeless errors, so five of
+    the nine blackout cases could have stopped exercising their constraint --
+    refused as "Field not found in organization" -- and stayed green. Each
+    refusal scenario now names its own SQLSTATE in the table and both runners
+    read that one field.
+    """
+    code = scenario['expect'].get('sqlstate')
+    if code is None:
+        raise SystemExit(f"scenario {scenario['id']!r} expects a refusal but names no sqlstate")
+    if code not in CONDITION_FOR_SQLSTATE:
+        raise SystemExit(
+            f"scenario {scenario['id']!r} names sqlstate {code!r}, which this "
+            'generator has no condition name for'
+        )
+    return CONDITION_FOR_SQLSTATE[code]
+
+
 def emit_field(scenario, index):
     s = scenario
     fid = f"scenario_field_{index}"
@@ -66,20 +98,43 @@ def emit_field(scenario, index):
         "      v_active, v_eff;",
         "  END IF;",
     ]
+    # **`foreignOrg` points the call at ground this org does not own.** It is
+    # the field half's one refusal case, and it exists so `expect.ok` is READ on
+    # this half at all: it was shape-validated on every scenario and branched on
+    # by neither runner for a field case.
+    target = (
+        "'00000000-0000-0000-0000-0000000000ff'::uuid"
+        if s['args'].get('foreignOrg')
+        else 'v_field'
+    )
     if s['rpc'] == 'admin_retire_field':
-        lines.append(
-            "  v_res := public.admin_retire_field(p_organization_id => v_org, "
-            f"p_field_id => v_field, p_effective_to => {date_expr(s['args']['effectiveTo'])}, "
-            f"p_confirm => {lit(bool(s['args'].get('confirm')))});"
+        call = (
+            "public.admin_retire_field(p_organization_id => v_org, "
+            f"p_field_id => {target}, p_effective_to => {date_expr(s['args']['effectiveTo'])}, "
+            f"p_confirm => {lit(bool(s['args'].get('confirm')))})"
         )
     elif s['rpc'] == 'admin_unretire_field':
-        lines.append(
-            "  v_res := public.admin_unretire_field(p_organization_id => v_org, "
-            "p_field_id => v_field);"
+        call = (
+            "public.admin_unretire_field(p_organization_id => v_org, "
+            f"p_field_id => {target})"
         )
     else:
         # Every switch over a union throws on the value it does not know.
         raise SystemExit(f"unknown rpc {s['rpc']!r} in scenario {s['id']!r}")
+
+    if not s['expect']['ok']:
+        lines += [
+            "  BEGIN",
+            f"    v_res := {call};",
+            f"    RAISE EXCEPTION '{s['id']}: expected a refusal and the call SUCCEEDED';",
+            f"  EXCEPTION WHEN {condition_for(s)} THEN NULL;",
+            "  END;",
+            "  v_ran := v_ran + 1;",
+            "",
+        ]
+        return lines
+
+    lines.append(f"  v_res := {call};")
 
     lines += [
         "  SELECT active, effective_to INTO v_active, v_eff FROM public.fields WHERE id = v_field;",
@@ -148,20 +203,14 @@ def emit_blackout(scenario, index):
             "  BEGIN",
             f"    v_res := {call};",
             f"    RAISE EXCEPTION '{s['id']}: expected a refusal and the row was ACCEPTED';",
-            # **Exactly the two classes a validation refusal may use**, read out
-            # of the migration rather than guessed:
-            #
-            #   invalid_parameter_value (22023) -- the RPC's own guards
-            #   check_violation         (23514) -- the table's CHECK constraints
-            #
-            # Deliberately NOT insufficient_privilege (42501) or no_data_found
-            # (P0002), which the same RPC also raises. A scenario refused
-            # because the session lost its admin role, or because the field id
-            # did not resolve, was refused for a reason that has nothing to do
-            # with what it is testing -- and a broad handler would score that as
-            # a pass. The first draft caught `raise_exception` (the catch-all
-            # for an un-coded RAISE) and would have done exactly that.
-            "  EXCEPTION WHEN invalid_parameter_value OR check_violation THEN",
+            # **The one condition this scenario names**, from the table, so both
+            # runners enforce the same thing. A row refused because the caller
+            # lost its admin role (42501) or the id did not resolve (P0002) was
+            # refused for a reason unrelated to what the scenario tests, and a
+            # broad handler would score that as a pass. The first draft caught
+            # `raise_exception`, the catch-all for an un-coded RAISE, and would
+            # have done exactly that.
+            f"  EXCEPTION WHEN {condition_for(s)} THEN",
             "    NULL;",
             "  END;",
             "  SELECT count(*) INTO v_n FROM public.field_blackouts WHERE organization_id = v_org;",
