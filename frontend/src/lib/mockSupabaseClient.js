@@ -522,6 +522,7 @@ const initialMockData = {
   field_availability_profiles: [],
   field_availability_profile_formats: [],
   field_blackout_windows: [],
+  field_blackouts: [],
   field_equipment_requirements: [],
   field_availability_scenarios: [],
   field_availability_scenario_members: [],
@@ -1933,6 +1934,10 @@ export const mockSupabase = {
         'admin_create_field',
         'admin_update_field',
         'admin_delete_field',
+        'admin_retire_field',
+        'admin_unretire_field',
+        'admin_create_field_blackout',
+        'admin_delete_field_blackout',
       ].includes(name)
     ) {
       const p = params || {};
@@ -1990,7 +1995,15 @@ export const mockSupabase = {
           String(item.id) === String(p.p_location_id) &&
           String(item.organization_id) === String(orgId)
       );
-      if (name !== 'admin_delete_field' && !location) {
+      // **Only the RPCs that take a location are held to one.** This guard used
+      // to be "every name in the block except admin_delete_field", which was
+      // correct while the block held four names that all carried a
+      // p_location_id. The 8.4 lifecycle RPCs do not: a retirement names a
+      // field, and a blackout may be scoped to a field instead. Naming the
+      // RPCs that require a location is the reading that stays true as the
+      // block grows.
+      const REQUIRES_LOCATION = ['admin_create_field', 'admin_update_field'];
+      if (REQUIRES_LOCATION.includes(name) && !location) {
         return { data: null, error: { message: 'Location is outside organization' } };
       }
 
@@ -2022,12 +2035,161 @@ export const mockSupabase = {
         return { data: field, error: null };
       }
 
+      if (name === 'admin_create_field_blackout') {
+        // Mirrors the RPC's scope rule: exactly one of location or field. The
+        // mock enforces it because the E2E suite is the only place this path
+        // runs, so a mock that accepted both would let a defect the database
+        // would refuse pass every test.
+        const scopeCount = [p.p_location_id, p.p_field_id].filter(
+          (value) => value !== null && value !== undefined
+        ).length;
+        if (scopeCount !== 1) {
+          return {
+            data: null,
+            error: { message: 'exactly one of p_location_id and p_field_id must be set' },
+          };
+        }
+        if (
+          p.p_location_id &&
+          !(db.locations || []).some(
+            (item) =>
+              String(item.id) === String(p.p_location_id) &&
+              String(item.organization_id) === String(orgId)
+          )
+        ) {
+          return { data: null, error: { message: 'Location not found in organization' } };
+        }
+        if (
+          p.p_field_id &&
+          !(db.fields || []).some(
+            (item) =>
+              String(item.id) === String(p.p_field_id) &&
+              String(item.organization_id) === String(orgId)
+          )
+        ) {
+          return { data: null, error: { message: 'Field not found in organization' } };
+        }
+        const hasTimes =
+          p.p_start_minutes !== null &&
+          p.p_start_minutes !== undefined &&
+          p.p_end_minutes !== null &&
+          p.p_end_minutes !== undefined;
+        const blackout = {
+          id: mockId(),
+          organization_id: orgId,
+          location_id: p.p_location_id ?? null,
+          field_id: p.p_field_id ?? null,
+          blackout_from: p.p_blackout_from,
+          blackout_until: p.p_blackout_until,
+          start_minutes: hasTimes ? p.p_start_minutes : null,
+          end_minutes: hasTimes ? p.p_end_minutes : null,
+          reason: p.p_reason || 'other',
+          note: p.p_note ?? null,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+        db.field_blackouts = db.field_blackouts || [];
+        db.field_blackouts.push(blackout);
+        audit('field_blackout', blackout.id, 'created', { current: blackout });
+        saveDB(db);
+        return { data: blackout, error: null };
+      }
+
+      if (name === 'admin_delete_field_blackout') {
+        const existing = (db.field_blackouts || []).find(
+          (item) =>
+            String(item.id) === String(p.p_blackout_id) &&
+            String(item.organization_id) === String(orgId)
+        );
+        if (!existing) {
+          return { data: null, error: { message: 'Blackout not found in organization' } };
+        }
+        db.field_blackouts = (db.field_blackouts || []).filter(
+          (item) => String(item.id) !== String(p.p_blackout_id)
+        );
+        audit('field_blackout', existing.id, 'deleted', { previous: existing });
+        saveDB(db);
+        return { data: { deleted: true, blackout: existing }, error: null };
+      }
+
       const field = (db.fields || []).find(
         (item) =>
           String(item.id) === String(p.p_field_id) && String(item.organization_id) === String(orgId)
       );
       if (!field) {
         return { data: null, error: { message: 'Field not found in organization' } };
+      }
+
+      if (name === 'admin_retire_field') {
+        if (!p.p_effective_to) {
+          return { data: null, error: { message: 'p_effective_to is required' } };
+        }
+        // **The refusal is here, not in the UI.** A slot with no start date
+        // cannot be judged against the retirement date, so it counts as
+        // affected rather than being dropped -- the same reading the SQL takes.
+        const affected = (db.game_slots || []).filter(
+          (slot) =>
+            String(slot.organization_id) === String(orgId) &&
+            String(slot.field_id) === String(p.p_field_id) &&
+            (!slot.start || String(slot.start).slice(0, 10) > String(p.p_effective_to))
+        );
+        if (affected.length > 0 && !p.p_confirm) {
+          audit('field', field.id, 'updated', {
+            operation: 'admin_retire_field',
+            phase: 'refused',
+            affected_count: affected.length,
+            previous: { ...field },
+          });
+          saveDB(db);
+          return {
+            data: {
+              retired: false,
+              reason: 'bookings_after_effective_to',
+              affected_count: affected.length,
+              affected: affected.map((slot) => ({
+                game_slot_id: slot.id,
+                starts_at: slot.start ?? null,
+                week_index: slot.week_index ?? null,
+                undated: !slot.start,
+              })),
+            },
+            error: null,
+          };
+        }
+        const previous = { ...field };
+        // `active` and `effective_to` together, never one without the other.
+        Object.assign(field, {
+          effective_to: p.p_effective_to,
+          active: false,
+          updated_at: new Date().toISOString(),
+        });
+        audit('field', field.id, 'updated', {
+          operation: 'admin_retire_field',
+          phase: 'after',
+          previous,
+          current: field,
+        });
+        saveDB(db);
+        return {
+          data: { retired: true, affected_count: affected.length, field },
+          error: null,
+        };
+      }
+
+      if (name === 'admin_unretire_field') {
+        const previous = { ...field };
+        Object.assign(field, {
+          effective_to: null,
+          active: true,
+          updated_at: new Date().toISOString(),
+        });
+        audit('field', field.id, 'updated', {
+          operation: 'admin_unretire_field',
+          previous,
+          current: field,
+        });
+        saveDB(db);
+        return { data: { retired: false, field }, error: null };
       }
 
       if (name === 'admin_update_field') {
