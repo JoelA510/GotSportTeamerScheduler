@@ -696,14 +696,36 @@ describe('closures :: unknowns are reported, never folded into "no closure appli
     });
     expect(set.findings.map((f) => f.code)).toEqual([AVAILABILITY_REASON.CLOSURE_SURFACE_UNKNOWN]);
     expect(set.findings[0].details).toMatchObject({ closureId: 'orchard-4', fieldsRaw: '4' });
-    // It applies to nothing: an Orchard booking in its window is untouched by it.
+    // Round 3, finding 2: at query time it falls back to the venue, exactly as
+    // its sibling `unreadable` does -- "as a compromise, never as nothing". An
+    // Orchard booking in its window used to come back with an empty finding
+    // list, which a caller holding only this answer reads as a clear date.
     const result = checkClosures(
       graph,
       set,
       booking('p', sid('Orchard Park', 'Field 1'), alder4.dateStart, 11 * 60, 12 * 60)
     );
-    expect(result.findings).toEqual([]);
+    expect(codesOf(result)).toEqual([AVAILABILITY_REASON.CLOSURE_SURFACE_UNKNOWN]);
+    expect(result.findings[0].severity).toBe(AVAILABILITY_SEVERITY.COMPROMISE);
+    expect(result.findings[0].details).toMatchObject({ closureId: 'orchard-4', coverage: null });
     expect(result.meta.closuresConsulted).toBe(1);
+    expect(result.meta.closuresApplied).toBe(1);
+    // The fallback is the venue and no wider: a booking at another venue in
+    // the same window is untouched, and so is one at Orchard outside the dates.
+    expect(
+      checkClosures(
+        graph,
+        set,
+        booking('p', sid(ALDER, 'Pitch 2'), alder4.dateStart, 11 * 60, 12 * 60)
+      ).findings
+    ).toEqual([]);
+    expect(
+      checkClosures(
+        graph,
+        set,
+        booking('p', sid('Orchard Park', 'Field 1'), '2026-12-31', 660, 720)
+      ).findings
+    ).toEqual([]);
     // ... and the Alder original still resolves to the pitch by structure.
     const real = buildSeason2026ClosureSet([alder4], graph, complexes);
     expect(real.closures[0].scope).toEqual({
@@ -758,10 +780,35 @@ describe('closures :: unknowns are reported, never folded into "no closure appli
       'Fivepines Park',
       'Quarrywood Park',
     ]);
-    // A venue-unknown closure applies to nothing, and the finding is the record of that.
-    expect(
-      gameOnly.closures.filter((c) => c.scope.kind === CLOSURE_SCOPE.VENUE_UNKNOWN)
-    ).toHaveLength(3);
+    // A venue-unknown closure reaches no ground -- there is no ground to
+    // reach -- but it is not silence either. Round 3, finding 2: the build-time
+    // finding is not enough on its own, because a caller holding only the query
+    // answer would read an empty list as a clear date.
+    const unknown = gameOnly.closures.filter((c) => c.scope.kind === CLOSURE_SCOPE.VENUE_UNKNOWN);
+    expect(unknown).toHaveLength(3);
+    const inside = unknown[0];
+    const answer = checkClosures(
+      gameGraph,
+      gameOnly,
+      booking('p', sid(ALDER, 'Pitch 2'), inside.fromDate, 11 * 60, 12 * 60)
+    );
+    const uncomparable = answer.findings.filter(
+      (f) => f.code === AVAILABILITY_REASON.CLOSURE_VENUE_UNKNOWN
+    );
+    expect(uncomparable.length).toBeGreaterThan(0);
+    expect(uncomparable[0].severity).toBe(AVAILABILITY_SEVERITY.COMPROMISE);
+    expect(uncomparable[0].details.closureVenueName).toBe(inside.scope.venueName);
+    expect(answer.meta.closuresUncomparable).toBe(uncomparable.length);
+    // Bounded by the closure's own dates, so it is not attached to every
+    // booking of the season: a date outside every venue-unknown window is clean
+    // of the code.
+    const outside = checkClosures(
+      gameGraph,
+      gameOnly,
+      booking('p', sid(ALDER, 'Pitch 2'), '2026-12-31', 11 * 60, 12 * 60)
+    );
+    expect(codesOf(outside)).not.toContain(AVAILABILITY_REASON.CLOSURE_VENUE_UNKNOWN);
+    expect(outside.meta.closuresUncomparable).toBe(0);
   });
 });
 

@@ -156,12 +156,13 @@ export const ClosureSetInputSchema = z
  * @typedef {Object} ClosureMeta
  * @property {number} closuresConsulted
  * @property {number} closuresApplied - closures whose date, ground and time all matched
+ * @property {number} closuresUncomparable - date-matching closures standing on ground the graph does not hold, so no ground comparison was possible
  * @property {number} bookingsChecked
  */
 
 /** @returns {ClosureMeta} */
 function createClosureMeta() {
-  return { closuresConsulted: 0, closuresApplied: 0, bookingsChecked: 0 };
+  return { closuresConsulted: 0, closuresApplied: 0, closuresUncomparable: 0, bookingsChecked: 0 };
 }
 
 /**
@@ -272,7 +273,12 @@ export function buildClosureSet(graph, input) {
  */
 function closureCoversSurface(graph, closure, surface) {
   const scope = closure.scope;
-  if (scope.kind === CLOSURE_SCOPE.VENUE_UNKNOWN || scope.kind === CLOSURE_SCOPE.SURFACE_UNKNOWN) {
+  // `venue-unknown` is the one scope with no ground to reach at all: the row
+  // names a venue the graph does not hold, so there is no set of surfaces it
+  // could cover. It is not waved through either -- `checkClosures()` reports it
+  // against every booking whose date falls inside it, so a caller holding only
+  // the query answer sees the closure it could not be compared against.
+  if (scope.kind === CLOSURE_SCOPE.VENUE_UNKNOWN) {
     return { covers: false, coverage: null };
   }
   if (scope.kind === CLOSURE_SCOPE.SURFACE) {
@@ -282,6 +288,13 @@ function closureCoversSurface(graph, closure, surface) {
     }
     return { covers: false, coverage: null };
   }
+  // Everything else is venue-scoped ground, `surface-unknown` included. The
+  // row names a venue the graph holds and a surface it does not, and the
+  // sibling case -- `unreadable`, a fields cell nobody can parse -- already
+  // falls back to the venue "as a compromise, never as nothing". A closure
+  // that reached nothing because one cell could not be resolved is a closure
+  // that vanishes, which is an unplaceable fixture silently dropped wearing
+  // different clothes. The decided finding says which of the two it is.
   return { covers: scope.venueIds.includes(surface.venueId), coverage: null };
 }
 
@@ -322,6 +335,7 @@ const DECIDED_CODE_BY_SCOPE = Object.freeze({
   [CLOSURE_SCOPE.VENUE]: AVAILABILITY_REASON.CLOSURE_BLOCKS_BOOKING,
   [CLOSURE_SCOPE.SURFACE]: AVAILABILITY_REASON.CLOSURE_BLOCKS_BOOKING,
   [CLOSURE_SCOPE.UNREADABLE]: AVAILABILITY_REASON.CLOSURE_SCOPE_UNREADABLE,
+  [CLOSURE_SCOPE.SURFACE_UNKNOWN]: AVAILABILITY_REASON.CLOSURE_SURFACE_UNKNOWN,
   [CLOSURE_SCOPE.NOT_GROUND]: AVAILABILITY_REASON.CLOSURE_NOT_GROUND,
   [CLOSURE_SCOPE.ADJACENCY]: AVAILABILITY_REASON.CLOSURE_ADJACENCY_DEFERRED,
 });
@@ -396,6 +410,38 @@ export function checkClosures(graph, closureSet, rawBooking) {
   for (const closure of closureSet.closures) {
     meta.closuresConsulted += 1;
     if (booking.date < closure.fromDate || booking.date > closure.toDate) continue;
+    // A closure standing on ground the graph does not hold cannot be compared
+    // against this booking -- but "cannot be compared" is not "does not
+    // apply". The build-time finding on the closure set is not enough on its
+    // own: a caller holding only this answer would read silence as a clear
+    // date and book into the window. Reported here, bounded to the dates the
+    // closure actually spans.
+    if (closure.scope.kind === CLOSURE_SCOPE.VENUE_UNKNOWN) {
+      meta.closuresUncomparable += 1;
+      findings.push(
+        makeAvailabilityFinding(
+          AVAILABILITY_REASON.CLOSURE_VENUE_UNKNOWN,
+          `${booking.label ?? booking.id} on ${surface.name} (${booking.date}) falls inside the dates of closure "${closure.id}" (${closure.reason} ${closure.fromDate} to ${closure.toDate}) at "${closure.scope.venueName}", a venue the graph does not hold; whether it stands on this booking's ground cannot be decided here`,
+          {
+            coverage: null,
+            bookingId: booking.id,
+            surfaceId: booking.surfaceId,
+            surfaceName: surface.name,
+            venueId: surface.venueId,
+            date: booking.date,
+            closureId: closure.id,
+            scopeKind: closure.scope.kind,
+            closureVenueName: closure.scope.venueName,
+            reason: closure.reason,
+            fieldsRaw: closure.fieldsRaw,
+            fromDate: closure.fromDate,
+            toDate: closure.toDate,
+            source: closure.source,
+          }
+        )
+      );
+      continue;
+    }
     const { covers, coverage } = closureCoversSurface(graph, closure, surface);
     if (!covers) continue;
     const meets = closureMeetsBooking(closure, booking);
@@ -458,6 +504,15 @@ export function checkClosures(graph, closureSet, rawBooking) {
           )
         );
         break;
+      case CLOSURE_SCOPE.SURFACE_UNKNOWN:
+        findings.push(
+          makeAvailabilityFinding(
+            AVAILABILITY_REASON.CLOSURE_SURFACE_UNKNOWN,
+            `${booking.label ?? booking.id} on ${surface.name} (${booking.date}) falls in the closure "${where}", whose "${closure.scope.surfaceName}" is not a surface the graph holds at this venue; it may or may not close this ground`,
+            details
+          )
+        );
+        break;
       case CLOSURE_SCOPE.NOT_GROUND:
         findings.push(
           makeAvailabilityFinding(
@@ -501,6 +556,7 @@ export function findClosureBreaches(graph, closureSet, bookings) {
     meta.bookingsChecked += result.meta.bookingsChecked;
     meta.closuresConsulted += result.meta.closuresConsulted;
     meta.closuresApplied += result.meta.closuresApplied;
+    meta.closuresUncomparable += result.meta.closuresUncomparable;
   }
   return { findings, meta };
 }
