@@ -24,22 +24,25 @@
  * @module availability/adapters/season2026Closures
  */
 
-import { season2026SurfaceId } from '../../facility/adapters/season2026Geometry.js';
-import { resolvePracticeVenue } from '../../facility/practiceSurfaces.js';
+import {
+  PRACTICE_SURFACE_RESOLUTION,
+  resolvePracticeSurface,
+  resolvePracticeVenue,
+} from '../../facility/practiceSurfaces.js';
 import { CLOSURE_SCOPE, buildClosureSet, isAllDayWindow } from '../closures.js';
-
-/** An ISO date, which is what Excel leaves where a field range was typed. */
-const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+import { ISO_DATE_PATTERN } from '../schemas.js';
 
 /**
  * What each `fields` cell of `field_constraints.csv` means, declared.
  *
  * `kind` is a {@link CLOSURE_SCOPE} value; `surface` names the surface a
  * `surface`-kind reading closes, as the game corpus spells it, and is
- * resolved through `season2026SurfaceId()` with the row's venue. The source
- * column says where the reading comes from; `4` is Pitch 4 because the game
- * corpus names Alder's pitches `Pitch 1`..`Pitch 4` and the row's venue is
- * Alder Park.
+ * resolved at the row's venue by graph structure (`resolvePracticeSurface()`),
+ * exactly as every other name-to-ground path in this package: a venue that
+ * has no such surface yields a `surface-unknown` closure and a build-time
+ * finding, never a thrown id. The source column says where the reading comes
+ * from; `4` is Pitch 4 because the game corpus names Alder's pitches
+ * `Pitch 1`..`Pitch 4` and the row's venue is Alder Park.
  *
  * @type {Readonly<Record<string, Readonly<{ kind: string, surface?: string, source: string }>>>}
  */
@@ -72,7 +75,10 @@ export const SEASON_2026_CONSTRAINT_FIELDS_READINGS = Object.freeze({
  * @returns {{ kind: string, surface?: string, source: string }}
  */
 export function readSeason2026ConstraintFields(fields) {
-  if (ISO_DATE_RE.test(fields)) {
+  // The same pattern the corpus parser reports the cell under
+  // (CONSTRAINT_FIELDS_EXCEL_DATE_CORRUPTION), so the two verdicts fall on
+  // the same cell by construction.
+  if (ISO_DATE_PATTERN.test(fields)) {
     return {
       kind: CLOSURE_SCOPE.UNREADABLE,
       source: 'field_constraints.csv: the cell is an ISO date; Excel corrupted a field range',
@@ -110,15 +116,16 @@ export function toSeason2026ClosureInput(fieldConstraints, graph, complexMap) {
     if (venueIds.length === 0) {
       scope = { kind: CLOSURE_SCOPE.VENUE_UNKNOWN, venueName: row.venue };
     } else if (reading.kind === CLOSURE_SCOPE.SURFACE) {
-      if (venueIds.length !== 1) {
-        throw new Error(
-          `season2026 closures adapter: row ${row.rowIndex} closes "${row.fields}" at "${row.venue}", which is ${venueIds.length} venues; a surface reading needs exactly one`
-        );
-      }
-      scope = {
-        kind: CLOSURE_SCOPE.SURFACE,
-        surfaceId: season2026SurfaceId(row.venue, /** @type {string} */ (reading.surface)),
-      };
+      const surfaceName = /** @type {string} */ (reading.surface);
+      const resolved = resolvePracticeSurface(graph, complexMap, {
+        venue: row.venue,
+        field: surfaceName,
+      });
+      scope =
+        resolved.status === PRACTICE_SURFACE_RESOLUTION.RESOLVED ||
+        resolved.status === PRACTICE_SURFACE_RESOLUTION.AMBIGUOUS
+          ? { kind: CLOSURE_SCOPE.SURFACE, surfaceIds: resolved.surfaceIds }
+          : { kind: CLOSURE_SCOPE.SURFACE_UNKNOWN, venueIds, surfaceName };
     } else {
       scope = { kind: reading.kind, venueIds };
     }

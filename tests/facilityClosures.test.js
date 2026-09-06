@@ -25,6 +25,7 @@ import {
   loadSeason2026,
   loadSeason2026Practice,
   ALL_DAY_CLOSE_MINUTES as LOADER_ALL_DAY_CLOSE_MINUTES,
+  SEASON_2026_PRACTICE_FINDING,
 } from '@squadlogic/core/fixtures/index.js';
 
 import {
@@ -54,6 +55,7 @@ import {
   CLOSURE_SCOPE,
   ClosureSetInputSchema,
   ClosureWindowSchema,
+  ISO_DATE_PATTERN,
   SEASON_2026_CONSTRAINT_FIELDS_READINGS,
   buildClosureSet,
   buildSeason2026ClosureSet,
@@ -121,6 +123,7 @@ describe('closures :: corpus guard', () => {
       [CLOSURE_SCOPE.NOT_GROUND]: 1,
       [CLOSURE_SCOPE.ADJACENCY]: 1,
       [CLOSURE_SCOPE.VENUE_UNKNOWN]: 0,
+      [CLOSURE_SCOPE.SURFACE_UNKNOWN]: 0,
     });
     expect(closures.findings).toEqual([]);
     // Every reading in the table is used by some row, and every row's cell is
@@ -177,14 +180,14 @@ describe('closures :: corpus guard', () => {
     for (const closure of alder4) {
       expect(closure.scope).toEqual({
         kind: CLOSURE_SCOPE.SURFACE,
-        surfaceId: sid(ALDER, 'Pitch 4'),
+        surfaceIds: [sid(ALDER, 'Pitch 4')],
       });
     }
   });
 
   it('registers a severity for every closure code', () => {
     const codes = Object.values(AVAILABILITY_REASON).filter((code) => code.startsWith('CLOSURE_'));
-    expect(codes).toHaveLength(6);
+    expect(codes).toHaveLength(7);
     for (const code of codes) {
       expect(Object.values(AVAILABILITY_SEVERITY)).toContain(AVAILABILITY_REASON_SEVERITY[code]);
     }
@@ -602,6 +605,140 @@ describe('closures :: unknowns are reported, never folded into "no closure appli
     expect(codesOf(allDay)).toEqual([AVAILABILITY_REASON.CLOSURE_BLOCKS_BOOKING]);
   });
 
+  it('refuses a malformed booking rather than letting it fall outside every window', () => {
+    // An unpadded month compares as a string past every closure's toDate; an
+    // undefined start meets no timed window and every all-day one. Both are
+    // the sibling contract's business: findFacilityConflicts() parses every
+    // booking through FacilityBookingSchema, and so does this.
+    const surfaceId = sid('Maplewood Back', 'Field 2');
+    expect(() =>
+      checkClosures(graph, closures, {
+        id: 'p',
+        surfaceId,
+        date: '2026-9-24',
+        startMinutes: 16 * 60,
+        endMinutes: 17 * 60,
+      })
+    ).toThrow();
+    expect(() =>
+      checkClosures(
+        graph,
+        closures,
+        /** @type {any} */ ({ id: 'p', surfaceId, date: '2026-09-24', endMinutes: 1020 })
+      )
+    ).toThrow();
+    expect(() =>
+      findClosureBreaches(graph, closures, [
+        { id: 'p', surfaceId, date: '2026-9-24', startMinutes: 960, endMinutes: 1020 },
+      ])
+    ).toThrow();
+    // ... and the well-formed twin of the first is the School Event block.
+    expect(codesOf(checkClosures(graph, closures, booking('p', surfaceId, '2026-09-24')))).toEqual([
+      AVAILABILITY_REASON.CLOSURE_BLOCKS_BOOKING,
+    ]);
+  });
+
+  it('never lets "undecidable" outrank what the decided answer would carry', () => {
+    // Endless, kicking off before 16:00 on the parking date: a decided "yes"
+    // would be CLOSURE_NOT_GROUND (info), so undecidable is info too.
+    const parking = practice.fieldConstraints.find((row) => row.fields === 'Parking');
+    const surfaceId = sid('Maplewood Back', 'Field 2');
+    const parked = checkClosures(
+      graph,
+      closures,
+      booking('p', surfaceId, parking.dateStart, 15 * 60, null)
+    );
+    const undecidable = parked.findings.filter(
+      (f) => f.code === AVAILABILITY_REASON.CLOSURE_OVERLAP_UNDECIDABLE
+    );
+    expect(undecidable).toHaveLength(1);
+    expect(undecidable[0].severity).toBe(AVAILABILITY_SEVERITY.INFO);
+    expect(undecidable[0].details).toMatchObject({
+      decidedCode: AVAILABILITY_REASON.CLOSURE_NOT_GROUND,
+      decidedSeverity: AVAILABILITY_SEVERITY.INFO,
+    });
+    expect(deriveAvailabilityStatus(parked.findings)).toBe(AVAILABILITY_STATUS.ALLOWED);
+    // The same booking on the School Event date: a decided "yes" would block,
+    // so undecidable keeps the table's compromise.
+    const schoolEvent = practice.fieldConstraints.find(
+      (row) => row.venue === 'Maplewood' && row.allFields
+    );
+    const closed = checkClosures(
+      graph,
+      closures,
+      booking('p', surfaceId, schoolEvent.dateStart, 15 * 60, null)
+    );
+    const stillUndecidable = closed.findings.filter(
+      (f) => f.code === AVAILABILITY_REASON.CLOSURE_OVERLAP_UNDECIDABLE
+    );
+    expect(stillUndecidable).toHaveLength(1);
+    expect(stillUndecidable[0].severity).toBe(AVAILABILITY_SEVERITY.COMPROMISE);
+    expect(stillUndecidable[0].details.decidedCode).toBe(
+      AVAILABILITY_REASON.CLOSURE_BLOCKS_BOOKING
+    );
+    expect(AVAILABILITY_REASON_SEVERITY[AVAILABILITY_REASON.CLOSURE_OVERLAP_UNDECIDABLE]).toBe(
+      AVAILABILITY_SEVERITY.COMPROMISE
+    );
+  });
+
+  it("reports, at build time, a surface reading the row's venue does not hold, instead of throwing", () => {
+    // A future `Orchard Park,4,...` row: the readings table says `4` is
+    // Pitch 4, and Orchard has no Pitch 4. Every other name-to-ground path in
+    // this PR reports; so does this one.
+    const alder4 = practice.fieldConstraints.find((row) => row.fields === '4');
+    const orchard = { ...alder4, id: 'orchard-4', venue: 'Orchard Park' };
+    const set = buildSeason2026ClosureSet([orchard], graph, complexes);
+    expect(set.stats.byKind[CLOSURE_SCOPE.SURFACE_UNKNOWN]).toBe(1);
+    expect(set.closures[0].scope).toEqual({
+      kind: CLOSURE_SCOPE.SURFACE_UNKNOWN,
+      venueIds: [season2026VenueId('Orchard Park')],
+      surfaceName: 'Pitch 4',
+    });
+    expect(set.findings.map((f) => f.code)).toEqual([AVAILABILITY_REASON.CLOSURE_SURFACE_UNKNOWN]);
+    expect(set.findings[0].details).toMatchObject({ closureId: 'orchard-4', fieldsRaw: '4' });
+    // It applies to nothing: an Orchard booking in its window is untouched by it.
+    const result = checkClosures(
+      graph,
+      set,
+      booking('p', sid('Orchard Park', 'Field 1'), alder4.dateStart, 11 * 60, 12 * 60)
+    );
+    expect(result.findings).toEqual([]);
+    expect(result.meta.closuresConsulted).toBe(1);
+    // ... and the Alder original still resolves to the pitch by structure.
+    const real = buildSeason2026ClosureSet([alder4], graph, complexes);
+    expect(real.closures[0].scope).toEqual({
+      kind: CLOSURE_SCOPE.SURFACE,
+      surfaceIds: [sid(ALDER, 'Pitch 4')],
+    });
+  });
+
+  it('reads "this cell is a date" through the one pattern the corpus parser reports it under', () => {
+    // The loader's corruption finding and the adapter's unreadable verdict must
+    // fall on the same cells, by construction: both go through ISO_DATE_PATTERN.
+    const corrupted = new Set(
+      practice.findings
+        .filter(
+          (f) => f.code === SEASON_2026_PRACTICE_FINDING.CONSTRAINT_FIELDS_EXCEL_DATE_CORRUPTION
+        )
+        .map((f) => practice.fieldConstraints[f.rowIndex].id)
+    );
+    expect(corrupted.size).toBe(1);
+    const unreadable = new Set(
+      closures.closures.filter((c) => c.scope.kind === CLOSURE_SCOPE.UNREADABLE).map((c) => c.id)
+    );
+    expect(unreadable).toEqual(corrupted);
+    for (const row of practice.fieldConstraints) {
+      expect(ISO_DATE_PATTERN.test(row.fields)).toBe(corrupted.has(row.id));
+      expect(readSeason2026ConstraintFields(row.fields).kind === CLOSURE_SCOPE.UNREADABLE).toBe(
+        corrupted.has(row.id)
+      );
+    }
+    // Positive control: a cell of the corrupted shape is unreadable here and a
+    // date to the shared pattern; a field range typed as text is neither.
+    expect(readSeason2026ConstraintFields('2026-02-03').kind).toBe(CLOSURE_SCOPE.UNREADABLE);
+    expect(ISO_DATE_PATTERN.test('1-7')).toBe(false);
+  });
+
   it('reports a surface the graph does not hold instead of answering nothing', () => {
     const result = checkClosures(graph, closures, booking('p', 'nowhere/field-1', '2026-10-23'));
     expect(codesOf(result)).toEqual([FACILITY_REASON.SURFACE_UNKNOWN]);
@@ -760,7 +897,7 @@ describe('closures :: the builder refuses what it must', () => {
     ).toThrow(/unknown venue "nowhere"/);
     expect(() =>
       buildClosureSet(graph, {
-        closures: [window({ scope: { kind: 'surface', surfaceId: 'nowhere/x' } })],
+        closures: [window({ scope: { kind: 'surface', surfaceIds: ['nowhere/x'] } })],
       })
     ).toThrow(/unknown surface "nowhere\/x"/);
     expect(() => buildClosureSet(graph, { closures: [window(), window()] })).toThrow(

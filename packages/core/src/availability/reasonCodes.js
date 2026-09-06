@@ -192,7 +192,13 @@ export const AVAILABILITY_REASON = Object.freeze({
    * ground; nobody can tell from the sheet. `compromise`, never nothing.
    */
   CLOSURE_SCOPE_UNREADABLE: 'CLOSURE_SCOPE_UNREADABLE',
-  /** The booking has no known end and the closure is not all-day, so the two cannot be compared. */
+  /**
+   * The booking has no known end, kicks off before a timed closure opens, and
+   * so may or may not run into it. (One that kicks off inside the window is
+   * decided by its start; one that kicks off after it closes is decided
+   * clean.) Its severity never outranks what the decided answer would carry
+   * for that scope kind: undecidable against the parking row is information.
+   */
   CLOSURE_OVERLAP_UNDECIDABLE: 'CLOSURE_OVERLAP_UNDECIDABLE',
   /** The booking falls in a row that closes something other than a playing surface (`Parking`). */
   CLOSURE_NOT_GROUND: 'CLOSURE_NOT_GROUND',
@@ -200,6 +206,8 @@ export const AVAILABILITY_REASON = Object.freeze({
   CLOSURE_ADJACENCY_DEFERRED: 'CLOSURE_ADJACENCY_DEFERRED',
   /** A closure row names a venue the graph does not hold; it applies to nothing and says so. */
   CLOSURE_VENUE_UNKNOWN: 'CLOSURE_VENUE_UNKNOWN',
+  /** A closure row names a venue the graph holds and a surface it does not; it applies to nothing and says so. */
+  CLOSURE_SURFACE_UNKNOWN: 'CLOSURE_SURFACE_UNKNOWN',
 
   /* -- the derived query -------------------------------------------------- */
   /** Which constraints bind the answer, tightest first. Provenance. */
@@ -250,6 +258,7 @@ export const AVAILABILITY_REASON_SEVERITY = Object.freeze({
   [AVAILABILITY_REASON.CLOSURE_NOT_GROUND]: AVAILABILITY_SEVERITY.INFO,
   [AVAILABILITY_REASON.CLOSURE_ADJACENCY_DEFERRED]: AVAILABILITY_SEVERITY.INFO,
   [AVAILABILITY_REASON.CLOSURE_VENUE_UNKNOWN]: AVAILABILITY_SEVERITY.COMPROMISE,
+  [AVAILABILITY_REASON.CLOSURE_SURFACE_UNKNOWN]: AVAILABILITY_SEVERITY.COMPROMISE,
 
   [AVAILABILITY_REASON.LATEST_KICKOFF_BOUND]: AVAILABILITY_SEVERITY.INFO,
   [AVAILABILITY_REASON.NO_LEGAL_KICKOFF]: AVAILABILITY_SEVERITY.BLOCKING,

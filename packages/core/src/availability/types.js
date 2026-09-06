@@ -258,7 +258,7 @@
  * @property {number} startMinutes
  * @property {number} endMinutes
  * @property {boolean} allDay
- * @property {{ kind: string, venueIds?: string[], surfaceId?: string, venueName?: string }} scope
+ * @property {{ kind: string, venueIds?: string[], surfaceIds?: string[], venueName?: string, surfaceName?: string }} scope
  * @property {string} reason
  * @property {string|null} fieldsRaw
  * @property {string|null} venueName

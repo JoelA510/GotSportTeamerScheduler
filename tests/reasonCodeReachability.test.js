@@ -1,8 +1,8 @@
 /**
  * Repo-wide reachability audit for every frozen reason-code table in
  * `packages/core/src` — the generalisation of the per-module audit
- * `tests/attribution.test.js` already carries. 19 vocabularies, 447 codes, of
- * which 436 are shown to be producible and 11 are named as holes.
+ * `tests/attribution.test.js` already carries. 19 vocabularies, 448 codes, of
+ * which 437 are shown to be producible and 11 are named as holes.
  *
  * **The defect this exists to catch.** Four times now, in four unrelated
  * modules, a reason code has been declared, given a severity, documented, and
@@ -1023,7 +1023,7 @@ const closureRig = harvest(
         startMinutes: 540,
         endMinutes: 600,
         allDay: false,
-        scope: { kind: 'surface', surfaceId: 'rig/full' },
+        scope: { kind: 'surface', surfaceIds: ['rig/full'] },
         reason: 'shut',
       },
       {
@@ -1057,6 +1057,16 @@ const closureRig = harvest(
         allDay: true,
         scope: { kind: 'adjacency', venueIds: ['rig'] },
         reason: 'spacing',
+      },
+      {
+        id: 'gone',
+        fromDate: RIG_DATE,
+        toDate: RIG_DATE,
+        startMinutes: 0,
+        endMinutes: 1380,
+        allDay: true,
+        scope: { kind: 'surface-unknown', venueIds: ['rig'], surfaceName: 'Pitch 9' },
+        reason: 'gone',
       },
       {
         id: 'lost',

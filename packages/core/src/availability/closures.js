@@ -39,7 +39,14 @@ import { z } from 'zod';
 import { deepFreeze, getSurface } from '../facility/facilityGraph.js';
 import { surfacesConflict } from '../facility/occupancy.js';
 import { FACILITY_REASON, makeFinding } from '../facility/reasonCodes.js';
-import { AVAILABILITY_REASON, makeAvailabilityFinding } from './reasonCodes.js';
+import { FacilityBookingSchema } from '../facility/schemas.js';
+import {
+  AVAILABILITY_REASON,
+  AVAILABILITY_SEVERITY,
+  availabilitySeverityOf,
+  makeAvailabilityFinding,
+} from './reasonCodes.js';
+import { IdSchema, IsoDateSchema } from './schemas.js';
 
 /**
  * A closure row is all-day when it opens at 00:00 and closes at or after this
@@ -59,14 +66,6 @@ export function isAllDayWindow(startMinutes, endMinutes) {
   return startMinutes === 0 && endMinutes >= ALL_DAY_CLOSE_MINUTES;
 }
 
-/** Inclusive ISO calendar date, `YYYY-MM-DD`. No `Date` construction anywhere. */
-const IsoDateSchema = z
-  .string()
-  .regex(/^\d{4}-\d{2}-\d{2}$/, { message: 'expected an ISO YYYY-MM-DD date' });
-
-/** A non-empty opaque identifier. */
-const IdSchema = z.string().min(1, { message: 'ids must be non-empty strings' });
-
 /** Minutes past local midnight. */
 const MinutesSchema = z.number().int().min(0);
 
@@ -83,12 +82,17 @@ export const CLOSURE_SCOPE = Object.freeze({
   NOT_GROUND: 'not-ground',
   ADJACENCY: 'adjacency',
   VENUE_UNKNOWN: 'venue-unknown',
+  /** The row names a venue the graph holds and a surface it does not. */
+  SURFACE_UNKNOWN: 'surface-unknown',
 });
 
 /** @see {@link CLOSURE_SCOPE} */
 export const ClosureScopeSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal(CLOSURE_SCOPE.VENUE), venueIds: z.array(IdSchema).min(1) }).strict(),
-  z.object({ kind: z.literal(CLOSURE_SCOPE.SURFACE), surfaceId: IdSchema }).strict(),
+  /** Every surface the row's label fits; more than one when the label is ambiguous. */
+  z
+    .object({ kind: z.literal(CLOSURE_SCOPE.SURFACE), surfaceIds: z.array(IdSchema).min(1) })
+    .strict(),
   z
     .object({ kind: z.literal(CLOSURE_SCOPE.UNREADABLE), venueIds: z.array(IdSchema).min(1) })
     .strict(),
@@ -99,6 +103,13 @@ export const ClosureScopeSchema = z.discriminatedUnion('kind', [
     .object({ kind: z.literal(CLOSURE_SCOPE.ADJACENCY), venueIds: z.array(IdSchema).min(1) })
     .strict(),
   z.object({ kind: z.literal(CLOSURE_SCOPE.VENUE_UNKNOWN), venueName: z.string().min(1) }).strict(),
+  z
+    .object({
+      kind: z.literal(CLOSURE_SCOPE.SURFACE_UNKNOWN),
+      venueIds: z.array(IdSchema).min(1),
+      surfaceName: z.string().min(1),
+    })
+    .strict(),
 ]);
 
 /** @see {@link import('./types.js').ClosureWindow} */
@@ -186,9 +197,30 @@ export function buildClosureSet(graph, input) {
         }
       }
     }
-    if (scope.kind === CLOSURE_SCOPE.SURFACE && !graph.surfaces[scope.surfaceId]) {
-      throw new Error(
-        `closures: closure "${closure.id}" scopes to unknown surface "${scope.surfaceId}"`
+    if (scope.kind === CLOSURE_SCOPE.SURFACE) {
+      for (const surfaceId of scope.surfaceIds) {
+        if (!graph.surfaces[surfaceId]) {
+          throw new Error(
+            `closures: closure "${closure.id}" scopes to unknown surface "${surfaceId}"`
+          );
+        }
+      }
+    }
+    if (scope.kind === CLOSURE_SCOPE.SURFACE_UNKNOWN) {
+      findings.push(
+        makeAvailabilityFinding(
+          AVAILABILITY_REASON.CLOSURE_SURFACE_UNKNOWN,
+          `closure "${closure.id}" (${closure.reason}, ${closure.fromDate} to ${closure.toDate}) names "${scope.surfaceName}" at ${scope.venueIds.join(', ')}, which is not a surface the graph holds there; it applies to nothing and is reported instead`,
+          {
+            closureId: closure.id,
+            venueIds: scope.venueIds,
+            surfaceName: scope.surfaceName,
+            fieldsRaw: closure.fieldsRaw,
+            reason: closure.reason,
+            fromDate: closure.fromDate,
+            toDate: closure.toDate,
+          }
+        )
       );
     }
     if (scope.kind === CLOSURE_SCOPE.VENUE_UNKNOWN) {
@@ -240,10 +272,15 @@ export function buildClosureSet(graph, input) {
  */
 function closureCoversSurface(graph, closure, surface) {
   const scope = closure.scope;
-  if (scope.kind === CLOSURE_SCOPE.VENUE_UNKNOWN) return { covers: false, coverage: null };
+  if (scope.kind === CLOSURE_SCOPE.VENUE_UNKNOWN || scope.kind === CLOSURE_SCOPE.SURFACE_UNKNOWN) {
+    return { covers: false, coverage: null };
+  }
   if (scope.kind === CLOSURE_SCOPE.SURFACE) {
-    const verdict = surfacesConflict(graph, scope.surfaceId, surface.id);
-    return { covers: verdict.conflict, coverage: verdict.code };
+    for (const surfaceId of scope.surfaceIds) {
+      const verdict = surfacesConflict(graph, surfaceId, surface.id);
+      if (verdict.conflict) return { covers: true, coverage: verdict.code };
+    }
+    return { covers: false, coverage: null };
   }
   return { covers: scope.venueIds.includes(surface.venueId), coverage: null };
 }
@@ -273,19 +310,73 @@ function closureMeetsBooking(closure, booking) {
   return booking.startMinutes < closure.endMinutes && closure.startMinutes < booking.endMinutes;
 }
 
+/** Severity rank, so one severity can be compared with another. */
+const SEVERITY_RANK = Object.freeze({
+  [AVAILABILITY_SEVERITY.INFO]: 0,
+  [AVAILABILITY_SEVERITY.COMPROMISE]: 1,
+  [AVAILABILITY_SEVERITY.BLOCKING]: 2,
+});
+
+/** What a decided "yes, it meets" carries for each scope kind. */
+const DECIDED_CODE_BY_SCOPE = Object.freeze({
+  [CLOSURE_SCOPE.VENUE]: AVAILABILITY_REASON.CLOSURE_BLOCKS_BOOKING,
+  [CLOSURE_SCOPE.SURFACE]: AVAILABILITY_REASON.CLOSURE_BLOCKS_BOOKING,
+  [CLOSURE_SCOPE.UNREADABLE]: AVAILABILITY_REASON.CLOSURE_SCOPE_UNREADABLE,
+  [CLOSURE_SCOPE.NOT_GROUND]: AVAILABILITY_REASON.CLOSURE_NOT_GROUND,
+  [CLOSURE_SCOPE.ADJACENCY]: AVAILABILITY_REASON.CLOSURE_ADJACENCY_DEFERRED,
+});
+
+/**
+ * An undecidable finding that never outranks the decided answer for its scope
+ * kind: not knowing whether a booking runs into the parking row is worth
+ * exactly what knowing it would be — information. The table's severity for
+ * the code is the ceiling; the decided code's severity is the cap, and the
+ * finding names both.
+ *
+ * @param {string} scopeKind
+ * @param {string} message
+ * @param {Record<string, unknown>} details
+ * @returns {import('./types.js').AvailabilityFinding}
+ */
+function undecidableFinding(scopeKind, message, details) {
+  const finding = makeAvailabilityFinding(
+    AVAILABILITY_REASON.CLOSURE_OVERLAP_UNDECIDABLE,
+    message,
+    details
+  );
+  const decidedCode = DECIDED_CODE_BY_SCOPE[scopeKind];
+  if (!decidedCode) return finding;
+  const decidedSeverity = availabilitySeverityOf(decidedCode);
+  const capped =
+    SEVERITY_RANK[decidedSeverity] < SEVERITY_RANK[finding.severity]
+      ? decidedSeverity
+      : finding.severity;
+  return {
+    ...finding,
+    severity: capped,
+    details: { ...finding.details, decidedCode, decidedSeverity },
+  };
+}
+
 /**
  * Every closure a booking stands inside, as findings.
  *
  * @param {import('../facility/types.js').FacilityGraph} graph
  * @param {import('./types.js').ClosureSet} closureSet
- * @param {import('../facility/types.js').FacilityBooking} booking
+ * @param {import('../facility/types.js').FacilityBooking} rawBooking
  * @returns {{ findings: import('./types.js').AvailabilityFinding[], meta: ClosureMeta }}
  */
-export function checkClosures(graph, closureSet, booking) {
+export function checkClosures(graph, closureSet, rawBooking) {
   const meta = createClosureMeta();
   /** @type {import('./types.js').AvailabilityFinding[]} */
   const findings = [];
   meta.bookingsChecked = 1;
+  // The sibling contract (`findFacilityConflicts()`): a booking is validated
+  // before it is compared. An unpadded date compared as a string, or an
+  // undefined start, would quietly put the booking outside every window.
+  const booking = /** @type {import('../facility/types.js').FacilityBooking} */ (
+    FacilityBookingSchema.parse(rawBooking)
+  );
 
   const surface = getSurface(graph, booking.surfaceId);
   if (!surface) {
@@ -332,8 +423,8 @@ export function checkClosures(graph, closureSet, booking) {
     const where = `${closure.reason} ${closure.fromDate} to ${closure.toDate}${closure.allDay ? '' : `, ${closure.startMinutes}-${closure.endMinutes} minutes past midnight`}`;
     if (meets === null) {
       findings.push(
-        makeAvailabilityFinding(
-          AVAILABILITY_REASON.CLOSURE_OVERLAP_UNDECIDABLE,
+        undecidableFinding(
+          closure.scope.kind,
           `${booking.label ?? booking.id} on ${surface.name} (${booking.date}) has no known end, so whether it meets the closure "${where}" cannot be decided`,
           details
         )

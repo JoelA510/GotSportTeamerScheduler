@@ -11,13 +11,22 @@
 
 import { z } from 'zod';
 
+/**
+ * The shape of an ISO calendar date, `YYYY-MM-DD`. Exported so the one
+ * reading of "this cell is a date" is shared: the practice corpus parser
+ * reports a `fields` cell of this shape as Excel corruption, and the closures
+ * adapter carries the same cell as unreadable — through this pattern, not a
+ * second one.
+ */
+export const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
 /** Inclusive ISO calendar date, `YYYY-MM-DD`. No `Date` construction anywhere. */
-const IsoDateSchema = z
+export const IsoDateSchema = z
   .string()
-  .regex(/^\d{4}-\d{2}-\d{2}$/, { message: 'expected an ISO YYYY-MM-DD date' });
+  .regex(ISO_DATE_PATTERN, { message: 'expected an ISO YYYY-MM-DD date' });
 
 /** A non-empty opaque identifier. */
-const IdSchema = z.string().min(1, { message: 'ids must be non-empty strings' });
+export const IdSchema = z.string().min(1, { message: 'ids must be non-empty strings' });
 
 /** Minutes past local midnight. Not capped at 1440: a permit may close after midnight. */
 const MinutesSchema = z.number().int().min(0);
