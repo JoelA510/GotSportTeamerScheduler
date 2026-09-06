@@ -2609,29 +2609,47 @@ export const mockSupabase = {
           previous,
         });
 
-        syncMockFieldSubunits(db, field, false);
         // **The schema's own consequences, mirrored.** The mock removed the
         // field and its blackouts and left everything else pointing at it, so
         // a confirmed delete looked harmless here and lost a schedule in
         // Postgres -- the fiction PR 3's UI would have been built against.
-        // `field_blackouts`, `game_slots` and `practice_slots` are ON DELETE
-        // CASCADE; `game_assignments` and `practice_assignments` are ON DELETE
-        // SET NULL, so the booking survives with its venue visibly gone.
-        db.field_blackouts = (db.field_blackouts || []).filter(
-          (item) => String(item.field_id) !== String(p.p_field_id)
-        );
-        db.game_slots = (db.game_slots || []).filter(
-          (item) => String(item.field_id) !== String(p.p_field_id)
-        );
-        db.practice_slots = (db.practice_slots || []).filter(
-          (item) => String(item.field_id) !== String(p.p_field_id)
-        );
+        // `field_subunits`, `field_blackouts`, `game_slots` and
+        // `practice_slots` are ON DELETE CASCADE; `game_assignments` and
+        // `practice_assignments` are ON DELETE SET NULL, so the booking
+        // survives with its venue visibly gone.
+        //
+        // **Every cascade is TOMBSTONED, and that is not tidiness.** `getDB()`
+        // re-merges the seed on every read and only `markMockDeleted` survives
+        // it, so a delete that merely filtered the array resurrected any
+        // SEEDED row on the next call. The previous arm did exactly that: it
+        // reported `deleted: true` for a seeded field that was still there
+        // afterwards, and nothing noticed because the only test that deleted a
+        // field deleted one it had just created.
+        const cascade = (table) => {
+          const doomed = (db[table] || []).filter(
+            (item) => String(item.field_id) === String(p.p_field_id)
+          );
+          if (doomed.length === 0) return;
+          markMockDeleted(
+            db,
+            table,
+            doomed.map((item) => item.id)
+          );
+          db[table] = (db[table] || []).filter(
+            (item) => String(item.field_id) !== String(p.p_field_id)
+          );
+        };
+        cascade('field_subunits');
+        cascade('field_blackouts');
+        cascade('game_slots');
+        cascade('practice_slots');
         for (const row of db.game_assignments || []) {
           if (String(row.field_id) === String(p.p_field_id)) row.field_id = null;
         }
         for (const row of db.practice_assignments || []) {
           if (String(row.field_id) === String(p.p_field_id)) row.field_id = null;
         }
+        markMockDeleted(db, 'fields', [field.id]);
         db.fields = (db.fields || []).filter((item) => String(item.id) !== String(p.p_field_id));
 
         audit('field', field.id, 'deleted', {
