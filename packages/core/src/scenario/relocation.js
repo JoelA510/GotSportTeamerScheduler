@@ -140,26 +140,33 @@ export function replacementSurfacesFor(graph, query) {
   // asked against different orderings.
   const sizeOptions = query.sizeRank ? { sizeRank: query.sizeRank } : {};
 
-  return Object.values(graph.surfaces)
-    .filter((surface) => !excluded.has(surface.venueId))
-    .filter((surface) => surface.childIds.length === 0)
-    .filter((surface) => {
-      const ranks = surface.sizes
-        .map((size) => rankTable[size])
-        .filter((rank) => typeof rank === 'number');
-      // Nothing rankable to measure a grade against; `checkSizeEligibility()`
-      // says `SIZE_UNKNOWN_FORMAT` about the same surface.
-      if (ranks.length === 0) return false;
-      // The ceiling is this module's own policy and nothing else's.
-      if (Math.max(...ranks) > wanted + maxGradesAbove) return false;
-      // "Big enough" is not this module's question.
-      return (
-        checkSizeEligibility(graph, { surfaceId: surface.id, format: query.format }, sizeOptions)
-          .status === FACILITY_STATUS.ALLOWED
-      );
-    })
-    .map((surface) => surface.id)
-    .sort();
+  return (
+    Object.values(graph.surfaces)
+      .filter((surface) => !excluded.has(surface.venueId))
+      // A leaf, or a parent that carries sizes of its own: a whole pitch is
+      // bookable whole, and the practice layer (Phase 8.3) makes Alder Pitch 2
+      // and Pitch 3 parents of their halves without making them any less an
+      // 11v11 pitch. A parent that states no size of its own is not offered;
+      // its halves are not given its size either.
+      .filter((surface) => surface.childIds.length === 0 || surface.sizes.length > 0)
+      .filter((surface) => {
+        const ranks = surface.sizes
+          .map((size) => rankTable[size])
+          .filter((rank) => typeof rank === 'number');
+        // Nothing rankable to measure a grade against; `checkSizeEligibility()`
+        // says `SIZE_UNKNOWN_FORMAT` about the same surface.
+        if (ranks.length === 0) return false;
+        // The ceiling is this module's own policy and nothing else's.
+        if (Math.max(...ranks) > wanted + maxGradesAbove) return false;
+        // "Big enough" is not this module's question.
+        return (
+          checkSizeEligibility(graph, { surfaceId: surface.id, format: query.format }, sizeOptions)
+            .status === FACILITY_STATUS.ALLOWED
+        );
+      })
+      .map((surface) => surface.id)
+      .sort()
+  );
 }
 
 /**

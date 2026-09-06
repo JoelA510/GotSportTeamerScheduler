@@ -4341,9 +4341,12 @@ describe('replacement ground is judged by the size rule the facility model owns'
   const FORMATS = Object.keys(rank).sort((a, b) => rank[a] - rank[b]);
   /** High enough that the "one grade up" ceiling never bites, so only the size predicate is under test. */
   const NO_CEILING = 99;
+  // What relocation may offer: a leaf, or a parent bookable whole because it
+  // states sizes of its own (the same predicate `replacementSurfacesFor()`
+  // applies, since Phase 8.3 made two 11v11 pitches parents of their halves).
   const leaves = graph.surfaceIds
     .map((id) => graph.surfaces[id])
-    .filter((surface) => surface.childIds.length === 0);
+    .filter((surface) => surface.childIds.length === 0 || surface.sizes.length > 0);
   const multiSized = leaves.filter((surface) => surface.sizes.length > 1);
 
   /** The predicate this test is about, asked of the facility model. */

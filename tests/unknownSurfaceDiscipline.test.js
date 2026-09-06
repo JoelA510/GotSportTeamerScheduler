@@ -667,11 +667,16 @@ describe('unknown-surface discipline :: modules passing only graph-derived ids',
       expect(() => replacementSurfacesFor(graph, { format })).not.toThrow();
     }
     // Non-vacuous: it really did look at the whole graph.
+    // A surface relocation may offer is a leaf or a parent that states sizes
+    // of its own (a whole pitch is bookable whole) — the predicate
+    // `replacementSurfacesFor()` applies since Phase 8.3.
+    const offerable = (id) =>
+      graph.surfaces[id].childIds.length === 0 || graph.surfaces[id].sizes.length > 0;
     expect(replacementSurfacesFor(graph, { format: '9v9', maxGradesAbove: 9 }).length).toBe(
-      graph.surfaceIds.filter((id) => graph.surfaces[id].childIds.length === 0).length -
+      graph.surfaceIds.filter(offerable).length -
         graph.surfaceIds.filter(
           (id) =>
-            graph.surfaces[id].childIds.length === 0 &&
+            offerable(id) &&
             !graph.surfaces[id].sizes.some((size) => ['9v9', '11v11'].includes(size))
         ).length
     );
