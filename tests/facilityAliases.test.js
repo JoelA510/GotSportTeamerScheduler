@@ -18,6 +18,7 @@ import { describe, it, expect } from 'vitest';
 
 import {
   DECODER_DISAGREEMENT_KIND,
+  compareDecoderRings,
   loadFacilityGeometry,
   loadSeason2026,
   loadSeason2026Practice,
@@ -119,6 +120,101 @@ describe('alias layer :: corpus guard', () => {
     );
     expect(disagreeFindings).toHaveLength(12);
     expect(map.stats.sharedCount).toBe(loader.shared.length);
+  });
+
+  it("decides the disagreement kind by the loader's rule, in all four cells", () => {
+    // Round 2, finding 5. `aliases.js` said BLANK_VS_LABEL whenever *either*
+    // ring was blank; `compareDecoderRings()` says BLANK_VS_LABEL only when the
+    // practice sheet is blank and LABEL_CONFLICT when the fields sheet is. The
+    // corpus never exercises the difference -- the fields parser emits no blank
+    // label today -- so the per-code equality above passed on a rule that does
+    // not match. One rule now, the loader's, because 8.0 asserted it; the
+    // driver is the first ring listed, which is the ring the loader iterates.
+    expect(map.rings[0]).toBe(PRACTICE);
+
+    const practiceRow = (actualLabel) => ({
+      rowIndex: 0,
+      displayName: 'Cell',
+      actualLabel,
+      venue: 'Alder Park',
+      field: 'Pitch 2A',
+      subunit: null,
+      raw: {},
+    });
+    const fieldsRow = (actualLabel) => ({
+      rowIndex: 0,
+      codeName: 'Cell',
+      actualLabel,
+      venue: 'Alder Park',
+      remainder: 'Pitch 2A',
+      uncertain: false,
+      confirmed: null,
+      usedFor: null,
+      raw: {},
+    });
+
+    // `parsePracticeFieldAliases()` writes `orNull()`; `parseFieldCodeNames()`
+    // writes `trim()`. The cells below are what each parser really produces for
+    // a blank, so the two rules are asked about the same row.
+    const cells = [
+      {
+        name: 'both label the code the same way',
+        practice: 'Alder Park Pitch 2A',
+        fields: 'Alder Park Pitch 2A',
+      },
+      {
+        name: 'both label it, differently',
+        practice: 'Alder Park Pitch 2A',
+        fields: 'Alder Park Pitch 3A',
+      },
+      { name: 'the practice sheet is blank', practice: null, fields: 'Alder Park Pitch 2A' },
+      { name: 'the fields sheet is blank', practice: 'Alder Park Pitch 2A', fields: '' },
+      { name: 'both are blank', practice: null, fields: '' },
+    ];
+
+    let compared = 0;
+    for (const cell of cells) {
+      const aliasRecords = [practiceRow(cell.practice)];
+      const codeRecords = [fieldsRow(cell.fields)];
+      const built = buildFieldAliasMap(
+        graph,
+        complexes,
+        toSeason2026AliasRings(aliasRecords, codeRecords)
+      );
+      const loader = compareDecoderRings(aliasRecords, codeRecords);
+      expect(loader.shared, cell.name).toEqual(['Cell']);
+      const loaderKind = loader.disagreements.length === 0 ? null : loader.disagreements[0].kind;
+      const mapKind =
+        built.aliases.Cell.labelAgreement === ALIAS_LABEL_AGREEMENT.AGREE
+          ? null
+          : built.aliases.Cell.labelAgreement;
+      expect(mapKind, cell.name).toBe(loaderKind);
+      expect(built.stats.disagreementCount, cell.name).toBe(loader.disagreements.length);
+      compared += 1;
+    }
+    expect(compared).toBe(cells.length);
+
+    // The cells are not all the same answer: the four kinds the two rules could
+    // have disagreed about are each present.
+    const kinds = cells.map((cell) => {
+      const built = buildFieldAliasMap(
+        graph,
+        complexes,
+        toSeason2026AliasRings([practiceRow(cell.practice)], [fieldsRow(cell.fields)])
+      );
+      return built.aliases.Cell.labelAgreement;
+    });
+    expect(kinds).toEqual([
+      ALIAS_LABEL_AGREEMENT.AGREE,
+      ALIAS_LABEL_AGREEMENT.LABEL_CONFLICT,
+      ALIAS_LABEL_AGREEMENT.BLANK_VS_LABEL,
+      // The cell the old rule got wrong: the *fields* sheet blank is a label
+      // conflict, not a blank-vs-label.
+      ALIAS_LABEL_AGREEMENT.LABEL_CONFLICT,
+      ALIAS_LABEL_AGREEMENT.BLANK_VS_LABEL,
+    ]);
+    expect(DECODER_DISAGREEMENT_KIND.LABEL_CONFLICT).toBe(ALIAS_LABEL_AGREEMENT.LABEL_CONFLICT);
+    expect(DECODER_DISAGREEMENT_KIND.BLANK_VS_LABEL).toBe(ALIAS_LABEL_AGREEMENT.BLANK_VS_LABEL);
   });
 
   it('registers a severity for every alias code', () => {

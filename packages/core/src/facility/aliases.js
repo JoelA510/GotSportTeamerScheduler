@@ -75,9 +75,9 @@ export const ALIAS_LABEL_AGREEMENT = Object.freeze({
   /** Only one ring carries the code. */
   SINGLE_RING: 'single-ring',
   AGREE: 'agree',
-  /** Both carry a label and the labels differ. */
+  /** The first ring carries a label and the rings do not all say the same thing. */
   LABEL_CONFLICT: 'label-conflict',
-  /** One carries a label and the other is blank. */
+  /** The first ring -- the driver -- is blank. A later ring's blank is a `LABEL_CONFLICT`, as the loader reports it. */
   BLANK_VS_LABEL: 'blank-vs-label',
 });
 
@@ -232,12 +232,24 @@ export function buildFieldAliasMap(graph, complexMap, input) {
 
     const labels = alias.candidates.map((c) => c.label);
     const distinctLabels = new Set(labels);
-    if (distinctLabels.size === 1) {
+    /**
+     * The **driver** ring: the first one listed, which is the ring the corpus
+     * loader's `compareDecoderRings()` iterates while looking the code up in
+     * the other. The kind is decided from its label alone, exactly as the
+     * loader decides it, rather than from "either side is blank" -- those are
+     * two different rules and they disagree whenever the *second* ring is the
+     * blank one, which the loader calls a label conflict.
+     */
+    const driverLabel = alias.candidates[0].label;
+    // Two silences are not an agreement about ground, and the loader does not
+    // report them as one either.
+    if (distinctLabels.size === 1 && driverLabel !== null) {
       alias.labelAgreement = ALIAS_LABEL_AGREEMENT.AGREE;
     } else {
-      alias.labelAgreement = labels.some((label) => label === null)
-        ? ALIAS_LABEL_AGREEMENT.BLANK_VS_LABEL
-        : ALIAS_LABEL_AGREEMENT.LABEL_CONFLICT;
+      alias.labelAgreement =
+        driverLabel === null
+          ? ALIAS_LABEL_AGREEMENT.BLANK_VS_LABEL
+          : ALIAS_LABEL_AGREEMENT.LABEL_CONFLICT;
       if (alias.labelAgreement === ALIAS_LABEL_AGREEMENT.BLANK_VS_LABEL)
         stats.blankVsLabelCount += 1;
       else stats.labelConflictCount += 1;
