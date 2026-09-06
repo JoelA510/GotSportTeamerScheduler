@@ -761,6 +761,97 @@ describe('closures :: unknowns are reported, never folded into "no closure appli
     ).toBe(2);
   });
 
+  it('reports every decided scope kind with the code the table pairs to it', () => {
+    // Round 6, finding 1. The decided arm's `default: break` dropped an
+    // unpaired scope kind silently while `closuresApplied` had already counted
+    // it -- reported nowhere, with a meta-counter testifying it was examined.
+    // The round-4 guard went on the undecidable arm and not on its twin.
+    //
+    // The subject set is `CLOSURE_DECIDED_CODE_BY_SCOPE` itself, so a kind
+    // whose arm goes missing fails here rather than passing quietly.
+    const groundFor = (kind) => {
+      if (kind === CLOSURE_SCOPE.SURFACE) return { surfaceIds: [sid(ALDER, 'Pitch 2')] };
+      if (kind === CLOSURE_SCOPE.SURFACE_UNKNOWN) {
+        return { venueIds: [season2026VenueId(ALDER)], surfaceName: 'Pitch 9' };
+      }
+      return { venueIds: [season2026VenueId(ALDER)] };
+    };
+    let covered = 0;
+    for (const [kind, code] of Object.entries(CLOSURE_DECIDED_CODE_BY_SCOPE)) {
+      const set = buildClosureSet(graph, {
+        closures: [
+          {
+            id: `decided-${kind}`,
+            fromDate: '2026-09-24',
+            toDate: '2026-09-24',
+            startMinutes: 16 * 60,
+            endMinutes: 19 * 60,
+            allDay: false,
+            scope: { kind, ...groundFor(kind) },
+            reason: `a decided ${kind} row`,
+            fieldsRaw: 'Parking',
+          },
+        ],
+      });
+      const answer = checkClosures(
+        graph,
+        set,
+        booking('b', sid(ALDER, 'Pitch 2'), '2026-09-24', 17 * 60, 18 * 60)
+      );
+      // Decided, reported, and reported with the code the table pairs to it.
+      expect(answer.meta.closuresApplied, kind).toBe(1);
+      expect(codesOf(answer), kind).toContain(code);
+      expect(
+        answer.findings.filter((f) => f.code === code),
+        kind
+      ).toHaveLength(1);
+      covered += 1;
+    }
+    // Meta-assertion: every kind with a decided code was exercised, and that is
+    // every declared kind but `venue-unknown`.
+    expect(covered).toBe(Object.keys(CLOSURE_DECIDED_CODE_BY_SCOPE).length);
+    expect(covered).toBe(Object.values(CLOSURE_SCOPE).length - 1);
+  });
+
+  it('refuses a scope kind that reaches a decided answer with no arm to report it', () => {
+    // The twin of the undecidable guard below, and the arm the round-4 control
+    // could not reach: that booking left before the switch. This one meets the
+    // window, so it reaches the decided path.
+    const future = {
+      closures: [
+        {
+          id: 'new-kind',
+          fromDate: '2026-09-24',
+          toDate: '2026-09-24',
+          startMinutes: 16 * 60,
+          endMinutes: 19 * 60,
+          allDay: false,
+          scope: { kind: 'kind-added-later', venueIds: [season2026VenueId(ALDER)] },
+          reason: 'a scope kind the union gained',
+          fieldsRaw: null,
+          venueName: ALDER,
+          source: null,
+        },
+      ],
+      closureIds: ['new-kind'],
+      source: null,
+      findings: [],
+      stats: { closureCount: 1, allDayCount: 0, byKind: {} },
+    };
+    expect(() =>
+      checkClosures(
+        graph,
+        future,
+        booking('b', sid(ALDER, 'Pitch 2'), '2026-09-24', 17 * 60, 18 * 60)
+      )
+    ).toThrow(/kind-added-later/);
+    // Meta-assertion: the same set on a booking the clock clears does not
+    // throw, so the guard is on the decided path and not on every unknown row.
+    expect(() =>
+      checkClosures(graph, future, booking('b', sid(ALDER, 'Pitch 2'), '2026-09-24', 9 * 60, 600))
+    ).not.toThrow();
+  });
+
   it('refuses a scope kind that reaches an undecidable answer with no code paired to it', () => {
     // The guard that replaced a dead `?? CLOSURE_OVERLAP_UNDECIDABLE`
     // fallback, made reachable rather than left as a comment. The set is

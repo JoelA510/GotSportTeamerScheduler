@@ -536,7 +536,12 @@ export function checkClosures(graph, closureSet, rawBooking) {
       );
       continue;
     }
-    meta.closuresApplied += 1;
+    // The twin of the guard in `undecidableFinding()`, which round 4 added to
+    // this function's other arm and not to this one. A scope kind with no case
+    // below used to fall through `default: break` while `closuresApplied` had
+    // already counted it: the closure was reported nowhere *and* a meta-counter
+    // testified that it had been examined, which is worse than never counting
+    // it. The count now follows the report rather than preceding it.
     switch (closure.scope.kind) {
       case CLOSURE_SCOPE.VENUE:
       case CLOSURE_SCOPE.SURFACE:
@@ -585,8 +590,11 @@ export function checkClosures(graph, closureSet, rawBooking) {
         );
         break;
       default:
-        break;
+        throw new Error(
+          `closures: scope kind "${closure.scope.kind}" reached a decided answer with no finding to report it; add an arm here beside its entry in CLOSURE_DECIDED_CODE_BY_SCOPE`
+        );
     }
+    meta.closuresApplied += 1;
   }
   return { findings, meta };
 }
