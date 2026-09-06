@@ -251,3 +251,140 @@ describe('facility lifecycle :: a surface at a closed site is retired', () => {
     expect(retiredOn(closedSite, '2026-05-01')).toEqual({ venueIds: [], surfaceIds: [] });
   });
 });
+
+describe('facility lifecycle :: a sub-surface of a retired surface is retired', () => {
+  // **Finding 4 of round 2, and the family the venue fix did not finish.**
+  // Containment has two edges, not one: surface -> venue, and surface ->
+  // parent surface. Round 1 fixed the venue edge in every arm and left the
+  // parent edge unchecked, so a half-pitch inside a retired full pitch was
+  // reported live. `surfaceIsLiveOn()` now walks the whole `lineage` -- self
+  // plus every ancestor -- rather than the surface alone.
+  const nested = (extra = {}) =>
+    buildFacilityGraph({
+      venues: [{ id: 'v1', name: 'Alder' }],
+      surfaces: [
+        {
+          id: 'full',
+          venueId: 'v1',
+          name: 'Full',
+          effectiveTo: '2026-06-30',
+          childIds: ['half'],
+          ...extra,
+        },
+        { id: 'half', venueId: 'v1', name: 'Half A', parentId: 'full', childIds: ['quarter'] },
+        { id: 'quarter', venueId: 'v1', name: 'Quarter A1', parentId: 'half' },
+      ],
+    });
+
+  it('propagates a retired parent down the whole lineage, in every arm', () => {
+    const graph = nested();
+    // The descendants carry no window of their own, so anything that finds
+    // them retired did so through the lineage and not through their own dates.
+    expect(graph.surfaces.half.effectiveTo).toBeNull();
+    expect(graph.surfaces.quarter.effectiveTo).toBeNull();
+    // ... and the lineage really is more than one deep, or "walks the lineage"
+    // and "checks the surface" are the same assertion.
+    expect(graph.surfaces.quarter.lineage).toEqual(['quarter', 'half', 'full']);
+
+    expect(retiredOn(graph, '2026-09-01')).toEqual({
+      venueIds: [],
+      surfaceIds: ['full', 'half', 'quarter'],
+    });
+
+    const whole = checkFacilityLifecycle(graph, { asOf: '2026-09-01' });
+    expect(whole.findings.map((f) => f.details.id).sort()).toEqual(['full', 'half', 'quarter']);
+
+    // The surface-scoped arm gives the same answer for a grandchild, and names
+    // the ancestor that closed it rather than blaming the surface itself.
+    const scoped = checkFacilityLifecycle(graph, { asOf: '2026-09-01', surfaceId: 'quarter' });
+    expect(scoped.findings.map((f) => f.details.id)).toContain('full');
+  });
+
+  it('leaves the lineage alone inside the window, so the check is about closure', () => {
+    // The negative direction. Without it, an arm that reported everything
+    // retired always would pass the test above.
+    const graph = nested();
+    expect(retiredOn(graph, '2026-05-01')).toEqual({ venueIds: [], surfaceIds: [] });
+    expect(checkFacilityLifecycle(graph, { asOf: '2026-05-01' }).findings).toEqual([]);
+  });
+
+  it('counts every node the scoped arm judged, not a constant', () => {
+    // The counter beside the lineage loop said a flat 2 -- the surface and its
+    // venue -- while the loop walked the whole lineage. Three nodes judged,
+    // two reported. Asserted at two depths so a constant cannot satisfy both.
+    const graph = nested();
+    const deep = checkFacilityLifecycle(graph, { asOf: '2026-05-01', surfaceId: 'quarter' });
+    expect(graph.surfaces.quarter.lineage).toHaveLength(3);
+    expect(deep.meta.lifecycleNodesJudged).toBe(4);
+
+    const shallow = checkFacilityLifecycle(graph, { asOf: '2026-05-01', surfaceId: 'full' });
+    expect(graph.surfaces.full.lineage).toHaveLength(1);
+    expect(shallow.meta.lifecycleNodesJudged).toBe(2);
+
+    // An unknown surface judged nothing, and says zero rather than inventing a
+    // depth for a surface it never found.
+    const missing = checkFacilityLifecycle(graph, { asOf: '2026-05-01', surfaceId: 'nope' });
+    expect(missing.meta.lifecycleNodesJudged).toBe(0);
+  });
+
+  it('reaches the eligibility check, on both of its paths', () => {
+    // **The family closed downstream.** Liveness is consulted at three arms --
+    // `retiredOn`, the whole-graph arm (which delegates to it) and the
+    // surface-scoped arm -- and `checkFieldEligibility` is the consumer that
+    // turns the answer into "may a team play here". A lineage fix that stopped
+    // at the lifecycle module would leave the scheduler booking a half-pitch
+    // inside a pitch that closed, which is the only form of this defect anyone
+    // outside this file would ever notice.
+    const graph = nested();
+    // Both paths: the dateless-format one and the full one. The first is the
+    // path a caller uses to ask about a surface generally, and it returns
+    // early -- so it is where a lifecycle check is easiest to lose.
+    const bare = checkFieldEligibility(graph, {
+      surfaceId: 'quarter',
+      format: null,
+      date: '2026-09-01',
+    });
+    expect(bare.findings.map((f) => f.details.id)).toContain('full');
+    const full = checkFieldEligibility(graph, {
+      surfaceId: 'quarter',
+      format: '9v9',
+      date: '2026-09-01',
+    });
+    expect(full.findings.map((f) => f.details.id)).toContain('full');
+
+    // Inside the window neither path reports a retirement, so the assertions
+    // above are about the closure rather than about eligibility failing for
+    // some unrelated reason.
+    const open = checkFieldEligibility(graph, {
+      surfaceId: 'quarter',
+      format: null,
+      date: '2026-05-01',
+    });
+    expect(open.findings.filter((f) => f.code === FACILITY_REASON.NODE_RETIRED)).toEqual([]);
+  });
+
+  it('retires only the branch that closed, not every sibling', () => {
+    // A parent edge that propagated to the whole graph would satisfy the first
+    // test too. Closing one half must leave its sibling and its parent open.
+    const graph = buildFacilityGraph({
+      venues: [{ id: 'v1', name: 'Alder' }],
+      surfaces: [
+        { id: 'full', venueId: 'v1', name: 'Full', childIds: ['a', 'b'] },
+        {
+          id: 'a',
+          venueId: 'v1',
+          name: 'Half A',
+          parentId: 'full',
+          effectiveTo: '2026-06-30',
+          childIds: ['a1'],
+        },
+        { id: 'b', venueId: 'v1', name: 'Half B', parentId: 'full' },
+        { id: 'a1', venueId: 'v1', name: 'Quarter A1', parentId: 'a' },
+      ],
+    });
+    expect(retiredOn(graph, '2026-09-01')).toEqual({
+      venueIds: [],
+      surfaceIds: ['a', 'a1'],
+    });
+  });
+});

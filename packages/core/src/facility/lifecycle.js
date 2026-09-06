@@ -100,10 +100,40 @@ export function retiredOn(graph, asOf) {
     // gave two answers depending on which entry point was asked -- twin arms,
     // one corrected. A pitch with no window of its own at a venue that shut in
     // June was reported live here and retired by the surface check.
-    surfaceIds: graph.surfaceIds.filter(
-      (id) => !isLiveOn(graph.surfaces[id], asOf) || retiredVenues.has(graph.surfaces[id].venueId)
-    ),
+    surfaceIds: graph.surfaceIds.filter((id) => !surfaceIsLiveOn(graph, id, asOf, retiredVenues)),
   };
+}
+
+/**
+ * Is this surface live, taking its **whole containment lineage** and its venue
+ * into account?
+ *
+ * **The one reading, because three arms had three answers.** Round 1 propagated
+ * a retired venue to its surfaces and stopped there. A surface contained by a
+ * retired PARENT surface was still reported live -- a half-pitch of a pitch
+ * that closed in June came back bookable in September, in every arm.
+ *
+ * `lineage` is self plus every ancestor, nearest first, so this covers the
+ * surface's own window, its parent's, its grandparent's, and the venue's. A
+ * booking cannot stand on ground whose container does not exist.
+ *
+ * @param {import('./types.js').FacilityGraph} graph
+ * @param {string} surfaceId
+ * @param {string} asOf
+ * @param {Set<string>} [retiredVenues] - precomputed, when the caller has it
+ * @returns {boolean}
+ */
+function surfaceIsLiveOn(graph, surfaceId, asOf, retiredVenues) {
+  const surface = graph.surfaces[surfaceId];
+  if (surface === undefined) return true;
+  const venueRetired =
+    retiredVenues === undefined
+      ? !isLiveOn(graph.venues[surface.venueId], asOf)
+      : retiredVenues.has(surface.venueId);
+  if (venueRetired) return false;
+  // Self plus every ancestor. `lineage` always contains the surface itself, so
+  // this subsumes the surface's own window rather than checking it twice.
+  return surface.lineage.every((id) => isLiveOn(graph.surfaces[id], asOf));
 }
 
 /**
@@ -188,14 +218,25 @@ export function checkFacilityLifecycle(graph, query = {}) {
     if (surface === undefined) {
       meta.lifecycleNodesJudged = 0;
     } else {
-      // The surface and its venue: two nodes examined, so the count says two.
-      meta.lifecycleNodesJudged = 2;
       const venue = graph.venues[surface.venueId];
-      // **The venue is checked too.** A surface with no window of its own sits
-      // inside a venue that may have one, and a check that looked only at the
-      // surface would report a live pitch at a closed site.
+      // **The whole lineage plus the venue, so the count says how many.** It
+      // said a flat 2 -- correct only while this arm checked the surface and
+      // its venue and nothing else. Once the loop below started walking the
+      // lineage, a half-pitch inside a pitch judged three nodes and reported
+      // two. A counter that under-reports is worse than no counter: the
+      // meta-assertions downstream use it to prove the check did work, so an
+      // arm that examined more than it admitted would still look thin enough
+      // to be believed.
+      meta.lifecycleNodesJudged = surface.lineage.length + 1;
+      // **The whole lineage AND the venue.** A surface with no window of its
+      // own sits inside a parent surface and a venue that may each have one;
+      // checking only the surface reported a live half-pitch of a pitch that
+      // closed in June, at a site that closed in June.
+      const lineageNodes = surface.lineage.map(
+        (id) => /** @type {[string, any]} */ (['surface', graph.surfaces[id]])
+      );
       for (const [kind, node] of /** @type {Array<[string, any]>} */ ([
-        ['surface', surface],
+        ...lineageNodes,
         ['venue', venue],
       ])) {
         if (!isLiveOn(node, asOf)) {
