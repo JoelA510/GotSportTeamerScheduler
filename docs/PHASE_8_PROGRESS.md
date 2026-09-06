@@ -583,7 +583,7 @@ a wrong count word or a removed row fails a test rather than a reader.
 
 ---
 
-## 8.4 — Field and blackout administration — **PR 1 of 3 merged; 8.4 not complete**
+## 8.4 — Field and blackout administration — **PRs 1 and 2 of 3 merged; 8.4 not complete**
 
 Split into three PRs on the agent's proposal and the supervisor's approval: PR 1
 the core module, PR 2 persistence and lifecycle, PR 3 the UI. 8.3 needed six
@@ -687,4 +687,124 @@ rows are the declared-but-empty case), and `readCell('label', '')` returns
   finishes**, and an early `neutral` is indistinguishable at a glance from a
   genuine clean run. Anything automated reading that check will read the wrong
   one. Not this PR's to fix; recorded because it nearly was read as green.
-- PR 2 (persistence, lifecycle, RLS, RPCs) and PR 3 (UI) outstanding.
+- PR 3 (UI) outstanding. PR 2 is recorded below.
+
+### PR 2 — lifecycle, migrations, RLS, RPCs, and a harness that can fail — **merged**
+
+- **PR:** [#376](https://github.com/JoelA510/SquadLogic/pull/376), branch
+  `feat/phase8-4-field-lifecycle-persistence`, squash-merged as `92b65a1`.
+  23 commits, +6394.
+- **Tests:** 2698 → **2772 / 34 / 6** (177 files). pgTAP **428 across 41 files**,
+  now including `supabase/tests/rls_field_blackouts.sql`.
+- **Review rounds:** five supervisor rounds of **14, 11, 8, 8, 4** — 47 findings,
+  **8 HIGH**. No round terminated early: every round's fixes introduced at least
+  one new defect, which is the whole reason the round count is what it is.
+
+#### One shape produced every HIGH in rounds 2, 3 and 4
+
+**A fix applied to one arm and not its twin.** Retire corrected and unretire
+not; the SQL arm corrected and the mock arm not; the whole-graph attribution
+corrected and the surface-scoped arm not. Naming individual twins did not stop
+it — three rounds of "check the sibling" produced three more instances. What
+stopped it was mechanism:
+
+- **A shared scenario table.** `tests/fixtures/fieldLifecycleScenarios.json`
+  holds 19 scenarios executed by two runners — Vitest against the mock client,
+  a Python runner against real PostgreSQL. Neither implementation is compared
+  with the other; **both are compared with the table**, so a divergence has
+  nowhere to hide. Drift is proved in both directions by planting into each side.
+- **A twin-arm audit with a reported denominator**: 17 pairs examined, 3
+  asymmetries found. Reporting pairs _examined_ rather than pairs _fixed_ is
+  what made the sweep checkable.
+
+#### The verification was hollow twice before it was real
+
+- Round 3's claim that the scenario table catches drift was **borrowed
+  evidence**: `prove.sh` read only an aggregate exit status, and all three of
+  its scenario plants were independently caught by a smoke that ran earlier.
+  Proven by execution — neutering the scenario runner _and_ planting a known
+  HIGH printed `FAIL smoke / PASS scenario table` while `prove.sh` still exited 0. The fix is a plant the smoke cannot see, plus a `BORROWED` verdict when a
+  catch was supplied by an earlier check.
+- The mutation harness reported CAUGHT for everything when the run failed for
+  any unrelated reason, because nothing asserted a **green baseline** before
+  planting. Fixed once, then found unapplied one directory over.
+- `fresh_db` **discarded the prelude's exit status**, so the baseline gate that
+  fixed the previous item was standing on ground that could fail silently.
+
+#### A supervisor premise that was false
+
+The supervisor asserted three times that this SQL had never executed, and made
+that the justification for requiring the harness. `.github/workflows/pgtap.yml`
+runs `supabase start`, applies every migration against a real local Supabase,
+triggers on `supabase/migrations/**`, and had been green on the PR from the
+first push. **Right conclusion, wrong premise**: no migration applying cleanly
+would have caught any of the 8 HIGHs, because all 8 are semantic. The genuine
+gap was the smokes and the reverts, which `pgtap.yml` does not run — and the
+harness immediately found the M2 smoke silently missing two checks on an import
+arm it had never exercised.
+
+#### Defects worth carrying forward
+
+- A retire that **reactivated an already-inactive field**.
+- An affected-booking enumeration covering **2 of 4** booking tables while a
+  seeded `practice_assignment` sat on the very field the tests used — the
+  hand-written `['game_slot','practice_slot']` assertion did not merely miss it,
+  it **certified** it.
+- A lifecycle check walking **one** containment edge where the forest is two deep.
+- `lifecycleNodesJudged` reporting a flat 2 while the loop beside it walked a
+  lineage — a counter used by downstream meta-assertions to prove work was done,
+  under-reporting its own effort.
+- **Four separate tools swallowing an exit status** they never checked.
+
+#### RLS is exercised, not reviewed
+
+`supabase/tests/rls_field_blackouts.sql` runs in CI and pins three things: a
+non-member reads nothing from `field_blackouts` or `field_closures`; a member
+cannot INSERT, UPDATE or DELETE `field_blackouts` directly; and **an admin of
+one organisation cannot scope a blackout to another's ground** — the one a
+reading cannot settle, because it depends on the RPCs' org re-check firing
+rather than on the policy. Two review rounds had found no cross-org path by
+reading, but the harness runs as cluster superuser, so RLS had never been
+exercised at all.
+
+#### A container restart, and what it exposed
+
+The container restarted mid-round-5 and killed the agent. Three commits existed
+locally and unpushed, and **the working tree held a planted security mutant** —
+`WITH (security_invoker = true)` stripped from the `field_closures` view, the
+exact RLS bypass the new pgTAP test exists to catch — because the harness was
+mid-plant. The supervisor restored from the `.orig`, verified byte-equality with
+HEAD, re-ran typecheck and the full suite before trusting anything, and pushed.
+
+The root cause was itself a twin asymmetry, found and fixed in round 5:
+`prove-mock.mjs` re-read its file and refused to continue unless the restore
+matched byte for byte, while `prove.sh` restored a **migration** and simply
+trusted it. **The higher-consequence half was the unchecked one.** Both now
+checksum before mutating and compare after restoring.
+
+The operational lesson, recorded because it cost nothing only by luck: an
+automated "commit and push uncommitted changes" step would have shipped that
+mutant. Work in progress under a mutation harness is not work in progress.
+
+### Still open after PR 2
+
+- **PR 3 (UI)** — the three surfaces, consequence preview, WCAG pass, bundle
+  measurement.
+- **LIVE-1** — `admin_delete_field` has no booking guard at all. Deleting a field
+  CASCADEs its slots away, SET NULLs `game_assignments.field_id` so a scheduled
+  game silently loses its venue, and leaves `practice_assignments.field_id`
+  dangling because that column has **no foreign key at all**. Own PR, now
+  unblocked by the harness.
+- **LIVE-2** — `finalize_field_availability_import_job` resolves the field via
+  `LIMIT 1` with no `NOT FOUND` guard against a nullable
+  `field_availability_profiles.field_id`, so a profile matching no field still
+  accretes blackout rows invisible to every field-scoped query. Own PR. This is
+  also the precondition for ever collapsing the two blackout tables: PR 2 ships
+  two, with disjoint producers and a single reader, only because profile-scoped
+  blackouts cannot be expressed in a scope-bearing table while this stands.
+- **Two asymmetries referred rather than fixed** (non-HIGH, fail-safe): the JS
+  scenario runner guards an unknown scope but not an unknown rpc, where
+  `scenarios.py` guards both; and M2's revert drops `field_blackouts` with no
+  loss report where M1's names every future-dated retirement.
+- The CodeQL `neutral` placeholder hazard, carried from PR 1: an early neutral
+  and a genuine clean run are indistinguishable at a glance.
