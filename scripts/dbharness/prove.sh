@@ -123,8 +123,8 @@ fi
 # 20260906000000", "scenario table", "revert 20260906000000". Omitted means
 # "any failure will do", which is honest for a plant that stops the migration
 # applying at all and cannot reach a named check.
-plant() { # label file old new [expected-failing-check]
-  local label="$1" file="$2" old="$3" new="$4" expect="${5:-}"
+plant() { # label file old new [expected-failing-check] [check-that-must-stay-green]
+  local label="$1" file="$2" old="$3" new="$4" expect="${5:-}" green="${6:-}"
   ATTEMPTED=$((ATTEMPTED+1))
   python3 - "$file" "$old" "$new" <<'PY'
 import io,sys
@@ -164,7 +164,21 @@ io.open(f,'w',encoding='utf8').write(orig); os.remove(f+'.orig')" "$file"
       grep -E '^(applied|PASS|FAIL|BASELINE|HARNESS)' <<<"$out" | sed 's/^/    /'
       return
     fi
-    printf '%-52s CAUGHT%s\n' "$label" "${expect:+ (at $expect)}"; PASS=$((PASS+1))
+    # **A plant aimed at one check, that another check was supposed NOT to
+    # see.** Naming the failing check stops evidence being borrowed from a
+    # check that ran earlier, but it does not show the other check stayed
+    # green -- and for a plant whose whole purpose is "nothing else in the
+    # harness can see this", that is the claim. `green` asserts it, so an
+    # isolation that used to be argued in a comment is now measured on every
+    # run and cannot quietly stop being true.
+    if [ -n "$green" ] && ! grep -qF "PASS $green" <<<"$out"; then
+      printf '%-52s BORROWED  <-- "%s" did not stay green\n' "$label" "$green"
+      FAIL=$((FAIL+1))
+      grep -E '^(applied|PASS|FAIL|BASELINE|HARNESS)' <<<"$out" | sed 's/^/    /'
+      return
+    fi
+    printf '%-52s CAUGHT%s%s\n' "$label" "${expect:+ (at $expect)}" \
+      "${green:+, $green stayed green}"; PASS=$((PASS+1))
   else
     # **Print the transcript on a miss.** `out` was captured and never read --
     # a field parsed and left unread, in the tool whose whole output is the
@@ -253,22 +267,39 @@ plant "M2 the two blackout tables share a policy name" "$M2" \
   "CREATE POLICY \"Field Blackouts: members select\"" \
   "smoke 20260906000100"
 
-# **Plants only the scenario table can see.** The three SCEN plants above are
-# aimed at the scenario table and the smoke catches them first, so they come
-# back MISATTRIBUTED -- honest, and evidence about the smoke rather than about
-# the table. These two are the missing evidence: the M2 smoke never inserts a
-# TIMED blackout, so nothing else in the harness exercises the two time
-# constraints on real rows. Both plants weaken a predicate without removing the
-# constraint, so the smoke's "expected 5 CHECK constraints" still counts five
-# and stays green. If the scenario table is hollow, these go NOT CAUGHT.
+# **Plants only the scenario table can see.**
+#
+# This comment used to predict that the three SCEN plants above would come back
+# MISATTRIBUTED because "the smoke catches them first". Running it proved that
+# wrong, and the correction matters more than the prediction: `run.sh` does NOT
+# stop at a failing smoke. Every check still runs and prints its own line, so
+# attribution is decided by which line appears, not by which check ran first,
+# and all three are scored CAUGHT at the scenario table because the scenario
+# table genuinely does go red on them.
+#
+# They are red at the SMOKE as well, though, so on their own they cannot show
+# the table sees anything the smoke does not. These two can, and are the missing
+# evidence: the M2 smoke never inserts a TIMED blackout, so nothing else in the
+# harness exercises the two time constraints on real rows. Both plants weaken a
+# predicate without removing the constraint, so the smoke's "expected 5 CHECK
+# constraints" still counts five.
+#
+# The sixth argument makes that ENFORCED rather than argued. The M2 smoke must
+# still PASS, so if either plant ever becomes visible to the smoke this reports
+# BORROWED rather than quietly scoring a catch the smoke supplied -- which is
+# the exact failure this whole mechanism exists to stop, one level up.
+# Measured on the committed tree: `PASS smoke 20260906000000 / PASS smoke
+# 20260906000100 / FAIL scenario table / HARNESS FAILED`.
 plant "ONLY-SCEN inverted blackout times accepted" "$M2" \
   "          AND end_minutes > start_minutes)" \
   "          AND end_minutes >= 0)" \
-  "scenario table"
+  "scenario table" \
+  "smoke 20260906000100"
 plant "ONLY-SCEN half a blackout window accepted" "$M2" \
   "    CHECK (num_nonnulls(start_minutes, end_minutes) IN (0, 2))," \
   "    CHECK (num_nonnulls(start_minutes, end_minutes) IN (0, 1, 2))," \
-  "scenario table"
+  "scenario table" \
+  "smoke 20260906000100"
 
 # The revert's loss report is code like any other, and the harness plants a
 # future-dated retirement so it cannot pass by iterating zero rows. This proves
