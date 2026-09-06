@@ -895,6 +895,65 @@ describe('closures :: unknowns are reported, never folded into "no closure appli
     expect(codesOf(outside)).not.toContain(AVAILABILITY_REASON.CLOSURE_VENUE_UNKNOWN);
     expect(outside.meta.closuresUncomparable).toBe(0);
   });
+
+  it('rules a venue-unknown closure out on time, which needs no ground at all', () => {
+    // Round 4, finding 1. The venue-unknown branch reported on a date match
+    // alone, jumping the `meets === false` drop every other scope kind reaches
+    // first -- so a 16:00-19:00 closure told an 09:00-10:00 booking its overlap
+    // "cannot be decided" when two pairs of numbers decide it clean. Latent on
+    // this corpus only because all three venue-unknown rows happen to be
+    // all-day, which is the kind of accident that stops being true.
+    const timed = buildClosureSet(graph, {
+      closures: [
+        {
+          id: 'timed-venue-unknown',
+          fromDate: '2026-09-24',
+          toDate: '2026-09-24',
+          startMinutes: 16 * 60,
+          endMinutes: 19 * 60,
+          allDay: false,
+          scope: { kind: CLOSURE_SCOPE.VENUE_UNKNOWN, venueName: 'Nowhere Park' },
+          reason: 'timed row at a venue the graph does not hold',
+        },
+      ],
+    });
+    const at = (start, end) =>
+      checkClosures(graph, timed, booking('b', sid(ALDER, 'Pitch 2'), '2026-09-24', start, end));
+
+    // Before the window, and after it: decided clean by the clock.
+    for (const [start, end] of [
+      [9 * 60, 10 * 60],
+      [19 * 60, 20 * 60],
+    ]) {
+      const clear = at(start, end);
+      expect(codesOf(clear), `${start}-${end}`).not.toContain(
+        AVAILABILITY_REASON.CLOSURE_VENUE_UNKNOWN
+      );
+      expect(clear.meta.closuresUncomparable, `${start}-${end}`).toBe(0);
+      // Meta-assertion: the closure *was* looked at, so "clean" is a decision
+      // and not a row that never came up.
+      expect(clear.meta.closuresConsulted, `${start}-${end}`).toBe(1);
+    }
+
+    // Inside it: the ground cannot be compared, and the clock says so.
+    const inside = at(17 * 60, 18 * 60);
+    const reported = inside.findings.filter(
+      (f) => f.code === AVAILABILITY_REASON.CLOSURE_VENUE_UNKNOWN
+    );
+    expect(reported).toHaveLength(1);
+    expect(reported[0].details.timeMeets).toBe(true);
+    expect(inside.meta.closuresUncomparable).toBe(1);
+
+    // Endless, kicking off before it opens: the clock cannot decide either,
+    // and the finding says which of the two was undecidable.
+    const endless = at(15 * 60, null);
+    const doubtful = endless.findings.filter(
+      (f) => f.code === AVAILABILITY_REASON.CLOSURE_VENUE_UNKNOWN
+    );
+    expect(doubtful).toHaveLength(1);
+    expect(doubtful[0].details.timeMeets).toBeNull();
+    expect(doubtful[0].message).toContain('may run into');
+  });
 });
 
 /* -------------------------------------------------------------------------- */

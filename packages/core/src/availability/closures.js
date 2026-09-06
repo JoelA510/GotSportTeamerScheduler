@@ -439,20 +439,30 @@ export function checkClosures(graph, closureSet, rawBooking) {
   for (const closure of closureSet.closures) {
     meta.closuresConsulted += 1;
     if (booking.date < closure.fromDate || booking.date > closure.toDate) continue;
+    // **Time first, and for every scope kind alike.** A booking whose hours do
+    // not meet the window is clean of the closure whatever ground it stands
+    // on, and that is decidable from two pairs of numbers. Undecidable ground
+    // is still ground a clock can rule out: a 16:00-19:00 closure at a venue
+    // the graph does not hold has nothing to say about an 09:00 kickoff, and
+    // saying "cannot be decided" there would be an absence dressed as doubt.
+    const meets = closureMeetsBooking(closure, booking);
+    if (meets === false) continue;
     // A closure standing on ground the graph does not hold cannot be compared
     // against this booking -- but "cannot be compared" is not "does not
     // apply". The build-time finding on the closure set is not enough on its
     // own: a caller holding only this answer would read silence as a clear
-    // date and book into the window. Reported here, bounded to the dates the
-    // closure actually spans.
+    // date and book into the window. Reported here, bounded to the dates *and
+    // the hours* the closure actually spans; `timeMeets` says whether the
+    // clock decided it or was itself undecidable.
     if (closure.scope.kind === CLOSURE_SCOPE.VENUE_UNKNOWN) {
       meta.closuresUncomparable += 1;
       findings.push(
         makeAvailabilityFinding(
           AVAILABILITY_REASON.CLOSURE_VENUE_UNKNOWN,
-          `${booking.label ?? booking.id} on ${surface.name} (${booking.date}) falls inside the dates of closure "${closure.id}" (${closure.reason} ${closure.fromDate} to ${closure.toDate}) at "${closure.scope.venueName}", a venue the graph does not hold; whether it stands on this booking's ground cannot be decided here`,
+          `${booking.label ?? booking.id} on ${surface.name} (${booking.date}) ${meets === null ? 'may run into' : 'falls inside'} closure "${closure.id}" (${closure.reason} ${closure.fromDate} to ${closure.toDate}) at "${closure.scope.venueName}", a venue the graph does not hold; whether it stands on this booking's ground cannot be decided here`,
           {
             coverage: null,
+            timeMeets: meets,
             bookingId: booking.id,
             surfaceId: booking.surfaceId,
             surfaceName: surface.name,
@@ -473,13 +483,10 @@ export function checkClosures(graph, closureSet, rawBooking) {
     }
     const { covers, coverage } = closureCoversSurface(graph, closure, surface);
     if (!covers) continue;
-    const meets = closureMeetsBooking(closure, booking);
-    // Decided-and-clear leaves before anything is built. Every date-matching,
-    // ground-covering closure a booking does *not* meet used to pay for this
-    // object and the string below only to have them dropped one branch later.
-    // The undecidable answer needs them, so they are built after the null check
-    // is possible and before the switch that reads them.
-    if (meets === false) continue;
+    // The decided-and-clear case left above, before anything was built: every
+    // date-matching, ground-covering closure a booking does *not* meet used to
+    // pay for this object and the string below only to have them dropped one
+    // branch later.
     const details = {
       /** How the closure's ground reached this surface: a FACILITY_REASON occupancy code, or null for venue-wide scopes. */
       coverage,
