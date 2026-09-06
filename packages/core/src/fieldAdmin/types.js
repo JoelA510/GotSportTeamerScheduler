@@ -63,7 +63,18 @@
  * @property {string} disposition - a `DISPOSITION` value
  * @property {number} heldCount - how many held records this subject stands for;
  *   0 when nothing is held, and more than 1 when the key does not identify one
- * @property {string[]} changedFields - non-empty exactly when `differing`
+ * @property {string[]} changedFields - the compared fields whose held and
+ *   proposed values differ. **Not "non-empty exactly when `differing`"**, which
+ *   is what this line used to say and is false for every `differing` subject the
+ *   corpus produces: all 13 of them carry an empty `changedFields`. There are
+ *   two roads to `differing` and this field only walks one of them --
+ *   `buildChangeSet()` sets `isDifferent` from
+ *   `changedFields.length > 0 || sourceDisagreement !== null`, so a subject
+ *   whose two *sources* disagree is `differing` with nothing held to compare
+ *   against and no changed field to name. The true statement, checked on the
+ *   corpus and on a synthetic pair by `tests/fieldAdminChangeSet.test.js`
+ *   rather than asserted here: a subject is `differing` **exactly when**
+ *   `changedFields` is non-empty **or** `sourceDisagreement` is non-null.
  * @property {string[]} absentFields - fields one side does not carry
  * @property {Record<string, unknown>|null} before - current state, or `null` when added
  * @property {Record<string, unknown>|null} after - proposed, or `null` when removed

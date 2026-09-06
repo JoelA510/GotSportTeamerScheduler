@@ -125,6 +125,38 @@ export const PERMIT_FACILITY_READINGS = new Map([
 export const PERMIT_FACILITY_LABELS = Object.freeze([...PERMIT_FACILITY_READINGS.keys()].sort());
 
 /**
+ * Does the declared table cover this pair at all?
+ *
+ * **The distinction `undeclared` exists to carry, answerable without reading
+ * prose.** Two rows come out of this projector as unresolvable with no ground,
+ * and they need opposite things from an operator:
+ *
+ * - **undeclared** -- the table does not cover the pair, so nothing is known
+ *   about it and the fix is a new entry here. **Measured: unreachable on
+ *   today's corpus.** The permits name 8 distinct `venue | facility` pairs and
+ *   all 8 are declared, so this arm is a defence against the corpus gaining a
+ *   ninth, not a case it currently produces. Said plainly because a reader
+ *   would otherwise assume the two arms are both live, and the test that
+ *   exercises this one has to bend a row to reach it.
+ * - **declared and empty** -- the table covers it and says the label reaches no
+ *   ground the graph holds, and says why (a `(B)` qualifier five surfaces could
+ *   answer to, a permit numbering its own practice fields). 3 of the 8 declared
+ *   readings are this, and they account for all 223 unresolvable permit rows.
+ *   The fix is nothing; the reading is correct.
+ *
+ * Telling them apart used to require parsing the free-text note - in a module
+ * that forbids parsing notes - because `readPermitFacility()` set `undeclared`
+ * on both paths, declared it in its JSDoc, and nothing read it.
+ *
+ * @param {string} venue - as the permit writes it
+ * @param {string} facility - as the permit writes it
+ * @returns {boolean}
+ */
+export function isDeclaredPermitFacility(venue, facility) {
+  return PERMIT_FACILITY_READINGS.has(permitFacilityKey(venue, facility));
+}
+
+/**
  * The key one reservation row looks up.
  *
  * @param {string} venue
@@ -144,8 +176,7 @@ export function permitFacilityKey(venue, facility) {
  */
 export function readPermitFacility(venue, facility) {
   const key = permitFacilityKey(venue, facility);
-  const reading = PERMIT_FACILITY_READINGS.get(key);
-  if (!reading) {
+  if (!isDeclaredPermitFacility(venue, facility)) {
     // **A pair nobody declared is data, not a producer bug**, so it must not
     // throw. It used to, and the blast radius was the whole import: one
     // unexpected `venue | facility` cell lost all five change sets. That is the
@@ -161,6 +192,9 @@ export function readPermitFacility(venue, facility) {
       undeclared: true,
     };
   }
+  const reading = /** @type {{ surfaces: string[], note: string }} */ (
+    PERMIT_FACILITY_READINGS.get(key)
+  );
   return { surfaces: [...reading.surfaces], note: reading.note, undeclared: false };
 }
 
@@ -202,12 +236,20 @@ export function projectPermitReservations(reservations, graph, complexMap) {
     const reading = readPermitFacility(venue, facility);
 
     if (reading.surfaces.length === 0) {
+      // **`undeclared` is read here, which is what makes it a field rather than
+      // a decoration.** The two cases end in the same disposition and want
+      // opposite things from an operator, so the reason says which of the two
+      // it is in its first clause, and `isDeclaredPermitFacility()` answers the
+      // same question without reading the sentence at all.
+      const cause = reading.undeclared
+        ? 'no reading is declared for this venue and facility'
+        : 'the declared reading names no ground the graph holds';
       return projectedRow({
         sourceFile: SOURCE_FILE,
         rowIndex,
         subjectKey,
         interpretation: INTERPRETATION.UNRESOLVABLE,
-        interpretationReason: `${reading.note}; the permit's own label ${JSON.stringify(facility)} is kept so the grant stays legible`,
+        interpretationReason: `${cause}: ${reading.note}; the permit's own label ${JSON.stringify(facility)} is kept so the grant stays legible`,
         raw,
         record: null,
       });

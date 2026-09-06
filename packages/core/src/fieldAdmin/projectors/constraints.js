@@ -42,7 +42,10 @@
  */
 
 import { CLOSURE_SCOPE, buildClosureSet } from '../../availability/closures.js';
-import { toSeason2026ClosureInput } from '../../availability/adapters/season2026Closures.js';
+import {
+  readSeason2026ConstraintFieldsOrNull,
+  toSeason2026ClosureInput,
+} from '../../availability/adapters/season2026Closures.js';
 import {
   BLACKOUT_REASON,
   BLACKOUT_SCOPE,
@@ -185,9 +188,38 @@ export function readClosureScope(closure) {
  * @returns {{ rows: import('../types.js').ProjectedRow[], closureSet: Object }}
  */
 export function projectFieldConstraints(fieldConstraints, graph, complexMap, options = {}) {
+  // **A `fields` cell nobody declared is data, not a producer bug.**
+  //
+  // The third member of the family `permits.js` and `weeklyAvailability.js`
+  // already belong to, and the one a twin-hunt walked past because it is a
+  // third site rather than either one's sibling: the throw lives two calls away
+  // in `availability/adapters/season2026Closures.js`, so one unrecognised cell
+  // came out of `importSeason2026Fields()` and lost **all five** change sets.
+  // Measured before the fix, on one bent cell of the real corpus.
+  //
+  // Held out here rather than fixed in the adapter, because the two callers are
+  // not in the same position: the closure layer is handed a curated list and
+  // keeps its throw. These rows never enter the closure set - guessing a scope
+  // for a cell we cannot read could close ground the row never named, which is
+  // worse than carrying it unapplied.
+  const undeclaredFields = new Set(
+    fieldConstraints
+      .filter(
+        (constraint) =>
+          readSeason2026ConstraintFieldsOrNull(
+            /** @type {string} */ (/** @type {Object} */ (constraint).fields)
+          ) === null
+      )
+      .map((constraint) => /** @type {string} */ (/** @type {Object} */ (constraint).id))
+  );
+  const readable = fieldConstraints.filter(
+    (constraint) =>
+      !undeclaredFields.has(/** @type {string} */ (/** @type {Object} */ (constraint).id))
+  );
+
   const closureSet =
     options.closureSet ??
-    buildClosureSet(graph, toSeason2026ClosureInput(fieldConstraints, graph, complexMap));
+    buildClosureSet(graph, toSeason2026ClosureInput(readable, graph, complexMap));
 
   // **Joined on the `id` both sides carry, not on position.**
   //
@@ -214,6 +246,20 @@ export function projectFieldConstraints(fieldConstraints, graph, complexMap, opt
 
   const rows = fieldConstraints.map((constraint) => {
     const constraintId = /** @type {string} */ (/** @type {Object} */ (constraint).id);
+    // The undeclared rows are carried here, in input order, so the projection
+    // still has one row per constraint and nothing is dropped.
+    if (undeclaredFields.has(constraintId)) {
+      const fieldsCell = /** @type {string} */ (/** @type {Object} */ (constraint).fields);
+      return projectedRow({
+        sourceFile: SOURCE_FILE,
+        rowIndex: /** @type {number} */ (/** @type {Object} */ (constraint).rowIndex),
+        subjectKey: `${/** @type {Object} */ (constraint).venue ?? 'unknown'} ${/** @type {Object} */ (constraint).dateStart} ${/** @type {Object} */ (constraint).dateEnd} ${fieldsCell}`,
+        interpretation: INTERPRETATION.UNRESOLVABLE,
+        interpretationReason: `no declared reading for the fields cell ${JSON.stringify(fieldsCell)}, so the ground this row closes is unknown; the row is carried unapplied rather than closing ground it may not name`,
+        raw: /** @type {Record<string, unknown>} */ (/** @type {Object} */ (constraint).raw ?? {}),
+        record: null,
+      });
+    }
     const closure = closureById.get(constraintId);
     if (closure === undefined) {
       throw new Error(

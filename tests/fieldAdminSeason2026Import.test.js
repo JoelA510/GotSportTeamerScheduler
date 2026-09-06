@@ -36,7 +36,9 @@ import {
   FIELD_ADMIN_REASON,
   INTERPRETATION,
   PERMIT_FACILITY_LABELS,
+  isDeclaredPermitFacility,
   SEASON_2026_SUBJECTS,
+  SEASON_2026_SUBJECT_NAMES,
   everySubject,
   WEEKLY_INTERPRETATIONS_ABSENT_FROM_CORPUS,
   WEEKLY_INTERPRETATION_VALUES,
@@ -400,7 +402,24 @@ describe('season-2026 field import :: the Excel corruption, in both files', () =
 /* ========================================================================== */
 
 describe('season-2026 field import :: nothing is silently dropped', () => {
-  const subjects = ['aliases', 'blackouts', 'recurringWindows', 'permitWindows', 'venueAttributes'];
+  it('drives every cross-subject guarantee from the declared subject list', () => {
+    // The meta-assertion for the derivation above: the constant really does
+    // name the five subjects the import returns, so a guarantee driven from it
+    // cannot be iterating a stale or empty list. Compared against the keys of
+    // the import itself, which is the thing a break would leave intact.
+    expect([...SEASON_2026_SUBJECT_NAMES].sort()).toEqual(Object.keys(SEASON_2026_SUBJECTS).sort());
+    const returned = Object.keys(imported).filter((key) => imported[key]?.buckets !== undefined);
+    expect(returned.sort()).toEqual([...SEASON_2026_SUBJECT_NAMES].sort());
+    expect(SEASON_2026_SUBJECT_NAMES.length).toBe(5);
+  });
+
+  // **Derived, not written out.** Four hand-written five-name literals drove
+  // five cross-subject guarantees while `SEASON_2026_SUBJECT_NAMES` -- the
+  // constant that exists to be exactly this list -- was used by no test. A
+  // sixth subject would have been added to the adapter and silently skipped by
+  // every guarantee below, each of which would go on passing over the five it
+  // knew about.
+  const subjects = SEASON_2026_SUBJECT_NAMES;
 
   it('accounts for every source row on one axis or the other', () => {
     for (const name of subjects) {
@@ -708,13 +727,7 @@ describe('season-2026 field import :: the criteria this PR does not reach', () =
     // need persistence and the app. Until then every change set must be
     // explicit that it is a proposal, so no report can imply an import
     // happened.
-    for (const name of [
-      'aliases',
-      'blackouts',
-      'recurringWindows',
-      'permitWindows',
-      'venueAttributes',
-    ]) {
+    for (const name of SEASON_2026_SUBJECT_NAMES) {
       const declared = findingsOf(imported[name], FIELD_ADMIN_REASON.CHANGE_SET_NOT_APPLIED);
       expect({ name, declared: declared.length }).toEqual({ name, declared: 1 });
     }
@@ -725,13 +738,7 @@ describe('season-2026 field import :: the criteria this PR does not reach', () =
     // in `tests/fieldAdminChangeSet.test.js`, and it is empty here only because
     // a first import holds nothing. A reader must not take this emptiness as
     // evidence the bucket works.
-    for (const name of [
-      'aliases',
-      'blackouts',
-      'recurringWindows',
-      'permitWindows',
-      'venueAttributes',
-    ]) {
+    for (const name of SEASON_2026_SUBJECT_NAMES) {
       expect({ name, removed: imported[name].buckets.removed.length }).toEqual({
         name,
         removed: 0,
@@ -743,8 +750,12 @@ describe('season-2026 field import :: the criteria this PR does not reach', () =
     // The three single-source subjects compared nothing against held state and
     // have no second source; the two multi-source subjects did compare. The
     // distinction is asserted so "clean" never means "nothing was checked".
-    const uncompared = ['blackouts', 'recurringWindows', 'permitWindows'];
+    // The two halves are named, but their *union* is derived: a sixth subject
+    // that belonged to neither list would be skipped by both loops while both
+    // went on passing. Asserted below rather than assumed.
     const compared = ['aliases', 'venueAttributes'];
+    const uncompared = SEASON_2026_SUBJECT_NAMES.filter((name) => !compared.includes(name));
+    expect([...compared, ...uncompared].sort()).toEqual([...SEASON_2026_SUBJECT_NAMES].sort());
     for (const name of uncompared) {
       expect({
         name,
@@ -861,5 +872,193 @@ describe('season-2026 field import :: one definition of every subject', () => {
         expect(Object.values(DISPOSITION)).toContain(disposition);
       }
     }
+  });
+});
+
+/* ========================================================================== */
+/* The family: a source cell read through a declared table                    */
+/* ========================================================================== */
+
+describe('season-2026 field import :: an undeclared source cell never costs the import', () => {
+  /** The corpus with one `fields` cell bent to a value nobody declared. */
+  const withUndeclaredFieldsCell = () => ({
+    ...practice,
+    fieldConstraints: practice.fieldConstraints.map((constraint, index) =>
+      index === 0 ? { ...constraint, fields: 'Pitch Nobody Declared' } : constraint
+    ),
+  });
+
+  it('carries an undeclared `fields` cell without losing the other four change sets', () => {
+    // **The third member of the family, and the one a twin-hunt missed.** The
+    // throw is two calls away in `availability/adapters/season2026Closures.js`,
+    // so one unrecognised cell came out of `importSeason2026Fields()` and lost
+    // all five change sets. Measured before the fix; this is the control.
+    const bent = importSeason2026Fields({
+      practice: withUndeclaredFieldsCell(),
+      graph,
+      complexMap,
+    });
+    for (const name of SEASON_2026_SUBJECT_NAMES) {
+      expect({ name, read: bent[name].meta.sourceRowsRead }).toEqual({
+        name,
+        read: imported[name].meta.sourceRowsRead,
+      });
+    }
+    // ... and the row is carried, not dropped: still one row per constraint.
+    const rows = everySubject(bent.blackouts).reduce((sum, s) => sum + s.rows.length, 0);
+    expect(rows + bent.blackouts.buckets.unresolvable.length).toBe(
+      bent.blackouts.meta.sourceRowsRead
+    );
+  });
+
+  it('surfaces the undeclared cell with a reason that names it', () => {
+    const bent = importSeason2026Fields({
+      practice: withUndeclaredFieldsCell(),
+      graph,
+      complexMap,
+    });
+    const named = findingsOf(bent.blackouts, FIELD_ADMIN_REASON.ROW_UNRESOLVABLE).filter(
+      (finding) => finding.message.includes('Pitch Nobody Declared')
+    );
+    expect(named).toHaveLength(1);
+    expect(named[0].message).toMatch(/no declared reading for the fields cell/);
+    // The unbent corpus raises no such finding, so the assertion above is about
+    // the bent cell and not about a finding the corpus always carries.
+    expect(
+      findingsOf(imported.blackouts, FIELD_ADMIN_REASON.ROW_UNRESOLVABLE).filter((finding) =>
+        finding.message.includes('no declared reading for the fields cell')
+      )
+    ).toEqual([]);
+  });
+
+  it('refuses a `held` key that names no subject, rather than dropping its data', () => {
+    // Measured before the fix: `held: { blackout: ... }` gave
+    // `currentSubjectsRead 0` and 15 `added` against 15 `matched` for the right
+    // key, with no finding anywhere - an import telling a caller their data is
+    // all new because it could not find what it was handed.
+    const heldAliases = imported.aliases.buckets.added
+      .map((subject) => subject.after)
+      .filter((record) => record !== null);
+    expect(heldAliases.length).toBeGreaterThan(0);
+
+    // The right key is read, which is what makes the throw below about the key.
+    const right = importSeason2026Fields({
+      practice,
+      graph,
+      complexMap,
+      held: { aliases: heldAliases },
+    });
+    expect(right.aliases.meta.currentSubjectsRead).toBe(heldAliases.length);
+    expect(right.aliases.buckets.matched).toHaveLength(heldAliases.length);
+
+    expect(() =>
+      importSeason2026Fields({ practice, graph, complexMap, held: { blackout: heldAliases } })
+    ).toThrow(/"blackout".*not a declared subject/);
+    // Every declared key is accepted, so the guard rejects the undeclared one
+    // rather than rejecting everything.
+    for (const name of SEASON_2026_SUBJECT_NAMES) {
+      expect(() =>
+        importSeason2026Fields({ practice, graph, complexMap, held: { [name]: [] } })
+      ).not.toThrow();
+    }
+  });
+
+  it('carries an undeclared permit pair and an undeclared weekly interpretation', () => {
+    // **The control both of these fixes shipped without.** Reverting either
+    // projector's undeclared arm to a throw left the whole suite green -- so
+    // the two fixes that started this whole family were themselves the least
+    // protected things in it. One assertion per member, each bending one cell
+    // of the real corpus and requiring all five change sets to survive.
+    const bendings = [
+      {
+        member: 'permits.js',
+        practice: {
+          ...practice,
+          permitReservations: practice.permitReservations.map((row, index) =>
+            index === 0 ? { ...row, facility: 'Field - Imaginary (Field)' } : row
+          ),
+        },
+      },
+      {
+        member: 'weeklyAvailability.js',
+        practice: {
+          ...practice,
+          weeklyAvailability: practice.weeklyAvailability.map((row, index) =>
+            index === 0 ? { ...row, interpretation: 'nobody-declared-this' } : row
+          ),
+        },
+      },
+      {
+        member: 'season2026Closures.js',
+        practice: {
+          ...practice,
+          fieldConstraints: practice.fieldConstraints.map((row, index) =>
+            index === 0 ? { ...row, fields: 'Pitch Nobody Declared' } : row
+          ),
+        },
+      },
+    ];
+    for (const { member, practice: bentPractice } of bendings) {
+      const bent = importSeason2026Fields({ practice: bentPractice, graph, complexMap });
+      for (const name of SEASON_2026_SUBJECT_NAMES) {
+        expect({ member, name, read: bent[name].meta.sourceRowsRead }).toEqual({
+          member,
+          name,
+          read: imported[name].meta.sourceRowsRead,
+        });
+      }
+    }
+    // The loop really bent three members, which is the family's size today.
+    expect(bendings).toHaveLength(3);
+  });
+
+  it('tells an undeclared permit pair from a declared one that names no ground', () => {
+    // `undeclared` was set on both return paths, declared in JSDoc, and read by
+    // nothing - so the two cases were distinguishable only by parsing the free
+    // text this module forbids parsing.
+    const undeclared = PERMIT_FACILITY_LABELS.filter((label) => {
+      const [venue, facility] = label.split(' | ');
+      return !isDeclaredPermitFacility(venue, facility);
+    });
+    expect(undeclared).toEqual([]); // every declared label reads as declared
+    expect(isDeclaredPermitFacility('Nowhere', 'Field - Imaginary (Field)')).toBe(false);
+
+    const reasonsOf = (set) =>
+      set.buckets.unresolvable
+        .map((row) => row.interpretationReason)
+        .filter((reason) => typeof reason === 'string');
+
+    // **Only one of the two arms is reachable on the corpus, and the test says
+    // which.** All 8 distinct `venue | facility` pairs the permits name are
+    // declared, so every one of the 223 unresolvable permit rows is the
+    // declared-but-empty case. Asserting "both arms occur" against the corpus
+    // would simply have been false -- I wrote that first and it failed here.
+    const corpus = reasonsOf(imported.permitWindows);
+    expect(corpus.length).toBe(223);
+    expect(
+      corpus.filter((reason) =>
+        reason.startsWith('the declared reading names no ground the graph holds')
+      )
+    ).toHaveLength(223);
+    expect(corpus.filter((reason) => reason.startsWith('no reading is declared'))).toHaveLength(0);
+
+    // The undeclared arm is reached by bending one reservation to a facility
+    // nobody has mapped -- which is the only way to reach it, and proves the
+    // clause is live rather than dead prose.
+    const bent = importSeason2026Fields({
+      practice: {
+        ...practice,
+        permitReservations: practice.permitReservations.map((row, index) =>
+          index === 0 ? { ...row, facility: 'Field - Imaginary (Field)' } : row
+        ),
+      },
+      graph,
+      complexMap,
+    });
+    expect(
+      reasonsOf(bent.permitWindows).filter((reason) =>
+        reason.startsWith('no reading is declared for this venue and facility')
+      )
+    ).toHaveLength(1);
   });
 });

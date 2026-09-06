@@ -106,6 +106,7 @@ export {
 export {
   PERMIT_FACILITY_LABELS,
   PERMIT_FACILITY_READINGS,
+  isDeclaredPermitFacility,
   permitFacilityKey,
   projectPermitReservations,
   readPermitFacility,

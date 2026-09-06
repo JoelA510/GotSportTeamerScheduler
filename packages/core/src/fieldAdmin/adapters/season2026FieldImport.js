@@ -170,6 +170,37 @@ function changeSetFor(name, rows, held, heldLabel, disagreementKind) {
 }
 
 /**
+ * Every key of `held` names a declared subject.
+ *
+ * **An unrecognised key used to be silently dropped.** Each subject reads its
+ * own slot as `held.aliases ?? []`, so a caller who wrote `blackout` for
+ * `blackouts` handed in fifteen held records and was told, without a single
+ * finding, that all fifteen subjects were `added` and `currentSubjectsRead` was
+ * 0 - an import reporting that everything is new because it could not find the
+ * data it was given. Measured: `currentSubjectsRead 0` and 15 `added` against
+ * 15 `matched` for the correct key.
+ *
+ * This throws rather than degrading, and the distinction is the one
+ * `readPermitFacility()` draws in the other direction: **a `held` key is
+ * written by the calling code, not by a source cell.** No corpus row can
+ * produce it, so it is a producer bug, and the family's rule is that a producer
+ * bug throws naming the union while data is carried unapplied.
+ *
+ * @param {Object} held
+ * @returns {void}
+ */
+function assertHeldKeysAreSubjects(held) {
+  const unknown = Object.keys(held).filter(
+    (key) => !Object.prototype.hasOwnProperty.call(SEASON_2026_SUBJECTS, key)
+  );
+  if (unknown.length > 0) {
+    throw new Error(
+      `fieldAdmin season2026: held names ${unknown.map((key) => JSON.stringify(key)).join(', ')}, which ${unknown.length === 1 ? 'is not a declared subject' : 'are not declared subjects'}; expected keys from SEASON_2026_SUBJECTS (${SEASON_2026_SUBJECT_NAMES.join(', ')})`
+    );
+  }
+}
+
+/**
  * **Import the practice corpus as a proposal.**
  *
  * `held` is what the organisation already has, per subject. It defaults to
@@ -193,6 +224,7 @@ export function importSeason2026Fields({
   held = {},
   heldLabel = 'current organisation state',
 }) {
+  assertHeldKeysAreSubjects(held);
   const aliasRows = [
     // Practice ring first: it is the **driver**, and `labelAgreementOf()`
     // decides `blank-vs-label` from the driver's label alone, exactly as

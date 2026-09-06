@@ -499,3 +499,33 @@ describe('fieldAdmin round trip :: the seam admits it persists nothing', () => {
     }
   });
 });
+
+describe('fieldAdmin round trip :: an absent structured cell is not an empty one', () => {
+  it("reads '' back as null and '[]' back as an empty array", () => {
+    // **The mutation sweep found this fix unpinned.** Reverting `readCell` to
+    // map `''` to `[]` left the entire suite green, because no column is
+    // nullable on today's model so the path is unreachable through the
+    // registry. It is reachable through the exported function, which is where
+    // the contract lives, so that is where it is pinned.
+    //
+    // The defect it guards: a nullable structured column would round-trip
+    // `null -> '' -> [] -> '[]'`, a changed file for an unchanged record.
+    for (const column of ['venueIds', 'surfaceIds', 'services', 'equipment']) {
+      expect({ column, absent: readCell(column, '') }).toEqual({ column, absent: null });
+      expect({ column, empty: readCell(column, '[]') }).toEqual({ column, empty: [] });
+      // ... and the writer produces exactly those two cells, so the reader's
+      // two answers correspond to two things the writer can actually write.
+      expect({ column, written: renderCell(column, null) }).toEqual({ column, written: '' });
+      expect({ column, written: renderCell(column, []) }).toEqual({ column, written: '[]' });
+    }
+    // `''` means absence on every column, not only the structured ones -- the
+    // consistency that makes the structured branch's `null` the right answer
+    // rather than a special case. (I asserted `''` here first and it failed;
+    // the code was right and the assertion was wrong.)
+    expect(readCell('label', '')).toBeNull();
+    expect(readCell('startMinutes', '')).toBeNull();
+    // ... and a present value on a structured column still parses, so the
+    // absent-vs-empty distinction is not swallowing real data.
+    expect(readCell('venueIds', JSON.stringify(['v1']))).toEqual(['v1']);
+  });
+});

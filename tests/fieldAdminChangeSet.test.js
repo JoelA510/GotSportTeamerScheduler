@@ -1255,3 +1255,213 @@ describe('fieldAdmin change set :: the fifth disposition, against parity itself'
     expect(partition.fieldComparisons).toBe(2);
   });
 });
+
+describe('fieldAdmin :: the fixes of four review rounds, each pinned', () => {
+  it('names file and row on SUBJECT_DIFFERS, not the file twice', () => {
+    // **The control this fix shipped without.** Only the `SOURCES_DISAGREE`
+    // twin was pinned, so reverting `SUBJECT_DIFFERS` to `sources.join(' and ')`
+    // left the whole suite green. Both sides of one message needed pinning, not
+    // one; the corpus finding read "field_inventory.csv and field_inventory.csv".
+    const rec = (id, label) => ({ id, label });
+    const set = buildChangeSet({
+      subject: 'rings',
+      keyFields: ['id'],
+      comparedFields: ['label'],
+      current: { label: 'held', records: [] },
+      proposed: {
+        label: 'one file',
+        rows: [
+          row('r1', rec('r1', 'Willowmead Park'), {
+            sourceFile: 'field_inventory.csv',
+            rowIndex: 11,
+          }),
+          row('r1', rec('r1', 'Willowmead Turf'), {
+            sourceFile: 'field_inventory.csv',
+            rowIndex: 12,
+          }),
+        ],
+      },
+    });
+    const differs = set.findings.filter(
+      (finding) => finding.code === FIELD_ADMIN_REASON.SUBJECT_DIFFERS
+    );
+    expect(differs).toHaveLength(1);
+    // Both sides carry a row number, so the two sources are distinguishable
+    // when they are the same file -- which is the whole point of the fix.
+    expect(differs[0].message).toContain('field_inventory.csv row 11');
+    expect(differs[0].message).toContain('field_inventory.csv row 12');
+    // ... and the naked file name twice, which is what it used to say, is gone.
+    expect(differs[0].message).not.toContain('field_inventory.csv and field_inventory.csv');
+  });
+
+  it('carries every bucket in the details of BOTH partition findings', () => {
+    // The existing coverage loop only ever inspected `findings[0]`, so dropping
+    // `uncompared` from the *proposed*-side details left the suite green. Each
+    // finding is checked, and both sides are made to fire at once.
+    const partition = /** @type {any} */ ({
+      ...Object.fromEntries(Object.values(BUCKET_OF).map((name) => [name, []])),
+      unresolvable: [],
+      fieldComparisons: 0,
+    });
+    const findings = changeSetPartitionFindings(partition, {
+      sourceRowsRead: 0,
+      currentSubjectsRead: 3,
+      projectedSubjects: 4,
+    });
+    expect(findings.map((finding) => finding.details.side)).toEqual(['current', 'proposed']);
+    for (const finding of findings) {
+      for (const name of Object.values(BUCKET_OF)) {
+        expect({
+          side: finding.details.side,
+          name,
+          inDetails: name in finding.details,
+          inMessage: finding.message.includes(`${name} `),
+        }).toEqual({ side: finding.details.side, name, inDetails: true, inMessage: true });
+      }
+    }
+    // Two findings, five buckets each: the loop ran ten assertions, not zero.
+    expect(findings).toHaveLength(2);
+  });
+
+  it('is `differing` exactly when a field changed OR two sources disagree', () => {
+    // `types.js` used to state "changedFields is non-empty exactly when
+    // differing". That is false for all 13 `differing` subjects the corpus
+    // produces, because `isDifferent` has two roads. The corrected invariant is
+    // pinned on **both** roads -- the corpus walks only the second, so a
+    // corpus-only check would pass against an implementation that ignored
+    // `changedFields` entirely.
+    const rec = (id, label) => ({ id, label });
+    const byField = buildChangeSet({
+      subject: 'by field',
+      keyFields: ['id'],
+      comparedFields: ['label'],
+      current: { label: 'held', records: [rec('a', 'Old')] },
+      proposed: { label: 'proposed', rows: [row('a', rec('a', 'New'))] },
+    });
+    const bySource = buildChangeSet({
+      subject: 'by source',
+      keyFields: ['id'],
+      comparedFields: ['label'],
+      current: { label: 'held', records: [] },
+      proposed: {
+        label: 'proposed',
+        rows: [row('b', rec('b', 'One')), row('b', rec('b', 'Two'))],
+      },
+    });
+    const first = byField.buckets.differing[0];
+    const second = bySource.buckets.differing[0];
+    // Road one: a changed field, no source disagreement.
+    expect(first.changedFields).toEqual(['label']);
+    expect(first.sourceDisagreement).toBeNull();
+    // Road two: a source disagreement, no changed field. The old invariant
+    // called this a contradiction; it is the corpus's headline case.
+    expect(second.changedFields).toEqual([]);
+    expect(second.sourceDisagreement).not.toBeNull();
+    // The invariant itself, over both sets.
+    for (const set of [byField, bySource]) {
+      for (const subject of everySubject(set)) {
+        expect({
+          key: subject.key,
+          holds:
+            (subject.disposition === DISPOSITION.DIFFERING) ===
+            (subject.changedFields.length > 0 || subject.sourceDisagreement !== null),
+        }).toEqual({ key: subject.key, holds: true });
+      }
+    }
+  });
+});
+
+describe('fieldAdmin :: what the mutation sweep found unpinned', () => {
+  /** A two-source subject whose sources disagree, with nothing held. */
+  const disagreeing = () =>
+    buildChangeSet({
+      subject: 'rings',
+      keyFields: ['id'],
+      comparedFields: ['label'],
+      current: { label: 'held', records: [] },
+      proposed: {
+        label: 'two rings',
+        rows: [row('r1', { id: 'r1', label: 'One' }), row('r1', { id: 'r1', label: 'Two' })],
+      },
+      disagreementKind: () => 'label-conflict',
+    });
+
+  it('names the disagreement kind in the SUBJECT_DIFFERS details', () => {
+    // Round 2 honoured `SourceDisagreement.field` and `kind` after the review
+    // found them computed and never read. The *message* half is pinned; the
+    // `details` half was not -- nulling `disagreementKind` left the whole suite
+    // green. An operator filtering findings by kind would have got nothing.
+    const differs = disagreeing().findings.filter(
+      (finding) => finding.code === FIELD_ADMIN_REASON.SUBJECT_DIFFERS
+    );
+    expect(differs).toHaveLength(1);
+    expect(differs[0].details.disagreementKind).toBe('label-conflict');
+  });
+
+  it('holds the three invariants that make the derived counters equivalent', () => {
+    // **Three round-3 "fixes" revert green because they are semantic no-ops
+    // today** -- `subjectsPartitioned`, `subjectsApplicable` and
+    // `sourcedSubjects` all derive from `everySubject()` where a hand-written
+    // list would give the same answer. That is not a hole to paper over with a
+    // control that cannot fail; the derivations earn their keep only against a
+    // *sixth* disposition, which no test can conjure.
+    //
+    // What *can* be checked is the three invariants that make the hand-written
+    // versions equivalent right now. If any of them stops holding, the derived
+    // form is what keeps the answer right and the hand-written form would have
+    // silently gone wrong -- so pinning them is pinning the reason.
+    const rec = (id, label) => ({ id, label });
+    const mixed = buildChangeSet({
+      subject: 'mixed',
+      keyFields: ['id'],
+      comparedFields: ['label'],
+      current: {
+        label: 'held',
+        records: [rec('same', 'x'), rec('changed', 'x'), rec('gone', 'x'), rec('bare', null)],
+      },
+      proposed: {
+        label: 'proposed',
+        rows: [
+          row('same', rec('same', 'x')),
+          row('changed', rec('changed', 'y')),
+          row('new', rec('new', 'x')),
+          row('bare', rec('bare', null)),
+        ],
+      },
+    });
+    const subjects = everySubject(mixed);
+    // The set really does span all five, or the invariants below are vacuous.
+    expect(new Set(subjects.map((s) => s.disposition)).size).toBe(5);
+
+    // (1) every bucket is counted exactly once, so a five-way hand sum and
+    //     `everySubject().length` agree.
+    expect(subjects.length).toBe(
+      Object.values(BUCKET_OF).reduce((sum, name) => sum + mixed.buckets[name].length, 0)
+    );
+    // (2) an `uncompared` subject is never applicable, so omitting the bucket
+    //     from an applicability filter changes no count.
+    for (const subject of subjects) {
+      if (subject.disposition === DISPOSITION.UNCOMPARED) {
+        expect({ key: subject.key, applicable: subject.applicable }).toEqual({
+          key: subject.key,
+          applicable: false,
+        });
+      }
+    }
+    // (3) only a subject that came from a source row can carry a
+    //     disagreement, and a disagreement always forces `differing` -- so
+    //     neither `removed` nor `uncompared` can carry one.
+    for (const subject of subjects) {
+      if (subject.sourceDisagreement !== null) {
+        expect({ key: subject.key, disposition: subject.disposition }).toEqual({
+          key: subject.key,
+          disposition: DISPOSITION.DIFFERING,
+        });
+      }
+    }
+    // ... and (3) is not vacuous: a disagreeing set really does produce one.
+    expect(everySubject(disagreeing()).filter((s) => s.sourceDisagreement !== null)).toHaveLength(
+      1
+    );
+  });
+});
