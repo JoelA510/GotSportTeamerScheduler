@@ -121,7 +121,7 @@ echo "=== smokes for this PR's migrations ==="
 # pgTAP suite already does. Claiming to verify them would be the hollow kind of
 # green this whole phase exists to stop.
 STATUS=0
-NEW_MIGRATIONS=(20260906000000 20260906000100)
+NEW_MIGRATIONS=(20260906000000 20260906000100 20260907000000)
 
 for id in "${NEW_MIGRATIONS[@]}"; do
   smoke="$REPO/docs/sql/${id}_smoke.sql"
@@ -196,6 +196,30 @@ for id in "${NEW_MIGRATIONS[@]}"; do
   # harness plants a field that IS about to lose its retirement, and then
   # requires the warning to appear. A check that matches zero rows is a loud
   # failure here, not a quiet pass.
+  # **The same reasoning for 20260907000000's revert.** It counts the
+  # practice_assignments that are about to lose the foreign key protecting
+  # their field_id, and on a freshly migrated database there are none -- so the
+  # report would print "exposes no existing row" and prove only that the code
+  # parses. A row that IS about to be exposed is planted, and the warning is
+  # then required. practice_assignments.team_id is NOT NULL and references
+  # teams, so the plant needs the season/division/team chain behind it.
+  if [ "$id" = "20260907000000" ]; then
+    psql_cmd "INSERT INTO public.organizations (id, name, slug)
+              VALUES ('33333333-3333-3333-3333-333333333333','Expose Org','expose-org');
+              INSERT INTO public.locations (id, organization_id, name)
+              VALUES ('44444444-4444-4444-4444-444444444444','33333333-3333-3333-3333-333333333333','Expose Park');
+              INSERT INTO public.fields (id, organization_id, location_id, name, active)
+              VALUES ('55555555-5555-5555-5555-555555555555','33333333-3333-3333-3333-333333333333','44444444-4444-4444-4444-444444444444','Expose Pitch', true);
+              INSERT INTO public.season_settings (id, organization_id, name)
+              VALUES ('66666666-6666-6666-6666-666666666666','33333333-3333-3333-3333-333333333333','Expose Season');
+              INSERT INTO public.divisions (id, organization_id, season_settings_id, name)
+              VALUES ('77777777-7777-7777-7777-777777777777','33333333-3333-3333-3333-333333333333','66666666-6666-6666-6666-666666666666','Expose Division');
+              INSERT INTO public.teams (id, organization_id, division_id, name)
+              VALUES ('88888888-8888-8888-8888-888888888888','33333333-3333-3333-3333-333333333333','77777777-7777-7777-7777-777777777777','Expose Team');
+              INSERT INTO public.practice_assignments (organization_id, team_id, field_id)
+              VALUES ('33333333-3333-3333-3333-333333333333','88888888-8888-8888-8888-888888888888','55555555-5555-5555-5555-555555555555');" >/dev/null
+  fi
+
   if [ "$id" = "20260906000000" ]; then
     psql_cmd "INSERT INTO public.organizations (id, name, slug)
               VALUES ('11111111-1111-1111-1111-111111111111','Revert Org','revert-org');
@@ -214,6 +238,14 @@ for id in "${NEW_MIGRATIONS[@]}"; do
         echo "  | (checked) the revert named the retirement it was about to erase"
       else
         echo "FAIL revert ${id}: planted a future-dated retirement and the revert did not name it"
+        STATUS=1
+      fi
+    fi
+    if [ "$id" = "20260907000000" ]; then
+      if grep -q 'EXPOSING 1 practice_assignment' /tmp/harness_rev; then
+        echo "  | (checked) the revert counted the practice assignment it was about to expose"
+      else
+        echo "FAIL revert ${id}: planted a practice_assignment with a field_id and the revert did not count it"
         STATUS=1
       fi
     fi

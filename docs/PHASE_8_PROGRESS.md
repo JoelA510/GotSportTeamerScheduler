@@ -790,11 +790,7 @@ mutant. Work in progress under a mutation harness is not work in progress.
 
 - **PR 3 (UI)** — the three surfaces, consequence preview, WCAG pass, bundle
   measurement.
-- **LIVE-1** — `admin_delete_field` has no booking guard at all. Deleting a field
-  CASCADEs its slots away, SET NULLs `game_assignments.field_id` so a scheduled
-  game silently loses its venue, and leaves `practice_assignments.field_id`
-  dangling because that column has **no foreign key at all**. Own PR, now
-  unblocked by the harness.
+- ~~**LIVE-1**~~ — **fixed, in its own PR.** Recorded below.
 - **LIVE-2** — `finalize_field_availability_import_job` resolves the field via
   `LIMIT 1` with no `NOT FOUND` guard against a nullable
   `field_availability_profiles.field_id`, so a profile matching no field still
@@ -804,7 +800,179 @@ mutant. Work in progress under a mutation harness is not work in progress.
   blackouts cannot be expressed in a scope-bearing table while this stands.
 - **Two asymmetries referred rather than fixed** (non-HIGH, fail-safe): the JS
   scenario runner guards an unknown scope but not an unknown rpc, where
-  `scenarios.py` guards both; and M2's revert drops `field_blackouts` with no
-  loss report where M1's names every future-dated retirement.
+  `scenarios.py` guards both -- **fixed by the LIVE-1 PR**, which needed it
+  because the field half went from two RPCs to three; and M2's revert drops
+  `field_blackouts` with no loss report where M1's names every future-dated
+  retirement -- **still open**.
 - The CodeQL `neutral` placeholder hazard, carried from PR 1: an early neutral
   and a genuine clean run are indistinguishable at a glance.
+
+---
+
+## LIVE-1 — `admin_delete_field` had no booking guard — **fixed, own PR**
+
+Not part of 8.4's three-PR stack. Recorded as LIVE-1 at the foot of the PR 2
+entry above and unblocked by the harness PR 2 built.
+
+- **Migration:** `20260907000000_field_delete_booking_guard.sql`, with
+  `docs/sql/20260907000000_{smoke,revert}.sql`.
+- **Tests:** 2772 / 34 / 6 (177 files) → **2792 / 34 / 6** (179 files),
+  counted by running the suite rather than by adding up what was written.
+  Scenario table 20 → **30**, both runners. pgTAP 428 → **445** across 42 files:
+  arithmetic on PR 2's recorded 428 plus the 17 new assertions, since no
+  existing `plan()` changed. Main entry 131.04 → **131.38 KB gz**.
+
+### The three claims, checked against the schema before anything was built
+
+All three held, and the checking mattered: a grep for
+`field_id … ON DELETE CASCADE` returns `field_subunits`, `practice_slots` and
+`game_slots`, none of which is an assignment table, so the grep neither confirms
+nor refutes the claims it looks like it answers. The answers came from
+`pg_constraint` on a database with all 107 migrations applied.
+
+- `practice_slots.field_id` and `game_slots.field_id` are **CASCADE** — the
+  slots are destroyed. Held.
+- `game_assignments.field_id` is **SET NULL** (20260503030000) — a scheduled
+  game survives having silently lost its venue. Held.
+- `practice_assignments.field_id` had **no foreign key at all** — a bare `uuid`
+  in 20260331000000, where every other uuid column in the same CREATE TABLE has
+  a REFERENCES clause. Held, and it is the worse case: a SET NULL is visible,
+  a dangling uuid is indistinguishable from a live venue.
+
+`field_blackouts.field_id` is a fourth CASCADE, added by 20260906000100, which
+is why the grep returned three rather than four.
+
+### The family enumeration was wrong twice, and the second time a review caught it
+
+The first version enumerated **the seven tables carrying a `field_id`** and
+called that the family. It is not the family. What a delete costs is the
+**cascade closure** from `fields`, and deriving that from `pg_constraint` — only
+after `/code-review` asked — showed fifteen edges over three levels and two
+things a column-name census structurally cannot see:
+
+- **`games` carries no `field_id` at all** and is destroyed anyway: it hangs off
+  `game_slots` ON DELETE CASCADE, so deleting the ground takes the fixture and
+  the recorded score with it. Nothing in the first version mentioned it.
+- **Both assignment tables reach the field a second way**, through their slot
+  columns, and those edges are **CASCADE** where the `field_id` edge is SET
+  NULL. The CASCADE wins. `persist_game_schedule` and `persist_practice_schedule`
+  write those slot columns on every row they produce, so **for a real persisted
+  schedule the assignment is destroyed, not unassigned** — and the RPC was
+  telling the operator the opposite. Confirmed by executing a delete against a
+  fully migrated database before anything was changed.
+
+That second one also made the tests worse than useless: the smoke and the pgTAP
+suite asserted "the assignment survives with `field_id` NULL" on the only shape
+for which it is true — a free-standing row with no slot — which is a shape the
+production path never produces. A test forging state the real code cannot reach
+is evidence of a bug, and here it was certifying one.
+
+So: **five** kinds are read, the two assignment kinds report their disposition
+**per row**, and the smoke now walks the closure on every harness run and fails
+if a table joins or leaves it. The seven-table `field_id` census survives as a
+separate check, labelled as the subset it is — conflating the two is what hid
+`games`.
+
+### The contract came from the sibling, and the sibling's contract was not what the brief said
+
+`admin_retire_field` **RETURNS** `{retired:false, …}` and **writes** a `refused`
+audit row; it does not raise and it does not write nothing. `admin_delete_field`
+now does the same with `reason: 'bookings_exist'`. Adopting what the sibling
+does rather than what it was described as doing is the whole point of the rule.
+
+That contract is also why the caller mattered: `useFields.deleteField`
+destructured only `error`, so a refusal read as success and the field vanished
+from the list it had not deleted.
+
+### What the sweep found that this PR did not fix
+
+`rollback_field_import_apply` (`20260503070000:1026-1038`) is the **third** path
+that deletes a field, and it has a guard that consults **2 of the 4** booking
+tables — `practice_slots` and `game_slots`, not the assignment tables. That is
+the same "2 of 4" defect PR 2 fixed in `admin_retire_field`, still standing in
+the third member of the family. Recorded as **LIVE-3** rather than fixed:
+changing an import rollback's blocking behaviour is a separate blast radius and
+the brief for this PR was explicit about not widening.
+
+### Verification
+
+- `npm run test:db:local` — 107 migrations, three smokes, **30 of 30** scenarios
+  against Postgres, three reverts. HARNESS OK.
+- `npm run test:db:local:prove` — **26 attempted, 0 anchor-miss, 26 caught**,
+  each at the check it was aimed at. The earlier run that found the generator
+  defect scored 24 caught and 2 MISATTRIBUTED; both are caught again. Nine of
+  the plants also name a check that must stay GREEN, including one the scenario
+  table catches and the new smoke cannot see.
+- `npm run test:db:local:prove:mock` — **19 attempted, 0 anchor-miss, 19
+  caught**, 11 of them new.
+- pgTAP `field_delete_booking_guard.sql`, 17 assertions, executed locally
+  against real PostgreSQL with real pgTAP.
+
+### A second review round, and three more corrections
+
+A confirm-only `/code-review` found four things, three of them confirmed by
+executing the code:
+
+- The smoke's arm parser took the **first** `FROM public.` in each arm, which in
+  a per-row arm is the `EXISTS` subquery — so `v_table` resolved to the SLOT
+  table and the "does it really have both edges" check counted cascades on a
+  table that always has them. **A meta-assertion that could not fail**, in the
+  file whose purpose is assertions that can. It is now anchored to the arm's own
+  indentation, and it demands both edges specifically: SET NULL to `fields` AND
+  a CASCADE elsewhere.
+- Rewriting the mock's date filter turned `''` into "a date before every date",
+  and `''` is exactly what the field-import apply path writes for an open-ended
+  practice slot — so a slot that runs forever was dropped from a retirement's
+  affected list while still reporting `unbounded: true`. A regression this PR
+  introduced, now pinned by a test and a plant.
+- `cascades` was leaking into `admin_retire_field`'s mock payload, a key the SQL
+  twin never emits.
+
+### The fix round introduced its own defect, and the harness caught it
+
+Correcting the enumeration meant refactoring `scenarios.py`, and that refactor
+**silently deleted the retirement half's `active` and `effective_to`
+assertions** — a Python slice that ran from the delete arm's booking loop all
+the way to `emit_audit_phases`, taking the `else` branch with it. Nothing in the
+emitted script complained: it still ran 30 scenarios, still checked their audit
+phases, and still reported `30 of 30 executed`, because **`v_ran` counts cases
+that RAN, not cases that were CHECKED**.
+
+What noticed was `prove.sh`. The two round-3 HIGH plants came back
+**MISATTRIBUTED** — red at the smoke, green at the scenario table — instead of
+scoring a catch, which is exactly what the named-check attribution was added for
+in PR 2. Two of the twenty-six plants were the only thing standing between this
+PR and a scenario table that had quietly stopped checking half of what it exists
+to check.
+
+The generator now reads its own output back and refuses to emit a script in
+which any accepted scenario produces no outcome assertion. That check was
+proved by construction: deleting the `else` branch again makes it exit 1 naming
+the scenario, and the control was then removed.
+
+**"The fix round is when defects enter" is the lesson PR 1 recorded, and this is
+the third consecutive phase to demonstrate it.**
+
+### What the review round cost, and what it bought
+
+One `/code-review` at high found five findings, of which the first two were the
+enumeration defects above. It also found that `useFields.deleteField` returned
+`{deleted:false}` for an unreadable payload, so the page rendered "0 booking(s)
+… Delete anyway?" — a consequence preview reading "nothing is booked" when the
+truth was "we cannot tell". That now raises.
+
+The pattern is the one this phase keeps recording: every defect was a **hollow
+guarantee** rather than a broken feature. The RPC refused correctly, audited
+correctly, and reported a consequence that was false for every row the scheduler
+writes — and its smoke, its pgTAP suite and its mutation plants all agreed with
+it, because they were built on the same wrong model.
+
+### Still open
+
+- **LIVE-2**, unchanged.
+- **LIVE-3**, above.
+- The mock's generic `.delete().eq()` does not tombstone, so a direct delete of
+  a SEEDED row resurrects on the next `getDB()`. Examined and left: RLS routes
+  field writes through RPCs, so no production path reaches it. The RPC arm was
+  fixed because this PR's own test found it reporting `deleted: true` for a
+  field that was still there.

@@ -114,6 +114,110 @@ const PLANTS = [
     find: "            error: { code: '23514', message: 'blackout times must be within 0..1440 and ordered' },",
     replace: "            error: { message: 'blackout times must be within 0..1440 and ordered' },",
   },
+  // -------------------------------------------------------------------------
+  // LIVE-1: the delete guard, in the arm that had none at all
+  // -------------------------------------------------------------------------
+  {
+    label: 'delete loses its booking guard entirely',
+    find: `        if (affected.length > 0 && !p.p_confirm) {
+          audit('field', field.id, 'deleted', {
+            operation: 'admin_delete_field',`,
+    replace: `        if (false && affected.length > 0 && !p.p_confirm) {
+          audit('field', field.id, 'deleted', {
+            operation: 'admin_delete_field',`,
+  },
+  {
+    label: 'refusal is audited as a delete that began',
+    find: `          phase: 'refused',
+            reason: 'bookings_exist',`,
+    replace: `          phase: 'before',
+            reason: 'bookings_exist',`,
+  },
+  {
+    // **The per-row disposition flattened back to one word per table.** That
+    // was the first version of this arm, and it told the operator every
+    // assignment survives -- false for every row the scheduler writes, because
+    // the slot cascade destroys it before the field_id SET NULL can fire.
+    label: 'delete reports one disposition per table again',
+    find: "            return { ...rest, disposition: cascades ? 'deleted' : 'unassigned' };",
+    replace: "            return { ...rest, disposition: 'unassigned' };",
+  },
+  {
+    // Aimed at fieldDeleteGuard, not the scenario table: every scenario seeds
+    // assignments that ALSO carry a field_id, so the via-slot route is never
+    // the only one there. The row that has a slot and no field_id at all --
+    // the shape an earlier delete's SET NULL leaves behind -- lives in that
+    // suite, and pointing this plant at the table would have reported NOT
+    // CAUGHT and said nothing about whether anything covers it.
+    label: 'delete stops seeing assignments reached through their slot',
+    suite: 'tests/fieldDeleteGuard.test.js',
+    find: '          (String(row.field_id) === String(fieldId) || (viaSlots && viaSlot(row)));',
+    replace: '          String(row.field_id) === String(fieldId);',
+  },
+  {
+    // `games` carries no field_id; only the cascade closure reaches it.
+    label: 'delete stops enumerating the fixtures it destroys',
+    find: '        const affected = fieldBookings(p.p_field_id, null, {\n          includeGames: true,',
+    replace:
+      '        const affected = fieldBookings(p.p_field_id, null, {\n          includeGames: false,',
+  },
+  {
+    // **The shared enumerator's `after: null` contract.** `null` means no date
+    // applies -- a deletion takes everything -- which is a different answer
+    // from comparing against the string "null". Get that wrong and every
+    // booking reads as past, the count is zero, and the guard is silently off.
+    label: 'the enumerator treats "no date at all" as a date',
+    find: '        const past = (value) => after !== null && !undatedValue(value) && String(value) <= after;',
+    replace: '        const past = (value) => value !== null && String(value) <= String(after);',
+  },
+  {
+    // The other half of the same predicate: `''` is what the field-import
+    // apply path writes for an open-ended practice slot, and reading it as a
+    // date earlier than everything drops a slot that runs forever out of the
+    // refusal -- while the same row still reports `unbounded: true`.
+    label: 'an empty valid_until reads as a date before every date',
+    suite: 'tests/fieldLifecycleRpcs.test.js',
+    find: `        const undatedValue = (value) =>
+          value === null || value === undefined || String(value) === '';`,
+    replace: '        const undatedValue = (value) => value === null || value === undefined;',
+  },
+  {
+    // Not scenario-table plants: the table states the RPC's OUTCOME and
+    // deliberately leaves the row-level consequences to
+    // `fieldDeleteGuard.test.js`, so that is the suite these are aimed at.
+    // Pointing them at the table instead would report NOT CAUGHT and say
+    // nothing about whether anything covers them.
+    label: 'a confirmed delete stops unassigning what survives it',
+    suite: 'tests/fieldDeleteGuard.test.js',
+    find: `          for (const row of db[table] || []) {
+            if (String(row.field_id) === String(p.p_field_id)) row.field_id = null;
+          }`,
+    replace: '          // survivors left pointing at the deleted field',
+  },
+  {
+    label: 'a confirmed delete stops cascading game slots',
+    suite: 'tests/fieldDeleteGuard.test.js',
+    find: "        destroy('game_slots', onField('game_slots'));",
+    replace: "        // destroy('game_slots', onField('game_slots'));",
+  },
+  {
+    // The report and the effect are held together by reading the doomed ids
+    // out of `affected`. Recomputing them independently is how the two come
+    // to disagree.
+    label: 'a confirmed delete stops destroying the fixtures it reported',
+    suite: 'tests/fieldDeleteGuard.test.js',
+    find: "        destroy('games', reported('games'));",
+    replace: "        // destroy('games', reported('games'));",
+  },
+  {
+    // The tombstone is what makes a delete of a SEEDED row durable across
+    // `getDB()`'s re-merge. Without it the RPC reports `deleted: true` and the
+    // row is back on the next read -- the defect this file's own test found.
+    label: 'the deleted field is not tombstoned and resurrects',
+    suite: 'tests/fieldDeleteGuard.test.js',
+    find: "        markMockDeleted(db, 'fields', [field.id]);",
+    replace: "        // markMockDeleted(db, 'fields', [field.id]);",
+  },
   {
     // Not a scenario-table plant: a scenario's `before` state is written
     // through `.insert()`, so the very state this breaks is one the table
