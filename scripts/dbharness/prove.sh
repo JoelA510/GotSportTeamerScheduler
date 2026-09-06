@@ -126,6 +126,10 @@ fi
 plant() { # label file old new [expected-failing-check] [check-that-must-stay-green]
   local label="$1" file="$2" old="$3" new="$4" expect="${5:-}" green="${6:-}"
   ATTEMPTED=$((ATTEMPTED+1))
+  # **What the file looked like before this run touched it.** See the restore
+  # check below for why a checksum rather than trust.
+  local before_sum
+  before_sum="$(sha256sum "$file" | cut -d' ' -f1)"
   python3 - "$file" "$old" "$new" <<'PY'
 import io,sys
 f,old,new=sys.argv[1],sys.argv[2],sys.argv[3]
@@ -154,6 +158,24 @@ import io,os,sys
 f=sys.argv[1]
 orig=io.open(f+'.orig',encoding='utf8').read()
 io.open(f,'w',encoding='utf8').write(orig); os.remove(f+'.orig')" "$file"
+  # **Verify the restore, byte for byte.** `prove-mock.mjs` has always done this
+  # and exits 4 when the mock client does not match what it read at start; this
+  # side restored a MIGRATION and simply trusted that it worked -- the twin with
+  # the correction on one arm only, which is the recurring shape of this PR.
+  #
+  # Not hypothetical. A container died mid-plant in this very series and left
+  # `20260906000100_field_blackouts.sql` on disk with `WITH (security_invoker =
+  # true)` stripped from the `field_closures` view -- the exact RLS bypass the
+  # new pgTAP test exists to catch -- with its `.orig` beside it. Silence from
+  # this function is what a successful restore and an abandoned mutation both
+  # look like, so it is no longer taken on trust. A mismatch stops the run
+  # rather than planting the next defect on top of a file that is already wrong.
+  if [ "$(sha256sum "$file" | cut -d' ' -f1)" != "$before_sum" ]; then
+    echo "RESTORE FAILED: $(basename "$file") does not match what was read before planting" >&2
+    echo "  The planted mutation may still be on disk. Compare it against git," >&2
+    echo "  repair the file, and only then re-run." >&2
+    exit 4
+  fi
   if [ "$status" -ne 0 ]; then
     if [ -n "$expect" ] && ! grep -qF "FAIL $expect" <<<"$out"; then
       # The harness went red, but not where this plant was aimed. Some other
