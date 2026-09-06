@@ -165,7 +165,14 @@ describe('field lifecycle RPCs :: retirement writes active and effective_to toge
     all = getMockData('fields').filter((f) => String(f.organization_id) === ORG);
     expect(all.filter(disagrees)).toEqual([]);
     const after = getMockData('fields').find((f) => String(f.id) === String(field.id));
-    expect(after.active).toBe(true);
+    // **`active` stays false, and this line used to assert `true`.** The retire
+    // above used a PAST date, so the field was deactivated; unretiring clears
+    // the date and leaves activity exactly as it found it, because it cannot
+    // know whether the field was deactivated by that retirement or beforehand.
+    // Asserting `true` here did not merely miss the mock writing `active: true`
+    // unconditionally -- it CERTIFIED it, which is the shape where a passing
+    // test pins the bug. Re-activating is `admin_update_field`'s job.
+    expect(after.active).toBe(false);
     expect(after.effective_to).toBeNull();
 
     // The predicate is not vacuous, and it is the one-directional one:

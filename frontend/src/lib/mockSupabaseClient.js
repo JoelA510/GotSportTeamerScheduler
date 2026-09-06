@@ -2025,9 +2025,15 @@ export const mockSupabase = {
       // **The retirement trigger, mirrored.** Without this an ordinary field
       // edit un-retires ground in the mock while the real database silently
       // refuses -- and PR 3's UI would be built against the fiction.
+      const todayIso = () => new Date().toISOString().slice(0, 10);
+
+      // `public.field_is_live_on(p_effective_to)` with the default `p_on`.
+      // Inclusive on the end date; NULL means unbounded and therefore live.
+      const fieldIsLiveOn = (effectiveTo) =>
+        effectiveTo === null || effectiveTo === undefined || String(effectiveTo) >= todayIso();
+
       const applyRetirementTrigger = (row) => {
-        const todayIso = new Date().toISOString().slice(0, 10);
-        if (row.effective_to && String(row.effective_to) < todayIso) row.active = false;
+        if (row.effective_to && !fieldIsLiveOn(row.effective_to)) row.active = false;
         return row;
       };
 
@@ -2401,19 +2407,34 @@ export const mockSupabase = {
           };
         }
         const previous = { ...field };
-        // **`active` follows the DATE**, mirroring field_is_live_on(). A
-        // future-dated retirement leaves the field live until the date
-        // arrives; setting false unconditionally pulled it from the scheduler
-        // for the whole period this call just reported as unaffected.
+        audit('field', field.id, 'updated', {
+          operation: 'admin_retire_field',
+          phase: 'before',
+          effective_to: p.p_effective_to,
+          confirmed: Boolean(p.p_confirm),
+          affected_count: affected.length,
+          affected,
+          before: previous,
+        });
+        // **A retirement can only ever REMOVE activity. It never grants it.**
+        // `v_before.active AND field_is_live_on(p_effective_to)`, exactly as
+        // the SQL writes it. This said `active: true` unconditionally, so
+        // retiring an ALREADY-DEACTIVATED field with a future date handed it
+        // back to the scheduler -- while `docs/sql/20260906000000_smoke.sql`
+        // asserted the opposite in Postgres. The mock was the arm that did not
+        // get round 2's fix.
         Object.assign(field, {
           effective_to: p.p_effective_to,
-          active: true,
+          active: previous.active !== false && fieldIsLiveOn(p.p_effective_to),
           updated_at: new Date().toISOString(),
         });
         applyRetirementTrigger(field);
         audit('field', field.id, 'updated', {
           operation: 'admin_retire_field',
           phase: 'after',
+          effective_to: p.p_effective_to,
+          confirmed: Boolean(p.p_confirm),
+          affected_count: affected.length,
           previous,
           current: field,
         });
@@ -2426,14 +2447,26 @@ export const mockSupabase = {
 
       if (name === 'admin_unretire_field') {
         const previous = { ...field };
+        audit('field', field.id, 'updated', {
+          operation: 'admin_unretire_field',
+          phase: 'before',
+          before: previous,
+        });
+        // **Unretiring clears the date and leaves `active` exactly as it was.**
+        // `active = v_before.active` in the SQL. This wrote `active: true`, so
+        // unretiring an ORDINARILY deactivated field -- one nobody ever retired
+        // -- silently reactivated it. Worse than a divergence: the suite
+        // asserted `after.active === true` right after an unretire, so a
+        // passing test certified the bug rather than catching it.
         Object.assign(field, {
           effective_to: null,
-          active: true,
+          active: previous.active !== false,
           updated_at: new Date().toISOString(),
         });
         applyRetirementTrigger(field);
         audit('field', field.id, 'updated', {
           operation: 'admin_unretire_field',
+          phase: 'after',
           previous,
           current: field,
         });
