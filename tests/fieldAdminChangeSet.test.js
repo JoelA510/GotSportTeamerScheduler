@@ -11,6 +11,10 @@
  * `main` more than once.
  */
 
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 import { describe, it, expect } from 'vitest';
 
 import {
@@ -34,7 +38,12 @@ import {
   splitByInterpretation,
   subjectIdentity,
 } from '@squadlogic/core/fieldAdmin/index.js';
-import { IDENTITY_SHAPES, findIdentityShapes } from '@squadlogic/core/privacy/index.js';
+import {
+  COMMON_ABBREVIATIONS,
+  IDENTITY_SHAPES,
+  findIdentityShapes,
+  withoutCommonAbbreviations,
+} from '@squadlogic/core/privacy/index.js';
 
 /* -------------------------------------------------------------------------- */
 /* Builders                                                                    */
@@ -607,6 +616,134 @@ describe('fieldAdmin :: the privacy guard on an operator-written note', () => {
     expect(findIdentityShapes('closed after 6 p.m.', { allowCommonAbbreviations: true })).toEqual(
       []
     );
+  });
+
+  it('never hides an identity shape behind an abbreviation', () => {
+    // **The property the guard actually depends on**, and it is stronger than
+    // "the regex is escaped": stripping abbreviations must not remove anything
+    // a shape would have caught. If it did, the note guard would return
+    // "clean" having examined less than it claims - the hollow-guarantee shape
+    // in the one module where it costs the most.
+    //
+    // The initialism shape is the deliberate exception, and only for the
+    // abbreviation itself: that is the whole purpose of the narrowing.
+    let checked = 0;
+    for (const { name, samples } of IDENTITY_SHAPES) {
+      if (name === 'initialism') continue;
+      for (const sample of samples) {
+        for (const abbreviation of COMMON_ABBREVIATIONS) {
+          const text = `closed ${abbreviation} ${sample}`;
+          const strict = findIdentityShapes(text).map((hit) => hit.shape);
+          const narrowed = findIdentityShapes(text, { allowCommonAbbreviations: true }).map(
+            (hit) => hit.shape
+          );
+          expect({ name, abbreviation, found: strict.includes(name) }).toEqual({
+            name,
+            abbreviation,
+            found: true,
+          });
+          expect({ name, abbreviation, stillFound: narrowed.includes(name) }).toEqual({
+            name,
+            abbreviation,
+            stillFound: true,
+          });
+          checked += 1;
+        }
+      }
+    }
+    // Meta-assertion: a loop that examined nothing would pass silently.
+    expect(checked).toBeGreaterThan(30);
+  });
+
+  it('still sees a real initialism standing beside an abbreviation', () => {
+    // The narrowing removes the abbreviation, not the shape. A club acronym in
+    // the same sentence must survive.
+    const text = 'closed after 6 p.m. for the S.R.F.C. tournament';
+    expect(
+      findIdentityShapes(text, { allowCommonAbbreviations: true }).map((hit) => hit.shape)
+    ).toEqual(['initialism']);
+    expect(NoteSchema.safeParse(text).success).toBe(false);
+  });
+
+  it('scans for literals, so a regex metacharacter in the list is inert', () => {
+    // The control for removing the escaping class. `COMMON_ABBREVIATIONS` is
+    // exported and meant to grow, and the realistic route to the old defect was
+    // someone adding `no.(rev.)` - not an attacker. Passed as a *test-local*
+    // list; the exported constant must never carry these.
+    for (const hostile of ['no.(rev.)', 's+p', 'a[b', 'c\\d', '.*', '^$']) {
+      const text = `keep ${hostile} keep`;
+      // Neither throws...
+      const stripped = withoutCommonAbbreviations(text, [hostile]);
+      // ... nor strips more than the literal itself, which a pattern built by
+      // an incomplete escape would have done - `.*` above is the clearest case.
+      expect({ hostile, stripped }).toEqual({ hostile, stripped: 'keep  keep' });
+    }
+  });
+
+  it('leaves text alone when a hostile entry does not literally occur', () => {
+    // The other half: an entry that would match everything as a pattern must
+    // match nothing as a literal.
+    expect(withoutCommonAbbreviations('closed for reseeding', ['.*'])).toBe('closed for reseeding');
+    expect(withoutCommonAbbreviations('a.b c', ['c\\d'])).toBe('a.b c');
+  });
+
+  it('builds no regular expression from a value, anywhere in the module', () => {
+    // The class, asserted gone rather than described as gone. Two sites used to
+    // construct one: the abbreviation stripper (from a list entry) and
+    // `findIdentityShapes` (from `pattern.source`, to strip a `g` flag).
+    // Neither exists now - the first scans for literals, the second forbids the
+    // flag at the source instead - so the module has nothing to escape.
+    const source = readFileSync(
+      path.resolve(
+        path.dirname(fileURLToPath(import.meta.url)),
+        '../packages/core/src/privacy/textShapes.js'
+      ),
+      'utf8'
+    );
+    const code = source.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/[^\n]*/gm, '$1 ');
+    // Meta-assertion: a comment stripper that ate the file would make the line
+    // below pass over nothing.
+    expect(code).toContain('export function withoutCommonAbbreviations');
+    expect(code).not.toContain('new RegExp');
+  });
+
+  it('refuses a global identity shape at module load', () => {
+    // Why the rebuild could be removed: `String.match` with a `g` pattern
+    // returns every match rather than a match object, and a shared `g` pattern
+    // carries `lastIndex` between calls. Forbidding the flag is what makes
+    // using the declared pattern directly safe.
+    for (const { name, pattern } of IDENTITY_SHAPES) {
+      expect({ name, global: pattern.global }).toEqual({ name, global: false });
+    }
+  });
+
+  it('keeps its indices exact when a character lowercases to two', () => {
+    // A defect found while writing this file, not by review: the scan
+    // pre-computed `source.toLowerCase()` and indexed into it with offsets from
+    // `source`. `'\u0130'.toLowerCase()` is two code units, so one such
+    // character slid every later offset and the scan compared the wrong
+    // positions. This instance failed safe - the abbreviation was simply not
+    // stripped - but a misaligned match strips characters that are not the
+    // abbreviation, and this runs *before* the identity scan, so it could break
+    // an address apart until no shape matched it.
+    expect(withoutCommonAbbreviations('\u0130\u0130\u0130 p.m.')).toBe('\u0130\u0130\u0130 ');
+    expect(withoutCommonAbbreviations('\u0130 closed p.m. rest')).toBe('\u0130 closed  rest');
+
+    // ... and the shapes that matter survive it.
+    const text = '\u0130 p.m. zzq@zzqfictional.example';
+    const narrowed = findIdentityShapes(text, { allowCommonAbbreviations: true }).map(
+      (hit) => hit.shape
+    );
+    expect(narrowed).toContain('email');
+    expect(narrowed).toContain('non-ascii-letter');
+  });
+
+  it('removes an abbreviation only as a whole token', () => {
+    expect(withoutCommonAbbreviations('p.m.')).toBe('');
+    expect(withoutCommonAbbreviations('a p.m. b')).toBe('a  b');
+    // Inside a longer dotted run it is left exactly where the shape can see it.
+    expect(withoutCommonAbbreviations('Xp.m.')).toBe('Xp.m.');
+    expect(withoutCommonAbbreviations('S.p.m.C.')).toBe('S.p.m.C.');
   });
 
   it('names what tripped, so an operator can fix the value', () => {

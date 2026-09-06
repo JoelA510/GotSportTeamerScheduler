@@ -175,23 +175,105 @@ export const COMMON_ABBREVIATIONS = Object.freeze([
 ]);
 
 /**
+ * Is this character part of a word, for the purpose of token boundaries?
+ *
+ * ASCII letters and the dot. No regular expression, because the whole point of
+ * the scan below is that this module builds no pattern from a value.
+ *
+ * @param {string|undefined} character
+ * @returns {boolean}
+ */
+function isLetterOrDot(character) {
+  if (character === undefined) return false;
+  if (character === '.') return true;
+  return (character >= 'a' && character <= 'z') || (character >= 'A' && character <= 'Z');
+}
+
+/**
+ * The abbreviations, longest first, lowercased once.
+ *
+ * Longest first so a shorter entry cannot shadow a longer one that it prefixes.
+ */
+const ABBREVIATIONS_BY_LENGTH = Object.freeze(
+  [...COMMON_ABBREVIATIONS].sort((a, b) => b.length - a.length).map((entry) => entry.toLowerCase())
+);
+
+/**
  * Remove the abbreviations above, so what is left can be tested for shapes.
  *
+ * **A scan, not a pattern.** The first version built a `RegExp` per abbreviation
+ * with `abbreviation.replace(/\./g, '\\.')`, which escapes the dot and nothing
+ * else - not the backslash, not `(`, `+`, `?` or `[`. CodeQL flagged it high and
+ * was right to, but the reason to fix it properly is not the exploit:
+ *
+ * - This runs **only** on the `allowCommonAbbreviations` path, which is the
+ *   blackout-note PII guard. A mis-built pattern strips text *before*
+ *   {@link findIdentityShapes} scans it, so the guard would return "clean"
+ *   having examined less than it claims - the hollow-guarantee shape in the one
+ *   module where it costs the most, and nothing would announce the narrowing.
+ * - {@link COMMON_ABBREVIATIONS} is exported and meant to grow. The realistic
+ *   route to the defect is not an attacker but someone adding `no.(rev.)` and
+ *   getting a pattern that matches the wrong thing or throws at module load.
+ *
+ * The abbreviations are a fixed list of literals, so finding them needs no
+ * pattern at all. Scanning by index removes the class rather than guarding
+ * against it, which is the move `blankCellMessage()` made in 8.3: build from
+ * the input, so the failure mode stops existing.
+ *
+ * **Whole-token only**: an abbreviation is removed when neither the character
+ * before it nor the character after it is a letter or a dot, so the `p.m.`
+ * inside `Xp.m.` and the one inside `S.p.m.C.` are both left exactly where an
+ * identity shape can still see them.
+ *
  * @param {string} text
+ * @param {ReadonlyArray<string>} [abbreviations] - defaults to the frozen list;
+ *   a parameter so a test can prove the scan against entries the exported
+ *   constant must never carry
  * @returns {string}
  */
-function withoutCommonAbbreviations(text) {
-  let remaining = text;
-  for (const abbreviation of COMMON_ABBREVIATIONS) {
-    // Case-insensitive, whole-token: a `p.m.` inside `Xp.m.` is not an
-    // abbreviation and is left where the shape can still see it.
-    const pattern = new RegExp(
-      `(^|[^A-Za-z.])${abbreviation.replace(/\./g, '\\.')}(?![A-Za-z.])`,
-      'gi'
-    );
-    remaining = remaining.replace(pattern, '$1');
+export function withoutCommonAbbreviations(text, abbreviations = ABBREVIATIONS_BY_LENGTH) {
+  const source = String(text ?? '');
+  const ordered =
+    abbreviations === ABBREVIATIONS_BY_LENGTH
+      ? abbreviations
+      : [...abbreviations].sort((a, b) => b.length - a.length).map((entry) => entry.toLowerCase());
+
+  let kept = '';
+  let index = 0;
+  while (index < source.length) {
+    const startsToken = !isLetterOrDot(source[index - 1]);
+    // **The candidate slice is lowercased, never the whole string.**
+    //
+    // The first version of this scan pre-computed `source.toLowerCase()` and
+    // indexed into it with offsets taken from `source`. `String.toLowerCase()`
+    // can change length - `\u0130` (Latin capital I with dot above) lowercases
+    // to two code units - so a single such character anywhere earlier in the
+    // note slid every subsequent offset, and the scan then compared the wrong
+    // positions. Measured: `"\u0130\u0130\u0130 p.m."` kept its `p.m.`
+    // entirely. That instance failed safe, but the general shape does not - a
+    // misaligned match strips characters that are not the abbreviation, and
+    // this runs *before* the identity scan, so it could break an address or a
+    // phone number apart until no shape matched it.
+    //
+    // Comparing a slice of `source` keeps the indices exact by construction. A
+    // slice whose lowercase form changes length simply fails the comparison,
+    // which is the safe direction.
+    const matched = startsToken
+      ? ordered.find(
+          (abbreviation) =>
+            abbreviation.length > 0 &&
+            source.slice(index, index + abbreviation.length).toLowerCase() === abbreviation &&
+            !isLetterOrDot(source[index + abbreviation.length])
+        )
+      : undefined;
+    if (matched !== undefined) {
+      index += matched.length;
+      continue;
+    }
+    kept += source[index];
+    index += 1;
   }
-  return remaining;
+  return kept;
 }
 
 /**
@@ -214,11 +296,34 @@ export function findIdentityShapes(text, options = {}) {
   /** @type {Array<{ shape: string, match: string }>} */
   const hits = [];
   for (const { name, pattern } of IDENTITY_SHAPES) {
-    // A fresh RegExp per test: the declared patterns are shared, and a `g` flag
-    // added to one later would otherwise make `lastIndex` leak between calls.
-    const scanner = new RegExp(pattern.source, pattern.flags.replace('g', ''));
-    const hit = value.match(scanner);
+    // **The declared pattern, used directly.** This used to rebuild a scanner
+    // as `new RegExp(pattern.source, pattern.flags.replace('g', ''))` to strip
+    // a `g` flag that would leak `lastIndex` between calls. That was a second
+    // pattern built from a value in a module whose whole job is to be
+    // trustworthy, so the flag is forbidden at the source instead - see the
+    // module-load check below - and there is now nothing to rebuild. This
+    // module constructs no `RegExp` from any value at all.
+    const hit = value.match(pattern);
     if (hit) hits.push({ shape: name, match: hit[0] });
   }
   return hits;
+}
+
+/**
+ * **No declared shape may be global**, checked at module load.
+ *
+ * `String.prototype.match` with a `g` pattern returns every match rather than a
+ * match object, and a `g` pattern shared across calls carries `lastIndex`
+ * between them - so a global entry here would make {@link findIdentityShapes}
+ * report the wrong text, or intermittently report nothing at all. Throwing on
+ * load makes that impossible to add quietly; the alternative was rebuilding
+ * every pattern on every call, which is the construction this module has just
+ * removed.
+ */
+for (const { name, pattern } of IDENTITY_SHAPES) {
+  if (pattern.global) {
+    throw new Error(
+      `privacy/textShapes: the "${name}" shape carries the g flag; identity shapes are matched one at a time and must not be global`
+    );
+  }
 }

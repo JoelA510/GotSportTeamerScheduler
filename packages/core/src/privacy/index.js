@@ -17,5 +17,6 @@ export {
   IDENTITY_SHAPE_NAMES,
   collapseInitialisms,
   findIdentityShapes,
+  withoutCommonAbbreviations,
   words,
 } from './textShapes.js';

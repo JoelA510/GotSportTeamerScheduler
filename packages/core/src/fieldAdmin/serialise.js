@@ -221,7 +221,14 @@ export function renderCell(column, value) {
  */
 export function readCell(column, cell) {
   if (STRUCTURED_COLUMNS.has(column)) {
-    if (cell === '') return [];
+    // **`''` reads back as `null`, not as `[]`.** An empty array is written
+    // `[]` and an absent value is written `''`, so the two are already
+    // distinguishable on the page; mapping both to `[]` would make a nullable
+    // structured column round-trip as `null -> '' -> [] -> '[]'` - a changed
+    // file for an unchanged record. No column is nullable today, so this path
+    // is unreachable on the current model and a `null` would fail the schema
+    // loudly rather than pass silently, which is the direction to fail in.
+    if (cell === '') return null;
     try {
       return JSON.parse(cell);
     } catch (error) {
