@@ -58,7 +58,10 @@ import { describe, it, expect } from 'vitest';
 
 import {
   buildAvailabilityCalendarFromSeason2026,
+  buildClosureSet,
+  checkClosures,
   checkKickoffAvailability,
+  findClosureBreaches,
   latestLegalKickoff,
   resolveLighting,
 } from '@squadlogic/core/availability/index.js';
@@ -220,7 +223,46 @@ const CENSUS = census();
  *
  * @type {Record<string, Array<{ label: string, run: () => unknown, expectCode: string|null, reason?: string }>>}
  */
+/** One all-day closure over the whole of Alder, so a real booking would be inside it. */
+const closureSet = buildClosureSet(graph, {
+  closures: [
+    {
+      id: 'alder-shut',
+      fromDate: DATE,
+      toDate: DATE,
+      startMinutes: 0,
+      endMinutes: 23 * 60,
+      allDay: true,
+      scope: { kind: 'venue', venueIds: [graph.surfaces[REAL].venueId] },
+      reason: 'census',
+    },
+  ],
+});
+
 const REPORTS = {
+  'availability/closures.js': [
+    {
+      label: 'checkClosures()',
+      expectCode: FACILITY_REASON.SURFACE_UNKNOWN,
+      run: () =>
+        checkClosures(graph, closureSet, {
+          id: 'ghost',
+          surfaceId: GHOST,
+          date: DATE,
+          startMinutes: 600,
+          endMinutes: 660,
+        }),
+    },
+    {
+      label: 'findClosureBreaches()',
+      expectCode: FACILITY_REASON.SURFACE_UNKNOWN,
+      run: () =>
+        findClosureBreaches(graph, closureSet, [
+          { id: 'ghost', surfaceId: GHOST, date: DATE, startMinutes: 600, endMinutes: 660 },
+          { id: 'real', surfaceId: REAL, date: DATE, startMinutes: 600, endMinutes: 660 },
+        ]),
+    },
+  ],
   'availability/kickoff.js': [
     {
       label: 'checkKickoffAvailability()',
