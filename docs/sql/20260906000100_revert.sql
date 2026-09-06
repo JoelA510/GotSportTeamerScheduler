@@ -23,7 +23,10 @@ DROP VIEW IF EXISTS public.field_closures;
 DROP INDEX IF EXISTS public.idx_field_blackouts_location_date;
 DROP INDEX IF EXISTS public.idx_field_blackouts_field_date;
 
+-- Both names: the one this migration shipped with and the one it was renamed
+-- to, so the revert works whichever version of the forward migration ran.
 DROP POLICY IF EXISTS "Field Blackouts: members select" ON public.field_blackouts;
+DROP POLICY IF EXISTS "Admin field blackouts: members select" ON public.field_blackouts;
 DROP TRIGGER IF EXISTS field_blackouts_set_timestamp ON public.field_blackouts;
 DROP TABLE IF EXISTS public.field_blackouts;
 

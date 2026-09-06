@@ -25,6 +25,20 @@ BEGIN
   WHERE n.nspname='public' AND c.relname='field_blackouts';
   IF v_using = 'true' THEN RAISE EXCEPTION 'field_blackouts policy is USING (true)'; END IF;
 
+  -- **The two blackout tables must not share a policy NAME.** They shipped with
+  -- the same one, which is legal (names are per-table) and reader-hostile on
+  -- exactly the pair a maintainer confuses: one label, two tables, on the
+  -- question of which one holds admin-authored closures. Asserted rather than
+  -- renamed-and-hoped, and asserted as a COLLISION rather than as a literal, so
+  -- renaming either table's policy again cannot quietly re-create it.
+  IF EXISTS (
+    SELECT 1 FROM pg_policies a JOIN pg_policies b
+      ON a.policyname = b.policyname AND a.tablename <> b.tablename
+    WHERE a.schemaname='public' AND b.schemaname='public'
+      AND a.tablename = 'field_blackouts'
+      AND b.tablename = 'field_blackout_windows'
+  ) THEN RAISE EXCEPTION 'field_blackouts and field_blackout_windows share a policy name'; END IF;
+
   -- FIVE, not four: the inline reason enum is named field_blackouts_reason_check
   -- and matches this pattern too. The first draft said four and an operator
   -- reading a correct run would have concluded the migration was wrong.

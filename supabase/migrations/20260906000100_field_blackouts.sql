@@ -121,8 +121,15 @@ ALTER TABLE public.field_blackouts ENABLE ROW LEVEL SECURITY;
 -- Members read; nobody writes through the table. Writes go through the admin
 -- RPCs below, which are SECURITY DEFINER and gate on is_org_admin. There is
 -- deliberately no USING (true) anywhere here.
+-- **A different name from the one on `field_blackout_windows`.** Both policies
+-- were called "Field Blackouts: members select". Legal -- policy names are
+-- per-table -- and reader-hostile, because these two tables are precisely the
+-- pair a maintainer will confuse: `\dp`, a policy listing, or a grep for the
+-- name returns two rows on two tables with one label between them, on exactly
+-- the question of which table an admin-authored closure lives in.
 DROP POLICY IF EXISTS "Field Blackouts: members select" ON public.field_blackouts;
-CREATE POLICY "Field Blackouts: members select"
+DROP POLICY IF EXISTS "Admin field blackouts: members select" ON public.field_blackouts;
+CREATE POLICY "Admin field blackouts: members select"
   ON public.field_blackouts FOR SELECT
   TO authenticated
   USING (public.is_org_member(organization_id));
