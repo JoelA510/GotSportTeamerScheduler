@@ -339,6 +339,49 @@ describe('fieldAdmin :: the partition reconciliation can fail', () => {
   });
 });
 
+describe('fieldAdmin :: a subject nothing looked at is not applicable', () => {
+  it('refuses to call a subject applicable when every compared field was absent', () => {
+    // Measured: a two-subject set whose compared fields are all absent returned
+    // status `clean` and "2 of 2 subject(s) could be applied", having performed
+    // zero comparisons. `CHANGE_SET_UNCOMPARED` guarded only the aggregate, so
+    // a set that compared *something* somewhere could still carry a subject
+    // nothing had looked at, reported as safe to apply.
+    const bare = (id) => ({ id, a: null, b: null });
+    const set = buildChangeSet({
+      subject: 'absent',
+      keyFields: ['id'],
+      comparedFields: ['a', 'b'],
+      current: { label: 'held', records: [bare('x')] },
+      proposed: { label: 'proposed', rows: [row('x', bare('x'))] },
+    });
+    expect(set.buckets.matched).toHaveLength(1);
+    expect(set.buckets.matched[0].applicable).toBe(false);
+    expect(set.buckets.matched[0].notApplicableReason).toMatch(/no field could be compared/);
+    expect(set.meta.subjectsApplicable).toBe(0);
+  });
+
+  it('still applies a subject that agreed on something', () => {
+    // The other direction, so the fix cannot be "nothing is ever applicable".
+    const partial = (id, value) => ({ id, a: value, b: null });
+    const set = buildChangeSet({
+      subject: 'partial',
+      keyFields: ['id'],
+      comparedFields: ['a', 'b'],
+      current: { label: 'held', records: [partial('x', 'same')] },
+      proposed: { label: 'proposed', rows: [row('x', partial('x', 'same'))] },
+    });
+    expect(set.buckets.matched[0].applicable).toBe(true);
+    expect(set.meta.subjectsApplicable).toBe(1);
+  });
+
+  it('does not touch an addition, which has nothing to compare against', () => {
+    // An `added` subject legitimately compares nothing - there is no held
+    // record - and must stay applicable, or a first import could apply nothing.
+    const set = build([], [row('b1', blackout('b1'))]);
+    expect(set.buckets.added[0].applicable).toBe(true);
+  });
+});
+
 describe('fieldAdmin :: a comparison that compares nothing says so', () => {
   it('reports a change set over zero subjects as vacuous', () => {
     const set = build([], []);

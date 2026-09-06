@@ -151,6 +151,23 @@ describe('season-2026 field import :: the two decoder rings', () => {
     ]);
   });
 
+  it('states the comparisons it actually made', () => {
+    // Pinned so a count in prose cannot drift from the code again: a comment in
+    // `changeSet.js` claimed 54 and the measured figure was 40.
+    expect(rings.meta.sourceComparisons).toBe(40);
+    // 40 is 2 records compared over 20 shared codes: the ring subject compares
+    // one field, and every shared code contributes one comparison per ring.
+    expect(rings.meta.sourceComparisons).toBe(
+      2 *
+        [...rings.buckets.matched, ...rings.buckets.differing, ...rings.buckets.added].filter(
+          (subject) => subject.rows.length === 2
+        ).length
+    );
+    // ... and no comparison against held state happened, because a first import
+    // holds nothing. That is what makes `sourceComparisons` load-bearing.
+    expect(rings.meta.fieldComparisons).toBe(0);
+  });
+
   it('reads 20 shared codes and 27 rows in all', () => {
     // The universe, enumerated from the rings rather than from the
     // disagreements: a code dropped by a projector shows up here as a smaller

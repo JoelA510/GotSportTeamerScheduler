@@ -155,6 +155,14 @@ export const FIELD_ADMIN_REASON = Object.freeze({
    * Two sources describe one subject and disagree. **Both are carried and
    * neither is preferred.** The club's two decoder rings disagree on 12 of the
    * 20 codes they share; this is the code that says so per subject.
+   *
+   * That 12 is the count over **`actual_label`** - what each ring *calls* the
+   * ground. Including the venue cell gives 13, because `11v11 Field 1` has both
+   * rings writing `Willowmead Park Turf` while the practice ring leaves the
+   * venue blank; the thirteenth is reported on the interpretation axis. Labels
+   * are the right scope because `compareDecoderRings()` in the corpus loader is
+   * the single producer of "decoder-ring disagreement" and it compares labels,
+   * so a second scope here would be a second producer of one derived status.
    */
   SOURCES_DISAGREE: 'SOURCES_DISAGREE',
 

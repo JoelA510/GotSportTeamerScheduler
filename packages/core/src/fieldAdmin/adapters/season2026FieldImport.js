@@ -14,9 +14,16 @@
  * ## Why the rings compare `label` and nothing else
  *
  * The acceptance criterion counts **decoder-ring disagreements**, and that is a
- * comparison of what each ring *calls* the ground. It is the comparison
- * `compareDecoderRings()` makes in the loader and the one
- * `ALIAS_LABEL_AGREEMENT` describes in `facility/aliases.js`; both count 12.
+ * comparison of what each ring *calls* the ground - the sheets' `actual_label`
+ * column, and nothing else. It is the comparison `compareDecoderRings()` makes
+ * in the loader and the one `ALIAS_LABEL_AGREEMENT` describes in
+ * `facility/aliases.js`; both count 12.
+ *
+ * `compareDecoderRings()` is the **single producer** of "decoder-ring
+ * disagreement". Comparing a different set of fields here would be a second
+ * producer of one derived status, which is the defect Phase 8.0's first review
+ * round already found once - so the scope is not a preference, it is the one
+ * the existing producer sets.
  *
  * Adding `venueIds` or `surfaceIds` to the compared set silently redefines the
  * word and breaks the count. It was measured rather than reasoned about: with

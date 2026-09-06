@@ -6,6 +6,18 @@
  * `field_code_names.csv` from the fields workbook. Neither is marked
  * authoritative anywhere in the source, so nothing here prefers one.
  *
+ * the scope matters and only the adapter used to state it: **12 is the count over
+ * `actual_label`** - what each ring *calls* the ground. Including the venue cell
+ * gives **13**, because `11v11 Field 1` has both rings writing
+ * `Willowmead Park Turf` while the practice ring leaves the venue blank; that
+ * thirteenth is reported on the interpretation axis, where a row that names no
+ * venue belongs.
+ *
+ * Labels are the right scope because `compareDecoderRings()` in the corpus
+ * loader is the single producer of "decoder-ring disagreement", and it compares
+ * labels. A second scope here would be a second producer of one derived status,
+ * which is the defect Phase 8.0's first review round already found once.
+ *
  * ## The 12, and why every one of them is `differing`
  *
  * The composition is **11 label conflicts plus 1 blank-vs-label**, and the blank

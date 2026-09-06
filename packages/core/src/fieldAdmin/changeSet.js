@@ -42,6 +42,18 @@
  * attaches the disagreement's **kind** so the composition survives the count.
  * It does not pick, and it does not reconcile.
  *
+ * the scope matters and only the adapter used to state it: **12 is the count over
+ * `actual_label`** - what each ring *calls* the ground. Including the venue cell
+ * gives **13**, because `11v11 Field 1` has both rings writing
+ * `Willowmead Park Turf` while the practice ring leaves the venue blank; that
+ * thirteenth is reported on the interpretation axis, where a row that names no
+ * venue belongs.
+ *
+ * Labels are the right scope because `compareDecoderRings()` in the corpus
+ * loader is the single producer of "decoder-ring disagreement", and it compares
+ * labels. A second scope here would be a second producer of one derived status,
+ * which is the defect Phase 8.0's first review round already found once.
+ *
  * @module fieldAdmin/changeSet
  */
 
@@ -624,9 +636,25 @@ export function buildChangeSet(input) {
     const comparison = compareRecords(held, record, comparedFields);
     fieldComparisons += comparison.comparisons;
     const isDifferent = comparison.changedFields.length > 0 || disagreement !== null;
+    // **A subject nothing looked at is not a subject that agreed.**
+    //
+    // A pair whose every compared field is absent on one side or the other
+    // lands in `matched` with no changed fields - and used to report
+    // `applicable: true` having performed zero comparisons.
+    // `CHANGE_SET_UNCOMPARED` guards only the aggregate, so a set that compared
+    // something *somewhere* could still carry a subject nothing had examined,
+    // reported as safe to apply. Measured: a two-subject set came back `clean`
+    // with "2 of 2 subject(s) could be applied".
+    //
+    // An `added` subject is deliberately not caught by this: it compares
+    // nothing because there is nothing held to compare against, which is a
+    // different statement from "we looked and learned nothing".
+    const nothingCompared = comparison.comparisons === 0;
     const notApplicable = heldAmbiguous
       ? `${heldRecords.length} held records share this identity, so there is no single record to compare against`
-      : null;
+      : nothingCompared
+        ? `no field could be compared: ${comparison.absentFields.join(', ')} ${comparison.absentFields.length === 1 ? 'is' : 'are'} absent on one side or the other`
+        : null;
     /** @type {import('./types.js').ChangeSetSubject} */
     const entry = {
       key,
@@ -639,7 +667,7 @@ export function buildChangeSet(input) {
       after: record,
       rows,
       sourceDisagreement: disagreement,
-      applicable: !isDifferent && !doubtful && !heldAmbiguous,
+      applicable: !isDifferent && !doubtful && !heldAmbiguous && !nothingCompared,
       notApplicableReason:
         notApplicable ??
         (disagreement
@@ -786,9 +814,14 @@ export function buildChangeSet(input) {
   const subjectsPartitioned = matched.length + differing.length + added.length + removed.length;
   // **Both kinds of comparison count.** A first import holds nothing, so no
   // `before`/`after` comparison happens at all - and yet comparing the two
-  // decoder rings against each other is 54 comparisons of real work. Judging
-  // vacuity on `fieldComparisons` alone reported the ring import, which found
-  // all 12 disagreements, as a change set that had looked at nothing.
+  // decoder rings against each other is real work: **40** comparisons on the
+  // season corpus, counted as `meta.sourceComparisons` and asserted in
+  // `tests/fieldAdminSeason2026Import.test.js` rather than written here from
+  // memory. (An earlier draft of this comment said 54, which was a guess; the
+  // ring subject compares one field over the 20 codes both rings carry, and the
+  // scan stops at the first field that differs.) Judging vacuity on
+  // `fieldComparisons` alone reported the ring import, which found all 12
+  // disagreements, as a change set that had looked at nothing.
   const comparisons = fieldComparisons + tally.sourceComparisons;
   if (subjectsPartitioned === 0) {
     findings.push(
