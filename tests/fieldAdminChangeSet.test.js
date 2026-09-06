@@ -362,6 +362,19 @@ describe('fieldAdmin :: the partition reconciliation can fail', () => {
       FIELD_ADMIN_REASON.CHANGE_SET_PARTITION_INCOMPLETE,
     ]);
     expect(findings[0].details).toMatchObject({ side: 'current', accounted: 1, expected: 2 });
+    // **The message and the details name every bucket, derived from BUCKET_OF.**
+    // Both were hand-written five-way enumerations, so a sixth disposition
+    // would have gone unreported while the message still read as a full
+    // accounting of the partition. Checked against the enum, not a literal.
+    for (const name of Object.values(BUCKET_OF)) {
+      expect({ name, inMessage: findings[0].message.includes(`${name} `) }).toEqual({
+        name,
+        inMessage: true,
+      });
+      expect({ name, inDetails: name in findings[0].details }).toEqual({ name, inDetails: true });
+    }
+    // The loop ran over the whole enum rather than an empty set.
+    expect(Object.values(BUCKET_OF)).toHaveLength(5);
   });
 
   it('fires when a subject is counted twice', () => {
@@ -763,7 +776,13 @@ describe('fieldAdmin :: a held key collision is named, never last-won', () => {
     // ... and the subject it collided on is not applicable, because which of
     // the two the proposal was compared against is not a question this module
     // may answer by picking.
-    expect(set.buckets.matched.concat(set.buckets.differing)[0].applicable).toBe(false);
+    // Found by key through the one producer rather than by concatenating the
+    // two buckets it is expected to be in: an ambiguous held key with nothing
+    // comparable would land in `uncompared`, and the two-bucket version would
+    // then read `undefined.applicable` instead of failing on the claim.
+    const collided = everySubject(set).find((subject) => subject.key === 'b1');
+    expect(collided).toBeDefined();
+    expect(collided.applicable).toBe(false);
   });
 
   it('counts every held record, so the partition reconciliation still balances', () => {

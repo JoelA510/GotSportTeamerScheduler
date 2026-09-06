@@ -393,11 +393,19 @@ export function changeSetPartitionFindings(partition, counts) {
   // First, so a partition missing a bucket is named rather than surfacing as a
   // `TypeError` from whichever line happens to read it first.
   assertEveryBucketPresent(partition);
-  const matched = partition.matched.length;
-  const differing = partition.differing.length;
-  const added = partition.added.length;
-  const removed = partition.removed.length;
-  const uncompared = partition.uncompared.length;
+  // **Derived from `BUCKET_OF`, not written out.** The five counts appear in
+  // two messages and two `details` objects below, and a hand-written list in
+  // any of the four is a place a sixth disposition would go unreported while
+  // the message still read as a full accounting.
+  const bucketCounts = Object.fromEntries(
+    Object.values(BUCKET_OF).map((name) => [
+      name,
+      /** @type {Record<string, unknown[]>} */ (/** @type {unknown} */ (partition))[name].length,
+    ])
+  );
+  const bucketSummary = Object.entries(bucketCounts)
+    .map(([name, count]) => `${name} ${count}`)
+    .join(', ');
   const unresolvable = partition.unresolvable.length;
 
   /** @type {import('./types.js').FieldAdminFinding[]} */
@@ -464,17 +472,13 @@ export function changeSetPartitionFindings(partition, counts) {
     findings.push(
       makeFieldAdminFinding(
         FIELD_ADMIN_REASON.CHANGE_SET_PARTITION_INCOMPLETE,
-        `the partition accounts for ${currentAccounted} held subject(s) of ${counts.currentSubjectsRead}: matched ${matched}, differing ${differing}, added ${added}, removed ${removed}, uncompared ${uncompared}`,
+        `the partition accounts for ${currentAccounted} held subject(s) of ${counts.currentSubjectsRead}: ${bucketSummary}`,
         {
           axis: 'disposition',
           side: 'current',
           accounted: currentAccounted,
           expected: counts.currentSubjectsRead,
-          matched,
-          differing,
-          added,
-          removed,
-          uncompared,
+          ...bucketCounts,
         }
       )
     );
@@ -485,17 +489,13 @@ export function changeSetPartitionFindings(partition, counts) {
     findings.push(
       makeFieldAdminFinding(
         FIELD_ADMIN_REASON.CHANGE_SET_PARTITION_INCOMPLETE,
-        `the partition accounts for ${proposedAccounted} proposed subject(s) of ${counts.projectedSubjects}: matched ${matched}, differing ${differing}, added ${added}, removed ${removed}, uncompared ${uncompared}`,
+        `the partition accounts for ${proposedAccounted} proposed subject(s) of ${counts.projectedSubjects}: ${bucketSummary}`,
         {
           axis: 'disposition',
           side: 'proposed',
           accounted: proposedAccounted,
           expected: counts.projectedSubjects,
-          matched,
-          differing,
-          added,
-          removed,
-          uncompared,
+          ...bucketCounts,
         }
       )
     );
@@ -1022,8 +1022,9 @@ export function buildChangeSet(input) {
     );
   }
 
-  const subjectsPartitioned =
-    matched.length + differing.length + added.length + removed.length + uncompared.length;
+  // Through the one producer: a hand-written five-way sum here is the last
+  // place a sixth disposition could be left out of the vacuity check.
+  const subjectsPartitioned = everySubject(partition).length;
   // **Both kinds of comparison count.** A first import holds nothing, so no
   // `before`/`after` comparison happens at all - and yet comparing the two
   // decoder rings against each other is real work: **40** comparisons on the
