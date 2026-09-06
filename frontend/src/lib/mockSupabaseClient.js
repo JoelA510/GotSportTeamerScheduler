@@ -721,9 +721,76 @@ if (typeof window !== 'undefined') {
   window.__MOCK_DB__ = getDB();
 }
 
+/**
+ * `public.field_closures`, derived the way the SQL view derives it.
+ *
+ * **Without this, PR 3 has no way to obey the single-reader rule in the mock.**
+ * The view is the only sanctioned answer to "is this ground closed on this
+ * date", and a mock with no counterpart forces the UI either to query the two
+ * tables directly -- reintroducing the two-answers defect the view exists to
+ * remove -- or to ship a view nothing exercises.
+ *
+ * The column split is the SQL's, deliberately: `closes_*` is SCOPE, and
+ * `field_location_id` is the site the closed field sits on, which is a
+ * different fact. They were one column once and a location filter closed every
+ * other pitch on the site.
+ *
+ * @param {Object} db
+ * @returns {Array<Object>}
+ */
+const deriveFieldClosures = (db) => {
+  const fields = db.fields || [];
+  const profiles = db.field_availability_profiles || [];
+  const fieldById = new Map(fields.map((f) => [String(f.id), f]));
+
+  const admin = (db.field_blackouts || []).map((b) => ({
+    id: b.id,
+    organization_id: b.organization_id,
+    closes_location_id: b.location_id ?? null,
+    closes_field_id: b.field_id ?? null,
+    field_location_id: b.field_id ? (fieldById.get(String(b.field_id))?.location_id ?? null) : null,
+    blackout_from: b.blackout_from,
+    blackout_until: b.blackout_until,
+    start_minutes: b.start_minutes ?? null,
+    end_minutes: b.end_minutes ?? null,
+    reason: b.reason ?? null,
+    note: b.note ?? null,
+    source_reason_text: null,
+    source: 'field_blackouts',
+  }));
+
+  const imported = (db.field_blackout_windows || []).flatMap((w) => {
+    const profile = profiles.find((p) => String(p.id) === String(w.profile_id));
+    if (!profile) return [];
+    const field = profile.field_id ? fieldById.get(String(profile.field_id)) : undefined;
+    return [
+      {
+        id: w.id,
+        organization_id: w.organization_id,
+        // NULL, not the field's site: an import window closes its profile's
+        // ground and is not site-scoped.
+        closes_location_id: null,
+        closes_field_id: profile.field_id ?? null,
+        field_location_id: field?.location_id ?? null,
+        blackout_from: w.blackout_from,
+        blackout_until: w.blackout_until,
+        start_minutes: null,
+        end_minutes: null,
+        // No structured reason on this arm; its own words are their own column.
+        reason: null,
+        note: null,
+        source_reason_text: w.reason ?? null,
+        source: 'field_blackout_windows',
+      },
+    ];
+  });
+
+  return [...admin, ...imported];
+};
+
 export const getMockData = (table, col, val) => {
   const db = getDB();
-  let results = db[table] || [];
+  let results = table === 'field_closures' ? deriveFieldClosures(db) : db[table] || [];
 
   if (col && val) {
     results = results.filter((item) => {
@@ -1964,6 +2031,26 @@ export const mockSupabase = {
         return row;
       };
 
+      // **`upper()` on a daterange, mirrored.** PostgreSQL normalizes a
+      // discrete range to `[lower, upper)`, so `upper('[a,b]')` is b + 1 and
+      // `upper('[a,b)')` is b. Both spellings appear in this repo's fixtures,
+      // and reading the closing literal as "the last day covered" would judge
+      // an inclusive range one day short -- an assignment on the retirement
+      // date itself would be reported unaffected. Returns null when there is
+      // no upper bound at all, which is what `upper_inf` is true for.
+      const rangeUpperBound = (range) => {
+        const text = String(range || '');
+        const match = /^[[(]([^,]*),([^,]*)([\])])$/.exec(text);
+        if (match === null) return null;
+        const end = match[2].trim();
+        if (end === '') return null;
+        if (match[3] === ')') return end;
+        const next = new Date(`${end}T00:00:00Z`);
+        if (Number.isNaN(next.getTime())) return null;
+        next.setUTCDate(next.getUTCDate() + 1);
+        return next.toISOString().slice(0, 10);
+      };
+
       const audit = (resourceType, resourceId, operation, payload) => {
         db.audit_log = db.audit_log || [];
         db.audit_log.push({
@@ -2142,12 +2229,32 @@ export const mockSupabase = {
           end_minutes: hasTimes ? p.p_end_minutes : null,
           reason: p.p_reason || 'other',
           note: p.p_note ?? null,
+          // The migration's column, which the mock omitted -- a row shape the
+          // database produces and the mock did not.
+          created_by: session?.user?.id ?? null,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         };
         db.field_blackouts = db.field_blackouts || [];
+        // Before/after phases, matching the RPC. The mock recorded a single
+        // undifferentiated entry, so nothing exercised the audit shape the
+        // migration is explicit about.
+        audit('field_blackout', null, 'created', {
+          operation: 'admin_create_field_blackout',
+          phase: 'before',
+          requested: {
+            location_id: p.p_location_id ?? null,
+            field_id: p.p_field_id ?? null,
+            blackout_from: p.p_blackout_from,
+            blackout_until: p.p_blackout_until,
+          },
+        });
         db.field_blackouts.push(blackout);
-        audit('field_blackout', blackout.id, 'created', { current: blackout });
+        audit('field_blackout', blackout.id, 'created', {
+          operation: 'admin_create_field_blackout',
+          phase: 'after',
+          current: blackout,
+        });
         saveDB(db);
         return { data: blackout, error: null };
       }
@@ -2164,7 +2271,16 @@ export const mockSupabase = {
         db.field_blackouts = (db.field_blackouts || []).filter(
           (item) => String(item.id) !== String(p.p_blackout_id)
         );
-        audit('field_blackout', existing.id, 'deleted', { previous: existing });
+        audit('field_blackout', existing.id, 'deleted', {
+          operation: 'admin_delete_field_blackout',
+          phase: 'before',
+          previous: existing,
+        });
+        audit('field_blackout', existing.id, 'deleted', {
+          operation: 'admin_delete_field_blackout',
+          phase: 'after',
+          deleted: true,
+        });
         saveDB(db);
         return { data: { deleted: true, blackout: existing }, error: null };
       }
@@ -2222,6 +2338,49 @@ export const mockSupabase = {
               undated: false,
               unbounded: !slot.valid_until,
             })),
+          // **The assignment tables, mirroring the SQL's four-way union.**
+          // The mock enumerated the two SLOT tables only, so the E2E client
+          // reported `affected_count: 0` for a field with every game assigned
+          // to it -- the migration's own header calls that out as gutting the
+          // acceptance criterion, and the mock reproduced the defect the SQL
+          // had already been fixed for. A mock that disagrees with the
+          // database about who is affected is a second answer to a question
+          // that is supposed to have one.
+          ...(db.game_assignments || [])
+            .filter(
+              (row) =>
+                String(row.organization_id) === String(orgId) &&
+                String(row.field_id) === String(p.p_field_id) &&
+                (!row.start || String(row.start).slice(0, 10) > String(p.p_effective_to))
+            )
+            .map((row) => ({
+              kind: 'game_assignment',
+              id: row.id,
+              on_date: row.start ? String(row.start).slice(0, 10) : null,
+              week_index: row.week_index ?? null,
+              undated: !row.start,
+              unbounded: false,
+            })),
+          ...(db.practice_assignments || [])
+            .filter((row) => {
+              if (String(row.organization_id) !== String(orgId)) return false;
+              if (String(row.field_id) !== String(p.p_field_id)) return false;
+              const upper = rangeUpperBound(row.effective_date_range);
+              // `null` upper covers both "no range at all" and an unbounded
+              // one; the SQL treats both as running forever.
+              return upper === null || upper > String(p.p_effective_to);
+            })
+            .map((row) => {
+              const upper = rangeUpperBound(row.effective_date_range);
+              return {
+                kind: 'practice_assignment',
+                id: row.id,
+                on_date: upper,
+                week_index: null,
+                undated: false,
+                unbounded: upper === null,
+              };
+            }),
         ];
         if (affected.length > 0 && !p.p_confirm) {
           audit('field', field.id, 'updated', {

@@ -13,11 +13,40 @@
  * the way it is bounded is that nothing writes one without the other.
  */
 
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { mockSupabase as supabase, getMockData } from '../frontend/src/lib/mockSupabaseClient.js';
 
 const ORG = 'org-1';
+
+/**
+ * The booking kinds `admin_retire_field` enumerates, read out of the
+ * migration rather than written down here.
+ *
+ * The mock enumerated two of the four tables while the SQL enumerated four,
+ * so a field with every game ASSIGNED to it reported `affected_count: 0` in
+ * the mock and refused correctly in the database. A hand-written list in this
+ * file would have agreed with whichever of the two it was copied from -- the
+ * exact shape of PR 1's `productionConsumers` defect. So the expected set is
+ * derived from the SQL and this file holds only the seeding.
+ *
+ * @returns {string[]} sorted `kind` literals
+ */
+const migrationKinds = () => {
+  const sql = readFileSync(
+    path.join(
+      path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'),
+      'supabase/migrations/20260906000000_field_effective_dating.sql'
+    ),
+    'utf8'
+  );
+  const cte = sql.slice(sql.indexOf('WITH affected AS ('), sql.indexOf('INTO v_affected'));
+  return [...new Set([...cte.matchAll(/SELECT '([a-z_]+)'::text/g)].map((m) => m[1]))].sort();
+};
 
 const setMockSession = (userId) => {
   sessionStorage.setItem('__MOCK_SESSION__', JSON.stringify({ user: { id: userId } }));
@@ -168,9 +197,15 @@ describe('field lifecycle RPCs :: retirement writes active and effective_to toge
     expect(data.reason).toBe('bookings_after_effective_to');
     expect(data.affected_count).toBeGreaterThanOrEqual(slots.length);
     expect(data.affected.length).toBe(data.affected_count);
-    // Game slots AND practice slots -- a retirement strands practice exactly as
-    // it strands games, and the first draft counted only games.
-    expect(data.affected.every((a) => ['game_slot', 'practice_slot'].includes(a.kind))).toBe(true);
+    // **Every kind is one the migration enumerates, and the list comes from
+    // the migration.** This assertion used to hold a hand-written pair --
+    // `['game_slot', 'practice_slot']` -- and it went red the moment the mock
+    // learned to see assignments, because the SEEDED CORPUS already contained
+    // assignments on this field that the mock had been silently omitting from
+    // every refusal. The literal pair was not merely incomplete; it was the
+    // thing certifying the omission as correct.
+    const kinds = migrationKinds();
+    expect(data.affected.every((a) => kinds.includes(a.kind))).toBe(true);
 
     // **Nothing was written.** A refusal that half-applied would be worse than
     // no guard at all.
@@ -470,5 +505,176 @@ describe('field lifecycle RPCs :: blackouts are scoped to exactly one thing', ()
       p_blackout_id: 'no-such-blackout',
     });
     expect(missing.error).not.toBeNull();
+  });
+});
+
+describe('field lifecycle RPCs :: the affected-booking family is the migration set, not a shorter one', () => {
+  beforeEach(() => {
+    sessionStorage.clear();
+    delete window.__MOCK_DB__;
+    setMockSession('mock-admin-id');
+  });
+
+  it('reads a non-empty family out of the migration', () => {
+    // The meta-assertion. A regex that matched nothing would make the test
+    // below assert that the mock produces the empty set, which every possible
+    // mock satisfies.
+    const kinds = migrationKinds();
+    expect(kinds.length).toBe(4);
+    expect(kinds).toEqual(['game_assignment', 'game_slot', 'practice_assignment', 'practice_slot']);
+  });
+
+  it('reports every kind the migration enumerates, assignments included', async () => {
+    const field = someField();
+    await supabase.from('game_slots').insert({
+      id: 'fam-gs',
+      organization_id: ORG,
+      field_id: field.id,
+      slot_date: '2099-01-01',
+      week_index: 3,
+    });
+    await supabase.from('game_assignments').insert({
+      id: 'fam-ga',
+      organization_id: ORG,
+      field_id: field.id,
+      start: '2099-01-02T18:00:00Z',
+      week_index: 4,
+    });
+    await supabase.from('practice_slots').insert({
+      id: 'fam-ps',
+      organization_id: ORG,
+      field_id: field.id,
+      valid_until: '2099-03-01',
+    });
+    await supabase.from('practice_assignments').insert({
+      id: 'fam-pa',
+      organization_id: ORG,
+      field_id: field.id,
+      effective_date_range: '[2098-01-01,2099-06-30]',
+    });
+
+    const { data, error } = await supabase.rpc('admin_retire_field', {
+      p_organization_id: ORG,
+      p_field_id: field.id,
+      p_effective_to: '2026-01-01',
+      p_confirm: false,
+    });
+    expect(error).toBeNull();
+    expect(data.retired).toBe(false);
+
+    const reported = [...new Set(data.affected.map((a) => a.kind))].sort();
+    expect(reported).toEqual(migrationKinds());
+
+    // ... and each seeded row is there by id, so "the kind appeared" is not
+    // satisfied by some other row of the same kind already in the corpus.
+    const byId = new Map(data.affected.map((a) => [String(a.id), a]));
+    for (const id of ['fam-gs', 'fam-ga', 'fam-ps', 'fam-pa']) {
+      expect(byId.has(id)).toBe(true);
+    }
+    expect(byId.get('fam-ga').on_date).toBe('2099-01-02');
+    expect(byId.get('fam-ga').week_index).toBe(4);
+    expect(byId.get('fam-ga').undated).toBe(false);
+    // **`upper()` normalizes an inclusive range to the day after.** Reading the
+    // closing literal as the last covered day would report 2099-06-30 here and
+    // judge an assignment on its final day unaffected.
+    expect(byId.get('fam-pa').on_date).toBe('2099-07-01');
+    expect(byId.get('fam-pa').unbounded).toBe(false);
+  });
+
+  it('calls an unbounded practice assignment certain, and an exclusive range by its literal', async () => {
+    const field = someField();
+    await supabase.from('practice_assignments').insert({
+      id: 'fam-pa-forever',
+      organization_id: ORG,
+      field_id: field.id,
+      effective_date_range: null,
+    });
+    await supabase.from('practice_assignments').insert({
+      id: 'fam-pa-open',
+      organization_id: ORG,
+      field_id: field.id,
+      effective_date_range: '[2098-01-01,)',
+    });
+    await supabase.from('practice_assignments').insert({
+      id: 'fam-pa-excl',
+      organization_id: ORG,
+      field_id: field.id,
+      effective_date_range: '[2098-01-01,2099-06-30)',
+    });
+
+    const { data } = await supabase.rpc('admin_retire_field', {
+      p_organization_id: ORG,
+      p_field_id: field.id,
+      p_effective_to: '2026-01-01',
+      p_confirm: false,
+    });
+    const byId = new Map(data.affected.map((a) => [String(a.id), a]));
+    // No range and an open upper bound both run forever: CERTAINLY stranded,
+    // not unjudged. `undated` would be the wrong answer, not a rounder one.
+    for (const id of ['fam-pa-forever', 'fam-pa-open']) {
+      expect(byId.get(id).unbounded).toBe(true);
+      expect(byId.get(id).undated).toBe(false);
+      expect(byId.get(id).on_date).toBeNull();
+    }
+    // An exclusive upper bound is already the exclusive upper: no day added.
+    expect(byId.get('fam-pa-excl').on_date).toBe('2099-06-30');
+    expect(byId.get('fam-pa-excl').unbounded).toBe(false);
+  });
+
+  it('counts an assignment with no date as affected rather than dropping it', async () => {
+    // The SQL's `ga.start IS NULL` arm. A booking that cannot be judged against
+    // the retirement date is UNDATED -- reported, flagged, and counted -- never
+    // dropped, because dropping it is how a retirement claims to strand nothing
+    // while stranding whatever it could not read.
+    const field = someField();
+    await supabase.from('game_assignments').insert({
+      id: 'fam-ga-undated',
+      organization_id: ORG,
+      field_id: field.id,
+      start: null,
+    });
+
+    const { data } = await supabase.rpc('admin_retire_field', {
+      p_organization_id: ORG,
+      p_field_id: field.id,
+      p_effective_to: '2098-01-01',
+      p_confirm: false,
+    });
+    const undated = data.affected.find((a) => String(a.id) === 'fam-ga-undated');
+    expect(undated).toBeDefined();
+    expect(undated.kind).toBe('game_assignment');
+    expect(undated.on_date).toBeNull();
+    // Could not be judged -- NOT "runs forever". Two different answers, and
+    // conflating them tells the operator something the data never said.
+    expect(undated.undated).toBe(true);
+    expect(undated.unbounded).toBe(false);
+  });
+
+  it('leaves an assignment that ends before the retirement out of the list', async () => {
+    // The negative direction. Without it, an arm that reported every
+    // assignment regardless of date would pass every assertion above.
+    const field = someField();
+    await supabase.from('game_assignments').insert({
+      id: 'fam-ga-past',
+      organization_id: ORG,
+      field_id: field.id,
+      start: '2020-01-02T18:00:00Z',
+    });
+    await supabase.from('practice_assignments').insert({
+      id: 'fam-pa-past',
+      organization_id: ORG,
+      field_id: field.id,
+      effective_date_range: '[2019-01-01,2020-06-30]',
+    });
+
+    const { data } = await supabase.rpc('admin_retire_field', {
+      p_organization_id: ORG,
+      p_field_id: field.id,
+      p_effective_to: '2098-01-01',
+      p_confirm: false,
+    });
+    const ids = new Set((data.affected || []).map((a) => String(a.id)));
+    expect(ids.has('fam-ga-past')).toBe(false);
+    expect(ids.has('fam-pa-past')).toBe(false);
   });
 });
