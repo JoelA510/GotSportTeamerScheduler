@@ -39,6 +39,7 @@ import {
   season2026PracticeSurfaceId,
   season2026SurfaceId,
   season2026VenueId,
+  surfacesConflict,
   surfacesOfAlias,
   toSeason2026AliasRings,
   toSeason2026FacilityGraphInput,
@@ -434,16 +435,40 @@ describe('closures :: a surface closure covers everything that shares its ground
       expect(finding.details.reason).toBe('Adaptive Sports Org Flag Football');
       expect(finding.details.fieldsRaw).toBe('4');
     }
-    // ... and not Pitch 3, which the overlap pair reaches but the closure does not.
-    expect(
-      blockingOf(
-        checkClosures(
-          graph,
-          closures,
-          booking('g', sid(ALDER, 'Pitch 3'), dates[0], 11 * 60, 12 * 60)
-        )
+    // The closure is an occupation of Pitch 4 by someone else, so it reaches
+    // exactly what a club booking of Pitch 4 would clash with: Pitch 3, across
+    // the declared {3, 4} overlap pair, and nothing across {1, 2}. The
+    // coverage names the facility relation that joined them.
+    const pitch3 = blockingOf(
+      checkClosures(
+        graph,
+        closures,
+        booking('g', sid(ALDER, 'Pitch 3'), dates[0], 11 * 60, 12 * 60)
       )
-    ).toEqual([]);
+    );
+    expect(pitch3).toHaveLength(1);
+    expect(pitch3[0].details.coverage).toBe(FACILITY_REASON.OCCUPIED_SPATIAL_OVERLAP);
+    for (const surfaceId of [
+      sid(ALDER, 'Pitch 1'),
+      sid(ALDER, 'Pitch 2'),
+      pid(ALDER, 'Pitch 2A'),
+    ]) {
+      expect(
+        blockingOf(
+          checkClosures(graph, closures, booking('g', surfaceId, dates[0], 11 * 60, 12 * 60))
+        ),
+        surfaceId
+      ).toEqual([]);
+    }
+    const coverageOf = (surfaceId) =>
+      blockingOf(
+        checkClosures(graph, closures, booking('g', surfaceId, dates[0], 11 * 60, 12 * 60))
+      )[0].details.coverage;
+    expect(coverageOf(sid(ALDER, 'Pitch 4'))).toBe(FACILITY_REASON.OCCUPIED_SAME_SURFACE);
+    expect(coverageOf(sid(ALDER, 'Pitch 4A'))).toBe(FACILITY_REASON.OCCUPIED_PARENT_CHILD);
+    expect(coverageOf(pid(ALDER, 'Pitch 4B', 'Side 1'))).toBe(
+      FACILITY_REASON.OCCUPIED_PARENT_CHILD
+    );
     // ... and not at one o'clock.
     expect(
       blockingOf(
@@ -544,15 +569,31 @@ describe('closures :: the adjacency rule is the graph’s overlap pairs, held on
 /* -------------------------------------------------------------------------- */
 
 describe('closures :: unknowns are reported, never folded into "no closure applies"', () => {
-  it('reports a booking with no end against a timed closure as undecidable, and blocks it against an all-day one', () => {
-    const timed = checkClosures(
+  it('decides a booking with no end by its start when it can, and says undecidable only when it cannot', () => {
+    // Kicks off before the 11:00 window with no known end: may or may not run into it.
+    const before = checkClosures(
       graph,
       closures,
-      booking('g', sid(ALDER, 'Pitch 4'), '2026-09-19', 11 * 60, null)
+      booking('g', sid(ALDER, 'Pitch 4'), '2026-09-19', 10 * 60, null)
     );
-    expect(codesOf(timed)).toContain(AVAILABILITY_REASON.CLOSURE_OVERLAP_UNDECIDABLE);
-    expect(codesOf(timed)).not.toContain(AVAILABILITY_REASON.CLOSURE_BLOCKS_BOOKING);
-    expect(timed.meta.closuresApplied).toBe(1); // the adjacency rule, which is all-day
+    expect(codesOf(before)).toContain(AVAILABILITY_REASON.CLOSURE_OVERLAP_UNDECIDABLE);
+    expect(codesOf(before)).not.toContain(AVAILABILITY_REASON.CLOSURE_BLOCKS_BOOKING);
+    expect(before.meta.closuresApplied).toBe(1); // the adjacency rule, which is all-day
+    // Kicks off inside the window: already on closed ground, whatever its end.
+    const inside = checkClosures(
+      graph,
+      closures,
+      booking('g', sid(ALDER, 'Pitch 4'), '2026-09-19', 11 * 60 + 30, null)
+    );
+    expect(codesOf(inside)).toContain(AVAILABILITY_REASON.CLOSURE_BLOCKS_BOOKING);
+    expect(codesOf(inside)).not.toContain(AVAILABILITY_REASON.CLOSURE_OVERLAP_UNDECIDABLE);
+    // Kicks off after it closes: decided clean without an end.
+    const after = checkClosures(
+      graph,
+      closures,
+      booking('g', sid(ALDER, 'Pitch 4'), '2026-09-19', 13 * 60, null)
+    );
+    expect(codesOf(after)).toEqual([AVAILABILITY_REASON.CLOSURE_ADJACENCY_DEFERRED]);
     const allDay = checkClosures(
       graph,
       closures,
@@ -611,12 +652,41 @@ describe('closures :: full-corpus replay of the published games', () => {
     expect(replay.meta.closuresConsulted).toBe(games.length * 13);
     const byCode = {};
     for (const finding of replay.findings) byCode[finding.code] = (byCode[finding.code] ?? 0) + 1;
-    // Derived, not assumed: the season schedules nothing on Alder Pitch 4 in
-    // the flag-football windows and nothing at Maplewood on a weekday, so no
-    // published game breaks a closure. Every Alder game carries the adjacency
-    // provenance, and the four untimed scrimmages are reported undecidable
-    // against nothing only if a timed closure covers them.
-    expect(byCode[AVAILABILITY_REASON.CLOSURE_BLOCKS_BOOKING] ?? 0).toBe(0);
+    // A finding, derived rather than assumed. The season schedules nothing on
+    // Alder Pitch 4 in the flag-football windows and nothing at Maplewood on a
+    // weekday — but it does schedule games on Pitch 3 at 10:00 and 12:00 on
+    // every flag-football Saturday, and Pitch 3 is joined to Pitch 4 by the
+    // geometry's own {3, 4} overlap pair. Under the club's own adjacency rule
+    // those games could not run while Pitch 4 was occupied. The expected set
+    // is derived here independently: every Alder game whose ground conflicts
+    // with Pitch 4 and whose time meets a flag-football window.
+    const flagRows = practice.fieldConstraints.filter((row) => row.fields === '4');
+    const expected = games.filter(
+      (game) =>
+        game.venue === ALDER &&
+        surfacesConflict(graph, sid(ALDER, 'Pitch 4'), sid(game.venue, game.field)).conflict &&
+        flagRows.some(
+          (row) =>
+            row.dateStart === game.date &&
+            game.kickoffMinutes < row.endMinutes &&
+            row.startMinutes < game.endMinutes
+        )
+    );
+    const blocked = replay.findings.filter(
+      (f) => f.code === AVAILABILITY_REASON.CLOSURE_BLOCKS_BOOKING
+    );
+    expect(blocked.map((f) => f.details.bookingId).sort()).toEqual(
+      expected.map((game) => game.id).sort()
+    );
+    expect(blocked.length).toBe(10);
+    for (const finding of blocked) {
+      expect(finding.details.surfaceName).toBe('Pitch 3');
+      expect(finding.details.coverage).toBe(FACILITY_REASON.OCCUPIED_SPATIAL_OVERLAP);
+      expect(finding.details.reason).toBe('Adaptive Sports Org Flag Football');
+    }
+    expect(new Set(blocked.map((f) => f.details.date))).toEqual(
+      new Set(flagRows.map((row) => row.dateStart))
+    );
     expect(byCode[AVAILABILITY_REASON.CLOSURE_ADJACENCY_DEFERRED]).toBe(
       games.filter((game) => game.venue === ALDER).length
     );
@@ -634,9 +704,14 @@ describe('closures :: full-corpus replay of the published games', () => {
     const blocked = replay.findings.filter(
       (f) => f.code === AVAILABILITY_REASON.CLOSURE_BLOCKS_BOOKING
     );
-    expect(blocked).toHaveLength(1);
-    expect(blocked[0].details.bookingId).toBe('injected');
-    expect(blocked[0].details.reason).toBe(flag.reason);
+    const baseline = findClosureBreaches(graph, closures, bookings).findings.filter(
+      (f) => f.code === AVAILABILITY_REASON.CLOSURE_BLOCKS_BOOKING
+    );
+    expect(blocked).toHaveLength(baseline.length + 1);
+    const mine = blocked.filter((f) => f.details.bookingId === 'injected');
+    expect(mine).toHaveLength(1);
+    expect(mine[0].details.reason).toBe(flag.reason);
+    expect(mine[0].details.coverage).toBe(FACILITY_REASON.OCCUPIED_PARENT_CHILD);
   });
 });
 

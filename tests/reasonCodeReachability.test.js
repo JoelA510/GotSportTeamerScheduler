@@ -1073,8 +1073,8 @@ const closureRig = harvest(
 );
 harvest('checkClosures(inside every window)', checkClosures(rig, closureRig, rigBooking()));
 harvest(
-  'checkClosures(no end against a timed closure)',
-  checkClosures(rig, closureRig, rigBooking({ endMinutes: null }))
+  'checkClosures(no end, kicking off before a timed closure opens)',
+  checkClosures(rig, closureRig, rigBooking({ startMinutes: 500, endMinutes: null }))
 );
 
 harvest(

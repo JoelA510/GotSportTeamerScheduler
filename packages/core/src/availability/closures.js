@@ -36,7 +36,8 @@
 
 import { z } from 'zod';
 
-import { getSurface } from '../facility/facilityGraph.js';
+import { deepFreeze, getSurface } from '../facility/facilityGraph.js';
+import { surfacesConflict } from '../facility/occupancy.js';
 import { FACILITY_REASON, makeFinding } from '../facility/reasonCodes.js';
 import { AVAILABILITY_REASON, makeAvailabilityFinding } from './reasonCodes.js';
 
@@ -153,20 +154,6 @@ function createClosureMeta() {
 }
 
 /**
- * Recursively freeze a value.
- *
- * @template T
- * @param {T} value
- * @returns {T}
- */
-function deepFreeze(value) {
-  if (value === null || typeof value !== 'object' || Object.isFrozen(value)) return value;
-  Object.freeze(value);
-  for (const inner of Object.values(value)) deepFreeze(inner);
-  return value;
-}
-
-/**
  * Build an immutable closure set, checking every scope against the graph.
  *
  * A venue or surface id the graph does not hold is a producer bug and throws.
@@ -236,35 +223,40 @@ export function buildClosureSet(graph, input) {
 }
 
 /**
- * Does a closure's ground include a surface?
+ * Does a closure's ground reach a surface, and how?
  *
- * A venue-kind scope covers every surface of the venue. A surface-kind scope
- * covers the surface, its descendants and its ancestors — anything that shares
- * a cell with it: a closure on Pitch 4 closes 4A and `4A Side 1`, and a
- * booking of Pitch 4 whole cannot stand while 4A is closed.
+ * A venue-kind scope covers every surface of the venue. A surface-kind
+ * closure is an occupation of that ground by someone else, so it reaches
+ * exactly what a booking there would clash with — the `surfacesConflict()`
+ * relation, not a second one: the surface itself, its ancestors and
+ * descendants (shared cells), and the ground a declared overlap pair joins it
+ * to. Flag football on Alder Pitch 4 shuts 4A and `4A Side 1`, and Pitch 3
+ * across the overlap, exactly as a club game on Pitch 4 would.
  *
  * @param {import('../facility/types.js').FacilityGraph} graph
  * @param {import('./types.js').ClosureWindow} closure
  * @param {import('../facility/types.js').FacilitySurface} surface
- * @returns {boolean}
+ * @returns {{ covers: boolean, coverage: string|null }} `coverage` is the facility code that joined them, for provenance
  */
 function closureCoversSurface(graph, closure, surface) {
   const scope = closure.scope;
-  if (scope.kind === CLOSURE_SCOPE.VENUE_UNKNOWN) return false;
+  if (scope.kind === CLOSURE_SCOPE.VENUE_UNKNOWN) return { covers: false, coverage: null };
   if (scope.kind === CLOSURE_SCOPE.SURFACE) {
-    const closed = graph.surfaces[scope.surfaceId];
-    const cells = new Set(closed.cells);
-    return surface.cells.some((cell) => cells.has(cell));
+    const verdict = surfacesConflict(graph, scope.surfaceId, surface.id);
+    return { covers: verdict.conflict, coverage: verdict.code };
   }
-  return scope.venueIds.includes(surface.venueId);
+  return { covers: scope.venueIds.includes(surface.venueId), coverage: null };
 }
 
 /**
  * Does a closure's time window meet a booking's?
  *
- * `null` when the booking has no known end and the closure is not all-day:
- * the question cannot be answered, and the caller reports that rather than
- * answering it (the `bookingsOverlapInTime()` contract).
+ * The closure's bounds are always known, so a booking with no known end is
+ * still decided when its *start* lies inside the window — it is already on
+ * closed ground when it kicks off. Only a booking that starts before the
+ * window opens and has no end is `null`: it may or may not run into it, and
+ * the caller reports that rather than answering it (the
+ * `bookingsOverlapInTime()` contract, for the half of it that applies).
  *
  * @param {import('./types.js').ClosureWindow} closure
  * @param {import('../facility/types.js').FacilityBooking} booking
@@ -272,7 +264,12 @@ function closureCoversSurface(graph, closure, surface) {
  */
 function closureMeetsBooking(closure, booking) {
   if (closure.allDay) return true;
-  if (booking.endMinutes === null || booking.endMinutes === undefined) return null;
+  if (closure.startMinutes <= booking.startMinutes && booking.startMinutes < closure.endMinutes) {
+    return true;
+  }
+  if (booking.endMinutes === null || booking.endMinutes === undefined) {
+    return booking.startMinutes < closure.startMinutes ? null : false;
+  }
   return booking.startMinutes < closure.endMinutes && closure.startMinutes < booking.endMinutes;
 }
 
@@ -308,9 +305,12 @@ export function checkClosures(graph, closureSet, booking) {
   for (const closure of closureSet.closures) {
     meta.closuresConsulted += 1;
     if (booking.date < closure.fromDate || booking.date > closure.toDate) continue;
-    if (!closureCoversSurface(graph, closure, surface)) continue;
+    const { covers, coverage } = closureCoversSurface(graph, closure, surface);
+    if (!covers) continue;
     const meets = closureMeetsBooking(closure, booking);
     const details = {
+      /** How the closure's ground reached this surface: a FACILITY_REASON occupancy code, or null for venue-wide scopes. */
+      coverage,
       bookingId: booking.id,
       surfaceId: booking.surfaceId,
       surfaceName: surface.name,
