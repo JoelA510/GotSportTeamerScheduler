@@ -271,6 +271,7 @@ describe('fieldAdmin :: the partition reconciliation can fail', () => {
   const subjectShell = (key, before, after) => ({
     key,
     label: key,
+    heldCount: before === null ? 0 : 1,
     disposition: DISPOSITION.MATCHED,
     changedFields: [],
     absentFields: [],
@@ -480,6 +481,50 @@ describe('fieldAdmin :: one key space, on both sides', () => {
     expect(subjectIdentity(record, ['id'])).not.toBe(
       subjectIdentity({ ...record, id: 'b2' }, ['id'])
     );
+  });
+});
+
+describe('fieldAdmin :: a held key collision is named, never last-won', () => {
+  it('reports two held records sharing one identity rather than dropping one', () => {
+    // **The two-key-space class, on the side no test held.** `heldByKey` was a
+    // `new Map(records.map(...))`, so a duplicate identity silently last-won.
+    // Measured on the corpus: re-importing the alias export read 47 held
+    // records into a 27-key map, dropped 20 with nothing naming them, and
+    // compared each practice-ring record against the *fields-ring* one.
+    //
+    // The round-trip test was green because it asserted only
+    // `removed === 0 && added === 0`, which a last-wins map satisfies.
+    const held = [blackout('b1'), blackout('b1', { toDate: '2026-09-09' })];
+    const set = build(held, [row('b1', blackout('b1'))]);
+    const collisions = set.findings.filter(
+      (finding) => finding.code === FIELD_ADMIN_REASON.HELD_KEY_AMBIGUOUS
+    );
+    expect(collisions).toHaveLength(1);
+    expect(collisions[0].details).toMatchObject({ key: 'b1', heldCount: 2 });
+    // ... and the subject it collided on is not applicable, because which of
+    // the two the proposal was compared against is not a question this module
+    // may answer by picking.
+    expect(set.buckets.matched.concat(set.buckets.differing)[0].applicable).toBe(false);
+  });
+
+  it('counts every held record, so the partition reconciliation still balances', () => {
+    const held = [blackout('b1'), blackout('b1', { toDate: '2026-09-09' }), blackout('b2')];
+    const set = build(held, [row('b1', blackout('b1')), row('b2', blackout('b2'))]);
+    expect(set.meta.currentSubjectsRead).toBe(3);
+    // A collision is reported, and it does not manufacture a phantom removal.
+    expect(set.buckets.removed).toHaveLength(0);
+    expect(
+      set.findings.filter(
+        (finding) => finding.code === FIELD_ADMIN_REASON.CHANGE_SET_PARTITION_INCOMPLETE
+      )
+    ).toEqual([]);
+  });
+
+  it('says nothing when every held identity is distinct', () => {
+    const set = build([blackout('b1'), blackout('b2')], [row('b1', blackout('b1'))]);
+    expect(
+      set.findings.filter((finding) => finding.code === FIELD_ADMIN_REASON.HELD_KEY_AMBIGUOUS)
+    ).toEqual([]);
   });
 });
 

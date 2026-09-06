@@ -206,8 +206,62 @@ describe('fieldAdmin round trip :: a re-import of an export changes nothing', ()
       // comparing an empty set against an empty set.
       expect(reimported.meta.currentSubjectsRead).toBe(held.length);
       expect(reimported.meta.fieldComparisons).toBeGreaterThan(0);
+
+      // **Every held record is accounted for**, which `removed === 0` does not
+      // say: a map that last-won on a duplicate identity satisfied that
+      // assertion while dropping 20 of 47 alias records with nothing naming
+      // them. Summing what each subject stands for is what catches it.
+      const heldAccounted = [
+        ...reimported.buckets.matched,
+        ...reimported.buckets.differing,
+        ...reimported.buckets.added,
+        ...reimported.buckets.removed,
+      ].reduce((sum, subject) => sum + subject.heldCount, 0);
+      expect({ subject: name, heldAccounted }).toEqual({
+        subject: name,
+        heldAccounted: held.length,
+      });
+      expect(
+        reimported.findings.filter(
+          (finding) => finding.code === FIELD_ADMIN_REASON.CHANGE_SET_PARTITION_INCOMPLETE
+        )
+      ).toEqual([]);
     });
   }
+
+  it('names every held identity collision, and finds none where ids are unique', () => {
+    // Stated as a count rather than as silence, and each number is a fact
+    // about the corpus rather than a tolerance:
+    //
+    // - three subjects key on a record's own `id` and collide nowhere;
+    // - `aliases` keys on the published name, which **two rings legitimately
+    //   share**, so each of the 20 shared codes holds two records and says so;
+    // - `venueAttributes` keys on `venueLabel`, and `field_inventory.csv`
+    //   lists **Willowmead Park twice** with different notes - so exactly one
+    //   collision is the right answer, and this check rediscovers that fact
+    //   independently of the projector that already reports it.
+    /** @type {Record<string, number>} */
+    const collisions = {};
+    for (const { name } of SUBJECTS) {
+      const held = recordsOf(imported[name]);
+      const reimported = importSeason2026Fields({
+        practice,
+        graph,
+        complexMap,
+        held: { [name]: held },
+      })[name];
+      collisions[name] = reimported.findings.filter(
+        (finding) => finding.code === FIELD_ADMIN_REASON.HELD_KEY_AMBIGUOUS
+      ).length;
+    }
+    expect(collisions).toEqual({
+      blackouts: 0,
+      recurringWindows: 0,
+      permitWindows: 0,
+      venueAttributes: 1,
+      aliases: 20,
+    });
+  });
 
   it('can fail, when the held records are perturbed', () => {
     // The control for the four assertions above: a held set that genuinely

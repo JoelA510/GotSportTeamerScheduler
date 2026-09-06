@@ -158,6 +158,16 @@ export const FIELD_ADMIN_REASON = Object.freeze({
    */
   SOURCES_DISAGREE: 'SOURCES_DISAGREE',
 
+  /**
+   * **Two held records share one identity.** The key fields do not identify a
+   * record on the side already stored, so which of them a proposal is compared
+   * against is arbitrary - and picking one silently is how 20 of 47 held alias
+   * records were dropped with nothing naming them. Reported per key, and the
+   * subject is never applicable: `PARITY_KEY_AMBIGUOUS` is the same hazard one
+   * module over, under its own name.
+   */
+  HELD_KEY_AMBIGUOUS: 'HELD_KEY_AMBIGUOUS',
+
   /* -- partition integrity ---------------------------------------------- */
   /** The partition does not account for every input row exactly once. */
   CHANGE_SET_PARTITION_INCOMPLETE: 'CHANGE_SET_PARTITION_INCOMPLETE',
@@ -228,6 +238,7 @@ export const FIELD_ADMIN_REASON_SEVERITY = Object.freeze({
   [FIELD_ADMIN_REASON.SUBJECT_REMOVED]: FIELD_ADMIN_SEVERITY.BLOCKING,
 
   [FIELD_ADMIN_REASON.SOURCES_DISAGREE]: FIELD_ADMIN_SEVERITY.BLOCKING,
+  [FIELD_ADMIN_REASON.HELD_KEY_AMBIGUOUS]: FIELD_ADMIN_SEVERITY.BLOCKING,
 
   [FIELD_ADMIN_REASON.CHANGE_SET_PARTITION_INCOMPLETE]: FIELD_ADMIN_SEVERITY.BLOCKING,
   [FIELD_ADMIN_REASON.CHANGE_SET_VACUOUS]: FIELD_ADMIN_SEVERITY.BLOCKING,

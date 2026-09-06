@@ -300,7 +300,11 @@ export function changeSetPartitionFindings(partition, counts) {
     ...partition.added,
     ...partition.removed,
   ];
-  const currentAccounted = everySubject.filter((subject) => subject.before !== null).length;
+  // **Held *records*, not held subjects.** A key that two held records share is
+  // one subject carrying both, so counting subjects would leave the surplus
+  // unaccounted for and report a partition hole that is not one. `heldCount` is
+  // what each subject actually stands for on the held side.
+  const currentAccounted = everySubject.reduce((sum, subject) => sum + (subject.heldCount ?? 0), 0);
   if (currentAccounted !== counts.currentSubjectsRead) {
     findings.push(
       makeFieldAdminFinding(
@@ -486,9 +490,32 @@ export function buildChangeSet(input) {
 
   // Both sides through `subjectIdentity()`. See its docstring for the defect
   // that made two key spaces worth a paragraph.
-  const heldByKey = new Map(
-    current.records.map((record) => [subjectIdentity(record, keyFields), record])
-  );
+  //
+  // **Grouped, not indexed.** `new Map(records.map(...))` last-wins on a
+  // duplicate key, which is the same silent-collapse defect the source side had
+  // - and it was measured on the held side too: re-importing the alias export
+  // read 47 records into a 27-key map and dropped 20 with nothing naming them,
+  // then compared each practice-ring record against the fields-ring one. A key
+  // that does not identify a held record is reported, and the subject it
+  // collides on is never applicable.
+  /** @type {Map<string, Array<Record<string, unknown>>>} */
+  const heldByKey = new Map();
+  for (const record of current.records) {
+    const key = subjectIdentity(record, keyFields);
+    const bucket = heldByKey.get(key);
+    if (bucket === undefined) heldByKey.set(key, [record]);
+    else bucket.push(record);
+  }
+  for (const [key, records] of heldByKey) {
+    if (records.length < 2) continue;
+    findings.push(
+      makeFieldAdminFinding(
+        FIELD_ADMIN_REASON.HELD_KEY_AMBIGUOUS,
+        `identity "${key}" names ${records.length} held record(s), so ${keyFields.join(', ')} does not identify a record in "${subject}"; every one is counted and none is compared against`,
+        { subject, key, heldCount: records.length }
+      )
+    );
+  }
   const proposedByKey = groupBySubject(split.usable, keyFields);
   meta.projectedSubjects = proposedByKey.size;
 
@@ -507,7 +534,12 @@ export function buildChangeSet(input) {
   const keys = [...new Set([...heldByKey.keys(), ...proposedByKey.keys()])].sort();
 
   for (const key of keys) {
-    const held = heldByKey.get(key) ?? null;
+    const heldRecords = heldByKey.get(key) ?? [];
+    // The first is read as the comparison subject, exactly as the first source
+    // row is read as the proposal - and the ambiguity is already reported
+    // above, which is what stops the choice being silent.
+    const held = heldRecords.length > 0 ? heldRecords[0] : null;
+    const heldAmbiguous = heldRecords.length > 1;
     const rows = proposedByKey.get(key) ?? [];
 
     if (rows.length === 0) {
@@ -519,6 +551,7 @@ export function buildChangeSet(input) {
         // A held subject no source names has no source row to take a label
         // from, so the identity is the best label available.
         label: key,
+        heldCount: heldRecords.length,
         disposition: DISPOSITION.REMOVED,
         changedFields: [],
         absentFields: [],
@@ -568,6 +601,7 @@ export function buildChangeSet(input) {
       const entry = {
         key,
         label: rows[0].subjectKey,
+        heldCount: 0,
         disposition: disagreement === null ? DISPOSITION.ADDED : DISPOSITION.DIFFERING,
         changedFields: [],
         absentFields: [],
@@ -590,10 +624,14 @@ export function buildChangeSet(input) {
     const comparison = compareRecords(held, record, comparedFields);
     fieldComparisons += comparison.comparisons;
     const isDifferent = comparison.changedFields.length > 0 || disagreement !== null;
+    const notApplicable = heldAmbiguous
+      ? `${heldRecords.length} held records share this identity, so there is no single record to compare against`
+      : null;
     /** @type {import('./types.js').ChangeSetSubject} */
     const entry = {
       key,
       label: rows[0].subjectKey,
+      heldCount: heldRecords.length,
       disposition: isDifferent ? DISPOSITION.DIFFERING : DISPOSITION.MATCHED,
       changedFields: comparison.changedFields,
       absentFields: comparison.absentFields,
@@ -601,14 +639,16 @@ export function buildChangeSet(input) {
       after: record,
       rows,
       sourceDisagreement: disagreement,
-      applicable: !isDifferent && !doubtful,
-      notApplicableReason: disagreement
-        ? 'two sources disagree about this subject and neither is preferred'
-        : isDifferent
-          ? 'the source differs from what is held; a person decides'
-          : doubtful
-            ? 'built from a cell whose reading is in doubt'
-            : null,
+      applicable: !isDifferent && !doubtful && !heldAmbiguous,
+      notApplicableReason:
+        notApplicable ??
+        (disagreement
+          ? 'two sources disagree about this subject and neither is preferred'
+          : isDifferent
+            ? 'the source differs from what is held; a person decides'
+            : doubtful
+              ? 'built from a cell whose reading is in doubt'
+              : null),
     };
     if (isDifferent) differing.push(entry);
     else matched.push(entry);

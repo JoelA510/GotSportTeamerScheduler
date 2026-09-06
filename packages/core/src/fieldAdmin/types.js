@@ -60,6 +60,8 @@
  * @property {string} key
  * @property {string} label - for humans
  * @property {string} disposition - a `DISPOSITION` value
+ * @property {number} heldCount - how many held records this subject stands for;
+ *   0 when nothing is held, and more than 1 when the key does not identify one
  * @property {string[]} changedFields - non-empty exactly when `differing`
  * @property {string[]} absentFields - fields one side does not carry
  * @property {Record<string, unknown>|null} before - current state, or `null` when added
