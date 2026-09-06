@@ -113,16 +113,75 @@ const CONTENTS = new Map(
 const SPECIFIER_PATTERN = /(?:\bfrom\s*|\bimport\s*\(\s*)['"]([^'"]+)['"]/g;
 
 /**
- * Files importing a module, **by resolving each specifier** against the
- * importing file.
+ * The path aliases the build resolves, from `vite.config.js` and `tsconfig.json`.
+ *
+ * Written here rather than imported because both config files spell them with
+ * absolute paths built at load time. Held to those files by a test below, so an
+ * alias added to the build and not here fails rather than opening a hole.
+ */
+const PATH_ALIASES = Object.freeze([
+  ['@squadlogic/core/', 'packages/core/src/'],
+  ['@/', 'packages/core/src/'],
+  ['src/', 'packages/core/src/'],
+]);
+
+/** Extensions a specifier may omit, in the order a resolver tries them. */
+const RESOLVED_EXTENSIONS = Object.freeze(['', '.js', '.jsx', '.ts', '.tsx', '.mjs', '.cjs']);
+
+/**
+ * Resolve one specifier to a repo-relative path, or `null`.
+ *
+ * **Every form the build accepts**, because a check that only understands one
+ * of them reads as enforced while being trivially bypassable. Measured against
+ * the first version: an *extensionless* `'./facility/aliases'` left all twelve
+ * tests green, and an aliased `'src/facility/aliases.js'` importing only a
+ * constant was invisible to every one of them. This is the check that replaced
+ * 8.3's prose, so a bypassable version is worse than the prose was.
+ *
+ * @param {string} specifier
+ * @param {string} fromDirectory - repo-relative, `/`-separated
+ * @returns {string|null}
+ */
+function resolveSpecifier(specifier, fromDirectory) {
+  /** @type {string|null} */
+  let base = null;
+  if (specifier.startsWith('.')) {
+    base = path.posix.normalize(path.posix.join(fromDirectory, specifier));
+  } else {
+    for (const [prefix, target] of PATH_ALIASES) {
+      if (specifier === prefix.replace(/\/$/, '')) {
+        base = target.replace(/\/$/, '');
+        break;
+      }
+      if (specifier.startsWith(prefix)) {
+        base = target + specifier.slice(prefix.length);
+        break;
+      }
+    }
+  }
+  if (base === null) return null;
+  // An extensionless specifier resolves to the file the build would pick, and
+  // a directory specifier to its `index`. Both are forms the repo uses.
+  for (const extension of RESOLVED_EXTENSIONS) {
+    const candidate = `${base}${extension}`;
+    if (CONTENTS.has(candidate)) return candidate;
+  }
+  for (const extension of RESOLVED_EXTENSIONS.slice(1)) {
+    const candidate = `${base}/index${extension}`;
+    if (CONTENTS.has(candidate)) return candidate;
+  }
+  return null;
+}
+
+/**
+ * Files importing a module, **by resolving each specifier** the way the build
+ * does.
  *
  * The obvious implementation matches the module's path tail inside the
  * specifier string, and it is wrong in a way that matters here: a sibling
  * importing `'./aliases.js'` writes no `facility/` in its specifier, so the
  * whole of `facility/` could consult the alias map invisibly. The first draft
  * of this file did exactly that and reported the two barrels as non-importers.
- * Resolving instead means a relative import, a parent-relative import and an
- * aliased one all land on the same answer.
  *
  * @param {string} modulePath - repo-relative, e.g. `packages/core/src/facility/aliases.js`
  * @returns {string[]}
@@ -137,17 +196,7 @@ function importersOf(modulePath) {
     let match;
     SPECIFIER_PATTERN.lastIndex = 0;
     while ((match = SPECIFIER_PATTERN.exec(source)) !== null) {
-      const specifier = match[1];
-      /** @type {string|null} */
-      let resolved = null;
-      if (specifier.startsWith('.')) {
-        resolved = path.posix.normalize(path.posix.join(directory, specifier));
-      } else if (specifier.startsWith('@squadlogic/core/')) {
-        // The path alias `@squadlogic/core` -> `packages/core/src`, per
-        // `vite.config.js` and `tsconfig.json`.
-        resolved = `packages/core/src/${specifier.slice('@squadlogic/core/'.length)}`;
-      }
-      if (resolved === modulePath) {
+      if (resolveSpecifier(match[1], directory) === modulePath) {
         importers.push(file);
         break;
       }
@@ -276,6 +325,60 @@ describe('unwired layers :: the scan examined the repository', () => {
     for (const { layer, modulePath } of LAYERS) {
       expect({ layer, present: FILES.includes(modulePath) }).toEqual({ layer, present: true });
     }
+  });
+
+  it('resolves every alias the build resolves, checked against the config', () => {
+    // The alias table is written here because both config files build absolute
+    // paths at load time. Held to them so an alias added to the build and not
+    // here silently opens a hole.
+    const vite = readFileSync(path.join(REPO_ROOT, 'vite.config.js'), 'utf8');
+    const tsconfig = readFileSync(path.join(REPO_ROOT, 'tsconfig.json'), 'utf8');
+    const declared = new Set(PATH_ALIASES.map(([prefix]) => prefix.replace(/\/$/, '')));
+    // Every alias `vite.config.js` maps onto the core package must be declared.
+    for (const match of vite.matchAll(
+      /'?([@\w/-]+)'?\s*:\s*path\.resolve\(__dirname,\s*'\.\/packages\/core\/src'\)/g
+    )) {
+      expect({ alias: match[1], declared: declared.has(match[1]) }).toEqual({
+        alias: match[1],
+        declared: true,
+      });
+    }
+    for (const match of tsconfig.matchAll(/"([@\w/-]+)\/\*":\s*\[\s*"packages\/core\/src\/\*"/g)) {
+      expect({ alias: match[1], declared: declared.has(match[1]) }).toEqual({
+        alias: match[1],
+        declared: true,
+      });
+    }
+    // Meta-assertion: a regex that matched nothing would make both loops pass
+    // over an empty set.
+    expect([...vite.matchAll(/packages\/core\/src/g)].length).toBeGreaterThan(2);
+  });
+
+  it('resolves an extensionless, an aliased and a directory specifier', () => {
+    // **The three forms that bypassed the first version.** Measured then: an
+    // extensionless import left all twelve tests green, and an aliased import
+    // of a constant was invisible to every one of them.
+    const from = 'packages/core/src/gameMetrics.js';
+    const target = 'packages/core/src/facility/aliases.js';
+    for (const specifier of [
+      './facility/aliases.js',
+      './facility/aliases',
+      '@squadlogic/core/facility/aliases.js',
+      '@squadlogic/core/facility/aliases',
+      'src/facility/aliases.js',
+      '@/facility/aliases',
+    ]) {
+      expect({
+        specifier,
+        resolved: resolveSpecifier(specifier, path.posix.dirname(from)),
+      }).toEqual({ specifier, resolved: target });
+    }
+    // A directory specifier reaches the barrel, not the module.
+    expect(resolveSpecifier('./facility', 'packages/core/src')).toBe(
+      'packages/core/src/facility/index.js'
+    );
+    // ... and a bare package name resolves to nothing here.
+    expect(resolveSpecifier('zod', 'packages/core/src')).toBeNull();
   });
 
   it('can see an import when there is one', () => {
