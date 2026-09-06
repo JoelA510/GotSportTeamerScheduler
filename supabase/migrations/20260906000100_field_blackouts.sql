@@ -167,6 +167,7 @@ WITH (security_invoker = true) AS
     b.end_minutes,
     b.reason,
     b.note,
+    NULL::text AS source_reason_text,
     'field_blackouts'::text AS source
   FROM public.field_blackouts b
   LEFT JOIN public.fields fb ON fb.id = b.field_id
@@ -191,14 +192,23 @@ WITH (security_invoker = true) AS
     -- fabricating one claims a choice nobody made. Its own free text travels
     -- in `note`, where it belongs.
     NULL::text AS reason,
-    w.reason AS note,
+    -- **`note` is admin free text and nothing else.** The first draft put the
+    -- import's own `reason` string here, so one column was operator prose on
+    -- one arm and the import's reason on the other -- the two-meanings defect
+    -- the sweep was supposed to have finished. Worse in combination: with
+    -- `reason` NULL on this arm, a consumer filtering the declared enum drops
+    -- every import row silently, and PR 1's privacy guard applied to `note`
+    -- would erase the import's only statement of why.
+    NULL::text AS note,
+    -- The import's own words, under their own name, on their own arm.
+    w.reason AS source_reason_text,
     'field_blackout_windows'::text AS source
   FROM public.field_blackout_windows w
   JOIN public.field_availability_profiles p ON p.id = w.profile_id
   LEFT JOIN public.fields f ON f.id = p.field_id;
 
 COMMENT ON VIEW public.field_closures IS
-  'THE reader for "is this ground closed on this date". Unions admin-authored field_blackouts with import-derived field_blackout_windows so the question has one answer. SCOPE is closes_location_id / closes_field_id -- what this row shuts. field_location_id is a different fact (the site the closed field sits on) and is never a scope; the two were one column in the first draft and a location filter therefore closed every other pitch on the site. closes_field_id is NULL for import rows whose profile resolved to no field -- surfaced, not filtered, because a closure nobody can attribute is what an inner join would hide. reason is NULL on the import arm because the import carries no structured reason. The union is temporary: it collapses to field_blackouts alone once finalize_field_availability_import_job resolves a profile to a field reliably.';
+  'THE reader for "is this ground closed on this date". Unions admin-authored field_blackouts with import-derived field_blackout_windows so the question has one answer. SCOPE is closes_location_id / closes_field_id -- what this row shuts. field_location_id is a different fact (the site the closed field sits on) and is never a scope; the two were one column in the first draft and a location filter therefore closed every other pitch on the site. closes_field_id is NULL for import rows whose profile resolved to no field -- surfaced, not filtered, because a closure nobody can attribute is what an inner join would hide. reason is NULL on the import arm because the import carries no structured reason, and its own words travel in source_reason_text rather than in note -- note is admin free text on both arms, so a privacy guard or an enum filter cannot silently mean two things. The union is temporary: it collapses to field_blackouts alone once finalize_field_availability_import_job resolves a profile to a field reliably.';
 
 GRANT SELECT ON public.field_closures TO authenticated;
 
