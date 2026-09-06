@@ -215,9 +215,22 @@ export const AVAILABILITY_REASON = Object.freeze({
   CLOSURE_NOT_GROUND: 'CLOSURE_NOT_GROUND',
   /** The booking is under an adjacency rule the graph's overlap pairs already enforce. Provenance. */
   CLOSURE_ADJACENCY_DEFERRED: 'CLOSURE_ADJACENCY_DEFERRED',
-  /** A closure row names a venue the graph does not hold; it applies to nothing and says so. */
+  /**
+   * A closure row names a venue the graph does not hold, so it reaches no
+   * ground at all. Emitted twice over: once on the set at build time, and
+   * again against every booking whose date *and hours* fall inside the window,
+   * because a caller holding only the query answer would read silence as a
+   * clear date. Its `timeMeets` detail says whether the clock decided the
+   * overlap or was itself undecidable.
+   */
   CLOSURE_VENUE_UNKNOWN: 'CLOSURE_VENUE_UNKNOWN',
-  /** A closure row names a venue the graph holds and a surface it does not; it applies to nothing and says so. */
+  /**
+   * A closure row names a venue the graph holds and a surface it does not.
+   * Reported on the set at build time, and **applied to the venue** at query
+   * time as a compromise — the contract its sibling `unreadable` already had:
+   * a closure that reached nothing because one cell would not resolve is a
+   * closure that vanishes.
+   */
   CLOSURE_SURFACE_UNKNOWN: 'CLOSURE_SURFACE_UNKNOWN',
   /**
    * **Nothing enforces this closure set.** `checkClosures()` and

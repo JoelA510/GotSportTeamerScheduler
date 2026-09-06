@@ -18,8 +18,14 @@
  * not-ground     `Parking`         not a surface; information only
  * adjacency      `Adjacent Fields` a rule the graph's overlap pairs already
  *                                  carry; reconciled, not evaluated twice
- * venue-unknown                    the row names a venue the graph does not hold;
- *                                  reported at build time, applies to nothing
+ * surface-unknown                  the row names a venue the graph holds and a
+ *                                  surface it does not; applies to the venue as
+ *                                  a compromise, exactly as `unreadable` does
+ * venue-unknown                    the row names a venue the graph does not
+ *                                  hold, so there is no ground to reach;
+ *                                  reported at build time, and reported again
+ *                                  against every booking whose date *and hours*
+ *                                  fall inside it, never as silence
  * ```
  *
  * **One reading of "all day".** A row that opens at `00:00` and closes at or
@@ -210,7 +216,7 @@ export function buildClosureSet(graph, input) {
       findings.push(
         makeAvailabilityFinding(
           AVAILABILITY_REASON.CLOSURE_SURFACE_UNKNOWN,
-          `closure "${closure.id}" (${closure.reason}, ${closure.fromDate} to ${closure.toDate}) names "${scope.surfaceName}" at ${scope.venueIds.join(', ')}, which is not a surface the graph holds there; it applies to nothing and is reported instead`,
+          `closure "${closure.id}" (${closure.reason}, ${closure.fromDate} to ${closure.toDate}) names "${scope.surfaceName}" at ${scope.venueIds.join(', ')}, which is not a surface the graph holds there; it is applied to the venue as a compromise, as an unreadable cell is, rather than to nothing`,
           {
             closureId: closure.id,
             venueIds: scope.venueIds,
@@ -227,7 +233,7 @@ export function buildClosureSet(graph, input) {
       findings.push(
         makeAvailabilityFinding(
           AVAILABILITY_REASON.CLOSURE_VENUE_UNKNOWN,
-          `closure "${closure.id}" (${closure.reason}, ${closure.fromDate} to ${closure.toDate}) names "${scope.venueName}", a venue the graph does not hold; it applies to nothing and is reported instead`,
+          `closure "${closure.id}" (${closure.reason}, ${closure.fromDate} to ${closure.toDate}) names "${scope.venueName}", a venue the graph does not hold, so it reaches no ground at all; every booking whose date and hours fall inside it is told so rather than told nothing`,
           {
             closureId: closure.id,
             venueName: scope.venueName,

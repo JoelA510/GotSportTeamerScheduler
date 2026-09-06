@@ -896,6 +896,79 @@ describe('closures :: unknowns are reported, never folded into "no closure appli
     expect(outside.meta.closuresUncomparable).toBe(0);
   });
 
+  it('says the same thing at build time as it does at query time', () => {
+    // Round 4, finding 2. Both build-time messages, and both codes' own
+    // documentation, still read "it applies to nothing" after 652f4e0 made one
+    // of them apply to the venue and the other report per booking. Two readers
+    // got opposite answers depending on which they read.
+    //
+    // Checked rather than described: for each unknown scope kind, build a set
+    // holding one such row, take the build-time message, and put a booking
+    // inside the window. A message claiming the row reaches nothing while the
+    // query reports it is the drift this asserts against.
+    const surfaceUnknown = buildClosureSet(graph, {
+      closures: [
+        {
+          id: 'su',
+          fromDate: '2026-09-24',
+          toDate: '2026-09-24',
+          startMinutes: 0,
+          endMinutes: ALL_DAY_CLOSE_MINUTES,
+          allDay: true,
+          scope: {
+            kind: CLOSURE_SCOPE.SURFACE_UNKNOWN,
+            venueIds: [season2026VenueId(ALDER)],
+            surfaceName: 'Pitch 9',
+          },
+          reason: 'names a surface the graph does not hold',
+        },
+      ],
+    });
+    const venueUnknown = buildClosureSet(graph, {
+      closures: [
+        {
+          id: 'vu',
+          fromDate: '2026-09-24',
+          toDate: '2026-09-24',
+          startMinutes: 0,
+          endMinutes: ALL_DAY_CLOSE_MINUTES,
+          allDay: true,
+          scope: { kind: CLOSURE_SCOPE.VENUE_UNKNOWN, venueName: 'Nowhere Park' },
+          reason: 'names a venue the graph does not hold',
+        },
+      ],
+    });
+
+    let checked = 0;
+    for (const { name, set, code } of [
+      {
+        name: 'surface-unknown',
+        set: surfaceUnknown,
+        code: AVAILABILITY_REASON.CLOSURE_SURFACE_UNKNOWN,
+      },
+      { name: 'venue-unknown', set: venueUnknown, code: AVAILABILITY_REASON.CLOSURE_VENUE_UNKNOWN },
+    ]) {
+      const built = set.findings.find((f) => f.code === code);
+      expect(built, name).toBeTruthy();
+      const answer = checkClosures(
+        graph,
+        set,
+        booking('b', sid(ALDER, 'Pitch 2'), '2026-09-24', 17 * 60, 18 * 60)
+      );
+      // The query does report it...
+      expect(codesOf(answer), name).toContain(code);
+      // ... so the build-time message may not say it reaches nothing.
+      expect(built.message, name).not.toMatch(/applies to nothing/i);
+      expect(built.message, name).not.toMatch(/reaches nothing at all(?!,)/i);
+      checked += 1;
+    }
+    expect(checked).toBe(2);
+
+    // Positive control: the sentence the messages used to carry is exactly what
+    // this rejects, so the check is about those words and not about any string.
+    expect('it applies to nothing and is reported instead').toMatch(/applies to nothing/i);
+  });
+
   it('rules a venue-unknown closure out on time, which needs no ground at all', () => {
     // Round 4, finding 1. The venue-unknown branch reported on a date match
     // alone, jumping the `meets === false` drop every other scope kind reaches
