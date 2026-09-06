@@ -1066,7 +1066,10 @@ describe('practice layer :: the sunset rule claims LIGHTING_UNDECLARED, so the e
 
     // ... and the rule engine's counters move accordingly: one more game on
     // unknown ground is one more *undeclared*, not one more unlit.
-    const lost = base.games[1];
+    // A game the graph calls *unlit*, so the bucket it leaves is a stated one
+    // and "moved out of unlit" is a fact rather than an assumption.
+    const lost = base.games.find((game) => litOf(game, table, calendar) === false);
+    expect(lost).toBeTruthy();
     const strayed = {
       ...base,
       name: 'season-2026 with one game on ground the graph does not hold',
@@ -1079,21 +1082,34 @@ describe('practice layer :: the sunset rule claims LIGHTING_UNDECLARED, so the e
     // move" is a fact about this game rather than about an empty counter.
     expect(before.exercise.counters.unlitGamesExamined).toBeGreaterThan(0);
     expect(after.exercise.counters.unlitGamesExamined).toBe(
-      before.exercise.counters.unlitGamesExamined -
-        (litOf(base, lost, table, calendar) === false ? 1 : 0)
+      before.exercise.counters.unlitGamesExamined - 1
     );
+    // A game whose lighting was never consulted lands in its **own** bucket:
+    // not "unlit", and not "declared absent" either. Round 3, finding 3 -- the
+    // counter used to be a catch-all `else` and claimed exercise it had not
+    // done.
     expect(after.exercise.counters.lightingUndeclaredGamesExamined).toBe(
-      before.exercise.counters.lightingUndeclaredGamesExamined + 1
+      before.exercise.counters.lightingUndeclaredGamesExamined
     );
-    expect(
-      after.exercise.counters.litGamesExamined +
-        after.exercise.counters.unlitGamesExamined +
-        after.exercise.counters.lightingUndeclaredGamesExamined
-    ).toBe(strayed.games.length);
+    expect(after.exercise.counters.lightingNotConsultedGamesExamined).toBe(
+      before.exercise.counters.lightingNotConsultedGamesExamined + 1
+    );
+    const sumOf = (run) =>
+      run.exercise.counters.litGamesExamined +
+      run.exercise.counters.unlitGamesExamined +
+      run.exercise.counters.lightingUndeclaredGamesExamined +
+      run.exercise.counters.lightingNotConsultedGamesExamined;
+    // The four buckets sum to the schedule, on both runs.
+    expect(sumOf(before)).toBe(base.games.length);
+    expect(sumOf(after)).toBe(strayed.games.length);
+    // ... and the declared-absent bucket is the one the Cedarbrook run moves,
+    // so the two are told apart by a case each and not by argument.
+    expect(sunset.exercise.counters.lightingUndeclaredGamesExamined).toBe(1);
+    expect(sunset.exercise.counters.lightingNotConsultedGamesExamined).toBe(0);
   });
 
   /** What the graph says about the ground one game stands on, before it strays. */
-  function litOf(schedule, game, timingTable, seasonCalendar) {
+  function litOf(game, timingTable, seasonCalendar) {
     return checkKickoffAvailability(graph, timingTable, seasonCalendar, {
       surfaceId: game.surfaceId,
       date: game.date,

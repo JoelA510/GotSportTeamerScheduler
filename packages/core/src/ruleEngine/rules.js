@@ -409,7 +409,7 @@ function rosteredTeamIdsByDivision(schedule) {
  * @param {import('./types.js').RuleContext} context
  * @param {import('./types.js').Schedule} schedule
  * @param {ReadonlySet<string>} codes
- * @returns {{ subjects: Array<import('../waivers/types.js').WaiverSubject>, counters: Record<string, number>, matched: Record<string, string[]>, litCount: number, unlitCount: number, undeclaredCount: number, permitWindowsConsulted: number }}
+ * @returns {{ subjects: Array<import('../waivers/types.js').WaiverSubject>, counters: Record<string, number>, matched: Record<string, string[]>, litCount: number, unlitCount: number, undeclaredCount: number, lightingNotConsultedCount: number, permitWindowsConsulted: number }}
  */
 function scanKickoffs(context, schedule, codes) {
   const graph = requireResource(context, 'graph');
@@ -421,6 +421,7 @@ function scanKickoffs(context, schedule, codes) {
   let litCount = 0;
   let unlitCount = 0;
   let undeclaredCount = 0;
+  let lightingNotConsultedCount = 0;
   let permitWindowsConsulted = 0;
 
   for (const game of schedule.games) {
@@ -440,11 +441,22 @@ function scanKickoffs(context, schedule, codes) {
       // it here as well would report every clash twice.
       { existingBookings: [] }
     );
-    // `lit` is tri-state (GAP-05): `null` is "nobody stated it", counted on
-    // its own and reported by the sunset rule as LIGHTING_UNDECLARED. The
-    // sunset bound is applied to it as to unlit ground, which is why it is
-    // not folded into `litCount`.
-    if (result.lit === true) litCount += 1;
+    // `lit` is tri-state (GAP-05), and there are **four** answers here, not
+    // three. `lit === null` covers two of them and they are not the same fact:
+    //
+    // - `lighting !== null` -- the reading was taken and the graph states
+    //   nothing. That is declared-absent lighting, `LIGHTING_UNDECLARED`, and
+    //   the exercise counter the sunset rule reports.
+    // - `lighting === null` -- no reading was taken at all, because the answer
+    //   returned before `resolveLighting()` ran (an unknown surface, a format
+    //   with no timing row). Counting those as undeclared would be a counter
+    //   claiming exercise it did not do: the rule would clear its own floor on
+    //   games it never looked at, which is the shape the floor exists to catch.
+    //
+    // `result.lighting` is the reading itself and is `null` in exactly the
+    // early-return templates, so it is what separates them.
+    if (result.lighting === null) lightingNotConsultedCount += 1;
+    else if (result.lit === true) litCount += 1;
     else if (result.lit === false) unlitCount += 1;
     else undeclaredCount += 1;
     permitWindowsConsulted += result.meta.permitWindowsConsulted;
@@ -470,6 +482,7 @@ function scanKickoffs(context, schedule, codes) {
     litCount,
     unlitCount,
     undeclaredCount,
+    lightingNotConsultedCount,
     permitWindowsConsulted,
   };
 }
@@ -811,6 +824,10 @@ export const sunsetMarginRule = Object.freeze({
         litGamesExamined: scan.litCount,
         unlitGamesExamined: scan.unlitCount,
         lightingUndeclaredGamesExamined: scan.undeclaredCount,
+        // The fourth bucket, so the four sum to `gamesExamined`. A game whose
+        // lighting was never consulted proves nothing about lighting and is
+        // counted where that is visible rather than folded into "undeclared".
+        lightingNotConsultedGamesExamined: scan.lightingNotConsultedCount,
       },
       matched: scan.matched,
     };
