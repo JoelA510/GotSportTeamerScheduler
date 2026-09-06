@@ -27,21 +27,72 @@ import { SEASON_2026_CONSTRAINTS } from '@squadlogic/core/constraints/index.js';
 import { STANDING_RULES } from '@squadlogic/core/ruleEngine/index.js';
 
 /**
- * Every reason code some enforcement path claims.
+ * The enforcement paths this check reads, each as its own claimed-code set.
  *
- * Two paths exist and both are read: a standing rule's `reasonCodes` (the rule
- * engine evaluates it) and a registry constraint's (`constraints/severity.js`
- * re-severities Phase 1 findings through it). Derived from the definitions, so
- * a rule or constraint that starts claiming a code is seen without anyone
- * remembering to come here.
+ * Two exist and both are read: a standing rule's `reasonCodes` (the rule engine
+ * evaluates it) and a registry constraint's (`constraints/severity.js`
+ * re-severities Phase 1 findings through it). Kept apart rather than unioned at
+ * source, because a union is exactly what let one half go quietly empty: `size
+ * > 10` was satisfied by the 43 rule codes alone, so emptying the constraint
+ * half would have reverted the check to its round-3 strength with the whole
+ * suite still green. Each path is asserted to contribute a code no other path
+ * supplies, and each is separately shown to break the biconditional.
  *
+ * Definitions are parameters so a control can simulate a wiring made through
+ * one path specifically.
+ *
+ * @param {{ rules?: ReadonlyArray<Object>, constraints?: ReadonlyArray<Object> }} [sources]
+ * @returns {Record<string, Set<string>>} path name -> the codes it claims
+ */
+export function claimedReasonCodesByPath(sources = {}) {
+  const rules = sources.rules ?? STANDING_RULES;
+  const constraints = sources.constraints ?? SEASON_2026_CONSTRAINTS;
+  return {
+    'standing rule': new Set(rules.flatMap((rule) => rule.reasonCodes ?? [])),
+    'registry constraint': new Set(
+      constraints.flatMap((constraint) => constraint.reasonCodes ?? [])
+    ),
+  };
+}
+
+/**
+ * Every reason code some enforcement path claims, over all paths.
+ *
+ * @param {{ rules?: ReadonlyArray<Object>, constraints?: ReadonlyArray<Object> }} [sources]
  * @returns {Set<string>}
  */
-export function claimedReasonCodes() {
-  return new Set([
-    ...STANDING_RULES.flatMap((rule) => rule.reasonCodes ?? []),
-    ...SEASON_2026_CONSTRAINTS.flatMap((constraint) => constraint.reasonCodes ?? []),
-  ]);
+export function claimedReasonCodes(sources = {}) {
+  return new Set(Object.values(claimedReasonCodesByPath(sources)).flatMap((codes) => [...codes]));
+}
+
+/**
+ * Assert that every enforcement path the check reads actually contributes.
+ *
+ * A path that silently stopped contributing would weaken every biconditional
+ * below it without failing anything, so each is required to supply at least one
+ * code no other path does. Both really do on this corpus: the rules supply
+ * dozens, and the registry supplies the three `WARMUP_OCCUPIED_*` codes that no
+ * rule claims.
+ *
+ * @returns {Record<string, string[]>} path name -> the codes only it supplies
+ */
+export function assertEveryClaimPathContributes() {
+  const byPath = claimedReasonCodesByPath();
+  const names = Object.keys(byPath);
+  expect(names.length, 'claimed-code paths').toBeGreaterThan(1);
+  /** @type {Record<string, string[]>} */
+  const unique = {};
+  for (const name of names) {
+    const others = new Set(
+      names.filter((other) => other !== name).flatMap((other) => [...byPath[other]])
+    );
+    unique[name] = [...byPath[name]].filter((code) => !others.has(code)).sort();
+    expect(
+      unique[name].length,
+      `the "${name}" path supplies no code the others do not, so emptying it would go unnoticed`
+    ).toBeGreaterThan(0);
+  }
+  return unique;
 }
 
 /**
@@ -88,6 +139,32 @@ export function assertLayerUnwired({ layer, findings, codes, declarationCode, cl
     rejected += 1;
   }
   expect(rejected, `${layer}: nothing to control with`).toBeGreaterThan(2);
+
+  // ... and once **per path**, through a definition of that path's own shape.
+  // The loop above widens the set directly, which proves the arithmetic; this
+  // proves each reader. A `?? []` that emptied one half would pass the first
+  // and fail here.
+  if (!claimed) {
+    const sample = codes.find((code) => code !== declarationCode);
+    const perPath = {
+      'standing rule': { rules: [...STANDING_RULES, { reasonCodes: [sample] }] },
+      'registry constraint': {
+        constraints: [...SEASON_2026_CONSTRAINTS, { reasonCodes: [sample] }],
+      },
+    };
+    for (const [name, sources] of Object.entries(perPath)) {
+      const through = claimedReasonCodes(sources);
+      expect(through.has(sample), `${layer}: the "${name}" path did not carry ${sample}`).toBe(
+        true
+      );
+      expect(
+        declares === (codes.filter((code) => through.has(code)).length === 0),
+        `${layer}: a wiring made through the "${name}" path leaves the declaration standing`
+      ).toBe(false);
+    }
+    // ... and every path is one the union really depends on.
+    assertEveryClaimPathContributes();
+  }
 
   return { enforced, declares };
 }
