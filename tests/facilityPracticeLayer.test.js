@@ -37,7 +37,13 @@ import {
 
 import { buildFormatTimingTableFromSeason2026 } from '@squadlogic/core/timing/index.js';
 
-import { replacementSurfacesFor } from '@squadlogic/core/scenario/index.js';
+import {
+  replacementSurfacesFor,
+  season2026CapacitySubjects,
+  season2026RelocationPolicy,
+} from '@squadlogic/core/scenario/index.js';
+
+import { buildReserveCapacityReport } from '@squadlogic/core/reserve/index.js';
 
 import { buildSeason2026ConstraintRegistry } from '@squadlogic/core/constraints/index.js';
 
@@ -659,22 +665,159 @@ describe('practice layer :: lighting nobody has stated is reported, not read as 
 describe('practice layer :: making Pitch 2 and Pitch 3 parents takes nothing from relocation', () => {
   const formats = ['11v11', '9v9', '7v7', '5v5', '4v4'];
 
+  /**
+   * What `replacementSurfacesFor()` offered on `origin/main` at `ba391a9`, on
+   * the game graph, transcribed literally.
+   *
+   * **Not re-derived from the predicate under test.** A round-1 fix widened the
+   * rule to "a leaf, or a surface that states sizes of its own" and that moved
+   * the *game* graph's set too — Alder Pitch 1 and Pitch 4, 9v9 parents of two
+   * 9v9 halves each, joined their own halves as candidates. Every check in this
+   * file compared the composed graph against the game graph, and both had
+   * moved, so the regression was invisible. The literal below is the fixed
+   * point neither graph may drift from.
+   */
+  const MAIN_GAME_GRAPH_CANDIDATES = Object.freeze({
+    '11v11': ['alder-park/pitch-2', 'alder-park/pitch-3', 'riverbend/turf', 'summit-hs/stadium'],
+    '9v9': [
+      'alder-park/pitch-1a',
+      'alder-park/pitch-1b',
+      'alder-park/pitch-2',
+      'alder-park/pitch-3',
+      'alder-park/pitch-4a',
+      'alder-park/pitch-4b',
+      'brookside-park/upper-1',
+      'brookside-park/upper-2',
+      'riverbend/turf',
+      'summit-hs/stadium',
+    ],
+    '7v7': [
+      'alder-park/pitch-1a',
+      'alder-park/pitch-1b',
+      'alder-park/pitch-4a',
+      'alder-park/pitch-4b',
+      'brookside-park/upper-1',
+      'brookside-park/upper-2',
+      'maplewood-front/field-1',
+    ],
+    '5v5': [
+      'maplewood-back/field-1',
+      'maplewood-back/field-2',
+      'maplewood-back/field-3',
+      'maplewood-back/field-4',
+      'maplewood-back/field-5',
+      'maplewood-back/field-6',
+      'maplewood-back/field-7',
+      'maplewood-front/field-1',
+    ],
+    '4v4': [
+      'maplewood-back/field-1',
+      'maplewood-back/field-2',
+      'maplewood-back/field-3',
+      'maplewood-back/field-4',
+      'maplewood-back/field-5',
+      'maplewood-back/field-6',
+      'maplewood-back/field-7',
+      'orchard-park/field-1',
+      'orchard-park/field-2',
+      'orchard-park/field-3',
+      'orchard-park/field-4',
+      'orchard-park/field-5',
+      'orchard-park/field-6',
+    ],
+  });
+
+  it("leaves the game graph's candidate set exactly where main had it", () => {
+    // Control (a): the anchor. The practice layer may not move this set at all.
+    let compared = 0;
+    for (const format of formats) {
+      const offered = replacementSurfacesFor(gameGraph, { format, maxGradesAbove: 1 });
+      expect(offered, format).toEqual([...MAIN_GAME_GRAPH_CANDIDATES[format]]);
+      compared += offered.length;
+    }
+    // Meta-assertion: the literal is not an empty table agreeing with an empty
+    // answer, and every format contributed.
+    expect(compared).toBe(
+      formats.reduce((sum, format) => sum + MAIN_GAME_GRAPH_CANDIDATES[format].length, 0)
+    );
+    expect(compared).toBeGreaterThan(40);
+    // The two 9v9 parents this is really about, named so a rule that offered
+    // them again would fail here and not only in the totals.
+    for (const parent of [sid(ALDER, 'Pitch 1'), sid(ALDER, 'Pitch 4')]) {
+      expect(gameGraph.surfaces[parent].sizes).toEqual(['9v9']);
+      expect(gameGraph.surfaces[parent].childIds.length).toBe(2);
+      expect(MAIN_GAME_GRAPH_CANDIDATES['9v9']).not.toContain(parent);
+      expect(replacementSurfacesFor(gameGraph, { format: '9v9', maxGradesAbove: 1 })).not.toContain(
+        parent
+      );
+    }
+  });
+
   it('offers the same replacement ground on the composed graph as on the game graph', () => {
     let compared = 0;
     for (const format of formats) {
       const before = replacementSurfacesFor(gameGraph, { format, maxGradesAbove: 1 });
       const after = replacementSurfacesFor(graph, { format, maxGradesAbove: 1 });
       expect(after, format).toEqual(before);
+      // ... and both equal what main offered, so "they agree" cannot be two
+      // sets that moved together.
+      expect(after, format).toEqual([...MAIN_GAME_GRAPH_CANDIDATES[format]]);
       compared += before.length;
     }
     expect(compared).toBeGreaterThan(20);
-    // The two 11v11 pitches that became parents are still offered whole.
+  });
+
+  it('offers Pitch 2 and Pitch 3 whole for 11v11 and their halves for nothing', () => {
+    // Control (c).
     const eleven = replacementSurfacesFor(graph, { format: '11v11', maxGradesAbove: 1 });
     expect(eleven).toContain(sid(ALDER, 'Pitch 2'));
     expect(eleven).toContain(sid(ALDER, 'Pitch 3'));
-    // ... and their halves, which state no size, are not.
-    expect(eleven).not.toContain(pid(ALDER, 'Pitch 2A'));
-    expect(graph.surfaces[pid(ALDER, 'Pitch 2A')].sizes).toEqual([]);
+    const halves = [
+      pid(ALDER, 'Pitch 2A'),
+      pid(ALDER, 'Pitch 2B'),
+      pid(ALDER, 'Pitch 3A'),
+      pid(ALDER, 'Pitch 3B'),
+    ];
+    let checked = 0;
+    for (const half of halves) {
+      // The halves are in the graph, state no size, and are offered for no
+      // format at all -- not merely absent from the 11v11 answer.
+      expect(graph.surfaces[half], half).toBeTruthy();
+      expect(graph.surfaces[half].sizes, half).toEqual([]);
+      for (const format of formats) {
+        expect(
+          replacementSurfacesFor(graph, { format, maxGradesAbove: 1 }),
+          `${half} ${format}`
+        ).not.toContain(half);
+        checked += 1;
+      }
+    }
+    expect(checked).toBe(halves.length * formats.length);
+  });
+
+  it('never offers a surface and the ground standing on it at once', () => {
+    // The invariant the rule exists for, stated over the whole corpus rather
+    // than over the four surfaces that showed it.
+    let pairsChecked = 0;
+    for (const [name, subject] of [
+      ['game', gameGraph],
+      ['composed', graph],
+    ]) {
+      for (const format of formats) {
+        const offered = replacementSurfacesFor(subject, { format, maxGradesAbove: 1 });
+        const set = new Set(offered);
+        for (const id of offered) {
+          for (const ancestorId of lineageOf(subject, id)) {
+            if (ancestorId === id) continue;
+            pairsChecked += 1;
+            expect(set.has(ancestorId), `${name}/${format}: ${id} under ${ancestorId}`).toBe(false);
+          }
+        }
+      }
+    }
+    // Meta-assertion: the composed graph really does put offered ground under
+    // ancestors, so the loop above tested something.
+    expect(pairsChecked).toBeGreaterThan(0);
   });
 
   it('still drops a parent that states no size of its own (positive control)', () => {
@@ -692,6 +835,119 @@ describe('practice layer :: making Pitch 2 and Pitch 3 parents takes nothing fro
       pitch2
     );
     expect(replacementSurfacesFor(graph, { format: '11v11', maxGradesAbove: 1 })).toContain(pitch2);
+  });
+
+  it('drops a parent again the moment one of its halves is given a size (positive control)', () => {
+    // The other direction, and the one round 1 got wrong. Give Pitch 2A the
+    // size its parent has and Pitch 2 stops being the bookable ground.
+    const input = extendFacilityGraphInputWithSeason2026PracticeLayer(
+      toSeason2026FacilityGraphInput(geometry)
+    );
+    const pitch2 = sid(ALDER, 'Pitch 2');
+    const half = pid(ALDER, 'Pitch 2A');
+    const sized = buildFacilityGraph({
+      ...input,
+      surfaces: input.surfaces.map((s) =>
+        s.id === half ? { ...s, sizes: ['11v11'], lined: ['11v11'] } : s
+      ),
+    });
+    const offered = replacementSurfacesFor(sized, { format: '11v11', maxGradesAbove: 1 });
+    expect(offered).toContain(half);
+    expect(offered).not.toContain(pitch2);
+    // ... and the unmodified graph still offers the pitch, so the difference is
+    // the half's size and nothing else.
+    expect(replacementSurfacesFor(graph, { format: '11v11', maxGradesAbove: 1 })).toContain(pitch2);
+  });
+
+  it('drops a parent whose sized ground is a grandchild, not a child (positive control)', () => {
+    // The forest is two deep at Alder (`Pitch 1A -> Pitch 1A Side 1`), so the
+    // rule walks the subtree. A rule reading only the immediate children would
+    // offer Pitch 1A here *and* its sized Side 1, which is the same
+    // double-count one level down.
+    const input = extendFacilityGraphInputWithSeason2026PracticeLayer(
+      toSeason2026FacilityGraphInput(geometry)
+    );
+    const parent = sid(ALDER, 'Pitch 1A');
+    const grandchild = pid(ALDER, 'Pitch 1A', 'Side 1');
+    expect(input.surfaces.find((s) => s.id === grandchild)).toBeTruthy();
+    const deep = buildFacilityGraph({
+      ...input,
+      surfaces: input.surfaces.map((s) =>
+        s.id === grandchild ? { ...s, sizes: ['9v9'], lined: ['9v9'] } : s
+      ),
+    });
+    expect(deep.surfaces[parent].childIds).toContain(grandchild);
+    const offered = replacementSurfacesFor(deep, { format: '9v9', maxGradesAbove: 1 });
+    expect(offered).toContain(grandchild);
+    expect(offered).not.toContain(parent);
+    expect(replacementSurfacesFor(graph, { format: '9v9', maxGradesAbove: 1 })).toContain(parent);
+  });
+
+  it('counts Pitch 1 family capacity once per patch of ground, not once per level', () => {
+    // Control (b): the consequence the candidate set has downstream.
+    // `reserve/conditions.js` omits OCCUPIED_PARENT_CHILD from its slot
+    // conditions because the ground it is handed is leaf ground; offer a parent
+    // beside its halves and the same seven kickoffs are counted three times.
+    const timingTable = buildFormatTimingTableFromSeason2026(loadGameFormats());
+    const seasonSunsets = loadSunsets();
+    const seasonCalendar = buildAvailabilityCalendarFromSeason2026(
+      loadFacilityPermits({ seasonYear: Number(seasonSunsets[0].date.slice(0, 4)) }),
+      seasonSunsets
+    );
+    const schedule = toSeason2026Schedule(season);
+    const DATE = '2026-09-19';
+    const familyOf = (report) =>
+      report.dates[0].bySurface.filter((row) => row.surfaceId.startsWith(sid(ALDER, 'Pitch 1')));
+    const reportOver = (surfaceIds) =>
+      buildReserveCapacityReport(
+        { graph: gameGraph, table: timingTable, calendar: seasonCalendar },
+        season2026CapacitySubjects({
+          graph: gameGraph,
+          table: timingTable,
+          format: '9v9',
+          dates: [DATE],
+          surfaceIds,
+          requirement: { slots: 1, label: 'round-2 control', source: 'tests' },
+          games: schedule.games,
+        })[0]
+      );
+
+    const policy = season2026RelocationPolicy({
+      graph: gameGraph,
+      table: timingTable,
+      format: '9v9',
+      excludeVenueIds: [],
+      games: schedule.games,
+    });
+    expect(policy.surfaceIds).toEqual([...MAIN_GAME_GRAPH_CANDIDATES['9v9']]);
+
+    const honest = familyOf(reportOver(policy.surfaceIds));
+    expect(honest.map((row) => row.surfaceId)).toEqual([
+      pid(ALDER, 'Pitch 1A'),
+      pid(ALDER, 'Pitch 1B'),
+    ]);
+    const free = honest.reduce((sum, row) => sum + row.slots, 0);
+    expect(free).toBe(14);
+
+    // The wrong implementation, written out: the round-1 rule offered the
+    // sized parent too. Same report, three rows, twenty-one slots -- and the
+    // rows carry the *same* kickoff minutes, so it is one hour counted thrice
+    // rather than new ground found.
+    const triple = familyOf(reportOver([...policy.surfaceIds, sid(ALDER, 'Pitch 1')].sort()));
+    expect(triple.map((row) => row.surfaceId)).toEqual([
+      sid(ALDER, 'Pitch 1'),
+      pid(ALDER, 'Pitch 1A'),
+      pid(ALDER, 'Pitch 1B'),
+    ]);
+    expect(triple.reduce((sum, row) => sum + row.slots, 0)).toBe(21);
+    const kickoffs = triple.map((row) => JSON.stringify(row.kickoffMinutes));
+    expect(new Set(kickoffs).size).toBe(1);
+    expect(JSON.parse(kickoffs[0])).toHaveLength(7);
+    // ... and the parent really does exclude its halves, so the extra seven are
+    // not free ground by any reading.
+    expect(
+      surfacesConflict(gameGraph, sid(ALDER, 'Pitch 1'), pid(ALDER, 'Pitch 1A')).conflict
+    ).toBe(true);
   });
 });
 
