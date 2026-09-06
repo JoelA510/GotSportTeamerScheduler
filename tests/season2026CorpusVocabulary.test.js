@@ -207,10 +207,14 @@ const SHAPES_BEFORE_THE_LIFT = Object.freeze([
     samples: ['1234567'],
   }),
   Object.freeze({
+    // Widened in the 8.4 review to `[\\p{L}\\p{M}]`: a decomposed name is
+    // letters plus combining marks, and `\\p{L}` alone matched neither. The
+    // corpus is ASCII, so this reads exactly as much of it as before - the
+    // pinned source is updated deliberately rather than the assertion relaxed.
     name: 'non-ascii-letter',
-    source: '(?!\\p{ASCII})\\p{L}',
+    source: '(?!\\p{ASCII})[\\p{L}\\p{M}]',
     flags: 'u',
-    samples: ['\u0414\u0438\u043d\u0430\u043c\u043e'],
+    samples: ['\u0414\u0438\u043d\u0430\u043c\u043e', 'e\u0308'],
   }),
   Object.freeze({
     name: 'initialism',

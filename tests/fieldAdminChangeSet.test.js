@@ -579,6 +579,45 @@ describe('fieldAdmin :: the privacy guard on an operator-written note', () => {
     }
   });
 
+  it('refuses both normal forms of the same string, not one form of two', () => {
+    // **The measured bypass**: a name carrying a diaeresis was refused in NFC
+    // and accepted in NFD. `\\p{L}` matches neither the decomposed base letter
+    // as non-ASCII nor the combining mark, and nothing normalised - so the
+    // spelling of the input decided whether the guard could see it, which
+    // means an operator could pick the spelling that got through.
+    //
+    // Asserted on **both forms of one string**, deliberately. Two different
+    // strings would pass while the hole was open.
+    const name = 'Zo\u00eb Hendricks memorial';
+    const nfc = name.normalize('NFC');
+    const nfd = name.normalize('NFD');
+    // Meta-assertion: if these were the same string the test would prove
+    // nothing about normalisation.
+    expect(nfc).not.toBe(nfd);
+    expect(nfc.length).not.toBe(nfd.length);
+    for (const [form, value] of [
+      ['NFC', nfc],
+      ['NFD', nfd],
+    ]) {
+      expect({ form, refused: !NoteSchema.safeParse(value).success }).toEqual({
+        form,
+        refused: true,
+      });
+      expect({ form, shapes: findIdentityShapes(value).map((hit) => hit.shape) }).toEqual({
+        form,
+        shapes: ['non-ascii-letter'],
+      });
+    }
+  });
+
+  it('sees a combining mark that composes with nothing', () => {
+    // The second line of defence. A stray mark has no precomposed form to
+    // normalise into, so `\\p{M}` beside `\\p{L}` is what catches it.
+    expect(findIdentityShapes('closed \u0301 today').map((hit) => hit.shape)).toEqual([
+      'non-ascii-letter',
+    ]);
+  });
+
   it('bounds the length', () => {
     expect(NoteSchema.safeParse('x'.repeat(NOTE_MAX_LENGTH)).success).toBe(true);
     expect(NoteSchema.safeParse('x'.repeat(NOTE_MAX_LENGTH + 1)).success).toBe(false);
@@ -619,40 +658,66 @@ describe('fieldAdmin :: the privacy guard on an operator-written note', () => {
   });
 
   it('never hides an identity shape behind an abbreviation', () => {
-    // **The property the guard actually depends on**, and it is stronger than
-    // "the regex is escaped": stripping abbreviations must not remove anything
-    // a shape would have caught. If it did, the note guard would return
-    // "clean" having examined less than it claims - the hollow-guarantee shape
-    // in the one module where it costs the most.
+    // **The property the guard depends on**, and the version that can fail.
     //
-    // The initialism shape is the deliberate exception, and only for the
-    // abbreviation itself: that is the whole purpose of the narrowing.
+    // The first version of this test only ever built `closed ${abbr} ${sample}`
+    // - spaces on both sides - which is the case the whole-token rule already
+    // protects, so it could not fail for the class it names. The boundary rule
+    // is load-bearing exactly where the abbreviation *abuts* the shape, so that
+    // is what this builds. Measured against the code it replaced:
+    // `u.s.@mail.internal` tripped `email` on the strict path and **nothing**
+    // on the note path, because the end-boundary admitted `@`.
+    //
+    // Stated as an inclusion rather than a per-shape check: every non-initialism
+    // shape the strict scan finds must survive the narrowed scan. The initialism
+    // is the one verdict the narrowing is allowed to change.
     let checked = 0;
     for (const { name, samples } of IDENTITY_SHAPES) {
       if (name === 'initialism') continue;
       for (const sample of samples) {
         for (const abbreviation of COMMON_ABBREVIATIONS) {
-          const text = `closed ${abbreviation} ${sample}`;
-          const strict = findIdentityShapes(text).map((hit) => hit.shape);
-          const narrowed = findIdentityShapes(text, { allowCommonAbbreviations: true }).map(
-            (hit) => hit.shape
-          );
-          expect({ name, abbreviation, found: strict.includes(name) }).toEqual({
-            name,
-            abbreviation,
-            found: true,
-          });
-          expect({ name, abbreviation, stillFound: narrowed.includes(name) }).toEqual({
-            name,
-            abbreviation,
-            stillFound: true,
-          });
-          checked += 1;
+          // **Exhaustive over adjacency**, because that is where the
+          // boundary rule is load-bearing. Splicing the abbreviation against
+          // every suffix and every prefix of the sample reaches the case the
+          // hand-written list missed: `u.s.` sitting where an email's local
+          // part goes, so the character after it is `@`.
+          const spliced = [`${abbreviation} ${sample}`, `${sample} ${abbreviation}`];
+          for (let cut = 0; cut <= sample.length; cut += 1) {
+            spliced.push(`closed ${abbreviation}${sample.slice(cut)}`);
+            spliced.push(`closed ${sample.slice(0, cut)}${abbreviation}`);
+          }
+          for (const text of spliced) {
+            const strict = findIdentityShapes(text)
+              .map((hit) => hit.shape)
+              .filter((shape) => shape !== 'initialism');
+            const narrowed = findIdentityShapes(text, { allowCommonAbbreviations: true }).map(
+              (hit) => hit.shape
+            );
+            for (const shape of strict) {
+              expect({ text, shape, survived: narrowed.includes(shape) }).toEqual({
+                text,
+                shape,
+                survived: true,
+              });
+            }
+            checked += 1;
+          }
         }
       }
     }
     // Meta-assertion: a loop that examined nothing would pass silently.
-    expect(checked).toBeGreaterThan(30);
+    expect(checked).toBeGreaterThan(1000);
+  });
+
+  it('does not let an abbreviation swallow the head of an email address', () => {
+    // The measured instance, named on its own so a regression reads as itself
+    // rather than as one of two hundred generated cases.
+    const text = 'u.s.@mail.internal';
+    expect(findIdentityShapes(text).map((hit) => hit.shape)).toContain('email');
+    expect(
+      findIdentityShapes(text, { allowCommonAbbreviations: true }).map((hit) => hit.shape)
+    ).toContain('email');
+    expect(NoteSchema.safeParse(text).success).toBe(false);
   });
 
   it('still sees a real initialism standing beside an abbreviation', () => {

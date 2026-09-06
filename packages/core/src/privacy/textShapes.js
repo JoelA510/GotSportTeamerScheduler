@@ -91,10 +91,16 @@ export const IDENTITY_SHAPES = Object.freeze([
   // is new data. Letters only, deliberately: the corpus and its prose carry 45
   // non-ASCII *punctuation* marks (em dashes, arrows, the less-than-or-equal
   // sign) that are not names.
+  // `\p{M}` beside `\p{L}`, because a decomposed name is letters plus
+  // combining marks and a stray mark composes with nothing. Measured: the NFD
+  // form of a name with a diaeresis carried no `\p{L}` outside ASCII at all, so
+  // the guard read it as clean. Inputs are normalised to NFC before scanning
+  // (see `findIdentityShapes`); this is the second line of defence for a mark
+  // that has no precomposed form to normalise into.
   Object.freeze({
     name: 'non-ascii-letter',
-    pattern: /(?!\p{ASCII})\p{L}/u,
-    samples: Object.freeze(['\u0414\u0438\u043d\u0430\u043c\u043e']),
+    pattern: /(?!\p{ASCII})[\p{L}\p{M}]/u,
+    samples: Object.freeze(['\u0414\u0438\u043d\u0430\u043c\u043e', 'e\u0308']),
   }),
   // A dotted initialism is the letter-by-letter spelling a word split throws
   // away. Case-insensitive and with no exception list, which the corpus
@@ -291,8 +297,43 @@ export function withoutCommonAbbreviations(text, abbreviations = ABBREVIATIONS_B
  * @returns {Array<{ shape: string, match: string }>}
  */
 export function findIdentityShapes(text, options = {}) {
-  const raw = String(text ?? '');
-  const value = options.allowCommonAbbreviations ? withoutCommonAbbreviations(raw) : raw;
+  // **Normalised before anything looks at it.** A name written in NFD is
+  // letters plus combining marks, and `\p{L}` matches neither the base letter
+  // as non-ASCII nor the mark - measured: the NFC form of a name carrying a
+  // diaeresis was refused and the NFD form of the *same string* was accepted.
+  // One normal form, chosen at the door, so a caller cannot pick the spelling
+  // that gets through. NFC and not NFKC: NFC composes marks, which is the
+  // hole; NFKC also folds compatibility forms, which would change values the
+  // guard is not there to change.
+  const raw = String(text ?? '').normalize('NFC');
+
+  // **Only the initialism verdict may be narrowed, and every other shape is
+  // judged on the untouched text.**
+  //
+  // The narrowed path used to scan the *stripped* string for everything, so
+  // removing an abbreviation could remove a shape with it. Measured:
+  // `u.s.@mail.internal` tripped `email` on the strict path and nothing on the
+  // narrowed one, because stripping `u.s.` left `@mail.internal`, which is not
+  // an address. Tuning the boundary rule would have closed that instance and
+  // left the class; scanning the raw text for every shape but the initialism
+  // makes "the narrowing never hides a shape" true **by construction**, which
+  // is what `tests/fieldAdminChangeSet.test.js` asserts exhaustively over
+  // adjacency.
+  const hits = scanIdentityShapes(raw);
+  if (!options.allowCommonAbbreviations) return hits;
+  const strippedHasInitialism = scanIdentityShapes(withoutCommonAbbreviations(raw)).some(
+    (hit) => hit.shape === 'initialism'
+  );
+  return strippedHasInitialism ? hits : hits.filter((hit) => hit.shape !== 'initialism');
+}
+
+/**
+ * Every shape a string matches, with no narrowing of any kind.
+ *
+ * @param {string} value - already normalised by the caller
+ * @returns {Array<{ shape: string, match: string }>}
+ */
+function scanIdentityShapes(value) {
   /** @type {Array<{ shape: string, match: string }>} */
   const hits = [];
   for (const { name, pattern } of IDENTITY_SHAPES) {
