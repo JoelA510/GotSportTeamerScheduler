@@ -50,8 +50,18 @@ psql_file() {
 psql_cmd() { as_pg "psql -v ON_ERROR_STOP=1 -h ~/sock -U postgres -d $DB -tAc \"$1\""; }
 
 fresh_db() {
-  as_pg "psql -h ~/sock -U postgres -q -c 'DROP DATABASE IF EXISTS $DB' -c 'CREATE DATABASE $DB'" >/dev/null 2>&1
-  psql_file "$REPO/scripts/dbharness/prelude.sql" >/dev/null
+  if ! as_pg "psql -h ~/sock -U postgres -q -c 'DROP DATABASE IF EXISTS $DB' -c 'CREATE DATABASE $DB'" >/tmp/harness_freshdb 2>&1; then
+    echo "FAIL creating a fresh database"; tail -10 /tmp/harness_freshdb; return 1
+  fi
+  # **The prelude's exit status was thrown away.** `psql_file ... >/dev/null`
+  # discarded both the output and, because nothing tested `$?`, the failure --
+  # so a prelude that died part-way left a half-built stand-in and the run
+  # carried on against it. Found by trying to prove the baseline gate could
+  # fail: a deliberately broken prelude produced BASELINE GREEN and fifteen
+  # meaningless CAUGHTs. The gate was right; what it stood on was not.
+  if ! psql_file "$REPO/scripts/dbharness/prelude.sql" >/tmp/harness_prelude 2>&1; then
+    echo "FAIL applying the prelude"; tail -20 /tmp/harness_prelude; return 1
+  fi
 }
 
 apply_all() {
@@ -88,8 +98,8 @@ install_stub_ext || { echo "FAIL: could not install pg_cron stub"; exit 1; }
 echo "=== starting cluster ==="
 start_cluster || { echo "FAIL: could not start cluster"; exit 1; }
 echo "=== applying migration set ==="
-fresh_db
-apply_all || exit 1
+fresh_db || { echo "HARNESS FAILED"; exit 1; }
+apply_all || { echo "HARNESS FAILED"; exit 1; }
 echo "=== smokes for this PR's migrations ==="
 #
 # **Scoped to the two migrations this PR adds**, and that is a deliberate limit
@@ -146,7 +156,7 @@ echo "=== reverts (each applied on a database built up to its own migration) ===
 # column a later migration built a view on. So each revert is checked on a fresh
 # database migrated up to and including its own forward migration.
 for id in "${NEW_MIGRATIONS[@]}"; do
-  fresh_db
+  if ! fresh_db; then echo "FAIL building a fresh database for ${id}"; STATUS=1; continue; fi
   ok=1
   for m in "$REPO"/supabase/migrations/*.sql; do
     psql_file "$m" >/tmp/harness_err 2>&1 || { ok=0; break; }
