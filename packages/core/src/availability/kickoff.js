@@ -325,13 +325,25 @@ function lightingConstraint(lighting, permit, ctx, findings) {
   );
 
   if (lighting.lit === null) {
-    // Nothing states it. Reported, and then carried by the sunset rule
-    // exactly as unlit ground is: the conservative bound, with the gap visible.
+    // Nothing in the graph states it. Reported, and then carried by the
+    // sunset rule exactly as unlit ground is: the conservative bound, with the
+    // gap visible. The permit paperwork's own claim, when it makes one, is
+    // named here rather than applied: it is a claim about the venue, kept
+    // beside the graph's for cross-check and not merged into it.
+    const permitClaim = permit && permit.lit !== null ? permit.lit : null;
     findings.push(
       makeAvailabilityFinding(
         AVAILABILITY_REASON.LIGHTING_UNDECLARED,
-        'no record and no venue flag states whether this field is lit; the sunset rule is applied as for unlit ground',
-        { ...base, source: lighting.source, recordId: lighting.recordId }
+        permitClaim === null
+          ? 'no record and no venue flag states whether this field is lit; the sunset rule is applied as for unlit ground'
+          : `no record and no venue flag states whether this field is lit; the permit record says ${permitClaim ? 'lit' : 'unlit'} and is not applied; the sunset rule is applied as for unlit ground`,
+        {
+          ...base,
+          source: lighting.source,
+          recordId: lighting.recordId,
+          permitId: permit?.id ?? null,
+          permitLit: permitClaim,
+        }
       )
     );
   }

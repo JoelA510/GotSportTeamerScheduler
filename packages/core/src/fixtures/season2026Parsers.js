@@ -319,7 +319,7 @@ export function scheduledOccupancyMinutes(formatsByName, formatName) {
  * @property {boolean} hasPermit - false for the explicit "NO PERMIT" row
  * @property {number|null} openMinutes
  * @property {number|null} closeMinutes
- * @property {boolean} lit
+ * @property {boolean|null} lit - `null` when the geometry states nothing
  * @property {string} notes
  * @property {Record<string,string>} raw
  */
@@ -518,7 +518,8 @@ export function parseFacilityGeometry(source) {
     }
     venues.push({
       name: venueName,
-      lit: Boolean(venueDoc.lit),
+      // Absent is not `false`: the practice corpus's venues state nothing (GAP-05).
+      lit: typeof venueDoc.lit === 'boolean' ? venueDoc.lit : null,
       fields: venueFields,
       overlapPairs: (venueDoc.overlap_pairs ?? []).map((pair) => [pair[0], pair[1]]),
       overlapNote: venueDoc.overlap_note ?? null,

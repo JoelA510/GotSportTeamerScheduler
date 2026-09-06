@@ -210,7 +210,8 @@ export function toSeason2026FacilityGraphInput(geometry, options = {}) {
     venues.push({
       id: venueId,
       name: venue.name,
-      lit: Boolean(venue.lit),
+      // A stated flag is carried; an absent one stays absent (GAP-05).
+      lit: typeof venue.lit === 'boolean' ? venue.lit : null,
       // Orchard Park's "20-min turnover is HARD here" note rides along
       // untouched. Acting on it is Phase 2's job, not this adapter's.
       notes: venue.notes ?? null,

@@ -27,11 +27,11 @@ export const FacilityVenueSchema = z
     id: IdSchema,
     name: z.string().min(1),
     /**
-     * `null` is "no source states it" — the practice-only venues of the
-     * season-2026 corpus (GAP-05). Distinct from `false`, which is a stated
-     * fact; `availability/` reports the difference as `LIGHTING_UNDECLARED`.
+     * `null` is "no source states it", and it is the default: an omitted
+     * flag is an absence, not a stated "unlit" (GAP-05). `availability/`
+     * reports the difference as `LIGHTING_UNDECLARED`.
      */
-    lit: z.boolean().nullable().default(false),
+    lit: z.boolean().nullable().default(null),
     notes: z.string().nullable().default(null),
     /** The site's own prose about its overlap geometry, carried for audit. */
     overlapNote: z.string().nullable().default(null),

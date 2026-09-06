@@ -394,7 +394,7 @@ export function resolveLighting(graph, calendar, surfaceId) {
   return {
     // A venue whose flag is `null` has declared nothing; that is carried as
     // `null`, never read as `false` (GAP-05).
-    lit: venue ? venue.lit : false,
+    lit: venue ? venue.lit : null,
     lightsOffMinutes: null,
     source: /** @type {'venue'} */ ('venue'),
     recordId: venue?.id ?? null,
