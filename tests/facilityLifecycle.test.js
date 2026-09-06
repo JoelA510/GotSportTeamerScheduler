@@ -11,6 +11,10 @@
 
 import { describe, it, expect } from 'vitest';
 
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 import {
   FACILITY_REASON,
   buildFacilityGraph,
@@ -21,10 +25,15 @@ import {
   checkLining,
   checkOccupancy,
   checkSizeEligibility,
+  findFacilityConflicts,
+  occupancyFootprint,
+  surfacesConflict,
   isDatedNode,
   isLiveOn,
   retiredOn,
 } from '@squadlogic/core/facility/index.js';
+
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 import { buildSeason2026PracticeFacilityGraph } from '@squadlogic/core/facility/index.js';
 import { loadFacilityGeometry } from '@squadlogic/core/fixtures/index.js';
 
@@ -175,7 +184,23 @@ describe('facility lifecycle :: UNJUDGED fires on the dated graph and only there
     const closedVenue = graphWith({}, { effectiveTo: '2026-06-30' });
     const result = checkFacilityLifecycle(closedVenue, { asOf: '2026-09-01', surfaceId: 's1' });
     expect(lifecycleCodes(result)).toEqual([FACILITY_REASON.NODE_RETIRED]);
-    expect(result.findings[0].details).toMatchObject({ kind: 'venue', id: 'v1' });
+    // **The subject is the surface that was asked about; the venue is the
+    // cause.** This asserted `{kind:'venue', id:'v1'}` -- the shape the scoped
+    // arm used to emit, in which `details.id` meant the node that CLOSED while
+    // the whole-graph arm's `details.id` meant the node being JUDGED. The two
+    // shapes were pinned side by side in this very file, so the divergence was
+    // certified rather than caught: the fourth time in this series a passing
+    // test has held a defect in place.
+    expect(result.findings[0].details).toMatchObject({
+      kind: 'surface',
+      id: 's1',
+      causeKind: 'venue',
+      causeId: 'v1',
+      causeEffectiveTo: '2026-06-30',
+    });
+    // The surface has no window of its own, so the message must not claim one.
+    expect(result.findings[0].details.effectiveTo).toBeNull();
+    expect(result.findings[0].message).toContain('because venue "v1"');
   });
 
   it('lists what is retired on a date, from the registries', () => {
@@ -229,26 +254,67 @@ describe('facility lifecycle :: a count nobody made is not a count of zero', () 
     const undated = checkFieldEligibility(graphWith(), { surfaceId: 's1', format: '9v9' });
     expect(undated.meta.datedNodeCount).toBe(0);
 
-    // **Every check that does not count, checked -- not a sample of one.**
-    // Asserting `null` on a single non-counting path is what let three
-    // different tallies coexist: nobody had to look at the others. These are
-    // the exported checks that never consult the lifecycle module, and each
-    // must leave the counter untouched rather than publish a confident 0.
-    const nonCounting = [
-      () => checkSizeEligibility(dated, { surfaceId: 's1', format: '9v9' }),
-      () => checkLining(dated, { surfaceId: 's1', format: '9v9' }),
-      () => checkEquipment(dated, { surfaceId: 's1', format: '9v9', date: '2026-05-01' }),
-      () =>
-        checkOccupancy(
-          dated,
-          { id: 'b1', surfaceId: 's1', date: '2026-05-01', startMinutes: 600, endMinutes: 700 },
-          []
-        ),
-    ];
-    // The list is not empty, or the loop asserts nothing.
-    expect(nonCounting.length).toBeGreaterThan(3);
-    for (const run of nonCounting) {
-      expect(run().meta.datedNodeCount).toBeNull();
+    // **Every producer, derived -- because the fix for three hand-written
+    // tallies was a fourth hand-written literal.** The replacement listed four
+    // closures and claimed to be *every* exported check that never counts. It
+    // was 4 of 7: `occupancyFootprint`, `surfacesConflict` and
+    // `findFacilityConflicts` also build a `createMeta()` and were absent. And
+    // `expect(nonCounting.length).toBeGreaterThan(3)` over a four-element
+    // literal cannot fail -- a guard that reads like a meta-assertion and is
+    // arithmetic on a constant.
+    //
+    // The producer set is now scanned out of the source, and the invocation map
+    // is held to it EXACTLY. Adding a producer without deciding whether it
+    // counts fails here rather than being quietly left out.
+    const booking = {
+      id: 'b1',
+      surfaceId: 's1',
+      date: '2026-05-01',
+      startMinutes: 600,
+      endMinutes: 700,
+    };
+    /** Every producer, and what it is expected to publish. */
+    const producers = {
+      checkSizeEligibility: () => checkSizeEligibility(dated, { surfaceId: 's1', format: '9v9' }),
+      checkLining: () => checkLining(dated, { surfaceId: 's1', format: '9v9' }),
+      checkEquipment: () =>
+        checkEquipment(dated, { surfaceId: 's1', format: '9v9', date: '2026-05-01' }),
+      checkOccupancy: () => checkOccupancy(dated, booking, []),
+      occupancyFootprint: () => occupancyFootprint(dated, 's1'),
+      surfacesConflict: () => surfacesConflict(dated, 's1', 's1'),
+      findFacilityConflicts: () => findFacilityConflicts(dated, [booking]),
+      // The counting ones, listed so the map is the whole set rather than the
+      // half that suits the assertion.
+      checkFacilityLifecycle: () => checkFacilityLifecycle(dated, { asOf: '2026-05-01' }),
+      checkFieldEligibility: () => checkFieldEligibility(dated, { surfaceId: 's1', format: '9v9' }),
+      checkBooking: () => checkBooking(dated, booking),
+    };
+    const COUNTING = ['checkFacilityLifecycle', 'checkFieldEligibility', 'checkBooking'];
+
+    const source = ['eligibility.js', 'lifecycle.js', 'occupancy.js']
+      .map((file) => readFileSync(path.join(REPO_ROOT, 'packages/core/src/facility', file), 'utf8'))
+      .join('\n');
+    const scanned = [...source.matchAll(/export function (\w+)\([\s\S]*?\n\}/g)]
+      .filter((m) => m[0].includes('createMeta()'))
+      .map((m) => m[1])
+      .sort();
+    // The scan found producers at all, and found them in more than one file --
+    // a regex that matched nothing would make the equality below assert that
+    // the map is empty, which is the vacuous shape this whole exercise is about.
+    expect(scanned.length).toBeGreaterThanOrEqual(8);
+    expect(scanned).toContain('occupancyFootprint');
+    expect(scanned).toContain('checkFacilityLifecycle');
+    // Exact, in both directions: a new producer fails, and so does one removed
+    // from the source but left in the map.
+    expect(Object.keys(producers).sort()).toEqual(scanned);
+
+    for (const [name, run] of Object.entries(producers)) {
+      const published = run().meta.datedNodeCount;
+      if (COUNTING.includes(name)) {
+        expect(published, `${name} should publish a count`).toBeTypeOf('number');
+      } else {
+        expect(published, `${name} counted nothing and must say so with null`).toBeNull();
+      }
     }
   });
 });
@@ -272,8 +338,17 @@ describe('facility lifecycle :: a surface at a closed site is retired', () => {
     // The whole-graph arm agrees with the surface-scoped arm.
     const whole = checkFacilityLifecycle(closedSite, { asOf: '2026-09-01' });
     expect(whole.findings.map((f) => f.details.id).sort()).toEqual(['s1', 'v1']);
+    // **The scoped arm says the same thing about `s1` as the whole-graph arm
+    // does**, field for field. Asserted as an equality rather than as a
+    // membership test: `toContain` passed for both the old shape and the new
+    // one, which is why the divergence lived through three rounds of fixes to
+    // this pair.
     const scoped = checkFacilityLifecycle(closedSite, { asOf: '2026-09-01', surfaceId: 's1' });
-    expect(scoped.findings.map((f) => f.details.id)).toContain('v1');
+    expect(scoped.findings).toHaveLength(1);
+    expect(scoped.findings[0].details).toEqual(
+      whole.findings.find((f) => f.details.id === 's1').details
+    );
+    expect(scoped.findings[0].details.causeId).toBe('v1');
 
     // Inside the window both arms are clean, so the assertions above are about
     // the closure and not about the venue being checked at all.
@@ -323,10 +398,19 @@ describe('facility lifecycle :: a sub-surface of a retired surface is retired', 
     const whole = checkFacilityLifecycle(graph, { asOf: '2026-09-01' });
     expect(whole.findings.map((f) => f.details.id).sort()).toEqual(['full', 'half', 'quarter']);
 
-    // The surface-scoped arm gives the same answer for a grandchild, and names
-    // the ancestor that closed it rather than blaming the surface itself.
+    // **The two arms now answer in one shape.** The scoped arm reports the
+    // surface that was asked about and names the ancestor as the CAUSE, which
+    // is exactly what the whole-graph arm says about the same surface.
     const scoped = checkFacilityLifecycle(graph, { asOf: '2026-09-01', surfaceId: 'quarter' });
-    expect(scoped.findings.map((f) => f.details.id)).toContain('full');
+    expect(scoped.findings).toHaveLength(1);
+    expect(scoped.findings[0].details).toMatchObject({
+      kind: 'surface',
+      id: 'quarter',
+      causeKind: 'surface',
+      causeId: 'full',
+    });
+    const fromWhole = whole.findings.find((f) => f.details.id === 'quarter');
+    expect(scoped.findings[0].details).toEqual(fromWhole.details);
   });
 
   it('leaves the lineage alone inside the window, so the check is about closure', () => {
@@ -401,6 +485,58 @@ describe('facility lifecycle :: a sub-surface of a retired surface is retired', 
     expect(surface.message).toContain('because venue "v1"');
   });
 
+  it('gives byte-identical details from both arms, across every shape', () => {
+    // **The twins, asserted as ONE contract rather than two that happen to
+    // agree today.** Every previous check on this pair was a membership test --
+    // `toContain('full')` -- which passed for both the divergent shape and the
+    // unified one. That is how `details.id` came to mean "node reported" in one
+    // arm and "node that closed it" in the other, through three rounds of
+    // fixing this pair, with tests in this file pinning both shapes side by
+    // side.
+    //
+    // Every retirement shape the module can produce, checked field for field.
+    const cases = [
+      // closed by its own window
+      buildFacilityGraph({
+        venues: [{ id: 'v1', name: 'V' }],
+        surfaces: [{ id: 's1', venueId: 'v1', name: 'P', effectiveTo: '2026-06-30' }],
+      }),
+      // closed by its venue
+      buildFacilityGraph({
+        venues: [{ id: 'v1', name: 'V', effectiveTo: '2026-06-30' }],
+        surfaces: [{ id: 's1', venueId: 'v1', name: 'P' }],
+      }),
+      // closed by a parent surface
+      buildFacilityGraph({
+        venues: [{ id: 'v1', name: 'V' }],
+        surfaces: [
+          { id: 'p1', venueId: 'v1', name: 'Full', effectiveTo: '2026-06-30', childIds: ['s1'] },
+          { id: 's1', venueId: 'v1', name: 'Half', parentId: 'p1' },
+        ],
+      }),
+      // closed by a grandparent
+      nested(),
+    ];
+    const targets = ['s1', 's1', 's1', 'quarter'];
+
+    for (const [index, graph] of cases.entries()) {
+      const id = targets[index];
+      const whole = checkFacilityLifecycle(graph, { asOf: '2026-09-01' });
+      const scoped = checkFacilityLifecycle(graph, { asOf: '2026-09-01', surfaceId: id });
+      const fromWhole = whole.findings.find((f) => f.details.id === id);
+      // Both arms found it at all -- otherwise `undefined === undefined` would
+      // satisfy the equality below and this loop would prove nothing.
+      expect(fromWhole, `whole-graph arm missed ${id} in case ${index}`).toBeDefined();
+      const fromScoped = scoped.findings.find((f) => f.code === FACILITY_REASON.NODE_RETIRED);
+      expect(fromScoped, `scoped arm missed ${id} in case ${index}`).toBeDefined();
+      expect(fromScoped.details).toEqual(fromWhole.details);
+      expect(fromScoped.message).toBe(fromWhole.message);
+    }
+    // The loop ran over every case, rather than over an array that lost its
+    // entries to a bad edit.
+    expect(cases).toHaveLength(4);
+  });
+
   it('reaches the eligibility check, on both of its paths', () => {
     // **The family closed downstream.** Liveness is consulted at three arms --
     // `retiredOn`, the whole-graph arm (which delegates to it) and the
@@ -418,13 +554,18 @@ describe('facility lifecycle :: a sub-surface of a retired surface is retired', 
       format: null,
       date: '2026-09-01',
     });
-    expect(bare.findings.map((f) => f.details.id)).toContain('full');
+    // The subject is the surface asked about; the ancestor is the cause. A
+    // consumer switching on `details.kind` gets the same branch here as it does
+    // from the whole-graph arm, which was the point of unifying them.
+    const retiredFinding = (result) =>
+      result.findings.find((f) => f.code === FACILITY_REASON.NODE_RETIRED);
+    expect(retiredFinding(bare).details).toMatchObject({ id: 'quarter', causeId: 'full' });
     const full = checkFieldEligibility(graph, {
       surfaceId: 'quarter',
       format: '9v9',
       date: '2026-09-01',
     });
-    expect(full.findings.map((f) => f.details.id)).toContain('full');
+    expect(retiredFinding(full).details).toMatchObject({ id: 'quarter', causeId: 'full' });
 
     // Inside the window neither path reports a retirement, so the assertions
     // above are about the closure rather than about eligibility failing for

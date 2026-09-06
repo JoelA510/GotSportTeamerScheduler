@@ -278,7 +278,6 @@ export function checkFacilityLifecycle(graph, query = {}) {
     if (surface === undefined) {
       meta.lifecycleNodesJudged = 0;
     } else {
-      const venue = graph.venues[surface.venueId];
       // **The whole lineage plus the venue, so the count says how many.** It
       // said a flat 2 -- correct only while this arm checked the surface and
       // its venue and nothing else. Once the loop below started walking the
@@ -288,32 +287,50 @@ export function checkFacilityLifecycle(graph, query = {}) {
       // arm that examined more than it admitted would still look thin enough
       // to be believed.
       meta.lifecycleNodesJudged = surface.lineage.length + 1;
-      // **The whole lineage AND the venue.** A surface with no window of its
-      // own sits inside a parent surface and a venue that may each have one;
-      // checking only the surface reported a live half-pitch of a pitch that
-      // closed in June, at a site that closed in June.
-      const lineageNodes = surface.lineage.map(
-        (id) => /** @type {[string, any]} */ (['surface', graph.surfaces[id]])
-      );
-      for (const [kind, node] of /** @type {Array<[string, any]>} */ ([
-        ...lineageNodes,
-        ['venue', venue],
-      ])) {
-        if (!isLiveOn(node, asOf)) {
-          findings.push(
-            makeFinding(
-              FACILITY_REASON.NODE_RETIRED,
-              `${kind} "${node.id}" is effective ${describeWindow(node)} and ${asOf} falls outside it`,
-              {
-                kind,
-                id: node.id,
-                asOf,
-                effectiveFrom: node.effectiveFrom,
-                effectiveTo: node.effectiveTo,
-              }
-            )
-          );
-        }
+      // **The whole lineage AND the venue, through the one producer both arms
+      // use.** A surface with no window of its own sits inside a parent surface
+      // and a venue that may each have one; checking only the surface reported
+      // a live half-pitch of a pitch that closed in June, at a site that closed
+      // in June.
+      //
+      // **`details.id` is the node REPORTED, and `causeId` the node
+      // RESPONSIBLE -- in both arms.** This arm used to emit one finding per
+      // blocking node, keyed on the blocker, so `id` meant "the thing that
+      // closed" here and "the thing being judged" in the whole-graph arm. For a
+      // surface `s1` at a closed venue `v1`, the whole-graph arm said
+      // `{kind:'surface', id:'s1', causeId:'v1'}` and this one said
+      // `{kind:'venue', id:'v1'}` with no cause at all and `s1` never named --
+      // two answers to one question, and a consumer that switched on
+      // `details.kind` would take a different branch depending on which entry
+      // point it came through. Third time on this pair of twins, and the first
+      // two fixes each corrected one arm and left the other.
+      //
+      // The query asked about ONE surface, so the answer is one finding about
+      // that surface, naming what closed it. `retirementCause()` is the single
+      // producer of "what closed it", shared with the whole-graph arm, so the
+      // two cannot drift apart again without the shared function changing.
+      const cause = retirementCause(graph, surfaceId, asOf);
+      if (cause !== null) {
+        const bySelf = cause.node.id === surfaceId;
+        findings.push(
+          makeFinding(
+            FACILITY_REASON.NODE_RETIRED,
+            bySelf
+              ? `surface "${surfaceId}" is effective ${describeWindow(surface)} and ${asOf} falls outside it`
+              : `surface "${surfaceId}" is retired on ${asOf} because ${cause.kind} "${cause.node.id}" is effective ${describeWindow(cause.node)}`,
+            {
+              kind: 'surface',
+              id: surfaceId,
+              asOf,
+              effectiveFrom: surface.effectiveFrom,
+              effectiveTo: surface.effectiveTo,
+              causeKind: cause.kind,
+              causeId: cause.node.id,
+              causeEffectiveFrom: cause.node.effectiveFrom,
+              causeEffectiveTo: cause.node.effectiveTo,
+            }
+          )
+        );
       }
     }
   }
