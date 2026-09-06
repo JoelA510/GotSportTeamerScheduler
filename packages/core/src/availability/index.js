@@ -60,7 +60,9 @@ export { checkKickoffAvailability, latestLegalKickoff } from './kickoff.js';
 
 export {
   ALL_DAY_CLOSE_MINUTES,
+  CLOSURE_DECIDED_CODE_BY_SCOPE,
   CLOSURE_SCOPE,
+  CLOSURE_UNDECIDABLE_CODE_BY_SCOPE,
   ClosureScopeSchema,
   ClosureSetInputSchema,
   ClosureWindowSchema,

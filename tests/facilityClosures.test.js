@@ -52,7 +52,9 @@ import {
   AVAILABILITY_REASON_SEVERITY,
   AVAILABILITY_SEVERITY,
   AVAILABILITY_STATUS,
+  CLOSURE_DECIDED_CODE_BY_SCOPE,
   CLOSURE_SCOPE,
+  CLOSURE_UNDECIDABLE_CODE_BY_SCOPE,
   ClosureSetInputSchema,
   ClosureWindowSchema,
   ISO_DATE_PATTERN,
@@ -187,7 +189,7 @@ describe('closures :: corpus guard', () => {
 
   it('registers a severity for every closure code', () => {
     const codes = Object.values(AVAILABILITY_REASON).filter((code) => code.startsWith('CLOSURE_'));
-    expect(codes).toHaveLength(7);
+    expect(codes).toHaveLength(8);
     for (const code of codes) {
       expect(Object.values(AVAILABILITY_SEVERITY)).toContain(AVAILABILITY_REASON_SEVERITY[code]);
     }
@@ -638,9 +640,15 @@ describe('closures :: unknowns are reported, never folded into "no closure appli
     ]);
   });
 
-  it('never lets "undecidable" outrank what the decided answer would carry', () => {
+  it('never lets "undecidable" outrank the decided answer, and lets the table say so', () => {
+    // Round 3, finding 4. This used to be one code whose severity the call site
+    // capped per scope kind, so `CLOSURE_OVERLAP_UNDECIDABLE` read `info` here
+    // and `compromise` below while the frozen table said `compromise` for both
+    // — a call site deciding severity, which `availability/reasonCodes.js` says
+    // never happens. Two codes now, one per severity, and the table governs.
+    //
     // Endless, kicking off before 16:00 on the parking date: a decided "yes"
-    // would be CLOSURE_NOT_GROUND (info), so undecidable is info too.
+    // would be CLOSURE_NOT_GROUND (info), so the note code is the one emitted.
     const parking = practice.fieldConstraints.find((row) => row.fields === 'Parking');
     const surfaceId = sid('Maplewood Back', 'Field 2');
     const parked = checkClosures(
@@ -649,7 +657,7 @@ describe('closures :: unknowns are reported, never folded into "no closure appli
       booking('p', surfaceId, parking.dateStart, 15 * 60, null)
     );
     const undecidable = parked.findings.filter(
-      (f) => f.code === AVAILABILITY_REASON.CLOSURE_OVERLAP_UNDECIDABLE
+      (f) => f.code === AVAILABILITY_REASON.CLOSURE_NOTE_UNDECIDABLE
     );
     expect(undecidable).toHaveLength(1);
     expect(undecidable[0].severity).toBe(AVAILABILITY_SEVERITY.INFO);
@@ -659,7 +667,7 @@ describe('closures :: unknowns are reported, never folded into "no closure appli
     });
     expect(deriveAvailabilityStatus(parked.findings)).toBe(AVAILABILITY_STATUS.ALLOWED);
     // The same booking on the School Event date: a decided "yes" would block,
-    // so undecidable keeps the table's compromise.
+    // so the compromise code is emitted.
     const schoolEvent = practice.fieldConstraints.find(
       (row) => row.venue === 'Maplewood' && row.allFields
     );
@@ -676,9 +684,64 @@ describe('closures :: unknowns are reported, never folded into "no closure appli
     expect(stillUndecidable[0].details.decidedCode).toBe(
       AVAILABILITY_REASON.CLOSURE_BLOCKS_BOOKING
     );
-    expect(AVAILABILITY_REASON_SEVERITY[AVAILABILITY_REASON.CLOSURE_OVERLAP_UNDECIDABLE]).toBe(
-      AVAILABILITY_SEVERITY.COMPROMISE
-    );
+    // Neither code's severity depends on where it came from: every emitted
+    // finding carries exactly what the frozen table says for its code.
+    for (const finding of [...parked.findings, ...closed.findings]) {
+      expect(finding.severity, finding.code).toBe(AVAILABILITY_REASON_SEVERITY[finding.code]);
+    }
+  });
+
+  it("pairs each scope kind's undecidable code with its decided one, by severity", () => {
+    // The two tables are the ones that could drift into a third rule, so the
+    // pairing is asserted rather than described: for every scope kind that has
+    // a decided answer, the undecidable code's severity equals the decided
+    // code's. Derived from the production tables, not from a list typed here.
+    const scopeKinds = Object.values(CLOSURE_SCOPE);
+    /** The test's own ordering, so the production tables are compared and not re-stated. */
+    const RANK = { info: 0, compromise: 1, blocking: 2 };
+    const rank = (code) => RANK[AVAILABILITY_REASON_SEVERITY[code]];
+    const undecidableCodes = [...new Set(Object.values(CLOSURE_UNDECIDABLE_CODE_BY_SCOPE))];
+    expect(undecidableCodes).toHaveLength(2);
+    let paired = 0;
+    for (const kind of scopeKinds) {
+      const decided = CLOSURE_DECIDED_CODE_BY_SCOPE[kind];
+      const undecided = CLOSURE_UNDECIDABLE_CODE_BY_SCOPE[kind];
+      if (!decided) {
+        // Only `venue-unknown` has no decided answer, because it reaches no
+        // ground at all; it must have no undecidable code either.
+        expect(kind, `${kind} has an undecidable code but no decided one`).toBe(
+          CLOSURE_SCOPE.VENUE_UNKNOWN
+        );
+        expect(undecided).toBeUndefined();
+        continue;
+      }
+      expect(undecided, kind).toBeTruthy();
+      // Not knowing never outranks knowing...
+      expect(rank(undecided), `${kind}: ${undecided} vs ${decided}`).toBeLessThanOrEqual(
+        rank(decided)
+      );
+      // ... and it is the loudest declared code that still fits under that
+      // ceiling, so the split is a pairing rather than a way to make everything
+      // quiet.
+      for (const other of undecidableCodes) {
+        if (rank(other) <= rank(decided)) {
+          expect(rank(undecided), `${kind}: ${other} fits and is louder`).toBeGreaterThanOrEqual(
+            rank(other)
+          );
+        }
+      }
+      paired += 1;
+    }
+    // Non-vacuous: the pairing covers every scope kind but one, and it is not
+    // one severity throughout.
+    expect(paired).toBe(scopeKinds.length - 1);
+    expect(
+      new Set(
+        scopeKinds
+          .filter((kind) => CLOSURE_UNDECIDABLE_CODE_BY_SCOPE[kind])
+          .map((kind) => AVAILABILITY_REASON_SEVERITY[CLOSURE_UNDECIDABLE_CODE_BY_SCOPE[kind]])
+      ).size
+    ).toBe(2);
   });
 
   it("reports, at build time, a surface reading the row's venue does not hold, instead of throwing", () => {

@@ -196,10 +196,21 @@ export const AVAILABILITY_REASON = Object.freeze({
    * The booking has no known end, kicks off before a timed closure opens, and
    * so may or may not run into it. (One that kicks off inside the window is
    * decided by its start; one that kicks off after it closes is decided
-   * clean.) Its severity never outranks what the decided answer would carry
-   * for that scope kind: undecidable against the parking row is information.
+   * clean.) Not knowing must never outrank what knowing would carry, and the
+   * scope kinds whose decided answer is *information* get
+   * {@link AVAILABILITY_REASON.CLOSURE_NOTE_UNDECIDABLE} instead of this code
+   * -- so the severity is the table's answer for the code, and no call site
+   * decides one.
    */
   CLOSURE_OVERLAP_UNDECIDABLE: 'CLOSURE_OVERLAP_UNDECIDABLE',
+  /**
+   * The same not-knowing, about a row whose *decided* answer is itself
+   * information: the parking note, the adjacency deferral. Split from
+   * `CLOSURE_OVERLAP_UNDECIDABLE` rather than capped at the call site, because
+   * `AVAILABILITY_REASON_SEVERITY` is where a reader must be able to get the
+   * severity -- without knowing which scope kind produced it.
+   */
+  CLOSURE_NOTE_UNDECIDABLE: 'CLOSURE_NOTE_UNDECIDABLE',
   /** The booking falls in a row that closes something other than a playing surface (`Parking`). */
   CLOSURE_NOT_GROUND: 'CLOSURE_NOT_GROUND',
   /** The booking is under an adjacency rule the graph's overlap pairs already enforce. Provenance. */
@@ -255,6 +266,7 @@ export const AVAILABILITY_REASON_SEVERITY = Object.freeze({
   [AVAILABILITY_REASON.CLOSURE_BLOCKS_BOOKING]: AVAILABILITY_SEVERITY.BLOCKING,
   [AVAILABILITY_REASON.CLOSURE_SCOPE_UNREADABLE]: AVAILABILITY_SEVERITY.COMPROMISE,
   [AVAILABILITY_REASON.CLOSURE_OVERLAP_UNDECIDABLE]: AVAILABILITY_SEVERITY.COMPROMISE,
+  [AVAILABILITY_REASON.CLOSURE_NOTE_UNDECIDABLE]: AVAILABILITY_SEVERITY.INFO,
   [AVAILABILITY_REASON.CLOSURE_NOT_GROUND]: AVAILABILITY_SEVERITY.INFO,
   [AVAILABILITY_REASON.CLOSURE_ADJACENCY_DEFERRED]: AVAILABILITY_SEVERITY.INFO,
   [AVAILABILITY_REASON.CLOSURE_VENUE_UNKNOWN]: AVAILABILITY_SEVERITY.COMPROMISE,

@@ -42,7 +42,6 @@ import { FACILITY_REASON, makeFinding } from '../facility/reasonCodes.js';
 import { FacilityBookingSchema } from '../facility/schemas.js';
 import {
   AVAILABILITY_REASON,
-  AVAILABILITY_SEVERITY,
   availabilitySeverityOf,
   makeAvailabilityFinding,
 } from './reasonCodes.js';
@@ -323,15 +322,12 @@ function closureMeetsBooking(closure, booking) {
   return booking.startMinutes < closure.endMinutes && closure.startMinutes < booking.endMinutes;
 }
 
-/** Severity rank, so one severity can be compared with another. */
-const SEVERITY_RANK = Object.freeze({
-  [AVAILABILITY_SEVERITY.INFO]: 0,
-  [AVAILABILITY_SEVERITY.COMPROMISE]: 1,
-  [AVAILABILITY_SEVERITY.BLOCKING]: 2,
-});
-
-/** What a decided "yes, it meets" carries for each scope kind. */
-const DECIDED_CODE_BY_SCOPE = Object.freeze({
+/**
+ * What a decided "yes, it meets" carries for each scope kind. Exported so the
+ * pairing with {@link CLOSURE_UNDECIDABLE_CODE_BY_SCOPE} can be asserted rather
+ * than described; `venue-unknown` is absent because it reaches no ground.
+ */
+export const CLOSURE_DECIDED_CODE_BY_SCOPE = Object.freeze({
   [CLOSURE_SCOPE.VENUE]: AVAILABILITY_REASON.CLOSURE_BLOCKS_BOOKING,
   [CLOSURE_SCOPE.SURFACE]: AVAILABILITY_REASON.CLOSURE_BLOCKS_BOOKING,
   [CLOSURE_SCOPE.UNREADABLE]: AVAILABILITY_REASON.CLOSURE_SCOPE_UNREADABLE,
@@ -341,11 +337,34 @@ const DECIDED_CODE_BY_SCOPE = Object.freeze({
 });
 
 /**
- * An undecidable finding that never outranks the decided answer for its scope
- * kind: not knowing whether a booking runs into the parking row is worth
- * exactly what knowing it would be — information. The table's severity for
- * the code is the ceiling; the decided code's severity is the cap, and the
- * finding names both.
+ * Which undecidable code a scope kind gets.
+ *
+ * Not knowing whether a booking runs into the parking row is worth exactly
+ * what knowing it would be — information. The old shape emitted one code and
+ * **capped its severity at the call site**, which put the answer somewhere
+ * `AVAILABILITY_REASON_SEVERITY` could not carry it: the same code read `info`
+ * under one scope kind and `compromise` under another while the frozen table
+ * said `compromise`, and `availability/reasonCodes.js` states outright that a
+ * call site deciding severity is a thing that never happens.
+ *
+ * Two codes instead, one per severity, so the table governs. The pairing rule
+ * is asserted against {@link CLOSURE_DECIDED_CODE_BY_SCOPE} by the suite —
+ * each kind's undecidable code is the loudest declared one that still sits at
+ * or below the decided answer — so the two tables cannot drift into a third
+ * rule.
+ */
+export const CLOSURE_UNDECIDABLE_CODE_BY_SCOPE = Object.freeze({
+  [CLOSURE_SCOPE.VENUE]: AVAILABILITY_REASON.CLOSURE_OVERLAP_UNDECIDABLE,
+  [CLOSURE_SCOPE.SURFACE]: AVAILABILITY_REASON.CLOSURE_OVERLAP_UNDECIDABLE,
+  [CLOSURE_SCOPE.UNREADABLE]: AVAILABILITY_REASON.CLOSURE_OVERLAP_UNDECIDABLE,
+  [CLOSURE_SCOPE.SURFACE_UNKNOWN]: AVAILABILITY_REASON.CLOSURE_OVERLAP_UNDECIDABLE,
+  [CLOSURE_SCOPE.NOT_GROUND]: AVAILABILITY_REASON.CLOSURE_NOTE_UNDECIDABLE,
+  [CLOSURE_SCOPE.ADJACENCY]: AVAILABILITY_REASON.CLOSURE_NOTE_UNDECIDABLE,
+});
+
+/**
+ * The undecidable finding for a scope kind. The code carries the severity and
+ * the finding names the decided answer it was chosen against.
  *
  * @param {string} scopeKind
  * @param {string} message
@@ -353,23 +372,14 @@ const DECIDED_CODE_BY_SCOPE = Object.freeze({
  * @returns {import('./types.js').AvailabilityFinding}
  */
 function undecidableFinding(scopeKind, message, details) {
-  const finding = makeAvailabilityFinding(
-    AVAILABILITY_REASON.CLOSURE_OVERLAP_UNDECIDABLE,
-    message,
-    details
-  );
-  const decidedCode = DECIDED_CODE_BY_SCOPE[scopeKind];
-  if (!decidedCode) return finding;
-  const decidedSeverity = availabilitySeverityOf(decidedCode);
-  const capped =
-    SEVERITY_RANK[decidedSeverity] < SEVERITY_RANK[finding.severity]
-      ? decidedSeverity
-      : finding.severity;
-  return {
-    ...finding,
-    severity: capped,
-    details: { ...finding.details, decidedCode, decidedSeverity },
-  };
+  const decidedCode = CLOSURE_DECIDED_CODE_BY_SCOPE[scopeKind] ?? null;
+  const code =
+    CLOSURE_UNDECIDABLE_CODE_BY_SCOPE[scopeKind] ?? AVAILABILITY_REASON.CLOSURE_OVERLAP_UNDECIDABLE;
+  return makeAvailabilityFinding(code, message, {
+    ...details,
+    decidedCode,
+    decidedSeverity: decidedCode === null ? null : availabilitySeverityOf(decidedCode),
+  });
 }
 
 /**

@@ -1,8 +1,8 @@
 /**
  * Repo-wide reachability audit for every frozen reason-code table in
  * `packages/core/src` — the generalisation of the per-module audit
- * `tests/attribution.test.js` already carries. 19 vocabularies, 448 codes, of
- * which 437 are shown to be producible and 11 are named as holes.
+ * `tests/attribution.test.js` already carries. 19 vocabularies, 449 codes, of
+ * which 438 are shown to be producible and 11 are named as holes.
  *
  * **The defect this exists to catch.** Four times now, in four unrelated
  * modules, a reason code has been declared, given a severity, documented, and
@@ -1046,6 +1046,20 @@ const closureRig = harvest(
         allDay: true,
         scope: { kind: 'not-ground', venueIds: ['rig'] },
         reason: 'parking',
+        fieldsRaw: 'Parking',
+      },
+      {
+        // A *timed* not-ground row, so a booking with no end that kicks off
+        // before it opens is undecidable against a decided answer that is
+        // itself information: CLOSURE_NOTE_UNDECIDABLE.
+        id: 'parking-timed',
+        fromDate: RIG_DATE,
+        toDate: RIG_DATE,
+        startMinutes: 540,
+        endMinutes: 600,
+        allDay: false,
+        scope: { kind: 'not-ground', venueIds: ['rig'] },
+        reason: 'parking (timed)',
         fieldsRaw: 'Parking',
       },
       {
