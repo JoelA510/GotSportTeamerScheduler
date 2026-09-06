@@ -19,7 +19,9 @@
  * The venue is resolved by graph structure, through `resolvePracticeVenue()`:
  * `Maplewood` reaches the declared complex, so a Maplewood closure shuts both
  * `Maplewood Back` and `Maplewood Front`. A venue nothing holds becomes a
- * `venue-unknown` closure and a build-time finding, never a dropped row.
+ * `venue-unknown` closure and a build-time finding, and `checkClosures()`
+ * reports it again against every booking whose date and hours fall inside it —
+ * never a dropped row and never a silent one.
  *
  * @module availability/adapters/season2026Closures
  */
@@ -40,7 +42,8 @@ import { ISO_DATE_PATTERN } from '../schemas.js';
  * resolved at the row's venue by graph structure (`resolvePracticeSurface()`),
  * exactly as every other name-to-ground path in this package: a venue that
  * has no such surface yields a `surface-unknown` closure and a build-time
- * finding, never a thrown id. The source column says where the reading comes
+ * finding, never a thrown id, and the closure then applies to that venue as a
+ * compromise rather than to nothing. The source column says where the reading comes
  * from; `4` is Pitch 4 because the game corpus names Alder's pitches
  * `Pitch 1`..`Pitch 4` and the row's venue is Alder Park.
  *

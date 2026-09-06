@@ -8,7 +8,10 @@
  * Phase 8.3; this module holds it as **closure windows** scoped to graph ids
  * and answers "does this booking stand inside one?".
  *
- * Six scope kinds, because the `fields` cell says six different things:
+ * Seven scope kinds: five readings of the `fields` cell, and two more for what
+ * the graph could not resolve. The table is read back by
+ * `tests/facilityClosures.test.js`, so a kind added without a row here fails
+ * rather than ageing the docstring.
  *
  * ```text
  * venue          `All`             every surface of the venue (or complex)
@@ -161,7 +164,7 @@ export const ClosureSetInputSchema = z
  * @typedef {Object} ClosureMeta
  * @property {number} closuresConsulted
  * @property {number} closuresApplied - closures whose date, ground and time all matched
- * @property {number} closuresUncomparable - date-matching closures standing on ground the graph does not hold, so no ground comparison was possible
+ * @property {number} closuresUncomparable - closures a booking meets in date and time that stand on ground the graph does not hold, so no ground comparison was possible
  * @property {number} bookingsChecked
  */
 
@@ -173,10 +176,11 @@ function createClosureMeta() {
 /**
  * Build an immutable closure set, checking every scope against the graph.
  *
- * A venue or surface id the graph does not hold is a producer bug and throws.
- * A `venue-unknown` scope is different: it is the adapter *saying* the sheet
- * named a venue nothing knows, and it is carried as a finding so the row is
- * visible rather than dropped.
+ * A venue or surface *id* the graph does not hold is a producer bug and throws.
+ * The two `*-unknown` scopes are different: they are the adapter *saying* the
+ * sheet named ground nothing knows, and each is carried as a finding so the row
+ * is visible rather than dropped. Every set also carries
+ * {@link AVAILABILITY_REASON.CLOSURE_SET_UNWIRED}.
  *
  * @param {import('../facility/types.js').FacilityGraph} graph
  * @param {{ closures: Array<Object>, source?: string|null }} input
@@ -249,18 +253,19 @@ export function buildClosureSet(graph, input) {
   // **The layer declares its own wiring gap, on every set it builds.**
   //
   // `checkClosures()` and `findClosureBreaches()` have no production consumer:
-  // `checkKickoffAvailability()` does not call them and no rule claims a
-  // `CLOSURE_*` code, so a kickoff inside a closed window comes back with
-  // nothing said about the closure. Wiring it reaches every `runRuleEngine()`
-  // call site (a rule needs the set as a resource, and `requireResource()`
-  // throws rather than skipping), which is 8.5's decision and not this one's.
-  // Until then the honest position is the one `fairness/objectives.js` already
-  // takes for its unwired scoring functions: say so on every result, in a code
-  // a test can check against the standing rules.
+  // `checkKickoffAvailability()` does not call them, and neither enforcement
+  // path claims a `CLOSURE_*` code -- no standing rule and no registry
+  // constraint -- so a kickoff inside a closed window comes back with nothing
+  // said about the closure. Wiring it reaches every `runRuleEngine()` call site
+  // (a rule needs the set as a resource, and `requireResource()` throws rather
+  // than skipping), which is 8.5's decision and not this one's. Until then the
+  // honest position is the one `fairness/objectives.js` already takes for its
+  // unwired scoring functions: say so on every result, in a code a test can
+  // check against both enforcement paths.
   findings.push(
     makeAvailabilityFinding(
       AVAILABILITY_REASON.CLOSURE_SET_UNWIRED,
-      `this closure set is not consulted by any scheduling path: checkKickoffAvailability() does not call checkClosures(), and no rule claims a CLOSURE_* code; ${parsed.closures.length} closure(s) are evaluated only where a caller asks directly`,
+      `this closure set is not consulted by any scheduling path: checkKickoffAvailability() does not call checkClosures(), and no standing rule or registry constraint claims a CLOSURE_* code; ${parsed.closures.length} closure(s) are evaluated only where a caller asks directly`,
       { closureCount: parsed.closures.length, source: parsed.source ?? null }
     )
   );
@@ -297,14 +302,13 @@ export function buildClosureSet(graph, input) {
  */
 function closureCoversSurface(graph, closure, surface) {
   const scope = closure.scope;
-  // `venue-unknown` is the one scope with no ground to reach at all: the row
-  // names a venue the graph does not hold, so there is no set of surfaces it
-  // could cover. It is not waved through either -- `checkClosures()` reports it
-  // against every booking whose date falls inside it, so a caller holding only
-  // the query answer sees the closure it could not be compared against.
-  if (scope.kind === CLOSURE_SCOPE.VENUE_UNKNOWN) {
-    return { covers: false, coverage: null };
-  }
+  // `venue-unknown` never arrives here: it has no ground to reach, so
+  // `checkClosures()` answers it on its own branch before asking this
+  // question. There is deliberately no arm for it -- an unreachable arm
+  // returning `covers: false` would restore the silence defect the moment a
+  // reorder revived it, and a scope kind that does reach here without a
+  // handler falls to `scope.venueIds` below and then to the decided switch's
+  // guard, which throws and names it.
   if (scope.kind === CLOSURE_SCOPE.SURFACE) {
     for (const surfaceId of scope.surfaceIds) {
       const verdict = surfacesConflict(graph, surfaceId, surface.id);
@@ -500,10 +504,11 @@ export function checkClosures(graph, closureSet, rawBooking) {
     }
     const { covers, coverage } = closureCoversSurface(graph, closure, surface);
     if (!covers) continue;
-    // The decided-and-clear case left above, before anything was built: every
-    // date-matching, ground-covering closure a booking does *not* meet used to
-    // pay for this object and the string below only to have them dropped one
-    // branch later.
+    // The decided-and-clear case left further up, before anything was built:
+    // a closure whose window a booking does not meet used to pay for this
+    // object and the string below only to be dropped one branch later. Since
+    // round 6 that check runs before the ground question too, so nothing here
+    // is built for a closure the clock has already ruled out.
     const details = {
       /** How the closure's ground reached this surface: a FACILITY_REASON occupancy code, or null for venue-wide scopes. */
       coverage,

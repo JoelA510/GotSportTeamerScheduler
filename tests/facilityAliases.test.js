@@ -62,6 +62,7 @@ const map = buildFieldAliasMap(graph, complexes, rings);
 const PRACTICE = SEASON_2026_ALIAS_RINGS.PRACTICE_SHEET;
 const FIELDS = SEASON_2026_ALIAS_RINGS.FIELDS_SHEET;
 const R = PRACTICE_SURFACE_RESOLUTION;
+const ALDER_NAME = 'Alder Park';
 
 const sid = (venue, field) => season2026SurfaceId(venue, field);
 const codesOf = (findings) => findings.map((f) => f.code);
@@ -571,6 +572,53 @@ describe('alias layer :: the builder refuses what it must and reports what it re
     ]);
     expect(doubled.stats.entryCount).toBe(2);
     expect(doubled.stats.candidateCount).toBe(1);
+  });
+
+  it('reports every resolution status it can produce, and refuses one it cannot', () => {
+    // The twin of the closure switches' guards, one module over: a status with
+    // no arm used to fall through `default: break` and the candidate would be
+    // carried with nothing said about how it resolved. `resolved` is the one
+    // status that legitimately reports nothing, and it now says so explicitly.
+    const codeFor = {
+      [R.VENUE_UNKNOWN]: FACILITY_REASON.ALIAS_VENUE_UNKNOWN,
+      [R.SURFACE_UNKNOWN]: FACILITY_REASON.ALIAS_SURFACE_UNKNOWN,
+      [R.SUBUNIT_UNKNOWN]: FACILITY_REASON.ALIAS_SURFACE_UNKNOWN,
+      [R.AMBIGUOUS]: FACILITY_REASON.ALIAS_SURFACE_AMBIGUOUS,
+      [R.VENUE_ONLY]: FACILITY_REASON.ALIAS_VENUE_ONLY,
+      [R.RESOLVED]: null,
+    };
+    // Meta-assertion: every declared status is accounted for above.
+    expect(Object.keys(codeFor).sort()).toEqual(Object.values(R).sort());
+
+    const entryFor = {
+      [R.VENUE_UNKNOWN]: { venue: 'Nowhere Park', field: 'Field 1' },
+      [R.SURFACE_UNKNOWN]: { venue: ALDER_NAME, field: 'Pitch 9Z' },
+      [R.SUBUNIT_UNKNOWN]: { venue: ALDER_NAME, field: 'Pitch 2', subunit: 'Side 9' },
+      [R.AMBIGUOUS]: { venue: 'Maplewood', field: 'Field 1' },
+      [R.VENUE_ONLY]: { venue: ALDER_NAME, field: null },
+      [R.RESOLVED]: { venue: ALDER_NAME, field: 'Pitch 2A' },
+    };
+    let covered = 0;
+    for (const [status, code] of Object.entries(codeFor)) {
+      const built = buildFieldAliasMap(graph, complexes, {
+        rings: [{ ring: 'r', entries: [{ displayName: 'X', label: 'l', ...entryFor[status] }] }],
+      });
+      expect(built.aliases.X.candidates[0].resolution, status).toBe(status);
+      const mine = built.findings.filter((f) => f.code !== FACILITY_REASON.ALIAS_LAYER_UNWIRED);
+      if (code === null)
+        expect(
+          mine.map((f) => f.code),
+          status
+        ).toEqual([]);
+      else
+        expect(
+          mine.map((f) => f.code),
+          status
+        ).toContain(code);
+      covered += 1;
+    }
+    expect(covered).toBe(Object.values(R).length);
+    expect(covered).toBeGreaterThan(5);
   });
 
   it('carries a published name that is also a prototype member', () => {

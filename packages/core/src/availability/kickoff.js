@@ -589,8 +589,12 @@ export function checkKickoffAvailability(graph, table, calendar, rawQuery, optio
     occupancyMinutes: null,
     endMinutes: null,
     // Tri-state (GAP-05), and `null` is the honest start. This template is what
-    // an early return ships -- an unknown surface, an unknown format -- and
-    // those answers have consulted no lighting at all. Shipping `false` made
+    // an early return ships, and in this function that is the unknown-surface
+    // return and only that one: a format with no timing row carries on and its
+    // lighting *is* read. (The sibling `latestLegalKickoff()` does return early
+    // on unknown timing, which is why its template carries `null` too rather
+    // than a guess.) Such an answer has consulted no lighting at all. Shipping
+    // `false` made
     // "nobody looked" read as "the ground is unlit", which `scanKickoffs()`
     // then counted toward the sunset rule's `unlitGamesExamined` minimum: a
     // schedule whose only unlit games stood on ground the graph does not hold

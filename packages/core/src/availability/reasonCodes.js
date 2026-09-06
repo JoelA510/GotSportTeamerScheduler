@@ -235,13 +235,14 @@ export const AVAILABILITY_REASON = Object.freeze({
   /**
    * **Nothing enforces this closure set.** `checkClosures()` and
    * `findClosureBreaches()` are standalone: `checkKickoffAvailability()` does
-   * not call them, and no rule in `ruleEngine/rules.js` claims a `CLOSURE_*`
-   * code, so a kickoff inside a closed window comes back with no closure code
-   * at all. Every set says so on itself, the way
-   * `FAIRNESS_OBJECTIVE_UNWIRED` does for the unwired scoring functions, and
-   * `tests/facilityClosures.test.js` checks the claim against the standing
-   * rules rather than trusting it: the day a rule claims one of these codes,
-   * the declaration has to go with it.
+   * not call them, and neither enforcement path claims a `CLOSURE_*` code —
+   * no standing rule in `ruleEngine/rules.js` and no registry constraint — so
+   * a kickoff inside a closed window comes back with no closure code at all.
+   * Every set says so on itself, the way `FAIRNESS_OBJECTIVE_UNWIRED` does for
+   * the unwired scoring functions, and `tests/helpers/unwiredLayer.js` checks
+   * the claim against both paths rather than trusting it, for this layer and
+   * its sibling `ALIAS_LAYER_UNWIRED` alike: the day something claims one of
+   * these codes, the declaration has to go with it.
    */
   CLOSURE_SET_UNWIRED: 'CLOSURE_SET_UNWIRED',
 

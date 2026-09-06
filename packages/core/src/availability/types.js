@@ -272,7 +272,7 @@
  * @property {ClosureWindow[]} closures
  * @property {string[]} closureIds
  * @property {string|null} source
- * @property {AvailabilityFinding[]} findings - build-time findings (unknown venues)
+ * @property {AvailabilityFinding[]} findings - build-time findings: an unknown venue or surface named by a row, and the layer's own `CLOSURE_SET_UNWIRED` declaration, which every set carries
  * @property {{ closureCount: number, allDayCount: number, byKind: Record<string, number> }} stats
  */
 

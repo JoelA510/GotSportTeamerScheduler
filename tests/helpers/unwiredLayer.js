@@ -14,9 +14,11 @@
  * Both directions matter. Removing a declaration while the layer is still
  * unwired makes the gap invisible again; wiring an evaluator while the
  * declaration stands makes the result lie the other way. {@link
- * assertLayerUnwired} rejects both, and its own positive control re-runs the
- * biconditional against a claimed-code set widened by each of the layer's codes
- * in turn, so the assertion is shown to be one that can fail.
+ * assertLayerUnwired} rejects both, and it carries two positive controls of its
+ * own: it re-runs the biconditional against a claimed-code set widened by each
+ * of the layer's codes in turn, and again **once per enforcement path**,
+ * through a definition of that path's own shape — so a reader that silently
+ * stopped contributing is caught rather than hidden inside a union.
  *
  * @module tests/helpers/unwiredLayer
  */

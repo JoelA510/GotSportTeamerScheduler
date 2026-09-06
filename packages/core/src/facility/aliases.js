@@ -21,6 +21,12 @@
  * The layer holds **no booking state** and reads nothing from disk: rings
  * arrive as plain records, the corpus loader's or anyone else's.
  *
+ * **Nothing consumes it yet.** No scheduling path calls this module and
+ * neither enforcement path claims an `ALIAS_*` code, so every map it builds
+ * carries {@link FACILITY_REASON.ALIAS_LAYER_UNWIRED} saying so;
+ * `tests/helpers/unwiredLayer.js` holds the check to it and to its sibling
+ * closure layer alike.
+ *
  * @module facility/aliases
  */
 
@@ -458,8 +464,18 @@ function resolveCandidate(graph, complexMap, ring, entry, findings) {
         )
       );
       break;
-    default:
+    case PRACTICE_SURFACE_RESOLUTION.RESOLVED:
+      // The one status with nothing to report: exactly one surface fits, which
+      // is the answer rather than a finding about it.
       break;
+    default:
+      // Named rather than dropped, for the same reason the closure check's two
+      // switches throw: a status added to PRACTICE_SURFACE_RESOLUTION without
+      // an arm here would be a candidate carried with no word said about how it
+      // resolved.
+      throw new Error(
+        `facility aliases: resolution status "${resolved.status}" has no arm; add one beside its neighbours in PRACTICE_SURFACE_RESOLUTION`
+      );
   }
   return {
     ...base,

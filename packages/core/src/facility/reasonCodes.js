@@ -117,7 +117,13 @@ export const FACILITY_REASON = Object.freeze({
   /* -- the alias layer (Phase 8.3) -------------------------------------- */
   /** A published field name that no decoder ring carries. */
   ALIAS_UNKNOWN: 'ALIAS_UNKNOWN',
-  /** A ring lists the code with no field behind it. */
+  /**
+   * A ring lists the code with an empty cell where the resolver looks: no
+   * label, no venue, or no field. The finding names which — `blankLabel`,
+   * `blankVenue`, `blankField` — because only a missing *venue* makes the row
+   * unplaceable; a row with no label but a real venue and field resolves from
+   * the cells the resolver actually reads.
+   */
   ALIAS_BLANK: 'ALIAS_BLANK',
   /**
    * Two rings carry the code and give it different labels. Both candidates

@@ -252,10 +252,15 @@ export function season2026PracticeSurfaceId(venueName, field, subunit) {
 /**
  * Compose the practice layer over a game-layer graph input.
  *
- * Returns a new input; the argument is not mutated. Throws, rather than
- * repairs, when the layer names a venue the input already has, a parent the
- * input does not have, or a surface id that already exists — a layer that
+ * Returns a new input; the argument is not mutated. It **throws rather than
+ * repairs**, on all five ways a layer can be wrong: a venue the input already
+ * declares, a surface at a venue neither layer declares, a sub-unit that also
+ * names a parent (a sub-unit's parent is its field), a surface id declared
+ * twice, and a parent *neither the input nor the layer* declares. A layer that
  * silently re-declared game ground would be a second copy of the model.
+ *
+ * Declaration order carries no meaning: parents are resolved in a second pass,
+ * so a child may be written above its parent.
  *
  * @param {import('../types.js').FacilityGraphInput} input - `toSeason2026FacilityGraphInput()` output
  * @param {{ venues: ReadonlyArray<PracticeLayerVenue>, surfaces: ReadonlyArray<PracticeLayerSurface> }} [layer]

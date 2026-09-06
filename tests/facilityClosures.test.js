@@ -15,6 +15,10 @@
  * found, 2026-09-24) and on no other date.
  */
 
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 import { describe, it, expect } from 'vitest';
 
 import {
@@ -156,6 +160,45 @@ describe('closures :: corpus guard', () => {
     ]);
     expect(readSeason2026ConstraintFields('2026-01-07').kind).toBe(CLOSURE_SCOPE.UNREADABLE);
     expect(() => readSeason2026ConstraintFields('Field 9')).toThrow(/no declared reading/);
+  });
+
+  it('states its scope kinds in the module header, and the header is read back', () => {
+    // Round 6. The header said "Six scope kinds" over a seven-row table and a
+    // seven-member `CLOSURE_SCOPE` -- the second prose drift in this module in
+    // two rounds. Parsed back out of the source rather than restated here, so
+    // the next kind added fails this test instead of ageing the docstring.
+    const source = readFileSync(
+      path.resolve(
+        path.dirname(fileURLToPath(import.meta.url)),
+        '..',
+        'packages/core/src/availability/closures.js'
+      ),
+      'utf8'
+    );
+    const header = source.slice(0, source.indexOf('@module availability/closures'));
+    const WORDS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'];
+    const claim = header.match(/(\w+) scope kinds: (\w+) readings of the `fields` cell/);
+    // Meta-assertion: a header this failed to parse would make the rest vacuous.
+    expect(claim).not.toBeNull();
+    const [stated, fromCell] = claim.slice(1).map((word) => word.toLowerCase());
+    expect(WORDS).toContain(stated);
+    expect(WORDS).toContain(fromCell);
+    const kinds = Object.values(CLOSURE_SCOPE);
+    expect(WORDS.indexOf(stated)).toBe(kinds.length);
+    // The five the `fields` cell itself names, and the two the graph decides.
+    expect(WORDS.indexOf(fromCell)).toBe(kinds.filter((kind) => !kind.endsWith('-unknown')).length);
+    // ... and every kind has a row in the table, so none can be added silently.
+    const table = header.slice(
+      header.indexOf('```text'),
+      header.indexOf('```', header.indexOf('```text') + 3)
+    );
+    let rows = 0;
+    for (const kind of kinds) {
+      expect(table, `${kind} has no row in the scope table`).toContain(`* ${kind} `);
+      rows += 1;
+    }
+    expect(rows).toBe(kinds.length);
+    expect(rows).toBeGreaterThan(5);
   });
 
   it('reads "all day" exactly as the corpus loader does: one constant, one function', () => {
