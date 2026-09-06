@@ -481,6 +481,73 @@ describe('alias layer :: the builder refuses what it must and reports what it re
     expect(FieldAliasMapInputSchema.safeParse(rings).success).toBe(true);
   });
 
+  it('reads a blank cell on the fields ring as an absence, as the practice ring does', () => {
+    // Round 2, finding 3. `parseFieldCodeNames()` writes `trim(cell)` where
+    // `parsePracticeFieldAliases()` writes `orNull(cell)`, so an empty `venue`
+    // or `actual_label` reached the adapter as `''`. Passed through, it threw
+    // out of `buildFieldAliasMap()` (`AliasRingEntrySchema` is non-empty or
+    // null) and took the whole map with it -- the ring with the stricter parser
+    // was the one that could not be read, on a shape the practice ring reports
+    // as `ALIAS_BLANK`.
+    const fieldsRow = (over) => ({
+      rowIndex: 0,
+      codeName: 'Blank Cell',
+      actualLabel: 'Alder Park Pitch 2A',
+      venue: 'Alder Park',
+      remainder: 'Pitch 2A',
+      uncertain: false,
+      confirmed: null,
+      usedFor: null,
+      ...over,
+    });
+
+    for (const { column, over } of [
+      { column: 'venue', over: { venue: '' } },
+      { column: 'actual_label', over: { actualLabel: '' } },
+    ]) {
+      const built = buildFieldAliasMap(
+        graph,
+        complexes,
+        toSeason2026AliasRings([], [fieldsRow(over)])
+      );
+      const candidate = built.aliases['Blank Cell'].candidates[0];
+      expect(candidate.ring, column).toBe(FIELDS);
+      expect(candidate.surfaceIds, column).toEqual([]);
+      expect(codesOf(built.findings), column).toContain(FACILITY_REASON.ALIAS_BLANK);
+      // The map still builds, and the blank row is one unresolved candidate
+      // rather than a thrown parse.
+      expect(built.stats.aliasCount, column).toBe(1);
+      expect(built.stats.unresolvedCandidateCount, column).toBe(1);
+    }
+
+    // The sibling's answer on the same shape, so "as the practice ring does" is
+    // asserted rather than asserted about.
+    const practiceRow = {
+      rowIndex: 0,
+      displayName: 'Blank Cell',
+      actualLabel: 'Alder Park Pitch 2A',
+      venue: null,
+      field: 'Pitch 2A',
+      subunit: null,
+    };
+    const sibling = buildFieldAliasMap(graph, complexes, toSeason2026AliasRings([practiceRow], []));
+    expect(codesOf(sibling.findings)).toContain(FACILITY_REASON.ALIAS_BLANK);
+    expect(sibling.aliases['Blank Cell'].candidates[0].surfaceIds).toEqual([]);
+
+    // Positive control: the empty string reaching the schema is still refused,
+    // so the fix is the adapter's mapping and not a loosened schema.
+    expect(
+      FieldAliasMapInputSchema.safeParse({
+        rings: [{ ring: FIELDS, entries: [{ displayName: 'Blank Cell', venue: '' }] }],
+      }).success
+    ).toBe(false);
+    expect(() =>
+      buildFieldAliasMap(graph, complexes, {
+        rings: [{ ring: FIELDS, entries: [{ displayName: 'Blank Cell', venue: '' }] }],
+      })
+    ).toThrow();
+  });
+
   it('does not mutate its input and returns a frozen map', () => {
     const input = toSeason2026AliasRings(practice.fieldAliases, practice.fieldCodeNames);
     const before = JSON.stringify(input);

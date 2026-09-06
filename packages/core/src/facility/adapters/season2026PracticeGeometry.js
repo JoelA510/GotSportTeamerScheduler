@@ -372,10 +372,30 @@ export const SEASON_2026_ALIAS_RINGS = Object.freeze({
  * grammar the sheet does not state, and `Rookerie Park` does not resolve
  * anyway: it is the spelling variant the README keeps on purpose.
  *
+ * **A blank cell is `null` on both rings.** `parseFieldCodeNames()` writes
+ * `trim(cell)` for `venue` and `actual_label`, so an empty cell arrives here as
+ * `''`, while `parsePracticeFieldAliases()` writes `orNull(cell)`. Passed
+ * through as `''` the row throws out of `buildFieldAliasMap()`
+ * (`AliasRingEntrySchema` is non-empty-or-null) — the ring with the *stricter*
+ * parser would be the one that cannot be read — where the same blank on the
+ * practice ring resolves `blank` and is reported as `ALIAS_BLANK`. The sibling's
+ * contract is adopted rather than a third one invented.
+ *
  * @param {ReadonlyArray<{ displayName: string, actualLabel: string|null, venue: string|null, field: string|null, subunit: string|null, rowIndex: number }>} fieldAliases
  * @param {ReadonlyArray<{ codeName: string, actualLabel: string, venue: string, remainder: string|null, uncertain: boolean, rowIndex: number }>} fieldCodeNames
  * @returns {{ rings: Array<{ ring: string, entries: Array<Object> }> }}
  */
+/**
+ * An empty cell is an absence, not the empty label. See
+ * {@link toSeason2026AliasRings}.
+ *
+ * @param {string|null|undefined} value
+ * @returns {string|null}
+ */
+function blankAsNull(value) {
+  return value === null || value === undefined || value === '' ? null : value;
+}
+
 export function toSeason2026AliasRings(fieldAliases, fieldCodeNames) {
   return {
     rings: [
@@ -395,8 +415,8 @@ export function toSeason2026AliasRings(fieldAliases, fieldCodeNames) {
         ring: SEASON_2026_ALIAS_RINGS.FIELDS_SHEET,
         entries: fieldCodeNames.map((row) => ({
           displayName: row.codeName,
-          label: row.actualLabel,
-          venue: row.venue,
+          label: blankAsNull(row.actualLabel),
+          venue: blankAsNull(row.venue),
           field: row.remainder,
           subunit: null,
           uncertain: row.uncertain,
