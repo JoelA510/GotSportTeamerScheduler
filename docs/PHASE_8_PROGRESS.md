@@ -898,15 +898,35 @@ the brief for this PR was explicit about not widening.
 
 - `npm run test:db:local` — 107 migrations, three smokes, **30 of 30** scenarios
   against Postgres, three reverts. HARNESS OK.
-- `npm run test:db:local:prove` — **26 attempted, 0 anchor-miss**. The run that
-  found the generator defect scored **24 caught, 2 MISATTRIBUTED**; both are
-  caught again after the fix. Seven of the plants also name a check that must
-  stay GREEN, including one the scenario table catches and the new smoke cannot
-  see.
-- `npm run test:db:local:prove:mock` — **18 attempted, 0 anchor-miss, 18
-  caught**, 10 of them new.
+- `npm run test:db:local:prove` — **26 attempted, 0 anchor-miss, 26 caught**,
+  each at the check it was aimed at. The earlier run that found the generator
+  defect scored 24 caught and 2 MISATTRIBUTED; both are caught again. Nine of
+  the plants also name a check that must stay GREEN, including one the scenario
+  table catches and the new smoke cannot see.
+- `npm run test:db:local:prove:mock` — **19 attempted, 0 anchor-miss, 19
+  caught**, 11 of them new.
 - pgTAP `field_delete_booking_guard.sql`, 17 assertions, executed locally
   against real PostgreSQL with real pgTAP.
+
+### A second review round, and three more corrections
+
+A confirm-only `/code-review` found four things, three of them confirmed by
+executing the code:
+
+- The smoke's arm parser took the **first** `FROM public.` in each arm, which in
+  a per-row arm is the `EXISTS` subquery — so `v_table` resolved to the SLOT
+  table and the "does it really have both edges" check counted cascades on a
+  table that always has them. **A meta-assertion that could not fail**, in the
+  file whose purpose is assertions that can. It is now anchored to the arm's own
+  indentation, and it demands both edges specifically: SET NULL to `fields` AND
+  a CASCADE elsewhere.
+- Rewriting the mock's date filter turned `''` into "a date before every date",
+  and `''` is exactly what the field-import apply path writes for an open-ended
+  practice slot — so a slot that runs forever was dropped from a retirement's
+  affected list while still reporting `unbounded: true`. A regression this PR
+  introduced, now pinned by a test and a plant.
+- `cascades` was leaking into `admin_retire_field`'s mock payload, a key the SQL
+  twin never emits.
 
 ### The fix round introduced its own defect, and the harness caught it
 

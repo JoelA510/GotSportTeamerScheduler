@@ -239,7 +239,7 @@ BEGIN
             USING ERRCODE = 'P0002';
     END IF;
 
-    -- **Every booking the deletion would take -- all FOUR tables**, and what
+    -- **Every booking the deletion would take -- all FIVE kinds**, and what
     -- it would do to each. Enumerated from the BOOKING tables, never from the
     -- field: the field is the row about to disappear, so anything derived from
     -- it would report an empty set exactly when the answer matters.

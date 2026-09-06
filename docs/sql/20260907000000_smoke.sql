@@ -264,7 +264,15 @@ BEGIN
     -- Dollar-quoted so the single quotes in the pattern are the ones that
     -- appear in the function body, not an escaping puzzle.
     v_kind  := (regexp_match(v_arm, $re$'([a-z_]+)'::text$re$))[1];
-    v_table := (regexp_match(v_arm, $re$FROM public\.([a-z_]+)$re$))[1];
+    -- **The arm's OWN table, anchored to the start of a line.** A bare
+    -- `FROM public\.` match takes the FIRST one in the arm, and in a per-row
+    -- arm that is the `EXISTS (SELECT 1 FROM public.game_slots ...)` inside the
+    -- CASE -- so `v_table` resolved to the SLOT table and the "does it really
+    -- have both edges" check below counted CASCADE keys on a table that always
+    -- has them. A meta-assertion that could not fail, in the file whose whole
+    -- purpose is assertions that can. The outer FROM is the only one at the
+    -- arm's own indentation; the 'n' flag makes ^ mean start-of-line.
+    v_table := (regexp_match(v_arm, $re$^      FROM public\.([a-z_]+)$re$, 'n'))[1];
     IF v_kind IS NULL OR v_table IS NULL THEN
       RAISE EXCEPTION 'an arm of the union declares no kind (%) or table (%)', v_kind, v_table;
     END IF;
@@ -279,12 +287,31 @@ BEGIN
       IF v_arm NOT LIKE $q$%'deleted'%$q$ OR v_arm NOT LIKE $q$%'unassigned'%$q$ THEN
         RAISE EXCEPTION 'arm % decides per row but does not offer both dispositions', v_kind;
       END IF;
-      -- Its table must genuinely have both edges, or the CASE is decoration.
+      -- **Its table must genuinely have BOTH edges, or the CASE is
+      -- decoration.** A per-row answer is only justified when the table
+      -- reaches `fields` two ways with two different outcomes: SET NULL on
+      -- its own field_id, and CASCADE through something else. Checking only
+      -- for "a CASCADE key somewhere" passes for any table with any cascading
+      -- foreign key at all, which is nearly all of them.
       SELECT count(*) INTO v_n
         FROM pg_constraint con
         JOIN pg_class src ON src.oid = con.conrelid
+        JOIN pg_class tgt ON tgt.oid = con.confrelid
         JOIN pg_namespace sn ON sn.oid = src.relnamespace AND sn.nspname = 'public'
-       WHERE con.contype = 'f' AND src.relname = v_table AND con.confdeltype = 'c';
+       WHERE con.contype = 'f' AND src.relname = v_table
+         AND tgt.relname = 'fields' AND con.confdeltype = 'n';
+      IF v_n = 0 THEN
+        RAISE EXCEPTION
+          'arm % reports a per-row disposition but %.field_id is not SET NULL; there is no second outcome',
+          v_kind, v_table;
+      END IF;
+      SELECT count(*) INTO v_n
+        FROM pg_constraint con
+        JOIN pg_class src ON src.oid = con.conrelid
+        JOIN pg_class tgt ON tgt.oid = con.confrelid
+        JOIN pg_namespace sn ON sn.oid = src.relnamespace AND sn.nspname = 'public'
+       WHERE con.contype = 'f' AND src.relname = v_table
+         AND tgt.relname <> 'fields' AND con.confdeltype = 'c';
       IF v_n = 0 THEN
         RAISE EXCEPTION
           'arm % reports a per-row disposition but % has no CASCADE key that could destroy it',
@@ -345,16 +372,16 @@ BEGIN
 END $$;
 
 -- ---------------------------------------------------------------------------
--- 6. THE RPC ITSELF, called rather than read, on all four booking kinds
+-- 6. THE RPC ITSELF, called rather than read, on all five booking kinds
 -- ---------------------------------------------------------------------------
 --
 -- Sections 1-5 read the function. Reading it says nothing about what it does,
 -- and PR 2's lesson was exactly that: planting a behavioural defect into
 -- admin_retire_field left every structural assertion green. This calls it.
 --
--- One booking of EACH of the four kinds is seeded on one field, so an arm
--- dropped from the union changes the count and fails here rather than being
--- absorbed by the other three.
+-- One booking of EACH of the five kinds is seeded on one field -- and BOTH
+-- shapes of assignment -- so an arm dropped from the union changes the count
+-- and fails here rather than being absorbed by the others.
 DO $$
 DECLARE
   v_org uuid; v_loc uuid; v_field uuid; v_bare uuid; v_user uuid := gen_random_uuid();

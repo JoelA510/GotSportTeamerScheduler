@@ -316,6 +316,36 @@ describe('field lifecycle RPCs :: retirement writes active and effective_to toge
     expect(bounded.unbounded).toBe(false);
   });
 
+  it('treats an EMPTY valid_until as no date, not as a date before every date', async () => {
+    // **The field-import apply path writes `valid_until: ''`** for an
+    // open-ended practice slot (`payload.valid_until || payload.end_date ||
+    // ''`), so '' is a shape the corpus really produces. A date comparison
+    // reads '' as earlier than everything, which drops a slot that runs
+    // forever out of the affected list -- while the same row still reports
+    // `unbounded: true`. A row cannot be both certainly stranded and
+    // unaffected.
+    const field = someField();
+    await supabase.from('practice_slots').insert({
+      id: 'practice-empty-until',
+      organization_id: ORG,
+      field_id: field.id,
+      day_of_week: 'wed',
+      valid_from: '2026-01-01',
+      valid_until: '',
+    });
+
+    const { data } = await supabase.rpc('admin_retire_field', {
+      p_organization_id: ORG,
+      p_field_id: field.id,
+      p_effective_to: '2099-12-31',
+      p_confirm: false,
+    });
+    const carried = data.affected.find((a) => String(a.id) === 'practice-empty-until');
+    expect(carried, 'an open-ended practice slot was dropped from the refusal').toBeDefined();
+    expect(carried.unbounded).toBe(true);
+    expect(carried.undated).toBe(false);
+  });
+
   it('reads a game slot date from slot_date, not only from start', async () => {
     // **The defect the first draft shipped.** `game_slots.start` is nullable
     // AND the import path never populates it -- it writes slot_date/start_time.

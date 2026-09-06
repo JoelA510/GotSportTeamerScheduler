@@ -167,8 +167,19 @@ const PLANTS = [
     // from comparing against the string "null". Get that wrong and every
     // booking reads as past, the count is zero, and the guard is silently off.
     label: 'the enumerator treats "no date at all" as a date',
-    find: '        const past = (value) => after !== null && value !== null && String(value) <= after;',
+    find: '        const past = (value) => after !== null && !undatedValue(value) && String(value) <= after;',
     replace: '        const past = (value) => value !== null && String(value) <= String(after);',
+  },
+  {
+    // The other half of the same predicate: `''` is what the field-import
+    // apply path writes for an open-ended practice slot, and reading it as a
+    // date earlier than everything drops a slot that runs forever out of the
+    // refusal -- while the same row still reports `unbounded: true`.
+    label: 'an empty valid_until reads as a date before every date',
+    suite: 'tests/fieldLifecycleRpcs.test.js',
+    find: `        const undatedValue = (value) =>
+          value === null || value === undefined || String(value) === '';`,
+    replace: '        const undatedValue = (value) => value === null || value === undefined;',
   },
   {
     // Not scenario-table plants: the table states the RPC's OUTCOME and

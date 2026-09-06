@@ -285,7 +285,7 @@
     },
     {
       "id": "delete-booked-game-slot-refused",
-      "why": "LIVE-1. game_slots.field_id is ON DELETE CASCADE, so the slot is destroyed with the field. One kind per case: an arm dropped from the RPC's four-way union fails the case for THAT table rather than being absorbed by the other three.",
+      "why": "LIVE-1. game_slots.field_id is ON DELETE CASCADE, so the slot is destroyed with the field. One kind per case: an arm dropped from the RPC's five-way union fails the case for THAT table rather than being absorbed by the others.",
       "rpc": "admin_delete_field",
       "before": {
         "active": true,
@@ -373,7 +373,7 @@
     },
     {
       "id": "delete-booked-all-four-confirmed",
-      "why": "One FREE-STANDING booking in each of the four tables that carry a field_id, and p_confirm true. The count must be 4: a union that lost an arm reports 3 here as well as passing the wrong single-kind case. Both disposition words must appear, because the two slot tables cascade and the two unlinked assignments are merely unassigned.",
+      "why": "One FREE-STANDING booking in each of the four tables that carry a field_id, and p_confirm true. The count must be 4: the game slot here has no fixture on it, so the games arm contributes nothing and a union that lost an arm reports 3. Both disposition words must appear, because the two slot tables cascade and the two unlinked assignments are merely unassigned.",
       "rpc": "admin_delete_field",
       "before": {
         "active": true,

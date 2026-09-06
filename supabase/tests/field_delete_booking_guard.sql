@@ -16,7 +16,8 @@ SELECT plan(17);
 
 -- ──────────────────────────────────────────────────────────────
 -- Seed, as superuser, before any SET LOCAL role: one field with one booking
--- of EACH of the four kinds that carry a field_id, so an arm dropped from the
+-- of EACH of the five kinds the delete reaches -- including `games`, which
+-- carries no field_id -- so an arm dropped from the
 -- RPC's union changes the count rather than being absorbed by the others.
 -- ──────────────────────────────────────────────────────────────
 INSERT INTO public.locations (id, organization_id, name)

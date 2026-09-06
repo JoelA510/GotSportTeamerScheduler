@@ -2342,7 +2342,7 @@ export const mockSupabase = {
       // **One enumerator for "what is booked on this field", used by both
       // admin_retire_field and admin_delete_field.**
       //
-      // The four booking tables were written out twice in the SQL -- once in
+      // The booking tables were written out twice in the SQL -- once in
       // each RPC -- and writing them out twice HERE as well is the shape that
       // produced every HIGH in three consecutive rounds of PR 2: a correction
       // landing on one arm and not its twin. The two callers differ in exactly
@@ -2372,7 +2372,16 @@ export const mockSupabase = {
       const fieldBookings = (fieldId, after, options = {}) => {
         const { includeGames = false, viaSlots = false } = options;
         // A row with no date of its own is affected whatever `after` says.
-        const past = (value) => after !== null && value !== null && String(value) <= after;
+        // **An empty string is "no date", not a date before every date.** The
+        // field-import apply path writes `valid_until: ''` for an open-ended
+        // practice slot, and `'' <= anything` is true -- so a slot that is
+        // certainly stranded was being dropped from the affected list while
+        // the same row still reported `unbounded: true`. The pre-diff filters
+        // used `!slot.valid_until`, which treats '' as absent; this restores
+        // that meaning for every kind at once.
+        const undatedValue = (value) =>
+          value === null || value === undefined || String(value) === '';
+        const past = (value) => after !== null && !undatedValue(value) && String(value) <= after;
         const gameDate = (slot) =>
           slot.slot_date || (slot.start ? String(slot.start).slice(0, 10) : null);
         const mine = (row) =>
@@ -2456,10 +2465,15 @@ export const mockSupabase = {
               week_index: row.week_index ?? null,
               undated: !row.start,
               unbounded: false,
-              // **Per row, not per table.** `field_id` is SET NULL, but the slot
-              // columns are CASCADE, so a scheduler-produced assignment is
-              // destroyed while a free-standing one survives venueless.
-              cascades: onGameSlot(row),
+              // **Per row, not per table**, and DELETE-ONLY. `field_id` is SET
+              // NULL, but the slot columns are CASCADE, so a scheduler-produced
+              // assignment is destroyed while a free-standing one survives
+              // venueless. `admin_retire_field` destroys nothing and its SQL
+              // twin emits no such key, so the field is added only when the
+              // caller asked to see through slots -- a payload shape the mock
+              // produced and the database did not is the divergence this whole
+              // mechanism exists to stop.
+              ...(viaSlots ? { cascades: onGameSlot(row) } : {}),
             })),
           ...(db.practice_assignments || [])
             .filter(
@@ -2477,7 +2491,7 @@ export const mockSupabase = {
                 week_index: null,
                 undated: false,
                 unbounded: upper === null,
-                cascades: onPracticeSlot(row),
+                ...(viaSlots ? { cascades: onPracticeSlot(row) } : {}),
               };
             }),
         ];
@@ -2702,11 +2716,28 @@ export const mockSupabase = {
         // The rows the RPC just reported as `deleted` are the rows destroyed
         // here -- read out of `affected` rather than recomputed, so the report
         // and the effect cannot disagree.
-        const doomedIds = new Set(
-          affected.filter((row) => row.disposition === 'deleted').map((row) => String(row.id))
-        );
+        //
+        // Keyed by KIND, not pooled into one id set: a pooled set is correct
+        // only while ids never collide across `games`, `game_assignments` and
+        // `practice_assignments`, which is an assumption about test fixtures
+        // rather than a property of the data.
+        const TABLE_FOR_KIND = {
+          game_slot: 'game_slots',
+          practice_slot: 'practice_slots',
+          game: 'games',
+          game_assignment: 'game_assignments',
+          practice_assignment: 'practice_assignments',
+        };
+        /** @type {Record<string, Set<string>>} */
+        const doomedByTable = {};
+        for (const row of affected) {
+          if (row.disposition !== 'deleted') continue;
+          const table = TABLE_FOR_KIND[row.kind];
+          if (table === undefined) throw new Error(`no table known for booking kind "${row.kind}"`);
+          (doomedByTable[table] ??= new Set()).add(String(row.id));
+        }
         const reported = (table) =>
-          (db[table] || []).filter((item) => doomedIds.has(String(item.id)));
+          (db[table] || []).filter((item) => doomedByTable[table]?.has(String(item.id)));
 
         destroy('field_subunits', onField('field_subunits'));
         destroy('field_blackouts', onField('field_blackouts'));
