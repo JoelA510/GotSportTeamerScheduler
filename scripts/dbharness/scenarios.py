@@ -113,28 +113,106 @@ BOOKING_TABLES = {
     'practice_assignment': 'practice_assignments',
 }
 
+# **Composite kinds: the shapes the persistence RPCs actually write.**
+#
+# `persist_game_schedule` populates `game_slot_id` and `slot_id` on every
+# assignment it produces, and both are ON DELETE CASCADE to `game_slots` -- so a
+# real scheduled game is DESTROYED by a field delete, not unassigned. Seeding
+# only the free-standing shape, as the first version of these scenarios did,
+# exercises a row the production path never produces.
+#
+# Each entry is (statement, survivor-count-check) pairs; `%(field)s` is the
+# field the scenario is about. The slot is created first so the assignment and
+# the game can reference it by a variable rather than by a guessed id.
+COMPOSITE_SEEDS = {
+    'scheduled_game': [
+        ("INSERT INTO public.game_slots (organization_id, field_id, slot_date, week_index) "
+         "VALUES (v_org, %(field)s, current_date + 30, 1) RETURNING id INTO v_seed_slot;",
+         'game_slots'),
+        ('INSERT INTO public.game_assignments '
+         '(organization_id, field_id, game_slot_id, slot_id, "start", week_index) '
+         "VALUES (v_org, %(field)s, v_seed_slot, v_seed_slot, "
+         "timezone('utc', now()) + interval '30 days', 1);",
+         'game_assignments'),
+        ("INSERT INTO public.games (organization_id, game_slot_id, home_team_id, away_team_id) "
+         "VALUES (v_org, v_seed_slot, v_team, v_team_b);",
+         'games'),
+    ],
+    'scheduled_practice': [
+        ("INSERT INTO public.practice_slots "
+         "(organization_id, field_id, day_of_week, start_time, end_time, valid_until) "
+         "VALUES (v_org, %(field)s, 'mon', '18:00', '19:30', current_date + 60) "
+         "RETURNING id INTO v_seed_slot;",
+         'practice_slots'),
+        ("INSERT INTO public.practice_assignments "
+         "(organization_id, team_id, field_id, practice_slot_id, slot_id, effective_date_range) "
+         "VALUES (v_org, v_team, %(field)s, v_seed_slot, v_seed_slot, "
+         "daterange(current_date, current_date + 60, '[]'));",
+         'practice_assignments'),
+    ],
+}
+
+
+def booking_count_sql(table):
+    """Count the rows of `table` that this field's delete would reach.
+
+    `games` carries no field_id, so it is counted through the slot it hangs
+    off -- the same reading admin_delete_field takes.
+    """
+    if table == 'games':
+        return ("SELECT count(*) INTO v_n FROM public.games g "
+                "JOIN public.game_slots gs ON gs.id = g.game_slot_id "
+                "WHERE gs.field_id = v_field;")
+    return f"SELECT count(*) INTO v_n FROM public.{table} WHERE field_id = v_field;"
+
 
 def emit_bookings(scenario, target):
     """Seed the scenario's bookings, and prove each landed.
 
-    A seed that silently did nothing would turn a refusal case into an
-    unbooked one: the field would delete, the assertion would be about
-    nothing, and the guard could be entirely absent.
+    Returns (lines, counts) where `counts` is how many rows each table should
+    hold afterwards. **Exact counts, not "at least one".** A scenario that
+    seeds a composite AND a free-standing row of the same kind puts two rows in
+    one table, so a check hard-coded to 1 fails on the very case that exists to
+    put both shapes on one field -- which is how this check was first written.
+
+    A seed that silently did nothing would turn a refusal case into an unbooked
+    one: the field would delete, the assertion would be about nothing, and the
+    guard could be entirely absent.
     """
     lines = []
+    counts = {}
+
+    def seeded(table):
+        counts[table] = counts.get(table, 0) + 1
+        return counts[table]
+
     for kind in scenario.get('bookings') or []:
+        if kind in COMPOSITE_SEEDS:
+            for statement, table in COMPOSITE_SEEDS[kind]:
+                lines.append('  ' + statement % {'field': target})
+                expected = seeded(table)
+                lines += [
+                    '  ' + booking_count_sql(table),
+                    f"  IF v_n <> {expected} THEN",
+                    f"    RAISE EXCEPTION '{scenario['id']}: the {kind} seed did not land in "
+                    f"{table} (expected {expected}, found %)', v_n;",
+                    "  END IF;",
+                ]
+            continue
         if kind not in BOOKING_SEEDS:
             # Every switch over a union throws on the value it does not know.
             raise SystemExit(f"unknown booking kind {kind!r} in scenario {scenario['id']!r}")
+        table = BOOKING_TABLES[kind]
         lines.append('  ' + BOOKING_SEEDS[kind] % {'field': target})
+        expected = seeded(table)
         lines += [
-            f"  SELECT count(*) INTO v_n FROM public.{BOOKING_TABLES[kind]} "
-            f"WHERE field_id = {target};",
-            "  IF v_n <> 1 THEN",
-            f"    RAISE EXCEPTION '{scenario['id']}: the {kind} seed did not land (found %)', v_n;",
+            '  ' + booking_count_sql(table),
+            f"  IF v_n <> {expected} THEN",
+            f"    RAISE EXCEPTION '{scenario['id']}: the {kind} seed did not land "
+            f"(expected {expected}, found %)', v_n;",
             "  END IF;",
         ]
-    return lines
+    return lines, counts
 
 
 def emit_audit_phases(scenario):
@@ -194,7 +272,8 @@ def emit_field(scenario, index):
     # Bookings are always seeded onto the REAL field, never onto the foreign-org
     # target: a scenario testing the org gate must be refused by the gate, not
     # by an insert that could not find a field to hang a booking on.
-    lines += emit_bookings(s, 'v_field')
+    booking_lines, booking_counts = emit_bookings(s, 'v_field')
+    lines += booking_lines
     if s['rpc'] == 'admin_retire_field':
         call = (
             "public.admin_retire_field(p_organization_id => v_org, "
@@ -282,15 +361,34 @@ def emit_field(scenario, index):
             # A refusal writes NOTHING. Each seeded booking is counted in its
             # own table: a delete that wrongly proceeded either cascades the row
             # away or nulls its field_id, and both make this count zero.
-            for kind in s.get('bookings') or []:
+            # A refusal writes NOTHING. Every table the seeding touched must
+            # still hold exactly what it held: a delete that wrongly proceeded
+            # either cascades rows away or nulls their field_id, and both drop
+            # these counts.
+            for table, expected in sorted(booking_counts.items()):
                 lines += [
-                    f"  SELECT count(*) INTO v_n FROM public.{BOOKING_TABLES[kind]} "
-                    "WHERE field_id = v_field;",
-                    "  IF v_n <> 1 THEN",
-                    f"    RAISE EXCEPTION '{s['id']}: a REFUSED delete lost the {kind} (found %)', v_n;",
+                    '  ' + booking_count_sql(table),
+                    f"  IF v_n <> {expected} THEN",
+                    f"    RAISE EXCEPTION '{s['id']}: a REFUSED delete changed {table} "
+                    f"(expected {expected}, found %)', v_n;",
                     "  END IF;",
                 ]
     else:
+        # **The retirement half's assertions.** These were silently deleted by a
+        # refactor of the block above -- a slice that ran from the delete arm's
+        # booking loop all the way to `emit_audit_phases`, taking this `else`
+        # with it. Nothing in the emitted script complained: it still ran 30
+        # scenarios and still checked their audit phases, so the table went on
+        # reporting "30 of 30 executed" while saying nothing about `active`.
+        #
+        # It was caught by `prove.sh`, which planted the two round-3 HIGHs and
+        # reported MISATTRIBUTED -- red at the smoke, green at the scenario
+        # table -- rather than scoring a catch. That is exactly what the
+        # named-check attribution was added for, and it is the second time this
+        # PR has been saved by a check that could fail.
+        #
+        # `assert_every_scenario_is_checked` below now makes the loss loud in
+        # the generator itself, so it cannot recur silently.
         lines += [
             "  SELECT active, effective_to INTO v_active, v_eff FROM public.fields WHERE id = v_field;",
             f"  IF v_active IS DISTINCT FROM {lit(s['expect']['active'])} THEN",
@@ -393,7 +491,8 @@ def main():
         'DECLARE',
         '  v_org uuid; v_loc uuid; v_field uuid; v_user uuid := gen_random_uuid();',
         '  v_res jsonb; v_active boolean; v_eff date; v_n int; v_before_n int; v_ran int := 0;',
-        '  v_team uuid; v_season uuid; v_div uuid; v_phases text[]; v_words text[];',
+        '  v_team uuid; v_team_b uuid; v_season uuid; v_div uuid;',
+        '  v_phases text[]; v_words text[]; v_seed_slot uuid;',
         'BEGIN',
         "  INSERT INTO auth.users (id, email, raw_user_meta_data)",
         "  VALUES (v_user, 'scenarios@example.test', jsonb_build_object('password_length', 16))",
@@ -418,6 +517,10 @@ def main():
         "  VALUES (v_org, v_season, 'Scenario Division') RETURNING id INTO v_div;",
         "  INSERT INTO public.teams (organization_id, division_id, name)",
         "  VALUES (v_org, v_div, 'Scenario Team') RETURNING id INTO v_team;",
+        # `games` has a CHECK that the two teams differ, so the composite seed
+        # needs a second one.
+        "  INSERT INTO public.teams (organization_id, division_id, name)",
+        "  VALUES (v_org, v_div, 'Scenario Team B') RETURNING id INTO v_team_b;",
         '',
     ]
     for i, scenario in enumerate(fields, start=1):
@@ -432,6 +535,34 @@ def main():
     ]
     for i, scenario in enumerate(blackouts, start=1):
         out += emit_blackout(scenario, i)
+
+    # **Every accepted scenario must EMIT the assertion its shape requires.**
+    #
+    # `v_ran` counts cases that RAN, not cases that were checked, so a case
+    # whose assertions went missing still increments it and the script still
+    # reports "N of N executed". That is precisely what happened: a refactor
+    # deleted the retire arm's `active` and `effective_to` checks and the only
+    # thing that noticed was a mutation plant coming back MISATTRIBUTED.
+    #
+    # So the generator now reads its own output back. A retire or unretire case
+    # must produce an `expected active=` line; a delete case must produce an
+    # `expected deleted=` line. Zero matches for a scenario is a loud failure
+    # here rather than a quiet one three checks downstream.
+    body = '\n'.join(out)
+    for scenario in fields:
+        if not scenario['expect']['ok']:
+            continue
+        marker = (
+            f"{scenario['id']}: expected deleted="
+            if scenario['rpc'] == 'admin_delete_field'
+            else f"{scenario['id']}: expected active="
+        )
+        if marker not in body:
+            raise SystemExit(
+                f"scenario {scenario['id']!r} emitted no outcome assertion "
+                f"(looked for {marker!r}); the generator would produce a script "
+                'that runs the case and checks nothing about it'
+            )
 
     out += [
         # **A run that judged fewer cases than the table holds is a failure.**

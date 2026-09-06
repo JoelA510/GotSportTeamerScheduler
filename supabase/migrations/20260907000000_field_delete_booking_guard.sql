@@ -57,32 +57,43 @@
 -- mistake -- a field created twice, a typo -- still needs a delete, and
 -- `p_confirm => true` is that path.
 --
--- ## The family that carries a field_id, derived from the schema
+-- ## The family, derived from the REFERENTIAL GRAPH rather than a column name
 --
--- SEVEN tables carry a `field_id` column. The set was derived by querying
--- `information_schema.columns` on a fully migrated database, and
--- `docs/sql/20260907000000_smoke.sql` re-derives it on every harness run and
--- FAILS if an eighth appears -- so a new table cannot join the family without
--- someone deciding which half it is in. The disposition of each, with the
--- ON DELETE behaviour that makes the disposition matter:
+-- The first version of this header enumerated the seven tables that carry a
+-- `field_id` and called that the family. It is not the family: what a delete
+-- destroys is the CASCADE CLOSURE from `fields`, and that closure was computed
+-- from `pg_constraint` only after a review asked. It has fifteen edges over
+-- three levels, and two of the things it reaches were invisible to a
+-- column-name census:
 --
---   READ AS BOOKINGS (4), enumerated by this RPC:
---     * game_slots           NOT NULL FK, CASCADE   -- the slot is destroyed
---     * practice_slots       NOT NULL FK, CASCADE   -- the slot is destroyed
---     * game_assignments     nullable FK, SET NULL  -- the game loses its venue
---     * practice_assignments nullable FK, SET NULL  -- as of THIS migration
+--   * `games` -- no `field_id` at all. It hangs off `game_slots` ON DELETE
+--     CASCADE (20260331000000:585), so deleting the ground destroys the
+--     fixture AND the recorded score. A column-name census cannot see it.
+--   * `game_assignments` and `practice_assignments` reach the field a SECOND
+--     way, through their slot columns, and those edges are CASCADE where the
+--     `field_id` edge is SET NULL. The CASCADE wins: an assignment produced by
+--     the scheduler is destroyed, not unassigned. Both halves of that were
+--     measured against a real delete before this was written.
 --
---   NOT BOOKINGS (3), each excluded for a stated reason rather than forgotten:
---     * field_subunits              NOT NULL FK, CASCADE. The estate's own
---       structure: a subunit is part of the field, not a use of it. Note that
---       a practice slot scoped to a HALF pitch still carries the parent's
---       field_id (NOT NULL), so it is caught by the practice_slots arm.
---     * field_availability_profiles nullable FK, SET NULL. Import metadata
---       describing the ground, not a use of it. (Its nullable field_id is the
---       subject of LIVE-2 and is not touched here.)
---     * field_blackouts             nullable FK, CASCADE. A closure, not a
---       booking: deleting a field cannot strand the statement that it was
---       already shut.
+-- FIVE kinds are read as bookings: game_slot, game (via its slot),
+-- game_assignment, practice_slot, practice_assignment -- the last two of which
+-- report their disposition PER ROW, because it depends on whether that row has
+-- a slot behind it.
+--
+-- Three tables in the closure are excluded, each for a stated reason:
+--   * field_subunits              CASCADE. The estate's own structure: a
+--     subunit is part of the field, not a use of it. A practice slot scoped to
+--     a HALF pitch still carries the parent's field_id (NOT NULL), so it is
+--     caught by the practice_slots arm.
+--   * field_availability_profiles SET NULL. Import metadata describing the
+--     ground, not a use of it, and nothing is destroyed. (Its nullable
+--     field_id is the subject of LIVE-2 and is not touched here.)
+--   * field_blackouts             CASCADE. A closure, not a booking: deleting
+--     a field cannot strand the statement that it was already shut.
+--
+-- `docs/sql/20260907000000_smoke.sql` re-derives the closure on every harness
+-- run and fails if a table joins or leaves it, so the next `games` cannot
+-- arrive unnoticed.
 --
 -- ## Why practice_assignments.field_id becomes ON DELETE SET NULL
 --
@@ -257,11 +268,45 @@ BEGIN
       FROM public.game_slots gs
       WHERE gs.organization_id = p_organization_id AND gs.field_id = p_field_id
       UNION ALL
+      -- **`games` carries no field_id and is destroyed anyway.** It hangs off
+      -- game_slots ON DELETE CASCADE (20260331000000:585), so deleting the
+      -- ground takes the fixture and the score with it. Enumerating the family
+      -- by COLUMN NAME missed it entirely -- the first version of this RPC
+      -- reported nothing about the one table that holds a result.
+      SELECT 'game'::text, g.id,
+             COALESCE(gs.slot_date, gs.start::date), gs.week_index::integer,
+             COALESCE(gs.slot_date, gs.start::date) IS NULL, false,
+             'deleted'::text
+      FROM public.games g
+      JOIN public.game_slots gs ON gs.id = g.game_slot_id
+      WHERE gs.organization_id = p_organization_id AND gs.field_id = p_field_id
+      UNION ALL
+      -- **An assignment's fate depends on the ROW, not on its table.**
+      -- `game_assignments.field_id` is SET NULL, so the first version of this
+      -- RPC told the operator every assignment would survive venueless. That is
+      -- true only of an assignment with no slot behind it. `persist_game_schedule`
+      -- writes `game_slot_id` and `slot_id` on every row it produces
+      -- (20260503030000:618-630), and both are ON DELETE CASCADE to `game_slots`
+      -- -- so for a real persisted schedule the slot cascade destroys the
+      -- assignment before the SET NULL can fire. Measured, not reasoned about:
+      -- an assignment carrying `game_slot_id` does not survive the delete.
+      --
+      -- The row is also caught when its SLOT is on this ground but its own
+      -- `field_id` is not, because the cascade does not consult `field_id`.
       SELECT 'game_assignment'::text, ga.id,
              ga.start::date, ga.week_index::integer,
-             ga.start IS NULL, false, 'unassigned'::text
+             ga.start IS NULL, false,
+             CASE WHEN EXISTS (
+                    SELECT 1 FROM public.game_slots s
+                     WHERE s.field_id = p_field_id
+                       AND s.id IN (ga.game_slot_id, ga.slot_id)
+                  ) THEN 'deleted' ELSE 'unassigned' END
       FROM public.game_assignments ga
-      WHERE ga.organization_id = p_organization_id AND ga.field_id = p_field_id
+      WHERE ga.organization_id = p_organization_id
+        AND (ga.field_id = p_field_id
+             OR EXISTS (SELECT 1 FROM public.game_slots s
+                         WHERE s.field_id = p_field_id
+                           AND s.id IN (ga.game_slot_id, ga.slot_id)))
       UNION ALL
       SELECT 'practice_slot'::text, ps.id,
              ps.valid_until, NULL::integer,
@@ -269,13 +314,24 @@ BEGIN
       FROM public.practice_slots ps
       WHERE ps.organization_id = p_organization_id AND ps.field_id = p_field_id
       UNION ALL
+      -- The same, for practices. `practice_assignments.slot_id` and
+      -- `.practice_slot_id` are both ON DELETE CASCADE to `practice_slots`
+      -- (20260331000000:526-527) and `persist_practice_schedule` writes them.
       SELECT 'practice_assignment'::text, pa.id,
              upper(pa.effective_date_range), NULL::integer,
              false,
              pa.effective_date_range IS NULL OR upper_inf(pa.effective_date_range),
-             'unassigned'::text
+             CASE WHEN EXISTS (
+                    SELECT 1 FROM public.practice_slots s
+                     WHERE s.field_id = p_field_id
+                       AND s.id IN (pa.practice_slot_id, pa.slot_id)
+                  ) THEN 'deleted' ELSE 'unassigned' END
       FROM public.practice_assignments pa
-      WHERE pa.organization_id = p_organization_id AND pa.field_id = p_field_id
+      WHERE pa.organization_id = p_organization_id
+        AND (pa.field_id = p_field_id
+             OR EXISTS (SELECT 1 FROM public.practice_slots s
+                         WHERE s.field_id = p_field_id
+                           AND s.id IN (pa.practice_slot_id, pa.slot_id)))
     )
     SELECT
       COALESCE(
@@ -374,6 +430,6 @@ REVOKE ALL ON FUNCTION public.admin_delete_field(uuid, uuid, boolean) FROM PUBLI
 GRANT EXECUTE ON FUNCTION public.admin_delete_field(uuid, uuid, boolean) TO authenticated;
 
 COMMENT ON FUNCTION public.admin_delete_field(uuid, uuid, boolean) IS
-  'Admin-only org-scoped field deletion. Refuses with the affected bookings -- game_slots, game_assignments, practice_slots, practice_assignments -- unless p_confirm is true, mirroring admin_retire_field. Returns {deleted:false, reason:''bookings_exist'', affected_count, affected} on refusal rather than raising, and audits refused/before/after.';
+  'Admin-only org-scoped field deletion. Refuses with everything the delete would take -- game_slots, games, game_assignments, practice_slots, practice_assignments -- unless p_confirm is true, mirroring admin_retire_field. Each affected row carries a disposition: deleted (a CASCADE reaches it) or unassigned (only its field_id is SET NULL); assignments report this per row, because a slot-linked assignment is destroyed while a free-standing one survives. Returns {deleted:false, reason:''bookings_exist'', affected_count, affected} on refusal rather than raising, and audits refused/before/after.';
 
 COMMIT;

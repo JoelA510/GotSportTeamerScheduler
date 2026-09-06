@@ -149,6 +149,71 @@ const BOOKING_SEEDS = {
 };
 
 /**
+ * Composite kinds: the shapes the persistence RPCs actually write.
+ *
+ * `persist_game_schedule` writes `game_slot_id` and `slot_id` on every
+ * assignment, and both are ON DELETE CASCADE to `game_slots` -- so a real
+ * scheduled game is DESTROYED by a field delete, not unassigned. Seeding only
+ * the free-standing shape, as the first version of these scenarios did, tests
+ * a row the production path never produces.
+ *
+ * Each entry seeds several rows and declares how many the RPC must report.
+ */
+const COMPOSITE_SEEDS = {
+  scheduled_game: (id, fieldId) => [
+    [
+      'game_slots',
+      {
+        id: `${id}-slot`,
+        organization_id: ORG,
+        field_id: fieldId,
+        slot_date: dateAt(30),
+        week_index: 1,
+      },
+    ],
+    [
+      'game_assignments',
+      {
+        id: `${id}-assignment`,
+        organization_id: ORG,
+        field_id: fieldId,
+        game_slot_id: `${id}-slot`,
+        slot_id: `${id}-slot`,
+        start: `${dateAt(30)}T18:00:00.000Z`,
+        week_index: 1,
+      },
+    ],
+    ['games', { id: `${id}-game`, organization_id: ORG, game_slot_id: `${id}-slot` }],
+  ],
+  scheduled_practice: (id, fieldId) => [
+    [
+      'practice_slots',
+      {
+        id: `${id}-slot`,
+        organization_id: ORG,
+        field_id: fieldId,
+        day_of_week: 'mon',
+        start_time: '18:00',
+        end_time: '19:30',
+        valid_until: dateAt(60),
+      },
+    ],
+    [
+      'practice_assignments',
+      {
+        id: `${id}-assignment`,
+        organization_id: ORG,
+        team_id: 'scenario-team',
+        field_id: fieldId,
+        practice_slot_id: `${id}-slot`,
+        slot_id: `${id}-slot`,
+        effective_date_range: `[${dateAt(0)},${dateAt(60)}]`,
+      },
+    ],
+  ],
+};
+
+/**
  * Seed one booking of each named kind onto a field, and prove each landed.
  *
  * A seed that silently failed would turn a refusal case into an unbooked one
@@ -162,9 +227,20 @@ const BOOKING_SEEDS = {
 const seedBookings = async (fieldId, kinds) => {
   const seeded = [];
   for (const kind of kinds) {
+    const id = `${fieldId}-${kind}`;
+    // Composite kinds first: `scheduled_game` is three rows, not one.
+    const composite = COMPOSITE_SEEDS[kind];
+    if (composite !== undefined) {
+      for (const [tableName, row] of composite(id, fieldId)) {
+        await supabase.from(tableName).insert(row);
+        const landed = getMockData(tableName).find((r) => String(r.id) === String(row.id));
+        expect(landed, `${kind} seed did not land in ${tableName}`).toBeDefined();
+        seeded.push({ kind, table: tableName, id: String(row.id) });
+      }
+      continue;
+    }
     const build = BOOKING_SEEDS[kind];
     if (build === undefined) throw new Error(`unknown booking kind "${kind}"`);
-    const id = `${fieldId}-${kind}`;
     const [tableName, row] = build(id, fieldId);
     await supabase.from(tableName).insert(row);
     const landed = getMockData(tableName).find((r) => String(r.id) === id);
@@ -180,10 +256,10 @@ describe('scenario table :: the table itself', () => {
     // The meta-assertion. A table that failed to parse, or that lost its
     // entries, would make every `it.each` below run zero cases and the file
     // would pass green having asserted nothing at all.
-    expect(TABLE.fieldScenarios.length).toBe(18);
+    expect(TABLE.fieldScenarios.length).toBe(21);
     expect(TABLE.blackoutScenarios.length).toBe(9);
     const all = [...TABLE.fieldScenarios, ...TABLE.blackoutScenarios];
-    expect(all.length).toBe(27);
+    expect(all.length).toBe(30);
     for (const scenario of all) {
       expect(typeof scenario.id).toBe('string');
       expect(scenario.why.length).toBeGreaterThan(10);
@@ -245,8 +321,22 @@ describe('scenario table :: the table itself', () => {
     // so a union arm that vanished cannot hide behind the other three.
     const seededKinds = new Set(deletes.flatMap((s) => s.bookings ?? []));
     expect(seededKinds).toEqual(
-      new Set(['game_slot', 'game_assignment', 'practice_slot', 'practice_assignment'])
+      new Set([
+        'game_slot',
+        'game_assignment',
+        'practice_slot',
+        'practice_assignment',
+        // The shapes the scheduler writes. Without these the table only ever
+        // exercises free-standing assignments, and a per-TABLE disposition --
+        // the defect a review found here -- passes every case.
+        'scheduled_game',
+        'scheduled_practice',
+      ])
     );
+    // ... and both disposition words are demanded by at least one case, on a
+    // field where both are true at once.
+    const mixed = deletes.find((s) => (s.expect.dispositions ?? []).length === 2);
+    expect(mixed, 'no case requires both dispositions in one refusal').toBeDefined();
   });
 });
 
@@ -328,7 +418,11 @@ describe('scenario table :: the mock honours it', () => {
         for (const booking of seeded) {
           const row = getMockData(booking.table).find((r) => String(r.id) === booking.id);
           expect(row, `${booking.kind} was destroyed by a REFUSED delete`).toBeDefined();
-          expect(String(row.field_id)).toBe(String(field.id));
+          // `games` reaches the field through its slot and carries no field_id
+          // of its own, so only the rows that HAVE one are checked for it --
+          // asserting a column that does not exist would fail on the table this
+          // whole correction exists to include.
+          if ('field_id' in row) expect(String(row.field_id)).toBe(String(field.id));
         }
       }
     } else {

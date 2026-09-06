@@ -129,17 +129,24 @@ export default function FieldManagementPage() {
       //
       // `window.confirm`/`alert` match what the rest of this page already
       // uses. The proper consequence preview is 8.4 PR 3's surface.
-      const affected = attempt?.affected ?? [];
+      const affected = attempt.affected ?? [];
       const byOutcome = affected.reduce((acc, row) => {
         acc[row.disposition] = (acc[row.disposition] || 0) + 1;
         return acc;
       }, /** @type {Record<string, number>} */ ({}));
-      const lost = byOutcome.deleted ?? 0;
-      const orphaned = byOutcome.unassigned ?? 0;
+      // **"Destroyed" and "left without a venue" are different losses**, and
+      // which one a booking suffers depends on the row rather than its table:
+      // a scheduled game is destroyed with its slot, while a free-standing
+      // assignment survives venueless. The RPC works that out per row and this
+      // just counts the words, so the prompt cannot promise a survival the
+      // database is not going to deliver.
+      const destroyed = byOutcome.deleted ?? 0;
+      const unassigned = byOutcome.unassigned ?? 0;
       const proceed = window.confirm(
-        `${field.name} has ${attempt?.affected_count ?? affected.length} booking(s).\n` +
-          `Deleting it removes ${lost} slot(s) and leaves ${orphaned} assignment(s) with no venue.\n\n` +
-          'Delete anyway?'
+        `${field.name} has ${attempt.affected_count ?? affected.length} booking(s).\n` +
+          `Deleting it permanently removes ${destroyed} of them` +
+          (unassigned > 0 ? ` and leaves ${unassigned} without a venue` : '') +
+          '.\n\nDelete anyway?'
       );
       if (!proceed) return;
 

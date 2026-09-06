@@ -115,24 +115,92 @@ BEGIN
 END $$;
 
 -- ---------------------------------------------------------------------------
--- 4. THE FAMILY CENSUS -- derived from the schema, on every run
+-- 4. THE CASCADE CLOSURE -- derived from the referential graph, on every run
 -- ---------------------------------------------------------------------------
 --
--- Seven tables carry a `field_id`. Four are read as bookings by
--- admin_delete_field; three are excluded for stated reasons. An eighth table
--- joining the family must not be able to arrive unnoticed and be silently
--- treated as "not a booking", which is how the assignment tables came to be
--- missing from admin_retire_field's first two drafts.
+-- **The family is not "tables with a field_id".** That was this check's first
+-- form and it was wrong in a way that mattered: `games` carries no field_id and
+-- is destroyed anyway, because it hangs off `game_slots` ON DELETE CASCADE. A
+-- census that cannot see the one table holding a recorded score is not a
+-- census of what a delete costs.
 --
--- So the census is DERIVED here rather than written down, and this check fails
--- on any member it has no disposition for -- in either direction.
+-- So the closure is walked here -- every foreign key that reaches `fields`, and
+-- then transitively through every CASCADE edge -- and compared against a
+-- declared list. A table joining or leaving the closure fails this run, in
+-- either direction, so the next `games` cannot arrive unnoticed.
 DO $$
 DECLARE
   v_actual text[];
-  v_bookings text[] := ARRAY['game_assignments','game_slots','practice_assignments','practice_slots'];
+  v_declared text[] := ARRAY[
+    'field_availability_profiles','field_blackouts','field_subunits',
+    'game_assignments','game_slots','games',
+    'practice_assignments','practice_slots'
+  ];
+  -- Read by admin_delete_field. The other three are excluded for reasons the
+  -- migration header states; section 4b holds it to both halves.
+  v_bookings text[] := ARRAY[
+    'game_assignments','game_slots','games','practice_assignments','practice_slots'
+  ];
   v_excluded text[] := ARRAY['field_availability_profiles','field_blackouts','field_subunits'];
   v_def text;
   t text;
+BEGIN
+  WITH RECURSIVE fk AS (
+    SELECT src.relname::text AS src, tgt.relname::text AS tgt, con.confdeltype AS del
+      FROM pg_constraint con
+      JOIN pg_class src ON src.oid = con.conrelid
+      JOIN pg_class tgt ON tgt.oid = con.confrelid
+      JOIN pg_namespace n ON n.oid = src.relnamespace AND n.nspname = 'public'
+     WHERE con.contype = 'f'
+  ), closure AS (
+    SELECT fk.src, fk.del FROM fk WHERE fk.tgt = 'fields'
+    UNION
+    SELECT fk.src, fk.del FROM fk JOIN closure c ON fk.tgt = c.src AND c.del = 'c'
+  )
+  SELECT array_agg(DISTINCT src ORDER BY src) INTO v_actual FROM closure;
+
+  -- Meta-assertion: a walk that found nothing would agree with nothing and
+  -- pass every comparison below by being empty on both sides.
+  IF v_actual IS NULL OR array_length(v_actual, 1) IS NULL THEN
+    RAISE EXCEPTION 'the cascade closure from fields is empty; the walk is not reading pg_constraint';
+  END IF;
+
+  IF v_actual <> (SELECT array_agg(x ORDER BY x) FROM unnest(v_declared) x) THEN
+    RAISE EXCEPTION
+      'the cascade closure from fields changed: schema reaches %, this migration declares %. Decide whether the new member is a booking.',
+      v_actual, (SELECT array_agg(x ORDER BY x) FROM unnest(v_declared) x);
+  END IF;
+
+  IF v_declared <> (SELECT array_agg(x ORDER BY x) FROM unnest(v_bookings || v_excluded) x) THEN
+    RAISE EXCEPTION 'every closure member must be read or excluded; the two lists do not cover the declared set';
+  END IF;
+
+  SELECT pg_get_functiondef(p.oid) INTO v_def
+    FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+   WHERE n.nspname = 'public' AND p.proname = 'admin_delete_field';
+
+  FOREACH t IN ARRAY v_bookings LOOP
+    IF v_def NOT LIKE '%public.' || t || '%' THEN
+      RAISE EXCEPTION 'admin_delete_field does not enumerate %, which a field delete destroys rows in', t;
+    END IF;
+  END LOOP;
+
+  FOREACH t IN ARRAY v_excluded LOOP
+    IF v_def LIKE '%public.' || t || '%' THEN
+      RAISE EXCEPTION
+        'admin_delete_field reads %, which this migration documents as NOT a booking', t;
+    END IF;
+  END LOOP;
+
+  RAISE NOTICE 'cascade closure from fields: % tables, % read as bookings, % excluded',
+    array_length(v_actual, 1), array_length(v_bookings, 1), array_length(v_excluded, 1);
+END $$;
+
+-- 4b. The seven-table field_id family is still checked, because it is the set
+-- the FOREIGN KEY work in section 3 is about. It is a SUBSET of the closure,
+-- not the same thing, and conflating the two is what hid `games`.
+DO $$
+DECLARE v_actual text[];
 BEGIN
   SELECT array_agg(c.table_name::text ORDER BY c.table_name)
     INTO v_actual
@@ -142,40 +210,14 @@ BEGIN
      AND t2.table_type = 'BASE TABLE'
    WHERE c.table_schema = 'public' AND c.column_name = 'field_id';
 
-  -- Meta-assertion: a census that found nothing would agree with nothing and
-  -- pass every comparison below by being empty on both sides.
-  IF v_actual IS NULL OR array_length(v_actual, 1) IS NULL THEN
-    RAISE EXCEPTION 'the field_id census matched zero tables; it is not looking at the schema';
+  IF v_actual IS NULL OR array_length(v_actual, 1) <> 7 THEN
+    RAISE EXCEPTION 'expected 7 tables carrying a field_id, found %', v_actual;
   END IF;
-
-  IF v_actual <> (SELECT array_agg(x ORDER BY x) FROM unnest(v_bookings || v_excluded) x) THEN
-    RAISE EXCEPTION
-      'the field_id family changed: schema has %, this migration has a disposition for %. Decide which half the new member is in.',
-      v_actual, (SELECT array_agg(x ORDER BY x) FROM unnest(v_bookings || v_excluded) x);
+  IF v_actual <> ARRAY['field_availability_profiles','field_blackouts','field_subunits',
+                       'game_assignments','game_slots','practice_assignments','practice_slots'] THEN
+    RAISE EXCEPTION 'the field_id family changed: %', v_actual;
   END IF;
-
-  SELECT pg_get_functiondef(p.oid) INTO v_def
-    FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
-   WHERE n.nspname = 'public' AND p.proname = 'admin_delete_field';
-
-  -- Every booking table is READ by the RPC ...
-  FOREACH t IN ARRAY v_bookings LOOP
-    IF v_def NOT LIKE '%public.' || t || '%' THEN
-      RAISE EXCEPTION 'admin_delete_field does not enumerate %, which carries a field_id', t;
-    END IF;
-  END LOOP;
-
-  -- ... and every excluded one is NOT, so an exclusion cannot quietly become an
-  -- inclusion without this list being updated to say so.
-  FOREACH t IN ARRAY v_excluded LOOP
-    IF v_def LIKE '%public.' || t || '%' THEN
-      RAISE EXCEPTION
-        'admin_delete_field reads %, which this migration documents as NOT a booking', t;
-    END IF;
-  END LOOP;
-
-  RAISE NOTICE 'field_id family census: % tables, % read as bookings, % excluded',
-    array_length(v_actual, 1), array_length(v_bookings, 1), array_length(v_excluded, 1);
+  RAISE NOTICE 'field_id family: 7 tables, a subset of the 8-table cascade closure';
 END $$;
 
 -- ---------------------------------------------------------------------------
@@ -193,7 +235,7 @@ DO $$
 DECLARE
   v_def text; v_cte text; v_arms text[]; v_arm text;
   v_kind text; v_disp text; v_table text; v_del char; v_expected text;
-  v_checked int := 0;
+  v_checked int := 0; v_n int;
 BEGIN
   SELECT pg_get_functiondef(p.oid) INTO v_def
     FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
@@ -214,32 +256,75 @@ BEGIN
   END IF;
 
   v_arms := regexp_split_to_array(v_cte, 'UNION ALL');
-  IF array_length(v_arms, 1) <> 4 THEN
-    RAISE EXCEPTION 'expected 4 arms in the affected-booking union, parsed %', array_length(v_arms, 1);
+  IF array_length(v_arms, 1) <> 5 THEN
+    RAISE EXCEPTION 'expected 5 arms in the affected-booking union, parsed %', array_length(v_arms, 1);
   END IF;
 
   FOREACH v_arm IN ARRAY v_arms LOOP
     -- Dollar-quoted so the single quotes in the pattern are the ones that
     -- appear in the function body, not an escaping puzzle.
     v_kind  := (regexp_match(v_arm, $re$'([a-z_]+)'::text$re$))[1];
-    v_disp  := (regexp_match(v_arm, $re$'(deleted|unassigned)'::text$re$))[1];
     v_table := (regexp_match(v_arm, $re$FROM public\.([a-z_]+)$re$))[1];
-    IF v_kind IS NULL OR v_disp IS NULL OR v_table IS NULL THEN
-      RAISE EXCEPTION 'an arm of the union declares no kind (%), disposition (%) or table (%)',
-        v_kind, v_disp, v_table;
+    IF v_kind IS NULL OR v_table IS NULL THEN
+      RAISE EXCEPTION 'an arm of the union declares no kind (%) or table (%)', v_kind, v_table;
     END IF;
 
+    -- **Two shapes of arm, and the difference is the point.** A CASCADE-only
+    -- arm states one disposition word outright. An arm whose table reaches the
+    -- field BOTH ways -- SET NULL on field_id and CASCADE through a slot --
+    -- must decide per row, and states both words in a CASE. Checking only the
+    -- first literal would have passed the version of this RPC that told the
+    -- operator every assignment survives.
+    IF v_arm LIKE '%CASE WHEN EXISTS%' THEN
+      IF v_arm NOT LIKE $q$%'deleted'%$q$ OR v_arm NOT LIKE $q$%'unassigned'%$q$ THEN
+        RAISE EXCEPTION 'arm % decides per row but does not offer both dispositions', v_kind;
+      END IF;
+      -- Its table must genuinely have both edges, or the CASE is decoration.
+      SELECT count(*) INTO v_n
+        FROM pg_constraint con
+        JOIN pg_class src ON src.oid = con.conrelid
+        JOIN pg_namespace sn ON sn.oid = src.relnamespace AND sn.nspname = 'public'
+       WHERE con.contype = 'f' AND src.relname = v_table AND con.confdeltype = 'c';
+      IF v_n = 0 THEN
+        RAISE EXCEPTION
+          'arm % reports a per-row disposition but % has no CASCADE key that could destroy it',
+          v_kind, v_table;
+      END IF;
+      v_checked := v_checked + 1;
+      CONTINUE;
+    END IF;
+
+    v_disp := (regexp_match(v_arm, $re$'(deleted|unassigned)'::text$re$))[1];
+    IF v_disp IS NULL THEN
+      RAISE EXCEPTION 'arm % declares no disposition', v_kind;
+    END IF;
+
+    -- A flat 'deleted' must be backed by a CASCADE edge somewhere in the
+    -- closure -- directly on field_id, or through the slot it joins.
     SELECT con.confdeltype INTO v_del
       FROM pg_constraint con
       JOIN pg_class src ON src.oid = con.conrelid
       JOIN pg_class tgt ON tgt.oid = con.confrelid
-      JOIN pg_namespace sn ON sn.oid = src.relnamespace
-     WHERE con.contype = 'f' AND sn.nspname = 'public'
-       AND src.relname = v_table AND tgt.relname = 'fields'
+      JOIN pg_namespace sn ON sn.oid = src.relnamespace AND sn.nspname = 'public'
+     WHERE con.contype = 'f' AND src.relname = v_table AND tgt.relname = 'fields'
        AND con.conkey = ARRAY[(SELECT a.attnum FROM pg_attribute a
                                 WHERE a.attrelid = src.oid AND a.attname = 'field_id')]::smallint[];
     IF v_del IS NULL THEN
-      RAISE EXCEPTION '% is enumerated as a booking but has no FK to fields; its field_id can dangle', v_table;
+      -- No direct edge: the arm reaches the field through something else, so
+      -- the destroying key is a CASCADE on that table (games -> game_slots).
+      SELECT count(*) INTO v_n
+        FROM pg_constraint con
+        JOIN pg_class src ON src.oid = con.conrelid
+        JOIN pg_namespace sn ON sn.oid = src.relnamespace AND sn.nspname = 'public'
+       WHERE con.contype = 'f' AND src.relname = v_table AND con.confdeltype = 'c';
+      IF v_n = 0 THEN
+        RAISE EXCEPTION '% is enumerated as destroyed but has no CASCADE key at all', v_table;
+      END IF;
+      IF v_disp <> 'deleted' THEN
+        RAISE EXCEPTION 'arm % reaches the field only by cascade but declares "%"', v_kind, v_disp;
+      END IF;
+      v_checked := v_checked + 1;
+      CONTINUE;
     END IF;
 
     v_expected := CASE v_del WHEN 'c' THEN 'deleted' WHEN 'n' THEN 'unassigned' ELSE NULL END;
@@ -253,8 +338,8 @@ BEGIN
     v_checked := v_checked + 1;
   END LOOP;
 
-  IF v_checked <> 4 THEN
-    RAISE EXCEPTION 'checked % dispositions, expected 4', v_checked;
+  IF v_checked <> 5 THEN
+    RAISE EXCEPTION 'checked % dispositions, expected 5', v_checked;
   END IF;
   RAISE NOTICE 'disposition literals checked against pg_constraint on % arms', v_checked;
 END $$;
@@ -275,7 +360,8 @@ DECLARE
   v_org uuid; v_loc uuid; v_field uuid; v_bare uuid; v_user uuid := gen_random_uuid();
   v_season uuid; v_div uuid; v_team uuid;
   v_gs uuid; v_ga uuid; v_ps uuid; v_pa uuid;
-  v_res jsonb; v_n int; v_kinds text[]; v_fk uuid;
+  v_ga_slotted uuid; v_ga_orphan uuid; v_pa_slotted uuid; v_game uuid; v_team_b uuid;
+  v_res jsonb; v_n int; v_kinds text[]; v_fk uuid; v_disp text;
 BEGIN
   -- `password_length` satisfies check_password_length_on_auth_users from
   -- 20240405180000. Nothing here depends on a password.
@@ -308,13 +394,43 @@ BEGIN
 
   INSERT INTO public.game_slots (organization_id, field_id, slot_date, week_index)
   VALUES (v_org, v_field, current_date + 7, 1) RETURNING id INTO v_gs;
-  INSERT INTO public.game_assignments (organization_id, field_id, "start", week_index)
-  VALUES (v_org, v_field, timezone('utc', now()) + interval '7 days', 1) RETURNING id INTO v_ga;
   INSERT INTO public.practice_slots (organization_id, field_id, day_of_week, start_time, end_time, valid_until)
   VALUES (v_org, v_field, 'mon', '18:00', '19:30', current_date + 60) RETURNING id INTO v_ps;
+
+  -- **Two shapes of assignment, deliberately.** The first draft of this smoke
+  -- seeded only the FREE-STANDING shape -- an assignment with a field_id and no
+  -- slot behind it -- and asserted "it survives with field_id NULL". That is a
+  -- state the production path never produces: `persist_game_schedule` and
+  -- `persist_practice_schedule` write the slot columns on every row, and those
+  -- are ON DELETE CASCADE, so the real row is DESTROYED. Asserting the survival
+  -- of a shape nothing writes is a test forging state the production path
+  -- cannot reach -- coverage of nothing. Both shapes are seeded now, and the
+  -- assertions below are different for each.
+  INSERT INTO public.game_assignments (organization_id, field_id, game_slot_id, slot_id, "start", week_index)
+  VALUES (v_org, v_field, v_gs, v_gs, timezone('utc', now()) + interval '7 days', 1)
+  RETURNING id INTO v_ga_slotted;
+  INSERT INTO public.game_assignments (organization_id, field_id, "start", week_index)
+  VALUES (v_org, v_field, timezone('utc', now()) + interval '7 days', 1) RETURNING id INTO v_ga;
+  -- **Reachable ONLY through its slot.** `field_id` is nullable, so a row can
+  -- carry a slot on this ground and no field_id at all -- the shape an earlier
+  -- delete's SET NULL leaves behind. The cascade does not consult field_id, so
+  -- this is destroyed; an enumeration filtered on field_id alone would not
+  -- mention it, and the operator would lose a booking nobody warned them about.
+  INSERT INTO public.game_assignments (organization_id, field_id, game_slot_id, "start", week_index)
+  VALUES (v_org, NULL, v_gs, timezone('utc', now()) + interval '7 days', 1)
+  RETURNING id INTO v_ga_orphan;
+  INSERT INTO public.practice_assignments (organization_id, team_id, field_id, practice_slot_id, slot_id, effective_date_range)
+  VALUES (v_org, v_team, v_field, v_ps, v_ps, daterange(current_date, current_date + 60, '[]'))
+  RETURNING id INTO v_pa_slotted;
   INSERT INTO public.practice_assignments (organization_id, team_id, field_id, effective_date_range)
   VALUES (v_org, v_team, v_field, daterange(current_date, current_date + 60, '[]'))
   RETURNING id INTO v_pa;
+
+  -- `games` carries no field_id and dies with the slot, score and all.
+  INSERT INTO public.teams (organization_id, division_id, name)
+  VALUES (v_org, v_div, 'Guard Team B') RETURNING id INTO v_team_b;
+  INSERT INTO public.games (organization_id, game_slot_id, home_team_id, away_team_id)
+  VALUES (v_org, v_gs, v_team, v_team_b) RETURNING id INTO v_game;
 
   -- 6a. UNCONFIRMED delete of booked ground is REFUSED, names every kind, and
   --     writes nothing.
@@ -323,14 +439,40 @@ BEGIN
     RAISE EXCEPTION 'admin_delete_field deleted booked ground without confirmation: %', v_res; END IF;
   IF v_res->>'reason' <> 'bookings_exist' THEN
     RAISE EXCEPTION 'refusal did not name bookings_exist: %', v_res; END IF;
-  IF (v_res->>'affected_count')::int <> 4 THEN
-    RAISE EXCEPTION 'expected 4 affected bookings, one of each kind, got %: %',
+  -- 1 game_slot + 1 practice_slot + 3 game_assignments + 2 practice_assignments
+  -- + 1 game = 8.
+  IF (v_res->>'affected_count')::int <> 8 THEN
+    RAISE EXCEPTION 'expected 8 affected rows across five kinds, got %: %',
       v_res->>'affected_count', v_res; END IF;
 
   SELECT array_agg(DISTINCT x->>'kind' ORDER BY x->>'kind') INTO v_kinds
     FROM jsonb_array_elements(v_res->'affected') x;
-  IF v_kinds <> ARRAY['game_assignment','game_slot','practice_assignment','practice_slot'] THEN
-    RAISE EXCEPTION 'the refusal named kinds %, expected all four', v_kinds; END IF;
+  IF v_kinds <> ARRAY['game','game_assignment','game_slot','practice_assignment','practice_slot'] THEN
+    RAISE EXCEPTION 'the refusal named kinds %, expected all five', v_kinds; END IF;
+
+  -- **The per-row disposition, on both shapes.** The slot-linked assignment is
+  -- destroyed; the free-standing one is unassigned. A version that reported one
+  -- word for the whole table would fail on whichever half it got wrong.
+  SELECT x->>'disposition' INTO v_disp FROM jsonb_array_elements(v_res->'affected') x
+   WHERE (x->>'id')::uuid = v_ga_slotted;
+  IF v_disp IS DISTINCT FROM 'deleted' THEN
+    RAISE EXCEPTION 'a slot-linked game assignment is reported as "%", but the slot cascade destroys it', v_disp; END IF;
+  SELECT x->>'disposition' INTO v_disp FROM jsonb_array_elements(v_res->'affected') x
+   WHERE (x->>'id')::uuid = v_ga;
+  IF v_disp IS DISTINCT FROM 'unassigned' THEN
+    RAISE EXCEPTION 'a free-standing game assignment is reported as "%", expected unassigned', v_disp; END IF;
+  SELECT x->>'disposition' INTO v_disp FROM jsonb_array_elements(v_res->'affected') x
+   WHERE (x->>'id')::uuid = v_ga_orphan;
+  IF v_disp IS DISTINCT FROM 'deleted' THEN
+    RAISE EXCEPTION 'an assignment reachable only through its slot is reported as "%", expected deleted', v_disp; END IF;
+  SELECT x->>'disposition' INTO v_disp FROM jsonb_array_elements(v_res->'affected') x
+   WHERE (x->>'id')::uuid = v_pa_slotted;
+  IF v_disp IS DISTINCT FROM 'deleted' THEN
+    RAISE EXCEPTION 'a slot-linked practice assignment is reported as "%", but the slot cascade destroys it', v_disp; END IF;
+  SELECT x->>'disposition' INTO v_disp FROM jsonb_array_elements(v_res->'affected') x
+   WHERE (x->>'id')::uuid = v_pa;
+  IF v_disp IS DISTINCT FROM 'unassigned' THEN
+    RAISE EXCEPTION 'a free-standing practice assignment is reported as "%", expected unassigned', v_disp; END IF;
 
   -- **Nothing was written.** A refusal that half-applied would be worse than no
   -- guard at all. Each booking is counted from ITS OWN table, never from the
@@ -339,8 +481,12 @@ BEGIN
     RAISE EXCEPTION 'a refused delete removed the field anyway'; END IF;
   IF NOT EXISTS (SELECT 1 FROM public.game_slots WHERE id = v_gs)
      OR NOT EXISTS (SELECT 1 FROM public.game_assignments WHERE id = v_ga)
+     OR NOT EXISTS (SELECT 1 FROM public.game_assignments WHERE id = v_ga_slotted)
+     OR NOT EXISTS (SELECT 1 FROM public.game_assignments WHERE id = v_ga_orphan)
      OR NOT EXISTS (SELECT 1 FROM public.practice_slots WHERE id = v_ps)
-     OR NOT EXISTS (SELECT 1 FROM public.practice_assignments WHERE id = v_pa) THEN
+     OR NOT EXISTS (SELECT 1 FROM public.practice_assignments WHERE id = v_pa)
+     OR NOT EXISTS (SELECT 1 FROM public.practice_assignments WHERE id = v_pa_slotted)
+     OR NOT EXISTS (SELECT 1 FROM public.games WHERE id = v_game) THEN
     RAISE EXCEPTION 'a refused delete destroyed a booking'; END IF;
 
   -- The refusal is recorded, so an operator can see the decision that was
@@ -373,6 +519,17 @@ BEGIN
     RAISE EXCEPTION 'game_slot survived a field delete; its FK is documented CASCADE'; END IF;
   IF EXISTS (SELECT 1 FROM public.practice_slots WHERE id = v_ps) THEN
     RAISE EXCEPTION 'practice_slot survived a field delete; its FK is documented CASCADE'; END IF;
+  IF EXISTS (SELECT 1 FROM public.games WHERE id = v_game) THEN
+    RAISE EXCEPTION 'the game survived; it cascades with its slot, and the RPC said so'; END IF;
+
+  -- **The rows the RPC said would be DESTROYED really are.** This is the half
+  -- the first draft got wrong in the operator's favour, promising survival.
+  IF EXISTS (SELECT 1 FROM public.game_assignments WHERE id = v_ga_slotted) THEN
+    RAISE EXCEPTION 'a slot-linked game assignment survived; the RPC reported it as deleted'; END IF;
+  IF EXISTS (SELECT 1 FROM public.game_assignments WHERE id = v_ga_orphan) THEN
+    RAISE EXCEPTION 'an assignment reachable only through its slot survived; the RPC reported it as deleted'; END IF;
+  IF EXISTS (SELECT 1 FROM public.practice_assignments WHERE id = v_pa_slotted) THEN
+    RAISE EXCEPTION 'a slot-linked practice assignment survived; the RPC reported it as deleted'; END IF;
 
   SELECT field_id INTO v_fk FROM public.game_assignments WHERE id = v_ga;
   IF NOT FOUND THEN
@@ -389,7 +546,7 @@ BEGIN
   IF v_fk IS NOT NULL THEN
     RAISE EXCEPTION 'practice_assignment.field_id is % after the field was deleted -- it is DANGLING', v_fk; END IF;
 
-  RAISE NOTICE 'delete guard exercised: 4 bookings refused, 1 unbooked field deleted, 1 confirmed delete with 2 cascades and 2 unassignments';
+  RAISE NOTICE 'delete guard exercised: 8 rows across 5 kinds refused, 1 unbooked field deleted, 1 confirmed delete with 6 destroyed and 2 unassigned';
   DELETE FROM public.organizations WHERE id = v_org;
   DELETE FROM auth.users WHERE id = v_user;
 END $$;

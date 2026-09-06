@@ -12,7 +12,7 @@ BEGIN;
 \set squadlogic_fixture_include 1
 \ir _fixtures.sql
 
-SELECT plan(14);
+SELECT plan(17);
 
 -- ──────────────────────────────────────────────────────────────
 -- Seed, as superuser, before any SET LOCAL role: one field with one booking
@@ -35,10 +35,27 @@ VALUES ('c0000000-0000-0000-0000-0000000000c3',
         'a1111111-1111-1111-1111-111111111111',
         'c0000000-0000-0000-0000-0000000000c2', current_date + 7, 1);
 
+-- **Two shapes of assignment, deliberately.** A FREE-STANDING one (no slot
+-- behind it) is unassigned by the field_id SET NULL. The SLOT-LINKED shape --
+-- which is what persist_game_schedule writes on every row -- is DESTROYED,
+-- because game_slot_id and slot_id are ON DELETE CASCADE to game_slots and the
+-- cascade reaches the row before the SET NULL can. Seeding only the first, as
+-- this file did originally, asserts the survival of a shape production never
+-- produces.
 INSERT INTO public.game_assignments (id, organization_id, field_id, "start", week_index)
 VALUES ('c0000000-0000-0000-0000-0000000000c4',
         'a1111111-1111-1111-1111-111111111111',
         'c0000000-0000-0000-0000-0000000000c2',
+        timezone('utc', now()) + interval '7 days', 1);
+
+INSERT INTO public.game_assignments (
+    id, organization_id, field_id, game_slot_id, slot_id, "start", week_index
+)
+VALUES ('c0000000-0000-0000-0000-0000000000d4',
+        'a1111111-1111-1111-1111-111111111111',
+        'c0000000-0000-0000-0000-0000000000c2',
+        'c0000000-0000-0000-0000-0000000000c3',
+        'c0000000-0000-0000-0000-0000000000c3',
         timezone('utc', now()) + interval '7 days', 1);
 
 INSERT INTO public.practice_slots (
@@ -56,6 +73,32 @@ VALUES ('c0000000-0000-0000-0000-0000000000c6',
         'aaaaaaaa-0000-0000-0000-000000000001',
         'c0000000-0000-0000-0000-0000000000c2',
         daterange(current_date, current_date + 60, '[]'));
+
+INSERT INTO public.practice_assignments (
+    id, organization_id, team_id, field_id, practice_slot_id, slot_id, effective_date_range
+)
+VALUES ('c0000000-0000-0000-0000-0000000000d6',
+        'a1111111-1111-1111-1111-111111111111',
+        'aaaaaaaa-0000-0000-0000-000000000001',
+        'c0000000-0000-0000-0000-0000000000c2',
+        'c0000000-0000-0000-0000-0000000000c5',
+        'c0000000-0000-0000-0000-0000000000c5',
+        daterange(current_date, current_date + 60, '[]'));
+
+-- `games` carries no field_id and dies with the slot, recorded score included.
+-- A census by column name cannot see it; the cascade closure can.
+INSERT INTO public.teams (id, organization_id, division_id, name)
+VALUES ('c0000000-0000-0000-0000-0000000000c8',
+        'a1111111-1111-1111-1111-111111111111',
+        'a1111111-1111-1111-1111-11111111abcd', 'Guard Opponent')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO public.games (id, organization_id, game_slot_id, home_team_id, away_team_id)
+VALUES ('c0000000-0000-0000-0000-0000000000c9',
+        'a1111111-1111-1111-1111-111111111111',
+        'c0000000-0000-0000-0000-0000000000c3',
+        'aaaaaaaa-0000-0000-0000-000000000001',
+        'c0000000-0000-0000-0000-0000000000c8');
 
 -- The unguarded two-argument overload must not exist. Argument TYPES, not
 -- pg_get_function_identity_arguments, which carries parameter names and would
@@ -106,8 +149,8 @@ SELECT is(
             'c0000000-0000-0000-0000-0000000000c2'
         )->>'affected_count'
     ),
-    '4',
-    'the refusal counts one booking from each of the four tables that hold a field_id'
+    '7',
+    'the refusal counts every row the delete reaches: 2 slots, 2 games-side rows, 2 assignments, 1 fixture'
 );
 
 SELECT is(
@@ -120,8 +163,8 @@ SELECT is(
                  )->'affected'
                ) x
     ),
-    ARRAY['game_assignment','game_slot','practice_assignment','practice_slot'],
-    'the refusal names all four booking kinds, not only the slot tables'
+    ARRAY['game','game_assignment','game_slot','practice_assignment','practice_slot'],
+    'the refusal names all five kinds, including games, which carries no field_id'
 );
 
 SELECT is(
@@ -156,12 +199,47 @@ SELECT is(
 SELECT is(
     (
         (SELECT count(*) FROM public.game_slots WHERE id = 'c0000000-0000-0000-0000-0000000000c3')
-      + (SELECT count(*) FROM public.game_assignments WHERE id = 'c0000000-0000-0000-0000-0000000000c4')
+      + (SELECT count(*) FROM public.game_assignments
+          WHERE id IN ('c0000000-0000-0000-0000-0000000000c4','c0000000-0000-0000-0000-0000000000d4'))
       + (SELECT count(*) FROM public.practice_slots WHERE id = 'c0000000-0000-0000-0000-0000000000c5')
-      + (SELECT count(*) FROM public.practice_assignments WHERE id = 'c0000000-0000-0000-0000-0000000000c6')
+      + (SELECT count(*) FROM public.practice_assignments
+          WHERE id IN ('c0000000-0000-0000-0000-0000000000c6','c0000000-0000-0000-0000-0000000000d6'))
+      + (SELECT count(*) FROM public.games WHERE id = 'c0000000-0000-0000-0000-0000000000c9')
     )::integer,
-    4,
-    'a refused delete destroys none of the four bookings'
+    7,
+    'a refused delete destroys none of the seven rows it named'
+);
+
+-- **The per-row disposition, on two rows of one table.** A version reporting
+-- one word per table can satisfy either row alone; it cannot satisfy both.
+SELECT is(
+    (
+        SELECT x->>'disposition'
+          FROM jsonb_array_elements(
+                 public.admin_delete_field(
+                     'a1111111-1111-1111-1111-111111111111',
+                     'c0000000-0000-0000-0000-0000000000c2'
+                 )->'affected'
+               ) x
+         WHERE x->>'id' = 'c0000000-0000-0000-0000-0000000000d4'
+    ),
+    'deleted',
+    'a slot-linked game assignment is reported as destroyed, not unassigned'
+);
+
+SELECT is(
+    (
+        SELECT x->>'disposition'
+          FROM jsonb_array_elements(
+                 public.admin_delete_field(
+                     'a1111111-1111-1111-1111-111111111111',
+                     'c0000000-0000-0000-0000-0000000000c2'
+                 )->'affected'
+               ) x
+         WHERE x->>'id' = 'c0000000-0000-0000-0000-0000000000c4'
+    ),
+    'unassigned',
+    'a free-standing game assignment is reported as unassigned'
 );
 
 SELECT isnt(
@@ -200,9 +278,21 @@ SELECT is(
     (
         (SELECT count(*) FROM public.game_slots WHERE id = 'c0000000-0000-0000-0000-0000000000c3')
       + (SELECT count(*) FROM public.practice_slots WHERE id = 'c0000000-0000-0000-0000-0000000000c5')
+      + (SELECT count(*) FROM public.games WHERE id = 'c0000000-0000-0000-0000-0000000000c9')
     )::integer,
     0,
-    'the slot tables cascade with the field, as their foreign keys declare'
+    'the slot tables and the fixture hanging off them cascade with the field'
+);
+
+-- **The rows the RPC promised to destroy really are destroyed.** This is the
+-- half the first version got wrong in the operator's favour.
+SELECT is(
+    (
+        (SELECT count(*) FROM public.game_assignments WHERE id = 'c0000000-0000-0000-0000-0000000000d4')
+      + (SELECT count(*) FROM public.practice_assignments WHERE id = 'c0000000-0000-0000-0000-0000000000d6')
+    )::integer,
+    0,
+    'slot-linked assignments are destroyed by the slot cascade, exactly as reported'
 );
 
 SELECT is(

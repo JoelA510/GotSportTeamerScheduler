@@ -184,4 +184,20 @@ describe('useFields', () => {
     });
     await waitFor(() => expect(result.current.fields).toHaveLength(0));
   });
+
+  it('raises on a response it cannot read rather than calling it a refusal', async () => {
+    // **Unreadable is not "nothing is booked".** Returning `{deleted:false}`
+    // here made the page offer a consequence preview reading "0 booking(s)",
+    // which an operator reasonably takes as "this field is empty". The field
+    // still must not leave the list, so this raises rather than guessing in
+    // either direction.
+    // @ts-expect-error [MOCK] - the point of this case is an unreadable payload.
+    vi.mocked(supabase.rpc).mockResolvedValue({ data: null, error: null });
+
+    const { result } = renderHook(() => useFields());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    await expect(result.current.deleteField('field-1')).rejects.toThrow(/no readable result/);
+    expect(result.current.fields).toHaveLength(1);
+  });
 });

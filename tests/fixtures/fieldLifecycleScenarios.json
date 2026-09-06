@@ -51,7 +51,19 @@
     "behaviour rather than RPC outcome, and it is pinned in",
     "docs/sql/20260907000000_smoke.sql, supabase/tests/field_delete_booking_guard.sql",
     "and tests/fieldDeleteGuard.test.js. A refusal writing NOTHING is covered here,",
-    "on both runners, because that is the guard's whole promise."
+    "on both runners, because that is the guard's whole promise.",
+    "",
+    "WHAT A DELETE COSTS IS THE CASCADE CLOSURE, NOT A COLUMN NAME. The first",
+    "version of these delete cases enumerated the seven tables carrying a",
+    "`field_id` and reported one disposition per TABLE. Both were wrong, and a",
+    "review caught them: `games` carries no field_id and is destroyed anyway",
+    "(it hangs off game_slots ON DELETE CASCADE), and an assignment reaches the",
+    "field a second way through its slot columns -- CASCADE where field_id is",
+    "SET NULL -- so the row the SCHEDULER writes is destroyed while a",
+    "free-standing one survives. The `scheduled_game` and `scheduled_practice`",
+    "booking kinds seed the shape persist_game_schedule and",
+    "persist_practice_schedule actually produce, and `delete-mixed-shapes-refused`",
+    "puts both shapes on one field so a per-table answer cannot pass."
   ],
   "version": 1,
   "fieldScenarios": [
@@ -295,7 +307,7 @@
     },
     {
       "id": "delete-booked-game-assignment-refused",
-      "why": "LIVE-1. game_assignments.field_id is ON DELETE SET NULL, so a SCHEDULED GAME survives having silently lost its venue. The mock enumerated the two slot tables only in PR 2 and reported affected_count 0 for a field with every game assigned to it.",
+      "why": "LIVE-1. game_assignments.field_id is ON DELETE SET NULL, so a FREE-STANDING assignment -- one with no slot behind it -- survives having silently lost its venue. Its slot-linked twin is the next case, and the two must report DIFFERENT dispositions.",
       "rpc": "admin_delete_field",
       "before": {
         "active": true,
@@ -339,7 +351,7 @@
     },
     {
       "id": "delete-booked-practice-assignment-refused",
-      "why": "LIVE-1, the sharpest form. practice_assignments.field_id had NO foreign key at all, so a delete left the uuid DANGLING at a row that no longer exists -- worse than SET NULL, because nothing downstream could tell it from a live venue. 20260907000000 adds the constraint and this case is why.",
+      "why": "LIVE-1, the sharpest form. practice_assignments.field_id had NO foreign key at all, so a delete left the uuid DANGLING at a row that no longer exists -- worse than SET NULL, because nothing downstream could tell it from a live venue. This is the free-standing shape; the slot-linked one follows.",
       "rpc": "admin_delete_field",
       "before": {
         "active": true,
@@ -361,7 +373,7 @@
     },
     {
       "id": "delete-booked-all-four-confirmed",
-      "why": "One booking in each of the four tables that carry a field_id, and p_confirm true. The count must be 4: a union that lost an arm reports 3 here as well as passing the wrong single-kind case. Both disposition words must appear, because two of the four cascade and two are unassigned.",
+      "why": "One FREE-STANDING booking in each of the four tables that carry a field_id, and p_confirm true. The count must be 4: a union that lost an arm reports 3 here as well as passing the wrong single-kind case. Both disposition words must appear, because the two slot tables cascade and the two unlinked assignments are merely unassigned.",
       "rpc": "admin_delete_field",
       "before": {
         "active": true,
@@ -378,6 +390,72 @@
         "dispositions": ["deleted", "unassigned"],
         "exists": false,
         "auditPhases": ["after", "before"]
+      }
+    },
+    {
+      "id": "delete-scheduled-game-refused",
+      "why": "The shape persist_game_schedule actually writes: a game slot, an assignment carrying game_slot_id, and a games row. All three are DESTROYED, because the slot cascade reaches the assignment before field_id's SET NULL can fire. Reporting 'unassigned' here -- which the first version of the RPC did for the whole table -- promises the operator a survival that does not happen.",
+      "rpc": "admin_delete_field",
+      "before": {
+        "active": true,
+        "effectiveTo": null
+      },
+      "bookings": ["scheduled_game"],
+      "args": {
+        "confirm": false
+      },
+      "expect": {
+        "ok": true,
+        "deleted": false,
+        "reason": "bookings_exist",
+        "affectedCount": 3,
+        "dispositions": ["deleted"],
+        "exists": true,
+        "auditPhases": ["refused"]
+      }
+    },
+    {
+      "id": "delete-scheduled-practice-refused",
+      "why": "The same for practices: a practice slot and an assignment carrying practice_slot_id and slot_id, both ON DELETE CASCADE to practice_slots. Both destroyed, neither unassigned.",
+      "rpc": "admin_delete_field",
+      "before": {
+        "active": true,
+        "effectiveTo": null
+      },
+      "bookings": ["scheduled_practice"],
+      "args": {
+        "confirm": false
+      },
+      "expect": {
+        "ok": true,
+        "deleted": false,
+        "reason": "bookings_exist",
+        "affectedCount": 2,
+        "dispositions": ["deleted"],
+        "exists": true,
+        "auditPhases": ["refused"]
+      }
+    },
+    {
+      "id": "delete-mixed-shapes-refused",
+      "why": "Both shapes on one field, so BOTH disposition words must appear in one refusal. A version that reported per TABLE rather than per ROW can satisfy either single-shape case above by picking the right constant; it cannot satisfy this one.",
+      "rpc": "admin_delete_field",
+      "before": {
+        "active": true,
+        "effectiveTo": null
+      },
+      "bookings": ["scheduled_game", "game_assignment", "practice_assignment"],
+      "args": {
+        "confirm": false
+      },
+      "expect": {
+        "ok": true,
+        "deleted": false,
+        "reason": "bookings_exist",
+        "affectedCount": 5,
+        "dispositions": ["deleted", "unassigned"],
+        "exists": true,
+        "auditPhases": ["refused"]
       }
     },
     {

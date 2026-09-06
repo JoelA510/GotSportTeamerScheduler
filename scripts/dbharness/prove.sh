@@ -384,11 +384,35 @@ ALTER TABLE public.practice_assignments
   DROP CONSTRAINT IF EXISTS practice_assignments_field_id_fkey;" \
   "smoke 20260907000000" \
   "scenario table"
-plant "M3 an arm claims a consequence its FK does not have" "$M3" \
-  "             pa.effective_date_range IS NULL OR upper_inf(pa.effective_date_range),
-             'unassigned'::text" \
-  "             pa.effective_date_range IS NULL OR upper_inf(pa.effective_date_range),
-             'deleted'::text" \
+# **The per-row disposition, flattened back to one word per table.** This is
+# the defect a review found in the first version of the RPC: `field_id` is SET
+# NULL, so every assignment was reported as surviving -- false for every row the
+# scheduler writes, because the slot cascade destroys it first. Both halves get
+# a plant, since a flat answer in either direction passes the case for the shape
+# it happens to match.
+plant "M3 every game assignment claimed to survive" "$M3" \
+  "             CASE WHEN EXISTS (
+                    SELECT 1 FROM public.game_slots s
+                     WHERE s.field_id = p_field_id
+                       AND s.id IN (ga.game_slot_id, ga.slot_id)
+                  ) THEN 'deleted' ELSE 'unassigned' END" \
+  "             'unassigned'::text" \
+  "smoke 20260907000000" \
+  "smoke 20260906000000"
+plant "M3 every practice assignment claimed to be destroyed" "$M3" \
+  "             CASE WHEN EXISTS (
+                    SELECT 1 FROM public.practice_slots s
+                     WHERE s.field_id = p_field_id
+                       AND s.id IN (pa.practice_slot_id, pa.slot_id)
+                  ) THEN 'deleted' ELSE 'unassigned' END" \
+  "             'deleted'::text" \
+  "smoke 20260907000000" \
+  "smoke 20260906000000"
+# `games` carries no field_id, so a census by column name cannot see it and the
+# closure walk is the only thing that can. Dropping the arm must go red.
+plant "M3 the games arm disappears with the fixture it names" "$M3" \
+  "      SELECT 'game'::text, g.id," \
+  "      SELECT 'not_a_game'::text, g.id," \
   "smoke 20260907000000" \
   "smoke 20260906000000"
 

@@ -162,11 +162,16 @@ export function useFields() {
     });
 
     if (deleteError) throw deleteError;
-    // Nothing was deleted, so nothing leaves the list. A missing payload is
-    // treated as a refusal for the same reason: removing a row on the strength
-    // of a response we cannot read is how the list came to disagree with the
-    // database in the first place.
-    if (!data?.deleted) return data ?? { deleted: false };
+    // **An unreadable response is an error, not a refusal.** Returning
+    // `{deleted: false}` for it made the page show "0 booking(s). Deleting it
+    // removes 0 slot(s)... Delete anyway?" -- a consequence preview that reads
+    // as "nothing is booked" when the truth is that we do not know. Removing
+    // the row on the strength of a response we cannot read would be worse, so
+    // this raises instead of guessing in either direction.
+    if (data === null || data === undefined || typeof data.deleted !== 'boolean') {
+      throw new Error('admin_delete_field returned no readable result');
+    }
+    if (!data.deleted) return data;
     setFields((prev) => prev.filter((f) => f.id !== fieldId));
     return data;
   };

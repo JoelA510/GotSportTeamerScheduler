@@ -134,9 +134,32 @@ const PLANTS = [
             reason: 'bookings_exist',`,
   },
   {
-    label: 'delete calls an unassignment a deletion',
-    find: "          game_assignment: 'unassigned',",
-    replace: "          game_assignment: 'deleted',",
+    // **The per-row disposition flattened back to one word per table.** That
+    // was the first version of this arm, and it told the operator every
+    // assignment survives -- false for every row the scheduler writes, because
+    // the slot cascade destroys it before the field_id SET NULL can fire.
+    label: 'delete reports one disposition per table again',
+    find: "            return { ...rest, disposition: cascades ? 'deleted' : 'unassigned' };",
+    replace: "            return { ...rest, disposition: 'unassigned' };",
+  },
+  {
+    // Aimed at fieldDeleteGuard, not the scenario table: every scenario seeds
+    // assignments that ALSO carry a field_id, so the via-slot route is never
+    // the only one there. The row that has a slot and no field_id at all --
+    // the shape an earlier delete's SET NULL leaves behind -- lives in that
+    // suite, and pointing this plant at the table would have reported NOT
+    // CAUGHT and said nothing about whether anything covers it.
+    label: 'delete stops seeing assignments reached through their slot',
+    suite: 'tests/fieldDeleteGuard.test.js',
+    find: '          (String(row.field_id) === String(fieldId) || (viaSlots && viaSlot(row)));',
+    replace: '          String(row.field_id) === String(fieldId);',
+  },
+  {
+    // `games` carries no field_id; only the cascade closure reaches it.
+    label: 'delete stops enumerating the fixtures it destroys',
+    find: '        const affected = fieldBookings(p.p_field_id, null, {\n          includeGames: true,',
+    replace:
+      '        const affected = fieldBookings(p.p_field_id, null, {\n          includeGames: false,',
   },
   {
     // **The shared enumerator's `after: null` contract.** `null` means no date
@@ -153,18 +176,27 @@ const PLANTS = [
     // `fieldDeleteGuard.test.js`, so that is the suite these are aimed at.
     // Pointing them at the table instead would report NOT CAUGHT and say
     // nothing about whether anything covers them.
-    label: 'a confirmed delete stops unassigning practice assignments',
+    label: 'a confirmed delete stops unassigning what survives it',
     suite: 'tests/fieldDeleteGuard.test.js',
-    find: `        for (const row of db.practice_assignments || []) {
-          if (String(row.field_id) === String(p.p_field_id)) row.field_id = null;
-        }`,
-    replace: '        // practice assignments left pointing at the deleted field',
+    find: `          for (const row of db[table] || []) {
+            if (String(row.field_id) === String(p.p_field_id)) row.field_id = null;
+          }`,
+    replace: '          // survivors left pointing at the deleted field',
   },
   {
     label: 'a confirmed delete stops cascading game slots',
     suite: 'tests/fieldDeleteGuard.test.js',
-    find: "        cascade('game_slots');",
-    replace: "        // cascade('game_slots');",
+    find: "        destroy('game_slots', onField('game_slots'));",
+    replace: "        // destroy('game_slots', onField('game_slots'));",
+  },
+  {
+    // The report and the effect are held together by reading the doomed ids
+    // out of `affected`. Recomputing them independently is how the two come
+    // to disagree.
+    label: 'a confirmed delete stops destroying the fixtures it reported',
+    suite: 'tests/fieldDeleteGuard.test.js',
+    find: "        destroy('games', reported('games'));",
+    replace: "        // destroy('games', reported('games'));",
   },
   {
     // The tombstone is what makes a delete of a SEEDED row durable across

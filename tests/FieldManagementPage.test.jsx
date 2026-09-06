@@ -179,8 +179,8 @@ describe('FieldManagementPage delete flow', () => {
     // payload rather than from a sentence written here.
     const consequence = confirmSpy.mock.calls[1][0];
     expect(consequence).toContain('3 booking(s)');
-    expect(consequence).toContain('removes 2 slot(s)');
-    expect(consequence).toContain('leaves 1 assignment(s) with no venue');
+    expect(consequence).toContain('permanently removes 2 of them');
+    expect(consequence).toContain('leaves 1 without a venue');
     confirmSpy.mockRestore();
   });
 
@@ -199,6 +199,39 @@ describe('FieldManagementPage delete flow', () => {
     await waitFor(() => expect(deleteField).toHaveBeenCalledTimes(1));
     expect(deleteField).toHaveBeenCalledWith('field-1');
     expect(confirmSpy).toHaveBeenCalledTimes(2);
+    confirmSpy.mockRestore();
+  });
+
+  it('does not promise a survival for bookings the database will destroy', async () => {
+    // **The disposition is per ROW, not per table.** A refusal naming two game
+    // assignments -- one slot-linked, one free-standing -- must be summarised
+    // as one destroyed and one left venueless. Counting by TABLE would report
+    // "leaves 2 without a venue" and promise the operator that a scheduled
+    // game survives, which it does not.
+    const deleteField = hookWith([
+      {
+        deleted: false,
+        reason: 'bookings_exist',
+        affected_count: 2,
+        affected: [
+          { kind: 'game_assignment', id: 'ga-slotted', disposition: 'deleted' },
+          { kind: 'game_assignment', id: 'ga-free', disposition: 'unassigned' },
+        ],
+      },
+    ]);
+    const confirmSpy = vi
+      .spyOn(window, 'confirm')
+      .mockReturnValueOnce(true)
+      .mockReturnValueOnce(false);
+    render(<FieldManagementPage />);
+
+    fireEvent.click(screen.getByLabelText('Delete North Field'));
+
+    await waitFor(() => expect(confirmSpy).toHaveBeenCalledTimes(2));
+    const consequence = confirmSpy.mock.calls[1][0];
+    expect(consequence).toContain('permanently removes 1 of them');
+    expect(consequence).toContain('leaves 1 without a venue');
+    expect(deleteField).toHaveBeenCalledTimes(1);
     confirmSpy.mockRestore();
   });
 

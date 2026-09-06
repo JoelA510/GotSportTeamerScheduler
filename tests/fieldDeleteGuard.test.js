@@ -32,7 +32,16 @@ const ORG = 'org-1';
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 /**
- * `kind -> disposition`, parsed out of `admin_delete_field`'s union.
+ * `kind -> disposition` as the migration declares it, parsed out of
+ * `admin_delete_field`'s union.
+ *
+ * Two shapes of arm. A CASCADE-only arm states one word outright. An arm whose
+ * table reaches the field BOTH ways -- SET NULL on `field_id` and CASCADE
+ * through its slot columns -- decides per row in a CASE and is reported here as
+ * `'per-row'`, because "what happens to a game assignment" has no single
+ * answer. The first version of this parse took the first literal it found and
+ * called that the table's disposition, which is exactly the flat per-table
+ * reading the RPC had to stop making.
  *
  * @returns {Record<string, string>}
  */
@@ -48,14 +57,20 @@ const migrationDispositions = () => {
   const arms = sql.slice(start, end).split('UNION ALL');
   // The meta-assertion. A parse that found no arms would produce an empty map
   // and every comparison below would pass by comparing nothing with nothing.
-  expect(arms.length).toBe(4);
+  expect(arms.length).toBe(5);
   /** @type {Record<string, string>} */
   const map = {};
   for (const arm of arms) {
     const kind = /'([a-z_]+)'::text/.exec(arm);
-    const disposition = /'(deleted|unassigned)'::text/.exec(arm);
     expect(kind, `an arm of the union names no kind: ${arm.slice(0, 80)}`).not.toBeNull();
-    expect(disposition, `arm ${kind?.[1]} names no disposition`).not.toBeNull();
+    if (arm.includes('CASE WHEN EXISTS')) {
+      expect(arm, `arm ${kind[1]} decides per row but offers one word`).toContain("'unassigned'");
+      expect(arm).toContain("'deleted'");
+      map[kind[1]] = 'per-row';
+      continue;
+    }
+    const disposition = /'(deleted|unassigned)'::text/.exec(arm);
+    expect(disposition, `arm ${kind[1]} names no disposition`).not.toBeNull();
     map[kind[1]] = disposition[1];
   }
   return map;
@@ -68,20 +83,21 @@ const setMockSession = (userId) => {
 /** The first field of the seeded org, whatever it is. */
 const someField = () => getMockData('fields').find((f) => String(f.organization_id) === ORG);
 
-/** One booking of every kind on `fieldId`, with ids this file can look up again. */
+/**
+ * Every shape a field delete can reach, with ids this file can look up again.
+ *
+ * Both assignment shapes are seeded: the FREE-STANDING one (a `field_id` and no
+ * slot) and the SLOT-LINKED one that `persist_game_schedule` and
+ * `persist_practice_schedule` actually write. Only the first survives a delete;
+ * asserting survival on that shape alone -- which this file did first -- is a
+ * test forging state the production path never produces.
+ */
 const seedEveryKind = async (fieldId) => {
   await supabase.from('game_slots').insert({
     id: 'guard-game-slot',
     organization_id: ORG,
     field_id: fieldId,
     slot_date: '2099-06-01',
-    week_index: 1,
-  });
-  await supabase.from('game_assignments').insert({
-    id: 'guard-game-assignment',
-    organization_id: ORG,
-    field_id: fieldId,
-    start: '2099-06-01T18:00:00.000Z',
     week_index: 1,
   });
   await supabase.from('practice_slots').insert({
@@ -93,6 +109,28 @@ const seedEveryKind = async (fieldId) => {
     end_time: '19:30',
     valid_until: '2099-06-30',
   });
+  // `games` carries no field_id at all and dies with the slot, score included.
+  await supabase.from('games').insert({
+    id: 'guard-game',
+    organization_id: ORG,
+    game_slot_id: 'guard-game-slot',
+  });
+  await supabase.from('game_assignments').insert({
+    id: 'guard-game-assignment',
+    organization_id: ORG,
+    field_id: fieldId,
+    start: '2099-06-01T18:00:00.000Z',
+    week_index: 1,
+  });
+  await supabase.from('game_assignments').insert({
+    id: 'guard-game-assignment-slotted',
+    organization_id: ORG,
+    field_id: fieldId,
+    game_slot_id: 'guard-game-slot',
+    slot_id: 'guard-game-slot',
+    start: '2099-06-01T18:00:00.000Z',
+    week_index: 1,
+  });
   await supabase.from('practice_assignments').insert({
     id: 'guard-practice-assignment',
     organization_id: ORG,
@@ -100,17 +138,42 @@ const seedEveryKind = async (fieldId) => {
     field_id: fieldId,
     effective_date_range: '[2099-01-01,2099-12-31]',
   });
-  // Each seed landed. A seed that silently failed would turn a refusal case
+  // **Reachable ONLY through its slot.** `game_assignments.field_id` is
+  // nullable, so a row can carry a slot on this field and no field_id at all --
+  // an earlier delete's SET NULL leaves exactly this shape. The cascade does
+  // not consult field_id, so the row is destroyed; an enumeration that filtered
+  // on field_id alone would not mention it.
+  await supabase.from('game_assignments').insert({
+    id: 'guard-game-assignment-slot-only',
+    organization_id: ORG,
+    field_id: null,
+    game_slot_id: 'guard-game-slot',
+    start: '2099-06-01T18:00:00.000Z',
+    week_index: 1,
+  });
+  await supabase.from('practice_assignments').insert({
+    id: 'guard-practice-assignment-slotted',
+    organization_id: ORG,
+    team_id: 'guard-team',
+    field_id: fieldId,
+    practice_slot_id: 'guard-practice-slot',
+    slot_id: 'guard-practice-slot',
+    effective_date_range: '[2099-01-01,2099-12-31]',
+  });
+  // Every seed landed. A seed that silently failed would turn a refusal case
   // into an unbooked one, and it would pass for entirely the wrong reason.
   for (const [table, id] of [
     ['game_slots', 'guard-game-slot'],
-    ['game_assignments', 'guard-game-assignment'],
     ['practice_slots', 'guard-practice-slot'],
+    ['games', 'guard-game'],
+    ['game_assignments', 'guard-game-assignment'],
+    ['game_assignments', 'guard-game-assignment-slotted'],
+    ['game_assignments', 'guard-game-assignment-slot-only'],
     ['practice_assignments', 'guard-practice-assignment'],
+    ['practice_assignments', 'guard-practice-assignment-slotted'],
   ]) {
     const row = getMockData(table).find((r) => String(r.id) === id);
     expect(row, `${id} did not land in ${table}`).toBeDefined();
-    expect(String(row.field_id)).toBe(String(fieldId));
   }
 };
 
@@ -123,7 +186,7 @@ describe('field delete guard :: the mock agrees with the migration about consequ
     setMockSession('mock-admin-id');
   });
 
-  it('declares the disposition the migration declares, for every kind', async () => {
+  it('declares the disposition the migration declares, per row where it must', async () => {
     const field = someField();
     await seedEveryKind(field.id);
 
@@ -135,32 +198,59 @@ describe('field delete guard :: the mock agrees with the migration about consequ
     expect(data.deleted).toBe(false);
 
     const expected = migrationDispositions();
-    // Four kinds in the map, and each one the mock reported matches it. The
-    // seeded corpus may add bookings of its own to this field, so the check is
-    // per row rather than on a count.
     expect(Object.keys(expected).sort()).toEqual([
+      'game',
       'game_assignment',
       'game_slot',
       'practice_assignment',
       'practice_slot',
     ]);
+    // The two assignment tables must be the per-row ones, and the other three
+    // must not be -- otherwise a migration that went back to a flat answer
+    // would still satisfy the loop below.
+    expect(expected.game_assignment).toBe('per-row');
+    expect(expected.practice_assignment).toBe('per-row');
+    expect(expected.game_slot).toBe('deleted');
+    expect(expected.practice_slot).toBe('deleted');
+    expect(expected.game).toBe('deleted');
+
+    const byId = new Map(data.affected.map((row) => [String(row.id), row]));
     const seen = new Set();
     for (const row of data.affected) {
       expect(
         expected[row.kind],
         `${row.kind} is not a kind the migration enumerates`
       ).toBeDefined();
-      expect(row.disposition, `${row.kind} disposition`).toBe(expected[row.kind]);
+      if (expected[row.kind] !== 'per-row') {
+        expect(row.disposition, `${row.kind} disposition`).toBe(expected[row.kind]);
+      }
       seen.add(row.kind);
     }
-    // ... and every kind was actually exercised, so the loop cannot pass by
-    // iterating a payload that happened to contain only slots.
     expect([...seen].sort()).toEqual([
+      'game',
       'game_assignment',
       'game_slot',
       'practice_assignment',
       'practice_slot',
     ]);
+
+    // **The per-row half, on both shapes of the same table.** A slot-linked
+    // assignment is destroyed by the slot cascade; a free-standing one keeps
+    // its row and loses its venue. Reporting one word for the table promises
+    // the operator a survival that does not happen for anything the scheduler
+    // wrote.
+    expect(byId.get('guard-game-assignment-slotted').disposition).toBe('deleted');
+    // Named at all, and named as destroyed -- an enumeration filtering on
+    // field_id alone would omit it entirely and the operator would lose a
+    // booking nobody warned them about.
+    expect(
+      byId.get('guard-game-assignment-slot-only'),
+      'an assignment reachable only through its slot was not enumerated'
+    ).toBeDefined();
+    expect(byId.get('guard-game-assignment-slot-only').disposition).toBe('deleted');
+    expect(byId.get('guard-game-assignment').disposition).toBe('unassigned');
+    expect(byId.get('guard-practice-assignment-slotted').disposition).toBe('deleted');
+    expect(byId.get('guard-practice-assignment').disposition).toBe('unassigned');
   });
 
   it('writes nothing at all when it refuses', async () => {
@@ -169,13 +259,23 @@ describe('field delete guard :: the mock agrees with the migration about consequ
     await supabase.rpc('admin_delete_field', { p_organization_id: ORG, p_field_id: field.id });
 
     expect(rowById('fields', field.id)).toBeDefined();
-    expect(rowById('game_slots', 'guard-game-slot')).toBeDefined();
+    for (const [table, id] of [
+      ['game_slots', 'guard-game-slot'],
+      ['practice_slots', 'guard-practice-slot'],
+      ['games', 'guard-game'],
+      ['game_assignments', 'guard-game-assignment'],
+      ['game_assignments', 'guard-game-assignment-slotted'],
+      ['game_assignments', 'guard-game-assignment-slot-only'],
+      ['practice_assignments', 'guard-practice-assignment'],
+      ['practice_assignments', 'guard-practice-assignment-slotted'],
+    ]) {
+      expect(rowById(table, id), `${id} was destroyed by a REFUSED delete`).toBeDefined();
+    }
     expect(rowById('game_assignments', 'guard-game-assignment').field_id).toBe(field.id);
-    expect(rowById('practice_slots', 'guard-practice-slot')).toBeDefined();
     expect(rowById('practice_assignments', 'guard-practice-assignment').field_id).toBe(field.id);
   });
 
-  it('cascades the slot tables and unassigns the assignment tables when confirmed', async () => {
+  it('destroys what it said it would destroy, and unassigns the rest', async () => {
     const field = someField();
     await seedEveryKind(field.id);
     await supabase.rpc('admin_create_field_blackout', {
@@ -195,29 +295,51 @@ describe('field delete guard :: the mock agrees with the migration about consequ
     expect(data.deleted).toBe(true);
     expect(rowById('fields', field.id)).toBeUndefined();
 
-    // CASCADE: the row goes with the field.
-    expect(rowById('game_slots', 'guard-game-slot')).toBeUndefined();
-    expect(rowById('practice_slots', 'guard-practice-slot')).toBeUndefined();
+    // **The report and the effect, checked against each other.** Every row the
+    // RPC called `deleted` must be gone and every row it called `unassigned`
+    // must still be there without a venue. Reading the expectation out of the
+    // payload rather than restating it here is what makes a wrong report fail:
+    // the RPC cannot be graded against its own restatement.
+    const affected = data.affected;
+    expect(affected.length).toBeGreaterThanOrEqual(8);
+    const TABLE_FOR_KIND = {
+      game_slot: 'game_slots',
+      practice_slot: 'practice_slots',
+      game: 'games',
+      game_assignment: 'game_assignments',
+      practice_assignment: 'practice_assignments',
+    };
+    let destroyed = 0;
+    let kept = 0;
+    for (const row of affected) {
+      const table = TABLE_FOR_KIND[row.kind];
+      expect(table, `no table known for kind ${row.kind}`).toBeDefined();
+      const after = rowById(table, row.id);
+      if (row.disposition === 'deleted') {
+        expect(after, `${row.kind} ${row.id} was reported deleted and survived`).toBeUndefined();
+        destroyed += 1;
+      } else {
+        expect(after, `${row.kind} ${row.id} was reported unassigned and vanished`).toBeDefined();
+        expect(after.field_id, `${row.kind} ${row.id} kept its venue`).toBeNull();
+        kept += 1;
+      }
+    }
+    // Both outcomes were exercised: a run where everything was destroyed would
+    // satisfy the loop while saying nothing about the SET NULL half.
+    expect(destroyed).toBeGreaterThan(0);
+    expect(kept).toBeGreaterThan(0);
+
+    // Blackouts cascade too, and nothing anywhere still points at the field.
     expect(getMockData('field_blackouts').length).toBe(0);
-
-    // SET NULL: the booking survives, venueless. **This is the defect the
-    // migration exists for.** practice_assignments.field_id had no foreign key
-    // at all, so the uuid was left pointing at a row that no longer existed and
-    // nothing downstream could tell it from a live venue.
-    const game = rowById('game_assignments', 'guard-game-assignment');
-    expect(game, 'the game assignment was destroyed rather than unassigned').toBeDefined();
-    expect(game.field_id).toBeNull();
-    const practice = rowById('practice_assignments', 'guard-practice-assignment');
-    expect(practice, 'the practice assignment was destroyed rather than unassigned').toBeDefined();
-    expect(practice.field_id).toBeNull();
-
-    // Nothing anywhere still points at the field that is gone.
     for (const table of [
       'game_slots',
       'practice_slots',
+      'games',
       'game_assignments',
       'practice_assignments',
       'field_blackouts',
+      'field_subunits',
+      'field_availability_profiles',
     ]) {
       const dangling = getMockData(table).filter((r) => String(r.field_id) === String(field.id));
       expect(dangling, `${table} still points at the deleted field`).toHaveLength(0);
