@@ -240,6 +240,25 @@ export function buildClosureSet(graph, input) {
     }
   }
 
+  // **The layer declares its own wiring gap, on every set it builds.**
+  //
+  // `checkClosures()` and `findClosureBreaches()` have no production consumer:
+  // `checkKickoffAvailability()` does not call them and no rule claims a
+  // `CLOSURE_*` code, so a kickoff inside a closed window comes back with
+  // nothing said about the closure. Wiring it reaches every `runRuleEngine()`
+  // call site (a rule needs the set as a resource, and `requireResource()`
+  // throws rather than skipping), which is 8.5's decision and not this one's.
+  // Until then the honest position is the one `fairness/objectives.js` already
+  // takes for its unwired scoring functions: say so on every result, in a code
+  // a test can check against the standing rules.
+  findings.push(
+    makeAvailabilityFinding(
+      AVAILABILITY_REASON.CLOSURE_SET_UNWIRED,
+      `this closure set is not consulted by any scheduling path: checkKickoffAvailability() does not call checkClosures(), and no rule claims a CLOSURE_* code; ${parsed.closures.length} closure(s) are evaluated only where a caller asks directly`,
+      { closureCount: parsed.closures.length, source: parsed.source ?? null }
+    )
+  );
+
   const closures = /** @type {import('./types.js').ClosureWindow[]} */ (parsed.closures);
   return deepFreeze({
     closures,

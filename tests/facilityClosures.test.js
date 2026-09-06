@@ -21,9 +21,11 @@ import {
   indexFormats,
   loadCombinedSchedule,
   loadFacilityGeometry,
+  loadFacilityPermits,
   loadGameFormats,
   loadSeason2026,
   loadSeason2026Practice,
+  loadSunsets,
   ALL_DAY_CLOSE_MINUTES as LOADER_ALL_DAY_CLOSE_MINUTES,
   SEASON_2026_PRACTICE_FINDING,
 } from '@squadlogic/core/fixtures/index.js';
@@ -59,9 +61,11 @@ import {
   ClosureWindowSchema,
   ISO_DATE_PATTERN,
   SEASON_2026_CONSTRAINT_FIELDS_READINGS,
+  buildAvailabilityCalendarFromSeason2026,
   buildClosureSet,
   buildSeason2026ClosureSet,
   checkClosures,
+  checkKickoffAvailability,
   deriveAvailabilityStatus,
   findClosureBreaches,
   isAllDayWindow,
@@ -70,6 +74,10 @@ import {
   toSeason2026ClosureInput,
   weekdayCodeOf,
 } from '@squadlogic/core/availability/index.js';
+
+import { buildFormatTimingTableFromSeason2026 } from '@squadlogic/core/timing/index.js';
+
+import { STANDING_RULES } from '@squadlogic/core/ruleEngine/index.js';
 
 /* -------------------------------------------------------------------------- */
 /* Corpus, loaded once                                                         */
@@ -86,6 +94,13 @@ const aliases = buildFieldAliasMap(
   graph,
   complexes,
   toSeason2026AliasRings(practice.fieldAliases, practice.fieldCodeNames)
+);
+
+const sunsets = loadSunsets();
+const kickoffTable = buildFormatTimingTableFromSeason2026(loadGameFormats());
+const kickoffCalendar = buildAvailabilityCalendarFromSeason2026(
+  loadFacilityPermits({ seasonYear: Number(sunsets[0].date.slice(0, 4)) }),
+  sunsets
 );
 
 const ALDER = 'Alder Park';
@@ -127,7 +142,9 @@ describe('closures :: corpus guard', () => {
       [CLOSURE_SCOPE.VENUE_UNKNOWN]: 0,
       [CLOSURE_SCOPE.SURFACE_UNKNOWN]: 0,
     });
-    expect(closures.findings).toEqual([]);
+    // The set's only finding is its own wiring declaration; nothing about the
+    // corpus rows is reported at build time. See the enforcement block below.
+    expect(closures.findings.map((f) => f.code)).toEqual([AVAILABILITY_REASON.CLOSURE_SET_UNWIRED]);
     // Every reading in the table is used by some row, and every row's cell is
     // in the table or is the one corrupted date.
     const cells = new Set(practice.fieldConstraints.map((row) => row.fields));
@@ -189,7 +206,7 @@ describe('closures :: corpus guard', () => {
 
   it('registers a severity for every closure code', () => {
     const codes = Object.values(AVAILABILITY_REASON).filter((code) => code.startsWith('CLOSURE_'));
-    expect(codes).toHaveLength(8);
+    expect(codes).toHaveLength(9);
     for (const code of codes) {
       expect(Object.values(AVAILABILITY_SEVERITY)).toContain(AVAILABILITY_REASON_SEVERITY[code]);
     }
@@ -757,7 +774,10 @@ describe('closures :: unknowns are reported, never folded into "no closure appli
       venueIds: [season2026VenueId('Orchard Park')],
       surfaceName: 'Pitch 4',
     });
-    expect(set.findings.map((f) => f.code)).toEqual([AVAILABILITY_REASON.CLOSURE_SURFACE_UNKNOWN]);
+    expect(set.findings.map((f) => f.code)).toEqual([
+      AVAILABILITY_REASON.CLOSURE_SURFACE_UNKNOWN,
+      AVAILABILITY_REASON.CLOSURE_SET_UNWIRED,
+    ]);
     expect(set.findings[0].details).toMatchObject({ closureId: 'orchard-4', fieldsRaw: '4' });
     // Round 3, finding 2: at query time it falls back to the venue, exactly as
     // its sibling `unreadable` does -- "as a compromise, never as nothing". An
@@ -835,14 +855,16 @@ describe('closures :: unknowns are reported, never folded into "no closure appli
     // The game-only graph has no Cedarbrook, Fivepines or Quarrywood.
     const gameOnly = buildSeason2026ClosureSet(practice.fieldConstraints, gameGraph, complexes);
     expect(gameOnly.stats.byKind[CLOSURE_SCOPE.VENUE_UNKNOWN]).toBe(3);
-    expect(gameOnly.findings.map((f) => f.code)).toEqual(
-      Array(3).fill(AVAILABILITY_REASON.CLOSURE_VENUE_UNKNOWN)
-    );
-    expect(gameOnly.findings.map((f) => f.details.venueName).sort()).toEqual([
-      'Cedarbrook Park',
-      'Fivepines Park',
-      'Quarrywood Park',
+    expect(gameOnly.findings.map((f) => f.code)).toEqual([
+      ...Array(3).fill(AVAILABILITY_REASON.CLOSURE_VENUE_UNKNOWN),
+      AVAILABILITY_REASON.CLOSURE_SET_UNWIRED,
     ]);
+    expect(
+      gameOnly.findings
+        .filter((f) => f.code === AVAILABILITY_REASON.CLOSURE_VENUE_UNKNOWN)
+        .map((f) => f.details.venueName)
+        .sort()
+    ).toEqual(['Cedarbrook Park', 'Fivepines Park', 'Quarrywood Park']);
     // A venue-unknown closure reaches no ground -- there is no ground to
     // reach -- but it is not silence either. Round 3, finding 2: the build-time
     // finding is not enough on its own, because a caller holding only the query
@@ -872,6 +894,78 @@ describe('closures :: unknowns are reported, never folded into "no closure appli
     );
     expect(codesOf(outside)).not.toContain(AVAILABILITY_REASON.CLOSURE_VENUE_UNKNOWN);
     expect(outside.meta.closuresUncomparable).toBe(0);
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* Enforcement: declared, and the declaration is checked                       */
+/* -------------------------------------------------------------------------- */
+
+describe('closures :: nothing enforces this layer, and the set says so', () => {
+  /** Every reason code the standing rule set claims, from the definitions. */
+  const claimedByRules = new Set(STANDING_RULES.flatMap((rule) => rule.reasonCodes));
+  const closureCodes = Object.values(AVAILABILITY_REASON).filter((code) =>
+    code.startsWith('CLOSURE_')
+  );
+  const enforcedCodes = (claimed) => closureCodes.filter((code) => claimed.has(code));
+  const declaresUnwired = (set) =>
+    set.findings.some((f) => f.code === AVAILABILITY_REASON.CLOSURE_SET_UNWIRED);
+
+  it('is not consulted by the kickoff path, which is the gap being declared', () => {
+    // Round 3, finding 1, reproduced: a 17:00 kickoff on Maplewood Back Field 2
+    // on 2026-09-24 stands inside the 16:00-19:00 venue-wide School Event
+    // closure, and `checkKickoffAvailability()` says nothing about it.
+    const closed = practice.fieldConstraints.find(
+      (row) => row.venue === 'Maplewood' && row.allFields && row.dateStart === '2026-09-24'
+    );
+    expect(closed).toBeTruthy();
+    const surfaceId = sid('Maplewood Back', 'Field 2');
+    const answer = checkKickoffAvailability(graph, kickoffTable, kickoffCalendar, {
+      surfaceId,
+      date: closed.dateStart,
+      kickoffMinutes: 17 * 60,
+      format: '5v5',
+    });
+    expect(answer.findings.map((f) => f.code).filter((c) => c.startsWith('CLOSURE_'))).toEqual([]);
+    // ... while the evaluator, asked directly about the same hour, blocks it.
+    const direct = checkClosures(
+      graph,
+      closures,
+      booking('same-hour', surfaceId, closed.dateStart, 17 * 60, 18 * 60)
+    );
+    expect(codesOf(direct)).toContain(AVAILABILITY_REASON.CLOSURE_BLOCKS_BOOKING);
+  });
+
+  it('declares the gap on every set it builds, and no rule claims a closure code', () => {
+    expect(declaresUnwired(closures)).toBe(true);
+    const declaration = closures.findings.find(
+      (f) => f.code === AVAILABILITY_REASON.CLOSURE_SET_UNWIRED
+    );
+    expect(declaration.severity).toBe(AVAILABILITY_SEVERITY.INFO);
+    expect(declaration.details.closureCount).toBe(closures.stats.closureCount);
+    // Meta-assertion: the standing rule set is real and claims codes, so
+    // "claims no closure code" is a fact about closures and not about an empty
+    // set of rules.
+    expect(STANDING_RULES.length).toBeGreaterThan(5);
+    expect(claimedByRules.size).toBeGreaterThan(10);
+    expect(closureCodes.length).toBeGreaterThan(5);
+    expect(enforcedCodes(claimedByRules)).toEqual([]);
+  });
+
+  it('ties the declaration to the rules, so one cannot change without the other', () => {
+    // The biconditional. A closure set declares itself unwired **exactly**
+    // while no standing rule claims a closure code. Wiring a rule without
+    // removing the declaration, or removing the declaration without wiring a
+    // rule, each break this.
+    expect(declaresUnwired(closures)).toBe(enforcedCodes(claimedByRules).length === 0);
+
+    // Positive control: a rule that claims one. The rule is built here rather
+    // than registered, so the assertion is exercised without changing the
+    // engine — and the biconditional is shown to reject the state where the
+    // code gains an evaluator and the declaration stays.
+    const wired = new Set([...claimedByRules, AVAILABILITY_REASON.CLOSURE_BLOCKS_BOOKING]);
+    expect(enforcedCodes(wired)).toEqual([AVAILABILITY_REASON.CLOSURE_BLOCKS_BOOKING]);
+    expect(declaresUnwired(closures) === (enforcedCodes(wired).length === 0)).toBe(false);
   });
 });
 

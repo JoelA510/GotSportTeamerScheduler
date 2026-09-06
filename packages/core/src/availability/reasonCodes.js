@@ -219,6 +219,18 @@ export const AVAILABILITY_REASON = Object.freeze({
   CLOSURE_VENUE_UNKNOWN: 'CLOSURE_VENUE_UNKNOWN',
   /** A closure row names a venue the graph holds and a surface it does not; it applies to nothing and says so. */
   CLOSURE_SURFACE_UNKNOWN: 'CLOSURE_SURFACE_UNKNOWN',
+  /**
+   * **Nothing enforces this closure set.** `checkClosures()` and
+   * `findClosureBreaches()` are standalone: `checkKickoffAvailability()` does
+   * not call them, and no rule in `ruleEngine/rules.js` claims a `CLOSURE_*`
+   * code, so a kickoff inside a closed window comes back with no closure code
+   * at all. Every set says so on itself, the way
+   * `FAIRNESS_OBJECTIVE_UNWIRED` does for the unwired scoring functions, and
+   * `tests/facilityClosures.test.js` checks the claim against the standing
+   * rules rather than trusting it: the day a rule claims one of these codes,
+   * the declaration has to go with it.
+   */
+  CLOSURE_SET_UNWIRED: 'CLOSURE_SET_UNWIRED',
 
   /* -- the derived query -------------------------------------------------- */
   /** Which constraints bind the answer, tightest first. Provenance. */
@@ -271,6 +283,7 @@ export const AVAILABILITY_REASON_SEVERITY = Object.freeze({
   [AVAILABILITY_REASON.CLOSURE_ADJACENCY_DEFERRED]: AVAILABILITY_SEVERITY.INFO,
   [AVAILABILITY_REASON.CLOSURE_VENUE_UNKNOWN]: AVAILABILITY_SEVERITY.COMPROMISE,
   [AVAILABILITY_REASON.CLOSURE_SURFACE_UNKNOWN]: AVAILABILITY_SEVERITY.COMPROMISE,
+  [AVAILABILITY_REASON.CLOSURE_SET_UNWIRED]: AVAILABILITY_SEVERITY.INFO,
 
   [AVAILABILITY_REASON.LATEST_KICKOFF_BOUND]: AVAILABILITY_SEVERITY.INFO,
   [AVAILABILITY_REASON.NO_LEGAL_KICKOFF]: AVAILABILITY_SEVERITY.BLOCKING,
