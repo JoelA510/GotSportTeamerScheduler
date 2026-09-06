@@ -161,8 +161,10 @@ export function buildFieldAliasMap(graph, complexMap, input) {
   const parsed = FieldAliasMapInputSchema.parse(input);
   /** @type {import('./types.js').FacilityFinding[]} */
   const findings = [];
+  // Null-prototype: a published name is a CSV cell, and `constructor` or
+  // `__proto__` must be an alias like any other, never a prototype member.
   /** @type {Record<string, FieldAlias>} */
-  const aliases = {};
+  const aliases = Object.create(null);
   const stats = {
     ringCount: parsed.rings.length,
     entryCount: 0,

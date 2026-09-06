@@ -292,6 +292,11 @@ export function extendFacilityGraphInputWithSeason2026PracticeLayer(
         `season2026 practice layer: "${node.venue}" / "${node.field}" names a venue neither layer declares`
       );
     }
+    if (node.subunit !== null && node.parent !== null) {
+      throw new Error(
+        `season2026 practice layer: "${node.venue}" / "${node.field}" / "${node.subunit}" names parent "${node.parent}"; a sub-unit's parent is its field`
+      );
+    }
     const parentName = node.subunit === null ? node.parent : node.field;
     const parentId = parentName === null ? null : season2026SurfaceId(node.venue, parentName);
     const parent = parentId === null ? null : surfaceById.get(parentId);

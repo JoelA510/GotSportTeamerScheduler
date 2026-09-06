@@ -442,6 +442,26 @@ describe('alias layer :: the builder refuses what it must and reports what it re
     expect(doubled.stats.candidateCount).toBe(1);
   });
 
+  it('carries a published name that is also a prototype member', () => {
+    const entry = (displayName) => ({
+      displayName,
+      venue: 'Alder Park',
+      field: 'Pitch 2A',
+      label: 'l',
+    });
+    const built = buildFieldAliasMap(graph, complexes, {
+      rings: [
+        { ring: 'r', entries: [entry('constructor'), entry('__proto__'), entry('hasOwnProperty')] },
+      ],
+    });
+    expect(built.stats.aliasCount).toBe(3);
+    expect(built.displayNames).toEqual(['__proto__', 'constructor', 'hasOwnProperty']);
+    expect(lookupFieldAlias(built, 'constructor').alias.surfaceIds).toEqual([
+      season2026PracticeSurfaceId('Alder Park', 'Pitch 2A', null),
+    ]);
+    expect(lookupFieldAlias(map, 'toString').alias).toBeNull();
+  });
+
   it('refuses a ring given twice, an unknown key, and no rings at all', () => {
     const entry = { displayName: 'Z', venue: 'Alder Park', field: 'Pitch 2A', label: 'l' };
     expect(() =>
