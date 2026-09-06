@@ -157,7 +157,7 @@ const BOOKING_SEEDS = {
  *
  * @param {string} fieldId
  * @param {string[]} kinds
- * @returns {Array<{ kind: string, table: string, id: string }>}
+ * @returns {Promise<Array<{ kind: string, table: string, id: string }>>}
  */
 const seedBookings = async (fieldId, kinds) => {
   const seeded = [];
