@@ -799,9 +799,9 @@ describe('practice layer :: making Pitch 2 and Pitch 3 parents takes nothing fro
     // The invariant the rule exists for, stated over the whole corpus rather
     // than over the four surfaces that showed it.
     let pairsChecked = 0;
-    for (const [name, subject] of [
-      ['game', gameGraph],
-      ['composed', graph],
+    for (const { name, subject } of [
+      { name: 'game', subject: gameGraph },
+      { name: 'composed', subject: graph },
     ]) {
       for (const format of formats) {
         const offered = replacementSurfacesFor(subject, { format, maxGradesAbove: 1 });
