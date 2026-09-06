@@ -585,6 +585,10 @@ describe('alias layer :: the builder refuses what it must and reports what it re
     // null) and took the whole map with it -- the ring with the stricter parser
     // was the one that could not be read, on a shape the practice ring reports
     // as `ALIAS_BLANK`.
+    //
+    // Round 3, finding 5. Turning the throw into a *blank* was the wrong
+    // answer: a row with no label but a real venue and field names its ground
+    // in the cells the resolver reads. Only the missing venue is unplaceable.
     const fieldsRow = (over) => ({
       rowIndex: 0,
       codeName: 'Blank Cell',
@@ -596,39 +600,59 @@ describe('alias layer :: the builder refuses what it must and reports what it re
       usedFor: null,
       ...over,
     });
+    const built = (over) =>
+      buildFieldAliasMap(graph, complexes, toSeason2026AliasRings([], [fieldsRow(over)]));
+    const pitch2a = season2026PracticeSurfaceId('Alder Park', 'Pitch 2A', null);
 
-    for (const { column, over } of [
-      { column: 'venue', over: { venue: '' } },
-      { column: 'actual_label', over: { actualLabel: '' } },
-    ]) {
-      const built = buildFieldAliasMap(
-        graph,
-        complexes,
-        toSeason2026AliasRings([], [fieldsRow(over)])
-      );
-      const candidate = built.aliases['Blank Cell'].candidates[0];
-      expect(candidate.ring, column).toBe(FIELDS);
-      expect(candidate.surfaceIds, column).toEqual([]);
-      expect(codesOf(built.findings), column).toContain(FACILITY_REASON.ALIAS_BLANK);
-      // The map still builds, and the blank row is one unresolved candidate
-      // rather than a thrown parse.
-      expect(built.stats.aliasCount, column).toBe(1);
-      expect(built.stats.unresolvedCandidateCount, column).toBe(1);
-    }
+    // A blank venue: no ground is named, nothing can place it.
+    const noVenue = built({ venue: '' });
+    expect(noVenue.aliases['Blank Cell'].candidates[0].surfaceIds).toEqual([]);
+    expect(codesOf(noVenue.findings)).toContain(FACILITY_REASON.ALIAS_BLANK);
+    expect(noVenue.stats.unresolvedCandidateCount).toBe(1);
+    expect(noVenue.stats.aliasCount).toBe(1);
 
-    // The sibling's answer on the same shape, so "as the practice ring does" is
-    // asserted rather than asserted about.
-    const practiceRow = {
+    // A blank label with a real venue and field: the ring has no name for the
+    // ground, and the ground is still exactly where the cells say it is.
+    const noLabel = built({ actualLabel: '' });
+    expect(noLabel.aliases['Blank Cell'].candidates[0].surfaceIds).toEqual([pitch2a]);
+    expect(noLabel.aliases['Blank Cell'].candidates[0].resolution).toBe(R.RESOLVED);
+    expect(noLabel.stats.resolvedCandidateCount).toBe(1);
+    expect(noLabel.stats.unresolvedCandidateCount).toBe(0);
+    // ... and the missing label is still reported, naming which cell is empty.
+    const blank = noLabel.findings.find((f) => f.code === FACILITY_REASON.ALIAS_BLANK);
+    expect(blank).toBeTruthy();
+    expect(blank.details.blankLabel).toBe(true);
+    expect(blank.details.blankVenue).toBe(false);
+    expect(blank.message).not.toContain('no field behind it');
+    // Positive control: "it resolves" is a fact about the ground, not about the
+    // blank. The same row pointed at a field the graph does not hold does not.
+    const nowhere = built({ actualLabel: '', remainder: 'Pitch 9Z' });
+    expect(nowhere.aliases['Blank Cell'].candidates[0].surfaceIds).toEqual([]);
+    expect(codesOf(nowhere.findings)).toContain(FACILITY_REASON.ALIAS_SURFACE_UNKNOWN);
+
+    // The sibling ring answers the same way on the same two shapes.
+    const practiceRow = (over) => ({
       rowIndex: 0,
       displayName: 'Blank Cell',
       actualLabel: 'Alder Park Pitch 2A',
-      venue: null,
+      venue: 'Alder Park',
       field: 'Pitch 2A',
       subunit: null,
-    };
-    const sibling = buildFieldAliasMap(graph, complexes, toSeason2026AliasRings([practiceRow], []));
-    expect(codesOf(sibling.findings)).toContain(FACILITY_REASON.ALIAS_BLANK);
-    expect(sibling.aliases['Blank Cell'].candidates[0].surfaceIds).toEqual([]);
+      ...over,
+    });
+    const siblingNoVenue = buildFieldAliasMap(
+      graph,
+      complexes,
+      toSeason2026AliasRings([practiceRow({ venue: null })], [])
+    );
+    expect(codesOf(siblingNoVenue.findings)).toContain(FACILITY_REASON.ALIAS_BLANK);
+    expect(siblingNoVenue.aliases['Blank Cell'].candidates[0].surfaceIds).toEqual([]);
+    const siblingNoLabel = buildFieldAliasMap(
+      graph,
+      complexes,
+      toSeason2026AliasRings([practiceRow({ actualLabel: null })], [])
+    );
+    expect(siblingNoLabel.aliases['Blank Cell'].candidates[0].surfaceIds).toEqual([pitch2a]);
 
     // Positive control: the empty string reaching the schema is still refused,
     // so the fix is the adapter's mapping and not a loosened schema.

@@ -329,19 +329,31 @@ function resolveCandidate(graph, complexMap, ring, entry, findings) {
       )
     );
   }
+  // **Two different absences, and only one of them is unplaceable.**
+  //
+  // The label is what the ring *calls* the ground; `venue`, `field` and
+  // `subunit` are the cells the resolver actually reads. A row with no venue
+  // names no ground and nothing can place it. A row with no label but a real
+  // venue and field names its ground perfectly well in the cells that matter,
+  // and discarding it -- while telling the reader there is "no field behind
+  // it", with the field sitting in `base` and the graph holding it -- is a
+  // wrong answer rather than a missing one. Both absences are reported; only
+  // the missing venue stops here. (The loader reports the label-with-no-venue
+  // shape separately as DECODER_RING_ALIAS_VENUE_BLANK.)
   if (entry.label === null || entry.venue === null) {
-    // A label with no venue cannot be placed either; the loader reports that
-    // shape separately (DECODER_RING_ALIAS_VENUE_BLANK) and here both are
-    // simply ground the layer cannot find.
     findings.push(
       makeFinding(
         FACILITY_REASON.ALIAS_BLANK,
-        entry.label === null
+        entry.label === null && entry.venue === null
           ? `the ${ring} ring lists "${entry.displayName}" with no field behind it`
-          : `the ${ring} ring lists "${entry.displayName}" as ${JSON.stringify(entry.label)} with no venue, so it cannot be placed`,
-        details
+          : entry.label === null
+            ? `the ${ring} ring lists "${entry.displayName}" with no label of its own; its ground is read from the venue and field cells instead`
+            : `the ${ring} ring lists "${entry.displayName}" as ${JSON.stringify(entry.label)} with no venue, so it cannot be placed`,
+        { ...details, blankLabel: entry.label === null, blankVenue: entry.venue === null }
       )
     );
+  }
+  if (entry.venue === null) {
     return { ...base, resolution: BLANK_RESOLUTION, venueIds: [], surfaceIds: [] };
   }
 
