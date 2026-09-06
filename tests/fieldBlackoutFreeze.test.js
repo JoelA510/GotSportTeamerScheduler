@@ -203,10 +203,17 @@ describe('blackout freeze :: who may write each table is a checked list', () => 
   it('holds field_blackouts to its own migration and the mock client', () => {
     // The other half. "Nothing new writes the frozen table" is satisfied by
     // writing neither, so the new table's writers are pinned too.
+    // The fourth entry is the pgTAP RLS test, which seeds one blackout per org
+    // as the superuser so its "who can READ this" assertions are about the
+    // policy rather than about who managed to write the row. Listed rather than
+    // excepted, like the smoke: a test that writes the table is a writer by the
+    // matcher's definition, and the freeze wants every one of them visible. It
+    // is not a producer -- the whole file runs inside a ROLLBACK.
     expect(writersOf('field_blackouts')).toEqual([
       'docs/sql/20260906000100_smoke.sql',
       'frontend/src/lib/mockSupabaseClient.js',
       'supabase/migrations/20260906000100_field_blackouts.sql',
+      'supabase/tests/rls_field_blackouts.sql',
     ]);
   });
 
