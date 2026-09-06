@@ -9,10 +9,58 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 M1="$REPO/supabase/migrations/20260906000000_field_effective_dating.sql"
 M2="$REPO/supabase/migrations/20260906000100_field_blackouts.sql"
 R1="$REPO/docs/sql/20260906000000_revert.sql"
-PASS=0; FAIL=0
+ATTEMPTED=0; PASS=0; FAIL=0; MISS=0
+
+# **Refuse to start on a stale backup.** `plant()` writes `<file>.orig` before
+# it mutates and removes it on the way out; a run killed in between leaves one
+# behind. Mutating on top of that would restore the WRONG content when this run
+# finishes -- the surviving `.orig` is whatever the dead run had saved, not what
+# is on disk now -- and a byte-identical copy of a migration sitting in
+# `supabase/migrations/` is also something a directory glob may pick up. So:
+# find one, stop, and say what to do about it. `.gitignore` covers `*.orig` as
+# the second line of defence, not the first.
+for f in "$M1" "$M2" "$R1"; do
+  if [ -e "$f.orig" ]; then
+    echo "REFUSING TO START: stale backup $f.orig" >&2
+    echo "  A previous run died between backing up and restoring. Compare it with" >&2
+    echo "  the live file, keep whichever is correct, and delete the .orig." >&2
+    exit 2
+  fi
+done
+
+# Restore anything still planted if this run is interrupted, so the next one is
+# not blocked by a backup THIS run abandoned.
+restore_all() {
+  local f
+  for f in "$M1" "$M2" "$R1"; do
+    if [ -e "$f.orig" ]; then
+      mv -f "$f.orig" "$f"
+      echo "restored $(basename "$f") from its backup" >&2
+    fi
+  done
+}
+
+# **A signal handler that returns does not stop the script.** The first version
+# of this was `trap restore_all EXIT INT TERM`, and it made things worse rather
+# than better: bash resumes where it left off after a trap handler returns, so
+# `timeout 20 prove.sh` restored the file and then carried straight on planting.
+# The run outlived its own timeout, and because the LAST plant re-created the
+# backup after the handler had cleared it, the abandoned `.orig` this trap
+# exists to prevent survived anyway. Found by running the control rather than by
+# reading the trap. A signal now kills the in-flight harness, restores, and
+# exits; only the EXIT trap is allowed to return.
+on_signal() {
+  trap - EXIT INT TERM
+  pkill -TERM -P $$ 2>/dev/null
+  restore_all
+  exit 130
+}
+trap restore_all EXIT
+trap on_signal INT TERM
 
 plant() { # label file old new
   local label="$1" file="$2" old="$3" new="$4"
+  ATTEMPTED=$((ATTEMPTED+1))
   python3 - "$file" "$old" "$new" <<'PY'
 import io,sys
 f,old,new=sys.argv[1],sys.argv[2],sys.argv[3]
@@ -22,7 +70,10 @@ if s.count(old)!=1:
 io.open(f+'.orig','w',encoding='utf8').write(s)
 io.open(f,'w',encoding='utf8').write(s.replace(old,new,1))
 PY
-  if [ $? -ne 0 ]; then printf '%-52s ANCHOR-MISS (meaningless)\n' "$label"; FAIL=$((FAIL+1)); return; fi
+  if [ $? -ne 0 ]; then
+    printf '%-52s ANCHOR-MISS (meaningless)\n' "$label"
+    MISS=$((MISS+1)); FAIL=$((FAIL+1)); return
+  fi
   # **Detect by EXIT STATUS, not by a string.** The first version grepped for
   # "HARNESS FAILED", which run.sh only prints if it reaches the end -- a
   # migration that fails to APPLY exits early, so the loudest possible catch was
@@ -88,6 +139,12 @@ plant "R1 revert erases a future retirement silently" "$R1" \
   "    RAISE NOTICE 'LOSING future retirement: field % (%) org % closes % active=%'," \
   "    RAISE NOTICE 'considering a row: % % % % %',"
 
+# **Three numbers, not one.** A single "N caught" cannot tell a genuine catch
+# from a plant that never applied: last round seven mutations reported RED and
+# every one was trivially red against an already-red suite. So the count of
+# attempts, the count that failed to anchor (and are therefore MEANINGLESS, not
+# passes), and the count genuinely caught are reported separately, and a single
+# anchor miss fails the run.
 echo
-echo "planted $((PASS+FAIL)) defects: $PASS caught, $FAIL not caught"
+echo "attempted $ATTEMPTED, anchor-miss $MISS (meaningless), caught $PASS, not caught $((FAIL-MISS))"
 [ "$FAIL" -eq 0 ] || exit 1

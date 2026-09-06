@@ -42,3 +42,15 @@ tmp/
 # Backup directories
 test-results-backup/
 dist.old/
+
+# Harness backups of production source.
+#
+# `scripts/dbharness/prove.sh` writes `<file>.orig` beside a file before it
+# plants a defect in it, and removes it on the way out. A run that dies in
+# between leaves a byte-identical copy of a migration sitting in
+# `supabase/migrations/`, where anything that globs the directory may pick it
+# up, and where a careless `git add -A` would commit it. Belt and braces: the
+# harness deletes the backup on success and refuses to start when it finds a
+# stale one, and these patterns stop a survivor being committed regardless.
+*.orig
+*.bak
