@@ -37,6 +37,12 @@ import {
 
 import { buildFormatTimingTableFromSeason2026 } from '@squadlogic/core/timing/index.js';
 
+import { replacementSurfacesFor } from '@squadlogic/core/scenario/index.js';
+
+import { buildSeason2026ConstraintRegistry } from '@squadlogic/core/constraints/index.js';
+
+import { RULE_ID, runRuleEngine, toSeason2026Schedule } from '@squadlogic/core/ruleEngine/index.js';
+
 import {
   FACILITY_REASON,
   PRACTICE_SURFACE_RESOLUTION,
@@ -643,5 +649,108 @@ describe('practice layer :: lighting nobody has stated is reported, not read as 
     expect(alder.findings.map((f) => f.code)).not.toContain(
       AVAILABILITY_REASON.LIGHTING_UNDECLARED
     );
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* The composed graph, seen by the modules that consume graphs                 */
+/* -------------------------------------------------------------------------- */
+
+describe('practice layer :: making Pitch 2 and Pitch 3 parents takes nothing from relocation', () => {
+  const formats = ['11v11', '9v9', '7v7', '5v5', '4v4'];
+
+  it('offers the same replacement ground on the composed graph as on the game graph', () => {
+    let compared = 0;
+    for (const format of formats) {
+      const before = replacementSurfacesFor(gameGraph, { format, maxGradesAbove: 1 });
+      const after = replacementSurfacesFor(graph, { format, maxGradesAbove: 1 });
+      expect(after, format).toEqual(before);
+      compared += before.length;
+    }
+    expect(compared).toBeGreaterThan(20);
+    // The two 11v11 pitches that became parents are still offered whole.
+    const eleven = replacementSurfacesFor(graph, { format: '11v11', maxGradesAbove: 1 });
+    expect(eleven).toContain(sid(ALDER, 'Pitch 2'));
+    expect(eleven).toContain(sid(ALDER, 'Pitch 3'));
+    // ... and their halves, which state no size, are not.
+    expect(eleven).not.toContain(pid(ALDER, 'Pitch 2A'));
+    expect(graph.surfaces[pid(ALDER, 'Pitch 2A')].sizes).toEqual([]);
+  });
+
+  it('still drops a parent that states no size of its own (positive control)', () => {
+    // Strip Pitch 2's sizes: a parent with children and nothing to rank.
+    const input = extendFacilityGraphInputWithSeason2026PracticeLayer(
+      toSeason2026FacilityGraphInput(geometry)
+    );
+    const pitch2 = sid(ALDER, 'Pitch 2');
+    const sizeless = buildFacilityGraph({
+      ...input,
+      surfaces: input.surfaces.map((s) => (s.id === pitch2 ? { ...s, sizes: [], lined: [] } : s)),
+    });
+    expect(sizeless.surfaces[pitch2].childIds.length).toBeGreaterThan(0);
+    expect(replacementSurfacesFor(sizeless, { format: '11v11', maxGradesAbove: 1 })).not.toContain(
+      pitch2
+    );
+    expect(replacementSurfacesFor(graph, { format: '11v11', maxGradesAbove: 1 })).toContain(pitch2);
+  });
+});
+
+describe('practice layer :: the sunset rule claims LIGHTING_UNDECLARED, so the engine keeps it', () => {
+  const table = buildFormatTimingTableFromSeason2026(loadGameFormats());
+  const sunsets = loadSunsets();
+  const calendar = buildAvailabilityCalendarFromSeason2026(
+    loadFacilityPermits({ seasonYear: Number(sunsets[0].date.slice(0, 4)) }),
+    sunsets
+  );
+  const registry = buildSeason2026ConstraintRegistry();
+  const base = toSeason2026Schedule(season);
+  const cedarbrook = sid('Cedarbrook Park', 'Field 1');
+  // One published game moved onto ground nobody has declared lit or unlit.
+  const moved = base.games[0];
+  const schedule = {
+    ...base,
+    name: 'season-2026 with one game on undeclared-lighting ground',
+    games: base.games.map((game) => (game === moved ? { ...game, surfaceId: cedarbrook } : game)),
+    surfaceUniverse: [...new Set([...base.surfaceUniverse, cedarbrook])].sort(),
+    venueUniverse: [
+      ...new Set([...base.venueUniverse, season2026VenueId('Cedarbrook Park')]),
+    ].sort(),
+  };
+  const resources = { graph, timingTable: table, calendar, venueComplexes: complexes };
+  const run = runRuleEngine(schedule, { registry, resources });
+  const sunset = run.byRuleId[RULE_ID.SUNSET_MARGIN];
+
+  it('reports the undeclared lighting on the moved game in the rule-engine report', () => {
+    expect(sunset.ran).toBe(true);
+    expect(sunset.exercise.counters.lightingUndeclaredGamesExamined).toBe(1);
+    expect(
+      sunset.exercise.counters.unlitGamesExamined + sunset.exercise.counters.litGamesExamined
+    ).toBe(schedule.games.length - 1);
+    const mine = sunset.subjects.filter((subject) =>
+      subject.findings.some((f) => f.code === AVAILABILITY_REASON.LIGHTING_UNDECLARED)
+    );
+    expect(mine).toHaveLength(1);
+    expect(JSON.stringify(mine[0].context ?? mine[0])).toContain(moved.id);
+  });
+
+  it('would lose the finding without the claim: unclaimed codes from the same check are gone', () => {
+    // checkKickoffAvailability() emits LIGHTING_FROM_VENUE for every game;
+    // the rule does not claim it, so the engine discards it. The claim is
+    // what keeps LIGHTING_UNDECLARED, and the test above would fail if the
+    // claim were removed from SUNSET_CODES.
+    const kept = new Set(sunset.subjects.flatMap((s) => s.findings.map((f) => f.code)));
+    expect(kept.has(AVAILABILITY_REASON.LIGHTING_UNDECLARED)).toBe(true);
+    expect(kept.has(AVAILABILITY_REASON.LIGHTING_FROM_VENUE)).toBe(false);
+    // ... and on the unmodified schedule, over the game graph, it never fires.
+    const clean = runRuleEngine(base, {
+      registry,
+      resources: { ...resources, graph: gameGraph },
+    }).byRuleId[RULE_ID.SUNSET_MARGIN];
+    expect(clean.exercise.counters.lightingUndeclaredGamesExamined).toBe(0);
+    expect(
+      clean.subjects.some((s) =>
+        s.findings.some((f) => f.code === AVAILABILITY_REASON.LIGHTING_UNDECLARED)
+      )
+    ).toBe(false);
   });
 });
