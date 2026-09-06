@@ -668,6 +668,66 @@ describe('alias layer :: the builder refuses what it must and reports what it re
     ).toThrow();
   });
 
+  it('never describes a field as absent while the row carries one', () => {
+    // Round 4, finding 3. The both-blank arm still read "with no field behind
+    // it" while its predicate was about label and venue, and on the fields ring
+    // `field` comes from `remainder`, which the adapter does not blank. The
+    // message is now a function of the cells, so this is a property over every
+    // combination rather than a check on the one that showed it.
+    const rowFor = (blankLabel, blankVenue, field) => ({
+      rowIndex: 0,
+      codeName: 'Cells',
+      actualLabel: blankLabel ? '' : 'Alder Park Pitch 2A',
+      venue: blankVenue ? '' : 'Alder Park',
+      remainder: field,
+      uncertain: false,
+      confirmed: null,
+      usedFor: null,
+    });
+
+    let checked = 0;
+    let namedTheField = 0;
+    for (const blankLabel of [true, false]) {
+      for (const blankVenue of [true, false]) {
+        for (const field of ['Pitch 2A', null]) {
+          if (!blankLabel && !blankVenue) continue; // not a blank row at all
+          const built = buildFieldAliasMap(
+            graph,
+            complexes,
+            toSeason2026AliasRings([], [rowFor(blankLabel, blankVenue, field)])
+          );
+          const blank = built.findings.find((f) => f.code === FACILITY_REASON.ALIAS_BLANK);
+          const label = `label=${blankLabel} venue=${blankVenue} field=${JSON.stringify(field)}`;
+          expect(blank, label).toBeTruthy();
+          expect(blank.details.blankField, label).toBe(field === null);
+          if (field === null) {
+            expect(blank.message, label).toContain('no field');
+          } else {
+            // The property: no message may say the field is missing when the
+            // row carries one, and the one it carries is named.
+            expect(blank.message, label).not.toContain('no field');
+            expect(blank.message, label).toContain(JSON.stringify(field));
+            namedTheField += 1;
+          }
+          // "Cannot be placed" turns on the venue and on nothing else.
+          expect(blank.message.includes('cannot be placed'), label).toBe(blankVenue);
+          checked += 1;
+        }
+      }
+    }
+    // Meta-assertion: the loop covered the shapes it claims to, including the
+    // both-blank-with-a-field row that finding 3 is about.
+    expect(checked).toBe(6);
+    expect(namedTheField).toBe(3);
+    const bothBlankWithField = buildFieldAliasMap(
+      graph,
+      complexes,
+      toSeason2026AliasRings([], [rowFor(true, true, 'Pitch 2A')])
+    ).findings.find((f) => f.code === FACILITY_REASON.ALIAS_BLANK);
+    expect(bothBlankWithField.message).toContain('no label and no venue');
+    expect(bothBlankWithField.message).toContain('"Pitch 2A"');
+  });
+
   it('does not mutate its input and returns a frozen map', () => {
     const input = toSeason2026AliasRings(practice.fieldAliases, practice.fieldCodeNames);
     const before = JSON.stringify(input);

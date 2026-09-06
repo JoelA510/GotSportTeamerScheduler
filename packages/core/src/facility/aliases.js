@@ -146,6 +146,33 @@ export const ALIAS_GROUND_AGREEMENT = Object.freeze({
  * @property {number} disagreementCount - labelConflictCount + blankVsLabelCount
  */
 
+/**
+ * What an `ALIAS_BLANK` finding says, derived from the row's own cells.
+ *
+ * Every clause is a fact about a cell: which are empty, what the field cell
+ * holds when it holds anything, and whether the row can be placed at all
+ * (which turns only on the venue). There is deliberately no per-shape branch,
+ * because that is where a message describing an absent field while `field` is
+ * present came from twice.
+ *
+ * @param {string} ring
+ * @param {{ displayName: string, label: string|null, venue: string|null, field: string|null, subunit: string|null }} entry
+ * @returns {string}
+ */
+function blankCellMessage(ring, entry) {
+  const empty = [];
+  if (entry.label === null) empty.push('no label');
+  if (entry.venue === null) empty.push('no venue');
+  if (entry.field === null) empty.push('no field');
+  const carried =
+    entry.field === null ? '' : `, though its field cell says ${JSON.stringify(entry.field)}`;
+  const outcome =
+    entry.venue === null
+      ? 'so no ground is named and it cannot be placed'
+      : 'so its ground is read from the venue and field cells instead of from the label';
+  return `the ${ring} ring lists "${entry.displayName}" with ${empty.join(' and ')}${carried}; ${outcome}`;
+}
+
 /** The resolution word for a blank entry, beside the structural ones. */
 const BLANK_RESOLUTION = 'blank';
 
@@ -341,16 +368,22 @@ function resolveCandidate(graph, complexMap, ring, entry, findings) {
   // the missing venue stops here. (The loader reports the label-with-no-venue
   // shape separately as DECODER_RING_ALIAS_VENUE_BLANK.)
   if (entry.label === null || entry.venue === null) {
+    // **The sentence is built from the cells, not from a branch per shape.**
+    // Round 3 narrowed a wrong message instead of removing it: the both-blank
+    // arm still read "with no field behind it" while its predicate was about
+    // label and venue, and on the fields ring `field` comes from `remainder`,
+    // which the adapter does not blank. A row with an empty label, an empty
+    // venue and a real remainder was told its field was missing with the field
+    // sitting right there in `base`. Naming exactly the cells that *are* empty,
+    // and quoting the field whenever there is one, leaves no branch able to
+    // call a present field absent.
     findings.push(
-      makeFinding(
-        FACILITY_REASON.ALIAS_BLANK,
-        entry.label === null && entry.venue === null
-          ? `the ${ring} ring lists "${entry.displayName}" with no field behind it`
-          : entry.label === null
-            ? `the ${ring} ring lists "${entry.displayName}" with no label of its own; its ground is read from the venue and field cells instead`
-            : `the ${ring} ring lists "${entry.displayName}" as ${JSON.stringify(entry.label)} with no venue, so it cannot be placed`,
-        { ...details, blankLabel: entry.label === null, blankVenue: entry.venue === null }
-      )
+      makeFinding(FACILITY_REASON.ALIAS_BLANK, blankCellMessage(ring, entry), {
+        ...details,
+        blankLabel: entry.label === null,
+        blankVenue: entry.venue === null,
+        blankField: entry.field === null,
+      })
     );
   }
   if (entry.venue === null) {
