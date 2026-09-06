@@ -515,9 +515,24 @@ describe('field lifecycle RPCs :: blackouts are scoped to exactly one thing', ()
       p_blackout_until: '2026-08-31',
     });
     expect(getMockData('field_blackouts').length).toBe(1);
+    // **`p_confirm: true` is load-bearing here, and its absence is why this
+    // test changed.** The seeded org's first field carries game slots, so an
+    // unconfirmed delete is now REFUSED and cascades nothing. The refusal is
+    // asserted directly first, so this test proves the guard is live rather
+    // than routing round it: without the assertion, a guard that had stopped
+    // working would leave the confirmed call below passing unchanged.
+    const refused = await supabase.rpc('admin_delete_field', {
+      p_organization_id: ORG,
+      p_field_id: field.id,
+    });
+    expect(refused.error).toBeNull();
+    expect(refused.data.deleted).toBe(false);
+    expect(getMockData('field_blackouts').length).toBe(1);
+
     await supabase.rpc('admin_delete_field', {
       p_organization_id: ORG,
       p_field_id: field.id,
+      p_confirm: true,
     });
     expect(getMockData('field_blackouts').length).toBe(0);
   });
