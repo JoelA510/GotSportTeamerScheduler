@@ -163,11 +163,16 @@ COMMENT ON COLUMN public.practice_assignments.field_id IS
 -- ---------------------------------------------------------------------------
 --
 -- **The two-argument function is DROPPED, not left beside the new one.**
--- Adding `p_confirm boolean DEFAULT false` creates an OVERLOAD, and PostgREST
--- calls this by named arguments: with both present, `{p_organization_id,
--- p_field_id}` matches both candidates and PostgreSQL raises "function is not
--- unique" -- and, worse, a positional caller could still reach the UNGUARDED
--- one. A guard that a second signature routes around is not a guard.
+-- Adding `p_confirm boolean DEFAULT false` creates an OVERLOAD that no
+-- two-argument call can resolve. Measured rather than reasoned about, because
+-- the first draft of this comment got the consequence backwards: with both
+-- signatures present, BOTH a named call and a positional one raise
+-- `42725 function ... is not unique`. So the hazard is not "a caller quietly
+-- reaches the unguarded body" -- it is that every existing two-argument caller
+-- (`useFields.deleteField`, `supabase/tests/facility_admin_rpcs.sql`) stops
+-- working at all, and the fix someone reaches for under that pressure is to
+-- call the old signature explicitly, which IS the unguarded body. Dropping it
+-- removes both outcomes.
 DROP FUNCTION IF EXISTS public.admin_delete_field(uuid, uuid);
 
 CREATE OR REPLACE FUNCTION public.admin_delete_field(
@@ -203,8 +208,14 @@ BEGIN
     -- **Locked and read BEFORE the delete, not returned by it.** The original
     -- deleted first and inferred not-found from the RETURNING being empty, so
     -- there was no window in which the field existed and the bookings could be
-    -- counted. Reading it FOR UPDATE first is also what stops a concurrent
-    -- booking landing between the count and the delete.
+    -- counted.
+    --
+    -- `FOR UPDATE` also closes the gap between counting and deleting, and it
+    -- does so through the foreign keys rather than despite them: inserting a
+    -- row that REFERENCES this field takes a KEY SHARE lock on it, which
+    -- conflicts with the FOR UPDATE held here. That covers a booking table
+    -- only if it HAS such a key -- which practice_assignments did not until
+    -- the constraint added above, so the same defect closed two things.
     SELECT *
       INTO v_existing
       FROM public.fields

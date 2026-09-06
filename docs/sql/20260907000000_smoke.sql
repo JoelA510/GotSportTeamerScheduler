@@ -17,10 +17,11 @@
 -- ---------------------------------------------------------------------------
 --
 -- The two-argument function must be GONE. Leaving it beside the new one is not
--- a harmless duplicate: PostgREST calls by named arguments, so
--- `{p_organization_id, p_field_id}` would match both candidates, and a
--- positional caller could still reach the unguarded one. A guard a second
--- signature routes around is not a guard.
+-- a harmless duplicate: with both present, every two-argument call -- named or
+-- positional -- raises `42725 function ... is not unique` (measured, not
+-- assumed), so the delete path stops working entirely and the obvious repair
+-- is to name the old signature explicitly, which is the unguarded body. A
+-- guard a second signature routes around is not a guard.
 DO $$
 DECLARE v_two int; v_three int;
 BEGIN
@@ -396,7 +397,13 @@ END $$;
 -- ---------------------------------------------------------------------------
 -- Reporting (evidence, not gates)
 -- ---------------------------------------------------------------------------
-select 'practice_assignments and their venues after the constraint' as report,
+-- **Zero here means "nothing to measure", not "healthy".** On the migration
+-- harness's freshly built database there are no practice assignments at all,
+-- so both figures below read 0 whatever the constraint does. They are worth
+-- printing on a database with data in it; the GATE for the constraint is
+-- section 3, which asserts the foreign key itself, and section 6, which
+-- exercises it on rows this file creates.
+select 'practice_assignments and their venues (0 rows means not exercised on real data)' as report,
        count(*) filter (where field_id is not null) as with_field,
        count(*) filter (where field_id is null) as without_field,
        count(*) as all_rows
@@ -405,7 +412,7 @@ from public.practice_assignments;
 -- A nonzero count here after this migration would mean the constraint is not
 -- doing its job; it is reported rather than gated because the gate for it is
 -- the constraint itself, asserted in section 3.
-select 'practice_assignments pointing at a field that does not exist' as report,
+select 'practice_assignments pointing at a field that does not exist (expect 0)' as report,
        count(*) as dangling
 from public.practice_assignments pa
 where pa.field_id is not null

@@ -114,6 +114,67 @@ const PLANTS = [
     find: "            error: { code: '23514', message: 'blackout times must be within 0..1440 and ordered' },",
     replace: "            error: { message: 'blackout times must be within 0..1440 and ordered' },",
   },
+  // -------------------------------------------------------------------------
+  // LIVE-1: the delete guard, in the arm that had none at all
+  // -------------------------------------------------------------------------
+  {
+    label: 'delete loses its booking guard entirely',
+    find: `        if (affected.length > 0 && !p.p_confirm) {
+          audit('field', field.id, 'deleted', {
+            operation: 'admin_delete_field',`,
+    replace: `        if (false && affected.length > 0 && !p.p_confirm) {
+          audit('field', field.id, 'deleted', {
+            operation: 'admin_delete_field',`,
+  },
+  {
+    label: 'refusal is audited as a delete that began',
+    find: `          phase: 'refused',
+            reason: 'bookings_exist',`,
+    replace: `          phase: 'before',
+            reason: 'bookings_exist',`,
+  },
+  {
+    label: 'delete calls an unassignment a deletion',
+    find: "          game_assignment: 'unassigned',",
+    replace: "          game_assignment: 'deleted',",
+  },
+  {
+    // **The shared enumerator's `after: null` contract.** `null` means no date
+    // applies -- a deletion takes everything -- which is a different answer
+    // from comparing against the string "null". Get that wrong and every
+    // booking reads as past, the count is zero, and the guard is silently off.
+    label: 'the enumerator treats "no date at all" as a date',
+    find: '        const past = (value) => after !== null && value !== null && String(value) <= after;',
+    replace: '        const past = (value) => value !== null && String(value) <= String(after);',
+  },
+  {
+    // Not scenario-table plants: the table states the RPC's OUTCOME and
+    // deliberately leaves the row-level consequences to
+    // `fieldDeleteGuard.test.js`, so that is the suite these are aimed at.
+    // Pointing them at the table instead would report NOT CAUGHT and say
+    // nothing about whether anything covers them.
+    label: 'a confirmed delete stops unassigning practice assignments',
+    suite: 'tests/fieldDeleteGuard.test.js',
+    find: `        for (const row of db.practice_assignments || []) {
+          if (String(row.field_id) === String(p.p_field_id)) row.field_id = null;
+        }`,
+    replace: '        // practice assignments left pointing at the deleted field',
+  },
+  {
+    label: 'a confirmed delete stops cascading game slots',
+    suite: 'tests/fieldDeleteGuard.test.js',
+    find: "        cascade('game_slots');",
+    replace: "        // cascade('game_slots');",
+  },
+  {
+    // The tombstone is what makes a delete of a SEEDED row durable across
+    // `getDB()`'s re-merge. Without it the RPC reports `deleted: true` and the
+    // row is back on the next read -- the defect this file's own test found.
+    label: 'the deleted field is not tombstoned and resurrects',
+    suite: 'tests/fieldDeleteGuard.test.js',
+    find: "        markMockDeleted(db, 'fields', [field.id]);",
+    replace: "        // markMockDeleted(db, 'fields', [field.id]);",
+  },
   {
     // Not a scenario-table plant: a scenario's `before` state is written
     // through `.insert()`, so the very state this breaks is one the table

@@ -8,7 +8,9 @@ set -uo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 M1="$REPO/supabase/migrations/20260906000000_field_effective_dating.sql"
 M2="$REPO/supabase/migrations/20260906000100_field_blackouts.sql"
+M3="$REPO/supabase/migrations/20260907000000_field_delete_booking_guard.sql"
 R1="$REPO/docs/sql/20260906000000_revert.sql"
+R3="$REPO/docs/sql/20260907000000_revert.sql"
 ATTEMPTED=0; PASS=0; FAIL=0; MISS=0
 
 # **Refuse to start on a stale backup.** `plant()` writes `<file>.orig` before
@@ -19,7 +21,7 @@ ATTEMPTED=0; PASS=0; FAIL=0; MISS=0
 # `supabase/migrations/` is also something a directory glob may pick up. So:
 # find one, stop, and say what to do about it. `.gitignore` covers `*.orig` as
 # the second line of defence, not the first.
-for f in "$M1" "$M2" "$R1"; do
+for f in "$M1" "$M2" "$M3" "$R1" "$R3"; do
   if [ -e "$f.orig" ]; then
     echo "REFUSING TO START: stale backup $f.orig" >&2
     echo "  A previous run died between backing up and restoring. Compare it with" >&2
@@ -32,7 +34,7 @@ done
 # not blocked by a backup THIS run abandoned.
 restore_all() {
   local f
-  for f in "$M1" "$M2" "$R1"; do
+  for f in "$M1" "$M2" "$M3" "$R1" "$R3"; do
     if [ -e "$f.orig" ]; then
       mv -f "$f.orig" "$f"
       echo "restored $(basename "$f") from its backup" >&2
@@ -323,6 +325,73 @@ plant "ONLY-SCEN half a blackout window accepted" "$M2" \
   "scenario table" \
   "smoke 20260906000100"
 
+# ---------------------------------------------------------------------------
+# LIVE-1: admin_delete_field's booking guard, and the foreign key beside it
+# ---------------------------------------------------------------------------
+#
+# The sixth argument is load-bearing on all four. Each names a check that must
+# stay GREEN, so a catch supplied by a check that ran earlier is reported
+# BORROWED rather than scored -- the failure mode round 3 found in this very
+# file, where three plants aimed at the scenario table were being caught by a
+# smoke that ran before it.
+plant "M3 delete loses its booking guard entirely" "$M3" \
+  "    IF v_affected_count > 0 AND NOT COALESCE(p_confirm, false) THEN" \
+  "    IF false THEN" \
+  "smoke 20260907000000" \
+  "smoke 20260906000000"
+plant "M3 practice_assignments cascades instead of unassigning" "$M3" \
+  "  FOREIGN KEY (field_id) REFERENCES public.fields (id) ON DELETE SET NULL;" \
+  "  FOREIGN KEY (field_id) REFERENCES public.fields (id) ON DELETE CASCADE;" \
+  "smoke 20260907000000" \
+  "scenario table"
+# **The unguarded overload survives.** Dropping the two-argument function is
+# what stops a caller reaching the old body; without the DROP both exist, and
+# the guard is a door beside an open window. Nothing else in the harness looks
+# at the signature -- the scenario table calls with three named arguments and
+# resolves unambiguously either way -- so this is the smoke's own catch.
+plant "M3 the unguarded two-arg overload is left standing" "$M3" \
+  "DROP FUNCTION IF EXISTS public.admin_delete_field(uuid, uuid);" \
+  "-- overload left in place" \
+  "smoke 20260907000000" \
+  "scenario table"
+# **A plant only the scenario table can see.** The smoke asserts that a refusal
+# writes ONE `refused` audit row; it does not assert that a refusal writes
+# nothing ELSE. The scenario table names the exact phase set per case, so a
+# refusal that also recorded `before` -- an audit trail claiming a deletion was
+# begun when it was refused -- fails there and nowhere else.
+plant "ONLY-SCEN refusal also audits a phase it never reached" "$M3" \
+  "        );
+        RETURN jsonb_build_object(
+            'deleted', false," \
+  "        );
+        PERFORM public.record_audit_event(p_organization_id, 'settings.updated', 'field',
+            p_field_id, jsonb_build_object('operation', 'admin_delete_field', 'phase', 'before'));
+        RETURN jsonb_build_object(
+            'deleted', false," \
+  "scenario table" \
+  "smoke 20260907000000"
+
+# **The family census, and the disposition literals.** Sections 4 and 5 of the
+# new smoke derive the seven-table `field_id` family from the schema and check
+# each arm's disposition word against `pg_constraint`. Both are checks about
+# checks, and a check about a check is exactly the kind that quietly stops
+# working, so each gets a plant.
+plant "M3 an eighth table joins the field_id family unnoticed" "$M3" \
+  "ALTER TABLE public.practice_assignments
+  DROP CONSTRAINT IF EXISTS practice_assignments_field_id_fkey;" \
+  "ALTER TABLE public.audit_log ADD COLUMN IF NOT EXISTS field_id uuid;
+ALTER TABLE public.practice_assignments
+  DROP CONSTRAINT IF EXISTS practice_assignments_field_id_fkey;" \
+  "smoke 20260907000000" \
+  "scenario table"
+plant "M3 an arm claims a consequence its FK does not have" "$M3" \
+  "             pa.effective_date_range IS NULL OR upper_inf(pa.effective_date_range),
+             'unassigned'::text" \
+  "             pa.effective_date_range IS NULL OR upper_inf(pa.effective_date_range),
+             'deleted'::text" \
+  "smoke 20260907000000" \
+  "smoke 20260906000000"
+
 # The revert's loss report is code like any other, and the harness plants a
 # future-dated retirement so it cannot pass by iterating zero rows. This proves
 # THAT check can fail: silence the report and the harness must go red.
@@ -330,6 +399,14 @@ plant "R1 revert erases a future retirement silently" "$R1" \
   "    RAISE NOTICE 'LOSING future retirement: field % (%) org % closes % active=%'," \
   "    RAISE NOTICE 'considering a row: % % % % %'," \
   "revert 20260906000000"
+
+# The same, for the revert that re-opens LIVE-1. It counts the
+# practice_assignments about to lose the foreign key protecting their field_id,
+# and run.sh plants one so the count cannot pass on an empty table.
+plant "R3 revert exposes dangling rows silently" "$R3" \
+  "        'EXPOSING % practice_assignment(s) with a field_id: after this revert a field delete leaves them dangling'," \
+  "        'considering % row(s)'," \
+  "revert 20260907000000"
 
 # **Three numbers, not one.** A single "N caught" cannot tell a genuine catch
 # from a plant that never applied: last round seven mutations reported RED and

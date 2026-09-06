@@ -790,11 +790,7 @@ mutant. Work in progress under a mutation harness is not work in progress.
 
 - **PR 3 (UI)** — the three surfaces, consequence preview, WCAG pass, bundle
   measurement.
-- **LIVE-1** — `admin_delete_field` has no booking guard at all. Deleting a field
-  CASCADEs its slots away, SET NULLs `game_assignments.field_id` so a scheduled
-  game silently loses its venue, and leaves `practice_assignments.field_id`
-  dangling because that column has **no foreign key at all**. Own PR, now
-  unblocked by the harness.
+- ~~**LIVE-1**~~ — **fixed, in its own PR.** Recorded below.
 - **LIVE-2** — `finalize_field_availability_import_job` resolves the field via
   `LIMIT 1` with no `NOT FOUND` guard against a nullable
   `field_availability_profiles.field_id`, so a profile matching no field still
@@ -804,7 +800,97 @@ mutant. Work in progress under a mutation harness is not work in progress.
   blackouts cannot be expressed in a scope-bearing table while this stands.
 - **Two asymmetries referred rather than fixed** (non-HIGH, fail-safe): the JS
   scenario runner guards an unknown scope but not an unknown rpc, where
-  `scenarios.py` guards both; and M2's revert drops `field_blackouts` with no
-  loss report where M1's names every future-dated retirement.
+  `scenarios.py` guards both -- **fixed by the LIVE-1 PR**, which needed it
+  because the field half went from two RPCs to three; and M2's revert drops
+  `field_blackouts` with no loss report where M1's names every future-dated
+  retirement -- **still open**.
 - The CodeQL `neutral` placeholder hazard, carried from PR 1: an early neutral
   and a genuine clean run are indistinguishable at a glance.
+
+---
+
+## LIVE-1 — `admin_delete_field` had no booking guard — **fixed, own PR**
+
+Not part of 8.4's three-PR stack. Recorded as LIVE-1 at the foot of the PR 2
+entry above and unblocked by the harness PR 2 built.
+
+- **Migration:** `20260907000000_field_delete_booking_guard.sql`, with
+  `docs/sql/20260907000000_{smoke,revert}.sql`.
+- **Tests:** 2772 / 34 / 6 (177 files) → **2787 / 34 / 6** (179 files),
+  counted by running the suite rather than by adding up what was written.
+  Scenario table 20 → **27**, both runners. pgTAP 428 → **442** across 42 files:
+  arithmetic on PR 2's recorded 428 plus the 14 new assertions, since no
+  existing `plan()` changed. Main entry 131.04 → **131.38 KB gz**.
+
+### The three claims, checked against the schema before anything was built
+
+All three held, and the checking mattered: a grep for
+`field_id … ON DELETE CASCADE` returns `field_subunits`, `practice_slots` and
+`game_slots`, none of which is an assignment table, so the grep neither confirms
+nor refutes the claims it looks like it answers. The answers came from
+`pg_constraint` on a database with all 107 migrations applied.
+
+- `practice_slots.field_id` and `game_slots.field_id` are **CASCADE** — the
+  slots are destroyed. Held.
+- `game_assignments.field_id` is **SET NULL** (20260503030000) — a scheduled
+  game survives having silently lost its venue. Held.
+- `practice_assignments.field_id` had **no foreign key at all** — a bare `uuid`
+  in 20260331000000, where every other uuid column in the same CREATE TABLE has
+  a REFERENCES clause. Held, and it is the worse case: a SET NULL is visible,
+  a dangling uuid is indistinguishable from a live venue.
+
+`field_blackouts.field_id` is a fourth CASCADE, added by 20260906000100, which
+is why the grep returned three rather than four.
+
+### The family, derived by script and re-derived on every run
+
+Seven tables carry a `field_id`; four are read as bookings and three are
+excluded. The count is not written down and trusted — `docs/sql/20260907000000_smoke.sql`
+derives it from `information_schema` on every harness run and fails on an eighth
+member in either direction, so a new table cannot arrive and be silently treated
+as "not a booking". Each arm's `disposition` word is likewise checked against
+`pg_constraint.confdeltype` rather than believed.
+
+### The contract came from the sibling, and the sibling's contract was not what the brief said
+
+`admin_retire_field` **RETURNS** `{retired:false, …}` and **writes** a `refused`
+audit row; it does not raise and it does not write nothing. `admin_delete_field`
+now does the same with `reason: 'bookings_exist'`. Adopting what the sibling
+does rather than what it was described as doing is the whole point of the rule.
+
+That contract is also why the caller mattered: `useFields.deleteField`
+destructured only `error`, so a refusal read as success and the field vanished
+from the list it had not deleted.
+
+### What the sweep found that this PR did not fix
+
+`rollback_field_import_apply` (`20260503070000:1026-1038`) is the **third** path
+that deletes a field, and it has a guard that consults **2 of the 4** booking
+tables — `practice_slots` and `game_slots`, not the assignment tables. That is
+the same "2 of 4" defect PR 2 fixed in `admin_retire_field`, still standing in
+the third member of the family. Recorded as **LIVE-3** rather than fixed:
+changing an import rollback's blocking behaviour is a separate blast radius and
+the brief for this PR was explicit about not widening.
+
+### Verification
+
+- `npm run test:db:local` — 107 migrations, three smokes, **27 of 27** scenarios
+  against Postgres, three reverts. HARNESS OK.
+- `npm run test:db:local:prove` — **24 attempted, 0 anchor-miss, 24 caught**,
+  every one at the check it was aimed at. Four of the new plants also name a
+  check that must stay GREEN, including one the scenario table catches and the
+  new smoke cannot see.
+- `npm run test:db:local:prove:mock` — **15 attempted, 0 anchor-miss, 15
+  caught**, 7 of them new.
+- pgTAP `field_delete_booking_guard.sql`, 14 assertions, executed locally
+  against real PostgreSQL with real pgTAP.
+
+### Still open
+
+- **LIVE-2**, unchanged.
+- **LIVE-3**, above.
+- The mock's generic `.delete().eq()` does not tombstone, so a direct delete of
+  a SEEDED row resurrects on the next `getDB()`. Examined and left: RLS routes
+  field writes through RPCs, so no production path reaches it. The RPC arm was
+  fixed because this PR's own test found it reporting `deleted: true` for a
+  field that was still there.
