@@ -433,3 +433,126 @@ Not a numbered task. Follows the corpus scrub above; ruled on by the operator.
 - The real-to-pseudonym map was reconstructed from the scrub commit's own diff,
   validated by exact round-trip of both CSVs, used, and deleted. It is not in
   the repo, this log, or any PR.
+
+---
+
+## 8.3 — The practice layer of the facility graph — **merged**
+
+- **PR:** [#371](https://github.com/JoelA510/SquadLogic/pull/371), branch
+  `feat/phase8-3-practice-facility-graph`, squash-merged as `dae159f`.
+- **Tests:** 2390 / 34 / 6 (main before 8.3, 166 files) → **2493 / 34 / 6**
+  (169 files). Season fixture suite 141 / 141 throughout (34 + 57 + 50).
+- **Correction to the merge commit message.** It says "Tests 2317 -> 2493".
+  2317 is wrong; the measured count on `main` at `ba391a9` is **2390**. The
+  supervisor wrote the figure from memory instead of measuring it, then measured
+  it while writing this entry. The squash commit is on `main` and was not
+  rewritten over a wrong number in prose; this line is the correction.
+- **Review rounds:** 6 in total — the agent's own `/code-review` before opening
+  (8 findings), then five supervisor rounds of **6, 7, 6, 4, 7** (30 findings),
+  then a narrow verification pass over the last round's two substantive fixes
+  that found **0**. The loop stopped there.
+
+### The shape of the findings, round by round
+
+The substantive count fell 6 → 7 → 6 → 4 → 2 while the _total_ rose again at the
+end, because round 5's seven were two code defects and five prose drifts. Rounds
+3 and 4 each found regressions caused by the previous round's fixes — two and two
+— which is why no round terminated early on "fewer than four".
+
+### What the plan got wrong
+
+- **§8.3 quotes a constraint row that does not exist.** The plan cites a row of
+  `field_constraints.csv` naming specific field numbers. No such row is in the
+  file. The real row is `Adjacent Fields / Spacing`, which names no field
+  numbers at all. The adjacency handling was built from the file, not the quote.
+- **The sub-unit level is not Alder-only.** The plan describes sub-units as an
+  Alder Park concern. They span **four venues**, and 28 further rows across the
+  corpus resolve to no surface the graph holds. Amendment A widened the layer
+  accordingly.
+- **Amendment A, and the bridge that was dropped.** A proposed Maplewood bridge
+  between the two decoder rings was withdrawn: it would have collapsed **7 of
+  the 12** ring disagreements by construction, hiding exactly the disagreements
+  8.0 exists to surface. The rings stay unreconciled and the disagreements stay
+  reported.
+
+### Defects the review found in the fix itself
+
+Two are worth carrying forward as classes rather than incidents.
+
+- **A test that restates the production predicate to build its expectation.**
+  Found in `scenarioBranching.test.js`, then a _second_ instance in
+  `unknownSurfaceDiscipline.test.js` that the supervisor's finding had not
+  predicted — caught only because CI went red. Both now state the expected set
+  independently (leaves from the graph, plus a named list of parents the policy
+  intends to offer) with a control proving the withheld ground is real.
+- **A silent `default:` arm — three instances in two rounds.** `closures.js`'s
+  undecidable path, then its decided twin (where `closuresApplied` had _already_
+  counted the closure, so a meta-counter testified to an examination that
+  produced nothing), then `aliases.js`'s `resolveCandidate()`, which the agent
+  found and fixed unprompted. All three now throw, naming the union the missing
+  arm belongs to. **This is a class, not three incidents**, and nothing in the
+  repo checks for it generally; a `default:` that drops a case is invisible to
+  every test that does not happen to construct that case.
+
+### A supervisor error, and its cost
+
+Round 1's instruction offered "a surface that carries sizes of its own stays a
+candidate" as an acceptable relocation rule. It is not. It silently changed the
+**game** graph's candidate set — admitting Alder Pitch 1 and Pitch 4 — and made
+`buildReserveCapacityReport` triple-count: 21 free 9v9 slots where `main` counted
+14, because `reserve/conditions.js` omits `OCCUPIED_PARENT_CHILD` on the
+assumption that candidates are leaves. The rule now offers a parent only when no
+descendant of it carries a size. The agent strengthened the supervisor's wording
+from immediate children to the whole subtree, correctly: the forest is two deep
+at Alder, so a children-only rule leaves a sized grandchild offered beside its
+ancestor.
+
+Two further supervisor claims were corrected by the agent rather than accepted:
+the constraint registry **cannot** express "declared and unenforced" (a
+`declared-only` constraint must claim no reason codes, so the
+`FAIRNESS_OBJECTIVE_UNWIRED` idiom was the right one), and `c4e5184`'s commit
+message overstates which code path leaves `result.lighting` null. That is five
+supervisor figures or claims corrected by agents across 0.1–8.3, every one caught
+because the figure was handed over as a claim to verify rather than a fact.
+
+### Declared, not enforced — the largest thing left open
+
+**Neither new layer has a production consumer.** Nothing outside the modules and
+their tests calls the closure evaluator or the alias map, and no rule or
+constraint claims a `CLOSURE_*` or `ALIAS_*` code — including `ALIAS_UNKNOWN` at
+`blocking`. A 17:00 kickoff on `maplewood-back/field-2` on 2026-09-24, inside a
+16:00–19:00 venue-wide closure, comes back with no `CLOSURE_*` code at all.
+
+Wiring was measured before the choice was made: `requireResource()` throws rather
+than skipping, so a closure-consuming rule turns every run supplying no closure
+set into a blocking `RULE_THREW` — **55 `runRuleEngine()` call sites across 9
+test files**, plus `scenario/`, `resolve/` and the season adapter, plus a
+fifteenth registry constraint. Well past a contained change, so both layers
+**declare** the gap instead, in the idiom `fairness/objectives.js` established,
+and the declaration is held to a biconditional shared by both layers
+(`tests/helpers/unwiredLayer.js`): a layer declares itself unwired exactly while
+nothing claims one of its codes, with a positive control per enforcement path.
+
+One half of that guarantee is itself declared rather than enforced: "nothing
+outside the module calls it" is a statement about the repo, not a check. Making
+it one needs a general unwired-layer importer audit, which reaches past 8.3.
+
+### Issues raised for the operator
+
+- **Ten published games on Alder Pitch 3, across the {3,4} overlap pair, on five
+  flag-football Saturdays.** The graph says these conflict. Whether flag football
+  on Pitch 4 physically reaches Pitch 3 is a question about the ground, not the
+  data. **Unresolved.**
+- Carried from 8.2, still open: whether coach slot 1 is a role or an order.
+- Carried from the history rewrite: whether GitHub Support should purge old
+  objects retained behind `refs/pull/*`.
+
+### Process note
+
+Five prose drifts in one round, immediately after a commit that had itself
+corrected five, showed the documentation in these modules was being edited faster
+than it was re-read. The response was a sweep rather than another five patches:
+**550 behavioural statements** (484 comments + 66 message strings, 22 files)
+checked against the code, **16 wrong**. Where a statement could become an
+assertion it did — the scope table is now read back out of the module source, so
+a wrong count word or a removed row fails a test rather than a reader.
