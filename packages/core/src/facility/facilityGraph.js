@@ -39,6 +39,11 @@ export function createMeta() {
     overlapPairsConsulted: 0,
     equipmentWindowsConsulted: 0,
     bookingPairsCompared: 0,
+    // Lifecycle counters. `datedNodeCount` is the universe a lifecycle check
+    // had to judge and `lifecycleNodesJudged` is how many it actually judged;
+    // the pair is what stops "no finding" reading as "checked and clean".
+    datedNodeCount: 0,
+    lifecycleNodesJudged: 0,
   };
 }
 
@@ -55,6 +60,10 @@ export function mergeMeta(target, source) {
   target.overlapPairsConsulted += source.overlapPairsConsulted;
   target.equipmentWindowsConsulted += source.equipmentWindowsConsulted;
   target.bookingPairsCompared += source.bookingPairsCompared;
+  // **Not summed.** `datedNodeCount` is a property of the graph, not of the
+  // work done, so adding two sub-checks' copies would report twice the estate.
+  target.datedNodeCount = Math.max(target.datedNodeCount, source.datedNodeCount);
+  target.lifecycleNodesJudged += source.lifecycleNodesJudged;
   return target;
 }
 
@@ -86,6 +95,32 @@ export function deepFreeze(value) {
  */
 function canonicalPair(a, b) {
   return a <= b ? [a, b] : [b, a];
+}
+
+/**
+ * An effective window that ends before it starts is a structural defect.
+ *
+ * **Throws rather than repairing**, exactly as every other defect in this
+ * builder does: a node whose window is inverted is live on no date at all, and
+ * a graph that quietly answers "this ground does not exist" for every query is
+ * the shape incident 3 was.
+ *
+ * Dates are compared as strings, which is correct for `YYYY-MM-DD` and is why
+ * the schema pins that format. No `Date` is constructed anywhere in this
+ * package.
+ *
+ * @param {string} kind - `venue` or `surface`, for the message
+ * @param {string} id
+ * @param {string|null} from
+ * @param {string|null} to
+ * @returns {void}
+ */
+function assertOrderedWindow(kind, id, from, to) {
+  if (from !== null && to !== null && to < from) {
+    throw new Error(
+      `facility: ${kind} "${id}" is effective from ${from} to ${to}, which ends before it starts`
+    );
+  }
 }
 
 /**
@@ -121,7 +156,10 @@ export function buildFacilityGraph(input) {
       // Orchard Park's "20-min turnover is HARD here" and Alder's overlap prose
       // ride along untouched. Acting on them belongs to Phase 2.
       overlapNote: venue.overlapNote,
+      effectiveFrom: venue.effectiveFrom,
+      effectiveTo: venue.effectiveTo,
     };
+    assertOrderedWindow('venue', venue.id, venue.effectiveFrom, venue.effectiveTo);
   }
 
   /** @type {Record<string, import('./types.js').FacilitySurface>} */
@@ -144,7 +182,10 @@ export function buildFacilityGraph(input) {
       cells: [],
       lineage: [],
       depth: 0,
+      effectiveFrom: surface.effectiveFrom,
+      effectiveTo: surface.effectiveTo,
     };
+    assertOrderedWindow('surface', surface.id, surface.effectiveFrom, surface.effectiveTo);
   }
 
   const surfaceIds = Object.keys(surfaces);
@@ -292,6 +333,24 @@ export function buildFacilityGraph(input) {
       overlapPairCount: overlapPairs.length,
       equipmentWindowCount: equipmentWindows.length,
       formatEquipmentCount: Object.keys(formatEquipment).length,
+      /**
+       * **How many nodes carry an effective window at all.**
+       *
+       * Published even when it is zero, which is the whole point: a lifecycle
+       * report reading `datedNodeCount: 0` says the universe was empty, where
+       * a silent absence would read as "checked and clean". On today's corpus
+       * it *is* zero -- nothing in `season-2026` is dated -- so
+       * `FACILITY_LIFECYCLE_UNJUDGED` cannot fire on real data and the only
+       * exercise is a constructed graph. Saying so here is what stops the
+       * finding's silence being mistaken for evidence.
+       */
+      datedNodeCount:
+        Object.keys(venues).filter(
+          (id) => venues[id].effectiveFrom !== null || venues[id].effectiveTo !== null
+        ).length +
+        surfaceIds.filter(
+          (id) => surfaces[id].effectiveFrom !== null || surfaces[id].effectiveTo !== null
+        ).length,
     },
   };
 
