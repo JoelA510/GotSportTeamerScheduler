@@ -36,6 +36,26 @@ const IdSchema = z.string().min(1, { message: 'ids must be non-empty strings' })
 export const NOTE_MAX_LENGTH = 200;
 
 /**
+ * A nullable free-text column, with `''` normalised to `null`.
+ *
+ * **An empty string and an absent value are the same thing here**, and letting
+ * both exist made the export ambiguous: `''` and `null` both render as an empty
+ * cell, so `notesText: ''` round-tripped to `null` with the file byte-identical
+ * - a changed record behind an unchanged page, which is exactly what a
+ * byte-only identity assertion cannot see.
+ *
+ * The ambiguity is removed rather than encoded around. Distinguishing them on
+ * the page (a quoted empty cell against a bare one) would preserve a
+ * distinction the domain does not have, and `CLAUDE.md` §2's data minimisation
+ * points the same way: an empty note is not a note.
+ *
+ * @param {import('zod').ZodTypeAny} inner
+ * @returns {import('zod').ZodTypeAny}
+ */
+const nullableText = (inner) =>
+  z.preprocess((value) => (value === '' ? null : value), inner.nullable().default(null));
+
+/**
  * **The privacy guard on operator-written prose.**
  *
  * A blackout's note is admin-writable, organisation-scoped and durable, which
@@ -144,7 +164,7 @@ export const BlackoutWindowSchema = z
     startMinutes: MinutesSchema.nullable().default(null),
     endMinutes: MinutesSchema.nullable().default(null),
     reason: z.enum(enumValues(BLACKOUT_REASON)),
-    note: NoteSchema.nullable().default(null),
+    note: nullableText(NoteSchema),
     source: z.enum(enumValues(RECORD_SOURCE)),
   })
   .strict()
@@ -257,11 +277,11 @@ export const VenueAttributesSchema = z
     venueIds: z.array(IdSchema).default([]),
     /** The corpus spelling, kept because it is how the sheet names the place. */
     venueLabel: z.string().min(1),
-    fieldSizesText: z.string().nullable().default(null),
-    ageGroupsText: z.string().nullable().default(null),
-    practiceMaxTeamsText: z.string().nullable().default(null),
-    bathroomText: z.string().nullable().default(null),
-    notesText: z.string().nullable().default(null),
+    fieldSizesText: nullableText(z.string()),
+    ageGroupsText: nullableText(z.string()),
+    practiceMaxTeamsText: nullableText(z.string()),
+    bathroomText: nullableText(z.string()),
+    notesText: nullableText(z.string()),
     equipment: z
       .array(z.object({ item: z.string().min(1), value: z.string().min(1) }).strict())
       .default([]),

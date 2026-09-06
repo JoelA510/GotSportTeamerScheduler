@@ -119,6 +119,80 @@ describe('fieldAdmin round trip :: export then import is the identity', () => {
     });
   }
 
+  it('is the identity on the RECORDS, not only on the bytes', () => {
+    // **"Export then import is the identity" is a claim about records.** The
+    // byte assertion above cannot see a value that changes while its rendering
+    // does not: measured, `notesText: ''` came back as `null` with the file
+    // byte-identical, because `''` and an absent value both rendered empty.
+    //
+    // So the records are compared too, and this assertion is the one that
+    // would have caught it.
+    for (const { name } of SUBJECTS) {
+      const registry = registries.get(name);
+      const document = fromCsv(toCsv(serialiseFieldRegistry(registry)), {
+        registryId: registry.registryId,
+        label: registry.label,
+        kind: registry.kind,
+      });
+      const back = readFieldRegistry(document);
+      expect({ subject: name, count: back.records.length }).toEqual({
+        subject: name,
+        count: registry.records.length,
+      });
+      const before = [...registry.records].sort((a, b) => String(a.id).localeCompare(String(b.id)));
+      const after = [...back.records].sort((a, b) => String(a.id).localeCompare(String(b.id)));
+      expect({ subject: name, records: after }).toEqual({ subject: name, records: before });
+    }
+  });
+
+  it('normalises an empty string to absent, so the two cannot diverge', () => {
+    // The measured instance. Five nullable string columns and `NoteSchema`
+    // accept `''`, and the two are different values: `''` is "the operator
+    // wrote nothing here", `null` is "no value was ever set".
+    const registry = registries.get('venueAttributes');
+    const withEmpty = registry.records.map((record, index) =>
+      index === 0 ? { ...record, notesText: '' } : record
+    );
+    const rebuilt = buildFieldRegistry({
+      registryId: registry.registryId,
+      label: registry.label,
+      kind: registry.kind,
+      records: withEmpty,
+    });
+    const back = readFieldRegistry(
+      fromCsv(toCsv(serialiseFieldRegistry(rebuilt)), {
+        registryId: registry.registryId,
+        label: registry.label,
+        kind: registry.kind,
+      })
+    );
+    // Normalised at the schema boundary, so the value that reaches the page is
+    // already `null` and the round trip is the identity on it.
+    expect(rebuilt.records.find((record) => record.id === withEmpty[0].id).notesText).toBeNull();
+    const subject = back.records.find((record) => record.id === withEmpty[0].id);
+    expect(subject.notesText).toBeNull();
+    // ... and `null` still round-trips as `null`, so the two stay distinct.
+    const withNull = registry.records.map((record, index) =>
+      index === 0 ? { ...record, notesText: null } : record
+    );
+    const nullBack = readFieldRegistry(
+      fromCsv(
+        toCsv(
+          serialiseFieldRegistry(
+            buildFieldRegistry({
+              registryId: registry.registryId,
+              label: registry.label,
+              kind: registry.kind,
+              records: withNull,
+            })
+          )
+        ),
+        { registryId: registry.registryId, label: registry.label, kind: registry.kind }
+      )
+    );
+    expect(nullBack.records.find((record) => record.id === withNull[0].id).notesText).toBeNull();
+  });
+
   it('can fail, on a single changed cell that is still valid', () => {
     // The positive control. A round trip that cannot be made to fail is not a
     // round trip; this proves the comparison above is doing work.
